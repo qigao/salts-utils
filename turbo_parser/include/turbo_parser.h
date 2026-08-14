@@ -2041,7 +2041,34 @@ CXX_C_API int turbo_toon_to_json_doc(const turbo_toon_node_t *toon,
 
 /* CMD Parser */
 typedef struct turbo_cmd_parser_s turbo_cmd_parser_t;
-typedef struct turbo_cmd_subcommand_s turbo_cmd_subcommand_t;
+typedef struct turbo_cmd_node_s turbo_cmd_node_t;
+typedef turbo_cmd_node_t turbo_cmd_subcommand_t;
+
+#define TURBO_CMD_PARSE_RESULT_V1_SIZE sizeof(turbo_cmd_parse_result_t)
+
+typedef int (*turbo_cmd_write_fn)(const char *data, size_t size,
+                                  void *write_context);
+
+typedef enum {
+  TURBO_CMD_PARSE_OK = 0,
+  TURBO_CMD_PARSE_HELP,
+  TURBO_CMD_PARSE_VERSION,
+  TURBO_CMD_PARSE_INVALID
+} turbo_cmd_parse_status_t;
+
+/**
+ * Structured result for the non-printing parser. String pointers are owned by
+ * the parser and remain valid until the next parse or parser destruction.
+ * argv-derived option and positional values remain borrowed from argv.
+ */
+typedef struct {
+  size_t size;
+  turbo_cmd_parse_status_t status;
+  const turbo_cmd_node_t *leaf;
+  int argument_index;
+  const char *error_code;
+  const char *message;
+} turbo_cmd_parse_result_t;
 
 /* Enum choice for turbo_cmd_add_enum */
 typedef struct {
@@ -2223,6 +2250,65 @@ CXX_C_API uint32_t turbo_cmd_last_index(turbo_cmd_parser_t *parser);
 CXX_C_API turbo_cmd_subcommand_t *turbo_cmd_add_subcommand(turbo_cmd_parser_t *parser,
                                                            const char *name, const char *desc);
 
+/** Return the root command node owned by @p parser. */
+CXX_C_API turbo_cmd_node_t *turbo_cmd_root(turbo_cmd_parser_t *parser);
+
+/**
+ * Add a recursively nested command. Node pointers remain stable until parser
+ * destruction. Registration fails after the first parse freezes the tree.
+ */
+CXX_C_API turbo_cmd_node_t *turbo_cmd_add_command(turbo_cmd_node_t *parent,
+                                                  const char *name,
+                                                  const char *description);
+
+/* Node option APIs mirror the root parser APIs and return 0 on success. */
+CXX_C_API int turbo_cmd_node_add_flag(turbo_cmd_node_t *node, bool *out,
+                                      const char *name, const char *short_name,
+                                      const char *desc);
+CXX_C_API int turbo_cmd_node_add_string(turbo_cmd_node_t *node, char **out,
+                                        const char *name, const char *short_name,
+                                        const char *desc);
+CXX_C_API int turbo_cmd_node_add_integer(turbo_cmd_node_t *node, int64_t *out,
+                                         const char *name, const char *short_name,
+                                         const char *desc);
+CXX_C_API int turbo_cmd_node_add_float(turbo_cmd_node_t *node, double *out,
+                                       const char *name, const char *short_name,
+                                       const char *desc);
+CXX_C_API int turbo_cmd_node_add_string_list(turbo_cmd_node_t *node,
+                                             char **out_arr,
+                                             uint32_t *out_count,
+                                             uint32_t max_count,
+                                             const char *name,
+                                             const char *short_name,
+                                             const char *desc);
+CXX_C_API int turbo_cmd_node_add_enum(turbo_cmd_node_t *node, int64_t *out,
+                                      const char *name, const char *short_name,
+                                      const char *desc,
+                                      turbo_cmd_enum_t *choices,
+                                      uint32_t choices_count);
+CXX_C_API int turbo_cmd_node_add_required_string(turbo_cmd_node_t *node,
+                                                 char **out,
+                                                 const char *name,
+                                                 const char *desc);
+CXX_C_API int turbo_cmd_node_add_required_integer(turbo_cmd_node_t *node,
+                                                  int64_t *out,
+                                                  const char *name,
+                                                  const char *desc);
+CXX_C_API uint32_t turbo_cmd_node_last_index(const turbo_cmd_node_t *node);
+CXX_C_API int turbo_cmd_node_set_env(turbo_cmd_node_t *node, uint32_t index,
+                                     const char *env_var);
+CXX_C_API int turbo_cmd_node_set_group(turbo_cmd_node_t *node, uint32_t index,
+                                       const char *group);
+CXX_C_API int turbo_cmd_node_set_choices(turbo_cmd_node_t *node,
+                                         uint32_t index,
+                                         const char **choices,
+                                         uint32_t count);
+CXX_C_API int turbo_cmd_node_set_validator(turbo_cmd_node_t *node,
+                                           uint32_t index,
+                                           turbo_cmd_validator_t validator);
+CXX_C_API int turbo_cmd_node_set_required(turbo_cmd_node_t *node,
+                                          uint32_t index);
+
 /**
  * @brief Add a boolean flag to a subcommand.
  * @param sub Pointer to the subcommand.
@@ -2287,6 +2373,22 @@ CXX_C_API void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv
  */
 CXX_C_API int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc, char **argv,
                                          bool colors);
+
+/**
+ * Parse a recursive command tree without printing or terminating the process.
+ * The caller initializes result.size to sizeof(turbo_cmd_parse_result_t).
+ * Returns 0 when a structured result was produced and -1 for invalid API use
+ * or allocation failure.
+ */
+CXX_C_API int turbo_cmd_parse_ex(turbo_cmd_parser_t *parser, int argc,
+                                 char **argv,
+                                 turbo_cmd_parse_result_t *result);
+
+/** Render help for root or a selected node through a caller-owned sink. */
+CXX_C_API int turbo_cmd_render_help(const turbo_cmd_parser_t *parser,
+                                    const turbo_cmd_node_t *node,
+                                    turbo_cmd_write_fn write_fn,
+                                    void *write_context);
 
 /**
  * @brief Display the auto-generated help documentation to stdout.

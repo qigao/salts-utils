@@ -19,6 +19,21 @@ static int test_process_environment_set(const char *name, const char *value) {
 #endif
 }
 
+typedef struct {
+  char data[4096];
+  size_t size;
+} test_cmd_output_t;
+
+static int test_cmd_write(const char *data, size_t size, void *context) {
+  test_cmd_output_t *output = (test_cmd_output_t *)context;
+  if (!output || !data || size > sizeof(output->data) - output->size - 1u)
+    return -1;
+  memcpy(output->data + output->size, data, size);
+  output->size += size;
+  output->data[output->size] = '\0';
+  return 0;
+}
+
 typedef struct yaml_sax_counts {
   int documents;
   int mappings;
@@ -691,6 +706,84 @@ spec("turbo_parser") {
       free(arg2);
       free(arg3);
       free(arg4);
+
+      turbo_cmd_destroy(parser);
+    }
+
+    it("parses recursive commands without printing or exiting") {
+      turbo_cmd_parser_t *parser = turbo_cmd_create("meshctl", "1.0");
+      turbo_cmd_node_t *nodes;
+      turbo_cmd_node_t *list;
+      turbo_cmd_parse_result_t result;
+      bool verbose = false;
+      char *selector = NULL;
+      int64_t limit = 100;
+      char *argv[] = {"meshctl", "--verbose", "nodes", "list",
+                      "--selector", "region=ap", "--limit=25"};
+
+      check_not_null(parser);
+      check_int_eq(turbo_cmd_node_add_flag(turbo_cmd_root(parser), &verbose,
+                                           "verbose", "v",
+                                           "Enable diagnostics"), 0);
+      nodes = turbo_cmd_add_command(turbo_cmd_root(parser), "nodes",
+                                    "Manage nodes");
+      check_not_null(nodes);
+      list = turbo_cmd_add_command(nodes, "list", "List nodes");
+      check_not_null(list);
+      check_int_eq(turbo_cmd_node_add_string(list, &selector, "selector", "s",
+                                             "Node selector"), 0);
+      check_int_eq(turbo_cmd_node_add_integer(list, &limit, "limit", "l",
+                                              "Page size"), 0);
+
+      memset(&result, 0, sizeof(result));
+      result.size = sizeof(result);
+      check_int_eq(turbo_cmd_parse_ex(parser, 7, argv, &result), 0);
+      check_int_eq(result.status, TURBO_CMD_PARSE_OK);
+      check_ptr_eq(result.leaf, list);
+      check_true(verbose);
+      check_str_eq(selector, "region=ap");
+      check_long_eq(limit, 25);
+      check_null(turbo_cmd_add_command(nodes, "show", "Frozen tree"));
+
+      turbo_cmd_destroy(parser);
+    }
+
+    it("returns structured errors and renders bounded help") {
+      turbo_cmd_parser_t *parser = turbo_cmd_create("meshctl", "1.0");
+      turbo_cmd_node_t *operations;
+      turbo_cmd_node_t *show;
+      turbo_cmd_parse_result_t result;
+      test_cmd_output_t output;
+      char *operation_id = NULL;
+      char *invalid_argv[] = {"meshctl", "operations", "missing"};
+      char *help_argv[] = {"meshctl", "operations", "show", "--help"};
+
+      check_not_null(parser);
+      operations = turbo_cmd_add_command(turbo_cmd_root(parser), "operations",
+                                         "Inspect operations");
+      check_not_null(operations);
+      show = turbo_cmd_add_command(operations, "show", "Show one operation");
+      check_not_null(show);
+      check_int_eq(turbo_cmd_node_add_required_string(
+                       show, &operation_id, "operation-id", "Operation ID"),
+                   0);
+
+      memset(&result, 0, sizeof(result));
+      result.size = sizeof(result);
+      check_int_eq(turbo_cmd_parse_ex(parser, 3, invalid_argv, &result), 0);
+      check_int_eq(result.status, TURBO_CMD_PARSE_INVALID);
+      check_str_eq(result.error_code, "unknown-command");
+      check_int_eq(result.argument_index, 2);
+
+      result.size = sizeof(result);
+      check_int_eq(turbo_cmd_parse_ex(parser, 4, help_argv, &result), 0);
+      check_int_eq(result.status, TURBO_CMD_PARSE_HELP);
+      check_ptr_eq(result.leaf, show);
+      memset(&output, 0, sizeof(output));
+      check_int_eq(turbo_cmd_render_help(parser, result.leaf, test_cmd_write,
+                                         &output), 0);
+      check_str_contains(output.data, "meshctl operations show");
+      check_str_contains(output.data, "operation-id");
 
       turbo_cmd_destroy(parser);
     }

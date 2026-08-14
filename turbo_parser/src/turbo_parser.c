@@ -2694,7 +2694,25 @@ int turbo_soa_schema_column_type(const turbo_soa_schema_t *schema, int idx) {
 }
 
 /* CMD Parser */
-struct turbo_cmd_subcommand_s {
+enum {
+  TURBO_CMD_INITIAL_OPTION_CAPACITY = 8,
+  TURBO_CMD_INITIAL_REQUIRED_CAPACITY = 4,
+  TURBO_CMD_INITIAL_CHILD_CAPACITY = 4,
+  TURBO_CMD_MAX_OPTIONS_PER_NODE = 64,
+  TURBO_CMD_MAX_POSITIONALS_PER_NODE = 32,
+  TURBO_CMD_MAX_CHILDREN_PER_NODE = 64,
+  TURBO_CMD_MAX_NODES = 256,
+  TURBO_CMD_MAX_DEPTH = 8,
+  TURBO_CMD_MAX_ARGC = 1024,
+  TURBO_CMD_MAX_ARGV_BYTES = 65536,
+  TURBO_CMD_MAX_NAME = 64,
+  TURBO_CMD_MAX_DESCRIPTION = 512,
+  TURBO_CMD_MESSAGE_CAPACITY = 256
+};
+
+struct turbo_cmd_node_s {
+  turbo_cmd_parser_t *owner;
+  turbo_cmd_node_t *parent;
   char *name;
   char *info;
   CmdArgerDesc *optional_args;
@@ -2703,265 +2721,450 @@ struct turbo_cmd_subcommand_s {
   CmdArgerDesc *required_args;
   uint32_t required_count;
   uint32_t required_capacity;
+  turbo_cmd_node_t **children;
+  uint32_t child_count;
+  uint32_t child_capacity;
+  uint32_t depth;
 };
 
 struct turbo_cmd_parser_s {
   char *app_name;
   char *version;
-
-  CmdArgerDesc *optional_args;
-  uint32_t optional_count;
-  uint32_t optional_capacity;
-
-  CmdArgerDesc *required_args;
-  uint32_t required_count;
-  uint32_t required_capacity;
-
-  turbo_cmd_subcommand_t *subcommands;
-  uint32_t subcommand_count;
-  uint32_t subcommand_capacity;
+  turbo_cmd_node_t *root;
+  uint32_t node_count;
+  uint8_t frozen;
+  char last_message[TURBO_CMD_MESSAGE_CAPACITY];
 };
 
-static void turbo_cmd_sync_environment(turbo_cmd_parser_t *parser) {
+static int turbo_cmd_text_valid(const char *value, size_t max_size) {
+  size_t size;
+  if (!value) return 0;
+  size = strlen(value);
+  return size > 0 && size <= max_size;
+}
+
+static int turbo_cmd_name_valid(const char *name) {
+  size_t index;
+  if (!turbo_cmd_text_valid(name, TURBO_CMD_MAX_NAME) || name[0] == '-') return 0;
+  for (index = 0; name[index] != '\0'; ++index) {
+    unsigned char ch = (unsigned char)name[index];
+    if (!isalnum(ch) && ch != '-' && ch != '_' && ch != '.') return 0;
+  }
+  return 1;
+}
+
+static turbo_cmd_node_t *turbo_cmd_node_create(turbo_cmd_parser_t *owner,
+                                                turbo_cmd_node_t *parent,
+                                                const char *name,
+                                                const char *description) {
+  turbo_cmd_node_t *node;
+  if (!owner || !turbo_cmd_text_valid(name, TURBO_CMD_MAX_NAME) ||
+      (description && strlen(description) > TURBO_CMD_MAX_DESCRIPTION))
+    return NULL;
+  node = (turbo_cmd_node_t *)calloc(1, sizeof(*node));
+  if (!node) return NULL;
+  node->owner = owner;
+  node->parent = parent;
+  node->depth = parent ? parent->depth + 1u : 0u;
+  node->name = strdup(name);
+  node->info = description ? strdup(description) : NULL;
+  node->optional_capacity = TURBO_CMD_INITIAL_OPTION_CAPACITY;
+  node->required_capacity = TURBO_CMD_INITIAL_REQUIRED_CAPACITY;
+  node->child_capacity = TURBO_CMD_INITIAL_CHILD_CAPACITY;
+  node->optional_args =
+      (CmdArgerDesc *)calloc(node->optional_capacity, sizeof(*node->optional_args));
+  node->required_args =
+      (CmdArgerDesc *)calloc(node->required_capacity, sizeof(*node->required_args));
+  node->children =
+      (turbo_cmd_node_t **)calloc(node->child_capacity, sizeof(*node->children));
+  if (!node->name || (description && !node->info) || !node->optional_args ||
+      !node->required_args || !node->children) {
+    free(node->children);
+    free(node->required_args);
+    free(node->optional_args);
+    free(node->info);
+    free(node->name);
+    free(node);
+    return NULL;
+  }
+  return node;
+}
+
+static void turbo_cmd_node_destroy(turbo_cmd_node_t *node) {
+  uint32_t index;
+  if (!node) return;
+  for (index = 0; index < node->child_count; ++index)
+    turbo_cmd_node_destroy(node->children[index]);
+  free(node->children);
+  free(node->required_args);
+  free(node->optional_args);
+  free(node->info);
+  free(node->name);
+  free(node);
+}
+
+static int turbo_cmd_node_reserve(CmdArgerDesc **items, uint32_t *capacity,
+                                  uint32_t count, uint32_t hard_limit) {
+  uint32_t next_capacity;
+  CmdArgerDesc *next;
+  if (!items || !capacity || count >= hard_limit) return -1;
+  if (count < *capacity) return 0;
+  next_capacity = *capacity * 2u;
+  if (next_capacity > hard_limit) next_capacity = hard_limit;
+  next = (CmdArgerDesc *)realloc(*items, next_capacity * sizeof(**items));
+  if (!next) return -1;
+  memset(next + *capacity, 0, (next_capacity - *capacity) * sizeof(*next));
+  *items = next;
+  *capacity = next_capacity;
+  return 0;
+}
+
+static int turbo_cmd_node_option_duplicate(const turbo_cmd_node_t *node,
+                                           const CmdArgerDesc *candidate) {
+  uint32_t index;
+  for (index = 0; index < node->optional_count; ++index) {
+    const CmdArgerDesc *current = &node->optional_args[index];
+    if (strcmp(current->name, candidate->name) == 0) return 1;
+    if (current->short_name && candidate->short_name &&
+        strcmp(current->short_name, candidate->short_name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+static int turbo_cmd_node_add_optional(turbo_cmd_node_t *node,
+                                       CmdArgerDesc descriptor) {
+  if (!node || !node->owner || node->owner->frozen || !descriptor.value_out ||
+      !turbo_cmd_name_valid(descriptor.name) ||
+      (descriptor.short_name &&
+       (strlen(descriptor.short_name) != 1u || descriptor.short_name[0] == '-')) ||
+      turbo_cmd_node_option_duplicate(node, &descriptor) ||
+      turbo_cmd_node_reserve(&node->optional_args, &node->optional_capacity,
+                             node->optional_count,
+                             TURBO_CMD_MAX_OPTIONS_PER_NODE) != 0)
+    return -1;
+  node->optional_args[node->optional_count++] = descriptor;
+  return 0;
+}
+
+static int turbo_cmd_node_add_positional(turbo_cmd_node_t *node,
+                                         CmdArgerDesc descriptor) {
+  if (!node || !node->owner || node->owner->frozen || node->child_count != 0u ||
+      !descriptor.value_out || !turbo_cmd_name_valid(descriptor.name) ||
+      turbo_cmd_node_reserve(&node->required_args, &node->required_capacity,
+                             node->required_count,
+                             TURBO_CMD_MAX_POSITIONALS_PER_NODE) != 0)
+    return -1;
+  node->required_args[node->required_count++] = descriptor;
+  return 0;
+}
+
+static void turbo_cmd_sync_environment_node(turbo_cmd_node_t *node) {
 #if defined(_WIN32)
-  if (!parser) return;
-  for (uint32_t index = 0; index < parser->optional_count; ++index) {
-    if (parser->optional_args[index].env_var)
-      (void)dotenv_environment_sync_crt(parser->optional_args[index].env_var);
+  uint32_t index;
+  if (!node) return;
+  for (index = 0; index < node->optional_count; ++index) {
+    if (node->optional_args[index].env_var)
+      (void)dotenv_environment_sync_crt(node->optional_args[index].env_var);
   }
-  for (uint32_t sub_index = 0; sub_index < parser->subcommand_count; ++sub_index) {
-    turbo_cmd_subcommand_t *subcommand = &parser->subcommands[sub_index];
-    for (uint32_t index = 0; index < subcommand->optional_count; ++index) {
-      if (subcommand->optional_args[index].env_var)
-        (void)dotenv_environment_sync_crt(subcommand->optional_args[index].env_var);
-    }
-  }
+  for (index = 0; index < node->child_count; ++index)
+    turbo_cmd_sync_environment_node(node->children[index]);
 #else
-  (void)parser;
+  (void)node;
 #endif
 }
 
+static void turbo_cmd_sync_environment(turbo_cmd_parser_t *parser) {
+  if (parser) turbo_cmd_sync_environment_node(parser->root);
+}
+
 turbo_cmd_parser_t *turbo_cmd_create(const char *app_name, const char *version) {
-  turbo_cmd_parser_t *parser = (turbo_cmd_parser_t *)calloc(1, sizeof(turbo_cmd_parser_t));
+  turbo_cmd_parser_t *parser;
+  if (!turbo_cmd_text_valid(app_name, TURBO_CMD_MAX_DESCRIPTION) ||
+      (version && strlen(version) > TURBO_CMD_MAX_NAME))
+    return NULL;
+  parser = (turbo_cmd_parser_t *)calloc(1, sizeof(*parser));
   if (!parser) return NULL;
-
-  if (app_name) parser->app_name = strdup(app_name);
-  if (version) parser->version = strdup(version);
-
-  parser->optional_capacity = 8;
-  parser->optional_args = (CmdArgerDesc *)calloc(parser->optional_capacity, sizeof(CmdArgerDesc));
-
-  parser->required_capacity = 8;
-  parser->required_args = (CmdArgerDesc *)calloc(parser->required_capacity, sizeof(CmdArgerDesc));
-
-  parser->subcommand_capacity = 4;
-  parser->subcommands =
-      (turbo_cmd_subcommand_t *)calloc(parser->subcommand_capacity, sizeof(turbo_cmd_subcommand_t));
-
-  if (!parser->optional_args || !parser->required_args || !parser->subcommands) {
+  parser->app_name = strdup(app_name);
+  parser->version = version ? strdup(version) : NULL;
+  if (!parser->app_name || (version && !parser->version)) {
     turbo_cmd_destroy(parser);
     return NULL;
   }
-
+  parser->root = turbo_cmd_node_create(parser, NULL, app_name, NULL);
+  if (!parser->root) {
+    turbo_cmd_destroy(parser);
+    return NULL;
+  }
+  parser->node_count = 1u;
   return parser;
 }
 
 void turbo_cmd_destroy(turbo_cmd_parser_t *parser) {
   if (!parser) return;
-  if (parser->app_name) free(parser->app_name);
-  if (parser->version) free(parser->version);
-  if (parser->optional_args) free(parser->optional_args);
-  if (parser->required_args) free(parser->required_args);
-  for (uint32_t i = 0; i < parser->subcommand_count; i++) {
-    turbo_cmd_subcommand_t *sub = &parser->subcommands[i];
-    if (sub->name) free(sub->name);
-    if (sub->info) free(sub->info);
-    if (sub->optional_args) free(sub->optional_args);
-    if (sub->required_args) free(sub->required_args);
-  }
-  if (parser->subcommands) free(parser->subcommands);
+  turbo_cmd_node_destroy(parser->root);
+  free(parser->version);
+  free(parser->app_name);
   free(parser);
 }
 
-static void ensure_optional_capacity(turbo_cmd_parser_t *parser) {
-  if (parser->optional_count >= parser->optional_capacity) {
-    parser->optional_capacity *= 2;
-    parser->optional_args = (CmdArgerDesc *)realloc(
-        parser->optional_args, parser->optional_capacity * sizeof(CmdArgerDesc));
+turbo_cmd_node_t *turbo_cmd_root(turbo_cmd_parser_t *parser) {
+  return parser ? parser->root : NULL;
+}
+
+turbo_cmd_node_t *turbo_cmd_add_command(turbo_cmd_node_t *parent,
+                                        const char *name,
+                                        const char *description) {
+  turbo_cmd_parser_t *owner;
+  turbo_cmd_node_t *child;
+  turbo_cmd_node_t **next_children;
+  uint32_t index;
+  uint32_t next_capacity;
+  if (!parent || !parent->owner || !turbo_cmd_name_valid(name)) return NULL;
+  owner = parent->owner;
+  if (owner->frozen || owner->node_count >= TURBO_CMD_MAX_NODES ||
+      parent->depth >= TURBO_CMD_MAX_DEPTH || parent->required_count != 0u ||
+      parent->child_count >= TURBO_CMD_MAX_CHILDREN_PER_NODE)
+    return NULL;
+  for (index = 0; index < parent->child_count; ++index) {
+    if (strcmp(parent->children[index]->name, name) == 0) return NULL;
   }
+  if (parent->child_count >= parent->child_capacity) {
+    next_capacity = parent->child_capacity * 2u;
+    if (next_capacity > TURBO_CMD_MAX_CHILDREN_PER_NODE)
+      next_capacity = TURBO_CMD_MAX_CHILDREN_PER_NODE;
+    next_children = (turbo_cmd_node_t **)realloc(
+        parent->children, next_capacity * sizeof(*parent->children));
+    if (!next_children) return NULL;
+    memset(next_children + parent->child_capacity, 0,
+           (next_capacity - parent->child_capacity) * sizeof(*next_children));
+    parent->children = next_children;
+    parent->child_capacity = next_capacity;
+  }
+  child = turbo_cmd_node_create(owner, parent, name, description);
+  if (!child) return NULL;
+  parent->children[parent->child_count++] = child;
+  owner->node_count++;
+  return child;
+}
+
+turbo_cmd_subcommand_t *turbo_cmd_add_subcommand(turbo_cmd_parser_t *parser,
+                                                 const char *name,
+                                                 const char *desc) {
+  return parser ? turbo_cmd_add_command(parser->root, name, desc) : NULL;
+}
+
+int turbo_cmd_node_add_flag(turbo_cmd_node_t *node, bool *out,
+                            const char *name, const char *short_name,
+                            const char *desc) {
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_flag_sh((CmdArgerBool *)out, name, short_name, desc));
+}
+
+int turbo_cmd_node_add_string(turbo_cmd_node_t *node, char **out,
+                              const char *name, const char *short_name,
+                              const char *desc) {
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_string_sh(out, name, short_name, desc));
+}
+
+int turbo_cmd_node_add_integer(turbo_cmd_node_t *node, int64_t *out,
+                               const char *name, const char *short_name,
+                               const char *desc) {
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_integer_sh(out, name, short_name, desc));
+}
+
+int turbo_cmd_node_add_float(turbo_cmd_node_t *node, double *out,
+                             const char *name, const char *short_name,
+                             const char *desc) {
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_float_sh(out, name, short_name, desc));
+}
+
+int turbo_cmd_node_add_string_list(turbo_cmd_node_t *node, char **out_arr,
+                                   uint32_t *out_count, uint32_t max_count,
+                                   const char *name, const char *short_name,
+                                   const char *desc) {
+  if (!out_count || max_count == 0u) return -1;
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_string_list_sh(out_arr, out_count, max_count, name,
+                                          short_name, desc));
+}
+
+int turbo_cmd_node_add_enum(turbo_cmd_node_t *node, int64_t *out,
+                            const char *name, const char *short_name,
+                            const char *desc, turbo_cmd_enum_t *choices,
+                            uint32_t choices_count) {
+  if (!choices || choices_count == 0u) return -1;
+  return turbo_cmd_node_add_optional(
+      node, cmd_arger_desc_enum_sh(out, name, short_name, desc,
+                                   (CmdArgerEnumDesc *)choices,
+                                   choices_count));
+}
+
+int turbo_cmd_node_add_required_string(turbo_cmd_node_t *node, char **out,
+                                       const char *name, const char *desc) {
+  return turbo_cmd_node_add_positional(node,
+                                       cmd_arger_desc_string(out, name, desc));
+}
+
+int turbo_cmd_node_add_required_integer(turbo_cmd_node_t *node, int64_t *out,
+                                        const char *name, const char *desc) {
+  return turbo_cmd_node_add_positional(node,
+                                       cmd_arger_desc_integer(out, name, desc));
+}
+
+uint32_t turbo_cmd_node_last_index(const turbo_cmd_node_t *node) {
+  return !node || node->optional_count == 0u ? 0u : node->optional_count - 1u;
+}
+
+int turbo_cmd_node_set_env(turbo_cmd_node_t *node, uint32_t index,
+                           const char *env_var) {
+  if (!node || !node->owner || node->owner->frozen ||
+      index >= node->optional_count || !turbo_cmd_name_valid(env_var))
+    return -1;
+  node->optional_args[index] = cmd_arger_with_env(node->optional_args[index], env_var);
+  return 0;
+}
+
+int turbo_cmd_node_set_group(turbo_cmd_node_t *node, uint32_t index,
+                             const char *group) {
+  if (!node || !node->owner || node->owner->frozen ||
+      index >= node->optional_count ||
+      !turbo_cmd_text_valid(group, TURBO_CMD_MAX_DESCRIPTION))
+    return -1;
+  node->optional_args[index] = cmd_arger_with_group(node->optional_args[index], group);
+  return 0;
+}
+
+int turbo_cmd_node_set_choices(turbo_cmd_node_t *node, uint32_t index,
+                               const char **choices, uint32_t count) {
+  if (!node || !node->owner || node->owner->frozen ||
+      index >= node->optional_count || !choices || count == 0u)
+    return -1;
+  node->optional_args[index] =
+      cmd_arger_with_choices(node->optional_args[index], choices, count);
+  return 0;
+}
+
+int turbo_cmd_node_set_validator(turbo_cmd_node_t *node, uint32_t index,
+                                 turbo_cmd_validator_t validator) {
+  if (!node || !node->owner || node->owner->frozen ||
+      index >= node->optional_count || !validator)
+    return -1;
+  node->optional_args[index] = cmd_arger_with_validator(
+      node->optional_args[index], (CmdArgerValidator)validator);
+  return 0;
+}
+
+int turbo_cmd_node_set_required(turbo_cmd_node_t *node, uint32_t index) {
+  if (!node || !node->owner || node->owner->frozen ||
+      index >= node->optional_count)
+    return -1;
+  node->optional_args[index] = cmd_arger_required(node->optional_args[index]);
+  return 0;
 }
 
 void turbo_cmd_add_flag(turbo_cmd_parser_t *parser, bool *out, const char *name,
                         const char *short_name, const char *desc) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] =
-      cmd_arger_desc_flag_sh((CmdArgerBool *)out, (char *)name, (char *)short_name, (char *)desc);
+  if (parser) (void)turbo_cmd_node_add_flag(parser->root, out, name, short_name, desc);
 }
 
 void turbo_cmd_add_string(turbo_cmd_parser_t *parser, char **out, const char *name,
                           const char *short_name, const char *desc) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] =
-      cmd_arger_desc_string_sh(out, (char *)name, (char *)short_name, (char *)desc);
+  if (parser) (void)turbo_cmd_node_add_string(parser->root, out, name, short_name, desc);
 }
 
 void turbo_cmd_add_integer(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
                            const char *short_name, const char *desc) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] =
-      cmd_arger_desc_integer_sh(out, (char *)name, (char *)short_name, (char *)desc);
+  if (parser) (void)turbo_cmd_node_add_integer(parser->root, out, name, short_name, desc);
 }
 
 void turbo_cmd_add_float(turbo_cmd_parser_t *parser, double *out, const char *name,
                          const char *short_name, const char *desc) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] =
-      cmd_arger_desc_float_sh(out, (char *)name, (char *)short_name, (char *)desc);
+  if (parser) (void)turbo_cmd_node_add_float(parser->root, out, name, short_name, desc);
 }
 
-void turbo_cmd_add_string_list(turbo_cmd_parser_t *parser, char **out_arr, uint32_t *out_count,
-                               uint32_t max_count, const char *name, const char *short_name,
+void turbo_cmd_add_string_list(turbo_cmd_parser_t *parser, char **out_arr,
+                               uint32_t *out_count, uint32_t max_count,
+                               const char *name, const char *short_name,
                                const char *desc) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] = cmd_arger_desc_string_list_sh(
-      out_arr, out_count, max_count, (char *)name, (char *)short_name, (char *)desc);
+  if (parser)
+    (void)turbo_cmd_node_add_string_list(parser->root, out_arr, out_count,
+                                         max_count, name, short_name, desc);
 }
 
-void turbo_cmd_add_required_string(turbo_cmd_parser_t *parser, char **out, const char *name,
-                                   const char *desc) {
-  if (!parser) return;
-  if (parser->required_count >= parser->required_capacity) {
-    parser->required_capacity *= 2;
-    parser->required_args = (CmdArgerDesc *)realloc(
-        parser->required_args, parser->required_capacity * sizeof(CmdArgerDesc));
-  }
-  parser->required_args[parser->required_count++] =
-      cmd_arger_desc_string(out, (char *)name, (char *)desc);
+void turbo_cmd_add_required_string(turbo_cmd_parser_t *parser, char **out,
+                                   const char *name, const char *desc) {
+  if (parser)
+    (void)turbo_cmd_node_add_required_string(parser->root, out, name, desc);
 }
 
-void turbo_cmd_add_required_integer(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
-                                    const char *desc) {
-  if (!parser) return;
-  if (parser->required_count >= parser->required_capacity) {
-    parser->required_capacity *= 2;
-    parser->required_args = (CmdArgerDesc *)realloc(
-        parser->required_args, parser->required_capacity * sizeof(CmdArgerDesc));
-  }
-  parser->required_args[parser->required_count++] =
-      cmd_arger_desc_integer(out, (char *)name, (char *)desc);
+void turbo_cmd_add_required_integer(turbo_cmd_parser_t *parser, int64_t *out,
+                                    const char *name, const char *desc) {
+  if (parser)
+    (void)turbo_cmd_node_add_required_integer(parser->root, out, name, desc);
 }
 
-void turbo_cmd_add_enum(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
-                        const char *short_name, const char *desc, turbo_cmd_enum_t *choices,
+void turbo_cmd_add_enum(turbo_cmd_parser_t *parser, int64_t *out,
+                        const char *name, const char *short_name,
+                        const char *desc, turbo_cmd_enum_t *choices,
                         uint32_t choices_count) {
-  if (!parser) return;
-  ensure_optional_capacity(parser);
-  parser->optional_args[parser->optional_count++] =
-      cmd_arger_desc_enum_sh(out, (char *)name, (char *)short_name, (char *)desc,
-                             (CmdArgerEnumDesc *)choices, choices_count);
+  if (parser)
+    (void)turbo_cmd_node_add_enum(parser->root, out, name, short_name, desc,
+                                  choices, choices_count);
 }
 
 uint32_t turbo_cmd_last_index(turbo_cmd_parser_t *parser) {
-  if (!parser || parser->optional_count == 0) return 0;
-  return parser->optional_count - 1;
+  return parser ? turbo_cmd_node_last_index(parser->root) : 0u;
 }
 
-void turbo_cmd_set_env(turbo_cmd_parser_t *parser, uint32_t index, const char *env_var) {
-  if (!parser || index >= parser->optional_count) return;
-  parser->optional_args[index] = cmd_arger_with_env(parser->optional_args[index], env_var);
+void turbo_cmd_set_env(turbo_cmd_parser_t *parser, uint32_t index,
+                       const char *env_var) {
+  if (parser) (void)turbo_cmd_node_set_env(parser->root, index, env_var);
 }
 
-void turbo_cmd_set_group(turbo_cmd_parser_t *parser, uint32_t index, const char *group) {
-  if (!parser || index >= parser->optional_count) return;
-  parser->optional_args[index] = cmd_arger_with_group(parser->optional_args[index], group);
+void turbo_cmd_set_group(turbo_cmd_parser_t *parser, uint32_t index,
+                         const char *group) {
+  if (parser) (void)turbo_cmd_node_set_group(parser->root, index, group);
 }
 
-void turbo_cmd_set_choices(turbo_cmd_parser_t *parser, uint32_t index, const char **choices,
-                           uint32_t count) {
-  if (!parser || index >= parser->optional_count) return;
-  parser->optional_args[index] =
-      cmd_arger_with_choices(parser->optional_args[index], choices, count);
+void turbo_cmd_set_choices(turbo_cmd_parser_t *parser, uint32_t index,
+                           const char **choices, uint32_t count) {
+  if (parser) (void)turbo_cmd_node_set_choices(parser->root, index, choices, count);
 }
 
 void turbo_cmd_set_validator(turbo_cmd_parser_t *parser, uint32_t index,
                              turbo_cmd_validator_t validator) {
-  if (!parser || index >= parser->optional_count) return;
-  parser->optional_args[index] =
-      cmd_arger_with_validator(parser->optional_args[index], (CmdArgerValidator)validator);
+  if (parser) (void)turbo_cmd_node_set_validator(parser->root, index, validator);
 }
 
 void turbo_cmd_set_required(turbo_cmd_parser_t *parser, uint32_t index) {
-  if (!parser || index >= parser->optional_count) return;
-  parser->optional_args[index] = cmd_arger_required(parser->optional_args[index]);
+  if (parser) (void)turbo_cmd_node_set_required(parser->root, index);
 }
 
-/* Subcommand support */
-turbo_cmd_subcommand_t *turbo_cmd_add_subcommand(turbo_cmd_parser_t *parser, const char *name,
-                                                 const char *desc) {
-  if (!parser) return NULL;
-  if (parser->subcommand_count >= parser->subcommand_capacity) {
-    parser->subcommand_capacity *= 2;
-    parser->subcommands = (turbo_cmd_subcommand_t *)realloc(
-        parser->subcommands, parser->subcommand_capacity * sizeof(turbo_cmd_subcommand_t));
-  }
-  turbo_cmd_subcommand_t *sub = &parser->subcommands[parser->subcommand_count++];
-  memset(sub, 0, sizeof(*sub));
-  sub->name = strdup(name);
-  sub->info = desc ? strdup(desc) : NULL;
-  sub->optional_capacity = 8;
-  sub->optional_args = (CmdArgerDesc *)calloc(sub->optional_capacity, sizeof(CmdArgerDesc));
-  sub->required_capacity = 4;
-  sub->required_args = (CmdArgerDesc *)calloc(sub->required_capacity, sizeof(CmdArgerDesc));
-  return sub;
+void turbo_cmd_sub_add_flag(turbo_cmd_subcommand_t *sub, bool *out,
+                            const char *name, const char *short_name,
+                            const char *desc) {
+  (void)turbo_cmd_node_add_flag(sub, out, name, short_name, desc);
 }
 
-static void ensure_sub_optional_capacity(turbo_cmd_subcommand_t *sub) {
-  if (sub->optional_count >= sub->optional_capacity) {
-    sub->optional_capacity *= 2;
-    sub->optional_args =
-        (CmdArgerDesc *)realloc(sub->optional_args, sub->optional_capacity * sizeof(CmdArgerDesc));
-  }
+void turbo_cmd_sub_add_string(turbo_cmd_subcommand_t *sub, char **out,
+                              const char *name, const char *short_name,
+                              const char *desc) {
+  (void)turbo_cmd_node_add_string(sub, out, name, short_name, desc);
 }
 
-void turbo_cmd_sub_add_flag(turbo_cmd_subcommand_t *sub, bool *out, const char *name,
-                            const char *short_name, const char *desc) {
-  if (!sub) return;
-  ensure_sub_optional_capacity(sub);
-  sub->optional_args[sub->optional_count++] =
-      cmd_arger_desc_flag_sh((CmdArgerBool *)out, (char *)name, (char *)short_name, (char *)desc);
+void turbo_cmd_sub_add_integer(turbo_cmd_subcommand_t *sub, int64_t *out,
+                               const char *name, const char *short_name,
+                               const char *desc) {
+  (void)turbo_cmd_node_add_integer(sub, out, name, short_name, desc);
 }
 
-void turbo_cmd_sub_add_string(turbo_cmd_subcommand_t *sub, char **out, const char *name,
-                              const char *short_name, const char *desc) {
-  if (!sub) return;
-  ensure_sub_optional_capacity(sub);
-  sub->optional_args[sub->optional_count++] =
-      cmd_arger_desc_string_sh(out, (char *)name, (char *)short_name, (char *)desc);
-}
-
-void turbo_cmd_sub_add_integer(turbo_cmd_subcommand_t *sub, int64_t *out, const char *name,
-                               const char *short_name, const char *desc) {
-  if (!sub) return;
-  ensure_sub_optional_capacity(sub);
-  sub->optional_args[sub->optional_count++] =
-      cmd_arger_desc_integer_sh(out, (char *)name, (char *)short_name, (char *)desc);
-}
-
-void turbo_cmd_sub_add_required_string(turbo_cmd_subcommand_t *sub, char **out, const char *name,
-                                       const char *desc) {
-  if (!sub) return;
-  if (sub->required_count >= sub->required_capacity) {
-    sub->required_capacity *= 2;
-    sub->required_args =
-        (CmdArgerDesc *)realloc(sub->required_args, sub->required_capacity * sizeof(CmdArgerDesc));
-  }
-  sub->required_args[sub->required_count++] =
-      cmd_arger_desc_string(out, (char *)name, (char *)desc);
+void turbo_cmd_sub_add_required_string(turbo_cmd_subcommand_t *sub, char **out,
+                                       const char *name, const char *desc) {
+  (void)turbo_cmd_node_add_required_string(sub, out, name, desc);
 }
 
 /* TOON */
@@ -3051,72 +3254,551 @@ int turbo_toon_to_json_doc(const turbo_toon_node_t *toon,
   return toon_json_to_value(toon, out);
 }
 
-void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv, bool colors) {
-  if (!parser) return;
+typedef struct {
+  turbo_cmd_node_t *nodes[TURBO_CMD_MAX_DEPTH + 1u];
+  uint64_t seen_options[TURBO_CMD_MAX_DEPTH + 1u];
+  uint32_t count;
+} turbo_cmd_parse_path_t;
 
-  turbo_cmd_sync_environment(parser);
-
-  char app_ver[256];
-  if (parser->app_name && parser->version) {
-    fmt(app_ver, sizeof(app_ver), "{} {}", parser->app_name, parser->version);
-  } else if (parser->app_name) {
-    fmt(app_ver, sizeof(app_ver), "{}", parser->app_name);
-  } else {
-    fmt(app_ver, sizeof(app_ver), "Application");
+static int turbo_cmd_set_result(turbo_cmd_parser_t *parser,
+                                turbo_cmd_parse_result_t *result,
+                                turbo_cmd_parse_status_t status,
+                                const turbo_cmd_node_t *leaf,
+                                int argument_index,
+                                const char *error_code,
+                                const char *format, ...) {
+  va_list args;
+  result->status = status;
+  result->leaf = leaf;
+  result->argument_index = argument_index;
+  result->error_code = error_code;
+  parser->last_message[0] = '\0';
+  if (format) {
+    va_start(args, format);
+    (void)vsnprintf(parser->last_message, sizeof(parser->last_message), format, args);
+    va_end(args);
   }
-
-  cmd_arger_parse(parser->optional_args, parser->optional_count, parser->required_args,
-                  parser->required_count, argc, argv, app_ver, (CmdArgerBool)colors);
+  result->message = parser->last_message;
+  return 0;
 }
 
-int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc, char **argv, bool colors) {
-  if (!parser || parser->subcommand_count == 0) return -1;
+static turbo_cmd_node_t *turbo_cmd_find_child(turbo_cmd_node_t *node,
+                                               const char *name) {
+  uint32_t index;
+  for (index = 0; node && index < node->child_count; ++index) {
+    if (strcmp(node->children[index]->name, name) == 0)
+      return node->children[index];
+  }
+  return NULL;
+}
 
+static CmdArgerDesc *turbo_cmd_find_option(turbo_cmd_parse_path_t *path,
+                                           const char *name, size_t name_size,
+                                           int is_short, uint32_t *path_index,
+                                           uint32_t *option_index) {
+  uint32_t depth;
+  if (!path || !name || name_size == 0u) return NULL;
+  depth = path->count;
+  while (depth > 0u) {
+    turbo_cmd_node_t *node = path->nodes[depth - 1u];
+    uint32_t index;
+    for (index = 0; index < node->optional_count; ++index) {
+      const char *candidate =
+          is_short ? node->optional_args[index].short_name
+                   : node->optional_args[index].name;
+      if (candidate && strlen(candidate) == name_size &&
+          memcmp(candidate, name, name_size) == 0) {
+        if (path_index) *path_index = depth - 1u;
+        if (option_index) *option_index = index;
+        return &node->optional_args[index];
+      }
+    }
+    depth--;
+  }
+  return NULL;
+}
+
+static int turbo_cmd_apply_value_ex(CmdArgerDesc *descriptor,
+                                    const char *value,
+                                    char *message, size_t message_size) {
+  char *end = NULL;
+  const char *validator_message = NULL;
+  if (!descriptor || !value) return -1;
+  if (descriptor->validator &&
+      !descriptor->validator(value, &validator_message)) {
+    (void)snprintf(message, message_size, "invalid value for --%s: %s",
+                   descriptor->name,
+                   validator_message ? validator_message : "validation failed");
+    return -1;
+  }
+  switch (descriptor->kind) {
+  case CmdArgerDescKind_flag:
+    if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0)
+      *(CmdArgerBool *)descriptor->value_out = cmd_arger_true;
+    else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0)
+      *(CmdArgerBool *)descriptor->value_out = cmd_arger_false;
+    else {
+      (void)snprintf(message, message_size, "invalid boolean for --%s",
+                     descriptor->name);
+      return -1;
+    }
+    break;
+  case CmdArgerDescKind_string:
+    if (descriptor->spec.choices.items) {
+      uint32_t index;
+      int found = 0;
+      for (index = 0; index < descriptor->spec.choices.count; ++index) {
+        if (strcmp(descriptor->spec.choices.items[index], value) == 0) {
+          found = 1;
+          break;
+        }
+      }
+      if (!found) {
+        (void)snprintf(message, message_size, "invalid choice for --%s",
+                       descriptor->name);
+        return -1;
+      }
+    }
+    *(char **)descriptor->value_out = (char *)value;
+    break;
+  case CmdArgerDescKind_integer: {
+    long long parsed;
+    errno = 0;
+    parsed = strtoll(value, &end, 10);
+    if (errno == ERANGE || !end || *end != '\0') {
+      (void)snprintf(message, message_size, "invalid integer for --%s",
+                     descriptor->name);
+      return -1;
+    }
+    *(int64_t *)descriptor->value_out = (int64_t)parsed;
+    break;
+  }
+  case CmdArgerDescKind_float: {
+    double parsed;
+    errno = 0;
+    parsed = strtod(value, &end);
+    if (errno == ERANGE || !end || *end != '\0' || !isfinite(parsed)) {
+      (void)snprintf(message, message_size, "invalid number for --%s",
+                     descriptor->name);
+      return -1;
+    }
+    *(double *)descriptor->value_out = parsed;
+    break;
+  }
+  case CmdArgerDescKind_enum: {
+    uint32_t index;
+    for (index = 0; index < descriptor->spec.enums.count; ++index) {
+      if (strcmp(descriptor->spec.enums.descs[index].name, value) == 0) {
+        *(int64_t *)descriptor->value_out =
+            descriptor->spec.enums.descs[index].value;
+        return 0;
+      }
+    }
+    (void)snprintf(message, message_size, "invalid enum choice for --%s",
+                   descriptor->name);
+    return -1;
+  }
+  case CmdArgerDescKind_string_list: {
+    uint32_t count = *descriptor->spec.list.count_out;
+    if (count >= descriptor->spec.list.max_count) {
+      (void)snprintf(message, message_size, "too many values for --%s",
+                     descriptor->name);
+      return -1;
+    }
+    ((char **)descriptor->value_out)[count] = (char *)value;
+    *descriptor->spec.list.count_out = count + 1u;
+    break;
+  }
+  default:
+    return -1;
+  }
+  return 0;
+}
+
+static int turbo_cmd_apply_environment(turbo_cmd_parse_path_t *path,
+                                       turbo_cmd_parser_t *parser,
+                                       turbo_cmd_parse_result_t *result) {
+  uint32_t depth;
+  for (depth = 0; depth < path->count; ++depth) {
+    turbo_cmd_node_t *node = path->nodes[depth];
+    uint32_t index;
+    for (index = 0; index < node->optional_count; ++index) {
+      CmdArgerDesc *descriptor = &node->optional_args[index];
+      const char *value;
+      if ((path->seen_options[depth] & (UINT64_C(1) << index)) != 0u ||
+          !descriptor->env_var)
+        continue;
+      value = getenv(descriptor->env_var);
+      if (!value || value[0] == '\0') continue;
+      {
+        char error_message[TURBO_CMD_MESSAGE_CAPACITY];
+        if (turbo_cmd_apply_value_ex(descriptor, value, error_message,
+                                     sizeof(error_message)) != 0)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    path->nodes[path->count - 1u], -1,
+                                    "invalid-environment", "%s",
+                                    error_message);
+      }
+      path->seen_options[depth] |= UINT64_C(1) << index;
+    }
+  }
+  return 1;
+}
+
+int turbo_cmd_parse_ex(turbo_cmd_parser_t *parser, int argc, char **argv,
+                       turbo_cmd_parse_result_t *result) {
+  turbo_cmd_parse_path_t path;
+  turbo_cmd_node_t *current;
+  uint32_t positional_index = 0u;
+  size_t argv_bytes = 0u;
+  int stop_options = 0;
+  int arg_index;
+  size_t result_size;
+  if (!parser || !parser->root || !argv || argc < 1 ||
+      argc > TURBO_CMD_MAX_ARGC || !result ||
+      result->size < sizeof(*result))
+    return -1;
+  result_size = result->size;
+  memset(result, 0, sizeof(*result));
+  result->size = result_size;
+  memset(&path, 0, sizeof(path));
+  path.nodes[0] = parser->root;
+  path.count = 1u;
+  current = parser->root;
+  parser->frozen = 1u;
   turbo_cmd_sync_environment(parser);
 
+  for (arg_index = 0; arg_index < argc; ++arg_index) {
+    size_t size;
+    if (!argv[arg_index])
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                  current, arg_index, "null-argument",
+                                  "argument %d is null", arg_index);
+    size = strlen(argv[arg_index]) + 1u;
+    if (size > TURBO_CMD_MAX_ARGV_BYTES - argv_bytes)
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                  current, arg_index, "argv-too-large",
+                                  "argument bytes exceed %u",
+                                  (unsigned)TURBO_CMD_MAX_ARGV_BYTES);
+    argv_bytes += size;
+  }
+
+  for (arg_index = 1; arg_index < argc; ++arg_index) {
+    const char *argument = argv[arg_index];
+    if (!stop_options && strcmp(argument, "--") == 0) {
+      stop_options = 1;
+      continue;
+    }
+    if (!stop_options &&
+        (strcmp(argument, "--help") == 0 || strcmp(argument, "-h") == 0))
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_HELP,
+                                  current, arg_index, NULL, NULL);
+    if (!stop_options && strcmp(argument, "--version") == 0) {
+      if (!parser->version)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "version-unavailable",
+                                    "version is unavailable");
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_VERSION,
+                                  current, arg_index, NULL, "%s",
+                                  parser->version);
+    }
+    if (!stop_options && argument[0] == '@')
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                  current, arg_index,
+                                  "response-file-unsupported",
+                                  "response files are disabled in parse_ex");
+    if (!stop_options && argument[0] == '-' && argument[1] != '\0') {
+      const char *name;
+      const char *value = NULL;
+      const char *equal;
+      size_t name_size;
+      int is_short;
+      uint32_t depth_index = 0u;
+      uint32_t option_index = 0u;
+      CmdArgerDesc *descriptor;
+      is_short = argument[1] != '-';
+      name = argument + (is_short ? 1 : 2);
+      equal = strchr(name, '=');
+      name_size = equal ? (size_t)(equal - name) : strlen(name);
+      if (name_size == 0u || (is_short && name_size != 1u))
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "invalid-option",
+                                    "invalid option '%s'", argument);
+      descriptor = turbo_cmd_find_option(&path, name, name_size, is_short,
+                                         &depth_index, &option_index);
+      if (!descriptor)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "unknown-option",
+                                    "unsupported option '%s'", argument);
+      if ((path.seen_options[depth_index] &
+           (UINT64_C(1) << option_index)) != 0u &&
+          descriptor->kind != CmdArgerDescKind_string_list)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "duplicate-option",
+                                    "option '--%s' appears more than once",
+                                    descriptor->name);
+      if (descriptor->kind == CmdArgerDescKind_flag) {
+        if (equal)
+          return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                      current, arg_index, "flag-has-value",
+                                      "flag '--%s' cannot take a value",
+                                      descriptor->name);
+        value = "true";
+      } else if (equal) {
+        value = equal + 1;
+      } else {
+        if (++arg_index >= argc)
+          return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                      current, arg_index - 1,
+                                      "missing-option-value",
+                                      "option '--%s' requires a value",
+                                      descriptor->name);
+        value = argv[arg_index];
+      }
+      {
+        char error_message[TURBO_CMD_MESSAGE_CAPACITY];
+        if (turbo_cmd_apply_value_ex(descriptor, value, error_message,
+                                     sizeof(error_message)) != 0)
+          return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                      current, arg_index,
+                                      "invalid-option-value", "%s",
+                                      error_message);
+      }
+      path.seen_options[depth_index] |= UINT64_C(1) << option_index;
+      continue;
+    }
+    if (current->child_count > 0u) {
+      turbo_cmd_node_t *child = turbo_cmd_find_child(current, argument);
+      if (!child)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "unknown-command",
+                                    "unknown command '%s'", argument);
+      if (path.count >= TURBO_CMD_MAX_DEPTH + 1u)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index, "command-depth",
+                                    "command nesting exceeds %u",
+                                    (unsigned)TURBO_CMD_MAX_DEPTH);
+      current = child;
+      path.nodes[path.count++] = child;
+      positional_index = 0u;
+      continue;
+    }
+    if (positional_index >= current->required_count)
+      return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                  current, arg_index,
+                                  "unexpected-positional",
+                                  "unexpected positional argument '%s'",
+                                  argument);
+    {
+      char error_message[TURBO_CMD_MESSAGE_CAPACITY];
+      if (turbo_cmd_apply_value_ex(&current->required_args[positional_index],
+                                   argument, error_message,
+                                   sizeof(error_message)) != 0)
+        return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                    current, arg_index,
+                                    "invalid-positional", "%s",
+                                    error_message);
+    }
+    positional_index++;
+  }
+
+  if (turbo_cmd_apply_environment(&path, parser, result) == 0) return 0;
+  if (current->child_count > 0u)
+    return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                current, argc, "missing-command",
+                                "missing command after '%s'", current->name);
+  if (positional_index < current->required_count)
+    return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                current, argc, "missing-positional",
+                                "missing required argument '%s'",
+                                current->required_args[positional_index].name);
+  {
+    uint32_t depth;
+    for (depth = 0; depth < path.count; ++depth) {
+      turbo_cmd_node_t *node = path.nodes[depth];
+      uint32_t index;
+      for (index = 0; index < node->optional_count; ++index) {
+        if (node->optional_args[index].is_required &&
+            (path.seen_options[depth] & (UINT64_C(1) << index)) == 0u)
+          return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_INVALID,
+                                      current, argc,
+                                      "missing-required-option",
+                                      "missing required option '--%s'",
+                                      node->optional_args[index].name);
+      }
+    }
+  }
+  return turbo_cmd_set_result(parser, result, TURBO_CMD_PARSE_OK, current,
+                              -1, NULL, NULL);
+}
+
+static int turbo_cmd_write_text(turbo_cmd_write_fn write_fn,
+                                void *write_context, const char *text) {
+  size_t size = strlen(text);
+  return size == 0u ? 0 : write_fn(text, size, write_context);
+}
+
+static int turbo_cmd_write_format(turbo_cmd_write_fn write_fn,
+                                  void *write_context,
+                                  const char *format, ...) {
+  char buffer[1024];
+  va_list args;
+  int written;
+  va_start(args, format);
+  written = vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+  if (written < 0 || (size_t)written >= sizeof(buffer)) return -1;
+  return write_fn(buffer, (size_t)written, write_context);
+}
+
+int turbo_cmd_render_help(const turbo_cmd_parser_t *parser,
+                          const turbo_cmd_node_t *node,
+                          turbo_cmd_write_fn write_fn,
+                          void *write_context) {
+  const turbo_cmd_node_t *path[TURBO_CMD_MAX_DEPTH + 1u];
+  const turbo_cmd_node_t *cursor;
+  uint32_t path_count = 0u;
+  uint32_t index;
+  if (!parser || !parser->root || !write_fn) return -1;
+  if (!node) node = parser->root;
+  if (node->owner != parser) return -1;
+  cursor = node;
+  while (cursor && path_count < TURBO_CMD_MAX_DEPTH + 1u) {
+    path[path_count++] = cursor;
+    cursor = cursor->parent;
+  }
+  if (cursor) return -1;
+  if (turbo_cmd_write_format(write_fn, write_context, "%s%s%s\n\nusage:",
+                             parser->app_name,
+                             parser->version ? " " : "",
+                             parser->version ? parser->version : "") != 0)
+    return -1;
+  for (index = path_count; index > 0u; --index) {
+    if (turbo_cmd_write_format(write_fn, write_context, " %s",
+                               path[index - 1u]->name) != 0)
+      return -1;
+  }
+  if (node->child_count > 0u &&
+      turbo_cmd_write_text(write_fn, write_context, " <command>") != 0)
+    return -1;
+  if ((node->optional_count > 0u || node->parent) &&
+      turbo_cmd_write_text(write_fn, write_context, " [OPTIONS...]") != 0)
+    return -1;
+  for (index = 0; index < node->required_count; ++index) {
+    if (turbo_cmd_write_format(write_fn, write_context, " <%s>",
+                               node->required_args[index].name) != 0)
+      return -1;
+  }
+  if (turbo_cmd_write_text(write_fn, write_context, "\n") != 0) return -1;
+  if (node->child_count > 0u) {
+    if (turbo_cmd_write_text(write_fn, write_context, "\ncommands:\n") != 0)
+      return -1;
+    for (index = 0; index < node->child_count; ++index) {
+      if (turbo_cmd_write_format(write_fn, write_context, "  %-20s %s\n",
+                                 node->children[index]->name,
+                                 node->children[index]->info
+                                     ? node->children[index]->info
+                                     : "") != 0)
+        return -1;
+    }
+  }
+  if (node->required_count > 0u) {
+    if (turbo_cmd_write_text(write_fn, write_context, "\narguments:\n") != 0)
+      return -1;
+    for (index = 0; index < node->required_count; ++index) {
+      if (turbo_cmd_write_format(write_fn, write_context, "  %-20s %s\n",
+                                 node->required_args[index].name,
+                                 node->required_args[index].info
+                                     ? node->required_args[index].info
+                                     : "") != 0)
+        return -1;
+    }
+  }
+  if (turbo_cmd_write_text(write_fn, write_context, "\noptions:\n") != 0 ||
+      turbo_cmd_write_text(write_fn, write_context,
+                           "  -h, --help           Show this help\n") != 0 ||
+      (parser->version &&
+       turbo_cmd_write_text(write_fn, write_context,
+                            "      --version        Show version\n") != 0))
+    return -1;
+  for (index = path_count; index > 0u; --index) {
+    const turbo_cmd_node_t *path_node = path[index - 1u];
+    uint32_t option_index;
+    for (option_index = 0; option_index < path_node->optional_count;
+         ++option_index) {
+      const CmdArgerDesc *descriptor = &path_node->optional_args[option_index];
+      if (turbo_cmd_write_format(
+              write_fn, write_context, "  %s%s%s%s%-14s %s%s\n",
+              descriptor->short_name ? "-" : "  ",
+              descriptor->short_name ? descriptor->short_name : "",
+              descriptor->short_name ? ", " : "  ", "--",
+              descriptor->name, descriptor->info ? descriptor->info : "",
+              descriptor->is_required ? " (required)" : "") != 0)
+        return -1;
+    }
+  }
+  return 0;
+}
+
+void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv,
+                     bool colors) {
   char app_ver[256];
-  if (parser->app_name && parser->version) {
+  if (!parser || !parser->root) return;
+  parser->frozen = 1u;
+  turbo_cmd_sync_environment(parser);
+  if (parser->app_name && parser->version)
     fmt(app_ver, sizeof(app_ver), "{} {}", parser->app_name, parser->version);
-  } else if (parser->app_name) {
+  else
     fmt(app_ver, sizeof(app_ver), "{}", parser->app_name);
-  } else {
-    fmt(app_ver, sizeof(app_ver), "Application");
-  }
+  cmd_arger_parse(parser->root->optional_args, parser->root->optional_count,
+                  parser->root->required_args, parser->root->required_count,
+                  argc, argv, app_ver, (CmdArgerBool)colors);
+}
 
-  CmdArgerSubCommand *subs =
-      (CmdArgerSubCommand *)calloc(parser->subcommand_count, sizeof(CmdArgerSubCommand));
-  for (uint32_t i = 0; i < parser->subcommand_count; i++) {
-    turbo_cmd_subcommand_t *src = &parser->subcommands[i];
-    subs[i].name = src->name;
-    subs[i].info = src->info;
-    subs[i].optional_args = src->optional_args;
-    subs[i].optional_args_count = src->optional_count;
-    subs[i].required_args = src->required_args;
-    subs[i].required_args_count = src->required_count;
-  }
-
+int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc,
+                               char **argv, bool colors) {
+  CmdArgerSubCommand *subcommands;
   int selected = -1;
-  cmd_arger_parse_subcommand(parser->optional_args, parser->optional_count, subs,
-                             parser->subcommand_count, &selected, argc, argv, app_ver,
-                             (CmdArgerBool)colors);
-  free(subs);
+  char app_ver[256];
+  uint32_t index;
+  if (!parser || !parser->root || parser->root->child_count == 0u) return -1;
+  parser->frozen = 1u;
+  turbo_cmd_sync_environment(parser);
+  if (parser->app_name && parser->version)
+    fmt(app_ver, sizeof(app_ver), "{} {}", parser->app_name, parser->version);
+  else
+    fmt(app_ver, sizeof(app_ver), "{}", parser->app_name);
+  subcommands = (CmdArgerSubCommand *)calloc(parser->root->child_count,
+                                             sizeof(*subcommands));
+  if (!subcommands) return -1;
+  for (index = 0; index < parser->root->child_count; ++index) {
+    turbo_cmd_node_t *source = parser->root->children[index];
+    subcommands[index].name = source->name;
+    subcommands[index].info = source->info;
+    subcommands[index].optional_args = source->optional_args;
+    subcommands[index].optional_args_count = source->optional_count;
+    subcommands[index].required_args = source->required_args;
+    subcommands[index].required_args_count = source->required_count;
+  }
+  cmd_arger_parse_subcommand(
+      parser->root->optional_args, parser->root->optional_count, subcommands,
+      parser->root->child_count, &selected, argc, argv, app_ver,
+      (CmdArgerBool)colors);
+  free(subcommands);
   return selected;
 }
 
 void turbo_cmd_show_help(turbo_cmd_parser_t *parser, bool colors) {
-  if (!parser) return;
-
   char app_ver[256];
-  if (parser->app_name && parser->version) {
+  if (!parser || !parser->root) return;
+  if (parser->app_name && parser->version)
     fmt(app_ver, sizeof(app_ver), "{} {}", parser->app_name, parser->version);
-  } else if (parser->app_name) {
+  else
     fmt(app_ver, sizeof(app_ver), "{}", parser->app_name);
-  } else {
-    fmt(app_ver, sizeof(app_ver), "Application");
-  }
-
-  cmd_arger_show_help_and_exit(parser->optional_args, parser->optional_count, parser->required_args,
-                               parser->required_count, NULL, app_ver, (CmdArgerBool)colors);
+  cmd_arger_show_help_and_exit(
+      parser->root->optional_args, parser->root->optional_count,
+      parser->root->required_args, parser->root->required_count, NULL, app_ver,
+      (CmdArgerBool)colors);
 }
 
 /* DotEnv */
