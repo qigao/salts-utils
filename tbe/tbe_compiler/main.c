@@ -8,7 +8,8 @@
  *
  * CLI (via cmd_arger):
  *   tbe_compiler <file> [--template <file>] [--lang c|cpp|go|rust|python|py|ts]
- *              [--output <file>] [--source-output <file>] [--dsl-output <file>]
+ *              [--output <file>] [--source-output <file>] [--lua-output <file>]
+ *              [--dsl-output <file>]
  */
 
 #include <stdbool.h>
@@ -64,6 +65,7 @@ int main(int argc, char **argv) {
     char    *template_path = NULL;
     char    *output_path   = NULL;
     char    *source_output_path = NULL;
+    char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
     int64_t  lang_enum     = 0;
@@ -104,6 +106,9 @@ int main(int argc, char **argv) {
     turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",
                                  "Generate the C typed serde companion source");
 
+    turbo_cmd_add_string(parser, &lua_output_path, "lua-output", NULL,
+                                 "Generate C adapters from typed records to Lua tables");
+
     turbo_cmd_add_string(parser, &guest_output_path, "guest-output", "g",
                                  "Generate the C Wasm guest adapter source");
                                  
@@ -117,6 +122,7 @@ int main(int argc, char **argv) {
         .template_path = template_path,
         .output_path = output_path,
         .source_output_path = source_output_path,
+        .lua_output_path = lua_output_path,
         .guest_output_path = guest_output_path,
         .dsl_output_path = dsl_output_path,
         .resource_dir = resource_dir,

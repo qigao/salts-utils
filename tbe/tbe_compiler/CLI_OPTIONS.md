@@ -51,6 +51,63 @@ tbe_compiler <schema_file> [options]
     schema registration, sandbox policy, quotas, and provider errors
   - Example: `--output order.h --guest-output order_guest.c`
 
+- `--lua-output <file>`
+  - With the built-in C generator, emits typed C-to-Lua adapter functions
+  - Requires both `--output` and `--source-output`; custom templates and non-C languages are rejected
+  - Each owning record receives `Type_push_lua` and transactional `Type_from_lua` adapters
+  - The generated source includes the unified C facade `turbo_lua_bind.h`; link
+    the consumer with `turbo_lua_bind` (`TurboParser::LuaBind` in the build tree)
+  - C++ consumers may include `turbo_lua_bind.hpp` to combine the same C/DataBind
+    adapters with function, class, property, inheritance, and reflection binding
+  - The narrower `c11_lua_*` and `cpp_lua_bind.hpp` headers remain compatible for
+    consumers that intentionally want only one layer
+  - Example: `--output order.h --source-output order.c --lua-output order_lua.c`
+  - A request message annotated with
+    `[lua_operation(create_order), lua_response(OrderResult)]` also generates a
+    typed callback entry and a schema module constructor. The caller supplies
+    the callback table and resource limits; expected failures return Lua
+    `nil, { code, path, message }`. Generated glue initializes and clears
+    request/response objects, so callbacks fill the response without retaining
+    either pointer.
+  - A request message annotated with
+    `[lua_import(enrich_order), lua_response(OrderResult)]` generates an opaque
+    schema client plus `Schema_lua_client_enrich_order_on_owner()`. Client
+    creation binds one `turbo_lua_executor_t`; creation, synchronous calls, and
+    `Schema_lua_client_close()` verify its captured owner thread. C callers pass
+    typed request/response structs; generated glue retains the Lua module in the
+    registry, performs the protected call, validates `response, nil` or
+    `nil, { code, path, message }`, restores the Lua stack, and replaces the C
+    response only on success. The executor and Lua state outlive the client.
+  - `lua_async(future)` is the only asynchronous Lua binding mode. Add it to an
+    operation when the application has an explicit asynchronous state machine.
+    The generated starter returns opaque
+    `state`, `poll`, and `destroy` hooks. Lua sees the same `poll()`, `await()`,
+    `done()`, and `cancel()` API. `await()` is called inside a yieldable Lua
+    coroutine and yields the Future to its host until that coroutine is resumed.
+    No stackful C coroutine or separate coroutine stack is allocated.
+    `max_pending_operations` bounds live Futures. The generated Future invokes
+    `poll` only on the Lua owner
+    thread and invokes `destroy` exactly once on completion, failure, or
+    cancellation. External workers may update application state, but must not
+    touch Lua or the generated Future.
+  - Add `lua_async(future)` to a `lua_import` to additionally generate
+    `Schema_lua_client_name_async()` and a typed C Future. Submission snapshots
+    the owning request, then posts one command through the executor already
+    bound to the client; only the executor owner thread touches Lua. Async
+    submit plus Future `done`, `cancel`, and `poll` may run on producer threads.
+    Future `poll` is nonblocking and moves a
+    successful typed response exactly once. Queue full returns
+    `DATA_BIND_ERR_LIMIT`, executor shutdown returns `DATA_BIND_ERR_CANCELED`,
+    and both leave the Future output unchanged. Stop producers before owner-only
+    client `close()`; queued commands retain the closed client until terminal
+    dispatch. Drain or cancel them before destroying the executor and Lua state.
+  - Applications without an existing owner event loop can link
+    `TurboParser::LuaWorker`. Its dedicated thread owns the Lua state and
+    executor: create generated clients in `on_start`, close them in `on_stop`,
+    and submit only async operations from producer threads. Producers must be
+    quiescent before synchronous worker stop; choose DRAIN to finish accepted
+    operations or CANCEL to terminally cancel them.
+
 ### DSL Integration (RulesForge)
 
 - `--dsl-output <file>` or `-d <file>`
@@ -77,6 +134,12 @@ tbe_compiler order.schema --dsl-output order.rfl
 ```bash
 tbe_compiler order.schema --lang c --output order.h --source-output order.c
 ```
+
+Add `--lua-output order_lua.c` to generate direct Lua table adapters from the same typed
+metadata. The adapters omit absent optional fields, preserve binary strings, use 1-based
+Lua arrays, bound recursion and each dynamic string/container extent, and reject integers that cannot fit
+`lua_Integer`. `Type_from_lua` accepts canonical descriptor keys, rejects unknown keys, and
+replaces an initialized destination only after the complete table has been converted.
 
 The generated API includes `Order_t`, `Order_init`/`Order_clear`, schema codec creation,
 and `Order_from_*`/`Order_to_*` functions for `bin`, `json`, `yaml`, `csv`, and `xml`.

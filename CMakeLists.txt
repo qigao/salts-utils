@@ -66,6 +66,7 @@ add_subdirectory(cron)
 add_subdirectory(mustache)
 add_subdirectory(tools/junit_to_html)
 add_subdirectory(tbe)
+add_subdirectory(tools/lua)
 
 # Package Configuration
 include(CMakePackageConfigHelpers)

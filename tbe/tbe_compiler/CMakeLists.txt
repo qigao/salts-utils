@@ -4,6 +4,7 @@
 
 set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/cpp_types.mustache"
@@ -90,12 +91,14 @@ set(TBE_TYPED_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(TBE_TYPED_ORDER_HEADER "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order.h")
 set(TBE_TYPED_ORDER_SOURCE "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order.c")
 set(TBE_TYPED_ORDER_GUEST_SOURCE "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order_guest.c")
+set(TBE_TYPED_ORDER_LUA_SOURCE "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order_lua.c")
 
 add_custom_command(
   OUTPUT
     "${TBE_TYPED_ORDER_HEADER}"
     "${TBE_TYPED_ORDER_SOURCE}"
     "${TBE_TYPED_ORDER_GUEST_SOURCE}"
+    "${TBE_TYPED_ORDER_LUA_SOURCE}"
   COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_TYPED_ORDER_GENERATED_DIR}"
   COMMAND
     $<TARGET_FILE:tbe_compiler>
@@ -104,12 +107,14 @@ add_custom_command(
     --output "${TBE_TYPED_ORDER_HEADER}"
     --source-output "${TBE_TYPED_ORDER_SOURCE}"
     --guest-output "${TBE_TYPED_ORDER_GUEST_SOURCE}"
+    --lua-output "${TBE_TYPED_ORDER_LUA_SOURCE}"
   DEPENDS
     tbe_compiler
     "${CMAKE_CURRENT_SOURCE_DIR}/test_typed_order.schema"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   COMMENT "Generating strong typed Order C bindings"
   VERBATIM)
@@ -133,6 +138,13 @@ cmake_add_test(test_tbe_typed_order
   INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
   FOLDER "tbe/tbe_compiler")
 tbe_copy_turbonet_runtime_deps(test_tbe_typed_order WITH_DATABIND)
+
+cmake_add_test(test_tbe_typed_order_lua
+  SOURCES test_typed_order_lua.c "${TBE_TYPED_ORDER_LUA_SOURCE}"
+  LIBS test_tbe_typed_order_static turbo_lua_bind TurboUtils::TinyTest
+  INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
+  FOLDER "tbe/tbe_compiler")
+tbe_copy_turbonet_runtime_deps(test_tbe_typed_order_lua WITH_DATABIND)
 
 cmake_add_test(test_tbe_typed_order_cpp
   SOURCES test_typed_order_cpp.cpp

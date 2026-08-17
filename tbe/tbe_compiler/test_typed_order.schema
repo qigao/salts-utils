@@ -18,6 +18,7 @@ group Fill {
     uint32 qty;
 }
 
+[lua_operation(create_order), lua_response(OrderResult)]
 message Order {
     Header header;
     [name(orderId), alias(oldId), alias(legacyId), c(order_id)] 
@@ -31,4 +32,27 @@ message Order {
     string symbol;
     optional string client_tag;
     bytes payload;
+}
+
+[lua_operation(fetch_order), lua_response(OrderResult), lua_async(future)]
+message AsyncOrder {
+    uint32 id;
+    string symbol;
+}
+
+[lua_import(enrich_order), lua_response(OrderResult)]
+message LuaOrder {
+    uint32 id;
+    string symbol;
+}
+
+[lua_import(enrich_order_deferred), lua_response(OrderResult), lua_async(future)]
+message AsyncLuaOrder {
+    uint32 id;
+    string symbol;
+}
+
+message OrderResult {
+    uint32 id;
+    string symbol;
 }

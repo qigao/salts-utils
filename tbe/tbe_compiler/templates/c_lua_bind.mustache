@@ -1,0 +1,1099 @@
+#include "{{generated_header}}"
+
+#include "turbo_lua_bind.h"
+{{#has_lua_imports}}
+#include "turbo_lua_executor.h"
+{{/has_lua_imports}}
+{{#has_lua_async_imports}}
+#include "turbo_error.h"
+#include "turbo_thread.h"
+{{/has_lua_async_imports}}
+
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define TBE_LUA_DEFINE_RECORD(name)                                                \
+    DataBindStatus name##_push_lua(struct lua_State *L, const name##_t *object,    \
+                                    size_t max_depth) {                             \
+        return c11_lua_push_tbe_typed(L, name##_typed_type(), object, max_depth);  \
+    }                                                                               \
+    DataBindStatus name##_from_lua(struct lua_State *L, int index,                 \
+                                    name##_t *object, size_t max_depth,             \
+                                    size_t max_dynamic_items) {                     \
+        return c11_lua_read_tbe_typed(L, index, name##_typed_type(), object,       \
+                                      max_depth, max_dynamic_items);                \
+    }
+
+{{#composites}}TBE_LUA_DEFINE_RECORD({{name}})
+{{/composites}}{{#groups}}TBE_LUA_DEFINE_RECORD({{name}})
+{{/groups}}{{#messages}}TBE_LUA_DEFINE_RECORD({{name}})
+{{/messages}}
+
+#undef TBE_LUA_DEFINE_RECORD
+
+{{#has_lua_operations}}
+static size_t {{schema.schema_name}}_lua_bounded_strlen(
+    const char *text, size_t capacity) {
+    size_t length = 0u;
+    if (text == NULL) return 0u;
+    while (length < capacity && text[length] != '\0') ++length;
+    return length;
+}
+{{/has_lua_operations}}
+
+{{#has_lua_operations}}
+{{#has_lua_async_operations}}
+typedef struct {{schema.schema_name}}_lua_async_future_base_s
+    {{schema.schema_name}}_lua_async_future_base_t;
+{{/has_lua_async_operations}}
+
+typedef struct {{schema.schema_name}}_lua_module_state_s {
+{{schema.schema_name}}_lua_api_t api;
+    {{schema.schema_name}}_lua_limits_t limits;
+{{#has_lua_async_operations}}
+    {{schema.schema_name}}_lua_async_future_base_t *pending_head;
+    size_t pending_count;
+{{/has_lua_async_operations}}
+} {{schema.schema_name}}_lua_module_state_t;
+
+{{#has_lua_async_operations}}
+struct {{schema.schema_name}}_lua_async_future_base_s {
+    {{schema.schema_name}}_lua_module_state_t *owner;
+    {{schema.schema_name}}_lua_async_future_base_t *next;
+    void (*cancel_pending)({{schema.schema_name}}_lua_async_future_base_t *base);
+};
+
+static void {{schema.schema_name}}_lua_link_pending(
+    {{schema.schema_name}}_lua_module_state_t *owner,
+    {{schema.schema_name}}_lua_async_future_base_t *base) {
+    base->owner = owner;
+    base->next = owner->pending_head;
+    owner->pending_head = base;
+    ++owner->pending_count;
+}
+
+static void {{schema.schema_name}}_lua_unlink_pending(
+    {{schema.schema_name}}_lua_async_future_base_t *base) {
+    {{schema.schema_name}}_lua_async_future_base_t **link;
+    if (base == NULL || base->owner == NULL) return;
+    link = &base->owner->pending_head;
+    while (*link != NULL && *link != base) link = &(*link)->next;
+    if (*link == base) {
+        *link = base->next;
+        if (base->owner->pending_count != 0u) --base->owner->pending_count;
+    }
+    base->owner = NULL;
+    base->next = NULL;
+}
+{{/has_lua_async_operations}}
+
+static int {{schema.schema_name}}_lua_push_error(
+    struct lua_State *L, DataBindStatus status, const DataBindError *error,
+    const char *fallback_path, const char *fallback_message) {
+    const char *path = fallback_path;
+    const char *message = fallback_message;
+    size_t path_length = strlen(path != NULL ? path : "");
+    size_t message_length = strlen(message != NULL ? message : "operation failed");
+
+    if (error != NULL && error->path[0] != '\0') {
+        size_t length = {{schema.schema_name}}_lua_bounded_strlen(
+            error->path, sizeof(error->path));
+        if (length < sizeof(error->path)) {
+            path = error->path;
+            path_length = length;
+        }
+    }
+    if (error != NULL && error->message[0] != '\0') {
+        size_t length = {{schema.schema_name}}_lua_bounded_strlen(
+            error->message, sizeof(error->message));
+        if (length < sizeof(error->message)) {
+            message = error->message;
+            message_length = length;
+        }
+    }
+    lua_pushnil(L);
+    lua_createtable(L, 0, 3);
+    lua_pushinteger(L, (lua_Integer)status);
+    lua_setfield(L, -2, "code");
+    lua_pushlstring(L, path != NULL ? path : "", path_length);
+    lua_setfield(L, -2, "path");
+    lua_pushlstring(L, message != NULL ? message : "operation failed",
+                    message_length);
+    lua_setfield(L, -2, "message");
+    return 2;
+}
+
+{{#messages}}{{#lua_operation_enabled}}{{^lua_async_enabled}}
+static int {{schema.schema_name}}_lua_call_{{lua_operation_name}}(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_module_state_t *state =
+        ({{schema.schema_name}}_lua_module_state_t *)lua_touserdata(
+            L, lua_upvalueindex(1));
+    {{name}}_t request;
+    {{lua_response_type}}_t response;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStatus status;
+    const char *failure_path = "request";
+    const char *failure_message = "request does not match the schema";
+
+    if (state == NULL || state->api.{{lua_operation_name}} == NULL) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "operation",
+            "Lua operation module state is invalid");
+    }
+    if (lua_gettop(L) != 1) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "request",
+            "operation expects exactly one request table");
+    }
+
+    {{name}}_init(&request);
+    {{lua_response_type}}_init(&response);
+    status = {{name}}_from_lua(L, 1, &request, state->limits.max_depth,
+                               state->limits.max_dynamic_items);
+    if (status == DATA_BIND_OK) {
+        failure_path = "operation";
+        failure_message = "operation callback failed";
+        status = state->api.{{lua_operation_name}}(
+            state->api.context, &request, &response, &error);
+    }
+    if (status == DATA_BIND_OK) {
+        failure_path = "response";
+        failure_message = "response cannot be represented in Lua";
+        status = {{lua_response_type}}_push_lua(
+            L, &response, state->limits.max_depth);
+    }
+
+    {{lua_response_type}}_clear(&response);
+    {{name}}_clear(&request);
+    if (status == DATA_BIND_OK) return 1;
+    return {{schema.schema_name}}_lua_push_error(
+        L, status, &error, failure_path, failure_message);
+}
+
+{{/lua_async_enabled}}{{#lua_async_enabled}}
+typedef struct {{schema.schema_name}}_lua_{{lua_operation_name}}_future_s {
+    {{schema.schema_name}}_lua_async_future_base_t base;
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_async_t operation;
+    size_t max_depth;
+    {{name}}_t request;
+    {{lua_response_type}}_t response;
+    DataBindError error;
+    DataBindStatus status;
+    int initialized;
+    int done;
+} {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t;
+
+static void {{schema.schema_name}}_lua_{{lua_operation_name}}_destroy_pending(
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future,
+    int notify_cancel) {
+    if (future == NULL || future->base.owner == NULL) return;
+    future->operation.destroy(future->operation.state, notify_cancel);
+    memset(&future->operation, 0, sizeof(future->operation));
+    {{schema.schema_name}}_lua_unlink_pending(&future->base);
+}
+
+static void {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel_pending(
+    {{schema.schema_name}}_lua_async_future_base_t *base) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        ({{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *)base;
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_destroy_pending(future, 1);
+    future->status = DATA_BIND_ERR_CANCELED;
+    future->done = 1;
+}
+
+static void {{schema.schema_name}}_lua_{{lua_operation_name}}_clear(
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future) {
+    if (future == NULL || !future->initialized) return;
+    if (future->base.owner != NULL) {
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel_pending(
+            &future->base);
+    }
+    {{lua_response_type}}_clear(&future->response);
+    {{name}}_clear(&future->request);
+    future->initialized = 0;
+}
+
+static {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *
+{{schema.schema_name}}_lua_check_{{lua_operation_name}}_future(
+    struct lua_State *L) {
+    return ({{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *)
+        luaL_checkudata(L, 1,
+                       "{{schema.schema_name}}.{{lua_operation_name}}.future");
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_push_result(
+    struct lua_State *L,
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future) {
+    DataBindStatus status;
+    lua_pushboolean(L, 1);
+    if (future->status != DATA_BIND_OK) {
+        return 1 + {{schema.schema_name}}_lua_push_error(
+            L, future->status, &future->error, "operation",
+            future->status == DATA_BIND_ERR_CANCELED
+                ? "asynchronous operation canceled"
+                : "asynchronous operation callback failed");
+    }
+    status = {{lua_response_type}}_push_lua(
+        L, &future->response, future->max_depth);
+    if (status != DATA_BIND_OK) {
+        return 1 + {{schema.schema_name}}_lua_push_error(
+            L, status, NULL, "response",
+            "asynchronous response cannot be represented in Lua");
+    }
+    lua_pushnil(L);
+    return 3;
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_poll(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        {{schema.schema_name}}_lua_check_{{lua_operation_name}}_future(L);
+    if (!future->done) {
+        {
+            int out_done = 0;
+            future->status = future->operation.poll(
+                future->operation.state, &future->response, &out_done,
+                &future->error);
+            if (future->status != DATA_BIND_OK || out_done) {
+                future->done = 1;
+                {{schema.schema_name}}_lua_{{lua_operation_name}}_destroy_pending(
+                    future, 0);
+            }
+        }
+    }
+    if (future->done && future->base.owner == NULL) {
+        lua_pushnil(L);
+        lua_setiuservalue(L, 1, 1);
+    }
+    if (!future->done) {
+        lua_pushboolean(L, 0);
+        lua_pushnil(L);
+        lua_pushnil(L);
+        return 3;
+    }
+    return {{schema.schema_name}}_lua_{{lua_operation_name}}_push_result(
+        L, future);
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_await_step(
+    struct lua_State *L);
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_await_continue(
+    struct lua_State *L, int status, lua_KContext context) {
+    (void)status;
+    (void)context;
+    lua_settop(L, 1);
+    return {{schema.schema_name}}_lua_{{lua_operation_name}}_await_step(L);
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_await_step(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        {{schema.schema_name}}_lua_check_{{lua_operation_name}}_future(L);
+    int result_count;
+
+    if (!future->done && !lua_isyieldable(L)) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "await",
+            "await requires a yieldable Lua coroutine");
+    }
+    result_count =
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_poll(L);
+    if (result_count != 3 || !lua_toboolean(L, 2)) {
+        if (result_count != 3) {
+            lua_settop(L, 1);
+            return {{schema.schema_name}}_lua_push_error(
+                L, DATA_BIND_ERR_RUNTIME, NULL, "await",
+                "asynchronous poll returned an invalid result");
+        }
+        lua_settop(L, 1);
+        lua_pushvalue(L, 1);
+        return lua_yieldk(
+            L, 1, (lua_KContext)0,
+            {{schema.schema_name}}_lua_{{lua_operation_name}}_await_continue);
+    }
+    lua_remove(L, 2);
+    return 2;
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_await(
+    struct lua_State *L) {
+    if (lua_gettop(L) != 1) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "await",
+            "await expects only the Future receiver");
+    }
+    return {{schema.schema_name}}_lua_{{lua_operation_name}}_await_step(L);
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_done(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        {{schema.schema_name}}_lua_check_{{lua_operation_name}}_future(L);
+    lua_pushboolean(L, future->done);
+    return 1;
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        {{schema.schema_name}}_lua_check_{{lua_operation_name}}_future(L);
+    int changed = !future->done;
+    if (changed) {
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel_pending(
+            &future->base);
+        lua_pushnil(L);
+        lua_setiuservalue(L, 1, 1);
+    }
+    lua_pushboolean(L, changed);
+    return 1;
+}
+
+static int {{schema.schema_name}}_lua_{{lua_operation_name}}_gc(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future =
+        ({{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *)
+            lua_touserdata(L, 1);
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_clear(future);
+    return 0;
+}
+
+static void {{schema.schema_name}}_lua_register_{{lua_operation_name}}_future(
+    struct lua_State *L) {
+    if (luaL_newmetatable(
+            L, "{{schema.schema_name}}.{{lua_operation_name}}.future")) {
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -2, "__index");
+        lua_pushcfunction(
+            L, {{schema.schema_name}}_lua_{{lua_operation_name}}_poll);
+        lua_setfield(L, -2, "poll");
+        lua_pushcfunction(
+            L, {{schema.schema_name}}_lua_{{lua_operation_name}}_await);
+        lua_setfield(L, -2, "await");
+        lua_pushcfunction(
+            L, {{schema.schema_name}}_lua_{{lua_operation_name}}_done);
+        lua_setfield(L, -2, "done");
+        lua_pushcfunction(
+            L, {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel);
+        lua_setfield(L, -2, "cancel");
+        lua_pushcfunction(
+            L, {{schema.schema_name}}_lua_{{lua_operation_name}}_gc);
+        lua_setfield(L, -2, "__gc");
+    }
+    lua_pop(L, 1);
+}
+
+static int {{schema.schema_name}}_lua_call_{{lua_operation_name}}(
+    struct lua_State *L) {
+    {{schema.schema_name}}_lua_module_state_t *state =
+        ({{schema.schema_name}}_lua_module_state_t *)lua_touserdata(
+            L, lua_upvalueindex(1));
+    {{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *future;
+    DataBindStatus status;
+    DataBindError start_error = DATA_BIND_ERROR_INIT;
+
+    if (state == NULL || state->api.{{lua_operation_name}} == NULL) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "operation",
+            "Lua asynchronous operation module state is invalid");
+    }
+    if (lua_gettop(L) != 1) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "request",
+            "operation expects exactly one request table");
+    }
+    if (state->pending_count >= state->limits.max_pending_operations) {
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_LIMIT, NULL, "operation",
+            "asynchronous operation limit reached");
+    }
+
+    future = ({{schema.schema_name}}_lua_{{lua_operation_name}}_future_t *)
+        lua_newuserdata(L, sizeof(*future));
+    memset(future, 0, sizeof(*future));
+    luaL_getmetatable(
+        L, "{{schema.schema_name}}.{{lua_operation_name}}.future");
+    lua_setmetatable(L, -2);
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_setiuservalue(L, -2, 1);
+
+    future->max_depth = state->limits.max_depth;
+    future->status = DATA_BIND_OK;
+    future->error = (DataBindError)DATA_BIND_ERROR_INIT;
+    {{name}}_init(&future->request);
+    {{lua_response_type}}_init(&future->response);
+    future->initialized = 1;
+
+    status = {{name}}_from_lua(
+        L, 1, &future->request, state->limits.max_depth,
+        state->limits.max_dynamic_items);
+    if (status != DATA_BIND_OK) {
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_clear(future);
+        lua_pop(L, 1);
+        return {{schema.schema_name}}_lua_push_error(
+            L, status, NULL, "request",
+            "request does not match the schema");
+    }
+
+    future->base.cancel_pending =
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_cancel_pending;
+    status = state->api.{{lua_operation_name}}(
+        state->api.context, &future->request, &future->operation,
+        &future->error);
+    if (status != DATA_BIND_OK) {
+        future->status = status;
+        start_error = future->error;
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_clear(future);
+        lua_pop(L, 1);
+        return {{schema.schema_name}}_lua_push_error(
+            L, status, &start_error, "operation",
+            "asynchronous operation could not be started");
+    }
+    if (future->operation.poll == NULL || future->operation.destroy == NULL) {
+        if (future->operation.destroy != NULL) {
+            future->operation.destroy(future->operation.state, 1);
+        }
+        memset(&future->operation, 0, sizeof(future->operation));
+        {{schema.schema_name}}_lua_{{lua_operation_name}}_clear(future);
+        lua_pop(L, 1);
+        return {{schema.schema_name}}_lua_push_error(
+            L, DATA_BIND_ERR_INVALID_ARG, NULL, "operation",
+            "asynchronous operation returned invalid hooks");
+    }
+    {{schema.schema_name}}_lua_link_pending(state, &future->base);
+    return 1;
+}
+
+{{/lua_async_enabled}}{{/lua_operation_enabled}}{{/messages}}
+{{#has_lua_async_operations}}
+static int {{schema.schema_name}}_lua_module_gc(struct lua_State *L) {
+    {{schema.schema_name}}_lua_module_state_t *state =
+        ({{schema.schema_name}}_lua_module_state_t *)lua_touserdata(L, 1);
+    if (state == NULL) return 0;
+    while (state->pending_head != NULL) {
+        state->pending_head->cancel_pending(state->pending_head);
+    }
+    return 0;
+}
+{{/has_lua_async_operations}}
+
+DataBindStatus {{schema.schema_name}}_lua_push_module(
+    struct lua_State *L, const {{schema.schema_name}}_lua_api_t *api,
+    const {{schema.schema_name}}_lua_limits_t *limits) {
+    {{schema.schema_name}}_lua_module_state_t *state;
+    int base;
+
+    if (L == NULL || api == NULL || limits == NULL || limits->max_depth == 0u ||
+        limits->max_dynamic_items == 0u{{#has_lua_async_operations}} ||
+        limits->max_pending_operations == 0u{{/has_lua_async_operations}}) {
+        return DATA_BIND_ERR_INVALID_ARG;
+    }
+{{#messages}}{{#lua_operation_enabled}}
+    if (api->{{lua_operation_name}} == NULL) return DATA_BIND_ERR_INVALID_ARG;
+{{/lua_operation_enabled}}{{/messages}}
+    base = lua_gettop(L);
+    if (!lua_checkstack(L, 4)) return DATA_BIND_ERR_LIMIT;
+
+    state = ({{schema.schema_name}}_lua_module_state_t *)lua_newuserdata(
+        L, sizeof(*state));
+    memset(state, 0, sizeof(*state));
+    state->api = *api;
+    state->limits = *limits;
+{{#has_lua_async_operations}}
+    if (luaL_newmetatable(L, "{{schema.schema_name}}.lua.module")) {
+        lua_pushcfunction(L, {{schema.schema_name}}_lua_module_gc);
+        lua_setfield(L, -2, "__gc");
+    }
+    lua_setmetatable(L, base + 1);
+{{#messages}}{{#lua_operation_enabled}}{{#lua_async_enabled}}
+    {{schema.schema_name}}_lua_register_{{lua_operation_name}}_future(L);
+{{/lua_async_enabled}}{{/lua_operation_enabled}}{{/messages}}
+{{/has_lua_async_operations}}
+    lua_createtable(L, 0, {{#messages}}{{#lua_operation_enabled}}1 + {{/lua_operation_enabled}}{{/messages}}0);
+{{#messages}}{{#lua_operation_enabled}}
+    lua_pushvalue(L, base + 1);
+    lua_pushcclosure(L, {{schema.schema_name}}_lua_call_{{lua_operation_name}}, 1);
+    lua_setfield(L, -2, "{{lua_operation_name}}");
+{{/lua_operation_enabled}}{{/messages}}
+    lua_remove(L, base + 1);
+    return DATA_BIND_OK;
+}
+{{/has_lua_operations}}
+
+{{#has_lua_imports}}
+struct {{schema.schema_name}}_lua_client_s {
+    c11_lua_ref_t module;
+    turbo_lua_executor_t *executor;
+    {{schema.schema_name}}_lua_limits_t limits;
+{{#has_lua_async_imports}}
+    turbo_mutex_t state_lock;
+    size_t references;
+    int closing;
+{{/has_lua_async_imports}}
+};
+
+{{#has_lua_async_imports}}
+typedef enum {{schema.schema_name}}_lua_client_future_state_e {
+    {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING = 0,
+    {{schema.schema_name}}_LUA_CLIENT_FUTURE_SUCCEEDED,
+    {{schema.schema_name}}_LUA_CLIENT_FUTURE_FAILED,
+    {{schema.schema_name}}_LUA_CLIENT_FUTURE_CANCELED,
+    {{schema.schema_name}}_LUA_CLIENT_FUTURE_TAKEN
+} {{schema.schema_name}}_lua_client_future_state_t;
+{{/has_lua_async_imports}}
+
+static void {{schema.schema_name}}_lua_client_copy_text(
+    char *destination, size_t capacity, const char *source, size_t length) {
+    if (destination == NULL || capacity == 0u) return;
+    if (source == NULL) length = 0u;
+    if (length >= capacity) length = capacity - 1u;
+    if (length != 0u) memcpy(destination, source, length);
+    destination[length] = '\0';
+}
+
+static DataBindStatus {{schema.schema_name}}_lua_client_set_error_text(
+    DataBindError *error, DataBindStatus status,
+    const char *path, size_t path_length,
+    const char *message, size_t message_length) {
+    if (error != NULL && error->size >= sizeof(error->size)) {
+        if (error->size >= offsetof(DataBindError, code) + sizeof(error->code))
+            error->code = status;
+        if (error->size >= offsetof(DataBindError, line) + sizeof(error->line))
+            error->line = -1;
+        if (error->size >= offsetof(DataBindError, column) + sizeof(error->column))
+            error->column = -1;
+        if (error->size >= offsetof(DataBindError, path) + sizeof(error->path))
+            {{schema.schema_name}}_lua_client_copy_text(
+                error->path, sizeof(error->path), path, path_length);
+        if (error->size >= offsetof(DataBindError, message) + sizeof(error->message))
+            {{schema.schema_name}}_lua_client_copy_text(
+                error->message, sizeof(error->message), message, message_length);
+    }
+    return status;
+}
+
+static DataBindStatus {{schema.schema_name}}_lua_client_set_error(
+    DataBindError *error, DataBindStatus status,
+    const char *path, const char *message) {
+    return {{schema.schema_name}}_lua_client_set_error_text(
+        error, status, path, strlen(path != NULL ? path : ""),
+        message, strlen(message != NULL ? message : ""));
+}
+
+static DataBindStatus {{schema.schema_name}}_lua_client_read_error(
+    struct lua_State *L, int index, const char *fallback_path,
+    DataBindError *error) {
+    int absolute_index = lua_absindex(L, index);
+    DataBindStatus status = DATA_BIND_ERR_RUNTIME;
+    const char *path = fallback_path;
+    const char *message = "Lua import returned no response";
+    size_t path_length = strlen(fallback_path != NULL ? fallback_path : "");
+    size_t message_length = strlen(message);
+
+    if (lua_istable(L, absolute_index)) {
+        lua_pushliteral(L, "code");
+        lua_rawget(L, absolute_index);
+        if (lua_isinteger(L, -1)) {
+            lua_Integer code = lua_tointeger(L, -1);
+            if (code > (lua_Integer)DATA_BIND_OK &&
+                code <= (lua_Integer)DATA_BIND_ERR_CANCELED) {
+                status = (DataBindStatus)code;
+            }
+        }
+        lua_pop(L, 1);
+
+        lua_pushliteral(L, "path");
+        lua_rawget(L, absolute_index);
+        if (lua_isstring(L, -1)) path = lua_tolstring(L, -1, &path_length);
+        lua_pop(L, 1);
+
+        lua_pushliteral(L, "message");
+        lua_rawget(L, absolute_index);
+        if (lua_isstring(L, -1))
+            message = lua_tolstring(L, -1, &message_length);
+        lua_pop(L, 1);
+    } else if (lua_isstring(L, absolute_index)) {
+        message = lua_tolstring(L, absolute_index, &message_length);
+    }
+
+    return {{schema.schema_name}}_lua_client_set_error_text(
+        error, status, path, path_length, message, message_length);
+}
+
+{{#has_lua_async_imports}}
+static int {{schema.schema_name}}_lua_client_retain(
+    {{schema.schema_name}}_lua_client_t *client) {
+    int retained = 0;
+    turbo_mutex_lock(&client->state_lock);
+    if (!client->closing) {
+        ++client->references;
+        retained = 1;
+    }
+    turbo_mutex_unlock(&client->state_lock);
+    return retained;
+}
+
+static void {{schema.schema_name}}_lua_client_release(
+    {{schema.schema_name}}_lua_client_t *client) {
+    int dispose = 0;
+    turbo_mutex_lock(&client->state_lock);
+    if (client->references != 0u) {
+        --client->references;
+        dispose = client->references == 0u;
+    }
+    turbo_mutex_unlock(&client->state_lock);
+    if (!dispose) return;
+    if (c11_lua_ref_is_valid(&client->module))
+        (void)c11_lua_ref_release(&client->module);
+    turbo_mutex_destroy(&client->state_lock);
+    free(client);
+}
+{{/has_lua_async_imports}}
+
+DataBindStatus {{schema.schema_name}}_lua_client_create(
+    {{schema.schema_name}}_lua_client_t **out, turbo_lua_executor_t *executor,
+    int module_index, const {{schema.schema_name}}_lua_limits_t *limits,
+    DataBindError *error) {
+    {{schema.schema_name}}_lua_client_t *client;
+    struct lua_State *L = NULL;
+    int reference_status;
+
+    if (out == NULL || executor == NULL || limits == NULL ||
+        limits->max_depth == 0u || limits->max_dynamic_items == 0u) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "client",
+            "Lua client requires output, executor, and nonzero limits");
+    }
+    if (*out != NULL) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "client",
+            "Lua client output must point to NULL");
+    }
+    if (turbo_lua_executor_owner_state(executor, &L) != TURBO_OK) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "executor.owner",
+            "Lua client creation requires the executor owner thread");
+    }
+    if (!lua_istable(L, module_index)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_TYPE_MISMATCH, "module",
+            "Lua client module must be a table");
+    }
+    if (!lua_checkstack(L, 1)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_LIMIT, "module",
+            "Lua stack cannot retain the module table");
+    }
+
+    client = ({{schema.schema_name}}_lua_client_t *)malloc(sizeof(*client));
+    if (client == NULL) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_OOM, "client", "Cannot allocate Lua client");
+    }
+    c11_lua_ref_init(&client->module);
+    client->executor = executor;
+    client->limits = *limits;
+{{#has_lua_async_imports}}
+    turbo_mutex_init(&client->state_lock);
+    client->references = 1u;
+    client->closing = 0;
+{{/has_lua_async_imports}}
+    reference_status = c11_lua_ref_create(L, module_index, &client->module);
+    if (reference_status != TURBO_OK) {
+{{#has_lua_async_imports}}
+        turbo_mutex_destroy(&client->state_lock);
+{{/has_lua_async_imports}}
+        free(client);
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "module",
+            "Cannot retain Lua client module");
+    }
+    *out = client;
+    return DATA_BIND_OK;
+}
+
+DataBindStatus {{schema.schema_name}}_lua_client_close(
+    {{schema.schema_name}}_lua_client_t *client, DataBindError *error) {
+    if (client == NULL) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "client",
+            "Lua client close requires a live client");
+    }
+    if (!turbo_lua_executor_is_owner(client->executor)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "executor.owner",
+            "Lua client close requires the executor owner thread");
+    }
+{{#has_lua_async_imports}}
+    turbo_mutex_lock(&client->state_lock);
+    client->closing = 1;
+    turbo_mutex_unlock(&client->state_lock);
+    {{schema.schema_name}}_lua_client_release(client);
+    return DATA_BIND_OK;
+{{/has_lua_async_imports}}
+{{^has_lua_async_imports}}
+    if (c11_lua_ref_is_valid(&client->module))
+        (void)c11_lua_ref_release(&client->module);
+    free(client);
+    return DATA_BIND_OK;
+{{/has_lua_async_imports}}
+}
+
+{{#messages}}{{#lua_import_enabled}}
+static DataBindStatus {{schema.schema_name}}_lua_client_call_{{lua_import_name}}(
+    {{schema.schema_name}}_lua_client_t *client, const {{name}}_t *request,
+    {{lua_response_type}}_t *response, DataBindError *error) {
+    struct lua_State *L;
+    {{lua_response_type}}_t temporary;
+    DataBindStatus status = DATA_BIND_OK;
+    int base;
+    int lua_status;
+
+    if (client == NULL || request == NULL || response == NULL ||
+        !c11_lua_ref_is_valid(&client->module)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "{{lua_import_name}}",
+            "Lua import requires a live client, request, and response");
+    }
+
+    L = client->module.owner;
+    base = lua_gettop(L);
+    {{lua_response_type}}_init(&temporary);
+    if (!lua_checkstack(L, 4)) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_LIMIT, "{{lua_import_name}}",
+            "Lua stack cannot invoke the imported function");
+        goto cleanup;
+    }
+    if (c11_lua_ref_push(L, &client->module) != TURBO_OK ||
+        !lua_istable(L, -1)) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "{{lua_import_name}}",
+            "Lua client module reference is invalid");
+        goto cleanup;
+    }
+
+    lua_pushliteral(L, "{{lua_import_name}}");
+    lua_rawget(L, -2);
+    if (!lua_isfunction(L, -1)) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "{{lua_import_name}}",
+            "Lua import function is missing or not callable");
+        goto cleanup;
+    }
+    lua_remove(L, base + 1);
+
+    status = {{name}}_push_lua(L, request, client->limits.max_depth);
+    if (status != DATA_BIND_OK) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, status, "request", "Request cannot be represented in Lua");
+        goto cleanup;
+    }
+
+    lua_status = lua_pcall(L, 1, 2, 0);
+    if (lua_status != LUA_OK) {
+        status = {{schema.schema_name}}_lua_client_read_error(
+            L, -1, "{{lua_import_name}}", error);
+        goto cleanup;
+    }
+    if (lua_isnil(L, -2)) {
+        status = {{schema.schema_name}}_lua_client_read_error(
+            L, -1, "{{lua_import_name}}", error);
+        goto cleanup;
+    }
+    if (!lua_isnil(L, -1)) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "{{lua_import_name}}",
+            "Lua import returned both response and error");
+        goto cleanup;
+    }
+
+    status = {{lua_response_type}}_from_lua(
+        L, -2, &temporary, client->limits.max_depth,
+        client->limits.max_dynamic_items);
+    if (status != DATA_BIND_OK) {
+        status = {{schema.schema_name}}_lua_client_set_error(
+            error, status, "response", "Lua response does not match the schema");
+        goto cleanup;
+    }
+
+    {{lua_response_type}}_clear(response);
+    *response = temporary;
+    memset(&temporary, 0, sizeof(temporary));
+
+cleanup:
+    lua_settop(L, base);
+    {{lua_response_type}}_clear(&temporary);
+    return status;
+}
+
+DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_on_owner(
+    {{schema.schema_name}}_lua_client_t *client, const {{name}}_t *request,
+    {{lua_response_type}}_t *response, DataBindError *error) {
+    if (client == NULL || !turbo_lua_executor_is_owner(client->executor)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_RUNTIME, "executor.owner",
+            "Synchronous Lua import requires the executor owner thread");
+    }
+{{#has_lua_async_imports}}
+    turbo_mutex_lock(&client->state_lock);
+    if (client->closing) {
+        turbo_mutex_unlock(&client->state_lock);
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_CANCELED, "client",
+            "Lua client is closing");
+    }
+    turbo_mutex_unlock(&client->state_lock);
+{{/has_lua_async_imports}}
+    return {{schema.schema_name}}_lua_client_call_{{lua_import_name}}(
+        client, request, response, error);
+}
+
+{{#lua_async_enabled}}
+struct {{schema.schema_name}}_lua_{{lua_import_name}}_future_s {
+    turbo_mutex_t lock;
+    atomic_size_t references;
+    {{schema.schema_name}}_lua_client_t *client;
+    {{name}}_t request;
+    {{lua_response_type}}_t response;
+    DataBindError error;
+    DataBindStatus status;
+    {{schema.schema_name}}_lua_client_future_state_t state;
+};
+
+static void {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
+    if (atomic_fetch_sub_explicit(&future->references, 1u,
+                                  memory_order_acq_rel) != 1u) {
+        return;
+    }
+    {{lua_response_type}}_clear(&future->response);
+    {{name}}_clear(&future->request);
+    turbo_mutex_destroy(&future->lock);
+    free(future);
+}
+
+static void {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future,
+    const char *message) {
+    future->status = {{schema.schema_name}}_lua_client_set_error(
+        &future->error, DATA_BIND_ERR_CANCELED, "{{lua_import_name}}", message);
+    future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_CANCELED;
+}
+
+static void {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch(
+    struct lua_State *L, void *context,
+    turbo_lua_executor_dispatch_reason_t reason) {
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future =
+        ({{schema.schema_name}}_lua_{{lua_import_name}}_future_t *)context;
+    {{lua_response_type}}_t response;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStatus status = DATA_BIND_ERR_CANCELED;
+    int execute = 0;
+
+    (void)L;
+    {{lua_response_type}}_init(&response);
+    turbo_mutex_lock(&future->lock);
+    if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
+        if (reason == TURBO_LUA_EXECUTOR_CANCEL) {
+            {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
+                future, "Lua executor canceled the queued import");
+        } else {
+            execute = 1;
+        }
+    }
+    turbo_mutex_unlock(&future->lock);
+
+    if (execute) {
+        status = {{schema.schema_name}}_lua_client_call_{{lua_import_name}}(
+            future->client, &future->request, &response, &error);
+        turbo_mutex_lock(&future->lock);
+        if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
+            future->status = status;
+            future->error = error;
+            if (status == DATA_BIND_OK) {
+                future->response = response;
+                memset(&response, 0, sizeof(response));
+                future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_SUCCEEDED;
+            } else {
+                future->state = status == DATA_BIND_ERR_CANCELED
+                                    ? {{schema.schema_name}}_LUA_CLIENT_FUTURE_CANCELED
+                                    : {{schema.schema_name}}_LUA_CLIENT_FUTURE_FAILED;
+            }
+        }
+        turbo_mutex_unlock(&future->lock);
+    }
+
+    {{lua_response_type}}_clear(&response);
+    {{schema.schema_name}}_lua_client_release(future->client);
+    future->client = NULL;
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(future);
+}
+
+static DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_post_error(
+    int post_status, DataBindError *error) {
+    if (post_status == TURBO_ENOSPC) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_LIMIT, "executor",
+            "Lua executor command queue is full");
+    }
+    if (post_status == TURBO_ECANCELED) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_CANCELED, "executor",
+            "Lua executor no longer accepts commands");
+    }
+    if (post_status == TURBO_ENOMEM) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_OOM, "executor",
+            "Lua executor cannot retain the command");
+    }
+    return {{schema.schema_name}}_lua_client_set_error(
+        error, DATA_BIND_ERR_RUNTIME, "executor",
+        "Lua executor rejected the command");
+}
+
+DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
+    {{schema.schema_name}}_lua_client_t *client,
+    const {{name}}_t *request,
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t **out,
+    DataBindError *error) {
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future;
+    turbo_lua_executor_command_t command;
+    uint8_t *wire = NULL;
+    size_t wire_size = 0u;
+    DataBindStatus status;
+    int post_status;
+
+    if (client == NULL || request == NULL || out == NULL ||
+        *out != NULL || !c11_lua_ref_is_valid(&client->module)) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "{{lua_import_name}}",
+            "Async Lua import requires a live client, request, and NULL output");
+    }
+
+    future = ({{schema.schema_name}}_lua_{{lua_import_name}}_future_t *)
+        calloc(1u, sizeof(*future));
+    if (future == NULL) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_OOM, "future", "Cannot allocate Lua import Future");
+    }
+    turbo_mutex_init(&future->lock);
+    atomic_init(&future->references, 1u);
+    {{name}}_init(&future->request);
+    {{lua_response_type}}_init(&future->response);
+    future->error = (DataBindError)DATA_BIND_ERROR_INIT;
+    future->status = DATA_BIND_OK;
+    future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING;
+
+    status = tbe_typed_serialize_binary({{name}}_typed_type(), request,
+                                        &wire, &wire_size, error);
+    if (status == DATA_BIND_OK) {
+        status = tbe_typed_parse_binary({{name}}_typed_type(), wire, wire_size,
+                                        &future->request, error);
+    }
+    free(wire);
+    if (status != DATA_BIND_OK) {
+        {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(future);
+        return status;
+    }
+    if (!{{schema.schema_name}}_lua_client_retain(client)) {
+        {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(future);
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_CANCELED, "client",
+            "Lua client is closing");
+    }
+
+    future->client = client;
+    atomic_store_explicit(&future->references, 2u, memory_order_relaxed);
+    command.dispatch = {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch;
+    command.context = future;
+    post_status = turbo_lua_executor_try_post(client->executor, &command);
+    if (post_status != TURBO_OK) {
+        {{schema.schema_name}}_lua_client_release(client);
+        future->client = NULL;
+        atomic_store_explicit(&future->references, 1u, memory_order_relaxed);
+        {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(future);
+        return {{schema.schema_name}}_lua_{{lua_import_name}}_post_error(
+            post_status, error);
+    }
+
+    *out = future;
+    return DATA_BIND_OK;
+}
+
+int {{schema.schema_name}}_lua_{{lua_import_name}}_future_done(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
+    int done;
+    if (future == NULL) return 0;
+    turbo_mutex_lock(&future->lock);
+    done = future->state != {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING;
+    turbo_mutex_unlock(&future->lock);
+    return done;
+}
+
+int {{schema.schema_name}}_lua_{{lua_import_name}}_future_cancel(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
+    int canceled = 0;
+    if (future == NULL) return 0;
+    turbo_mutex_lock(&future->lock);
+    if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
+        {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
+            future, "Async Lua import was canceled");
+        canceled = 1;
+    }
+    turbo_mutex_unlock(&future->lock);
+    return canceled;
+}
+
+DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future,
+    int *out_done, {{lua_response_type}}_t *response, DataBindError *error) {
+    DataBindStatus status;
+    if (future == NULL || out_done == NULL || response == NULL) {
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "future",
+            "Future poll requires a Future, completion output, and response");
+    }
+
+    turbo_mutex_lock(&future->lock);
+    if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
+        *out_done = 0;
+        turbo_mutex_unlock(&future->lock);
+        return DATA_BIND_OK;
+    }
+    *out_done = 1;
+    if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_SUCCEEDED) {
+        {{lua_response_type}}_clear(response);
+        *response = future->response;
+        memset(&future->response, 0, sizeof(future->response));
+        future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_TAKEN;
+        turbo_mutex_unlock(&future->lock);
+        return DATA_BIND_OK;
+    }
+    if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_TAKEN) {
+        turbo_mutex_unlock(&future->lock);
+        return {{schema.schema_name}}_lua_client_set_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "future",
+            "Future response was already consumed");
+    }
+
+    status = future->status;
+    {{schema.schema_name}}_lua_client_set_error_text(
+        error, status, future->error.path, strlen(future->error.path),
+        future->error.message, strlen(future->error.message));
+    turbo_mutex_unlock(&future->lock);
+    return status;
+}
+
+void {{schema.schema_name}}_lua_{{lua_import_name}}_future_destroy(
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
+    if (future == NULL) return;
+    (void){{schema.schema_name}}_lua_{{lua_import_name}}_future_cancel(future);
+    {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(future);
+}
+{{/lua_async_enabled}}
+
+{{/lua_import_enabled}}{{/messages}}
+{{/has_lua_imports}}

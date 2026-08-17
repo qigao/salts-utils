@@ -696,6 +696,369 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
+    it("should generate typed C to Lua adapters") {
+      const char *header_path = "test_tbe_compiler_lua.h";
+      const char *source_path = "test_tbe_compiler_lua_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua.c";
+      size_t header_size = 0;
+      size_t lua_size = 0;
+      char *header = NULL;
+      char *lua_source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = SCHEMA_EXAMPLE_FILE,
+          .template_path = NULL,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      lua_source = tt_read_file(lua_path, &lua_size);
+      check_not_null(header);
+      check_not_null(lua_source);
+      check(header_size > 0);
+      check(lua_size > 0);
+      if (header != NULL) {
+        check_str_contains(header, "LoginMessage_typed_type(void)");
+        check_str_contains(header, "LoginMessage_push_lua(struct lua_State *L");
+        check_str_contains(header, "LoginMessage_from_lua(struct lua_State *L");
+      }
+      if (lua_source != NULL) {
+        check_str_contains(lua_source, "#include \"turbo_lua_bind.h\"");
+        check_str_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
+        check_str_contains(lua_source, "c11_lua_read_tbe_typed");
+      }
+
+      free(header);
+      free(lua_source);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should require typed metadata for Lua adapter output") {
+      const char *header_path = "test_tbe_compiler_lua_invalid.h";
+      const char *lua_path = "test_tbe_compiler_lua_invalid.c";
+      tbe_compiler_options_t options = {
+          .schema_path = SCHEMA_EXAMPLE_FILE,
+          .template_path = NULL,
+          .output_path = header_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(header_path);
+      cleanup_test_file(lua_path);
+      check(tbe_compiler_run(&options) != 0);
+      cleanup_test_file(header_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should generate schema-declared Lua operation callbacks") {
+      const char *schema_path = "test_tbe_compiler_lua_operation.tbe";
+      const char *header_path = "test_tbe_compiler_lua_operation.h";
+      const char *source_path = "test_tbe_compiler_lua_operation_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_operation.c";
+      const char *schema =
+          "schema Orders;"
+          "[lua_operation(create_order), lua_response(OrderResult)] "
+          "message CreateOrder { uint32 id; }"
+          "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(future)] "
+          "message FetchOrder { uint32 id; }"
+          "[lua_import(enrich_order), lua_response(OrderResult)] "
+          "message EnrichOrder { uint32 id; }"
+          "[lua_import(enrich_order_deferred), lua_response(OrderResult), lua_async(future)] "
+          "message AsyncEnrichOrder { uint32 id; }"
+          "message OrderResult { uint32 id; }";
+      size_t header_size = 0;
+      size_t lua_size = 0;
+      char *header = NULL;
+      char *lua_source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_int_eq(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      lua_source = tt_read_file(lua_path, &lua_size);
+      check_not_null(header);
+      check_not_null(lua_source);
+      if (header != NULL) {
+        check_str_contains(header, "typedef struct Orders_lua_api_s");
+        check_str_contains(header, "DataBindStatus (*create_order)");
+        check_str_contains(header, "typedef struct Orders_lua_fetch_order_async_s");
+        check_str_contains(header, "Orders_lua_fetch_order_async_t *operation");
+        check_str_contains(header, "void (*destroy)(void *state, int canceled)");
+        check_str_contains(header, "size_t max_pending_operations");
+        check(strstr(header, "turbo_coro") == NULL);
+        check(strstr(header, "coroutine_stack_size") == NULL);
+        check_str_contains(header, "Orders_lua_push_module");
+        check_str_contains(header, "typedef struct Orders_lua_client_s");
+        check_str_contains(header, "Orders_lua_client_create");
+        check_str_contains(header, "turbo_lua_executor_t *executor");
+        check_str_contains(header, "Orders_lua_client_close");
+        check_str_contains(header, "Orders_lua_client_enrich_order_on_owner");
+        check_str_contains(header, "Orders_lua_client_enrich_order_deferred_async");
+        check_str_contains(header, "Orders_lua_enrich_order_deferred_future_poll");
+      }
+      if (lua_source != NULL) {
+        check_str_contains(lua_source, "#include \"turbo_lua_bind.h\"");
+        check_str_contains(lua_source, "Orders_lua_call_create_order");
+        check_str_contains(lua_source, "Orders_lua_fetch_order_poll");
+        check_str_contains(lua_source, "Orders_lua_fetch_order_await");
+        check_str_contains(lua_source, "lua_yieldk");
+        check_str_contains(lua_source, "future->operation.poll");
+        check_str_contains(lua_source, "future->operation.destroy");
+        check(strstr(lua_source, "turbo_coro") == NULL);
+        check_str_contains(lua_source, "CreateOrder_from_lua");
+        check_str_contains(lua_source, "OrderResult_push_lua");
+        check_str_contains(lua_source, "Orders_lua_client_create");
+        check_str_contains(lua_source, "turbo_lua_executor_owner_state");
+        check_str_contains(lua_source, "turbo_lua_executor_is_owner");
+        check_str_contains(lua_source, "EnrichOrder_push_lua");
+        check_str_contains(lua_source, "OrderResult_from_lua");
+        check_str_contains(lua_source, "turbo_lua_executor_try_post");
+        check_str_contains(lua_source, "Orders_lua_enrich_order_deferred_dispatch");
+      }
+
+      free(header);
+      free(lua_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should generate a typed Lua client without host operations") {
+      const char *schema_path = "test_tbe_compiler_lua_import.tbe";
+      const char *header_path = "test_tbe_compiler_lua_import.h";
+      const char *source_path = "test_tbe_compiler_lua_import_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_import.c";
+      const char *schema =
+          "schema Rules;"
+          "[lua_import(evaluate), lua_response(Result)] "
+          "message Request { uint32 id; }"
+          "message Result { uint32 id; }";
+      size_t header_size = 0;
+      size_t lua_size = 0;
+      char *header = NULL;
+      char *lua_source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_int_eq(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      lua_source = tt_read_file(lua_path, &lua_size);
+      check_not_null(header);
+      check_not_null(lua_source);
+      if (header != NULL) {
+        check_str_contains(header, "typedef struct Rules_lua_limits_s");
+        check_str_contains(header, "typedef struct Rules_lua_client_s");
+        check_str_contains(header, "Rules_lua_client_close");
+        check_str_contains(header, "Rules_lua_client_evaluate_on_owner");
+      }
+      if (lua_source != NULL) {
+        check_str_contains(lua_source, "struct Rules_lua_client_s");
+        check_str_contains(lua_source, "Rules_lua_client_create");
+        check_str_contains(lua_source, "Request_push_lua");
+        check_str_contains(lua_source, "Result_from_lua");
+      }
+
+      free(header);
+      free(lua_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should generate Future operations without C coroutine dependencies") {
+      const char *schema_path = "test_tbe_compiler_lua_future.tbe";
+      const char *header_path = "test_tbe_compiler_lua_future.h";
+      const char *source_path = "test_tbe_compiler_lua_future_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_future.c";
+      const char *schema =
+          "schema Stateful;"
+          "[lua_operation(fetch), lua_response(Result), lua_async(future)] "
+          "message Request { uint32 id; }"
+          "message Result { uint32 id; }";
+      size_t header_size = 0;
+      size_t lua_size = 0;
+      char *header = NULL;
+      char *lua_source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_int_eq(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      lua_source = tt_read_file(lua_path, &lua_size);
+      check_not_null(header);
+      check_not_null(lua_source);
+      if (header != NULL) {
+        check_str_contains(header, "Stateful_lua_fetch_async_t");
+        check_str_contains(header, "size_t max_pending_operations");
+        check(strstr(header, "#include \"turbo_coro.h\"") == NULL);
+        check(strstr(header, "coroutine_stack_size") == NULL);
+      }
+      if (lua_source != NULL) {
+        check_str_contains(lua_source, "future->operation.poll");
+        check_str_contains(lua_source, "future->operation.destroy");
+        check(strstr(lua_source, "turbo_coro_pool") == NULL);
+      }
+
+      free(header);
+      free(lua_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should reject the removed turbo_coro async interface") {
+      const char *schema_path = "test_tbe_compiler_lua_async_invalid.tbe";
+      const char *header_path = "test_tbe_compiler_lua_async_invalid.h";
+      const char *source_path = "test_tbe_compiler_lua_async_invalid_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_async_invalid.c";
+      const char *schema =
+          "schema Orders;"
+          "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(turbo_coro)] "
+          "message FetchOrder { uint32 id; }"
+          "message OrderResult { uint32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check(tbe_compiler_run(&options) != 0);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should generate asynchronous Lua imports backed by the Lua executor") {
+      const char *schema_path = "test_tbe_compiler_lua_import_async.tbe";
+      const char *header_path = "test_tbe_compiler_lua_import_async.h";
+      const char *source_path = "test_tbe_compiler_lua_import_async_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_import_async.c";
+      const char *schema =
+          "schema Orders;"
+          "[lua_import(fetch_order), lua_response(OrderResult), lua_async(future)] "
+          "message FetchOrder { uint32 id; }"
+          "message OrderResult { uint32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_int_eq(tbe_compiler_run(&options), 0);
+      {
+        size_t header_size = 0;
+        size_t lua_size = 0;
+        char *header = tt_read_file(header_path, &header_size);
+        char *lua_source = tt_read_file(lua_path, &lua_size);
+        check_not_null(header);
+        check_not_null(lua_source);
+        if (header != NULL) {
+          check_str_contains(header, "typedef struct turbo_lua_executor turbo_lua_executor_t");
+          check_str_contains(header, "Orders_lua_client_close");
+          check_str_contains(header, "Orders_lua_client_fetch_order_async");
+          check_str_contains(header, "Orders_lua_fetch_order_future_poll");
+          check_str_contains(header, "Orders_lua_fetch_order_future_cancel");
+        }
+        if (lua_source != NULL) {
+          check_str_contains(lua_source, "tbe_typed_serialize_binary");
+          check_str_contains(lua_source, "turbo_lua_executor_try_post");
+          check_str_contains(lua_source, "Orders_lua_fetch_order_dispatch");
+        }
+        free(header);
+        free(lua_source);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should reject an unknown Lua operation response type") {
+      const char *schema_path = "test_tbe_compiler_lua_operation_invalid.tbe";
+      const char *header_path = "test_tbe_compiler_lua_operation_invalid.h";
+      const char *source_path = "test_tbe_compiler_lua_operation_invalid_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_operation_invalid.c";
+      const char *schema =
+          "schema Orders;"
+          "[lua_operation(create_order), lua_response(Missing)] "
+          "message CreateOrder { uint32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_int_eq(write_test_file(schema_path, schema), 0);
+      check(tbe_compiler_run(&options) != 0);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
     it("should reject duplicate c field annotations in typed C output") {
       const char *schema_path = "test_tbe_compiler_c_collision.tbe";
       const char *header_path = "test_tbe_compiler_c_collision.h";
