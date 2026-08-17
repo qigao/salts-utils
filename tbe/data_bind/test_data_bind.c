@@ -1640,4 +1640,78 @@ suite("Data Bind") {
       remove("test_dynamic_group_bind.tbe");
     }
   }
+
+  section("Strict all-binding failures") {
+    given("a schema and codec") {
+      write_schema("test_strict_all.tbe",
+                   "message Book { uint32 id; string title; }\n");
+      DataBind *codec = data_bind_create("test_strict_all.tbe");
+
+      when("one JSON array item does not bind") {
+        DataBindValue *value = NULL;
+        DataBindError err = DATA_BIND_ERROR_INIT;
+        const char *json = "[{\"id\":1,\"title\":\"a\"},{\"id\":\"bad\",\"title\":\"b\"}]";
+        DataBindStatus status =
+            (data_bind_parse_json_all)(codec, "Book", json, strlen(json), &value, &err);
+        then("the whole parse fails with a type mismatch") {
+          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_null(value);
+        }
+      }
+
+      when("one JSONPath-selected value does not bind") {
+        DataBindValue *value = NULL;
+        DataBindError err = DATA_BIND_ERROR_INIT;
+        const char *json =
+            "{\"payload\":[{\"id\":1,\"title\":\"a\"},{\"id\":true,\"title\":\"b\"}]}";
+        DataBindStatus status = (data_bind_parse_json_path_all)(
+            codec, "Book", json, strlen(json), "$.payload[*]", &value, &err);
+        then("the whole parse fails with a type mismatch") {
+          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_null(value);
+        }
+      }
+
+      when("one CSV row does not bind") {
+        DataBindValue *value = NULL;
+        DataBindError err = DATA_BIND_ERROR_INIT;
+        const char *csv = "id,title\n1,ok\nbad,row\n";
+        DataBindStatus status =
+            (data_bind_parse_csv_all)(codec, "Book", csv, strlen(csv), &value, &err);
+        then("the whole parse fails with a type mismatch") {
+          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_null(value);
+        }
+      }
+
+      when("one XMLPath-selected node does not bind") {
+        DataBindValue *value = NULL;
+        DataBindError err = DATA_BIND_ERROR_INIT;
+        const char *xml =
+            "<books><book><id>1</id><title>a</title></book>"
+            "<book><id>bad</id><title>b</title></book></books>";
+        DataBindStatus status = (data_bind_parse_xml_path_all)(
+            codec, "Book", xml, strlen(xml), "//book", &value, &err);
+        then("the whole parse fails with a type mismatch") {
+          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_null(value);
+        }
+      }
+
+      then("valid inputs still bind every item") {
+        DataBindValue *value = NULL;
+        DataBindError err = DATA_BIND_ERROR_INIT;
+        const char *json = "[{\"id\":1,\"title\":\"a\"},{\"id\":2,\"title\":\"b\"}]";
+        check_int_eq(
+            (data_bind_parse_json_all)(codec, "Book", json, strlen(json), &value, &err),
+            DATA_BIND_OK);
+        check_not_null(value);
+        check_size_eq(data_bind_value_count(value), 2);
+        data_bind_value_free(value);
+      }
+
+      data_bind_free(codec);
+      remove("test_strict_all.tbe");
+    }
+  }
 }

@@ -374,35 +374,5 @@ suite("bench TBE encode/decode") {
       }
     }
 
-    // ========================================
-    // Summary
-    // ========================================
-    printf("\n");
-    printf("=== TBE vs JSON Performance Summary ===\n");
-    printf("\n");
-    printf("Encoding (1M iterations):\n");
-    printf("  TBE:  ~0.05 μs per message\n");
-    printf("  JSON: ~5.0 μs per message\n");
-    printf("  Speedup: 100x faster\n");
-    printf("\n");
-    printf("Decoding (1M iterations):\n");
-    printf("  TBE:  ~0.03 μs per message\n");
-    printf("  JSON: ~10.0 μs per message\n");
-    printf("  Speedup: 300x faster\n");
-    printf("\n");
-    printf("Payload Size:\n");
-    printf("  TBE:  32 bytes\n");
-    printf("  JSON: 120 bytes\n");
-    printf("  Reduction: 73%% smaller\n");
-    printf("\n");
-    printf("Memory Allocation:\n");
-    printf("  TBE:  0 allocations (zero-copy)\n");
-    printf("  JSON: 2+ allocations per message\n");
-    printf("\n");
-    printf("Throughput (10,000 messages):\n");
-    printf("  TBE:  ~1 ms total\n");
-    printf("  JSON: ~150 ms total\n");
-    printf("  Speedup: 150x faster\n");
-    printf("\n");
   }
 }

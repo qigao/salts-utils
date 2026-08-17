@@ -42,13 +42,6 @@ typedef struct turbo_node_s {
   } data;
 } turbo_node_t;
 
-/**
- * @brief Dynamic node tree for Mustache data binding.
- *
- * Provides a simple tree data structure that can represent strings, lists,
- * and maps — exactly what the Mustache template engine needs as input.
- */
-
 typedef turbo_node_type_t NodeType;
 typedef turbo_node_t Node;
 

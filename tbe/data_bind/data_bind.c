@@ -9,6 +9,7 @@
 #include "monocypher.h"
 #include "node_tree.h"
 #include "re.h"
+#include "schema_builtin_type.h"
 #include "schema_parser_dsl.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
@@ -52,24 +53,6 @@ typedef struct {
   unsigned char is_float : 1;
   unsigned char is_64 : 1;
 } type_meta_t;
-static const type_meta_t TYPE_METAS[] = {
-    {"uint8_t", 1, DB_WIRE_U8, 0, 0},   {"uint8", 1, DB_WIRE_U8, 0, 0},
-    {"u8", 1, DB_WIRE_U8, 0, 0},        {"byte", 1, DB_WIRE_U8, 0, 0},
-    {"int8_t", 1, DB_WIRE_I8, 0, 0},    {"int8", 1, DB_WIRE_I8, 0, 0},
-    {"i8", 1, DB_WIRE_I8, 0, 0},
-    {"uint16_t", 2, DB_WIRE_U16, 0, 0}, {"uint16", 2, DB_WIRE_U16, 0, 0},
-    {"u16", 2, DB_WIRE_U16, 0, 0},      {"int16_t", 2, DB_WIRE_I16, 0, 0},
-    {"int16", 2, DB_WIRE_I16, 0, 0},    {"i16", 2, DB_WIRE_I16, 0, 0},
-    {"uint32_t", 4, DB_WIRE_U32, 0, 0},
-    {"uint32", 4, DB_WIRE_U32, 0, 0},   {"u32", 4, DB_WIRE_U32, 0, 0},
-    {"int32_t", 4, DB_WIRE_I32, 0, 0},  {"int32", 4, DB_WIRE_I32, 0, 0},
-    {"i32", 4, DB_WIRE_I32, 0, 0},      {"uint64_t", 8, DB_WIRE_U64, 0, 1},
-    {"uint64", 8, DB_WIRE_U64, 0, 1},   {"u64", 8, DB_WIRE_U64, 0, 1},
-    {"int64_t", 8, DB_WIRE_I64, 0, 1},  {"int64", 8, DB_WIRE_I64, 0, 1},
-    {"i64", 8, DB_WIRE_I64, 0, 1},
-    {"float", 4, DB_WIRE_F32, 1, 0},    {"f32", 4, DB_WIRE_F32, 1, 0},
-    {"double", 8, DB_WIRE_F64, 1, 0},   {"f64", 8, DB_WIRE_F64, 1, 0},
-    {"bool", 1, DB_WIRE_U8, 0, 0},      {NULL, 0, DB_WIRE_UNDEFINED, 0, 0}};
 
 /* Small object pool for frequently allocated DataBindValue nodes */
 #define VALUE_POOL_SIZE 64
@@ -98,7 +81,7 @@ static _Atomic(DataBindValue *) g_value_pool_slots[VALUE_POOL_SIZE];
 static uintptr_t g_value_pool_closed_slot_storage;
 #define VALUE_POOL_CLOSED_SLOT ((DataBindValue *)(void *)&g_value_pool_closed_slot_storage)
 
-enum value_pool_state { VALUE_POOL_DISABLED = 0, VALUE_POOL_ENABLED, VALUE_POOL_SUSPENDED };
+enum value_pool_state { VALUE_POOL_DISABLED = 0, VALUE_POOL_ENABLED };
 
 static turbo_mutex_t g_value_pool_control_mutex;
 static atomic_int g_value_pool_state = VALUE_POOL_ENABLED;
@@ -116,15 +99,19 @@ static int value_pool_is_enabled(void) {
 }
 
 static DataBindValue *value_pool_take(void) {
-  uint64_t ready = atomic_load_explicit(&g_value_pool_ready_mask, memory_order_acquire);
-  size_t offset;
-  size_t start = g_value_pool_take_cursor;
-  while (ready != 0) {
-    uint64_t desired;
-    uint64_t bit;
+  size_t attempts;
+
+  /* Bounded rescan: a benign concurrent claim falls back to direct allocation
+   * instead of mutating the process-global pool policy. */
+  for (attempts = 0; attempts < VALUE_POOL_SIZE * 2u; ++attempts) {
+    uint64_t ready = atomic_load_explicit(&g_value_pool_ready_mask, memory_order_acquire);
+    size_t offset;
+    size_t start = g_value_pool_take_cursor;
+    uint64_t bit = 0;
     size_t slot = 0;
     DataBindValue *value;
 
+    if (ready == 0) return NULL;
     for (offset = 0; offset < VALUE_POOL_SIZE; ++offset) {
       slot = (start + offset) % VALUE_POOL_SIZE;
       bit = UINT64_C(1) << slot;
@@ -132,13 +119,10 @@ static DataBindValue *value_pool_take(void) {
     }
     if (offset == VALUE_POOL_SIZE) return NULL;
 
-    desired = ready & ~bit;
-    if (!atomic_compare_exchange_strong_explicit(&g_value_pool_ready_mask, &ready, desired,
+    if (!atomic_compare_exchange_strong_explicit(&g_value_pool_ready_mask, &ready, ready & ~bit,
                                                  memory_order_acq_rel, memory_order_acquire)) {
-      int expected = VALUE_POOL_ENABLED;
-      atomic_compare_exchange_strong_explicit(&g_value_pool_state, &expected, VALUE_POOL_SUSPENDED,
-                                              memory_order_release, memory_order_relaxed);
-      return NULL;
+      /* Another take or the disable path changed the bitmap; rescan. */
+      continue;
     }
 
     value = atomic_load_explicit(&g_value_pool_slots[slot], memory_order_acquire);
@@ -148,7 +132,8 @@ static DataBindValue *value_pool_take(void) {
       g_value_pool_take_cursor = (slot + 1U) % VALUE_POOL_SIZE;
       return value;
     }
-    ready = atomic_load_explicit(&g_value_pool_ready_mask, memory_order_acquire);
+    /* The claimed slot was closed or raced away; the cleared bit keeps the
+     * scan making progress. */
   }
   return NULL;
 }
@@ -390,12 +375,52 @@ struct emit_field {
   emit_field_array_t children;
 };
 
+/* Derived view over the shared schema_builtin_type.h table. The init writes are
+ * idempotent, so a concurrent duplicate init is benign; the array and the table
+ * never move afterwards. */
+#define TYPE_META_COUNT (sizeof(SCHEMA_BUILTIN_TYPES) / sizeof(SCHEMA_BUILTIN_TYPES[0]))
+static type_meta_t g_type_metas[TYPE_META_COUNT];
+static atomic_int g_type_metas_ready = 0;
+
+static data_bind_wire_type_t db_wire_type_from_reader(const char *reader) {
+  if (reader == NULL) return DB_WIRE_UNDEFINED;
+  if (strcmp(reader, "u8") == 0) return DB_WIRE_U8;
+  if (strcmp(reader, "i8") == 0) return DB_WIRE_I8;
+  if (strcmp(reader, "u16") == 0) return DB_WIRE_U16;
+  if (strcmp(reader, "i16") == 0) return DB_WIRE_I16;
+  if (strcmp(reader, "u32") == 0) return DB_WIRE_U32;
+  if (strcmp(reader, "i32") == 0) return DB_WIRE_I32;
+  if (strcmp(reader, "u64") == 0) return DB_WIRE_U64;
+  if (strcmp(reader, "i64") == 0) return DB_WIRE_I64;
+  if (strcmp(reader, "f32") == 0) return DB_WIRE_F32;
+  if (strcmp(reader, "f64") == 0) return DB_WIRE_F64;
+  return DB_WIRE_UNDEFINED;
+}
+
 static const type_meta_t *find_type_meta(const char *type) {
-  const type_meta_t *m;
-  if (type == NULL) return NULL;
-  for (m = TYPE_METAS; m->name != NULL; m++)
-    if (strcmp(type, m->name) == 0) return m;
-  return NULL;
+  const schema_builtin_type_info_t *info = schema_builtin_type_find(type);
+  size_t index;
+  size_t i;
+  if (info == NULL) return NULL;
+  if (!atomic_load_explicit(&g_type_metas_ready, memory_order_acquire)) {
+    turbo_once(&g_value_pool_once, value_pool_init_once);
+    turbo_mutex_lock(&g_value_pool_control_mutex);
+    if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
+      for (i = 0; i < TYPE_META_COUNT; ++i) {
+        const schema_builtin_type_info_t *src = &SCHEMA_BUILTIN_TYPES[i];
+        g_type_metas[i].name = src->name;
+        g_type_metas[i].size = (int)src->size;
+        g_type_metas[i].wire_type = db_wire_type_from_reader(src->wire_reader);
+        g_type_metas[i].is_float = src->is_float;
+        g_type_metas[i].is_64 =
+            (g_type_metas[i].wire_type == DB_WIRE_U64 || g_type_metas[i].wire_type == DB_WIRE_I64);
+      }
+      atomic_store_explicit(&g_type_metas_ready, 1, memory_order_release);
+    }
+    turbo_mutex_unlock(&g_value_pool_control_mutex);
+  }
+  index = (size_t)(info - SCHEMA_BUILTIN_TYPES);
+  return &g_type_metas[index];
 }
 
 static char *dbv_strdup(const char *src) {
@@ -5329,13 +5354,11 @@ void data_bind_set_value_pool_enabled(int enabled) {
   if (enabled) {
     int state = atomic_load_explicit(&g_value_pool_state, memory_order_relaxed);
     if (state != VALUE_POOL_ENABLED) {
-      if (state == VALUE_POOL_DISABLED) {
-        atomic_store_explicit(&g_value_pool_ready_mask, 0, memory_order_relaxed);
-        for (i = 0; i < VALUE_POOL_SIZE; ++i) {
-          DataBindValue *expected = VALUE_POOL_CLOSED_SLOT;
-          atomic_compare_exchange_strong_explicit(&g_value_pool_slots[i], &expected, NULL,
-                                                  memory_order_release, memory_order_relaxed);
-        }
+      atomic_store_explicit(&g_value_pool_ready_mask, 0, memory_order_relaxed);
+      for (i = 0; i < VALUE_POOL_SIZE; ++i) {
+        DataBindValue *expected = VALUE_POOL_CLOSED_SLOT;
+        atomic_compare_exchange_strong_explicit(&g_value_pool_slots[i], &expected, NULL,
+                                                memory_order_release, memory_order_relaxed);
       }
       atomic_store_explicit(&g_value_pool_state, VALUE_POOL_ENABLED, memory_order_release);
     }
@@ -7911,13 +7934,16 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
       for (i = 0; i < turbo_json_array_size(root); i++) {
         DataBindValue *item =
             bind_json_typed_value(codec->schema_root, type_name, turbo_json_array_get(root, i));
-        if (item != NULL) {
-          if (!dbv_array_push(&list->data.array_val, item)) {
-            data_bind_value_free(item);
-            data_bind_value_free(list);
-            list = NULL;
-            break;
-          }
+        if (item == NULL) {
+          data_bind_value_free(list);
+          list = NULL;
+          break;
+        }
+        if (!dbv_array_push(&list->data.array_val, item)) {
+          data_bind_value_free(item);
+          data_bind_value_free(list);
+          list = NULL;
+          break;
         }
       }
     } else {
@@ -8080,27 +8106,44 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
                             : (path_error ? path_error : "invalid path"));
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
-  if (list != NULL && matches != NULL) {
-    for (i = 0; i < turbo_json_path_result_size(matches); i++) {
-      json_value_t *matched = turbo_json_path_result_get(matches, i);
-      DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, matched);
-      if (item != NULL) {
-        if (!dbv_array_push(&list->data.array_val, item)) {
-          data_bind_value_free(item);
-          data_bind_value_free(list);
-          list = NULL;
-          break;
-        }
-      }
-    }
-  }
-  if (matches != NULL) turbo_json_path_result_free(matches);
-  turbo_free_json(&root);
   if (list == NULL) {
+    if (matches != NULL) turbo_json_path_result_free(matches);
+    turbo_free_json(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
                         "Out of memory binding JSONPath result");
   }
+  if (matches != NULL) {
+    DataBindStatus failure = DATA_BIND_ERR_TYPE_MISMATCH;
+    for (i = 0; i < turbo_json_path_result_size(matches); i++) {
+      json_value_t *matched = turbo_json_path_result_get(matches, i);
+      DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, matched);
+      if (item == NULL) {
+        data_bind_value_free(list);
+        list = NULL;
+        break;
+      }
+      if (!dbv_array_push(&list->data.array_val, item)) {
+        data_bind_value_free(item);
+        data_bind_value_free(list);
+        list = NULL;
+        failure = DATA_BIND_ERR_OOM;
+        break;
+      }
+    }
+    if (list == NULL) {
+      turbo_json_path_result_free(matches);
+      turbo_free_json(&root);
+      db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
+      if (failure == DATA_BIND_ERR_OOM)
+        return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
+                            "Out of memory binding JSONPath result");
+      return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
+                          "JSONPath bind_all failed for type: %s", type_name);
+    }
+  }
+  if (matches != NULL) turbo_json_path_result_free(matches);
+  turbo_free_json(&root);
   *out_value = list;
   db_error_clear(error);
   return DATA_BIND_OK;
@@ -8340,13 +8383,16 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
       for (row = 0; row < turbo_csv_row_count(doc); row++) {
         DataBindValue *item =
             bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
-        if (item != NULL) {
-          if (!dbv_array_push(&list->data.array_val, item)) {
-            data_bind_value_free(item);
-            data_bind_value_free(list);
-            list = NULL;
-            break;
-          }
+        if (item == NULL) {
+          data_bind_value_free(list);
+          list = NULL;
+          break;
+        }
+        if (!dbv_array_push(&list->data.array_val, item)) {
+          data_bind_value_free(item);
+          data_bind_value_free(list);
+          list = NULL;
+          break;
         }
       }
     }
@@ -8573,13 +8619,16 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
           break;
         }
         item = bind_xml_typed_value(codec->schema_root, type_name, doc, item_path);
-        if (item != NULL) {
-          if (!dbv_array_push(&list->data.array_val, item)) {
-            data_bind_value_free(item);
-            data_bind_value_free(list);
-            list = NULL;
-            break;
-          }
+        if (item == NULL) {
+          data_bind_value_free(list);
+          list = NULL;
+          break;
+        }
+        if (!dbv_array_push(&list->data.array_val, item)) {
+          data_bind_value_free(item);
+          data_bind_value_free(list);
+          list = NULL;
+          break;
         }
       }
       turbo_xml_list_free(&nodes);

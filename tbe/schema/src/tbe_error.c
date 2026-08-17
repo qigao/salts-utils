@@ -3,7 +3,6 @@
 #include <stdio.h>
 
 #define TBE_ERROR_MSG_MAX_LEN 255  // Leave room for null terminator
-#define TBE_MAX_PARSE_DEPTH 100   // Maximum nesting depth for schema parsing
 
 const char *tbe_error_string(tbe_error_code_t code) {
     switch (code) {

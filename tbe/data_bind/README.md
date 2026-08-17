@@ -52,13 +52,14 @@ JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前
 
 ## Schema 注解标准
 
-字段映射由 schema 注解表达：
+字段映射通过 schema 注解定义：
 
 ```text
 schema Trading [name("trading.v1")];
 
 message Order {
-  [name("orderId"), alias("id"), alias("order_id"), c(order_id)] uint64 id;
+  [name("orderId"), alias("id"), alias("order_id"), c(order_id)] 
+  uint64 id;
   [name("symbol")] string symbol;
 }
 ```
@@ -66,6 +67,18 @@ message Order {
 - `[name("orderId")]`：规范外部名称；序列化始终输出它。
 - `[alias("id")]`：仅用于反序列化输入，可重复。
 - `[c(order_id)]`：生成代码中的 C 成员名；现有 struct descriptor 显式写成员。
+
+### 注解换行约定
+
+- `[]` 内部的注解采用 token 解析，空白与换行可任意分隔：和示例里写在同一行、或按可读性拆成多行都有效。
+- 建议把属性按一条语句内保持紧凑，字段与类型在同一行；但如属性较长，按换行排版以提升可读性。
+
+```text
+message Order {
+  [name("orderId"), alias("id"),alias("order_id"),c(order_id)]
+  uint64 id;
+}
+```
 
 调用普通 `data_bind_object_serialize_*()` 或 `tbe_typed_serialize()` 即应用映射，
 不再存在单独的 `_mapped` 序列化入口。

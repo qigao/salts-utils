@@ -42,7 +42,9 @@ static const schema_builtin_type_info_t SCHEMA_BUILTIN_TYPES[] = {
     {"int64", 8, "i64", "int64_t", 1, 0, 0},
     {"i64", 8, "i64", "int64_t", 1, 0, 0},
     {"float", 4, "f32", "float", 0, 0, 1},
+    {"f32", 4, "f32", "float", 0, 0, 1},
     {"double", 8, "f64", "double", 0, 0, 1},
+    {"f64", 8, "f64", "double", 0, 0, 1},
 };
 
 static inline const schema_builtin_type_info_t *schema_builtin_type_find(const char *name) {

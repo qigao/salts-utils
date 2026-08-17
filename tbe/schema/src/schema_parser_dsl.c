@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <limits.h>
 
+#define SCHEMA_MAX_TEXT_BYTES (10u * 1024u * 1024u)
+
 /*
  * Forward declarations for the lemon-generated parser.
  * The generated code provides these functions:
@@ -120,6 +122,50 @@ static int parse_size_text(const char *text, size_t *out) {
 
     *out = (size_t)value;
     return 1;
+}
+
+static int parse_size_text_strict(const char *text, size_t *out) {
+    char *end = NULL;
+    unsigned long long value;
+    if (!text || !out || text[0] == '\0') {
+        return 0;
+    }
+
+    errno = 0;
+    value = strtoull(text, &end, 10);
+    if (errno != 0 || !end || end == text || *end != '\0') {
+        return 0;
+    }
+    if (value > SIZE_MAX) {
+        return 0;
+    }
+
+    *out = (size_t)value;
+    return 1;
+}
+
+static int annotate_result(int result) {
+    return result < 0 ? -1 : 0;
+}
+
+static int annotate_add_string(Node *map, const char *name, const char *value) {
+    Node *node;
+    if (!map || name == NULL || value == NULL) {
+        return -1;
+    }
+    node = create_node_string(name, value);
+    if (node == NULL) {
+        return -1;
+    }
+    if (map_add(map, node) != 0) {
+        node_free(node);
+        return -1;
+    }
+    return 0;
+}
+
+static int annotate_add_true(Node *map, const char *name) {
+    return annotate_add_string(map, name, "1");
 }
 
 static int map_set_string(Node *map, const char *name, const char *value) {
@@ -371,25 +417,30 @@ static int annotate_record_layout(const Node *root, Node *record) {
         }
 
         result = map_set_size(field, "offset", offset);
+        if (result < 0) return -1;
         changed |= (result > 0);
         result = map_set_true(field, "has_offset");
+        if (result < 0) return -1;
         changed |= (result > 0);
         result = map_set_size(field, "field_size_bytes", field_size);
+        if (result < 0) return -1;
         changed |= (result > 0);
         offset += field_size;
     }
 
     if (!unresolved_prefix) {
         result = map_set_size(record, "fixed_block_size", offset);
+        if (result < 0) return -1;
         changed |= (result > 0);
         result = map_set_true(record, "has_fixed_block_size");
+        if (result < 0) return -1;
         changed |= (result > 0);
     }
 
     return changed;
 }
 
-static void annotate_wire_constants(Node *root) {
+static int annotate_wire_constants(Node *root) {
     static const char *record_lists[] = { "composites", "groups", "messages" };
     Node *schema = map_find_named_child(root, "schema");
     const char *schema_name = schema ? map_find_string_value(schema, "schema_name") : NULL;
@@ -412,16 +463,22 @@ static void annotate_wire_constants(Node *root) {
             Node *record = list->data.list.items[i];
             Node *fields = map_find_named_child(record, "fields");
 
-            map_set_string(record, "wire_endian_const", wire_name);
+            if (annotate_result(map_set_string(record, "wire_endian_const", wire_name)) != 0) {
+                return -1;
+            }
             if (!fields || fields->type != NODE_LIST) {
                 continue;
             }
 
             for (size_t field_index = 0; field_index < fields->data.list.count; ++field_index) {
-                map_set_string(fields->data.list.items[field_index], "wire_endian_const", wire_name);
+                if (annotate_result(map_set_string(fields->data.list.items[field_index],
+                                                   "wire_endian_const", wire_name)) != 0) {
+                    return -1;
+                }
             }
         }
     }
+    return 0;
 }
 
 static Node *find_group_by_name(const Node *root, const char *name) {
@@ -461,7 +518,7 @@ static int record_has_only_fixed_fields(const Node *record) {
     return 1;
 }
 
-static void annotate_group_cursors(Node *root) {
+static int annotate_group_cursors(Node *root) {
     static const char *record_lists[] = { "composites", "groups", "messages" };
     Node *groups = map_find_named_child(root, "groups");
 
@@ -474,8 +531,8 @@ static void annotate_group_cursors(Node *root) {
                 continue;
             }
 
-            map_set_true(group, "supports_group_cursor");
-            map_set_size(group, "group_dimension_size", 4);
+            if (annotate_result(map_set_true(group, "supports_group_cursor")) != 0) return -1;
+            if (annotate_result(map_set_size(group, "group_dimension_size", 4)) != 0) return -1;
         }
     }
 
@@ -517,21 +574,29 @@ static void annotate_group_cursors(Node *root) {
                 supported = group_record && map_has_named_child(group_record, "supports_group_cursor");
 
                 if (supported) {
-                    map_set_true(field, "supports_group_cursor");
-                    map_set_size(field, "group_dimension_size", 4);
+                    if (annotate_result(map_set_true(field, "supports_group_cursor")) != 0)
+                        return -1;
+                    if (annotate_result(map_set_size(field, "group_dimension_size", 4)) != 0)
+                        return -1;
                 }
 
                 if (!previous_group_name) {
-                    map_set_true(field, "is_first_group_field");
+                    if (annotate_result(map_set_true(field, "is_first_group_field")) != 0)
+                        return -1;
                 } else {
-                    map_set_string(field, "previous_group_field_name", previous_group_name);
+                    if (annotate_result(map_set_string(field, "previous_group_field_name",
+                                                       previous_group_name)) != 0)
+                        return -1;
                     if (previous_group_type) {
-                        map_set_string(field, "previous_group_type", previous_group_type);
+                        if (annotate_result(map_set_string(field, "previous_group_type",
+                                                           previous_group_type)) != 0)
+                            return -1;
                     }
                 }
 
                 if (supported && previous_group_supported) {
-                    map_set_true(field, "group_cursor_accessible");
+                    if (annotate_result(map_set_true(field, "group_cursor_accessible")) != 0)
+                        return -1;
                 }
 
                 previous_group_name = map_find_string_value(field, "name");
@@ -540,9 +605,10 @@ static void annotate_group_cursors(Node *root) {
             }
         }
     }
+    return 0;
 }
 
-static void annotate_var_data_accessors(Node *root) {
+static int annotate_var_data_accessors(Node *root) {
     static const char *record_lists[] = { "groups", "messages" };
 
     for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
@@ -583,29 +649,40 @@ static void annotate_var_data_accessors(Node *root) {
                 }
 
                 if (!previous_var_data_name && map_has_named_child(record, "has_fixed_block_size")) {
-                    map_set_true(field, "is_first_var_data_field");
+                    if (annotate_result(map_set_true(field, "is_first_var_data_field")) != 0)
+                        return -1;
                 }
 
                 if (previous_var_data_name) {
                     if (previous_var_data_accessible) {
-                        map_set_true(field, "var_data_from_previous_var_data");
-                        map_set_string(field, "previous_var_data_field_name", previous_var_data_name);
+                        if (annotate_result(map_set_true(field, "var_data_from_previous_var_data")) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_var_data_field_name",
+                                                           previous_var_data_name)) != 0)
+                            return -1;
                         accessible = 1;
                     }
                 } else if (previous_group_name) {
                     if (previous_group_accessible && previous_group_type) {
-                        map_set_true(field, "var_data_from_previous_group");
-                        map_set_string(field, "previous_group_field_name", previous_group_name);
-                        map_set_string(field, "previous_group_type", previous_group_type);
+                        if (annotate_result(map_set_true(field, "var_data_from_previous_group")) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_group_field_name",
+                                                           previous_group_name)) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_group_type",
+                                                           previous_group_type)) != 0)
+                            return -1;
                         accessible = 1;
                     }
                 } else {
-                    map_set_true(field, "var_data_from_block_length");
+                    if (annotate_result(map_set_true(field, "var_data_from_block_length")) != 0)
+                        return -1;
                     accessible = map_has_named_child(record, "has_fixed_block_size");
                 }
 
                 if (accessible) {
-                    map_set_true(field, "var_data_accessor_accessible");
+                    if (annotate_result(map_set_true(field, "var_data_accessor_accessible")) != 0)
+                        return -1;
                 }
 
                 field_name = map_find_string_value(field, "name");
@@ -614,9 +691,10 @@ static void annotate_var_data_accessors(Node *root) {
             }
         }
     }
+    return 0;
 }
 
-static void annotate_optional_fields(Node *root) {
+static int annotate_optional_fields(Node *root) {
     static const char *record_lists[] = { "messages", "composites", "groups" };
     
     for (size_t list_idx = 0; list_idx < sizeof(record_lists) / sizeof(record_lists[0]); ++list_idx) {
@@ -649,44 +727,53 @@ static void annotate_optional_fields(Node *root) {
 
             if (optional_count > 0) {
                 // 添加has_optional_fields标记
-                map_add(record, create_node_string("has_optional_fields", "1"));
+                if (annotate_add_true(record, "has_optional_fields") != 0) return -1;
                 
                 // 添加可选字段数量
                 char count_str[32];
                 snprintf(count_str, sizeof(count_str), "%zu", optional_count);
-                map_add(record, create_node_string("optional_field_count", count_str));
+                if (annotate_add_string(record, "optional_field_count", count_str) != 0) return -1;
                 
                 // 计算位图大小（按字节）
                 size_t bitmap_bytes = (optional_count + 7) / 8;
                 char bitmap_size_str[32];
                 snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", bitmap_bytes);
-                map_add(record, create_node_string("presence_bitmap_bytes", bitmap_size_str));
+                if (annotate_add_string(record, "presence_bitmap_bytes", bitmap_size_str) != 0)
+                    return -1;
 
                 // 调整固定块大小以包含位图
                 const char *original_block_size_str = map_find_string_value(record, "fixed_block_size");
                 if (original_block_size_str) {
-                    size_t original_size = (size_t)strtoul(original_block_size_str, NULL, 10);
-                    size_t new_size = original_size + bitmap_bytes;
+                    size_t original_size;
+                    size_t new_size;
+                    if (!parse_size_text_strict(original_block_size_str, &original_size)) return -1;
+                    if (bitmap_bytes > SIZE_MAX - original_size) return -1;
+                    new_size = original_size + bitmap_bytes;
                     char new_size_str[32];
                     snprintf(new_size_str, sizeof(new_size_str), "%zu", new_size);
                     
                     // 更新固定块大小
                     map_remove_named_children(record, "fixed_block_size");
-                    map_add(record, create_node_string("fixed_block_size", new_size_str));
+                    if (annotate_add_string(record, "fixed_block_size", new_size_str) != 0)
+                        return -1;
                     
                     // 为所有有偏移的字段调整偏移量
                     for (size_t j = 0; j < fields->data.list.count; ++j) {
                         Node *field = fields->data.list.items[j];
                         const char *offset_str = map_find_string_value(field, "offset");
                         if (offset_str) {
-                            size_t original_offset = (size_t)strtoul(offset_str, NULL, 10);
-                            size_t new_offset = original_offset + bitmap_bytes;
+                            size_t original_offset;
+                            size_t new_offset;
+                            if (!parse_size_text_strict(offset_str, &original_offset)) return -1;
+                            if (bitmap_bytes > SIZE_MAX - original_offset) return -1;
+                            new_offset = original_offset + bitmap_bytes;
                             char new_offset_str[32];
                             snprintf(new_offset_str, sizeof(new_offset_str), "%zu", new_offset);
                             
                             // 更新字段偏移
                             map_remove_named_children(field, "offset");
-                            map_add(field, create_node_string("offset", new_offset_str));
+                            if (annotate_add_string(field, "offset", new_offset_str) != 0)
+                                return -1;
                         }
                     }
                 }
@@ -694,6 +781,11 @@ static void annotate_optional_fields(Node *root) {
                 // 创建可选字段列表
                 Node *optional_fields_list = create_node_list("optional_fields");
                 Node *default_fields_list = create_node_list("default_value_fields");
+                if (optional_fields_list == NULL || default_fields_list == NULL) {
+                    node_free(optional_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
                 
                 size_t optional_index = 0;
                 for (size_t j = 0; j < fields->data.list.count; ++j) {
@@ -704,35 +796,73 @@ static void annotate_optional_fields(Node *root) {
                         Node *optional_field = create_node_map(NULL);
                         const char *field_name = map_find_string_value(field, "name");
                         const char *owner_name = map_find_string_value(field, "owner_name");
+                        if (optional_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                         
-                        map_add(optional_field, create_node_string("name", field_name ? field_name : ""));
-                        map_add(optional_field, create_node_string("owner_name", owner_name ? owner_name : ""));
+                        if (annotate_add_string(optional_field, "name",
+                                                field_name ? field_name : "") != 0 ||
+                            annotate_add_string(optional_field, "owner_name",
+                                                owner_name ? owner_name : "") != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                         
                         char bit_index_str[32];
                         snprintf(bit_index_str, sizeof(bit_index_str), "%zu", optional_index);
                         map_remove_named_children(field, "optional_bit_index");
-                        map_add(field, create_node_string("optional_bit_index", bit_index_str));
-                        map_add(optional_field, create_node_string("optional_bit_index", bit_index_str));
+                        if (annotate_add_string(field, "optional_bit_index", bit_index_str) != 0 ||
+                            annotate_add_string(optional_field, "optional_bit_index",
+                                                bit_index_str) != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                         
                         // 添加last标记
                         if (optional_index == optional_count - 1) {
-                            map_add(optional_field, create_node_string("last", "1"));
+                            if (annotate_add_true(optional_field, "last") != 0) {
+                                node_free(optional_field);
+                                node_free(optional_fields_list);
+                                node_free(default_fields_list);
+                                return -1;
+                            }
                         }
                         
-                        list_add(optional_fields_list, optional_field);
+                        if (list_add(optional_fields_list, optional_field) != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                         optional_index++;
                     }
                     
                     if (map_find_named_child(field, "has_default")) {
                         // 创建默认值字段条目（复制字段信息）
                         Node *default_field = create_node_map(NULL);
+                        if (default_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                         
                         // 复制所有字段属性
                         for (size_t k = 0; k < field->data.map.count; ++k) {
                             Node *attr = field->data.map.items[k];
                             if (attr->name) {
                                 const char *value = attr->type == NODE_STRING ? attr->data.string_val : "";
-                                map_add(default_field, create_node_string(attr->name, value));
+                                if (annotate_add_string(default_field, attr->name, value) != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
                             }
                         }
                         
@@ -742,12 +872,27 @@ static void annotate_optional_fields(Node *root) {
                         
                         if (default_value && field_type) {
                             if (strcmp(field_type, "string") == 0) {
-                                map_add(default_field, create_node_string("is_string", "1"));
+                                if (annotate_add_true(default_field, "is_string") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
                             } else if (strstr(field_type, "uint") || strstr(field_type, "int") || 
                                      strstr(field_type, "float") || strstr(field_type, "double")) {
-                                map_add(default_field, create_node_string("is_numeric", "1"));
+                                if (annotate_add_true(default_field, "is_numeric") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
                             } else if (strcmp(default_value, "true") == 0 || strcmp(default_value, "false") == 0) {
-                                map_add(default_field, create_node_string("is_boolean", "1"));
+                                if (annotate_add_true(default_field, "is_boolean") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
                             }
                             
                             // 检查是否是枚举引用
@@ -757,23 +902,43 @@ static void annotate_optional_fields(Node *root) {
                                     Node *enum_node = enums->data.list.items[e];
                                     const char *enum_name = map_find_string_value(enum_node, "enum_name");
                                     if (enum_name && strcmp(field_type, enum_name) == 0) {
-                                        map_add(default_field, create_node_string("is_enum_ref", "1"));
-                                        map_add(default_field, create_node_string("enum_name", enum_name));
+                                        if (annotate_add_true(default_field, "is_enum_ref") != 0 ||
+                                            annotate_add_string(default_field, "enum_name",
+                                                                enum_name) != 0) {
+                                            node_free(default_field);
+                                            node_free(optional_fields_list);
+                                            node_free(default_fields_list);
+                                            return -1;
+                                        }
                                         break;
                                     }
                                 }
                             }
                         }
                         
-                        list_add(default_fields_list, default_field);
+                        if (list_add(default_fields_list, default_field) != 0) {
+                            node_free(default_field);
+                            node_free(optional_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
                     }
                 }
                 
-                map_add(record, optional_fields_list);
-                map_add(record, default_fields_list);
+                if (map_add(record, optional_fields_list) != 0) {
+                    node_free(optional_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
+                if (map_add(record, default_fields_list) != 0) {
+                    /* optional_fields_list is already owned by record */
+                    node_free(default_fields_list);
+                    return -1;
+                }
             }
         }
     }
+    return 0;
 }
 
 static int parse_enum_u64(const char *text, uint64_t *out) {
@@ -787,10 +952,10 @@ static int parse_enum_u64(const char *text, uint64_t *out) {
     return 1;
 }
 
-static void annotate_enum_helpers(Node *root) {
+static int annotate_enum_helpers(Node *root) {
     Node *enums = map_find_named_child(root, "enums");
     if (!enums || enums->type != NODE_LIST) {
-        return;
+        return 0;
     }
 
     for (size_t i = 0; i < enums->data.list.count; ++i) {
@@ -804,12 +969,12 @@ static void annotate_enum_helpers(Node *root) {
         // 计算项目数量
         char count_str[32];
         snprintf(count_str, sizeof(count_str), "%zu", items->data.list.count);
-        map_add(enum_node, create_node_string("items_count", count_str));
+        if (annotate_add_string(enum_node, "items_count", count_str) != 0) return -1;
 
         // 标记最后一个枚举项，模板据此省略末尾逗号
         if (items->data.list.count > 0) {
             Node *last_item = items->data.list.items[items->data.list.count - 1];
-            map_add(last_item, create_node_string("last", "1"));
+            if (annotate_add_true(last_item, "last") != 0) return -1;
         }
 
         // 找出最小值和最大值
@@ -857,14 +1022,17 @@ static void annotate_enum_helpers(Node *root) {
                 snprintf(min_value, sizeof(min_value), "%s_%s", enum_name, min_name);
                 snprintf(max_value, sizeof(max_value), "%s_%s", enum_name, max_name);
                 
-                map_add(enum_node, create_node_string("min_value", min_value));
-                map_add(enum_node, create_node_string("max_value", max_value));
+                if (annotate_add_string(enum_node, "min_value", min_value) != 0 ||
+                    annotate_add_string(enum_node, "max_value", max_value) != 0) {
+                    return -1;
+                }
             }
         }
     }
+    return 0;
 }
 
-static void annotate_type_references(Node *root) {
+static int annotate_type_references(Node *root) {
     static const char *record_lists[] = { "composites", "groups", "messages" };
 
     for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
@@ -893,11 +1061,15 @@ static void annotate_type_references(Node *root) {
                     size_t element_size = 0;
 
                     if (inner_type && resolve_type_fixed_size(root, inner_type, &element_size)) {
-                        map_set_size(field, "element_size_bytes", element_size);
+                        if (annotate_result(map_set_size(field, "element_size_bytes",
+                                                         element_size)) != 0)
+                            return -1;
                     }
 
                     if (inner_type && find_composite_by_name(root, inner_type)) {
-                        map_set_true(field, "collection_element_is_composite");
+                        if (annotate_result(map_set_true(field,
+                                                         "collection_element_is_composite")) != 0)
+                            return -1;
                         continue;
                     }
 
@@ -918,10 +1090,15 @@ static void annotate_type_references(Node *root) {
                         }
 
                         snprintf(enum_c_type, sizeof(enum_c_type), "%s_t", inner_type);
-                        map_set_true(field, "collection_element_is_enum");
-                        map_set_string(field, "collection_element_enum_c_type", enum_c_type);
-                        map_set_string(field, "collection_element_host_type", host_type);
-                        map_set_string(field, "collection_element_wire_reader", wire_reader);
+                        if (annotate_result(map_set_true(field, "collection_element_is_enum")) != 0 ||
+                            annotate_result(map_set_string(field,
+                                                           "collection_element_enum_c_type",
+                                                           enum_c_type)) != 0 ||
+                            annotate_result(map_set_string(field, "collection_element_host_type",
+                                                           host_type)) != 0 ||
+                            annotate_result(map_set_string(field, "collection_element_wire_reader",
+                                                           wire_reader)) != 0)
+                            return -1;
                         continue;
                     }
 
@@ -931,9 +1108,15 @@ static void annotate_type_references(Node *root) {
 
                         if (primitive_type_wire_reader(inner_type, &wire_reader) &&
                             primitive_type_host_type(inner_type, &host_type)) {
-                            map_set_true(field, "collection_element_is_primitive");
-                            map_set_string(field, "collection_element_host_type", host_type);
-                            map_set_string(field, "collection_element_wire_reader", wire_reader);
+                            if (annotate_result(map_set_true(field,
+                                                             "collection_element_is_primitive")) != 0 ||
+                                annotate_result(map_set_string(field,
+                                                               "collection_element_host_type",
+                                                               host_type)) != 0 ||
+                                annotate_result(map_set_string(field,
+                                                               "collection_element_wire_reader",
+                                                               wire_reader)) != 0)
+                                return -1;
                         }
                     }
 
@@ -950,7 +1133,7 @@ static void annotate_type_references(Node *root) {
                 }
 
                 if (find_composite_by_name(root, type_name)) {
-                    map_set_true(field, "is_composite_ref");
+                    if (annotate_result(map_set_true(field, "is_composite_ref")) != 0) return -1;
                     map_remove_named_children(field, "is_enum_ref");
                     map_remove_named_children(field, "enum_c_type");
                     map_remove_named_children(field, "enum_host_type");
@@ -975,18 +1158,20 @@ static void annotate_type_references(Node *root) {
                     }
 
                     snprintf(enum_c_type, sizeof(enum_c_type), "%s_t", type_name);
-                    map_set_true(field, "is_enum_ref");
+                    if (annotate_result(map_set_true(field, "is_enum_ref")) != 0) return -1;
                     map_remove_named_children(field, "is_composite_ref");
-                    map_set_string(field, "enum_c_type", enum_c_type);
-                    map_set_string(field, "enum_host_type", host_type);
-                    map_set_string(field, "enum_wire_reader", wire_reader);
+                    if (annotate_result(map_set_string(field, "enum_c_type", enum_c_type)) != 0 ||
+                        annotate_result(map_set_string(field, "enum_host_type", host_type)) != 0 ||
+                        annotate_result(map_set_string(field, "enum_wire_reader", wire_reader)) != 0)
+                        return -1;
                 }
             }
         }
     }
+    return 0;
 }
 
-static void annotate_layouts(Node *root) {
+static int annotate_layouts(Node *root) {
     static const char *record_lists[] = { "composites", "groups", "messages" };
 
     while (1) {
@@ -1000,7 +1185,9 @@ static void annotate_layouts(Node *root) {
             }
 
             for (size_t i = 0; i < list->data.list.count; ++i) {
-                changed |= annotate_record_layout(root, list->data.list.items[i]);
+                int result = annotate_record_layout(root, list->data.list.items[i]);
+                if (result < 0) return -1;
+                changed |= result;
             }
         }
 
@@ -1008,9 +1195,10 @@ static void annotate_layouts(Node *root) {
             break;
         }
     }
+    return 0;
 }
 
-static void annotate_schema_metadata(Node *root) {
+static int annotate_schema_metadata(Node *root) {
     Node *schema = map_find_named_child(root, "schema");
     Node *attributes;
     const char *byte_order;
@@ -1019,7 +1207,7 @@ static void annotate_schema_metadata(Node *root) {
     const char *wire_value = "0";
 
     if (!schema) {
-        return;
+        return 0;
     }
 
     attributes = map_find_named_child(schema, "attributes");
@@ -1049,29 +1237,35 @@ static void annotate_schema_metadata(Node *root) {
             attrs_len += (size_t)written;
         }
     }
-    map_set_string(schema, "schema_attributes_rendered", attrs_buf);
+    if (annotate_result(map_set_string(schema, "schema_attributes_rendered", attrs_buf)) != 0)
+        return -1;
 
     byte_order = attribute_value(schema, "byte_order");
     if (byte_order && strcmp(byte_order, "big") == 0) {
-        map_set_string(schema, "wire_byte_order", "big");
-        map_set_true(schema, "is_big_endian");
+        if (annotate_result(map_set_string(schema, "wire_byte_order", "big")) != 0 ||
+            annotate_result(map_set_true(schema, "is_big_endian")) != 0)
+            return -1;
         map_remove_named_children(schema, "is_little_endian");
         wire_value = "1";
     } else {
-        map_set_string(schema, "wire_byte_order", "little");
-        map_set_true(schema, "is_little_endian");
+        if (annotate_result(map_set_string(schema, "wire_byte_order", "little")) != 0 ||
+            annotate_result(map_set_true(schema, "is_little_endian")) != 0)
+            return -1;
         map_remove_named_children(schema, "is_big_endian");
     }
-    map_set_string(schema, "schema_wire_big_endian_value", wire_value);
+    if (annotate_result(map_set_string(schema, "schema_wire_big_endian_value", wire_value)) != 0)
+        return -1;
 
     /* Extract version attribute and expose as schema_version */
     {
         const char *ver = attribute_value(schema, "version");
         if (ver && ver[0]) {
-            map_set_string(schema, "schema_version", ver);
-            map_set_true(schema, "has_schema_version");
+            if (annotate_result(map_set_string(schema, "schema_version", ver)) != 0 ||
+                annotate_result(map_set_true(schema, "has_schema_version")) != 0)
+                return -1;
         }
     }
+    return 0;
 }
 
 static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
@@ -1167,8 +1361,13 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     SchemaParseFree(parser, free);
     if (ctx.error) {
         node_free(temp_root);
-        if (err && err->code == TBE_OK) {
-            tbe_error_set(err, TBE_ERR_SYNTAX_ERROR, -1, -1, "Parse error");
+        if (err) {
+            if (ctx.error_msg[0] != '\0') {
+                tbe_error_set(err, TBE_ERR_SYNTAX_ERROR, ctx.error_line, ctx.error_column,
+                              ctx.error_msg);
+            } else if (err->code == TBE_OK) {
+                tbe_error_set(err, TBE_ERR_SYNTAX_ERROR, -1, -1, "Parse error");
+            }
         }
         return NULL;
     }
@@ -1176,9 +1375,9 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     return temp_root;
 }
 
-static void annotate_unions(Node *root) {
+static int annotate_unions(Node *root) {
     Node *unions = map_find_named_child(root, "unions");
-    if (!unions || unions->type != NODE_LIST) return;
+    if (!unions || unions->type != NODE_LIST) return 0;
 
     for (size_t i = 0; i < unions->data.list.count; ++i) {
         Node *u = unions->data.list.items[i];
@@ -1188,24 +1387,27 @@ static void annotate_unions(Node *root) {
 
         for (size_t j = 0; j < fields->data.list.count; ++j) {
             Node *field = fields->data.list.items[j];
-            map_set_size(field, "field_index", j);
+            if (annotate_result(map_set_size(field, "field_index", j)) != 0) return -1;
             if (union_name) {
-                map_set_string(field, "owner_name", union_name);
+                if (annotate_result(map_set_string(field, "owner_name", union_name)) != 0)
+                    return -1;
             }
         }
     }
+    return 0;
 }
 
-static void annotate_schema_tree(Node *root) {
-    annotate_schema_metadata(root);
-    annotate_wire_constants(root);
-    annotate_layouts(root);
-    annotate_type_references(root);
-    annotate_group_cursors(root);
-    annotate_var_data_accessors(root);
-    annotate_optional_fields(root);
-    annotate_enum_helpers(root);
-    annotate_unions(root);
+static int annotate_schema_tree(Node *root) {
+    if (annotate_schema_metadata(root) != 0) return -1;
+    if (annotate_wire_constants(root) != 0) return -1;
+    if (annotate_layouts(root) != 0) return -1;
+    if (annotate_type_references(root) != 0) return -1;
+    if (annotate_group_cursors(root) != 0) return -1;
+    if (annotate_var_data_accessors(root) != 0) return -1;
+    if (annotate_optional_fields(root) != 0) return -1;
+    if (annotate_enum_helpers(root) != 0) return -1;
+    if (annotate_unions(root) != 0) return -1;
+    return 0;
 }
 
 static int merge_schema_into_root(Node *root, Node *parsed) {
@@ -1252,7 +1454,7 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     }
     
     // Check for unreasonably large input (prevent DoS)
-    if (len > 10 * 1024 * 1024) {  // 10MB limit
+    if (len > SCHEMA_MAX_TEXT_BYTES) {
         if (err) {
             tbe_error_set(err, TBE_ERR_INVALID_ARGUMENT, -1, -1, "Schema text too large");
         }
@@ -1264,7 +1466,14 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
         return -1;
     }
 
-    annotate_schema_tree(parsed);
+    if (annotate_schema_tree(parsed) != 0) {
+        node_free(parsed);
+        if (err) {
+            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                          "Failed to annotate parsed schema");
+        }
+        return -1;
+    }
 
     int result = merge_schema_into_root(root, parsed);
     node_free(parsed);

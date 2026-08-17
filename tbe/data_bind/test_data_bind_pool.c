@@ -212,11 +212,14 @@ spec("DataBind value pool") {
   it("should share one immutable codec across concurrent parsers") {
     char json[512];
     DataBind *codec = NULL;
+    DataBindValue *value = NULL;
     data_bind_pool_test_worker_t workers[DATA_BIND_POOL_TEST_THREADS];
     turbo_thread_t threads[DATA_BIND_POOL_TEST_THREADS] = {0};
     atomic_size_t ready_count = 0;
     atomic_size_t failures = 0;
     atomic_int start = 0;
+    size_t reused_before = 0;
+    size_t reused_after = 0;
     size_t created = 0;
     size_t i;
 
@@ -247,6 +250,15 @@ spec("DataBind value pool") {
 
     check_size_eq(created, DATA_BIND_POOL_TEST_THREADS);
     check_size_eq(atomic_load_explicit(&failures, memory_order_relaxed), 0U);
+
+    /* Concurrent bitmap collisions must not suspend the process-global pool:
+     * a subsequent single-threaded parse still reuses cached nodes. */
+    data_bind_get_value_pool_stats(NULL, &reused_before);
+    check_int_eq(data_bind_parse_json(codec, "Batch", json, strlen(json), &value, NULL),
+                 DATA_BIND_OK);
+    data_bind_value_free(value);
+    data_bind_get_value_pool_stats(NULL, &reused_after);
+    check(reused_after > reused_before);
 
     data_bind_free(codec);
     data_bind_set_value_pool_enabled(0);

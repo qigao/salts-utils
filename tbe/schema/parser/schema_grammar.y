@@ -48,8 +48,12 @@ static char *tok_strdup(schema_token_t t) {
 static int tok_to_ull(schema_token_t t, unsigned long long *out) {
     char *text = tok_strdup(t);
     char *end = NULL;
-    unsigned long long value = strtoull(text, &end, 0);
-    int ok = (text[0] != '\0' && end && *end == '\0');
+    unsigned long long value;
+    int ok;
+
+    if (text == NULL) return 0;
+    value = strtoull(text, &end, 0);
+    ok = (text[0] != '\0' && end && *end == '\0');
 
     free(text);
     if (!ok) {
@@ -73,13 +77,32 @@ static int is_numeric_literal(const char *text) {
     return 1;
 }
 
-static void add_true(Node *map, const char *name) {
-    map_add(map, create_node_string(name, "1"));
+static void grammar_oom(schema_parse_ctx_t *ctx) {
+    if (ctx == NULL || ctx->error) return;
+    ctx->error = 1;
+    snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+             "Out of memory building schema tree");
 }
 
-static void add_name_nodes(Node *map, const char *specific_key, const char *name) {
-    map_add(map, create_node_string(specific_key, name));
-    map_add(map, create_node_string("name", name));
+static void add_string(schema_parse_ctx_t *ctx, Node *map, const char *name,
+                       const char *value) {
+    Node *node;
+    if (ctx->error) return;
+    node = create_node_string(name, value);
+    if (node == NULL || map_add(map, node) != 0) {
+        node_free(node);
+        grammar_oom(ctx);
+    }
+}
+
+static void add_true(schema_parse_ctx_t *ctx, Node *map, const char *name) {
+    add_string(ctx, map, name, "1");
+}
+
+static void add_name_nodes(schema_parse_ctx_t *ctx, Node *map,
+                           const char *specific_key, const char *name) {
+    add_string(ctx, map, specific_key, name);
+    add_string(ctx, map, "name", name);
 }
 
 static const char *map_get_string_value(Node *map, const char *name) {
@@ -100,23 +123,24 @@ static const char *map_get_string_value(Node *map, const char *name) {
     return NULL;
 }
 
-static void mark_record_kind(Node *record, schema_record_kind_t kind) {
+static void mark_record_kind(schema_parse_ctx_t *ctx, Node *record,
+                             schema_record_kind_t kind) {
     switch (kind) {
     case SCHEMA_RECORD_COMPOSITE:
-        map_add(record, create_node_string("decl_kind", "composite"));
-        add_true(record, "is_composite_decl");
+        add_string(ctx, record, "decl_kind", "composite");
+        add_true(ctx, record, "is_composite_decl");
         break;
     case SCHEMA_RECORD_GROUP:
-        map_add(record, create_node_string("decl_kind", "group"));
-        add_true(record, "is_group_decl");
+        add_string(ctx, record, "decl_kind", "group");
+        add_true(ctx, record, "is_group_decl");
         break;
     case SCHEMA_RECORD_MESSAGE:
-        map_add(record, create_node_string("decl_kind", "message"));
-        add_true(record, "is_message_decl");
+        add_string(ctx, record, "decl_kind", "message");
+        add_true(ctx, record, "is_message_decl");
         break;
     case SCHEMA_RECORD_UNION:
-        map_add(record, create_node_string("decl_kind", "union"));
-        add_true(record, "is_union_decl");
+        add_string(ctx, record, "decl_kind", "union");
+        add_true(ctx, record, "is_union_decl");
         break;
     default:
         fprintf(stderr, "schema_grammar: internal error unknown record kind\n");
@@ -128,32 +152,78 @@ static void begin_record(schema_parse_ctx_t *ctx, Node *list,
                          schema_record_kind_t kind,
                          const char *name_key, const char *name) {
     Node *new_record = create_node_map(NULL);
-    if (!new_record) {
-        ctx->error = 1;
-        return;
-    }
-    
     Node *new_fields = create_node_list("fields");
-    if (!new_fields) {
+    ctx->cur_record = NULL;
+    ctx->cur_fields = NULL;
+    if (name == NULL || new_record == NULL || new_fields == NULL) {
         node_free(new_record);
-        ctx->error = 1;
+        node_free(new_fields);
+        grammar_oom(ctx);
         return;
     }
-    
-    // Only update context if all allocations succeed
+
+    add_name_nodes(ctx, new_record, name_key, name);
+    mark_record_kind(ctx, new_record, kind);
+    if (ctx->error) {
+        node_free(new_record);
+        node_free(new_fields);
+        return;
+    }
+    if (map_add(new_record, new_fields) != 0) {
+        node_free(new_record);
+        node_free(new_fields);
+        grammar_oom(ctx);
+        return;
+    }
+    if (list_add(list, new_record) != 0) {
+        node_free(new_record); /* owns the attached fields list */
+        grammar_oom(ctx);
+        return;
+    }
     ctx->cur_record = new_record;
     ctx->cur_record_kind = kind;
     ctx->cur_field_section = SCHEMA_FIELD_SECTION_FIXED;
     ctx->cur_fields = new_fields;
+}
 
-    add_name_nodes(ctx->cur_record, name_key, name);
-    mark_record_kind(ctx->cur_record, kind);
-
-    if (map_add(ctx->cur_record, ctx->cur_fields) != 0 ||
-        list_add(list, ctx->cur_record) != 0) {
-        ctx->error = 1;
+static void begin_enum_like(schema_parse_ctx_t *ctx, const char *name,
+                            const char *underlying_type, int is_flags) {
+    Node *node = create_node_map(NULL);
+    Node *items = create_node_list("items");
+    ctx->cur_enum = NULL;
+    ctx->cur_enum_items = NULL;
+    ctx->next_enum_value = is_flags ? 1 : 0;
+    if (name == NULL || node == NULL || items == NULL) {
+        node_free(node);
+        node_free(items);
+        grammar_oom(ctx);
         return;
     }
+    add_name_nodes(ctx, node, "enum_name", name);
+    if (underlying_type != NULL) {
+        add_string(ctx, node, "underlying_type", underlying_type);
+    }
+    if (is_flags) {
+        add_string(ctx, node, "is_flags", "1");
+    }
+    if (ctx->error) {
+        node_free(node);
+        node_free(items);
+        return;
+    }
+    if (map_add(node, items) != 0) {
+        node_free(node);
+        node_free(items);
+        grammar_oom(ctx);
+        return;
+    }
+    if (list_add(ctx->enums_list, node) != 0) {
+        node_free(node); /* owns the attached items list */
+        grammar_oom(ctx);
+        return;
+    }
+    ctx->cur_enum = node;
+    ctx->cur_enum_items = items;
 }
 
 static schema_field_section_t classify_field_section(const char *field_type,
@@ -211,13 +281,19 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
                                  const char *length_field) {
     schema_field_section_t section;
 
+    if (field_type == NULL) {
+        grammar_oom(ctx);
+        return 0;
+    }
+
     /* Union variants are user-defined type references — no layout constraints */
     if (ctx->cur_record_kind == SCHEMA_RECORD_UNION) {
         return 1;
     }
 
     if (!field_supported_in_tbe(field_type, is_collection, is_group_field, length_field)) {
-        fprintf(stderr, "schema_grammar: unsupported dynamic collection in tbe declaration\n");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Unsupported dynamic collection in tbe declaration");
         ctx->error = 1;
         return 0;
     }
@@ -225,7 +301,8 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
     section = classify_field_section(field_type, is_collection, is_group_field, length_field);
     if (ctx->cur_record_kind == SCHEMA_RECORD_COMPOSITE &&
         section != SCHEMA_FIELD_SECTION_FIXED) {
-        fprintf(stderr, "schema_grammar: composite fields must be fixed-size\n");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Composite fields must be fixed-size");
         ctx->error = 1;
         return 0;
     }
@@ -240,7 +317,7 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
     return 1;
 }
 
-static void annotate_field(Node *field_map, const char *field_type,
+static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char *field_type,
                            int is_collection, const char *collection_inner,
                            const char *length_field, int is_group_field) {
     const schema_builtin_type_info_t *builtin_type = schema_builtin_type_find(field_type);
@@ -253,17 +330,17 @@ static void annotate_field(Node *field_map, const char *field_type,
     const char *map_value_type = NULL;
 
     if (is_group_field) {
-        map_add(field_map, create_node_string("ctype", "GROUP"));
-        add_true(field_map, "is_group_field");
-        add_true(field_map, "is_variable_size");
+        add_string(ctx, field_map, "ctype", "GROUP");
+        add_true(ctx, field_map, "is_group_field");
+        add_true(ctx, field_map, "is_variable_size");
         if (collection_inner && collection_inner[0]) {
-            map_add(field_map, create_node_string("group_type", collection_inner));
-            map_add(field_map, create_node_string("inner_type", collection_inner));
+            add_string(ctx, field_map, "group_type", collection_inner);
+            add_string(ctx, field_map, "inner_type", collection_inner);
         }
     } else if (strcmp(field_type, "varint") == 0) {
-        map_add(field_map, create_node_string("ctype", "VARINT"));
-        add_true(field_map, "is_varint");
-        add_true(field_map, "is_variable_size");
+        add_string(ctx, field_map, "ctype", "VARINT");
+        add_true(ctx, field_map, "is_varint");
+        add_true(ctx, field_map, "is_variable_size");
     } else if (builtin_type != NULL &&
                (builtin_type->is_integer || builtin_type->is_float)) {
         size = (int)builtin_type->size;
@@ -278,61 +355,61 @@ static void annotate_field(Node *field_map, const char *field_type,
     if (is_numeric) {
         char size_text[16];
         snprintf(size_text, sizeof(size_text), "%d", size);
-        map_add(field_map, create_node_string("size_bytes", size_text));
+        add_string(ctx, field_map, "size_bytes", size_text);
         if (host_type) {
-            map_add(field_map, create_node_string("host_type", host_type));
+            add_string(ctx, field_map, "host_type", host_type);
         }
         if (wire_reader) {
-            map_add(field_map, create_node_string("wire_reader", wire_reader));
+            add_string(ctx, field_map, "wire_reader", wire_reader);
         }
-        add_true(field_map, "is_numeric");
+        add_true(ctx, field_map, "is_numeric");
         if (is_unsigned) {
-            add_true(field_map, "is_unsigned");
+            add_true(ctx, field_map, "is_unsigned");
         }
-        add_true(field_map, "is_primitive");
-        add_true(field_map, "is_fixed_size");
+        add_true(ctx, field_map, "is_primitive");
+        add_true(ctx, field_map, "is_fixed_size");
     }
 
     if (is_uuid) {
         char size_text[16];
         snprintf(size_text, sizeof(size_text), "%d", size);
-        map_add(field_map, create_node_string("ctype", "UUID"));
-        map_add(field_map, create_node_string("size_bytes", size_text));
-        map_add(field_map, create_node_string("host_type", "turbo_uuid_t"));
-        add_true(field_map, "is_uuid");
-        add_true(field_map, "is_primitive");
-        add_true(field_map, "is_fixed_size");
+        add_string(ctx, field_map, "ctype", "UUID");
+        add_string(ctx, field_map, "size_bytes", size_text);
+        add_string(ctx, field_map, "host_type", "turbo_uuid_t");
+        add_true(ctx, field_map, "is_uuid");
+        add_true(ctx, field_map, "is_primitive");
+        add_true(ctx, field_map, "is_fixed_size");
     }
 
     if (!is_group_field && builtin_type != NULL && builtin_type->is_integer) {
-        add_true(field_map, "is_integer");
+        add_true(ctx, field_map, "is_integer");
     } else if (!is_group_field && builtin_type != NULL && builtin_type->is_float) {
-        add_true(field_map, "is_float");
+        add_true(ctx, field_map, "is_float");
     } else if (!is_group_field && strcmp(field_type, "bytes") == 0) {
-        map_add(field_map, create_node_string("ctype", "BYTES"));
-        add_true(field_map, "is_bytes");
+        add_string(ctx, field_map, "ctype", "BYTES");
+        add_true(ctx, field_map, "is_bytes");
         if (is_numeric_literal(length_field)) {
-            map_add(field_map, create_node_string("size_bytes", length_field));
-            add_true(field_map, "is_fixed_size");
+            add_string(ctx, field_map, "size_bytes", length_field);
+            add_true(ctx, field_map, "is_fixed_size");
         } else {
-            add_true(field_map, "is_variable_size");
+            add_true(ctx, field_map, "is_variable_size");
         }
     } else if (!is_group_field && strcmp(field_type, "string") == 0) {
-        map_add(field_map, create_node_string("ctype", "STRING"));
-        add_true(field_map, "is_string");
-        add_true(field_map, "is_variable_size");
+        add_string(ctx, field_map, "ctype", "STRING");
+        add_true(ctx, field_map, "is_string");
+        add_true(ctx, field_map, "is_variable_size");
     } else if (!is_group_field && (is_collection || strcmp(field_type, "array") == 0 ||
                strcmp(field_type, "list") == 0 || strcmp(field_type, "set") == 0 ||
                strcmp(field_type, "map") == 0)) {
-        map_add(field_map, create_node_string("ctype", "COLLECTION"));
-        add_true(field_map, "is_collection");
-        map_add(field_map, create_node_string("collection_kind", field_type));
+        add_string(ctx, field_map, "ctype", "COLLECTION");
+        add_true(ctx, field_map, "is_collection");
+        add_string(ctx, field_map, "collection_kind", field_type);
         if (strcmp(field_type, "list") == 0) {
-            add_true(field_map, "is_list");
+            add_true(ctx, field_map, "is_list");
         } else if (strcmp(field_type, "set") == 0) {
-            add_true(field_map, "is_set");
+            add_true(ctx, field_map, "is_set");
         } else if (strcmp(field_type, "map") == 0) {
-            add_true(field_map, "is_map");
+            add_true(ctx, field_map, "is_map");
         }
         if (strcmp(field_type, "map") == 0 && collection_inner && collection_inner[0]) {
             map_value_type = strchr(collection_inner, ',');
@@ -344,39 +421,39 @@ static void annotate_field(Node *field_map, const char *field_type,
                 if (key_len < sizeof(key_type)) {
                     memcpy(key_type, collection_inner, key_len);
                     key_type[key_len] = '\0';
-                    map_add(field_map, create_node_string("key_type", key_type));
+                    add_string(ctx, field_map, "key_type", key_type);
                 }
                 snprintf(value_type, sizeof(value_type), "%s", map_value_type + 1);
-                map_add(field_map, create_node_string("value_type", value_type));
-                map_add(field_map, create_node_string("inner_type", value_type));
+                add_string(ctx, field_map, "value_type", value_type);
+                add_string(ctx, field_map, "inner_type", value_type);
             }
         } else if (collection_inner && collection_inner[0]) {
-            map_add(field_map, create_node_string("inner_type", collection_inner));
+            add_string(ctx, field_map, "inner_type", collection_inner);
         }
         if (is_numeric_literal(length_field)) {
-            add_true(field_map, "is_fixed_size");
+            add_true(ctx, field_map, "is_fixed_size");
         } else {
-            add_true(field_map, "is_variable_size");
+            add_true(ctx, field_map, "is_variable_size");
         }
     } else if (!is_group_field && !is_numeric) {
-        map_add(field_map, create_node_string("ctype", "USER_DEFINED"));
-        add_true(field_map, "is_user_defined");
+        add_string(ctx, field_map, "ctype", "USER_DEFINED");
+        add_true(ctx, field_map, "is_user_defined");
     }
 
     if (length_field && length_field[0]) {
-        map_add(field_map, create_node_string("length_field", length_field));
-        add_true(field_map, "has_length_field");
+        add_string(ctx, field_map, "length_field", length_field);
+        add_true(ctx, field_map, "has_length_field");
     }
 
     if (is_group_field) {
         /* group fields are their own section */
     } else if (strcmp(field_type, "string") == 0 ||
                (strcmp(field_type, "bytes") == 0 && !is_numeric_literal(length_field))) {
-        add_true(field_map, "is_var_data");
+        add_true(ctx, field_map, "is_var_data");
     } else if (!is_collection ||
                (strcmp(field_type, "array") == 0 && is_numeric_literal(length_field)) ||
                (strcmp(field_type, "bytes") == 0 && is_numeric_literal(length_field))) {
-        add_true(field_map, "is_fixed_block");
+        add_true(ctx, field_map, "is_fixed_block");
     }
 }
 
@@ -386,40 +463,65 @@ static void add_field(schema_parse_ctx_t *ctx,
                       Node *attrs, int is_group_field, int is_optional, const char *default_value) {
     Node *field_map;
 
+    if (ctx->error) {
+        node_free(attrs);
+        return;
+    }
     if (!validate_field_layout(ctx, type_str, is_collection, is_group_field, len_field)) {
+        node_free(attrs);
         return;
     }
 
     field_map = create_node_map(NULL);
-    map_add(field_map, create_node_string("type", type_str));
-    map_add(field_map, create_node_string("name", name_str));
-    map_add(field_map, create_node_string("owner_name",
-                                          map_get_string_value(ctx->cur_record, "name")));
+    if (field_map == NULL) {
+        grammar_oom(ctx);
+        return;
+    }
+    add_string(ctx, field_map, "type", type_str);
+    add_string(ctx, field_map, "name", name_str);
+    add_string(ctx, field_map, "owner_name",
+               map_get_string_value(ctx->cur_record, "name"));
     
     if (is_optional) {
-        add_true(field_map, "is_optional");
+        add_true(ctx, field_map, "is_optional");
     }
     
     if (default_value && default_value[0] != '\0') {
-        map_add(field_map, create_node_string("default_value", default_value));
-        add_true(field_map, "has_default");
+        add_string(ctx, field_map, "default_value", default_value);
+        add_true(ctx, field_map, "has_default");
     }
 
     if (attrs != NULL) {
-        map_add(field_map, attrs);
+        if (map_add(field_map, attrs) != 0) {
+            grammar_oom(ctx);
+        }
     }
     
-    annotate_field(field_map, type_str, is_collection, inner, len_field, is_group_field);
-    list_add(ctx->cur_fields, field_map);
+    annotate_field(ctx, field_map, type_str, is_collection, inner, len_field, is_group_field);
+    if (list_add(ctx->cur_fields, field_map) != 0) {
+        node_free(field_map);
+        grammar_oom(ctx);
+    }
 }
 
-static Node *create_attribute_node(schema_token_t key_tok, schema_token_t value_tok) {
+static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_tok,
+                                   schema_token_t value_tok) {
     char *key = tok_strdup(key_tok);
     char *value = tok_strdup(value_tok);
-    Node *attr = create_node_map(key);
+    Node *attr;
+    if (ctx->error) {
+        free(key);
+        free(value);
+        return NULL;
+    }
+    attr = create_node_map(key);
 
-    map_add(attr, create_node_string("name", key));
-    map_add(attr, create_node_string("value", value));
+    if (attr == NULL) {
+        grammar_oom(ctx);
+    } else {
+        add_string(ctx, attr, "name", key);
+        add_string(ctx, attr, "value", value);
+    }
 
     free(key);
     free(value);
@@ -427,10 +529,18 @@ static Node *create_attribute_node(schema_token_t key_tok, schema_token_t value_
 }
 
 static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *value) {
-    Node *item = create_node_map(NULL);
-    map_add(item, create_node_string("name", key));
-    map_add(item, create_node_string("value", value));
-    list_add(ctx->cur_enum_items, item);
+    Node *item;
+    if (ctx->error) return;
+    item = create_node_map(NULL);
+    if (item == NULL) {
+        grammar_oom(ctx);
+        return;
+    }
+    add_string(ctx, item, "name", key);
+    add_string(ctx, item, "value", value);
+    if (list_add(ctx->cur_enum_items, item) != 0) {
+        grammar_oom(ctx);
+    }
 }
 }
 
@@ -465,61 +575,77 @@ attribute_list(A) ::= . { A = NULL; }
 
 attr_items(A) ::= attr_items(B) COMMA attr_item(C). {
     A = B;
-    map_add(A, C);
+    if (map_add(A, C) != 0) {
+        node_free(C);
+        grammar_oom(ctx);
+    }
 }
 attr_items(A) ::= attr_item(B). {
     A = create_node_list("attributes");
-    list_add(A, B);
+    if (A == NULL || list_add(A, B) != 0) {
+        node_free(A);
+        A = NULL;
+        node_free(B);
+        grammar_oom(ctx);
+    }
 }
 
-attr_item(A) ::= IDENT(K) LPAREN IDENT(V) RPAREN. { A = create_attribute_node(K, V); }
-attr_item(A) ::= IDENT(K) LPAREN NUMBER(V) RPAREN. { A = create_attribute_node(K, V); }
-attr_item(A) ::= IDENT(K) LPAREN STRING(V) RPAREN. { A = create_attribute_node(K, V); }
+attr_item(A) ::= IDENT(K) LPAREN IDENT(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
+attr_item(A) ::= IDENT(K) LPAREN NUMBER(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
+attr_item(A) ::= IDENT(K) LPAREN STRING(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
 
 schema_decl ::= SCHEMA IDENT(N) attribute_list(A) SEMI. {
     if (ctx->schema_node != NULL) {
         node_free(A);
-        fprintf(stderr, "schema_grammar: duplicate schema declaration\n");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Duplicate schema declaration");
         ctx->error = 1;
     } else {
         char *schema_name = tok_strdup(N);
         ctx->schema_node = create_node_map("schema");
-        add_name_nodes(ctx->schema_node, "schema_name", schema_name);
-        if (A) {
-            map_add(ctx->schema_node, A);
+        if (schema_name == NULL || ctx->schema_node == NULL) {
+            node_free(ctx->schema_node);
+            ctx->schema_node = NULL;
+            free(schema_name);
+            node_free(A);
+            grammar_oom(ctx);
+        } else {
+            add_name_nodes(ctx, ctx->schema_node, "schema_name", schema_name);
+            if (A && map_add(ctx->schema_node, A) != 0) {
+                node_free(A);
+                grammar_oom(ctx);
+            }
+            if (map_add(ctx->root, ctx->schema_node) != 0) {
+                node_free(ctx->schema_node);
+                ctx->schema_node = NULL;
+                grammar_oom(ctx);
+            }
         }
-        map_add(ctx->root, ctx->schema_node);
         free(schema_name);
     }
 }
 
 enum_decl ::= attribute_list(A) enum_header enum_body RBRACE. {
-    if (A) {
-        map_add(ctx->cur_enum, A);
+    if (A && ctx->cur_enum != NULL) {
+        if (map_add(ctx->cur_enum, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
 enum_header ::= ENUM IDENT(N) LBRACE. {
     char *enum_name = tok_strdup(N);
-    ctx->cur_enum = create_node_map(NULL);
-    ctx->next_enum_value = 0;
-    add_name_nodes(ctx->cur_enum, "enum_name", enum_name);
-    ctx->cur_enum_items = create_node_list("items");
-    map_add(ctx->cur_enum, ctx->cur_enum_items);
-    list_add(ctx->enums_list, ctx->cur_enum);
+    begin_enum_like(ctx, enum_name, NULL, 0);
     free(enum_name);
 }
 
 enum_header ::= ENUM IDENT(N) LT IDENT(T) GT LBRACE. {
     char *enum_name = tok_strdup(N);
     char *underlying_type = tok_strdup(T);
-    ctx->cur_enum = create_node_map(NULL);
-    ctx->next_enum_value = 0;
-    add_name_nodes(ctx->cur_enum, "enum_name", enum_name);
-    map_add(ctx->cur_enum, create_node_string("underlying_type", underlying_type));
-    ctx->cur_enum_items = create_node_list("items");
-    map_add(ctx->cur_enum, ctx->cur_enum_items);
-    list_add(ctx->enums_list, ctx->cur_enum);
+    begin_enum_like(ctx, enum_name, underlying_type, 0);
     free(enum_name);
     free(underlying_type);
 }
@@ -554,34 +680,26 @@ enum_item ::= IDENT(K) SEMI. {
 
 // Flags declarations (similar to enum but with is_flags marker)
 flags_decl ::= attribute_list(A) flags_header flags_body RBRACE. {
-    if (A) {
-        map_add(ctx->cur_enum, A);
+    if (A && ctx->cur_enum != NULL) {
+        if (map_add(ctx->cur_enum, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
 flags_header ::= FLAGS IDENT(N) LBRACE. {
     char *flags_name = tok_strdup(N);
-    ctx->cur_enum = create_node_map(NULL);
-    ctx->next_enum_value = 1;  // Start at 1 for flags (power of 2)
-    add_name_nodes(ctx->cur_enum, "enum_name", flags_name);
-    map_add(ctx->cur_enum, create_node_string("is_flags", "1"));
-    ctx->cur_enum_items = create_node_list("items");
-    map_add(ctx->cur_enum, ctx->cur_enum_items);
-    list_add(ctx->enums_list, ctx->cur_enum);
+    begin_enum_like(ctx, flags_name, NULL, 1);
     free(flags_name);
 }
 
 flags_header ::= FLAGS IDENT(N) LT IDENT(T) GT LBRACE. {
     char *flags_name = tok_strdup(N);
     char *underlying_type = tok_strdup(T);
-    ctx->cur_enum = create_node_map(NULL);
-    ctx->next_enum_value = 1;  // Start at 1 for flags
-    add_name_nodes(ctx->cur_enum, "enum_name", flags_name);
-    map_add(ctx->cur_enum, create_node_string("underlying_type", underlying_type));
-    map_add(ctx->cur_enum, create_node_string("is_flags", "1"));
-    ctx->cur_enum_items = create_node_list("items");
-    map_add(ctx->cur_enum, ctx->cur_enum_items);
-    list_add(ctx->enums_list, ctx->cur_enum);
+    begin_enum_like(ctx, flags_name, underlying_type, 1);
     free(flags_name);
     free(underlying_type);
 }
@@ -617,14 +735,24 @@ flags_item ::= IDENT(K) SEMI. {
 }
 
 composite_decl ::= attribute_list(A) composite_header field_list RBRACE. {
-    if (A) {
-        map_add(ctx->cur_record, A);
+    if (A && ctx->cur_record != NULL) {
+        if (map_add(ctx->cur_record, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
 union_decl ::= attribute_list(A) union_header union_body RBRACE. {
-    if (A) {
-        map_add(ctx->cur_record, A);
+    if (A && ctx->cur_record != NULL) {
+        if (map_add(ctx->cur_record, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
@@ -653,8 +781,13 @@ composite_header ::= COMPOSITE IDENT(N) LBRACE. {
 }
 
 group_decl ::= attribute_list(A) group_header field_list RBRACE. {
-    if (A) {
-        map_add(ctx->cur_record, A);
+    if (A && ctx->cur_record != NULL) {
+        if (map_add(ctx->cur_record, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
@@ -665,8 +798,13 @@ group_header ::= GROUP IDENT(N) LBRACE. {
 }
 
 message_decl ::= attribute_list(A) message_header field_list RBRACE. {
-    if (A) {
-        map_add(ctx->cur_record, A);
+    if (A && ctx->cur_record != NULL) {
+        if (map_add(ctx->cur_record, A) != 0) {
+            node_free(A);
+            grammar_oom(ctx);
+        }
+    } else if (A) {
+        node_free(A);
     }
 }
 
@@ -769,8 +907,13 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LT IDENT(K) COMMA I
     char map_inner[256];
     int is_optional = (Q == 1);
 
-    snprintf(map_inner, sizeof(map_inner), "%s,%s", key_type, value_type);
-    add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, NULL);
+    if (key_type == NULL || value_type == NULL) {
+        grammar_oom(ctx);
+        node_free(A);
+    } else {
+        snprintf(map_inner, sizeof(map_inner), "%s,%s", key_type, value_type);
+        add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, NULL);
+    }
     free(type_name);
     free(field_name);
     free(key_type);
@@ -788,7 +931,6 @@ field_qualifier(Q) ::= .         { Q = 0; }  // default = required
     snprintf(ctx->error_msg, sizeof(ctx->error_msg),
              "Syntax error at line %d, column %d",
              TOKEN.line, TOKEN.column);
-    fprintf(stderr, "%s\n", ctx->error_msg);
     ctx->error = 1;
 }
 
@@ -796,7 +938,6 @@ field_qualifier(Q) ::= .         { Q = 0; }  // default = required
     if (!ctx->error) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
                  "Parse failure: unable to recover from syntax errors");
-        fprintf(stderr, "%s\n", ctx->error_msg);
     }
     ctx->error = 1;
 }

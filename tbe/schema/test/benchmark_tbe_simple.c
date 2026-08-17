@@ -98,20 +98,5 @@ suite("tbe bench") {
       node_free(root);
     }
 
-    printf("\n");
-    printf("=== TBE Parser Performance Summary ===\n");
-    printf("All benchmarks completed successfully.\n");
-    printf("\n");
-    printf("Key Metrics:\n");
-    printf("  - Small message (32B):   ~10 μs per parse\n");
-    printf("  - Medium message (256B): ~20 μs per parse\n");
-    printf("  - Large message (4KB):   ~100 μs per parse\n");
-    printf("  - Complex schema:        ~200 μs per parse\n");
-    printf("\n");
-    printf("Memory:\n");
-    printf("  - Zero-copy design: No data copying\n");
-    printf("  - Controlled allocation: Only during parse\n");
-    printf("  - Clean teardown: node_free() releases all\n");
-    printf("\n");
   }
 }

@@ -39,7 +39,13 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser.h
+install(FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/json.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_json.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_yaml.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_xml.hpp
         DESTINATION include)
 
 # Tests
@@ -51,3 +57,7 @@ cmake_add_test(test_turbo_parser_bdd
   SOURCES test/test_turbo_parser_bdd.c
   LIBS turbo_parser TurboUtils::TinyTest
   FOLDER turbo_parser)
+
+if(BUILD_EXAMPLES)
+  add_subdirectory(example)
+endif()

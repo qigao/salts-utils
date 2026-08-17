@@ -384,8 +384,10 @@ DATA_BIND_API const char *data_bind_format_name(DataBindFormat format);
  * @return Status code. On success, *out_codec owns the codec and must be freed with
  * data_bind_free().
  *
- * Codec creation and all binding operations use the pure C runtime. Only load
- * schemas from trusted sources.
+ * Codec creation and all binding operations use the pure C runtime. This entry
+ * point requires no tbe_compiler invocation and no generated headers or
+ * sources; the schema text is parsed directly at runtime. Only load schemas
+ * from trusted sources.
  */
 DATA_BIND_API DataBindStatus data_bind_create(const char *schema_path, DataBind **out_codec,
                                               DataBindError *error);
@@ -399,7 +401,10 @@ DATA_BIND_API DataBindStatus data_bind_create(const char *schema_path, DataBind 
  * @return Status code. On success, *out_codec owns the codec and must be freed with
  * data_bind_free().
  *
- * Codec creation and all binding operations use the pure C runtime.
+ * Codec creation and all binding operations use the pure C runtime. Use this
+ * entry point when the schema is already available in memory (for example,
+ * embedded or supplied at runtime); it requires no tbe_compiler invocation and
+ * no generated headers or sources.
  */
 DATA_BIND_API DataBindStatus data_bind_create_from_text(const char *schema_text, size_t len,
                                                         DataBind **out_codec, DataBindError *error);
@@ -420,7 +425,8 @@ DATA_BIND_API void data_bind_free(DataBind *codec);
  * This setting is process-global and synchronized across threads. The allocation and
  * release hot paths use bounded atomic slot operations without a mutex. Disabling closes
  * the slots atomically, then releases all cached nodes. A concurrent bitmap collision
- * suspends reuse without waiting; calling this function with non-zero resumes it.
+ * retries briefly, then falls back to direct allocation for that node without waiting
+ * and without changing the process-global pool policy.
  * Application owners should configure it only at startup or a quiescent test boundary;
  * reusable libraries must not change process-global pool policy for other codecs.
  */
@@ -628,7 +634,9 @@ DATA_BIND_API DataBindStatus data_bind_parse_json(DataBind *codec, const char *t
  * @brief Bind each item in JSON text to a dynamic list using the codec schema.
  *
  * If the input JSON is an array, each item is bound independently. Otherwise
- * the single document is bound and returned as a one-item list.
+ * the single document is bound and returned as a one-item list. If any array
+ * item fails to bind, the call fails with DATA_BIND_ERR_TYPE_MISMATCH and no
+ * partial list is returned.
  */
 DATA_BIND_API DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name,
                                                       const char *json, size_t len,
@@ -651,7 +659,9 @@ DATA_BIND_API DataBindStatus data_bind_parse_json_path(DataBind *codec, const ch
  *
  * If jsonpath is NULL or empty, this is equivalent to data_bind_parse_json_all().
  * Returned list items are schema-bound copies; JSONPath matches are non-owning
- * views into the parsed JSON document and are not exposed.
+ * views into the parsed JSON document and are not exposed. If any selected
+ * value fails to bind, the call fails with DATA_BIND_ERR_TYPE_MISMATCH and no
+ * partial list is returned.
  */
 DATA_BIND_API DataBindStatus data_bind_parse_json_path_all(DataBind *codec, const char *type_name,
                                                            const char *json, size_t len,
@@ -690,6 +700,9 @@ DATA_BIND_API DataBindStatus data_bind_parse_csv(DataBind *codec, const char *ty
 
 /**
  * @brief Bind all CSV rows to a dynamic list using the codec schema.
+ *
+ * If any data row fails to bind, the call fails with
+ * DATA_BIND_ERR_TYPE_MISMATCH and no partial list is returned.
  */
 DATA_BIND_API DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name,
                                                      const char *csv, size_t len,
@@ -726,6 +739,8 @@ DATA_BIND_API DataBindStatus data_bind_parse_xml(DataBind *codec, const char *ty
  *
  * If xmlpath is NULL or empty, the root document element is bound as a one-item
  * list. The matched nodes are non-owning views into the parsed XML document.
+ * If any selected node fails to bind, the call fails with
+ * DATA_BIND_ERR_TYPE_MISMATCH and no partial list is returned.
  */
 DATA_BIND_API DataBindStatus data_bind_parse_xml_path_all(DataBind *codec, const char *type_name,
                                                           const char *xml, size_t len,

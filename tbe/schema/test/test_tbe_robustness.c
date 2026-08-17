@@ -237,4 +237,21 @@ suite("tbe_robustness") {
             check_int_eq(tbe_version_compatible(1, 1, 0), 0);
         }
     }
+
+    describe("Error Diagnostics") {
+        it("should report syntax error position and message") {
+            const char *schema_text = "message Bad { uint32 seq; \n uint32; }\n";
+            Node *root = create_node_map("root");
+            tbe_error_t err;
+
+            tbe_error_init(&err);
+            check_int_eq(parse_schema(schema_text, strlen(schema_text), root, &err), -1);
+            check_int_eq(err.code, TBE_ERR_SYNTAX_ERROR);
+            check(err.line > 0);
+            check(err.column > 0);
+            check_str_eq(err.message, "Syntax error at line 2, column 8");
+
+            node_free(root);
+        }
+    }
 }
