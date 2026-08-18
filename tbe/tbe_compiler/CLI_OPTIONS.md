@@ -55,12 +55,10 @@ tbe_compiler <schema_file> [options]
   - With the built-in C generator, emits typed C-to-Lua adapter functions
   - Requires both `--output` and `--source-output`; custom templates and non-C languages are rejected
   - Each owning record receives `Type_push_lua` and transactional `Type_from_lua` adapters
-  - The generated source includes the unified C facade `turbo_lua_bind.h`; link
+  - The generated source includes the C binding header `turbo_lua.h`; link
     the consumer with `turbo_lua_bind` (`TurboParser::LuaBind` in the build tree)
-  - C++ consumers may include `turbo_lua_bind.hpp` to combine the same C/DataBind
+  - C++ consumers may include `turbo_lua.hpp` to combine the same C/DataBind
     adapters with function, class, property, inheritance, and reflection binding
-  - The narrower `c11_lua_*` and `cpp_lua_bind.hpp` headers remain compatible for
-    consumers that intentionally want only one layer
   - Example: `--output order.h --source-output order.c --lua-output order_lua.c`
   - A request message annotated with
     `[lua_operation(create_order), lua_response(OrderResult)]` also generates a
@@ -69,15 +67,6 @@ tbe_compiler <schema_file> [options]
     `nil, { code, path, message }`. Generated glue initializes and clears
     request/response objects, so callbacks fill the response without retaining
     either pointer.
-  - A request message annotated with
-    `[lua_import(enrich_order), lua_response(OrderResult)]` generates an opaque
-    schema client plus `Schema_lua_client_enrich_order_on_owner()`. Client
-    creation binds one `turbo_lua_executor_t`; creation, synchronous calls, and
-    `Schema_lua_client_close()` verify its captured owner thread. C callers pass
-    typed request/response structs; generated glue retains the Lua module in the
-    registry, performs the protected call, validates `response, nil` or
-    `nil, { code, path, message }`, restores the Lua stack, and replaces the C
-    response only on success. The executor and Lua state outlive the client.
   - `lua_async(future)` is the only asynchronous Lua binding mode. Add it to an
     operation when the application has an explicit asynchronous state machine.
     The generated starter returns opaque
@@ -90,23 +79,8 @@ tbe_compiler <schema_file> [options]
     thread and invokes `destroy` exactly once on completion, failure, or
     cancellation. External workers may update application state, but must not
     touch Lua or the generated Future.
-  - Add `lua_async(future)` to a `lua_import` to additionally generate
-    `Schema_lua_client_name_async()` and a typed C Future. Submission snapshots
-    the owning request, then posts one command through the executor already
-    bound to the client; only the executor owner thread touches Lua. Async
-    submit plus Future `done`, `cancel`, and `poll` may run on producer threads.
-    Future `poll` is nonblocking and moves a
-    successful typed response exactly once. Queue full returns
-    `DATA_BIND_ERR_LIMIT`, executor shutdown returns `DATA_BIND_ERR_CANCELED`,
-    and both leave the Future output unchanged. Stop producers before owner-only
-    client `close()`; queued commands retain the closed client until terminal
-    dispatch. Drain or cancel them before destroying the executor and Lua state.
-  - Applications without an existing owner event loop can link
-    `TurboParser::LuaWorker`. Its dedicated thread owns the Lua state and
-    executor: create generated clients in `on_start`, close them in `on_stop`,
-    and submit only async operations from producer threads. Producers must be
-    quiescent before synchronous worker stop; choose DRAIN to finish accepted
-    operations or CANCEL to terminally cancel them.
+  - `lua_import` is no longer supported. Bind Lua functions and coroutines
+    explicitly through the C11 Lua API.
 
 ### DSL Integration (RulesForge)
 

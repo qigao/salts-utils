@@ -729,7 +729,7 @@ spec("tbe_compiler") {
         check_str_contains(header, "LoginMessage_from_lua(struct lua_State *L");
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "#include \"turbo_lua_bind.h\"");
+        check_str_contains(lua_source, "#include \"turbo_lua.h\"");
         check_str_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
         check_str_contains(lua_source, "c11_lua_read_tbe_typed");
       }
@@ -770,9 +770,7 @@ spec("tbe_compiler") {
           "message CreateOrder { uint32 id; }"
           "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(future)] "
           "message FetchOrder { uint32 id; }"
-          "[lua_import(enrich_order), lua_response(OrderResult)] "
           "message EnrichOrder { uint32 id; }"
-          "[lua_import(enrich_order_deferred), lua_response(OrderResult), lua_async(future)] "
           "message AsyncEnrichOrder { uint32 id; }"
           "message OrderResult { uint32 id; }";
       size_t header_size = 0;
@@ -807,16 +805,9 @@ spec("tbe_compiler") {
         check(strstr(header, "turbo_coro") == NULL);
         check(strstr(header, "coroutine_stack_size") == NULL);
         check_str_contains(header, "Orders_lua_push_module");
-        check_str_contains(header, "typedef struct Orders_lua_client_s");
-        check_str_contains(header, "Orders_lua_client_create");
-        check_str_contains(header, "turbo_lua_executor_t *executor");
-        check_str_contains(header, "Orders_lua_client_close");
-        check_str_contains(header, "Orders_lua_client_enrich_order_on_owner");
-        check_str_contains(header, "Orders_lua_client_enrich_order_deferred_async");
-        check_str_contains(header, "Orders_lua_enrich_order_deferred_future_poll");
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "#include \"turbo_lua_bind.h\"");
+        check_str_contains(lua_source, "#include \"turbo_lua.h\"");
         check_str_contains(lua_source, "Orders_lua_call_create_order");
         check_str_contains(lua_source, "Orders_lua_fetch_order_poll");
         check_str_contains(lua_source, "Orders_lua_fetch_order_await");
@@ -826,13 +817,6 @@ spec("tbe_compiler") {
         check(strstr(lua_source, "turbo_coro") == NULL);
         check_str_contains(lua_source, "CreateOrder_from_lua");
         check_str_contains(lua_source, "OrderResult_push_lua");
-        check_str_contains(lua_source, "Orders_lua_client_create");
-        check_str_contains(lua_source, "turbo_lua_executor_owner_state");
-        check_str_contains(lua_source, "turbo_lua_executor_is_owner");
-        check_str_contains(lua_source, "EnrichOrder_push_lua");
-        check_str_contains(lua_source, "OrderResult_from_lua");
-        check_str_contains(lua_source, "turbo_lua_executor_try_post");
-        check_str_contains(lua_source, "Orders_lua_enrich_order_deferred_dispatch");
       }
 
       free(header);
@@ -843,7 +827,7 @@ spec("tbe_compiler") {
       cleanup_test_file(lua_path);
     }
 
-    it("should generate a typed Lua client without host operations") {
+    it("should reject removed synchronous Lua imports") {
       const char *schema_path = "test_tbe_compiler_lua_import.tbe";
       const char *header_path = "test_tbe_compiler_lua_import.h";
       const char *source_path = "test_tbe_compiler_lua_import_typed.c";
@@ -870,7 +854,12 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check(tbe_compiler_run(&options) != 0);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      return;
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -978,7 +967,7 @@ spec("tbe_compiler") {
       cleanup_test_file(lua_path);
     }
 
-    it("should generate asynchronous Lua imports backed by the Lua executor") {
+    it("should reject removed asynchronous Lua imports") {
       const char *schema_path = "test_tbe_compiler_lua_import_async.tbe";
       const char *header_path = "test_tbe_compiler_lua_import_async.h";
       const char *source_path = "test_tbe_compiler_lua_import_async_typed.c";
@@ -1001,7 +990,12 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check(tbe_compiler_run(&options) != 0);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      return;
       {
         size_t header_size = 0;
         size_t lua_size = 0;

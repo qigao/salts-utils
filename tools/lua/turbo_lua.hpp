@@ -1,3 +1,7 @@
+/**
+ * @file turbo_lua.hpp
+ * @brief Unified C++17 Lua binding interface.
+ */
 #pragma once
 
 
@@ -12,6 +16,7 @@
     _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, N, ...) N
 
 #include <lua.hpp>
+#include "turbo_lua.h"
 
 #include <array>
 #include <cstddef>

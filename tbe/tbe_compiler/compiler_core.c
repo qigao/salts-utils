@@ -908,6 +908,13 @@ static int tbe_compiler_prepare_lua_operations(Node *root) {
         response_count == 0u && async_count == 0u) {
       continue;
     }
+    if (import_name_count != 0u) {
+      fprintf(stderr,
+              "Lua import message %s is unsupported; bind Lua coroutines "
+              "through the C11 Lua API\n",
+              tbe_compiler_string_value(request, "name"));
+      return 0;
+    }
     if (operation_name_count != 0u && import_name_count != 0u) {
       fprintf(stderr,
               "Lua binding message %s cannot declare both lua_operation and "

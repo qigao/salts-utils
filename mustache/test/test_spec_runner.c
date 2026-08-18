@@ -342,7 +342,7 @@ static const MUSTACHE_DATAPROVIDER provider = {
     call_lambda
 };
 
-static void run_spec_test_case(__bdd_config_type__ *__bdd_config__, const char* test_name, const char* template_str, 
+static void run_spec_test_case(const char* test_name, const char* template_str,
                                json_value_t* data, json_value_t* partials, const char* expected)
 {
     MUSTACHE_TEMPLATE* t = NULL;
@@ -401,7 +401,7 @@ static void run_spec_test_case(__bdd_config_type__ *__bdd_config__, const char* 
     mustache_release(t);
 }
 
-static void run_spec_file(__bdd_config_type__ *__bdd_config__, const char* filename)
+static void run_spec_file(const char* filename)
 {
     char filepath[512];
 #ifdef SPEC_JSON_DIR
@@ -430,7 +430,7 @@ static void run_spec_file(__bdd_config_type__ *__bdd_config__, const char* filen
 
                 if (name && templ && expected) {
                     it(name) {
-                        run_spec_test_case(__bdd_config__, name, templ, data, partials, expected);
+                        run_spec_test_case(name, templ, data, partials, expected);
                     }
                 }
             }
@@ -441,12 +441,11 @@ static void run_spec_file(__bdd_config_type__ *__bdd_config__, const char* filen
 }
 
 spec("mustache spec runner") {
-  bdd_invoke(run_spec_file, "partials.json");
-    bdd_invoke(run_spec_file, "comments.json");
-    bdd_invoke(run_spec_file, "interpolation.json");
-    bdd_invoke(run_spec_file, "sections.json");
-    bdd_invoke(run_spec_file, "inverted.json");
-    bdd_invoke(run_spec_file, "delimiters.json");
-    bdd_invoke(run_spec_file, "lambdas.json");   
-  
+    run_spec_file("partials.json");
+    run_spec_file("comments.json");
+    run_spec_file("interpolation.json");
+    run_spec_file("sections.json");
+    run_spec_file("inverted.json");
+    run_spec_file("delimiters.json");
+    run_spec_file("lambdas.json");
 }

@@ -139,13 +139,6 @@ cmake_add_test(test_tbe_typed_order
   FOLDER "tbe/tbe_compiler")
 tbe_copy_turbonet_runtime_deps(test_tbe_typed_order WITH_DATABIND)
 
-cmake_add_test(test_tbe_typed_order_lua
-  SOURCES test_typed_order_lua.c "${TBE_TYPED_ORDER_LUA_SOURCE}"
-  LIBS test_tbe_typed_order_static turbo_lua_bind TurboUtils::TinyTest
-  INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
-  FOLDER "tbe/tbe_compiler")
-tbe_copy_turbonet_runtime_deps(test_tbe_typed_order_lua WITH_DATABIND)
-
 cmake_add_test(test_tbe_typed_order_cpp
   SOURCES test_typed_order_cpp.cpp
   LIBS test_tbe_typed_order_shared TurboUtils::TinyTest

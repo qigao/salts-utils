@@ -220,7 +220,7 @@ static const MUSTACHE_DATAPROVIDER provider = {
 };
 
 static void
-run_case(__bdd_config_type__ *__bdd_config__, const char* desc, const char* templ, const char* data, const char* partials, const char* expected)
+run_case(const char* templ, const char* data, const char* partials, const char* expected)
 {
     json_value_t* json_root;
     json_value_t* json_partials = NULL;
@@ -282,8 +282,7 @@ spec("mustache spec adapted") {
 
     describe("comments") {
         it("should remove comment blocks") {
-            run_case(__bdd_config__,
-                "comment blocks should be removed from the template",
+            run_case(
                 "12345{{! Comment Block! }}67890",
                 "{}",
                 NULL,
@@ -294,8 +293,7 @@ spec("mustache spec adapted") {
 
     describe("interpolation") {
         it("should render mustache-free templates as-is") {
-            run_case(__bdd_config__,
-                "mustache-free templates should render as-is",
+            run_case(
                 "Hello from {Mustache}!\n",
                 "{}",
                 NULL,
@@ -304,8 +302,7 @@ spec("mustache spec adapted") {
         }
 
         it("should interpolate unadorned tags") {
-            run_case(__bdd_config__,
-                "unadorned tags should interpolate content into the template",
+            run_case(
                 "Hello, {{subject}}!\n",
                 "{\"subject\": \"world\"}",
                 NULL,
@@ -316,8 +313,7 @@ spec("mustache spec adapted") {
 
     describe("sections") {
         it("should render truthy sections") {
-            run_case(__bdd_config__,
-                "truthy sections should have their contents rendered",
+            run_case(
                 "\"{{#boolean}}This should be rendered.{{/boolean}}\"",
                 "{\"boolean\": true}",
                 NULL,
@@ -326,8 +322,7 @@ spec("mustache spec adapted") {
         }
 
         it("should omit falsey sections") {
-            run_case(__bdd_config__,
-                "falsey sections should have their contents omitted",
+            run_case(
                 "\"{{#boolean}}This should not be rendered.{{/boolean}}\"",
                 "{\"boolean\": false}",
                 NULL,
@@ -338,8 +333,7 @@ spec("mustache spec adapted") {
 
     describe("inverted sections") {
         it("should render falsey sections") {
-            run_case(__bdd_config__,
-                "falsey sections should have their contents rendered",
+            run_case(
                 "\"{{^boolean}}This should be rendered.{{/boolean}}\"",
                 "{\"boolean\": false}",
                 NULL,
@@ -350,8 +344,7 @@ spec("mustache spec adapted") {
 
     describe("partials") {
         it("should expand to the named partial") {
-            run_case(__bdd_config__,
-                "the greater-than operator should expand to the named partial",
+            run_case(
                 "\"{{>text}}\"",
                 "{}",
                 "{\"text\": \"from partial\"}",

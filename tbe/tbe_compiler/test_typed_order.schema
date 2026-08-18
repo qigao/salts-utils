@@ -40,13 +40,11 @@ message AsyncOrder {
     string symbol;
 }
 
-[lua_import(enrich_order), lua_response(OrderResult)]
 message LuaOrder {
     uint32 id;
     string symbol;
 }
 
-[lua_import(enrich_order_deferred), lua_response(OrderResult), lua_async(future)]
 message AsyncLuaOrder {
     uint32 id;
     string symbol;

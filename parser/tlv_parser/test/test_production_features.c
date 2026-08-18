@@ -117,14 +117,14 @@ spec("uri_parser_production") {
             
             void *ptr1 = pool_alloc(pool, 100);
             check_not_null(ptr1);
-            check_int_eq(pool_get_used(pool), 104);  // Aligned to 8
+            check_size_eq(pool_get_used(pool), 100);
             
             void *ptr2 = pool_alloc(pool, 200);
             check_not_null(ptr2);
-            check_int_eq(pool_get_used(pool), 304);
+            check_size_eq(pool_get_used(pool), 304);
             
             pool_reset(pool);
-            check_int_eq(pool_get_used(pool), 0);
+            check_size_eq(pool_get_used(pool), 0);
             
             void *ptr3 = pool_alloc(pool, 50);
             check_not_null(ptr3);

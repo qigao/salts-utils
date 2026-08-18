@@ -1,10 +1,10 @@
 /**
- * @file c11_lua_bind.h
+ * @file turbo_lua.h
  * @brief Lightweight C11 Preprocessor and _Generic based Lua binding library.
  *
  * Provides type-generic value pushing/getting, strict checked extraction,
  * function registration, named execution environments, registry references,
- * protected global calls, and X-Macro based struct serialization.
+ * protected global calls, and typed ordinary-C-function adapters.
  *
  * STRING LIFETIME & OWNERSHIP MODEL:
  *
@@ -27,8 +27,8 @@
  * - StructName_from_lua_arena() copies const char* and tstr_v fields into a
  *   MemoryPool; those fields become invalid after pool_reset()/pool_destroy().
  */
-#ifndef C11_LUA_BIND_H
-#define C11_LUA_BIND_H
+#ifndef TURBO_LUA_H
+#define TURBO_LUA_H
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -57,9 +57,15 @@ extern "C" {
 #define C11_CONCAT_INNER(a, b) a##b
 #define C11_STRINGIFY(x) #x
 
-/* Count variadic macro arguments (up to 16) */
-#define C11_COUNT_ARGS(...) C11_EXPAND(C11_COUNT_ARGS_HELPER(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0))
-#define C11_COUNT_ARGS_HELPER(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, N, ...) N
+/* Count variadic macro arguments (up to 32). */
+#define C11_COUNT_ARGS(...) \
+    C11_EXPAND(C11_COUNT_ARGS_HELPER(__VA_ARGS__, \
+        32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, \
+        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0))
+#define C11_COUNT_ARGS_HELPER( \
+    _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, \
+    _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, \
+    _31, _32, N, ...) N
 
 /* -------------------------------------------------------------------------
  * Type-Generic Value Pushing (C11 _Generic)
@@ -426,79 +432,336 @@ static inline int c11_lua_get_checked_ptr(lua_State* L, int idx, void** out) {
 )(L, idx, ptr)
 
 
-/* -------------------------------------------------------------------------
- * Zero-Boilerplate Function Registration
- * ------------------------------------------------------------------------- */
-#define C11_LUA_REG_PAIR(func) { #func, func }
-
-#define C11_LUA_REG_1(f1) C11_LUA_REG_PAIR(f1)
-#define C11_LUA_REG_2(f1, f2) C11_LUA_REG_PAIR(f1), C11_LUA_REG_PAIR(f2)
-#define C11_LUA_REG_3(f1, f2, f3) C11_LUA_REG_2(f1, f2), C11_LUA_REG_PAIR(f3)
-#define C11_LUA_REG_4(f1, f2, f3, f4) C11_LUA_REG_3(f1, f2, f3), C11_LUA_REG_PAIR(f4)
-#define C11_LUA_REG_5(f1, f2, f3, f4, f5) C11_LUA_REG_4(f1, f2, f3, f4), C11_LUA_REG_PAIR(f5)
-#define C11_LUA_REG_6(f1, f2, f3, f4, f5, f6) C11_LUA_REG_5(f1, f2, f3, f4, f5), C11_LUA_REG_PAIR(f6)
-#define C11_LUA_REG_7(f1, f2, f3, f4, f5, f6, f7) C11_LUA_REG_6(f1, f2, f3, f4, f5, f6), C11_LUA_REG_PAIR(f7)
-#define C11_LUA_REG_8(f1, f2, f3, f4, f5, f6, f7, f8) C11_LUA_REG_7(f1, f2, f3, f4, f5, f6, f7), C11_LUA_REG_PAIR(f8)
-#define C11_LUA_REG_9(f1, f2, f3, f4, f5, f6, f7, f8, f9) C11_LUA_REG_8(f1, f2, f3, f4, f5, f6, f7, f8), C11_LUA_REG_PAIR(f9)
-#define C11_LUA_REG_10(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10) C11_LUA_REG_9(f1, f2, f3, f4, f5, f6, f7, f8, f9), C11_LUA_REG_PAIR(f10)
-
-/**
- * @brief Batch registers C functions (lua_CFunction) into a new Lua table and leaves it on top of the stack.
- */
-#define C11_LUA_BIND_FUNCS(L, ...) \
-    do { \
-        const luaL_Reg _c11_lua_funcs[] = { \
-            C11_EXPAND(C11_CONCAT(C11_LUA_REG_, C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)), \
-            { NULL, NULL } \
-        }; \
-        lua_newtable(L); \
-        luaL_setfuncs(L, _c11_lua_funcs, 0); \
-    } while(0)
-
-/**
- * @brief Binds one lua_CFunction under an explicit global name.
- * @return TURBO_OK, or TURBO_EINVAL when an argument is invalid.
- */
-static inline int c11_lua_bind_function_named(lua_State* L, const char* name,
-                                               lua_CFunction function) {
+/* Low-level escape hatch for APIs already expressed as lua_CFunction. */
+static inline int c11_lua_bind_raw_function(lua_State* L, const char* name,
+                                             lua_CFunction function) {
     if (!L || !name || name[0] == '\0' || !function) return TURBO_EINVAL;
     lua_pushcfunction(L, function);
     lua_setglobal(L, name);
     return TURBO_OK;
 }
 
-/**
- * @brief Binds a NULL-terminated luaL_Reg array into the global table.
- * @return TURBO_OK, or TURBO_EINVAL; validation occurs before any binding.
- */
-static inline int c11_lua_bind_functions(lua_State* L, const luaL_Reg* functions) {
-    const luaL_Reg* entry;
+#define C11_LUA_BIND_RAW(L, lua_name, function) \
+    c11_lua_bind_raw_function((L), (lua_name), (function))
 
-    if (!L || !functions) return TURBO_EINVAL;
-    for (entry = functions; entry->name; ++entry) {
-        if (entry->name[0] == '\0' || !entry->func) return TURBO_EINVAL;
+/* -------------------------------------------------------------------------
+ * Typed C Function Adapters
+ *
+ * C11 cannot inspect a function pointer's parameter list. C11_LUA_FUNCTION
+ * keeps the signature explicit as type/name pairs and dispatches by pair count
+ * to generate the lua_CFunction trampoline. Functions with more than four
+ * parameters are supported up to arity nine.
+ * ------------------------------------------------------------------------- */
+static inline int c11_lua_typed_argument_error(lua_State* L, int index, int rc) {
+    const char* message = "unsupported argument";
+    switch (rc) {
+        case TURBO_EPROTO: message = "argument type mismatch"; break;
+        case TURBO_ERANGE: message = "argument value out of range"; break;
+        case TURBO_ENOMEM: message = "argument allocation failed"; break;
+        case TURBO_EINVAL: message = "invalid argument binding"; break;
+        default: break;
     }
-    for (entry = functions; entry->name; ++entry) {
-        lua_pushcfunction(L, entry->func);
-        lua_setglobal(L, entry->name);
-    }
-    return TURBO_OK;
+    return luaL_argerror(L, index, message);
 }
 
-#define C11_LUA_BIND_FUNCTION(L, function) \
-    c11_lua_bind_function_named((L), #function, (function))
-
-#define C11_LUA_BIND_FUNCTION_AS(L, lua_name, function) \
-    c11_lua_bind_function_named((L), (lua_name), (function))
-
-#define C11_LUA_BIND_GLOBAL_FUNCS(L, ...) \
+#define C11_LUA_TYPED_REQUIRE_ARITY(L, function_name, expected) \
     do { \
-        const luaL_Reg _c11_lua_global_funcs[] = { \
-            C11_EXPAND(C11_CONCAT(C11_LUA_REG_, C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)), \
-            { NULL, NULL } \
-        }; \
-        (void)c11_lua_bind_functions((L), _c11_lua_global_funcs); \
-    } while(0)
+        int _c11_actual = lua_gettop((L)); \
+        if (_c11_actual != (expected)) \
+            return luaL_error((L), "%s expects %d argument(s), got %d", \
+                              (function_name), (expected), _c11_actual); \
+    } while (0)
+
+#define C11_LUA_TYPED_READ(L, index, type, name) \
+    type name; \
+    do { \
+        int _c11_rc = c11_lua_get_checked((L), (index), &name); \
+        if (_c11_rc != TURBO_OK) \
+            return c11_lua_typed_argument_error((L), (index), _c11_rc); \
+    } while (0)
+
+/** Defines a lua_CFunction adapter for a value-returning C function. */
+#define C11_LUA_FUNCTION_BINDER(function) C11_CONCAT(function, _lua_bind)
+#define C11_LUA_FUNCTION_TRAMPOLINE(function) C11_CONCAT(function, _lua_trampoline)
+#define C11_LUA_BIND(L, function) C11_LUA_FUNCTION_BINDER(function)((L), #function)
+#define C11_LUA_BIND_AS(L, lua_name, function) \
+    C11_LUA_FUNCTION_BINDER(function)((L), (lua_name))
+
+#define C11_LUA_FUNCTION_EPILOGUE(function) \
+    static inline int C11_LUA_FUNCTION_BINDER(function)(lua_State* L, \
+                                                         const char* name) { \
+        return c11_lua_bind_raw_function( \
+            L, name, C11_LUA_FUNCTION_TRAMPOLINE(function)); \
+    }
+
+/**
+ * Declares a yield-capable lua_CFunction and gives it the same binder naming
+ * convention as C11_LUA_FUNCTION_n. The function must use lua_yieldk() when it
+ * needs to suspend; state that survives suspension belongs in lua_KContext,
+ * Lua userdata, or another explicitly owned object.
+ */
+#define C11_LUA_COROUTINE(function) \
+    static inline int C11_LUA_FUNCTION_BINDER(function)(lua_State* L, \
+                                                         const char* name) { \
+        return c11_lua_bind_raw_function((L), (name), (function)); \
+    }
+
+#define C11_LUA_FUNCTION_IMPL_0(function, return_type) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 0); \
+        _c11_result = function(); \
+        c11_lua_push(L, _c11_result); \
+        return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_1(function, return_type, t1, a1) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 1); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        _c11_result = function(a1); \
+        c11_lua_push(L, _c11_result); \
+        return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_2(function, return_type, t1, a1, t2, a2) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 2); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        _c11_result = function(a1, a2); \
+        c11_lua_push(L, _c11_result); \
+        return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_3(function, return_type, t1, a1, t2, a2, t3, a3) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 3); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); \
+        _c11_result = function(a1, a2, a3); \
+        c11_lua_push(L, _c11_result); \
+        return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_4(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 4); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); \
+        C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        _c11_result = function(a1, a2, a3, a4); \
+        c11_lua_push(L, _c11_result); \
+        return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_5(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 5); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); \
+        _c11_result = function(a1, a2, a3, a4, a5); \
+        c11_lua_push(L, _c11_result); return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_6(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 6); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        _c11_result = function(a1, a2, a3, a4, a5, a6); \
+        c11_lua_push(L, _c11_result); return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_7(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 7); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); \
+        _c11_result = function(a1, a2, a3, a4, a5, a6, a7); \
+        c11_lua_push(L, _c11_result); return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_8(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7, t8, a8) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 8); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); C11_LUA_TYPED_READ(L, 8, t8, a8); \
+        _c11_result = function(a1, a2, a3, a4, a5, a6, a7, a8); \
+        c11_lua_push(L, _c11_result); return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_FUNCTION_IMPL_9(function, return_type, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7, t8, a8, t9, a9) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        return_type _c11_result; \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 9); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); C11_LUA_TYPED_READ(L, 8, t8, a8); \
+        C11_LUA_TYPED_READ(L, 9, t9, a9); \
+        _c11_result = function(a1, a2, a3, a4, a5, a6, a7, a8, a9); \
+        c11_lua_push(L, _c11_result); return 1; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+/* Select by total macro argument count: function + return type + type/name pairs. */
+#define C11_LUA_FUNCTION_ARGS_2 C11_LUA_FUNCTION_IMPL_0
+#define C11_LUA_FUNCTION_ARGS_4 C11_LUA_FUNCTION_IMPL_1
+#define C11_LUA_FUNCTION_ARGS_6 C11_LUA_FUNCTION_IMPL_2
+#define C11_LUA_FUNCTION_ARGS_8 C11_LUA_FUNCTION_IMPL_3
+#define C11_LUA_FUNCTION_ARGS_10 C11_LUA_FUNCTION_IMPL_4
+#define C11_LUA_FUNCTION_ARGS_12 C11_LUA_FUNCTION_IMPL_5
+#define C11_LUA_FUNCTION_ARGS_14 C11_LUA_FUNCTION_IMPL_6
+#define C11_LUA_FUNCTION_ARGS_16 C11_LUA_FUNCTION_IMPL_7
+#define C11_LUA_FUNCTION_ARGS_18 C11_LUA_FUNCTION_IMPL_8
+#define C11_LUA_FUNCTION_ARGS_20 C11_LUA_FUNCTION_IMPL_9
+#define C11_LUA_FUNCTION(...) \
+    C11_EXPAND(C11_CONCAT(C11_LUA_FUNCTION_ARGS_, \
+                          C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__))
+
+/** Defines a lua_CFunction adapter for a void C function. */
+#define C11_LUA_VOID_FUNCTION_IMPL_0(function) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 0); \
+        function(); \
+        return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_1(function, t1, a1) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 1); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        function(a1); \
+        return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_2(function, t1, a1, t2, a2) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 2); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        function(a1, a2); \
+        return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_3(function, t1, a1, t2, a2, t3, a3) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 3); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); \
+        function(a1, a2, a3); \
+        return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_4(function, t1, a1, t2, a2, t3, a3, t4, a4) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 4); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); \
+        C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); \
+        C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        function(a1, a2, a3, a4); \
+        return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_5(function, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 5); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); function(a1, a2, a3, a4, a5); return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_6(function, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 6); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        function(a1, a2, a3, a4, a5, a6); return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_7(function, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 7); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); function(a1, a2, a3, a4, a5, a6, a7); return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_8(function, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7, t8, a8) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 8); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); C11_LUA_TYPED_READ(L, 8, t8, a8); \
+        function(a1, a2, a3, a4, a5, a6, a7, a8); return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+#define C11_LUA_VOID_FUNCTION_IMPL_9(function, t1, a1, t2, a2, t3, a3, t4, a4, t5, a5, t6, a6, t7, a7, t8, a8, t9, a9) \
+    static int C11_LUA_FUNCTION_TRAMPOLINE(function)(lua_State* L) { \
+        C11_LUA_TYPED_REQUIRE_ARITY(L, #function, 9); \
+        C11_LUA_TYPED_READ(L, 1, t1, a1); C11_LUA_TYPED_READ(L, 2, t2, a2); \
+        C11_LUA_TYPED_READ(L, 3, t3, a3); C11_LUA_TYPED_READ(L, 4, t4, a4); \
+        C11_LUA_TYPED_READ(L, 5, t5, a5); C11_LUA_TYPED_READ(L, 6, t6, a6); \
+        C11_LUA_TYPED_READ(L, 7, t7, a7); C11_LUA_TYPED_READ(L, 8, t8, a8); \
+        C11_LUA_TYPED_READ(L, 9, t9, a9); \
+        function(a1, a2, a3, a4, a5, a6, a7, a8, a9); return 0; \
+    } \
+    C11_LUA_FUNCTION_EPILOGUE(function)
+
+/* Select by total macro argument count: function + type/name pairs. */
+#define C11_LUA_VOID_FUNCTION_ARGS_1 C11_LUA_VOID_FUNCTION_IMPL_0
+#define C11_LUA_VOID_FUNCTION_ARGS_3 C11_LUA_VOID_FUNCTION_IMPL_1
+#define C11_LUA_VOID_FUNCTION_ARGS_5 C11_LUA_VOID_FUNCTION_IMPL_2
+#define C11_LUA_VOID_FUNCTION_ARGS_7 C11_LUA_VOID_FUNCTION_IMPL_3
+#define C11_LUA_VOID_FUNCTION_ARGS_9 C11_LUA_VOID_FUNCTION_IMPL_4
+#define C11_LUA_VOID_FUNCTION_ARGS_11 C11_LUA_VOID_FUNCTION_IMPL_5
+#define C11_LUA_VOID_FUNCTION_ARGS_13 C11_LUA_VOID_FUNCTION_IMPL_6
+#define C11_LUA_VOID_FUNCTION_ARGS_15 C11_LUA_VOID_FUNCTION_IMPL_7
+#define C11_LUA_VOID_FUNCTION_ARGS_17 C11_LUA_VOID_FUNCTION_IMPL_8
+#define C11_LUA_VOID_FUNCTION_ARGS_19 C11_LUA_VOID_FUNCTION_IMPL_9
+#define C11_LUA_VOID_FUNCTION(...) \
+    C11_EXPAND(C11_CONCAT(C11_LUA_VOID_FUNCTION_ARGS_, \
+                          C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__))
 
 /* -------------------------------------------------------------------------
  * Named Environments
@@ -901,4 +1164,4 @@ static inline void c11_lua_get_arena_tstr_v(lua_State* L, int idx, tstr_v* out, 
 }
 #endif
 
-#endif /* C11_LUA_BIND_H */
+#endif /* TURBO_LUA_H */

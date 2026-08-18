@@ -1,5 +1,6 @@
-#include "turbo_lua_bind.hpp"
-#include "tinytest.h"
+/* C++17 public binding API tests. */
+#include "turbo_lua.hpp"
+#include "tinytest.hpp"
 
 #include <functional>
 #include <map>
@@ -112,25 +113,25 @@ suite("cpp lua bind") {
   it("binds a single function") {
     CPP_LUA_BIND_FUNCTION(L, get_value);
 
-    check_int_eq(luaL_dostring(L, "result = get_value()"), 0);
+    check_equal(luaL_dostring(L, "result = get_value()"), 0);
     lua_getglobal(L, "result");
-    check_int_eq(lua_tointeger(L, -1), 0);
+    check_equal(lua_tointeger(L, -1), 0);
     lua_pop(L, 1);
   }
 
   it("binds multiple functions") {
     CPP_LUA_BIND_FUNCTIONS(L, set_value, get_value);
 
-    check_int_eq(luaL_dostring(L, "set_value(10); result = get_value()"), 0);
+    check_equal(luaL_dostring(L, "set_value(10); result = get_value()"), 0);
     lua_getglobal(L, "result");
-    check_int_eq(lua_tointeger(L, -1), 10);
+    check_equal(lua_tointeger(L, -1), 10);
     lua_pop(L, 1);
   }
 
   it("converts C++ exceptions into Lua errors") {
     CPP_LUA_BIND_FUNCTION(L, throwing);
 
-    check_int_ne(luaL_dostring(L, "throwing()"), 0);
+    check_not_equal(luaL_dostring(L, "throwing()"), 0);
   }
 
   it("binds a class with a default constructor") {
@@ -140,9 +141,9 @@ suite("cpp lua bind") {
     check_true(lua_istable(L, -1));
     lua_pop(L, 1);
 
-    check_int_eq(luaL_dostring(L, "c = counter.new(); result = c:add(5)"), 0);
+    check_equal(luaL_dostring(L, "c = counter.new(); result = c:add(5)"), 0);
     lua_getglobal(L, "result");
-    check_int_eq(lua_tointeger(L, -1), 5);
+    check_equal(lua_tointeger(L, -1), 5);
     lua_pop(L, 1);
   }
 
@@ -153,9 +154,9 @@ suite("cpp lua bind") {
     check_true(lua_istable(L, -1));
     lua_pop(L, 1);
 
-    check_int_eq(luaL_dostring(L, "c = counter_ctor.new(7); result = c:add(3)"), 0);
+    check_equal(luaL_dostring(L, "c = counter_ctor.new(7); result = c:add(3)"), 0);
     lua_getglobal(L, "result");
-    check_int_eq(lua_tointeger(L, -1), 10);
+    check_equal(lua_tointeger(L, -1), 10);
     lua_pop(L, 1);
   }
 
@@ -163,7 +164,7 @@ suite("cpp lua bind") {
     CPP_LUA_BIND_CLASS_CTOR(
         L, point, CPP_LUA_CTORS(void(), void(float, float)), get_x, get_y, set_x, set_y, x, y);
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "p = point.new(10, 20);"
                      "assert(p.x == 10 and p.y == 20);"
@@ -182,7 +183,7 @@ suite("cpp lua bind") {
     cpp_lua_reflection::to_lua(L, value);
     lua_setglobal(L, "source");
 
-    check_int_eq(luaL_dostring(L, "assert(source.x == 4 and source.y == 8);"
+    check_equal(luaL_dostring(L, "assert(source.x == 4 and source.y == 8);"
                                  "target = { x = 10, y = 20 }"),
                  0);
 
@@ -198,7 +199,7 @@ suite("cpp lua bind") {
   it("binds all reflected fields as Lua properties") {
     CPP_LUA_BIND_REFLECTED_CLASS(L, reflected_vector);
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "v = vector.new();"
                      "assert(v.x == 1 and v.y == 2);"
@@ -225,7 +226,7 @@ suite("cpp lua bind") {
     cpp_lua_bind::push_value(L, scores);
     lua_setglobal(L, "scores");
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "assert(missing == nil);"
                      "assert(present == 42);"
@@ -235,31 +236,33 @@ suite("cpp lua bind") {
                  0);
 
     lua_getglobal(L, "present");
-    check_true(cpp_lua_bind::stack_get<std::optional<int>>(L, -1) == 42);
+    auto loaded_present = cpp_lua_bind::stack_get<std::optional<int>>(L, -1);
+    check_true(loaded_present.has_value());
+    check_equal(loaded_present.value_or(-1), 42);
     lua_pop(L, 1);
 
     lua_getglobal(L, "tuple_value");
     auto loaded_tuple = cpp_lua_bind::stack_get<std::tuple<int, std::string>>(L, -1);
     lua_pop(L, 1);
-    check_int_eq(std::get<0>(loaded_tuple), 1);
-    check_str_eq(std::get<1>(loaded_tuple).c_str(), "two");
+    check_equal(std::get<0>(loaded_tuple), 1);
+    check_equal(std::get<1>(loaded_tuple), "two");
 
     lua_getglobal(L, "numbers");
     auto loaded_numbers = cpp_lua_bind::stack_get<std::vector<int>>(L, -1);
     lua_pop(L, 1);
-    check_size_eq(loaded_numbers.size(), 3);
-    check_int_eq(loaded_numbers[2], 3);
+    check_size(loaded_numbers, 3);
+    check_equal(loaded_numbers[2], 3);
 
     lua_getglobal(L, "scores");
     auto loaded_scores = cpp_lua_bind::stack_get<std::map<std::string, int>>(L, -1);
     lua_pop(L, 1);
-    check_int_eq(loaded_scores.at("b"), 2);
+    check_equal(loaded_scores.at("b"), 2);
   }
 
   it("supports multiple return values and variant values") {
     CPP_LUA_BIND_FUNCTIONS(L, get_tuple_value, get_pair_value);
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "a, b = get_tuple_value();"
                      "c, d = get_pair_value();"
@@ -275,7 +278,7 @@ suite("cpp lua bind") {
     cpp_lua_bind::push_value(L, text);
     lua_setglobal(L, "variant_text");
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "assert(variant_number == 42);"
                      "assert(variant_text == 'hello');"),
@@ -285,14 +288,14 @@ suite("cpp lua bind") {
     auto loaded = cpp_lua_bind::stack_get<std::variant<int, std::string>>(L, -1);
     lua_pop(L, 1);
     check_true(std::holds_alternative<int>(loaded));
-    check_int_eq(std::get<int>(loaded), 42);
+    check_equal(std::get<int>(loaded), 42);
   }
 
   it("binds overloaded function sets") {
     CPP_LUA_BIND_OVERLOAD_SIGNATURES(
         L, overloaded_add, int(int, int), double(double, double));
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "assert(overloaded_add(2, 3) == 5);"
                      "assert(overloaded_add(2.5, 3.5) == 6.0);"),
@@ -304,14 +307,14 @@ suite("cpp lua bind") {
         L, callable_add,
         std::function<int(int, int)>([](int a, int b) { return a + b; }));
 
-    check_int_eq(luaL_dostring(L, "assert(callable_add(2, 3) == 5);"), 0);
+    check_equal(luaL_dostring(L, "assert(callable_add(2, 3) == 5);"), 0);
   }
 
   it("inherits reflected base members") {
     CPP_LUA_BIND_REFLECTED_CLASS(L, reflected_derived);
     CPP_LUA_BIND_BASE_CLASS(L, reflected_derived, reflected_base);
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "d = reflected_derived.new();"
                      "assert(d.derived_value == 9);"
@@ -324,11 +327,11 @@ suite("cpp lua bind") {
 
   it("runs scripts in a named Lua environment") {
     cpp_lua_bind::create_environment(L, "sandbox");
-    check_int_eq(cpp_lua_bind::run_script_in_environment(L, "sandbox", "x = 5"), 0);
+    check_equal(cpp_lua_bind::run_script_in_environment(L, "sandbox", "x = 5"), 0);
 
     lua_getglobal(L, "sandbox");
     lua_getfield(L, -1, "x");
-    check_int_eq(lua_tointeger(L, -1), 5);
+    check_equal(lua_tointeger(L, -1), 5);
     lua_pop(L, 2);
 
     lua_getglobal(L, "x");
@@ -341,20 +344,20 @@ suite("cpp lua bind") {
     cpp_lua_bind::push_value(L, shared_number);
     lua_setglobal(L, "shared_number");
 
-    check_int_eq(luaL_dostring(L, "assert(shared_number == 7);"), 0);
+    check_equal(luaL_dostring(L, "assert(shared_number == 7);"), 0);
 
     lua_getglobal(L, "shared_number");
     auto loaded = cpp_lua_bind::stack_get<std::shared_ptr<int>>(L, -1);
     lua_pop(L, 1);
     check_not_null(loaded.get());
-    check_int_eq(*loaded, 7);
+    check_equal(*loaded, 7);
   }
 
   it("inherits multiple reflected base members") {
     CPP_LUA_BIND_REFLECTED_CLASS(L, reflected_multi);
     CPP_LUA_BIND_BASE_CLASSES(L, reflected_multi, reflected_base, reflected_base2);
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "m = reflected_multi.new();"
                      "assert(m.multi_value == 13);"
@@ -369,14 +372,14 @@ suite("cpp lua bind") {
     cpp_lua_bind::create_environment(L, "parent_env");
     cpp_lua_bind::create_environment(L, "child_env", "parent_env");
 
-    check_int_eq(
+    check_equal(
         cpp_lua_bind::run_script_in_environment(L, "parent_env", "shared_value = 8"), 0);
-    check_int_eq(
+    check_equal(
         cpp_lua_bind::run_script_in_environment(L, "child_env", "x = shared_value + 1"), 0);
 
     lua_getglobal(L, "child_env");
     lua_getfield(L, -1, "x");
-    check_int_eq(lua_tointeger(L, -1), 9);
+    check_equal(lua_tointeger(L, -1), 9);
     lua_pop(L, 2);
 
     lua_getglobal(L, "shared_value");
@@ -386,7 +389,7 @@ suite("cpp lua bind") {
 
   it("reports the registered C++ type of userdata") {
     CPP_LUA_BIND_REFLECTED_CLASS(L, reflected_vector);
-    check_int_eq(luaL_dostring(L, "v = vector.new()"), 0);
+    check_equal(luaL_dostring(L, "v = vector.new()"), 0);
 
     lua_getglobal(L, "v");
     check_true(cpp_lua_bind::is_same_type<reflected_vector>(L, -1));
@@ -398,7 +401,7 @@ suite("cpp lua bind") {
     CPP_LUA_BIND_REFLECTED_CLASS(L, reflected_multi);
     CPP_LUA_BIND_BASE_CLASSES(L, reflected_multi, reflected_base, reflected_base2);
 
-    check_int_eq(luaL_dostring(L, "m = reflected_multi.new()"), 0);
+    check_equal(luaL_dostring(L, "m = reflected_multi.new()"), 0);
     lua_getglobal(L, "m");
     check_true(cpp_lua_bind::is_same_type<reflected_multi>(L, -1));
     check_true(cpp_lua_bind::is_instance_of<reflected_base>(L, -1));
@@ -411,7 +414,7 @@ suite("cpp lua bind") {
     CPP_LUA_BIND_SHARED_REFLECTED_CLASS_CTOR(
         L, shared_point, CPP_LUA_CTORS(void(), void(float, float)));
 
-    check_int_eq(luaL_dostring(
+    check_equal(luaL_dostring(
                      L,
                      "p = shared_point.new(10, 20);"
                      "assert(p.x == 10 and p.y == 20);"
@@ -425,8 +428,8 @@ suite("cpp lua bind") {
   it("isolates environments from global fallback") {
     cpp_lua_bind::create_isolated_environment(L, "isolated");
 
-    check_int_eq(cpp_lua_bind::run_script_in_environment(L, "isolated", "x = 5"), 0);
-    check_int_ne(cpp_lua_bind::run_script_in_environment(L, "isolated", "print(x)"), 0);
+    check_equal(cpp_lua_bind::run_script_in_environment(L, "isolated", "x = 5"), 0);
+    check_not_equal(cpp_lua_bind::run_script_in_environment(L, "isolated", "print(x)"), 0);
 
     lua_getglobal(L, "x");
     check_true(lua_isnil(L, -1));
