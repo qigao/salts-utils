@@ -63,7 +63,7 @@ static int dump(void *node, int (*out)(const char *, size_t, void *), void *rdat
 
 spec("mustache scope climbing") {
     describe("section resolution") {
-        it("should support object as section (truthy non-list)") {
+        it("should support object as group (truthy non-list)") {
             KV globals[] = { {"id", "root_id"} };
             KV node_obj = { "id", "node_id" };
             ScopeTestData data = { globals, 1, NULL, 0, &node_obj }; 
@@ -77,7 +77,7 @@ spec("mustache scope climbing") {
             mustache_process(tpl, (MUSTACHE_RENDERER *)&renderer, &renderer, &provider, &data);
             
             char *output = mustache_string_renderer_get(&renderer);
-            check_str_eq(output, "[node_id]");
+            check_equal(output, "[node_id]");
             
             free(output);
             mustache_string_renderer_free(&renderer);
@@ -98,7 +98,7 @@ spec("mustache scope climbing") {
             mustache_process(tpl, (MUSTACHE_RENDERER *)&renderer, &renderer, &provider, &data);
             
             char *output = mustache_string_renderer_get(&renderer);
-            check_str_eq(output, "val:standalone_value");
+            check_equal(output, "val:standalone_value");
             
             free(output);
             mustache_string_renderer_free(&renderer);
@@ -119,7 +119,7 @@ spec("mustache scope climbing") {
             mustache_process(tpl, (MUSTACHE_RENDERER *)&renderer, &renderer, &provider, &data);
             
             char *output = mustache_string_renderer_get(&renderer);
-            check_str_eq(output, "A:red,B:red,");
+            check_equal(output, "A:red,B:red,");
             
             free(output);
             mustache_string_renderer_free(&renderer);

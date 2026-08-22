@@ -18,34 +18,34 @@ typedef struct ltv_message_s turbo_ltv_message_t;
  * unchanged. turbo_free_ltv() frees the message handle, not data.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_parse_ltv(const uint8_t *data, size_t len, void *out);
+TURBO_PARSER_API int turbo_parse_ltv(const uint8_t *data, size_t len, void *out);
 
 /**
  * @brief Free LTV data and set pointer to NULL.
  * @param out Address of the pointer (turbo_ltv_message_t **) to free.
  */
-CXX_C_API void turbo_free_ltv(void *out);
+TURBO_PARSER_API void turbo_free_ltv(void *out);
 
 /**
  * @brief Get the type of an LTV message.
  * @param msg Pointer to the LTV message.
  * @return The message type.
  */
-CXX_C_API uint8_t turbo_ltv_type(const turbo_ltv_message_t *msg);
+TURBO_PARSER_API uint8_t turbo_ltv_type(const turbo_ltv_message_t *msg);
 
 /**
  * @brief Get a pointer to the value part of an LTV message.
  * @param msg Pointer to the LTV message.
  * @return Pointer to the value data.
  */
-CXX_C_API const uint8_t *turbo_ltv_value(const turbo_ltv_message_t *msg);
+TURBO_PARSER_API const uint8_t *turbo_ltv_value(const turbo_ltv_message_t *msg);
 
 /**
  * @brief Get the length of the value part of an LTV message.
  * @param msg Pointer to the LTV message.
  * @return The value length in bytes.
  */
-CXX_C_API size_t turbo_ltv_value_len(const turbo_ltv_message_t *msg);
+TURBO_PARSER_API size_t turbo_ltv_value_len(const turbo_ltv_message_t *msg);
 
 /**
  * @brief Calculate the total wire size required for an LTV message with a given value size.
@@ -53,7 +53,7 @@ CXX_C_API size_t turbo_ltv_value_len(const turbo_ltv_message_t *msg);
  * @return Total size in bytes including header, or 0 when value_size exceeds
  * the supported LTV payload limit.
  */
-CXX_C_API size_t turbo_ltv_wire_size(size_t value_size);
+TURBO_PARSER_API size_t turbo_ltv_wire_size(size_t value_size);
 
 /**
  * @brief Serialize an LTV message into a buffer.
@@ -65,7 +65,7 @@ CXX_C_API size_t turbo_ltv_wire_size(size_t value_size);
  * @return Number of bytes written, or 0 on invalid input, oversized value, or
  * insufficient capacity. No partial message is written on failure.
  */
-CXX_C_API size_t turbo_ltv_build(uint8_t type, const uint8_t *value, size_t value_size,
+TURBO_PARSER_API size_t turbo_ltv_build(uint8_t type, const uint8_t *value, size_t value_size,
                                  uint8_t *out, size_t out_len);
 
 /**
@@ -76,7 +76,7 @@ CXX_C_API size_t turbo_ltv_build(uint8_t type, const uint8_t *value, size_t valu
  * @param out_header Pointer to store the detected header size.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_ltv_peek_size(const uint8_t *data, size_t len, uint32_t *out_length,
+TURBO_PARSER_API int turbo_ltv_peek_size(const uint8_t *data, size_t len, uint32_t *out_length,
                                   size_t *out_header);
 
 /* LTV Streaming */
@@ -87,13 +87,13 @@ typedef struct ltv_stream_s turbo_ltv_stream_t;
  * @param buffer_size Size of the internal reassembly buffer.
  * @return Pointer to the new LTV stream parser.
  */
-CXX_C_API turbo_ltv_stream_t *turbo_ltv_stream_create(size_t buffer_size);
+TURBO_PARSER_API turbo_ltv_stream_t *turbo_ltv_stream_create(size_t buffer_size);
 
 /**
  * @brief Destroy an LTV streaming parser and free its resources.
  * @param stream Pointer to the stream parser to destroy.
  */
-CXX_C_API void turbo_ltv_stream_destroy(turbo_ltv_stream_t *stream);
+TURBO_PARSER_API void turbo_ltv_stream_destroy(turbo_ltv_stream_t *stream);
 
 /**
  * @brief Feed incoming data to the LTV streaming parser.
@@ -106,14 +106,14 @@ CXX_C_API void turbo_ltv_stream_destroy(turbo_ltv_stream_t *stream);
  * @return 0 if a message was completed and stored in 'out', negative for error, positive if more
  * data is needed.
  */
-CXX_C_API int turbo_ltv_stream_feed(turbo_ltv_stream_t *stream, const uint8_t *data, size_t len,
+TURBO_PARSER_API int turbo_ltv_stream_feed(turbo_ltv_stream_t *stream, const uint8_t *data, size_t len,
                                     void **out);
 
 /**
  * @brief Reset the internal state of the LTV streaming parser.
  * @param stream Pointer to the stream parser.
  */
-CXX_C_API void turbo_ltv_stream_reset(turbo_ltv_stream_t *stream);
+TURBO_PARSER_API void turbo_ltv_stream_reset(turbo_ltv_stream_t *stream);
 
 
 #ifdef __cplusplus

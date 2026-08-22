@@ -96,7 +96,7 @@ static Node *get_node_at(Node *list, size_t index) {
 
 suite("Benchmark Schema Verification") {
   
-  section("Small Schema") {
+  group("Small Schema") {
     given("the SmallMsg schema") {
       Node *root = create_node_map("root");
 
@@ -104,13 +104,13 @@ suite("Benchmark Schema Verification") {
         int rc = parse_schema(SCHEMA_SMALL, strlen(SCHEMA_SMALL), root, NULL);
 
         then("it should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("it should have one message") {
           Node *messages = find_child(root, "messages");
           check_not_null(messages);
-          if (messages) check_uint_eq(messages->data.list.count, 1);
+          if (messages) check_equal(messages->data.list.count, 1);
         }
 
         then("SmallMsg should have 3 fields") {
@@ -119,7 +119,7 @@ suite("Benchmark Schema Verification") {
             Node *msg = get_node_at(messages, 0);
             Node *fields = find_child(msg, "fields");
             check_not_null(fields);
-            if (fields) check_uint_eq(fields->data.list.count, 3);
+            if (fields) check_equal(fields->data.list.count, 3);
           }
         }
         
@@ -129,7 +129,7 @@ suite("Benchmark Schema Verification") {
             Node *msg = get_node_at(messages, 0);
             Node *size = find_child(msg, "fixed_block_size");
             check_not_null(size);
-            if (size) check_str_eq(size->data.string_val, "16");
+            if (size) check_equal(size->data.string_val, "16");
           }
         }
       }
@@ -137,21 +137,21 @@ suite("Benchmark Schema Verification") {
     }
   }
 
-  section("Medium Schema") {
+  group("Medium Schema") {
     given("the MediumMsg schema with composite Header") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
         int rc = parse_schema(SCHEMA_MEDIUM, strlen(SCHEMA_MEDIUM), root, NULL);
-        check_int_eq(rc, 0);
+        check_equal(rc, 0);
 
         then("it should have one composite and one message") {
           Node *c = find_child(root, "composites");
           Node *m = find_child(root, "messages");
           check_not_null(c);
           check_not_null(m);
-          if (c) check_uint_eq(c->data.list.count, 1);
-          if (m) check_uint_eq(m->data.list.count, 1);
+          if (c) check_equal(c->data.list.count, 1);
+          if (m) check_equal(m->data.list.count, 1);
         }
 
         then("MediumMsg should include the header") {
@@ -161,7 +161,7 @@ suite("Benchmark Schema Verification") {
             Node *fields = find_child(msg, "fields");
             Node *header_field = get_node_at(fields, 0);
             check_not_null(header_field);
-            if (header_field) check_str_eq(find_child(header_field, "type")->data.string_val, "Header");
+            if (header_field) check_equal(find_child(header_field, "type")->data.string_val, "Header");
           }
         }
         
@@ -171,7 +171,7 @@ suite("Benchmark Schema Verification") {
             Node *msg = get_node_at(messages, 0);
             Node *size = find_child(msg, "fixed_block_size");
             check_not_null(size);
-            if (size) check_str_eq(size->data.string_val, "44");
+            if (size) check_equal(size->data.string_val, "44");
           }
         }
       }
@@ -179,18 +179,18 @@ suite("Benchmark Schema Verification") {
     }
   }
 
-  section("Large Schema") {
+  group("Large Schema") {
     given("the LargeMsg schema with groups and strings") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
         int rc = parse_schema(SCHEMA_LARGE, strlen(SCHEMA_LARGE), root, NULL);
-        check_int_eq(rc, 0);
+        check_equal(rc, 0);
 
         then("it should have one group defined") {
           Node *g = find_child(root, "groups");
           check_not_null(g);
-          if (g) check_uint_eq(g->data.list.count, 1);
+          if (g) check_equal(g->data.list.count, 1);
         }
 
         then("LargeMsg should have 4 fields") {
@@ -199,7 +199,7 @@ suite("Benchmark Schema Verification") {
             Node *msg = get_node_at(messages, 0);
             Node *fields = find_child(msg, "fields");
             check_not_null(fields);
-            if (fields) check_uint_eq(fields->data.list.count, 4);
+            if (fields) check_equal(fields->data.list.count, 4);
           }
         }
 
@@ -210,7 +210,7 @@ suite("Benchmark Schema Verification") {
             Node *fields = find_child(msg, "fields");
             Node *symbol = get_node_at(fields, 3);
             check_not_null(symbol);
-            if (symbol) check_str_eq(find_child(symbol, "is_variable_size")->data.string_val, "1");
+            if (symbol) check_equal(find_child(symbol, "is_variable_size")->data.string_val, "1");
           }
         }
       }
@@ -218,13 +218,13 @@ suite("Benchmark Schema Verification") {
     }
   }
 
-  section("Enum/Flags Metadata") {
+  group("Enum/Flags Metadata") {
     given("the Status enum and Permissions flags") {
       Node *root = create_node_map("root");
 
       when("parsing Status enum") {
         int rc = parse_schema(SCHEMA_ENUM, strlen(SCHEMA_ENUM), root, NULL);
-        check_int_eq(rc, 0);
+        check_equal(rc, 0);
         Node *enums = find_child(root, "enums");
         if (enums) {
           Node *status = get_node_at(enums, 0);
@@ -232,7 +232,7 @@ suite("Benchmark Schema Verification") {
           then("it should have 10 items") {
             Node *items = find_child(status, "items");
             check_not_null(items);
-            if (items) check_uint_eq(items->data.list.count, 10);
+            if (items) check_equal(items->data.list.count, 10);
           }
 
           then("Retry should have value 8") {
@@ -240,7 +240,7 @@ suite("Benchmark Schema Verification") {
             if (items) {
               Node *retry = get_node_at(items, 8);
               check_not_null(retry);
-              if (retry) check_str_eq(find_child(retry, "value")->data.string_val, "8");
+              if (retry) check_equal(find_child(retry, "value")->data.string_val, "8");
             }
           }
         }
@@ -250,13 +250,13 @@ suite("Benchmark Schema Verification") {
         node_free(root);
         root = create_node_map("root");
         int rc = parse_schema(SCHEMA_FLAGS, strlen(SCHEMA_FLAGS), root, NULL);
-        check_int_eq(rc, 0);
+        check_equal(rc, 0);
         Node *enums = find_child(root, "enums");
         if (enums) {
           Node *perms = get_node_at(enums, 0);
 
           then("it should be marked as flags") {
-            check_str_eq(find_child(perms, "is_flags")->data.string_val, "1");
+            check_equal(find_child(perms, "is_flags")->data.string_val, "1");
           }
 
           then("Write should have value 2 (power of 2)") {
@@ -264,7 +264,7 @@ suite("Benchmark Schema Verification") {
             if (items) {
               Node *write = get_node_at(items, 1);
               check_not_null(write);
-              if (write) check_str_eq(find_child(write, "value")->data.string_val, "2");
+              if (write) check_equal(find_child(write, "value")->data.string_val, "2");
             }
           }
         }
@@ -273,7 +273,7 @@ suite("Benchmark Schema Verification") {
     }
   }
 
-  section("Complex Market Schema") {
+  group("Complex Market Schema") {
     given("the complete Market schema") {
       Node *root = create_node_map("root");
 
@@ -281,15 +281,15 @@ suite("Benchmark Schema Verification") {
         int rc = parse_schema(SCHEMA_COMPLEX, strlen(SCHEMA_COMPLEX), root, NULL);
 
         then("it should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("it should have correct schema name and byte order") {
           Node *schema = find_child(root, "schema");
           check_not_null(schema);
           if (schema) {
-            check_str_eq(find_child(schema, "schema_name")->data.string_val, "Market");
-            check_str_eq(find_child(schema, "wire_byte_order")->data.string_val, "little");
+            check_equal(find_child(schema, "schema_name")->data.string_val, "Market");
+            check_equal(find_child(schema, "wire_byte_order")->data.string_val, "little");
           }
         }
 
@@ -297,7 +297,7 @@ suite("Benchmark Schema Verification") {
           Node *messages = find_child(root, "messages");
           if (messages) {
             Node *msg = get_node_at(messages, 0);
-            check_str_eq(find_child(msg, "is_message_decl")->data.string_val, "1");
+            check_equal(find_child(msg, "is_message_decl")->data.string_val, "1");
           }
         }
 
@@ -307,7 +307,7 @@ suite("Benchmark Schema Verification") {
             Node *msg = get_node_at(messages, 0);
             Node *fields = find_child(msg, "fields");
             check_not_null(fields);
-            if (fields) check_uint_eq(fields->data.list.count, 8);
+            if (fields) check_equal(fields->data.list.count, 8);
           }
         }
       }

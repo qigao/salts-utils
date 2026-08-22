@@ -188,7 +188,7 @@ suite("Data Bind") {
   after_all() {
   }
 
-  section("Codec Creation") {
+  group("Codec Creation") {
     given("a valid schema file") {
       write_schema("test_create.tbe", "message Ping { uint32 seq; }\n");
 
@@ -239,19 +239,19 @@ suite("Data Bind") {
             at = require_field(from_json, "at");
             check(data_bind_value_kind(at) == DATA_BIND_VALUE_DATETIME);
             check(data_bind_value_as_datetime(at, &dt));
-            check_int_eq(dt.year, 2006);
-            check_double_eq(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
+            check_equal(dt.year, 2006);
+            check_within(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
             check_not_null(data_bind_value_as_datetime_string(at, text, sizeof(text)));
 
             check_not_null(from_csv);
             at = require_field(from_csv, "at");
             check(data_bind_value_kind(at) == DATA_BIND_VALUE_DATETIME);
-            check_double_eq(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
+            check_within(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
 
             check_not_null(from_xml);
             at = require_field(from_xml, "at");
             check(data_bind_value_kind(at) == DATA_BIND_VALUE_DATETIME);
-            check_double_eq(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
+            check_within(data_bind_value_as_datetime_timestamp(at), 1141478874.0, 0.001);
           }
 
           (void)dt_text;
@@ -301,17 +301,17 @@ suite("Data Bind") {
             check(data_bind_value_kind(t) == DATA_BIND_VALUE_TIME);
             check(data_bind_value_kind(span) == DATA_BIND_VALUE_DURATION);
             check(data_bind_value_get_date(d, &date) == DATA_BIND_OK);
-            check_int_eq(date.year, 2026);
-            check_int_eq(date.month, 6);
-            check_int_eq(date.day, 28);
+            check_equal(date.year, 2026);
+            check_equal(date.month, 6);
+            check_equal(date.day, 28);
             check(data_bind_value_get_time(t, &time) == DATA_BIND_OK);
-            check_int_eq(time.hour, 9);
-            check_int_eq(time.millisecond, 123);
+            check_equal(time.hour, 9);
+            check_equal(time.millisecond, 123);
             check(data_bind_value_get_duration_milliseconds(span, &duration_ms) == DATA_BIND_OK);
-            check_int_eq((int)duration_ms, 5405250);
-            check_str_eq(data_bind_value_as_date_string(d, text, sizeof(text)), "2026-06-28");
-            check_str_eq(data_bind_value_as_time_string(t, text, sizeof(text)), "09:30:05.123");
-            check_str_eq(data_bind_value_as_duration_string(span, text, sizeof(text)),
+            check_equal((int)duration_ms, 5405250);
+            check_equal(data_bind_value_as_date_string(d, text, sizeof(text)), "2026-06-28");
+            check_equal(data_bind_value_as_time_string(t, text, sizeof(text)), "09:30:05.123");
+            check_equal(data_bind_value_as_duration_string(span, text, sizeof(text)),
                          "1:30:05.250");
 
             check_not_null(from_csv);
@@ -375,22 +375,22 @@ suite("Data Bind") {
             price = require_field(from_json, "price");
             check(data_bind_value_kind(price) == DATA_BIND_VALUE_DECIMAL);
             check(data_bind_value_as_decimal(price, &decimal));
-            check_int_eq((int)decimal.mantissa, 12345);
-            check_int_eq(decimal.scale, 2);
-            check_str_eq(data_bind_value_as_decimal_string(price, text, sizeof(text)),
+            check_equal((int)decimal.mantissa, 12345);
+            check_equal(decimal.scale, 2);
+            check_equal(data_bind_value_as_decimal_string(price, text, sizeof(text)),
                          "123.45");
 
             check_not_null(from_csv);
             price = require_field(from_csv, "price");
             check(data_bind_value_kind(price) == DATA_BIND_VALUE_DECIMAL);
             check(data_bind_value_get_decimal(price, &decimal) == DATA_BIND_OK);
-            check_int_eq((int)decimal.mantissa, -125);
-            check_int_eq(decimal.scale, 3);
+            check_equal((int)decimal.mantissa, -125);
+            check_equal(decimal.scale, 3);
 
             check_not_null(from_xml);
             price = require_field(from_xml, "price");
             check(data_bind_value_kind(price) == DATA_BIND_VALUE_DECIMAL);
-            check_str_eq(data_bind_value_as_decimal_string(price, text, sizeof(text)), "42");
+            check_equal(data_bind_value_as_decimal_string(price, text, sizeof(text)), "42");
           }
 
           data_bind_value_free(from_json);
@@ -445,28 +445,28 @@ suite("Data Bind") {
             total = require_field(from_json, "total");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_BIGINT);
             check(data_bind_value_kind(total) == DATA_BIND_VALUE_MONEY);
-            check_int_eq(data_bind_value_get_bigint(id, &bigint, &bigint_len), DATA_BIND_OK);
-            check_str_eq(bigint, "123456789012345678901234567890");
-            check_size_eq(bigint_len, strlen("123456789012345678901234567890"));
+            check_equal(data_bind_value_get_bigint(id, &bigint, &bigint_len), DATA_BIND_OK);
+            check_equal(bigint, "123456789012345678901234567890");
+            check_equal(bigint_len, strlen("123456789012345678901234567890"));
             check(data_bind_value_as_money(total, &money));
-            check_int_eq((int)money.amount.mantissa, 12345);
-            check_int_eq(money.amount.scale, 2);
-            check_str_eq(money.currency, "USD");
-            check_str_eq(data_bind_value_as_money_string(total, text, sizeof(text)),
+            check_equal((int)money.amount.mantissa, 12345);
+            check_equal(money.amount.scale, 2);
+            check_equal(money.currency, "USD");
+            check_equal(data_bind_value_as_money_string(total, text, sizeof(text)),
                          "USD 123.45");
 
             check_not_null(from_csv);
-            check_str_eq(data_bind_value_as_bigint_string(require_field(from_csv, "id")),
+            check_equal(data_bind_value_as_bigint_string(require_field(from_csv, "id")),
                          "-42");
-            check_int_eq(data_bind_value_get_money(require_field(from_csv, "total"), &money),
+            check_equal(data_bind_value_get_money(require_field(from_csv, "total"), &money),
                          DATA_BIND_OK);
-            check_str_eq(money.currency, "EUR");
-            check_int_eq((int)money.amount.mantissa, 9999);
-            check_int_eq(money.amount.scale, 2);
+            check_equal(money.currency, "EUR");
+            check_equal((int)money.amount.mantissa, 9999);
+            check_equal(money.amount.scale, 2);
 
             check_not_null(from_xml);
-            check_str_eq(data_bind_value_as_bigint_string(require_field(from_xml, "id")), "7");
-            check_str_eq(data_bind_value_as_money_string(require_field(from_xml, "total"),
+            check_equal(data_bind_value_as_bigint_string(require_field(from_xml, "id")), "7");
+            check_equal(data_bind_value_as_money_string(require_field(from_xml, "total"),
                                                         text, sizeof(text)),
                          "JPY 12.34");
           }
@@ -515,22 +515,22 @@ suite("Data Bind") {
             raw = require_field(from_json, "raw");
             check(data_bind_value_kind(raw) == DATA_BIND_VALUE_BYTES);
             bytes = data_bind_value_as_bytes(raw, &len);
-            check_size_eq(len, 2);
-            check_mem_eq(bytes, "Az", 2);
+            check_equal(len, 2);
+            check_equal(bytes, "Az", 2);
 
             check_not_null(from_csv);
             raw = require_field(from_csv, "raw");
             check(data_bind_value_kind(raw) == DATA_BIND_VALUE_BYTES);
             bytes = data_bind_value_as_bytes(raw, &len);
-            check_size_eq(len, 2);
-            check_mem_eq(bytes, "Az", 2);
+            check_equal(len, 2);
+            check_equal(bytes, "Az", 2);
 
             check_not_null(from_xml);
             raw = require_field(from_xml, "raw");
             check(data_bind_value_kind(raw) == DATA_BIND_VALUE_BYTES);
             bytes = data_bind_value_as_bytes(raw, &len);
-            check_size_eq(len, 2);
-            check_mem_eq(bytes, "Az", 2);
+            check_equal(len, 2);
+            check_equal(bytes, "Az", 2);
           }
 
           data_bind_value_free(from_json);
@@ -600,21 +600,21 @@ suite("Data Bind") {
             check_not_null(from_json);
             ip = require_field(from_json, "ip");
             check(data_bind_value_kind(ip) == DATA_BIND_VALUE_STRING);
-            check_str_eq(data_bind_value_as_string(ip), "2001:db8::1");
+            check_equal(data_bind_value_as_string(ip), "2001:db8::1");
 
             check_not_null(from_csv);
-            check_str_eq(data_bind_value_as_string(require_field(from_csv, "currency")), "EUR");
+            check_equal(data_bind_value_as_string(require_field(from_csv, "currency")), "EUR");
 
             check_not_null(from_xml);
-            check_str_eq(data_bind_value_as_string(require_field(from_xml, "owner")),
+            check_equal(data_bind_value_as_string(require_field(from_xml, "owner")),
                          "dev@example.com");
 
             check(data_bind_schema_field_at(codec, "Endpoint", 0, &field) == 1);
-            check_str_eq(field.format, "ipaddr");
+            check_equal(field.format, "ipaddr");
             check(data_bind_schema_field_at(codec, "Endpoint", 2, &field) == 1);
-            check_str_eq(field.format, "url");
+            check_equal(field.format, "url");
             check(data_bind_schema_field_at(codec, "Endpoint", 14, &field) == 1);
-            check_str_eq(field.format, "regex");
+            check_equal(field.format, "regex");
 
             data_bind_value_free(from_json);
             data_bind_value_free(from_csv);
@@ -645,7 +645,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Schema Reflection") {
+  group("Schema Reflection") {
     given("a schema with records enums flags unions and containers") {
       write_schema("test_reflect.tbe", "schema Market [id(1), version(2), byte_order(little)];\n"
                                       "enum Side <uint8> { Buy = 1; Sell = 2; }\n"
@@ -672,89 +672,89 @@ suite("Data Bind") {
         DataBindSchemaAttribute attr = DATA_BIND_SCHEMA_ATTRIBUTE_INIT;
 
         then("schema should expose declared types") {
-          check_str_eq(data_bind_schema_name(codec), "Market");
-          check_size_eq(data_bind_schema_attribute_count(codec), 3);
+          check_equal(data_bind_schema_name(codec), "Market");
+          check_equal(data_bind_schema_attribute_count(codec), 3);
           check(data_bind_schema_attribute_at(codec, 2, &attr) == 1);
-          check_str_eq(attr.name, "byte_order");
-          check_str_eq(attr.value, "little");
-          check_str_eq(data_bind_schema_attribute_get(codec, "version"), "2");
+          check_equal(attr.name, "byte_order");
+          check_equal(attr.value, "little");
+          check_equal(data_bind_schema_attribute_get(codec, "version"), "2");
 
-          check_size_eq(data_bind_schema_type_count(codec), 6);
-          check_size_eq(data_bind_schema_enum_count(codec), 2);
+          check_equal(data_bind_schema_type_count(codec), 6);
+          check_equal(data_bind_schema_enum_count(codec), 2);
 
           check(data_bind_schema_find_type(codec, "Book", &type) == 1);
-          check_str_eq(type.name, "Book");
+          check_equal(type.name, "Book");
           check(type.kind == DATA_BIND_SCHEMA_MESSAGE);
-          check_str_eq(data_bind_schema_kind_name(type.kind), "message");
-          check_size_eq(type.field_count, 6);
+          check_equal(data_bind_schema_kind_name(type.kind), "message");
+          check_equal(type.field_count, 6);
           check(type.has_fixed_block_size == 1);
-          check_size_eq(type.fixed_block_size, 33);
+          check_equal(type.fixed_block_size, 33);
 
           check(data_bind_schema_find_type(codec, "Header", &type) == 1);
           check(type.kind == DATA_BIND_SCHEMA_COMPOSITE);
-          check_size_eq(type.fixed_block_size, 12);
+          check_equal(type.fixed_block_size, 12);
 
           check(data_bind_schema_find_type(codec, "Level", &type) == 1);
           check(type.kind == DATA_BIND_SCHEMA_GROUP);
-          check_size_eq(type.fixed_block_size, 12);
+          check_equal(type.fixed_block_size, 12);
 
           check(data_bind_schema_find_type(codec, "Choice", &type) == 1);
           check(type.kind == DATA_BIND_SCHEMA_UNION);
-          check_size_eq(type.field_count, 2);
+          check_equal(type.field_count, 2);
 
           check(data_bind_schema_find_type(codec, "Perms", &type) == 1);
           check(type.kind == DATA_BIND_SCHEMA_FLAGS);
-          check_size_eq(type.item_count, 2);
+          check_equal(type.item_count, 2);
         }
 
         then("schema should expose field metadata") {
-          check_size_eq(data_bind_schema_field_count(codec, "Book"), 6);
+          check_equal(data_bind_schema_field_count(codec, "Book"), 6);
 
           check(data_bind_schema_field_at(codec, "Book", 0, &field) == 1);
-          check_str_eq(field.name, "header");
-          check_str_eq(field.kind, "composite");
+          check_equal(field.name, "header");
+          check_equal(field.kind, "composite");
           check(field.is_composite == 1);
-          check_size_eq(field.offset, 1);
+          check_equal(field.offset, 1);
 
           check(data_bind_schema_field_at(codec, "Book", 1, &field) == 1);
-          check_str_eq(field.name, "venue");
-          check_str_eq(field.kind, "scalar");
+          check_equal(field.name, "venue");
+          check_equal(field.kind, "scalar");
           check(field.is_optional == 1);
           check(field.has_default == 1);
-          check_str_eq(field.default_value, "7");
-          check_size_eq(field.offset, 13);
+          check_equal(field.default_value, "7");
+          check_equal(field.offset, 13);
 
           check(data_bind_schema_field_at(codec, "Book", 2, &field) == 1);
-          check_str_eq(field.name, "digest");
-          check_str_eq(field.kind, "bytes");
-          check_size_eq(field.size_bytes, 16);
+          check_equal(field.name, "digest");
+          check_equal(field.kind, "bytes");
+          check_equal(field.size_bytes, 16);
 
           check(data_bind_schema_field_at(codec, "Book", 3, &field) == 1);
-          check_str_eq(field.name, "bids");
-          check_str_eq(field.kind, "group");
-          check_str_eq(field.group_type, "Level");
+          check_equal(field.name, "bids");
+          check_equal(field.kind, "group");
+          check_equal(field.group_type, "Level");
 
           check(data_bind_schema_field_at(codec, "Book", 5, &field) == 1);
-          check_str_eq(field.name, "attrs");
-          check_str_eq(field.kind, "map");
-          check_str_eq(field.key_type, "string");
-          check_str_eq(field.value_type, "uint32");
+          check_equal(field.name, "attrs");
+          check_equal(field.kind, "map");
+          check_equal(field.key_type, "string");
+          check_equal(field.value_type, "uint32");
         }
 
         then("schema should expose union fields and enum items") {
           check(data_bind_schema_field_at(codec, "Choice", 0, &field) == 1);
-          check_str_eq(field.name, "side");
-          check_str_eq(field.kind, "enum");
+          check_equal(field.name, "side");
+          check_equal(field.kind, "enum");
           check(field.is_enum == 1);
 
           check(data_bind_schema_enum_at(codec, 0, &type) == 1);
-          check_str_eq(type.name, "Side");
+          check_equal(type.name, "Side");
           check(type.kind == DATA_BIND_SCHEMA_ENUM);
-          check_str_eq(type.underlying_type, "uint8");
-          check_size_eq(type.item_count, 2);
+          check_equal(type.underlying_type, "uint8");
+          check_equal(type.item_count, 2);
           check(data_bind_schema_enum_item_at(codec, "Side", 0, &item) == 1);
-          check_str_eq(item.name, "Buy");
-          check_str_eq(item.value, "1");
+          check_equal(item.name, "Buy");
+          check_equal(item.value, "1");
         }
 
         data_bind_free(codec);
@@ -764,7 +764,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Primitive Type Parsing") {
+  group("Primitive Type Parsing") {
     given("a schema with uint8, uint16, uint32, uint64") {
       write_schema("test_prim.tbe", "message Primitives {\n"
                                     "    uint8 a;\n"
@@ -790,14 +790,14 @@ suite("Data Bind") {
 
           then("result should be non-null") { check_not_null(v); }
           then("fields should contain parsed values") {
-            check_int_eq(data_bind_value_as_int(require_field(v, "a")), 171);
-            check_int_eq(data_bind_value_as_int(require_field(v, "b")), 4660);
+            check_equal(data_bind_value_as_int(require_field(v, "a")), 171);
+            check_equal(data_bind_value_as_int(require_field(v, "b")), 4660);
             check(data_bind_value_kind(require_field(v, "c")) == DATA_BIND_VALUE_INT64);
             check(data_bind_value_as_int64(require_field(v, "c")) == INT64_C(4294967295));
             const DataBindValue *d = require_field(v, "d");
             uint64_t exact = 0;
             check(data_bind_value_kind(d) == DATA_BIND_VALUE_UINT64);
-            check_int_eq(data_bind_value_get_uint64(d, &exact), DATA_BIND_OK);
+            check_equal(data_bind_value_get_uint64(d, &exact), DATA_BIND_OK);
             check(exact == UINT64_MAX);
           }
 
@@ -817,7 +817,7 @@ suite("Data Bind") {
 
       DataBind *codec = data_bind_create("test_uuid.tbe");
       check_not_null(codec);
-      check_int_eq(turbo_uuid_parse(id_text, &expected), TURBO_OK);
+      check_equal(turbo_uuid_parse(id_text, &expected), TURBO_OK);
 
       if (codec) {
         when("parsing binary data") {
@@ -831,8 +831,8 @@ suite("Data Bind") {
             id = require_field(v, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
             check(data_bind_value_get_uuid(id, actual.bytes) == DATA_BIND_OK);
-            check_mem_eq(actual.bytes, expected.bytes, sizeof(expected.bytes));
-            check_str_eq(data_bind_value_as_uuid_string(id, text, sizeof(text)), id_text);
+            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check_equal(data_bind_value_as_uuid_string(id, text, sizeof(text)), id_text);
           }
 
           data_bind_value_free(v);
@@ -857,26 +857,26 @@ suite("Data Bind") {
             id = require_field(from_json, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
             check(data_bind_value_as_uuid(id, actual.bytes));
-            check_mem_eq(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
 
-            check_int_eq(yaml_status, DATA_BIND_OK);
+            check_equal(yaml_status, DATA_BIND_OK);
             check_not_null(from_yaml);
             id = require_field(from_yaml, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
             check(data_bind_value_as_uuid(id, actual.bytes));
-            check_mem_eq(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
 
             check_not_null(from_csv);
             id = require_field(from_csv, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
             check(data_bind_value_as_uuid(id, actual.bytes));
-            check_mem_eq(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
 
             check_not_null(from_xml);
             id = require_field(from_xml, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
             check(data_bind_value_as_uuid(id, actual.bytes));
-            check_mem_eq(actual.bytes, expected.bytes, sizeof(expected.bytes));
+            check_equal(actual.bytes, expected.bytes, sizeof(expected.bytes));
           }
 
           data_bind_value_free(from_json);
@@ -892,7 +892,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Composite Type Parsing") {
+  group("Composite Type Parsing") {
     given("a schema with a composite header") {
       write_schema("test_comp.tbe", "composite Header { uint16 version; uint32 seq; }\n"
                                     "message Msg { Header header; uint32 payload; }\n");
@@ -916,9 +916,9 @@ suite("Data Bind") {
             check_not_null(v);
             header = require_field(v, "header");
             check(data_bind_value_kind(header) == DATA_BIND_VALUE_OBJECT);
-            check_int_eq(data_bind_value_as_int(require_field(header, "version")), 3);
-            check_int_eq(data_bind_value_as_int(require_field(header, "seq")), 99);
-            check_int_eq(data_bind_value_as_int(require_field(v, "payload")), 7777);
+            check_equal(data_bind_value_as_int(require_field(header, "version")), 3);
+            check_equal(data_bind_value_as_int(require_field(header, "seq")), 99);
+            check_equal(data_bind_value_as_int(require_field(v, "payload")), 7777);
           }
 
           data_bind_value_free(v);
@@ -931,7 +931,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Enum Type Parsing") {
+  group("Enum Type Parsing") {
     given("a schema with an enum field") {
       write_schema("test_enum.tbe", "enum Side <uint8> { Buy = 1; Sell = 2; }\n"
                                     "message Order { uint32 id; Side side; uint32 qty; }\n");
@@ -952,9 +952,9 @@ suite("Data Bind") {
 
           then("enum should bind to numeric value") {
             check_not_null(v);
-            check_int_eq(data_bind_value_as_int(require_field(v, "id")), 100);
-            check_int_eq(data_bind_value_as_int(require_field(v, "side")), 1);
-            check_int_eq(data_bind_value_as_int(require_field(v, "qty")), 500);
+            check_equal(data_bind_value_as_int(require_field(v, "id")), 100);
+            check_equal(data_bind_value_as_int(require_field(v, "side")), 1);
+            check_equal(data_bind_value_as_int(require_field(v, "qty")), 500);
           }
 
           data_bind_value_free(v);
@@ -967,7 +967,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Bounds and Errors") {
+  group("Bounds and Errors") {
     given("a schema with uint32 field") {
       write_schema("test_bounds.tbe", "message Small { uint32 x; }\n");
 
@@ -991,7 +991,7 @@ suite("Data Bind") {
           v = data_bind_parse(codec, "Small", buf, sizeof(buf));
           then("should succeed") {
             check_not_null(v);
-            check_int_eq(data_bind_value_as_int(require_field(v, "x")), 12345);
+            check_equal(data_bind_value_as_int(require_field(v, "x")), 12345);
           }
           data_bind_value_free(v);
         }
@@ -1003,7 +1003,7 @@ suite("Data Bind") {
           DataBindStatus status =
               test_data_bind_parse_status(codec, "Missing", buf, sizeof(buf), &v, &err);
           then("should return NULL and set error") {
-            check_int_eq(status, DATA_BIND_ERR_TYPE_NOT_FOUND);
+            check_equal(status, DATA_BIND_ERR_TYPE_NOT_FOUND);
             check_null(v);
             check(strstr(err.message, "Missing") != NULL);
           }
@@ -1016,7 +1016,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Memory Management") {
+  group("Memory Management") {
     given("multiple codec instances") {
       write_schema("test_mem.tbe", "message Msg { uint32 x; }\n");
 
@@ -1043,7 +1043,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Dynamic function list") {
+  group("Dynamic function list") {
     given("a schema with multiple message types") {
       write_schema("test_many_msgs.tbe", "message Msg0 { uint32 x; }\n"
                                          "message Msg1 { uint32 x; }\n"
@@ -1068,7 +1068,7 @@ suite("Data Bind") {
             }
           }
 
-          then("should parse all 3 types") { check_int_eq(success_count, 3); }
+          then("should parse all 3 types") { check_equal(success_count, 3); }
         }
 
         data_bind_free(codec);
@@ -1078,7 +1078,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Variable-length String Parsing") {
+  group("Variable-length String Parsing") {
     given("a schema with string field") {
       write_schema("test_varstr.tbe", "message Msg { string name; }\n");
 
@@ -1096,7 +1096,7 @@ suite("Data Bind") {
 
           then("name should be parsed") {
             check_not_null(v);
-            check_str_eq(data_bind_value_as_string(require_field(v, "name")), "Turbo");
+            check_equal(data_bind_value_as_string(require_field(v, "name")), "Turbo");
           }
 
           data_bind_value_free(v);
@@ -1118,8 +1118,8 @@ suite("Data Bind") {
           DataBindValue *v = data_bind_parse_json(codec, "Msg", json, strlen(json));
           check_not_null(v);
           if (v) {
-            check_str_eq(data_bind_value_as_string(require_field(v, "name")), "Turbo");
-            check_int_eq(data_bind_value_as_int(require_field(v, "qty")), 42);
+            check_equal(data_bind_value_as_string(require_field(v, "name")), "Turbo");
+            check_equal(data_bind_value_as_int(require_field(v, "qty")), 42);
             data_bind_value_free(v);
           }
         }
@@ -1129,7 +1129,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Array Set Map and Group Parsing") {
+  group("Array Set Map and Group Parsing") {
     given("a schema with uint32 fixed array") {
       write_schema("test_array.tbe", "message Arr { uint32[3] values; }\n");
 
@@ -1149,10 +1149,10 @@ suite("Data Bind") {
           check_not_null(v);
           values = require_field(v, "values");
           check(data_bind_value_kind(values) == DATA_BIND_VALUE_LIST);
-          check_size_eq(data_bind_value_count(values), 3);
-          check_int_eq(data_bind_value_as_int(require_index(values, 0)), 11);
-          check_int_eq(data_bind_value_as_int(require_index(values, 1)), 22);
-          check_int_eq(data_bind_value_as_int(require_index(values, 2)), 33);
+          check_equal(data_bind_value_count(values), 3);
+          check_equal(data_bind_value_as_int(require_index(values, 0)), 11);
+          check_equal(data_bind_value_as_int(require_index(values, 1)), 22);
+          check_equal(data_bind_value_as_int(require_index(values, 2)), 33);
         }
 
         data_bind_value_free(v);
@@ -1199,25 +1199,25 @@ suite("Data Bind") {
 
         then("group and trailing var-data should parse") {
           check_not_null(v);
-          check_int_eq(data_bind_value_as_int(require_field(v, "seq")), 7);
+          check_equal(data_bind_value_as_int(require_field(v, "seq")), 7);
           bids = require_field(v, "bids");
           check(data_bind_value_kind(bids) == DATA_BIND_VALUE_LIST);
-          check_size_eq(data_bind_value_count(bids), 2);
+          check_equal(data_bind_value_count(bids), 2);
           bid0 = require_index(bids, 0);
           bid1 = require_index(bids, 1);
-          check_int_eq(data_bind_value_as_int64(require_field(bid0, "price")), 100);
-          check_int_eq(data_bind_value_as_int(require_field(bid0, "qty")), 10);
-          check_int_eq(data_bind_value_as_int64(require_field(bid1, "price")), 200);
-          check_int_eq(data_bind_value_as_int(require_field(bid1, "qty")), 20);
-          check_str_eq(data_bind_value_as_string(require_field(v, "symbol")), "ABCD");
+          check_equal(data_bind_value_as_int64(require_field(bid0, "price")), 100);
+          check_equal(data_bind_value_as_int(require_field(bid0, "qty")), 10);
+          check_equal(data_bind_value_as_int64(require_field(bid1, "price")), 200);
+          check_equal(data_bind_value_as_int(require_field(bid1, "qty")), 20);
+          check_equal(data_bind_value_as_string(require_field(v, "symbol")), "ABCD");
           source = require_field(v, "source");
           bytes = data_bind_value_as_bytes(source, &bytes_len);
-          check_size_eq(bytes_len, 3);
+          check_equal(bytes_len, 3);
           check_not_null(bytes);
           if (bytes) {
-            check_int_eq(bytes[0], 1);
-            check_int_eq(bytes[1], 2);
-            check_int_eq(bytes[2], 3);
+            check_equal(bytes[0], 1);
+            check_equal(bytes[1], 2);
+            check_equal(bytes[2], 3);
           }
         }
 
@@ -1250,9 +1250,9 @@ suite("Data Bind") {
           check_not_null(v);
           tags = require_field(v, "tags");
           check(data_bind_value_kind(tags) == DATA_BIND_VALUE_SET);
-          check_size_eq(data_bind_value_count(tags), 2);
-          check_str_eq(data_bind_value_as_string(require_index(tags, 0)), "A");
-          check_str_eq(data_bind_value_as_string(require_index(tags, 1)), "B");
+          check_equal(data_bind_value_count(tags), 2);
+          check_equal(data_bind_value_as_string(require_index(tags, 0)), "A");
+          check_equal(data_bind_value_as_string(require_index(tags, 1)), "B");
         }
 
         data_bind_value_free(v);
@@ -1288,13 +1288,13 @@ suite("Data Bind") {
           check_not_null(v);
           attrs = require_field(v, "attrs");
           check(data_bind_value_kind(attrs) == DATA_BIND_VALUE_MAP);
-          check_size_eq(data_bind_value_count(attrs), 2);
+          check_equal(data_bind_value_count(attrs), 2);
           e0 = data_bind_value_map_entry_at(attrs, 0);
           e1 = data_bind_value_map_entry_at(attrs, 1);
-          check_str_eq(e0.key, "x");
-          check_int_eq(data_bind_value_as_int(e0.value), 30);
-          check_str_eq(e1.key, "y");
-          check_int_eq(data_bind_value_as_int(e1.value), 40);
+          check_equal(e0.key, "x");
+          check_equal(data_bind_value_as_int(e0.value), 30);
+          check_equal(e1.key, "y");
+          check_equal(data_bind_value_as_int(e1.value), 40);
         }
 
         data_bind_value_free(v);
@@ -1305,7 +1305,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Extended Types Parsing") {
+  group("Extended Types Parsing") {
     given("a schema with bool float double and multi-size enums") {
       write_schema("test_extended.tbe", "enum LargeEnum <uint32> { Big = 0x12345678; }\n"
                                         "message Ext {\n"
@@ -1333,12 +1333,12 @@ suite("Data Bind") {
           check_not_null(v);
           flag = require_field(v, "flag");
           check(data_bind_value_kind(flag) == DATA_BIND_VALUE_BOOL);
-          check_int_eq(data_bind_value_get_bool(flag, &flag_value), DATA_BIND_OK);
-          check_int_eq(flag_value, 1);
-          check_int_eq(data_bind_value_as_int(flag), 1);
+          check_equal(data_bind_value_get_bool(flag, &flag_value), DATA_BIND_OK);
+          check_equal(flag_value, 1);
+          check_equal(data_bind_value_as_int(flag), 1);
           check(fabs(data_bind_value_as_double(require_field(v, "f_val")) - 3.14) < 1e-4);
           check(fabs(data_bind_value_as_double(require_field(v, "d_val")) - 2.718281828) < 1e-9);
-          check_int_eq(data_bind_value_as_int(require_field(v, "le")), 0x12345678);
+          check_equal(data_bind_value_as_int(require_field(v, "le")), 0x12345678);
         }
 
         data_bind_value_free(v);
@@ -1349,7 +1349,7 @@ suite("Data Bind") {
     }
   }
 
-  section("JSON and CSV Dynamic Binding") {
+  group("JSON and CSV Dynamic Binding") {
     given("a schema with records containers enums flags and unions") {
       const char *schema =
           "enum Side <uint8> { Buy = 1; Sell = 2; }\n"
@@ -1385,22 +1385,22 @@ suite("Data Bind") {
           DataBindMapEntry entry;
           check_not_null(v);
           header = require_field(v, "header");
-          check_int_eq(data_bind_value_as_int(require_field(header, "seq")), 7);
-          check_int_eq(data_bind_value_as_int64(require_field(header, "ts")), 99);
-          check_int_eq(data_bind_value_as_int(require_field(v, "side")), 1);
-          check_int_eq(data_bind_value_as_int(require_field(v, "perms")), 3);
+          check_equal(data_bind_value_as_int(require_field(header, "seq")), 7);
+          check_equal(data_bind_value_as_int64(require_field(header, "ts")), 99);
+          check_equal(data_bind_value_as_int(require_field(v, "side")), 1);
+          check_equal(data_bind_value_as_int(require_field(v, "perms")), 3);
           values = require_field(v, "values");
           check(data_bind_value_kind(values) == DATA_BIND_VALUE_LIST);
-          check_size_eq(data_bind_value_count(values), 2);
-          check_int_eq(data_bind_value_as_int(require_index(values, 1)), 4);
+          check_equal(data_bind_value_count(values), 2);
+          check_equal(data_bind_value_as_int(require_index(values, 1)), 4);
           attrs = require_field(v, "attrs");
           check(data_bind_value_kind(attrs) == DATA_BIND_VALUE_MAP);
-          check_size_eq(data_bind_value_count(attrs), 2);
+          check_equal(data_bind_value_count(attrs), 2);
           entry = data_bind_value_map_entry_at(attrs, 0);
-          check_str_eq(entry.key, "x");
-          check_int_eq(data_bind_value_as_int(entry.value), 30);
+          check_equal(entry.key, "x");
+          check_equal(data_bind_value_as_int(entry.value), 30);
           choice = require_field(v, "choice");
-          check_int_eq(data_bind_value_as_int(require_field(choice, "side")), 2);
+          check_equal(data_bind_value_as_int(require_field(choice, "side")), 2);
         }
 
         data_bind_value_free(v);
@@ -1417,8 +1417,8 @@ suite("Data Bind") {
           then("JSON bind_all should bind each array item") {
             check_not_null(all);
             check(data_bind_value_kind(all) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(all), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(all, 1), "side")), 2);
+            check_equal(data_bind_value_count(all), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(all, 1), "side")), 2);
           }
           data_bind_value_free(all);
         }
@@ -1440,12 +1440,12 @@ suite("Data Bind") {
 
           then("JSONPath-selected values should bind through DataBind") {
             check_not_null(at);
-            check_int_eq(data_bind_value_as_int(require_field(at, "side")), 2);
+            check_equal(data_bind_value_as_int(require_field(at, "side")), 2);
             check_not_null(all_path);
             check(data_bind_value_kind(all_path) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(all_path), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(all_path, 0), "side")), 1);
-            check_int_eq(data_bind_validate_json_path(codec, "Book", json_wrapped,
+            check_equal(data_bind_value_count(all_path), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(all_path, 0), "side")), 1);
+            check_equal(data_bind_validate_json_path(codec, "Book", json_wrapped,
                                                     strlen(json_wrapped), "$.payload[0]", &err),
                          DATA_BIND_OK);
           }
@@ -1467,20 +1467,20 @@ suite("Data Bind") {
             const DataBindValue *attrs;
             DataBindMapEntry entry;
             check_not_null(row0);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(row0, "header"), "seq")), 7);
-            check_int_eq(data_bind_value_as_int(require_field(row0, "perms")), 3);
-            check_int_eq(data_bind_value_as_int(require_index(require_field(row0, "values"), 1)), 4);
+            check_equal(data_bind_value_as_int(require_field(require_field(row0, "header"), "seq")), 7);
+            check_equal(data_bind_value_as_int(require_field(row0, "perms")), 3);
+            check_equal(data_bind_value_as_int(require_index(require_field(row0, "values"), 1)), 4);
             attrs = require_field(row0, "attrs");
-            check_size_eq(data_bind_value_count(attrs), 2);
+            check_equal(data_bind_value_count(attrs), 2);
             entry = data_bind_value_map_entry_at(attrs, 1);
-            check_str_eq(entry.key, "y");
-            check_int_eq(data_bind_value_as_int(entry.value), 40);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(row0, "choice"), "side")), 2);
+            check_equal(entry.key, "y");
+            check_equal(data_bind_value_as_int(entry.value), 40);
+            check_equal(data_bind_value_as_int(require_field(require_field(row0, "choice"), "side")), 2);
 
             check_not_null(rows);
             check(data_bind_value_kind(rows) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(rows), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(rows, 1), "side")), 2);
+            check_equal(data_bind_value_count(rows), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(rows, 1), "side")), 2);
           }
 
           data_bind_value_free(row0);
@@ -1500,10 +1500,10 @@ suite("Data Bind") {
           then("CSVPath should select rows before schema binding") {
             check_not_null(filtered);
             check(data_bind_value_kind(filtered) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(filtered), 1);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(filtered, 0), "side")), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(require_index(filtered, 0), "header"), "seq")), 8);
-            check_int_eq(data_bind_validate_csv_path(codec, "Book", csv, strlen(csv),
+            check_equal(data_bind_value_count(filtered), 1);
+            check_equal(data_bind_value_as_int(require_field(require_index(filtered, 0), "side")), 2);
+            check_equal(data_bind_value_as_int(require_field(require_field(require_index(filtered, 0), "header"), "seq")), 8);
+            check_equal(data_bind_validate_csv_path(codec, "Book", csv, strlen(csv),
                                                        "side == \"Buy\"", &err),
                          DATA_BIND_OK);
           }
@@ -1521,10 +1521,10 @@ suite("Data Bind") {
           then("CSV union binding should select variants from non-empty row payload") {
             check_not_null(rows);
             check(data_bind_value_kind(rows) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(rows), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(rows, 0), "side")), 1);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(require_index(rows, 1), "header"), "seq")), 3);
-            check_int_eq(data_bind_value_as_int64(require_field(require_field(require_index(rows, 1), "header"), "ts")), 4);
+            check_equal(data_bind_value_count(rows), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(rows, 0), "side")), 1);
+            check_equal(data_bind_value_as_int(require_field(require_field(require_index(rows, 1), "header"), "seq")), 3);
+            check_equal(data_bind_value_as_int64(require_field(require_field(require_index(rows, 1), "header"), "ts")), 4);
           }
 
           data_bind_value_free(rows);
@@ -1552,21 +1552,21 @@ suite("Data Bind") {
             const DataBindValue *attrs;
             DataBindMapEntry entry;
             check_not_null(one);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(one, "header"), "seq")), 7);
-            check_int_eq(data_bind_value_as_int(require_field(one, "side")), 1);
-            check_int_eq(data_bind_value_as_int(require_field(one, "perms")), 3);
-            check_int_eq(data_bind_value_as_int(require_index(require_field(one, "values"), 1)), 4);
+            check_equal(data_bind_value_as_int(require_field(require_field(one, "header"), "seq")), 7);
+            check_equal(data_bind_value_as_int(require_field(one, "side")), 1);
+            check_equal(data_bind_value_as_int(require_field(one, "perms")), 3);
+            check_equal(data_bind_value_as_int(require_index(require_field(one, "values"), 1)), 4);
             attrs = require_field(one, "attrs");
-            check_size_eq(data_bind_value_count(attrs), 2);
+            check_equal(data_bind_value_count(attrs), 2);
             entry = data_bind_value_map_entry_at(attrs, 1);
-            check_str_eq(entry.key, "y");
-            check_int_eq(data_bind_value_as_int(entry.value), 40);
-            check_int_eq(data_bind_value_as_int(require_field(require_field(one, "choice"), "side")), 2);
+            check_equal(entry.key, "y");
+            check_equal(data_bind_value_as_int(entry.value), 40);
+            check_equal(data_bind_value_as_int(require_field(require_field(one, "choice"), "side")), 2);
 
             check_not_null(all);
             check(data_bind_value_kind(all) == DATA_BIND_VALUE_LIST);
-            check_size_eq(data_bind_value_count(all), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(all, 1), "side")), 2);
+            check_equal(data_bind_value_count(all), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(all, 1), "side")), 2);
           }
 
           data_bind_value_free(one);
@@ -1612,21 +1612,21 @@ suite("Data Bind") {
             const DataBindValue *xml_bids;
             check_not_null(from_json);
             json_bids = require_field(from_json, "bids");
-            check_size_eq(data_bind_value_count(json_bids), 2);
-            check_int_eq(data_bind_value_as_int64(require_field(require_index(json_bids, 1), "price")), 200);
-            check_str_eq(data_bind_value_as_string(require_field(from_json, "symbol")), "ABCD");
+            check_equal(data_bind_value_count(json_bids), 2);
+            check_equal(data_bind_value_as_int64(require_field(require_index(json_bids, 1), "price")), 200);
+            check_equal(data_bind_value_as_string(require_field(from_json, "symbol")), "ABCD");
 
             check_not_null(from_csv);
             csv_bids = require_field(from_csv, "bids");
-            check_size_eq(data_bind_value_count(csv_bids), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(csv_bids, 0), "qty")), 10);
-            check_str_eq(data_bind_value_as_string(require_field(from_csv, "symbol")), "ABCD");
+            check_equal(data_bind_value_count(csv_bids), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(csv_bids, 0), "qty")), 10);
+            check_equal(data_bind_value_as_string(require_field(from_csv, "symbol")), "ABCD");
 
             check_not_null(from_xml);
             xml_bids = require_field(from_xml, "bids");
-            check_size_eq(data_bind_value_count(xml_bids), 2);
-            check_int_eq(data_bind_value_as_int(require_field(require_index(xml_bids, 1), "qty")), 20);
-            check_str_eq(data_bind_value_as_string(require_field(from_xml, "symbol")), "ABCD");
+            check_equal(data_bind_value_count(xml_bids), 2);
+            check_equal(data_bind_value_as_int(require_field(require_index(xml_bids, 1), "qty")), 20);
+            check_equal(data_bind_value_as_string(require_field(from_xml, "symbol")), "ABCD");
           }
 
           data_bind_value_free(from_xml);
@@ -1641,7 +1641,7 @@ suite("Data Bind") {
     }
   }
 
-  section("Strict all-binding failures") {
+  group("Strict all-binding failures") {
     given("a schema and codec") {
       write_schema("test_strict_all.tbe",
                    "message Book { uint32 id; string title; }\n");
@@ -1654,7 +1654,7 @@ suite("Data Bind") {
         DataBindStatus status =
             (data_bind_parse_json_all)(codec, "Book", json, strlen(json), &value, &err);
         then("the whole parse fails with a type mismatch") {
-          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
           check_null(value);
         }
       }
@@ -1667,7 +1667,7 @@ suite("Data Bind") {
         DataBindStatus status = (data_bind_parse_json_path_all)(
             codec, "Book", json, strlen(json), "$.payload[*]", &value, &err);
         then("the whole parse fails with a type mismatch") {
-          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
           check_null(value);
         }
       }
@@ -1679,7 +1679,7 @@ suite("Data Bind") {
         DataBindStatus status =
             (data_bind_parse_csv_all)(codec, "Book", csv, strlen(csv), &value, &err);
         then("the whole parse fails with a type mismatch") {
-          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
           check_null(value);
         }
       }
@@ -1693,7 +1693,7 @@ suite("Data Bind") {
         DataBindStatus status = (data_bind_parse_xml_path_all)(
             codec, "Book", xml, strlen(xml), "//book", &value, &err);
         then("the whole parse fails with a type mismatch") {
-          check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+          check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
           check_null(value);
         }
       }
@@ -1702,11 +1702,11 @@ suite("Data Bind") {
         DataBindValue *value = NULL;
         DataBindError err = DATA_BIND_ERROR_INIT;
         const char *json = "[{\"id\":1,\"title\":\"a\"},{\"id\":2,\"title\":\"b\"}]";
-        check_int_eq(
+        check_equal(
             (data_bind_parse_json_all)(codec, "Book", json, strlen(json), &value, &err),
             DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_value_count(value), 2);
         data_bind_value_free(value);
       }
 

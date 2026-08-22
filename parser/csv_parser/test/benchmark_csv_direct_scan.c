@@ -113,8 +113,8 @@ static int direct_scan_rewind_and_execute(void) {
 
 spec("direct CSV parser scan") {
   before_all() {
-    check_int_eq(direct_scan_generate_data(), 0);
-    check_size_eq(g_content_length, 2316982U);
+    check_equal(direct_scan_generate_data(), 0);
+    check_equal(g_content_length, 2316982U);
   }
 
   after_all() {
@@ -125,9 +125,9 @@ spec("direct CSV parser scan") {
   it("filters and projects the VDBE reference workload") {
     size_t count = 0;
     int64_t sum = 0;
-    check_int_eq(direct_scan_execute(&count, &sum), 0);
-    check_size_eq(count, g_expected_count);
-    check_long_eq(sum, g_expected_sum);
+    check_equal(direct_scan_execute(&count, &sum), 0);
+    check_equal(count, g_expected_count);
+    check_equal(sum, g_expected_sum);
   }
 
   bench("streaming predicate pushdown") {
@@ -136,6 +136,6 @@ spec("direct CSV parser scan") {
                     g_content_length) {
       (void)direct_scan_rewind_and_execute();
     }
-    check_size_eq(g_failures, failures_before);
+    check_equal(g_failures, failures_before);
   }
 }

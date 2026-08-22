@@ -11,6 +11,22 @@
 #include <stdint.h>
 #include <time.h>
 
+#ifndef TURBO_CRON_API
+  #if defined(_WIN32)
+    #if defined(TURBO_CRON_BUILD_DLL)
+      #define TURBO_CRON_API __declspec(dllexport)
+    #elif defined(TURBO_CRON_USE_DLL)
+      #define TURBO_CRON_API __declspec(dllimport)
+    #else
+      #define TURBO_CRON_API
+    #endif
+  #elif defined(__GNUC__) && __GNUC__ >= 4
+    #define TURBO_CRON_API __attribute__((visibility("default")))
+  #else
+    #define TURBO_CRON_API
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -71,19 +87,19 @@ typedef void (*turbo_cron_callback_t)(const turbo_cron_expr_t *expr,
  * @brief Reset expression to an empty state.
  * @param expr Expression to reset.
  */
-CXX_C_API void turbo_cron_expr_init(turbo_cron_expr_t *expr);
+TURBO_CRON_API void turbo_cron_expr_init(turbo_cron_expr_t *expr);
 
 /**
  * @brief Reset a cron table to an empty state.
  * @param table Table to reset.
  */
-CXX_C_API void turbo_cron_table_init(turbo_cron_table_t *table);
+TURBO_CRON_API void turbo_cron_table_init(turbo_cron_table_t *table);
 
 /**
  * @brief Release all memory owned by a cron table.
  * @param table Table to free.
  */
-CXX_C_API void turbo_cron_table_free(turbo_cron_table_t *table);
+TURBO_CRON_API void turbo_cron_table_free(turbo_cron_table_t *table);
 
 /**
  * @brief Parse a standard 5-field cron expression.
@@ -95,7 +111,7 @@ CXX_C_API void turbo_cron_table_free(turbo_cron_table_t *table);
  * @param out_expr Parsed expression.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_parse(const char *expression, turbo_cron_expr_t *out_expr);
+TURBO_CRON_API int turbo_cron_parse(const char *expression, turbo_cron_expr_t *out_expr);
 
 /**
  * @brief Parse a cron expression with caller-provided error text buffer.
@@ -105,7 +121,7 @@ CXX_C_API int turbo_cron_parse(const char *expression, turbo_cron_expr_t *out_ex
  * @param error_buf_len Size of error buffer.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_parse_ex(const char *expression,
+TURBO_CRON_API int turbo_cron_parse_ex(const char *expression,
                                   turbo_cron_expr_t *out_expr,
                                   char *error_buf,
                                   size_t error_buf_len);
@@ -125,7 +141,7 @@ CXX_C_API int turbo_cron_parse_ex(const char *expression,
  * @param error_buf_len Size of error buffer.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_table_load_string(const char *text,
+TURBO_CRON_API int turbo_cron_table_load_string(const char *text,
                                            turbo_cron_table_t *out_table,
                                            char *error_buf,
                                            size_t error_buf_len);
@@ -138,7 +154,7 @@ CXX_C_API int turbo_cron_table_load_string(const char *text,
  * @param error_buf_len Size of error buffer.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_table_load_file(const char *path,
+TURBO_CRON_API int turbo_cron_table_load_file(const char *path,
                                          turbo_cron_table_t *out_table,
                                          char *error_buf,
                                          size_t error_buf_len);
@@ -149,7 +165,7 @@ CXX_C_API int turbo_cron_table_load_file(const char *path,
  * @param when Epoch time to test.
  * @return 1 when matched, 0 when not matched.
  */
-CXX_C_API int turbo_cron_matches(const turbo_cron_expr_t *expr, time_t when);
+TURBO_CRON_API int turbo_cron_matches(const turbo_cron_expr_t *expr, time_t when);
 
 /**
  * @brief Compute the next matching time strictly after `after`.
@@ -158,7 +174,7 @@ CXX_C_API int turbo_cron_matches(const turbo_cron_expr_t *expr, time_t when);
  * @param next_out Next matching time if found.
  * @return TURBO_CRON_OK on success, TURBO_CRON_ENEXT if not found.
  */
-CXX_C_API int turbo_cron_next(const turbo_cron_expr_t *expr, time_t after, time_t *next_out);
+TURBO_CRON_API int turbo_cron_next(const turbo_cron_expr_t *expr, time_t after, time_t *next_out);
 
 /**
  * @brief Compute up to `max_count` matching times strictly after `after`.
@@ -173,7 +189,7 @@ CXX_C_API int turbo_cron_next(const turbo_cron_expr_t *expr, time_t after, time_
  * @param max_count Capacity of `next_out`.
  * @return Positive count, zero when `max_count == 0`, or a negative error code.
  */
-CXX_C_API int turbo_cron_next_n(const turbo_cron_expr_t *expr,
+TURBO_CRON_API int turbo_cron_next_n(const turbo_cron_expr_t *expr,
                                 time_t after,
                                 time_t *next_out,
                                 size_t max_count);
@@ -189,7 +205,7 @@ CXX_C_API int turbo_cron_next_n(const turbo_cron_expr_t *expr,
  * @param format Optional strftime format string.
  * @return Number of characters written, or a negative error code.
  */
-CXX_C_API int turbo_cron_format_time(time_t when,
+TURBO_CRON_API int turbo_cron_format_time(time_t when,
                                      char *buffer,
                                      size_t buffer_len,
                                      const char *format);
@@ -201,7 +217,7 @@ CXX_C_API int turbo_cron_format_time(time_t when,
  * @param user_data Opaque caller data.
  * @return Runner handle or NULL on error.
  */
-CXX_C_API turbo_cron_runner_t *turbo_cron_runner_create(const char *expression,
+TURBO_CRON_API turbo_cron_runner_t *turbo_cron_runner_create(const char *expression,
                                                         turbo_cron_callback_t callback,
                                                         void *user_data);
 
@@ -216,41 +232,41 @@ CXX_C_API turbo_cron_runner_t *turbo_cron_runner_create(const char *expression,
  * @param now Current wall-clock time.
  * @return Number of callbacks fired, or a negative error code.
  */
-CXX_C_API int turbo_cron_runner_advance(turbo_cron_runner_t *runner, time_t now);
+TURBO_CRON_API int turbo_cron_runner_advance(turbo_cron_runner_t *runner, time_t now);
 
 /**
  * @brief Start the background runner.
  * @param runner Runner handle.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_runner_start(turbo_cron_runner_t *runner);
+TURBO_CRON_API int turbo_cron_runner_start(turbo_cron_runner_t *runner);
 
 /**
  * @brief Stop the background runner and wait for its worker thread to exit.
  * @param runner Runner handle.
  * @return TURBO_CRON_OK on success, negative error code on failure.
  */
-CXX_C_API int turbo_cron_runner_stop(turbo_cron_runner_t *runner);
+TURBO_CRON_API int turbo_cron_runner_stop(turbo_cron_runner_t *runner);
 
 /**
  * @brief Destroy a runner created by turbo_cron_runner_create().
  * @param runner Runner handle.
  */
-CXX_C_API void turbo_cron_runner_destroy(turbo_cron_runner_t *runner);
+TURBO_CRON_API void turbo_cron_runner_destroy(turbo_cron_runner_t *runner);
 
 /**
  * @brief Return the parsed expression stored in a runner.
  * @param runner Runner handle.
  * @return Internal expression pointer or NULL.
  */
-CXX_C_API const turbo_cron_expr_t *turbo_cron_runner_expr(const turbo_cron_runner_t *runner);
+TURBO_CRON_API const turbo_cron_expr_t *turbo_cron_runner_expr(const turbo_cron_runner_t *runner);
 
 /**
  * @brief Convert a cron status code to a stable string.
  * @param code Status code returned by this library.
  * @return Constant error string.
  */
-CXX_C_API const char *turbo_cron_strerror(int code);
+TURBO_CRON_API const char *turbo_cron_strerror(int code);
 
 #ifdef __cplusplus
 }

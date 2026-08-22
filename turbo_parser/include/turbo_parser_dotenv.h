@@ -13,14 +13,14 @@ extern "C" {
  * @param overwrite true to overwrite existing environment variables.
  * @return 0 on success, negative error code otherwise.
  */
-CXX_C_API int turbo_dotenv_load(const char *path, bool overwrite);
+TURBO_PARSER_API int turbo_dotenv_load(const char *path, bool overwrite);
 
 /**
  * @brief Load environment variables from the default ".env" file in CWD.
  * @param overwrite true to overwrite existing environment variables.
  * @return 0 on success, negative error code otherwise.
  */
-CXX_C_API int turbo_dotenv_load_default(bool overwrite);
+TURBO_PARSER_API int turbo_dotenv_load_default(bool overwrite);
 
 
 #ifdef __cplusplus

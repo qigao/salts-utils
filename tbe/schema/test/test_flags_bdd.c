@@ -15,7 +15,7 @@ static Node *find_child(Node *parent, const char *name) {
 }
 
 suite("Flags Feature") {
-  section("Flags Declaration") {
+  group("Flags Declaration") {
     given("a flags declaration without underlying type") {
       const char *schema = "flags Permissions { Read; Write; Execute; }";
       Node *root = create_node_map("root");
@@ -24,24 +24,24 @@ suite("Flags Feature") {
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
 
-        then("should parse successfully") { check_int_eq(rc, 0); }
+        then("should parse successfully") { check_equal(rc, 0); }
 
         then("should create flags in enums list") {
           Node *enums = find_child(root, "enums");
           check_not_null(enums);
-          check_uint_eq(enums->data.list.count, 1);
+          check_equal(enums->data.list.count, 1);
         }
 
         then("should mark as flags") {
           Node *enums = find_child(root, "enums");
           Node *perms = enums->data.list.items[0];
-          check_str_eq(find_child(perms, "is_flags")->data.string_val, "1");
+          check_equal(find_child(perms, "is_flags")->data.string_val, "1");
         }
 
         then("should have correct name") {
           Node *enums = find_child(root, "enums");
           Node *perms = enums->data.list.items[0];
-          check_str_eq(find_child(perms, "enum_name")->data.string_val, "Permissions");
+          check_equal(find_child(perms, "enum_name")->data.string_val, "Permissions");
         }
       }
 
@@ -56,12 +56,12 @@ suite("Flags Feature") {
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
 
-        then("should parse successfully") { check_int_eq(rc, 0); }
+        then("should parse successfully") { check_equal(rc, 0); }
 
         then("should have underlying type") {
           Node *enums = find_child(root, "enums");
           Node *flags = enums->data.list.items[0];
-          check_str_eq(find_child(flags, "underlying_type")->data.string_val, "uint8");
+          check_equal(find_child(flags, "underlying_type")->data.string_val, "uint8");
         }
 
         then("should preserve explicit values") {
@@ -69,9 +69,9 @@ suite("Flags Feature") {
           Node *flags = enums->data.list.items[0];
           Node *items = find_child(flags, "items");
 
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-          check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-          check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "4");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+          check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+          check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "4");
         }
       }
 
@@ -79,7 +79,7 @@ suite("Flags Feature") {
     }
   }
 
-  section("Auto-increment Behavior") {
+  group("Auto-increment Behavior") {
     given("flags without explicit values") {
       const char *schema = "flags Status { Active; Pending; Completed; Cancelled; }";
       Node *root = create_node_map("root");
@@ -92,13 +92,13 @@ suite("Flags Feature") {
         Node *items = find_child(status, "items");
 
         then("should auto-increment as powers of 2") {
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-          check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-          check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "4");
-          check_str_eq(find_child(items->data.list.items[3], "value")->data.string_val, "8");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+          check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+          check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "4");
+          check_equal(find_child(items->data.list.items[3], "value")->data.string_val, "8");
         }
 
-        then("should have 4 items") { check_uint_eq(items->data.list.count, 4); }
+        then("should have 4 items") { check_equal(items->data.list.count, 4); }
       }
 
       node_free(root);
@@ -116,13 +116,13 @@ suite("Flags Feature") {
         Node *items = find_child(mixed, "items");
 
         then("should respect explicit values") {
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-          check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "16");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+          check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "16");
         }
 
         then("should auto-increment from previous value") {
-          check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-          check_str_eq(find_child(items->data.list.items[3], "value")->data.string_val, "32");
+          check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+          check_equal(find_child(items->data.list.items[3], "value")->data.string_val, "32");
         }
       }
 
@@ -130,7 +130,7 @@ suite("Flags Feature") {
     }
   }
 
-  section("Flags vs Enum Distinction") {
+  group("Flags vs Enum Distinction") {
     given("both enum and flags in same schema") {
       const char *schema = "enum Side <uint8> { Buy = 1; Sell = 2; } "
                            "flags Permissions { Read; Write; }";
@@ -140,11 +140,11 @@ suite("Flags Feature") {
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
 
-        then("should parse both successfully") { check_int_eq(rc, 0); }
+        then("should parse both successfully") { check_equal(rc, 0); }
 
         then("should have 2 items in enums list") {
           Node *enums = find_child(root, "enums");
-          check_uint_eq(enums->data.list.count, 2);
+          check_equal(enums->data.list.count, 2);
         }
 
         then("enum should not have is_flags marker") {
@@ -156,7 +156,7 @@ suite("Flags Feature") {
         then("flags should have is_flags marker") {
           Node *enums = find_child(root, "enums");
           Node *perms = enums->data.list.items[1];
-          check_str_eq(find_child(perms, "is_flags")->data.string_val, "1");
+          check_equal(find_child(perms, "is_flags")->data.string_val, "1");
         }
       }
 
@@ -164,7 +164,7 @@ suite("Flags Feature") {
     }
   }
 
-  section("Edge Cases") {
+  group("Edge Cases") {
     given("flags with single item") {
       const char *schema = "flags Single { Only; }";
       Node *root = create_node_map("root");
@@ -173,13 +173,13 @@ suite("Flags Feature") {
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
 
-        then("should parse successfully") { check_int_eq(rc, 0); }
+        then("should parse successfully") { check_equal(rc, 0); }
 
         then("should have value 1") {
           Node *enums = find_child(root, "enums");
           Node *single = enums->data.list.items[0];
           Node *items = find_child(single, "items");
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
         }
       }
 
@@ -198,11 +198,11 @@ suite("Flags Feature") {
         Node *items = find_child(large, "items");
 
         then("should handle large values") {
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1024");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1024");
         }
 
         then("should double for next value") {
-          check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2048");
+          check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2048");
         }
       }
 

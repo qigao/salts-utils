@@ -28,11 +28,11 @@ spec("dotenv") {
             }
 
             int res = dotenv_load(".env.test.simple", true);
-            check_int_eq(res, 0);
+            check_equal(res, 0);
 
             const char *val = getenv("TEST_KEY");
             check_not_null(val);
-            check_str_eq(val, "test_value");
+            check_equal(val, "test_value");
 
             remove(".env.test.simple");
         }
@@ -49,11 +49,11 @@ spec("dotenv") {
             }
 
             int res = dotenv_load(".env.test.nested", true);
-            check_int_eq(res, 0);
+            check_equal(res, 0);
 
             const char *val = getenv("NESTED_KEY");
             check_not_null(val);
-            check_str_eq(val, "base/extra");
+            check_equal(val, "base/extra");
 
             remove(".env.test.nested");
         }
@@ -71,11 +71,11 @@ spec("dotenv") {
 
             // Test without overwrite
             dotenv_load(".env.test.overwrite", false);
-            check_str_eq(getenv("OVERWRITE_KEY"), "original");
+            check_equal(getenv("OVERWRITE_KEY"), "original");
 
             // Test with overwrite
             dotenv_load(".env.test.overwrite", true);
-            check_str_eq(getenv("OVERWRITE_KEY"), "new_value");
+            check_equal(getenv("OVERWRITE_KEY"), "new_value");
 
             remove(".env.test.overwrite");
         }
@@ -107,9 +107,9 @@ spec("dotenv") {
         fputs(env_content, f);
         fclose(f);
 
-        check_int_eq(dotenv_load(".env.test.simd", true), 0);
-        check_size_eq(strlen(getenv("SIMD_VALUE")), VALUE_BYTES);
-        check_mem_eq(getenv("SIMD_VALUE"), env_content + sizeof(prefix) - 1, VALUE_BYTES);
+        check_equal(dotenv_load(".env.test.simd", true), 0);
+        check_equal(strlen(getenv("SIMD_VALUE")), VALUE_BYTES);
+        check_equal(getenv("SIMD_VALUE"), env_content + sizeof(prefix) - 1, VALUE_BYTES);
 
         remove(".env.test.simd");
         unsetenv("SIMD_VALUE");

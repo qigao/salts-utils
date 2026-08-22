@@ -12,24 +12,24 @@
 suite("enum_enhanced_simple_functional") {
     describe("UserRole Enum Helpers") {
         it("should return correct count") {
-            check_uint_eq(UserRole_count(), 4);
+            check_equal(UserRole_count(), 4);
         }
 
         it("should return correct min/max") {
-            check_int_eq(UserRole_min(), UserRole_Guest);
-            check_int_eq(UserRole_max(), UserRole_Admin);
+            check_equal(UserRole_min(), UserRole_Guest);
+            check_equal(UserRole_max(), UserRole_Admin);
         }
 
         it("should convert to string") {
-            check_str_eq(UserRole_to_string(UserRole_Guest), "Guest");
-            check_str_eq(UserRole_to_string(UserRole_Admin), "Admin");
+            check_equal(UserRole_to_string(UserRole_Guest), "Guest");
+            check_equal(UserRole_to_string(UserRole_Admin), "Admin");
             check_null(UserRole_to_string((UserRole_t)999));
         }
 
         it("should convert from string") {
             UserRole_t role;
             check(UserRole_from_string("User", &role));
-            check_int_eq(role, UserRole_User);
+            check_equal(role, UserRole_User);
 
             check(!UserRole_from_string("Invalid", &role));
         }
@@ -42,21 +42,21 @@ suite("enum_enhanced_simple_functional") {
 
     describe("Status Enum Helpers") {
         it("should return correct count") {
-            check_uint_eq(Status_count(), 4);
+            check_equal(Status_count(), 4);
         }
 
         it("should return correct min/max") {
-            check_int_eq(Status_min(), Status_Inactive);
-            check_int_eq(Status_max(), Status_Deleted);
+            check_equal(Status_min(), Status_Inactive);
+            check_equal(Status_max(), Status_Deleted);
         }
 
         it("should convert to/from string") {
-            check_str_eq(Status_to_string(Status_Active), "Active");
-            check_str_eq(Status_to_string(Status_Suspended), "Suspended");
+            check_equal(Status_to_string(Status_Active), "Active");
+            check_equal(Status_to_string(Status_Suspended), "Suspended");
 
             Status_t s;
             check(Status_from_string("Deleted", &s));
-            check_int_eq(s, Status_Deleted);
+            check_equal(s, Status_Deleted);
             check(!Status_from_string("UnknownStatus", &s));
         }
 
@@ -90,9 +90,9 @@ suite("enum_enhanced_simple_functional") {
             UserProfile_set_optional_field(&builder, UserProfile_OPTIONAL_role);
 
             check(UserProfile_view_bind(&view, buffer, sizeof(buffer)));
-            check_int_eq(UserProfile_id_get(&view), 12345);
-            check_int_eq(UserProfile_status_get(&view), Status_Active);
-            check_int_eq(UserProfile_role_get(&view), UserRole_Admin);
+            check_equal(UserProfile_id_get(&view), 12345);
+            check_equal(UserProfile_status_get(&view), Status_Active);
+            check_equal(UserProfile_role_get(&view), UserRole_Admin);
             check(UserProfile_has_role(&view));
         }
     }

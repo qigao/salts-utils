@@ -31,8 +31,8 @@ typedef struct csv_stream_processor_s csv_stream_processor_t;
 
 /* ── Lifecycle ────────────────────────────────────────────────────── */
 
-CXX_C_API csv_stream_processor_t *csv_stream_processor_create(const csv_options_t *opts);
-CXX_C_API void csv_stream_processor_destroy(csv_stream_processor_t *p);
+csv_stream_processor_t *csv_stream_processor_create(const csv_options_t *opts);
+void csv_stream_processor_destroy(csv_stream_processor_t *p);
 
 /* ── Configuration (call before feeding data) ─────────────────────── */
 
@@ -42,7 +42,7 @@ CXX_C_API void csv_stream_processor_destroy(csv_stream_processor_t *p);
  *        Expression example: "price > 100 and volume > 10000"
  * @return true on success (expression is compiled when header arrives).
  */
-CXX_C_API bool csv_stream_processor_set_filter(csv_stream_processor_t *p, const char *expr);
+bool csv_stream_processor_set_filter(csv_stream_processor_t *p, const char *expr);
 
 /**
  * @brief Select which columns to store. Only these columns will be accumulated.
@@ -50,23 +50,23 @@ CXX_C_API bool csv_stream_processor_set_filter(csv_stream_processor_t *p, const 
  * @param names Comma-separated column names, e.g. "price,volume,close".
  *              Matched against stripped names (without _n/_s suffix).
  */
-CXX_C_API void csv_stream_processor_set_columns(csv_stream_processor_t *p, const char *names);
+void csv_stream_processor_set_columns(csv_stream_processor_t *p, const char *names);
 
 /* Feed data; signature matches http_data_cb. */
 
-CXX_C_API void csv_stream_processor_feed(const char *data, size_t len, void *user_data);
+void csv_stream_processor_feed(const char *data, size_t len, void *user_data);
 
 /**
  * @brief Signal end of stream. Flushes any remaining buffered line.
  */
-CXX_C_API void csv_stream_processor_finish(csv_stream_processor_t *p);
+void csv_stream_processor_finish(csv_stream_processor_t *p);
 
 /* ── Query results ────────────────────────────────────────────────── */
 
-CXX_C_API size_t      csv_stream_processor_row_count(const csv_stream_processor_t *p);
-CXX_C_API size_t      csv_stream_processor_col_count(const csv_stream_processor_t *p);
-CXX_C_API const char *csv_stream_processor_col_name(const csv_stream_processor_t *p, size_t idx);
-CXX_C_API size_t      csv_stream_processor_col_index(const csv_stream_processor_t *p, const char *name);
+size_t      csv_stream_processor_row_count(const csv_stream_processor_t *p);
+size_t      csv_stream_processor_col_count(const csv_stream_processor_t *p);
+const char *csv_stream_processor_col_name(const csv_stream_processor_t *p, size_t idx);
+size_t      csv_stream_processor_col_index(const csv_stream_processor_t *p, const char *name);
 
 /**
  * @brief Get accumulated numeric data for a column.
@@ -74,7 +74,7 @@ CXX_C_API size_t      csv_stream_processor_col_index(const csv_stream_processor_
  * @param out_len Receives the number of matched rows.
  * @return Pointer to double array, owned by processor. NULL if column is not numeric.
  */
-CXX_C_API const double *csv_stream_processor_col_data(const csv_stream_processor_t *p,
+const double *csv_stream_processor_col_data(const csv_stream_processor_t *p,
                                                        size_t col, size_t *out_len);
 
 /**
@@ -83,10 +83,10 @@ CXX_C_API const double *csv_stream_processor_col_data(const csv_stream_processor
  * @param col Column index.
  * @return Pointer to null-terminated string, owned by processor. NULL on out-of-bounds.
  */
-CXX_C_API const char *csv_stream_processor_get_str(const csv_stream_processor_t *p,
+const char *csv_stream_processor_get_str(const csv_stream_processor_t *p,
                                                     size_t row, size_t col);
 
-CXX_C_API const char *csv_stream_processor_error(const csv_stream_processor_t *p);
+const char *csv_stream_processor_error(const csv_stream_processor_t *p);
 
 #ifdef __cplusplus
 }

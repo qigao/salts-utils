@@ -12,19 +12,19 @@
  *                ⚠️ UNSAFE after lua_pop/lua_settop/stack modification!
  *                Use only for immediate consumption within same Lua call.
  *
- * - tstr_t:      OWNED - Independent lifetime, caller must tstr_free().
+ * - tstr:      OWNED - Independent lifetime, caller must tstr_free().
  *                ✅ SAFE to use after stack changes, across function boundaries.
  *                Recommended for struct fields that outlive Lua call.
  *
- * - tstr_v:      BORROWED VIEW - Non-owning reference to Lua string.
+ * - vstr:      BORROWED VIEW - Non-owning reference to Lua string.
  *                ⚠️ Same lifetime constraints as const char*.
  *                Use for read-only, short-lived access with O(1) length.
  *
  * MEMORY MANAGEMENT:
  *
- * - Structs with tstr_t fields always require manual cleanup.
- * - Use StructName_cleanup() to free owned tstr_t fields.
- * - StructName_from_lua_arena() copies const char* and tstr_v fields into a
+ * - Structs with tstr fields always require manual cleanup.
+ * - Use StructName_cleanup() to free owned tstr fields.
+ * - StructName_from_lua_arena() copies const char* and vstr fields into a
  *   MemoryPool; those fields become invalid after pool_reset()/pool_destroy().
  */
 #ifndef TURBO_LUA_H
@@ -41,7 +41,7 @@
 
 #include "turbo_error.h"
 #include "turbo_str.h"
-#include "turbo_str_view.h"
+#include "turbo_vstr.h"
 #include "memory_pool.h"
 
 
@@ -91,17 +91,17 @@ static inline void c11_lua_push_str_or_nil(lua_State* L, const char* v) {
 static inline void c11_lua_push_ptr(lua_State* L, void* v) { lua_pushlightuserdata(L, v); }
 
 /**
- * @brief Push tstr_t to Lua (borrows data, does NOT transfer ownership)
- * @note The tstr_t remains owned by caller and must be freed separately
+ * @brief Push tstr to Lua (borrows data, does NOT transfer ownership)
+ * @note The tstr remains owned by caller and must be freed separately
  */
-static inline void c11_lua_push_tstr(lua_State* L, tstr_t s) {
+static inline void c11_lua_push_tstr(lua_State* L, tstr s) {
     lua_pushstring(L, s ? s : "");
 }
 
 /**
- * @brief Push tstr_v to Lua (uses pushlstring for binary safety)
+ * @brief Push vstr to Lua (uses pushlstring for binary safety)
  */
-static inline void c11_lua_push_tstr_v(lua_State* L, tstr_v v) {
+static inline void c11_lua_push_vstr(lua_State* L, vstr v) {
     lua_pushlstring(L, v.data ? v.data : "", v.len);
 }
 
@@ -109,8 +109,8 @@ static inline void c11_lua_push_tstr_v(lua_State* L, tstr_v v) {
  * @brief Pushes a typed C value onto the Lua stack using C11 _Generic selection.
  */
 #define c11_lua_push(L, val) _Generic((val), \
-    tstr_t:              c11_lua_push_tstr, \
-    tstr_v:              c11_lua_push_tstr_v, \
+    tstr:              c11_lua_push_tstr, \
+    vstr:              c11_lua_push_vstr, \
     _Bool:               c11_lua_push_bool, \
     char:                c11_lua_push_int, \
     signed char:         c11_lua_push_int, \
@@ -199,11 +199,11 @@ static inline void c11_lua_get_str(lua_State* L, int idx, const char** out) {
 }
 
 /**
- * @brief Get OWNED tstr_t from Lua (creates independent copy)
+ * @brief Get OWNED tstr from Lua (creates independent copy)
  * @note Caller must tstr_free() the result when done
  * @return NULL if Lua value is nil/not a string
  */
-static inline void c11_lua_get_tstr(lua_State* L, int idx, tstr_t* out) {
+static inline void c11_lua_get_tstr(lua_State* L, int idx, tstr* out) {
     size_t len = 0;
     const char* str;
 
@@ -213,15 +213,15 @@ static inline void c11_lua_get_tstr(lua_State* L, int idx, tstr_t* out) {
 }
 
 /**
- * @brief Get BORROWED tstr_v from Lua (non-owning view)
+ * @brief Get BORROWED vstr from Lua (non-owning view)
  * @warning View valid ONLY while Lua value remains on stack.
  *          Same lifetime constraints as const char*.
  */
-static inline void c11_lua_get_tstr_v(lua_State* L, int idx, tstr_v* out) {
+static inline void c11_lua_get_vstr(lua_State* L, int idx, vstr* out) {
     if (!out) return;
     size_t len;
     const char* str = lua_tolstring(L, idx, &len);
-    *out = str ? tstr_v_from_buf(str, len) : tstr_v_from_buf("", 0);
+    *out = str ? vstr_from_buf(str, len) : vstr_from_buf("", 0);
 }
 
 static inline void c11_lua_get_ptr(lua_State* L, int idx, void** out) {
@@ -232,8 +232,8 @@ static inline void c11_lua_get_ptr(lua_State* L, int idx, void** out) {
  * @brief Extracts a value from the Lua stack into a typed pointer using C11 _Generic selection.
  */
 #define c11_lua_get(L, idx, ptr) _Generic((ptr), \
-    tstr_t*:             c11_lua_get_tstr, \
-    tstr_v*:             c11_lua_get_tstr_v, \
+    tstr*:             c11_lua_get_tstr, \
+    vstr*:             c11_lua_get_vstr, \
     _Bool*:              c11_lua_get_bool, \
     char*:               c11_lua_get_char, \
     signed char*:        c11_lua_get_schar, \
@@ -355,10 +355,10 @@ static inline int c11_lua_get_checked_str(lua_State* L, int idx, const char** ou
     return TURBO_OK;
 }
 
-static inline int c11_lua_get_checked_tstr(lua_State* L, int idx, tstr_t* out) {
+static inline int c11_lua_get_checked_tstr(lua_State* L, int idx, tstr* out) {
     size_t len = 0;
     const char* value;
-    tstr_t copy;
+    tstr copy;
 
     if (!L || !out) return TURBO_EINVAL;
     if (lua_type(L, idx) != LUA_TSTRING) return TURBO_EPROTO;
@@ -370,7 +370,7 @@ static inline int c11_lua_get_checked_tstr(lua_State* L, int idx, tstr_t* out) {
     return TURBO_OK;
 }
 
-static inline int c11_lua_get_checked_tstr_v(lua_State* L, int idx, tstr_v* out) {
+static inline int c11_lua_get_checked_vstr(lua_State* L, int idx, vstr* out) {
     size_t len = 0;
     const char* value;
 
@@ -378,7 +378,7 @@ static inline int c11_lua_get_checked_tstr_v(lua_State* L, int idx, tstr_v* out)
     if (lua_type(L, idx) != LUA_TSTRING) return TURBO_EPROTO;
     value = lua_tolstring(L, idx, &len);
     if (!value) return TURBO_EPROTO;
-    *out = tstr_v_from_buf(value, len);
+    *out = vstr_from_buf(value, len);
     return TURBO_OK;
 }
 
@@ -400,8 +400,8 @@ static inline int c11_lua_get_checked_ptr(lua_State* L, int idx, void** out) {
  * @param ptr Non-NULL output pointer; its value is unchanged on failure.
  * @return TURBO_OK, TURBO_EINVAL, TURBO_EPROTO, TURBO_ERANGE, or TURBO_ENOMEM.
  *
- * tstr_t output is an owned binary-safe copy and must be released with
- * tstr_free(). const char* and tstr_v outputs borrow Lua-owned storage.
+ * tstr output is an owned binary-safe copy and must be released with
+ * tstr_free(). const char* and vstr outputs borrow Lua-owned storage.
  *
  * @code
  * int value;
@@ -411,8 +411,8 @@ static inline int c11_lua_get_checked_ptr(lua_State* L, int idx, void** out) {
  * @endcode
  */
 #define c11_lua_get_checked(L, idx, ptr) _Generic((ptr), \
-    tstr_t*:             c11_lua_get_checked_tstr, \
-    tstr_v*:             c11_lua_get_checked_tstr_v, \
+    tstr*:             c11_lua_get_checked_tstr, \
+    vstr*:             c11_lua_get_checked_vstr, \
     _Bool*:              c11_lua_get_checked_bool, \
     char*:               c11_lua_get_checked_char, \
     signed char*:        c11_lua_get_checked_schar, \
@@ -969,8 +969,8 @@ static inline int c11_lua_pcall_global(lua_State* L, const char* name,
     c11_lua_get_arena(L, -1, &(obj->name), arena); \
     lua_pop(L, 1);
 
-/* tstr_t requires its SDS header and therefore remains heap-owned. */
-static inline void c11_lua_get_arena_tstr_t(lua_State* L, int idx, tstr_t* out, MemoryPool* arena) {
+/* tstr requires its SDS header and therefore remains heap-owned. */
+static inline void c11_lua_get_arena_tstr_t(lua_State* L, int idx, tstr* out, MemoryPool* arena) {
     (void)arena;
     c11_lua_get_tstr(L, idx, out);
 }
@@ -978,7 +978,7 @@ static inline void c11_lua_get_arena_tstr_t(lua_State* L, int idx, tstr_t* out, 
 static inline void c11_lua_get_arena_str(lua_State* L, int idx, const char** out, MemoryPool* arena) {
     if (!out) return;
     const char* str = lua_tostring(L, idx);
-    *out = str ? tstr_v_to_pool(tstr_v_from_cstr(str), arena) : NULL;
+    *out = str ? vstr_to_pool(vstr_from_cstr(str), arena) : NULL;
 }
 
 /* Scalar values do not allocate from the arena. */
@@ -1005,7 +1005,7 @@ C11_LUA_DEFINE_ARENA_SCALAR_GETTER(c11_lua_get_arena_double, double, c11_lua_get
 
 #undef C11_LUA_DEFINE_ARENA_SCALAR_GETTER
 
-static inline void c11_lua_get_arena_tstr_v(lua_State* L, int idx, tstr_v* out, MemoryPool* arena) {
+static inline void c11_lua_get_arena_vstr(lua_State* L, int idx, vstr* out, MemoryPool* arena) {
     size_t len = 0;
     const char* str;
     char* copy;
@@ -1013,16 +1013,16 @@ static inline void c11_lua_get_arena_tstr_v(lua_State* L, int idx, tstr_v* out, 
     if (!out) return;
     str = lua_tolstring(L, idx, &len);
     if (!str) {
-        *out = tstr_v_from_buf("", 0);
+        *out = vstr_from_buf("", 0);
         return;
     }
-    copy = tstr_v_to_pool(tstr_v_from_buf(str, len), arena);
-    *out = tstr_v_from_buf(copy, copy ? len : 0);
+    copy = vstr_to_pool(vstr_from_buf(str, len), arena);
+    *out = vstr_from_buf(copy, copy ? len : 0);
 }
 
 #define c11_lua_get_arena(L, idx, ptr, arena) _Generic((ptr), \
-    tstr_t*:             c11_lua_get_arena_tstr_t, \
-    tstr_v*:             c11_lua_get_arena_tstr_v, \
+    tstr*:             c11_lua_get_arena_tstr_t, \
+    vstr*:             c11_lua_get_arena_vstr, \
     _Bool*:              c11_lua_get_arena_bool, \
     char*:               c11_lua_get_arena_char, \
     signed char*:        c11_lua_get_arena_schar, \
@@ -1045,23 +1045,23 @@ static inline void c11_lua_get_arena_tstr_v(lua_State* L, int idx, tstr_v* out, 
  *        - StructName_to_lua(L, obj)         : Push to Lua table
  *        - StructName_from_lua(L, idx, obj)  : Extract from Lua table
  *        - StructName_from_lua_arena(L, idx, obj, arena) : Copy borrowed strings into an arena
- *        - StructName_cleanup(obj)           : Free owned tstr_t fields
+ *        - StructName_cleanup(obj)           : Free owned tstr fields
  *
  * @param StructName Name of the struct to define.
  * @param FIELDS An X-Macro list of fields formatted as: X(type, name) ...
  *
  * OWNERSHIP NOTES:
- * - Fields of type tstr_t always require cleanup via StructName_cleanup().
- * - from_lua() returns borrowed tstr_v and const char* fields that must not
+ * - Fields of type tstr always require cleanup via StructName_cleanup().
+ * - from_lua() returns borrowed vstr and const char* fields that must not
  *   outlive the Lua value.
- * - from_lua_arena() copies tstr_v and const char* fields into arena; those
+ * - from_lua_arena() copies vstr and const char* fields into arena; those
  *   fields remain valid until pool_reset() or pool_destroy().
  *
  * EXAMPLE:
  * @code
  *   #define PLAYER_FIELDS(X) \
  *       X(int, id) \
- *       X(tstr_v, name) \
+ *       X(vstr, name) \
  *       X(double, hp)
  *
  *   C11_LUA_DEFINE_STRUCT(Player, PLAYER_FIELDS)
@@ -1101,11 +1101,11 @@ static inline void c11_lua_get_arena_tstr_v(lua_State* L, int idx, tstr_v* out, 
     }
 
 /**
- * @brief Helper macro to define cleanup function for structs with tstr_t fields.
- *        Call this after C11_LUA_DEFINE_STRUCT if your struct contains tstr_t.
+ * @brief Helper macro to define cleanup function for structs with tstr fields.
+ *        Call this after C11_LUA_DEFINE_STRUCT if your struct contains tstr.
  *
  * @param StructName Name of the struct
- * @param TSTR_FIELDS Comma-separated list of tstr_t field names
+ * @param TSTR_FIELDS Comma-separated list of tstr field names
  *
  * EXAMPLE:
  * @code

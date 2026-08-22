@@ -122,7 +122,7 @@ spec("mustache runtime regressions") {
         renderer_ready = mustache_string_renderer_init_arena(&renderer, &pool, 1024) == 0;
         check(renderer_ready);
       }
-      if (renderer_ready) check_size_gt(renderer.buffer->capacity, 5);
+      if (renderer_ready) check_greater(renderer.buffer->capacity, 5);
 
       if (renderer_ready && renderer.buffer->capacity > 5) {
         prefix_len = renderer.buffer->capacity - 5;
@@ -131,12 +131,12 @@ spec("mustache runtime regressions") {
       }
       if (prefix) {
         memset(prefix, 'a', prefix_len);
-        check_int_eq(renderer.base.out_verbatim(prefix, prefix_len, &renderer), 0);
-        check_int_eq(renderer.base.out_escaped("\"", 1, &renderer), 0);
-        check_size_eq(renderer.buffer->used, prefix_len + 6);
+        check_equal(renderer.base.out_verbatim(prefix, prefix_len, &renderer), 0);
+        check_equal(renderer.base.out_escaped("\"", 1, &renderer), 0);
+        check_equal(renderer.buffer->used, prefix_len + 6);
         result = mustache_string_renderer_get_arena(&renderer);
         check_not_null(result);
-        if (result) check_mem_eq(result + prefix_len, "&quot;", 6);
+        if (result) check_equal(result + prefix_len, "&quot;", 6);
       }
 
       free(prefix);
@@ -146,7 +146,7 @@ spec("mustache runtime regressions") {
 
     it("should reject a missing arena") {
       MUSTACHE_STRING_RENDERER_ARENA renderer;
-      check_int_ne(mustache_string_renderer_init_arena(&renderer, NULL, 16), 0);
+      check_not_equal(mustache_string_renderer_init_arena(&renderer, NULL, 16), 0);
     }
   }
 
@@ -156,7 +156,7 @@ spec("mustache runtime regressions") {
                                       "{\"signed\":9007199254740993,"
                                       "\"unsigned\":18446744073709551615}");
       check_not_null(result);
-      if (result) check_str_eq(result, "9007199254740993|18446744073709551615");
+      if (result) check_equal(result, "9007199254740993|18446744073709551615");
       free(result);
     }
 
@@ -186,11 +186,11 @@ spec("mustache runtime regressions") {
       renderer_ready = mustache_string_renderer_init(&renderer) == 0;
       check(renderer_ready);
       if (json && templ && provider_ready && renderer_ready) {
-        check_int_eq(mustache_process(templ, &renderer.base, &renderer, &provider.base, &provider),
+        check_equal(mustache_process(templ, &renderer.base, &renderer, &provider.base, &provider),
                      0);
         result = mustache_string_renderer_get(&renderer);
         check_not_null(result);
-        if (result) check_str_eq(result, "ok");
+        if (result) check_equal(result, "ok");
       }
 
       free(result);
@@ -216,7 +216,7 @@ spec("mustache runtime regressions") {
       renderer_ready = mustache_string_renderer_init(&renderer) == 0;
       check(renderer_ready);
       if (templ && renderer_ready) {
-        check_int_ne(mustache_process(templ, &renderer.base, &renderer, &provider, &data), 0);
+        check_not_equal(mustache_process(templ, &renderer.base, &renderer, &provider, &data), 0);
       }
       if (renderer_ready) mustache_string_renderer_free(&renderer);
       mustache_release(templ);
@@ -236,7 +236,7 @@ spec("mustache runtime regressions") {
       renderer_ready = mustache_string_renderer_init(&renderer) == 0;
       check(renderer_ready);
       if (templ && renderer_ready) {
-        check_int_ne(mustache_process(templ, &renderer.base, &renderer, &provider, &data), 0);
+        check_not_equal(mustache_process(templ, &renderer.base, &renderer, &provider, &data), 0);
       }
       if (renderer_ready) mustache_string_renderer_free(&renderer);
       mustache_release(templ);
@@ -251,7 +251,7 @@ spec("mustache runtime regressions") {
       RUNTIME_PROVIDER_DATA data = {0};
 
       check_not_null(templ);
-      if (templ) check_int_ne(mustache_process(templ, &renderer, NULL, &provider, &data), 0);
+      if (templ) check_not_equal(mustache_process(templ, &renderer, NULL, &provider, &data), 0);
       mustache_release(templ);
     }
   }
@@ -271,7 +271,7 @@ spec("mustache runtime regressions") {
       renderer_ready = mustache_string_renderer_init(&renderer) == 0;
       check(renderer_ready);
       if (templ && renderer_ready) {
-        check_int_ne(mustache_process_ex(templ, &renderer.base, &renderer, &provider, &data, 4), 0);
+        check_not_equal(mustache_process_ex(templ, &renderer.base, &renderer, &provider, &data, 4), 0);
       }
       if (renderer_ready) mustache_string_renderer_free(&renderer);
       mustache_release(templ);

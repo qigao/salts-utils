@@ -36,7 +36,7 @@ spec("mustache XML integration") {
                                      "<root Name=\"Upper\" name=\"lower\">"
                                      "<Foo>A</Foo><foo>B</foo></root>");
       check_not_null(result);
-      if (result) check_str_eq(result, "A|B||Upper|lower");
+      if (result) check_equal(result, "A|B||Upper|lower");
       free(result);
     }
 
@@ -45,7 +45,7 @@ spec("mustache XML integration") {
                                      "<root xmlns:a=\"urn:a\" xmlns:b=\"urn:b\">"
                                      "<a:item>A</a:item><b:item>B</b:item></root>");
       check_not_null(result);
-      if (result) check_str_eq(result, "A|B|");
+      if (result) check_equal(result, "A|B|");
       free(result);
     }
   }
@@ -55,14 +55,14 @@ spec("mustache XML integration") {
       char *result = render_xml_text("{{#item}}{{.}},{{/item}}",
                                      "<root><item>A</item><item>B</item></root>");
       check_not_null(result);
-      if (result) check_str_eq(result, "A,B,");
+      if (result) check_equal(result, "A,B,");
       free(result);
     }
   }
 
   describe("provider status") {
     it("should reject a missing provider") {
-      check_int_ne(mustache_xml_provider_status(NULL), 0);
+      check_not_equal(mustache_xml_provider_status(NULL), 0);
     }
 
     it("should report success after initialization") {
@@ -70,8 +70,8 @@ spec("mustache XML integration") {
       MUSTACHE_XML_PROVIDER provider;
       check_not_null(root);
       if (root) {
-        check_int_eq(mustache_xml_provider_init(&provider, root, NULL, NULL), 0);
-        check_int_eq(mustache_xml_provider_status(&provider), 0);
+        check_equal(mustache_xml_provider_init(&provider, root, NULL, NULL), 0);
+        check_equal(mustache_xml_provider_status(&provider), 0);
         mustache_xml_provider_free(&provider);
         cxml_root_node_free(root);
       }

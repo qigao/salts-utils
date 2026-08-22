@@ -3,10 +3,10 @@
 #include "csv_grammar_gen.h"
 #include "csv_lexer.h"
 #include <turbo_fs.h>
-#include <turbo_hash.h>
 #include <turbo_mmap.h>
 #include <turbo_str.h>
-#include <turbo_vec.h>
+#include <turbostl/hash_map.h>
+#include <turbostl/vec.h>
 
 #include <float.h>
 #include <limits.h>
@@ -90,7 +90,7 @@ static int dsv_index_checked_size(uint64_t count, size_t *total) {
     return 1;
 }
 
-static int dsv_index_parse_int64(tstr_v text, int64_t *value) {
+static int dsv_index_parse_int64(vstr text, int64_t *value) {
     uint64_t magnitude = 0;
     uint64_t limit = (uint64_t)INT64_MAX;
     size_t i = 0;
@@ -119,7 +119,7 @@ static int dsv_index_parse_int64(tstr_v text, int64_t *value) {
     return 1;
 }
 
-static int dsv_index_parse_double(tstr_v text, double *value) {
+static int dsv_index_parse_double(vstr text, double *value) {
     const char *cursor;
     const char *end;
     uint64_t mantissa = 0;
@@ -220,7 +220,7 @@ static int dsv_index_finish_row(dsv_index_t *index, turbo_vec_t *entries,
     row->entry.row_length = (uint32_t)row_length;
     if (config->covering_int64_column != DSV_INDEX_NO_COLUMN)
         row->entry.flags |= DSV_INDEX_FLAG_HAS_COVER;
-    if (turbo_vec_push(entries, &row->entry) != 0)
+    if (turbo_vec_push(entries, &row->entry) != TURBO_STL_OK)
         return dsv_index_fail(index, "out of memory growing DSV index");
     return 0;
 }
@@ -229,7 +229,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
                                     const char *content, size_t len,
                                     const dsv_index_config_t *config,
                                     uint64_t source_mtime) {
-    turbo_vec_t entries;
+    turbo_vec_t entries = {0};
     csv_lexer_t lexer;
     csv_token_t token;
     dsv_index_row_builder_t row;
@@ -242,7 +242,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     char *file_data = NULL;
     turbo_fs_buf_t file_buffer;
     dsv_index_file_header_t header;
-    tstr_t temporary_path = NULL;
+    tstr temporary_path = NULL;
     int rc = -1;
 
     if (!index || !index_path || !content || !config ||
@@ -254,7 +254,10 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     if (turbo_mmap_is_open(&index->index_mapping) ||
         turbo_mmap_is_open(&index->source_mapping))
         return dsv_index_fail(index, "close the DSV index before rebuilding it");
-    if (turbo_vec_init(&entries, sizeof(dsv_index_file_entry_t)) != 0)
+    if (turbo_vec_init_bytes(
+            &entries, sizeof(dsv_index_file_entry_t), _Alignof(dsv_index_file_entry_t),
+            config->max_entries ? config->max_entries : DSV_INDEX_DEFAULT_MAX_ENTRIES) !=
+        TURBO_STL_OK)
         return dsv_index_fail(index, "out of memory creating DSV index");
 
     memset(&row, 0, sizeof(row));
@@ -263,7 +266,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     csv_lexer_reset_state();
     while ((lexer_rc = csv_lexer_next(&lexer, &token)) > 0) {
         if (token.type == CSV_TOKEN_FIELD) {
-            tstr_v field = tstr_v_from_buf(token.value, token.length);
+            vstr field = vstr_from_buf(token.value, token.length);
             if (!skip_header && column == config->text_column) {
                 if (!dsv_index_copy_text_key(&token, &row.entry)) {
                     dsv_index_fail(index, "text index key exceeds DSV_INDEX_MAX_TEXT_KEY");
@@ -346,7 +349,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     file_buffer.len = file_size;
     temporary_path = tstr_dup(index_path);
     if (temporary_path) {
-        tstr_t next_path = tstr_cat(temporary_path, ".tmp");
+        tstr next_path = tstr_cat(temporary_path, ".tmp");
         if (next_path) temporary_path = next_path;
         else tstr_freep(&temporary_path);
     }
@@ -529,7 +532,7 @@ size_t dsv_index_covering_column(const dsv_index_t *index) {
     return (size_t)index->header->covering_column;
 }
 
-static int dsv_index_compare_text(const dsv_index_file_entry_t *entry, tstr_v text) {
+static int dsv_index_compare_text(const dsv_index_file_entry_t *entry, vstr text) {
     size_t shared = entry->text_length < text.len ? entry->text_length : text.len;
     int result = memcmp(entry->text_key, text.data, shared);
     if (result != 0) return result;
@@ -598,7 +601,7 @@ static void dsv_index_range_position(const dsv_index_t *index,
     while (low < high) {
         uint64_t mid = low + (high - low) / 2U;
         const dsv_index_file_entry_t *entry = &index->entries[mid];
-        tstr_v text = tstr_v_from_buf(range->_text, range->_text_length);
+        vstr text = vstr_from_buf(range->_text, range->_text_length);
         int text_cmp = dsv_index_compare_text(entry, text);
         int before = text_cmp < 0;
         if (text_cmp == 0 && range->_has_lower) {
@@ -668,9 +671,9 @@ int dsv_index_cursor_next(const dsv_index_t *index, dsv_index_cursor_t *cursor,
     dsv_index_range_cursor_t *range;
     if (!index || !index->header || !cursor || !row) return -1;
     while (cursor->_range_index < cursor->_range_count) {
-        tstr_v text;
+        vstr text;
         range = &cursor->_ranges[cursor->_range_index];
-        text = tstr_v_from_buf(range->_text, range->_text_length);
+        text = vstr_from_buf(range->_text, range->_text_length);
         while (!range->_finished && range->_position < index->header->entry_count) {
             const dsv_index_file_entry_t *entry = &index->entries[range->_position++];
             int text_cmp = dsv_index_compare_text(entry, text);
@@ -699,9 +702,9 @@ int dsv_index_cursor_next(const dsv_index_t *index, dsv_index_cursor_t *cursor,
     return 0;
 }
 
-tstr_v dsv_index_row_view(const dsv_index_t *index, const dsv_index_row_t *row) {
+vstr dsv_index_row_view(const dsv_index_t *index, const dsv_index_row_t *row) {
     if (!index || !row || !index->source_data || row->row_offset > index->source_length ||
         row->row_length > index->source_length - (size_t)row->row_offset)
-        return tstr_v_from_buf(NULL, 0);
-    return tstr_v_from_buf(index->source_data + (size_t)row->row_offset, row->row_length);
+        return vstr_from_buf(NULL, 0);
+    return vstr_from_buf(index->source_data + (size_t)row->row_offset, row->row_length);
 }

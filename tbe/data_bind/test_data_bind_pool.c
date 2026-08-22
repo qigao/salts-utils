@@ -90,12 +90,12 @@ spec("DataBind value pool") {
     data_bind_pool_build_json(json, sizeof(json));
     data_bind_set_value_pool_enabled(0);
     data_bind_get_value_pool_stats(&allocated_before, NULL);
-    check_int_eq(data_bind_create("test_data_bind_pool.tbe", &codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_create("test_data_bind_pool.tbe", &codec, &error), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(data_bind_parse_json(codec, "Batch", json, strlen(json), &value, &error),
+      check_equal(data_bind_parse_json(codec, "Batch", json, strlen(json), &value, &error),
                    DATA_BIND_OK);
       data_bind_get_value_pool_stats(&allocated_after, NULL);
-      check_size_ge(allocated_after - allocated_before, DATA_BIND_POOL_TEST_ITEMS + 2U);
+      check_greater_equal(allocated_after - allocated_before, DATA_BIND_POOL_TEST_ITEMS + 2U);
     }
     data_bind_value_free(value);
     data_bind_free(codec);
@@ -121,27 +121,27 @@ spec("DataBind value pool") {
     data_bind_get_value_pool_stats(&allocated_before, &reused_before);
 
     status = data_bind_create("test_data_bind_pool.tbe", &codec, &error);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
       status = data_bind_parse_json(codec, "Batch", json, strlen(json), &value, &error);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(value);
       data_bind_value_free(value);
       value = NULL;
       data_bind_get_value_pool_stats(&allocated_after_first, &reused_after_first);
 
       status = data_bind_parse_json(codec, "Batch", json, strlen(json), &value, &error);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(value);
       data_bind_value_free(value);
       value = NULL;
       data_bind_get_value_pool_stats(&allocated_after_second, &reused_after_second);
 
-      check_size_ge(allocated_after_first - allocated_before, DATA_BIND_POOL_TEST_ITEMS + 2U);
-      check_size_eq(reused_after_first, reused_before);
-      check_size_eq(reused_after_second - reused_after_first, 64U);
-      check_size_eq(allocated_after_second - allocated_after_first,
+      check_greater_equal(allocated_after_first - allocated_before, DATA_BIND_POOL_TEST_ITEMS + 2U);
+      check_equal(reused_after_first, reused_before);
+      check_equal(reused_after_second - reused_after_first, 64U);
+      check_equal(allocated_after_second - allocated_after_first,
                     DATA_BIND_POOL_TEST_ITEMS + 2U - 64U);
     }
 
@@ -170,7 +170,7 @@ spec("DataBind value pool") {
     data_bind_set_value_pool_enabled(1);
 
     for (i = 0; i < DATA_BIND_POOL_TEST_THREADS; ++i) {
-      check_int_eq(data_bind_create("test_data_bind_pool.tbe", &codecs[i], NULL), DATA_BIND_OK);
+      check_equal(data_bind_create("test_data_bind_pool.tbe", &codecs[i], NULL), DATA_BIND_OK);
       check_not_null(codecs[i]);
       workers[i].codec = codecs[i];
       workers[i].json = json;
@@ -197,12 +197,12 @@ spec("DataBind value pool") {
     while (atomic_load_explicit(&ready_count, memory_order_acquire) < created + toggle_created)
       turbo_thread_yield();
     atomic_store_explicit(&start, 1, memory_order_release);
-    for (i = 0; i < created; ++i) check_int_eq(turbo_thread_join(&threads[i]), 0);
-    if (toggle_created != 0) check_int_eq(turbo_thread_join(&toggle_thread), 0);
+    for (i = 0; i < created; ++i) check_equal(turbo_thread_join(&threads[i]), 0);
+    if (toggle_created != 0) check_equal(turbo_thread_join(&toggle_thread), 0);
 
-    check_size_eq(created, DATA_BIND_POOL_TEST_THREADS);
-    check_size_eq(toggle_created, 1U);
-    check_size_eq(atomic_load_explicit(&failures, memory_order_relaxed), 0U);
+    check_equal(created, DATA_BIND_POOL_TEST_THREADS);
+    check_equal(toggle_created, 1U);
+    check_equal(atomic_load_explicit(&failures, memory_order_relaxed), 0U);
 
     for (i = 0; i < DATA_BIND_POOL_TEST_THREADS; ++i) data_bind_free(codecs[i]);
     data_bind_set_value_pool_enabled(0);
@@ -226,7 +226,7 @@ spec("DataBind value pool") {
     data_bind_pool_write_schema();
     data_bind_pool_build_json(json, sizeof(json));
     data_bind_set_value_pool_enabled(1);
-    check_int_eq(data_bind_create("test_data_bind_pool.tbe", &codec, NULL), DATA_BIND_OK);
+    check_equal(data_bind_create("test_data_bind_pool.tbe", &codec, NULL), DATA_BIND_OK);
     check_not_null(codec);
 
     for (i = 0; codec != NULL && i < DATA_BIND_POOL_TEST_THREADS; ++i) {
@@ -246,15 +246,15 @@ spec("DataBind value pool") {
     while (atomic_load_explicit(&ready_count, memory_order_acquire) < created)
       turbo_thread_yield();
     atomic_store_explicit(&start, 1, memory_order_release);
-    for (i = 0; i < created; ++i) check_int_eq(turbo_thread_join(&threads[i]), 0);
+    for (i = 0; i < created; ++i) check_equal(turbo_thread_join(&threads[i]), 0);
 
-    check_size_eq(created, DATA_BIND_POOL_TEST_THREADS);
-    check_size_eq(atomic_load_explicit(&failures, memory_order_relaxed), 0U);
+    check_equal(created, DATA_BIND_POOL_TEST_THREADS);
+    check_equal(atomic_load_explicit(&failures, memory_order_relaxed), 0U);
 
     /* Concurrent bitmap collisions must not suspend the process-global pool:
      * a subsequent single-threaded parse still reuses cached nodes. */
     data_bind_get_value_pool_stats(NULL, &reused_before);
-    check_int_eq(data_bind_parse_json(codec, "Batch", json, strlen(json), &value, NULL),
+    check_equal(data_bind_parse_json(codec, "Batch", json, strlen(json), &value, NULL),
                  DATA_BIND_OK);
     data_bind_value_free(value);
     data_bind_get_value_pool_stats(NULL, &reused_after);

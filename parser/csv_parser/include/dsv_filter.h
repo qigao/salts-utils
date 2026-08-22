@@ -31,7 +31,7 @@ bool dsv_filter_compile_ex(dsv_filter_t *filter, const char *expression,
 const qvm_diagnostic_t *dsv_filter_qvm_diagnostic(const dsv_filter_t *filter);
 void dsv_filter_set_output_delimiter(dsv_filter_t *filter, char delimiter);
 int dsv_filter_check_row(dsv_filter_t *filter, size_t row_index);
-int dsv_filter_check_values(dsv_filter_t *filter, const tstr_v *fields, size_t field_count);
+int dsv_filter_check_values(dsv_filter_t *filter, const vstr *fields, size_t field_count);
 
 /** rendered_row is borrowed and valid only during the callback. */
 typedef void (*dsv_row_callback_t)(void *user_data, size_t row_index, const char *rendered_row);

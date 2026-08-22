@@ -3,7 +3,23 @@
 
 #include <stdlib.h>
 #include "platform.h"
-#include "turbo_str_view.h"
+#include "turbo_vstr.h"
+
+#ifndef MUSTACHE_API
+  #if defined(_WIN32)
+    #if defined(MUSTACHE_BUILD_DLL)
+      #define MUSTACHE_API __declspec(dllexport)
+    #elif defined(MUSTACHE_USE_DLL)
+      #define MUSTACHE_API __declspec(dllimport)
+    #else
+      #define MUSTACHE_API
+    #endif
+  #elif defined(__GNUC__) && __GNUC__ >= 4
+    #define MUSTACHE_API __attribute__((visibility("default")))
+  #else
+    #define MUSTACHE_API
+  #endif
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -163,7 +179,7 @@ typedef struct MUSTACHE_DATAPROVIDER {
  * @return Pointer to the compiled template, or @c NULL on an invalid argument,
  *         syntax error, integer overflow, or allocation failure.
  */
-CXX_C_API MUSTACHE_TEMPLATE *mustache_compile(const char *templ_data, size_t templ_size,
+MUSTACHE_API MUSTACHE_TEMPLATE *mustache_compile(const char *templ_data, size_t templ_size,
                                     const MUSTACHE_PARSER *parser, void *parser_data,
                                     unsigned flags);
 /**
@@ -177,7 +193,7 @@ CXX_C_API MUSTACHE_TEMPLATE *mustache_compile(const char *templ_data, size_t tem
  *         or @c NULL on an invalid argument, syntax error, integer overflow, or
  *         allocation failure.
  */
-CXX_C_API MUSTACHE_TEMPLATE *mustache_compile_v(tstr_v templ, const MUSTACHE_PARSER *parser,
+MUSTACHE_API MUSTACHE_TEMPLATE *mustache_compile_v(vstr templ, const MUSTACHE_PARSER *parser,
                                     void *parser_data, unsigned flags);
 
 /**
@@ -185,7 +201,7 @@ CXX_C_API MUSTACHE_TEMPLATE *mustache_compile_v(tstr_v templ, const MUSTACHE_PAR
  *
  * @param t The template. May be @c NULL.
  */
-CXX_C_API void mustache_release(MUSTACHE_TEMPLATE *t);
+MUSTACHE_API void mustache_release(MUSTACHE_TEMPLATE *t);
 
 /**
  * Process the template.
@@ -207,7 +223,7 @@ CXX_C_API void mustache_release(MUSTACHE_TEMPLATE *t);
  * Output is streaming and is not rolled back on failure. Bytes emitted before
  * the error remain in the renderer target.
  */
-CXX_C_API int mustache_process(const MUSTACHE_TEMPLATE *t, const MUSTACHE_RENDERER *renderer,
+MUSTACHE_API int mustache_process(const MUSTACHE_TEMPLATE *t, const MUSTACHE_RENDERER *renderer,
                       void *renderer_data, const MUSTACHE_DATAPROVIDER *provider,
                       void *provider_data);
 
@@ -225,7 +241,7 @@ CXX_C_API int mustache_process(const MUSTACHE_TEMPLATE *t, const MUSTACHE_RENDER
  *
  * Output is streaming and is not rolled back on failure.
  */
-CXX_C_API int mustache_process_ex(const MUSTACHE_TEMPLATE *t,
+MUSTACHE_API int mustache_process_ex(const MUSTACHE_TEMPLATE *t,
                                   const MUSTACHE_RENDERER *renderer,
                                   void *renderer_data,
                                   const MUSTACHE_DATAPROVIDER *provider,
@@ -233,11 +249,11 @@ CXX_C_API int mustache_process_ex(const MUSTACHE_TEMPLATE *t,
                                   unsigned max_render_depth);
 
 /**
- * Simple string renderer that appends to a tstr_t internally.
+ * Simple string renderer that appends to a tstr internally.
  */
 typedef struct MUSTACHE_STRING_RENDERER {
   MUSTACHE_RENDERER base;
-  char *buffer;  /* Internal tstr_t - do not access directly */
+  char *buffer;  /* Internal tstr - do not access directly */
 } MUSTACHE_STRING_RENDERER;
 
 /**
@@ -245,7 +261,7 @@ typedef struct MUSTACHE_STRING_RENDERER {
  * @param renderer The renderer to initialize
  * @return 0 on success, -1 on error
  */
-CXX_C_API int mustache_string_renderer_init(MUSTACHE_STRING_RENDERER *renderer);
+MUSTACHE_API int mustache_string_renderer_init(MUSTACHE_STRING_RENDERER *renderer);
 
 /**
  * Copy the rendered bytes into a NUL-terminated allocation.
@@ -253,13 +269,13 @@ CXX_C_API int mustache_string_renderer_init(MUSTACHE_STRING_RENDERER *renderer);
  * @return A @c malloc allocation that the caller must release with @c free(),
  *         or @c NULL on invalid state or allocation failure.
  */
-CXX_C_API char *mustache_string_renderer_get(MUSTACHE_STRING_RENDERER *renderer);
+MUSTACHE_API char *mustache_string_renderer_get(MUSTACHE_STRING_RENDERER *renderer);
 
 /**
  * Free string renderer resources
  * @param renderer The renderer to free
  */
-CXX_C_API void mustache_string_renderer_free(MUSTACHE_STRING_RENDERER *renderer);
+MUSTACHE_API void mustache_string_renderer_free(MUSTACHE_STRING_RENDERER *renderer);
 
 /**
  * Arena-backed string renderer
@@ -276,7 +292,7 @@ typedef struct MUSTACHE_STRING_RENDERER_ARENA {
  * @param min_capacity Minimum buffer size
  * @return 0 on success, -1 on error
  */
-CXX_C_API int mustache_string_renderer_init_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer,
+MUSTACHE_API int mustache_string_renderer_init_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer,
                                                   mem_pool_t *arena,
                                                   size_t min_capacity);
 
@@ -287,13 +303,13 @@ CXX_C_API int mustache_string_renderer_init_arena(MUSTACHE_STRING_RENDERER_ARENA
  *         The pointer may change after further output and becomes invalid after
  *         renderer release or arena destruction.
  */
-CXX_C_API char *mustache_string_renderer_get_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer);
+MUSTACHE_API char *mustache_string_renderer_get_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer);
 
 /**
  * Release the renderer's buffer reference without destroying the arena.
  * @param renderer The renderer to free
  */
-CXX_C_API void mustache_string_renderer_free_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer);
+MUSTACHE_API void mustache_string_renderer_free_arena(MUSTACHE_STRING_RENDERER_ARENA *renderer);
 
 #ifdef __cplusplus
 }

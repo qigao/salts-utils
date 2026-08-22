@@ -20,12 +20,12 @@ suite("toon json adapter") {
         json_value_t *json = json_create_null();
         json_value_t *json_out = (json_value_t *)(uintptr_t)1;
 
-        check_int_eq(toon_json_to_value(NULL, &json_out), TURBO_EINVAL);
+        check_equal(toon_json_to_value(NULL, &json_out), TURBO_EINVAL);
         check_null(json_out);
-        check_int_eq(toon_json_to_value(toon, NULL), TURBO_EINVAL);
-        check_int_eq(toon_json_from_value(NULL, &toon_out), TURBO_EINVAL);
+        check_equal(toon_json_to_value(toon, NULL), TURBO_EINVAL);
+        check_equal(toon_json_from_value(NULL, &toon_out), TURBO_EINVAL);
         check_null(toon_out);
-        check_int_eq(toon_json_from_value(json, NULL), TURBO_EINVAL);
+        check_equal(toon_json_from_value(json, NULL), TURBO_EINVAL);
 
         json_free(json);
         TOONc_free(toon);
@@ -44,21 +44,21 @@ suite("toon json adapter") {
         root->child = name;
         name->next = items;
 
-        check_int_eq(toon_json_to_value(root, &value), TURBO_OK);
+        check_equal(toon_json_to_value(root, &value), TURBO_OK);
         check_not_null(value);
         if (value) {
-            check_int_eq(json_type(value), JSON_OBJECT);
-            check_str_eq(json_get_string(value, "name"), "Ada");
+            check_equal(json_type(value), JSON_OBJECT);
+            check_equal(json_get_string(value, "name"), "Ada");
             json_value_t *array = json_object_get(value, "items");
-            check_size_eq(json_array_size(array), 2U);
-            check_double_within_abs(json_number(json_array_get(array, 0)),
+            check_equal(json_array_size(array), 2U);
+            check_within(json_number(json_array_get(array, 0)),
                 7.0, 0.0);
             check_true(json_bool(json_array_get(array, 1)));
         }
 
         TOONc_free(root);
         if (value) {
-            check_str_eq(json_get_string(value, "name"), "Ada");
+            check_equal(json_get_string(value, "name"), "Ada");
             json_free(value);
         }
     }
@@ -71,21 +71,21 @@ suite("toon json adapter") {
         toonObject *root = NULL;
 
         check_not_null(value);
-        check_int_eq(toon_json_from_value(value, &root), TURBO_OK);
+        check_equal(toon_json_from_value(value, &root), TURBO_OK);
         check_not_null(root);
         json_free(value);
 
         if (root) {
             toonObject *bytes = TOONc_get(root, "bytes");
             toonObject *items = TOONc_get(root, "items");
-            check_str_eq(TOON_GET_STRING(TOONc_get(root, "name")), "Ada");
+            check_equal(TOON_GET_STRING(TOONc_get(root, "name")), "Ada");
             check_not_null(bytes);
-            check_size_eq(bytes ? bytes->str.len : 0U, 3U);
-            if (bytes) check_mem_eq(bytes->str.ptr, "x\0y", 3U);
-            check_size_eq(TOONc_getArrayLength(items), 3U);
-            check_double_within_abs(
+            check_equal(bytes ? bytes->str.len : 0U, 3U);
+            if (bytes) check_equal(bytes->str.ptr, "x\0y", 3U);
+            check_equal(TOONc_getArrayLength(items), 3U);
+            check_within(
                 TOON_GET_DOUBLE(TOONc_getArrayItem(items, 1)), 2.5, 0.0);
-            check_int_eq(TOON_GET_INT(TOONc_get(
+            check_equal(TOON_GET_INT(TOONc_get(
                 TOONc_getArrayItem(items, 2), "n")), 3);
             TOONc_free(root);
         }
@@ -107,8 +107,8 @@ suite("toon json adapter") {
         check_not_null(parsed);
         if (parsed) {
             json_value_t *roundtrip = json_object_get(parsed, "text");
-            check_size_eq(json_string_len(roundtrip), sizeof(source));
-            check_mem_eq(json_string(roundtrip), source, sizeof(source));
+            check_equal(json_string_len(roundtrip), sizeof(source));
+            check_equal(json_string(roundtrip), source, sizeof(source));
             json_free(parsed);
         }
         TOONc_serializeFree(serialized);
@@ -121,7 +121,7 @@ suite("toon json adapter") {
         toonObject *root = (toonObject *)(uintptr_t)1;
 
         check_not_null(value);
-        check_int_eq(toon_json_from_value(value, &root), TURBO_ENOTSUP);
+        check_equal(toon_json_from_value(value, &root), TURBO_ENOTSUP);
         check_null(root);
         json_free(value);
     }
@@ -132,10 +132,10 @@ suite("toon json adapter") {
         toonObject *root = (toonObject *)(uintptr_t)1;
 
         check_not_null(value);
-        check_int_eq(toon_json_from_value(value, &root), TURBO_ERANGE);
+        check_equal(toon_json_from_value(value, &root), TURBO_ERANGE);
         check_null(root);
         check_not_null(unsigned_value);
-        check_int_eq(toon_json_from_value(unsigned_value, &root),
+        check_equal(toon_json_from_value(unsigned_value, &root),
             TURBO_ERANGE);
         check_null(root);
         json_free(value);
@@ -147,11 +147,11 @@ suite("toon json adapter") {
         toonObject *root = NULL;
 
         check_not_null(value);
-        check_int_eq(toon_json_from_value(value, &root), TURBO_OK);
+        check_equal(toon_json_from_value(value, &root), TURBO_OK);
         check_not_null(root);
         if (root) {
-            check_int_eq(root->kvtype, KV_DOUBLE);
-            check_double_within_abs(root->d, 9007199254740992.0, 0.0);
+            check_equal(root->kvtype, KV_DOUBLE);
+            check_within(root->d, 9007199254740992.0, 0.0);
         }
 
         TOONc_free(root);
@@ -164,12 +164,12 @@ suite("toon json adapter") {
         json_value_t *roundtrip = NULL;
 
         check_not_null(value);
-        check_int_eq(toon_json_from_value(value, &root), TURBO_OK);
+        check_equal(toon_json_from_value(value, &root), TURBO_OK);
         check_not_null(root);
         if (root) {
-            check_int_eq(root->kvtype, KV_DOUBLE);
+            check_equal(root->kvtype, KV_DOUBLE);
             check_true(signbit(root->d));
-            check_int_eq(toon_json_to_value(root, &roundtrip), TURBO_OK);
+            check_equal(toon_json_to_value(root, &roundtrip), TURBO_OK);
             check_not_null(roundtrip);
             if (roundtrip) check_true(signbit(json_number(roundtrip)));
         }
@@ -189,13 +189,13 @@ suite("toon json adapter") {
         toon_test_set_key(second, "same");
         root->child = first;
         first->next = second;
-        check_int_eq(toon_json_to_value(root, &value), TURBO_EPROTO);
+        check_equal(toon_json_to_value(root, &value), TURBO_EPROTO);
         check_null(value);
 
         memcpy(second->key, "diff", 5U);
         toon_test_set_key(root, "root");
         second->next = root;
-        check_int_eq(toon_json_to_value(root, &value), TURBO_EPROTO);
+        check_equal(toon_json_to_value(root, &value), TURBO_EPROTO);
         check_null(value);
         second->next = NULL;
         TOONc_free(root);
@@ -212,14 +212,14 @@ suite("toon json adapter") {
         toonObject *toon = NULL;
         json_value_t *value = NULL;
 
-        check_int_eq(toon_json_to_value(text, &value), TURBO_ECHARSET);
+        check_equal(toon_json_to_value(text, &value), TURBO_ECHARSET);
         check_null(value);
-        check_int_eq(toon_json_to_value(number, &value), TURBO_ERANGE);
+        check_equal(toon_json_to_value(number, &value), TURBO_ERANGE);
         check_null(value);
-        check_int_eq(toon_json_to_value(unsupported, &value), TURBO_ENOTSUP);
+        check_equal(toon_json_to_value(unsupported, &value), TURBO_ENOTSUP);
         check_null(value);
         check_not_null(invalid_json);
-        check_int_eq(toon_json_from_value(invalid_json, &toon),
+        check_equal(toon_json_from_value(invalid_json, &toon),
             TURBO_ECHARSET);
         check_null(toon);
 
@@ -234,7 +234,7 @@ suite("toon json adapter") {
         json_value_t *value = NULL;
 
         toon_test_set_key(root, "value");
-        check_int_eq(toon_json_to_value(root, &value), TURBO_EPROTO);
+        check_equal(toon_json_to_value(root, &value), TURBO_EPROTO);
         check_null(value);
         TOONc_free(root);
     }
@@ -246,7 +246,7 @@ suite("toon json adapter") {
 
         TOONc_listPush(root, item);
         TOONc_listPush(root, item);
-        check_int_eq(toon_json_to_value(root, &value), TURBO_EPROTO);
+        check_equal(toon_json_to_value(root, &value), TURBO_EPROTO);
         check_null(value);
 
         root->array.len = 1U;
@@ -265,7 +265,7 @@ suite("toon json adapter") {
             cursor = child;
         }
 
-        check_int_eq(toon_json_from_value(root, &toon), TURBO_ERANGE);
+        check_equal(toon_json_from_value(root, &toon), TURBO_ERANGE);
         check_null(toon);
         json_free(root);
     }
@@ -282,7 +282,7 @@ suite("toon json adapter") {
             cursor = child;
         }
 
-        check_int_eq(toon_json_to_value(root, &json), TURBO_ERANGE);
+        check_equal(toon_json_to_value(root, &json), TURBO_ERANGE);
         check_null(json);
         TOONc_free(root);
     }

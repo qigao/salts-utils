@@ -34,7 +34,7 @@ typedef struct {
  * @param out Output datetime structure.
  * @return 0 on success, -1 on failure.
  */
-CXX_C_API int turbo_parse_datetime(const char *str, size_t len, turbo_datetime_t *out);
+TURBO_PARSER_API int turbo_parse_datetime(const char *str, size_t len, turbo_datetime_t *out);
 
 /**
  * @brief Converts turbo_datetime_t to time_t (UTC).
@@ -42,7 +42,7 @@ CXX_C_API int turbo_parse_datetime(const char *str, size_t len, turbo_datetime_t
  * @param dt Input datetime structure.
  * @return time_t value (seconds since epoch), or -1 on error.
  */
-CXX_C_API time_t turbo_datetime_to_time(const turbo_datetime_t *dt);
+TURBO_PARSER_API time_t turbo_datetime_to_time(const turbo_datetime_t *dt);
 
 /**
  * @brief Formats a time_t as an RFC 7231 / RFC 822 HTTP date-time string.
@@ -52,7 +52,7 @@ CXX_C_API time_t turbo_datetime_to_time(const turbo_datetime_t *dt);
  * @param buf_len Size of the buffer.
  * @return Number of characters written, or -1 on failure.
  */
-CXX_C_API int turbo_datetime_format_rfc822(time_t t, char *buf, size_t buf_len);
+TURBO_PARSER_API int turbo_datetime_format_rfc822(time_t t, char *buf, size_t buf_len);
 
 
 #ifdef __cplusplus

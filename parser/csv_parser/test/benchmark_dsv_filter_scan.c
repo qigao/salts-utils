@@ -99,8 +99,8 @@ static int dsv_scan_rewind_and_execute(void) {
 
 spec("direct DSV filter scan") {
   before_all() {
-    check_int_eq(dsv_scan_generate_data(), 0);
-    check_size_eq(g_content_length, 2316982U);
+    check_equal(dsv_scan_generate_data(), 0);
+    check_equal(g_content_length, 2316982U);
     g_header = csv_parse("id_n,age_n,country_s,score_n\n",
                          strlen("id_n,age_n,country_s,score_n\n"));
     check_not_null(g_header);
@@ -118,9 +118,9 @@ spec("direct DSV filter scan") {
   it("filters and projects the VDBE reference workload") {
     size_t count = 0;
     int64_t sum = 0;
-    check_int_eq(dsv_scan_execute(&count, &sum), 0);
-    check_size_eq(count, g_expected_count);
-    check_long_eq(sum, g_expected_sum);
+    check_equal(dsv_scan_execute(&count, &sum), 0);
+    check_equal(count, g_expected_count);
+    check_equal(sum, g_expected_sum);
   }
 
   bench("compiled expression predicate pushdown") {
@@ -128,6 +128,6 @@ spec("direct DSV filter scan") {
     benchmark_bytes("direct DSV filter country/score", DSV_SCAN_SAMPLES, g_content_length) {
       (void)dsv_scan_rewind_and_execute();
     }
-    check_size_eq(g_failures, failures_before);
+    check_equal(g_failures, failures_before);
   }
 }

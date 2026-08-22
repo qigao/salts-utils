@@ -92,41 +92,41 @@ spec("dsv_index") {
         dsv_index_row_t row;
         size_t count = 0;
         int64_t sum = 0;
-        tstr_v last_row = tstr_v_from_buf(NULL, 0);
+        vstr last_row = vstr_from_buf(NULL, 0);
         int rc;
 
         check_not_null(csv_path);
         check_not_null(index_path);
         check_not_null(index);
         check_not_null(header);
-        check_int_eq(tt_write_file(csv_path, csv, strlen(csv)), 0);
-        check_int_eq(dsv_index_build_file(index, csv_path, index_path, &config), 0);
-        check_int_eq(dsv_index_open_file(index, csv_path, index_path), 0);
-        check_size_eq(dsv_index_count(index), 4);
-        check_size_eq(dsv_index_text_column(index), 1);
-        check_size_eq(dsv_index_number_column(index), 2);
-        check_size_eq(dsv_index_covering_column(index), 0);
+        check_equal(tt_write_file(csv_path, csv, strlen(csv)), 0);
+        check_equal(dsv_index_build_file(index, csv_path, index_path, &config), 0);
+        check_equal(dsv_index_open_file(index, csv_path, index_path), 0);
+        check_equal(dsv_index_count(index), 4);
+        check_equal(dsv_index_text_column(index), 1);
+        check_equal(dsv_index_number_column(index), 2);
+        check_equal(dsv_index_covering_column(index), 0);
 
         filter = dsv_filter_create(header, 0);
         check_not_null(filter);
         check(dsv_filter_compile(filter, "score > 90 and country == \"CN\""));
-        check_int_eq(dsv_filter_index_seek(filter, index, &cursor), 0);
+        check_equal(dsv_filter_index_seek(filter, index, &cursor), 0);
         while ((rc = dsv_index_cursor_next(index, &cursor, &row)) > 0) {
             check(row.has_covering_int64);
             sum += row.covering_int64;
             last_row = dsv_index_row_view(index, &row);
             ++count;
         }
-        check_int_eq(rc, 0);
-        check_size_eq(count, 2);
-        check_int_eq(sum, 45);
-        check_int_eq(tstr_v_eq(last_row, tstr_v_from_cstr("24,CN,92\n")), 1);
+        check_equal(rc, 0);
+        check_equal(count, 2);
+        check_equal(sum, 45);
+        check_equal(vstr_eq(last_row, vstr_from_cstr("24,CN,92\n")), 1);
 
         dsv_filter_destroy(filter);
         csv_free(header);
         dsv_index_destroy(index);
-        check_int_eq(tt_remove_file(index_path), 0);
-        check_int_eq(tt_remove_file(csv_path), 0);
+        check_equal(tt_remove_file(index_path), 0);
+        check_equal(tt_remove_file(csv_path), 0);
         free(index_path);
         free(csv_path);
     }
@@ -148,12 +148,12 @@ spec("dsv_index") {
         check(strlen(source) < sizeof(changed));
         memcpy(changed, source, strlen(source) + 1);
         changed[18] = '3';
-        check_int_eq(dsv_index_build_memory(index, index_path, source, strlen(source), &config), 0);
-        check_int_eq(dsv_index_open_memory(index, index_path, changed, strlen(changed)), -1);
-        check_str_contains(dsv_index_error(index), "hash mismatch");
+        check_equal(dsv_index_build_memory(index, index_path, source, strlen(source), &config), 0);
+        check_equal(dsv_index_open_memory(index, index_path, changed, strlen(changed)), -1);
+        check_contains(dsv_index_error(index), "hash mismatch");
 
         dsv_index_destroy(index);
-        check_int_eq(tt_remove_file(index_path), 0);
+        check_equal(tt_remove_file(index_path), 0);
         free(index_path);
     }
 
@@ -171,11 +171,11 @@ spec("dsv_index") {
 
         check_not_null(index_path);
         check_not_null(index);
-        check_int_eq(dsv_index_build_memory(index, index_path, source, strlen(source), &config), -1);
-        check_str_contains(dsv_index_error(index), "capacity exceeded");
+        check_equal(dsv_index_build_memory(index, index_path, source, strlen(source), &config), -1);
+        check_contains(dsv_index_error(index), "capacity exceeded");
 
         dsv_index_destroy(index);
-        check_int_eq(tt_remove_file(index_path), 0);
+        check_equal(tt_remove_file(index_path), 0);
         free(index_path);
     }
 
@@ -184,14 +184,14 @@ spec("dsv_index") {
         size_t count;
         int64_t sum;
 
-        check_int_eq(dsv_query_fixture_init(&fixture), 0);
-        check_int_eq(dsv_query_execute(
+        check_equal(dsv_query_fixture_init(&fixture), 0);
+        check_equal(dsv_query_execute(
                          &fixture,
                          "country == \"CN\" or country == \"US\" and score > 90",
                          &count, &sum),
                      0);
-        check_size_eq(count, 3);
-        check_int_eq(sum, 67);
+        check_equal(count, 3);
+        check_equal(sum, 67);
         dsv_query_fixture_destroy(&fixture);
     }
 
@@ -200,14 +200,14 @@ spec("dsv_index") {
         size_t count;
         int64_t sum;
 
-        check_int_eq(dsv_query_fixture_init(&fixture), 0);
-        check_int_eq(dsv_query_execute(
+        check_equal(dsv_query_fixture_init(&fixture), 0);
+        check_equal(dsv_query_execute(
                          &fixture,
                          "country == \"CN\" or country == \"CN\"",
                          &count, &sum),
                      0);
-        check_size_eq(count, 3);
-        check_int_eq(sum, 68);
+        check_equal(count, 3);
+        check_equal(sum, 68);
         dsv_query_fixture_destroy(&fixture);
     }
 
@@ -216,13 +216,13 @@ spec("dsv_index") {
         size_t count;
         int64_t sum;
 
-        check_int_eq(dsv_query_fixture_init(&fixture), 0);
-        check_int_eq(dsv_query_execute(
+        check_equal(dsv_query_fixture_init(&fixture), 0);
+        check_equal(dsv_query_execute(
                          &fixture, "country == \"CN\" and score != 90",
                          &count, &sum),
                      0);
-        check_size_eq(count, 2);
-        check_int_eq(sum, 45);
+        check_equal(count, 2);
+        check_equal(sum, 45);
         dsv_query_fixture_destroy(&fixture);
     }
 
@@ -230,11 +230,11 @@ spec("dsv_index") {
         dsv_query_fixture_t fixture;
         dsv_index_cursor_t cursor;
 
-        check_int_eq(dsv_query_fixture_init(&fixture), 0);
+        check_equal(dsv_query_fixture_init(&fixture), 0);
         check(dsv_filter_compile(fixture.filter,
                                  "country == \"CN\" or score > 90"));
-        check_int_eq(dsv_filter_index_seek(fixture.filter, fixture.index, &cursor), -1);
-        check_str_contains(dsv_filter_error(fixture.filter), "every OR range");
+        check_equal(dsv_filter_index_seek(fixture.filter, fixture.index, &cursor), -1);
+        check_contains(dsv_filter_error(fixture.filter), "every OR range");
         dsv_query_fixture_destroy(&fixture);
     }
 
@@ -244,11 +244,11 @@ spec("dsv_index") {
         dsv_index_cursor_t cursor;
         size_t i;
 
-        check_int_eq(dsv_query_fixture_init(&fixture), 0);
+        check_equal(dsv_query_fixture_init(&fixture), 0);
         memset(queries, 0, sizeof(queries));
         for (i = 0; i < DSV_INDEX_MAX_QUERY_RANGES + 1; ++i)
-            queries[i].text_equals = tstr_v_from_cstr("CN");
-        check_int_eq(dsv_index_seek_many(fixture.index, queries,
+            queries[i].text_equals = vstr_from_cstr("CN");
+        check_equal(dsv_index_seek_many(fixture.index, queries,
                                          DSV_INDEX_MAX_QUERY_RANGES + 1, &cursor),
                      -1);
         dsv_query_fixture_destroy(&fixture);

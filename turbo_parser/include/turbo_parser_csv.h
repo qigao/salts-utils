@@ -36,7 +36,7 @@ typedef void (*turbo_dsv_row_callback_t)(void *user_data, size_t row_index,
  * @param out Address of a pointer (turbo_csv_doc_t **) to store the result.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_parse_csv(const uint8_t *data, size_t len, turbo_csv_doc_t **out);
+TURBO_PARSER_API int turbo_parse_csv(const uint8_t *data, size_t len, turbo_csv_doc_t **out);
 
 /**
  * @brief Parse CSV data with options.
@@ -46,40 +46,40 @@ CXX_C_API int turbo_parse_csv(const uint8_t *data, size_t len, turbo_csv_doc_t *
  * @param out Address of a pointer (turbo_csv_doc_t **) to store the result.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_parse_csv_opts(const uint8_t *data, size_t len, const turbo_csv_options_t *opts,
+TURBO_PARSER_API int turbo_parse_csv_opts(const uint8_t *data, size_t len, const turbo_csv_options_t *opts,
                                    turbo_csv_doc_t **out);
 
-CXX_C_API int turbo_parse_csv_sax(const uint8_t *data, size_t len,
+TURBO_PARSER_API int turbo_parse_csv_sax(const uint8_t *data, size_t len,
                                   const turbo_csv_sax_handler_t *handler, void *ctx,
                                   const turbo_csv_options_t *opts);
-CXX_C_API turbo_csv_sax_parser_t *
+TURBO_PARSER_API turbo_csv_sax_parser_t *
 turbo_csv_sax_parser_create(const turbo_csv_sax_handler_t *handler, void *ctx,
                             const turbo_csv_options_t *opts);
-CXX_C_API int turbo_csv_sax_parser_feed(turbo_csv_sax_parser_t *parser, const char *data,
+TURBO_PARSER_API int turbo_csv_sax_parser_feed(turbo_csv_sax_parser_t *parser, const char *data,
                                         size_t len);
-CXX_C_API int turbo_csv_sax_parser_finish(turbo_csv_sax_parser_t *parser);
-CXX_C_API const char *turbo_csv_sax_parser_error(const turbo_csv_sax_parser_t *parser);
-CXX_C_API void turbo_csv_sax_parser_destroy(turbo_csv_sax_parser_t *parser);
+TURBO_PARSER_API int turbo_csv_sax_parser_finish(turbo_csv_sax_parser_t *parser);
+TURBO_PARSER_API const char *turbo_csv_sax_parser_error(const turbo_csv_sax_parser_t *parser);
+TURBO_PARSER_API void turbo_csv_sax_parser_destroy(turbo_csv_sax_parser_t *parser);
 
 /**
  * @brief Free CSV data and set pointer to NULL.
  * @param out Address of the pointer (turbo_csv_doc_t **) to free.
  */
-CXX_C_API void turbo_free_csv(turbo_csv_doc_t **out);
+TURBO_PARSER_API void turbo_free_csv(turbo_csv_doc_t **out);
 
 /**
  * @brief Get number of rows in CSV.
  * @param doc Pointer to CSV document.
  * @return Row count.
  */
-CXX_C_API size_t turbo_csv_row_count(const turbo_csv_doc_t *doc);
+TURBO_PARSER_API size_t turbo_csv_row_count(const turbo_csv_doc_t *doc);
 
 /**
  * @brief Get number of columns in CSV.
  * @param doc Pointer to CSV document.
  * @return Column count.
  */
-CXX_C_API size_t turbo_csv_column_count(const turbo_csv_doc_t *doc);
+TURBO_PARSER_API size_t turbo_csv_column_count(const turbo_csv_doc_t *doc);
 
 /**
  * @brief Get cell value as string.
@@ -88,7 +88,7 @@ CXX_C_API size_t turbo_csv_column_count(const turbo_csv_doc_t *doc);
  * @param col Column index.
  * @return Cell string value.
  */
-CXX_C_API const char *turbo_csv_get(const turbo_csv_doc_t *doc, size_t row, size_t col);
+TURBO_PARSER_API const char *turbo_csv_get(const turbo_csv_doc_t *doc, size_t row, size_t col);
 
 /**
  * @brief Get cell value as integer.
@@ -98,7 +98,7 @@ CXX_C_API const char *turbo_csv_get(const turbo_csv_doc_t *doc, size_t row, size
  * @param def Default value.
  * @return cell integer value.
  */
-CXX_C_API int turbo_csv_get_int(const turbo_csv_doc_t *doc, size_t row, size_t col, int def);
+TURBO_PARSER_API int turbo_csv_get_int(const turbo_csv_doc_t *doc, size_t row, size_t col, int def);
 
 /**
  * @brief Get cell value as double.
@@ -108,7 +108,7 @@ CXX_C_API int turbo_csv_get_int(const turbo_csv_doc_t *doc, size_t row, size_t c
  * @param def Default value.
  * @return cell double value.
  */
-CXX_C_API double turbo_csv_get_double(const turbo_csv_doc_t *doc, size_t row, size_t col,
+TURBO_PARSER_API double turbo_csv_get_double(const turbo_csv_doc_t *doc, size_t row, size_t col,
                                       double def);
 
 /**
@@ -119,7 +119,7 @@ CXX_C_API double turbo_csv_get_double(const turbo_csv_doc_t *doc, size_t row, si
  * @param def Default value.
  * @return cell boolean value.
  */
-CXX_C_API bool turbo_csv_get_bool(const turbo_csv_doc_t *doc, size_t row, size_t col, bool def);
+TURBO_PARSER_API bool turbo_csv_get_bool(const turbo_csv_doc_t *doc, size_t row, size_t col, bool def);
 
 /**
  * @brief Find column index by header name.
@@ -127,18 +127,18 @@ CXX_C_API bool turbo_csv_get_bool(const turbo_csv_doc_t *doc, size_t row, size_t
  * @param header_name Header name.
  * @return Column index, or (size_t)-1 if not found.
  */
-CXX_C_API size_t turbo_csv_find_column(const turbo_csv_doc_t *doc, const char *header_name);
+TURBO_PARSER_API size_t turbo_csv_find_column(const turbo_csv_doc_t *doc, const char *header_name);
 
 /** Serialize the complete CSV document. Free with turbo_csv_serialize_free(). */
-CXX_C_API char *turbo_csv_serialize(const turbo_csv_doc_t *doc, size_t *out_len);
-CXX_C_API void turbo_csv_string_free(char *str);
-CXX_C_API void turbo_csv_serialize_free(char *str);
+TURBO_PARSER_API char *turbo_csv_serialize(const turbo_csv_doc_t *doc, size_t *out_len);
+TURBO_PARSER_API void turbo_csv_string_free(char *str);
+TURBO_PARSER_API void turbo_csv_serialize_free(char *str);
 
 /** Serialize to a byte sink. Callback boundaries have no record semantics. */
-CXX_C_API int turbo_csv_write(const turbo_csv_doc_t *doc, turbo_write_fn write, void *user);
+TURBO_PARSER_API int turbo_csv_write(const turbo_csv_doc_t *doc, turbo_write_fn write, void *user);
 
 /** Serialize one complete logical CSV record per callback invocation. */
-CXX_C_API int turbo_csv_write_records(const turbo_csv_doc_t *doc, turbo_write_fn write, void *user);
+TURBO_PARSER_API int turbo_csv_write_records(const turbo_csv_doc_t *doc, turbo_write_fn write, void *user);
 
 /**
  * @brief Write CSV document to file.
@@ -146,7 +146,7 @@ CXX_C_API int turbo_csv_write_records(const turbo_csv_doc_t *doc, turbo_write_fn
  * @param filename Target filename.
  * @return 0 on success, non-zero on failure.
  */
-CXX_C_API int turbo_csv_write_file(const turbo_csv_doc_t *doc, const char *filename);
+TURBO_PARSER_API int turbo_csv_write_file(const turbo_csv_doc_t *doc, const char *filename);
 
 /**
  * @brief Create a CSVPath filter bound to a parsed CSV document.
@@ -156,14 +156,14 @@ CXX_C_API int turbo_csv_write_file(const turbo_csv_doc_t *doc, const char *filen
  * @return CSVPath filter
  * handle, or NULL on failure.
  */
-CXX_C_API turbo_dsv_filter_t *turbo_dsv_filter_create(const turbo_csv_doc_t *doc,
+TURBO_PARSER_API turbo_dsv_filter_t *turbo_dsv_filter_create(const turbo_csv_doc_t *doc,
                                                       size_t header_row_index);
 
 /**
  * @brief Destroy a CSVPath filter.
  * @param filter CSVPath filter handle.
  */
-CXX_C_API void turbo_dsv_filter_destroy(turbo_dsv_filter_t *filter);
+TURBO_PARSER_API void turbo_dsv_filter_destroy(turbo_dsv_filter_t *filter);
 
 /**
  * @brief Get last CSVPath filter error message.
@@ -171,7 +171,7 @@ CXX_C_API void turbo_dsv_filter_destroy(turbo_dsv_filter_t *filter);
  *
  * @return Error string, or empty/null when no error.
  */
-CXX_C_API const char *turbo_dsv_filter_error(turbo_dsv_filter_t *filter);
+TURBO_PARSER_API const char *turbo_dsv_filter_error(turbo_dsv_filter_t *filter);
 
 /**
  * @brief Compile CSVPath filter expression.
@@ -191,15 +191,15 @@ CXX_C_API const char *turbo_dsv_filter_error(turbo_dsv_filter_t *filter);
  * @return true on success,
  * false on failure.
  */
-CXX_C_API bool turbo_dsv_filter_compile(turbo_dsv_filter_t *filter, const char *expression);
+TURBO_PARSER_API bool turbo_dsv_filter_compile(turbo_dsv_filter_t *filter, const char *expression);
 /** Compile a filter to QVM with copied limits. Unlike the compatibility entry,
  * this strict entry does not use the native evaluator when QVM lowering fails. */
-CXX_C_API bool turbo_dsv_filter_compile_ex(turbo_dsv_filter_t *filter,
+TURBO_PARSER_API bool turbo_dsv_filter_compile_ex(turbo_dsv_filter_t *filter,
                                             const char *expression,
                                             const turbo_query_limits_t *limits,
                                             turbo_query_diagnostic_t *diagnostic);
 /** Copy the last compile/evaluation diagnostic from filter. */
-CXX_C_API turbo_query_status_t turbo_dsv_filter_query_diagnostic(
+TURBO_PARSER_API turbo_query_status_t turbo_dsv_filter_query_diagnostic(
     const turbo_dsv_filter_t *filter, turbo_query_diagnostic_t *diagnostic);
 
 /**
@@ -208,7 +208,7 @@ CXX_C_API turbo_query_status_t turbo_dsv_filter_query_diagnostic(
  *
  * @param delimiter Delimiter character.
  */
-CXX_C_API void turbo_dsv_filter_set_output_delimiter(turbo_dsv_filter_t *filter, char delimiter);
+TURBO_PARSER_API void turbo_dsv_filter_set_output_delimiter(turbo_dsv_filter_t *filter, char delimiter);
 
 /**
  * @brief Evaluate filter on one row.
@@ -217,7 +217,7 @@ CXX_C_API void turbo_dsv_filter_set_output_delimiter(turbo_dsv_filter_t *filter,
  * row_index Row index.
  * @return 1 match, 0 mismatch, -1 error.
  */
-CXX_C_API int turbo_dsv_filter_check_row(turbo_dsv_filter_t *filter, size_t row_index);
+TURBO_PARSER_API int turbo_dsv_filter_check_row(turbo_dsv_filter_t *filter, size_t row_index);
 
 /**
  * @brief Evaluate filter against one row represented as field views.
@@ -228,7 +228,7 @@ CXX_C_API int turbo_dsv_filter_check_row(turbo_dsv_filter_t *filter, size_t row_
  * field_count Number of field views.
  * @return 1 match, 0 mismatch, -1 error.
  */
-CXX_C_API int turbo_dsv_filter_check_values(turbo_dsv_filter_t *filter, const tstr_v *fields,
+TURBO_PARSER_API int turbo_dsv_filter_check_values(turbo_dsv_filter_t *filter, const vstr *fields,
                                             size_t field_count);
 
 /**
@@ -239,7 +239,7 @@ CXX_C_API int turbo_dsv_filter_check_values(turbo_dsv_filter_t *filter, const ts
  * @param user_data User context passed
  * to callback.
  */
-CXX_C_API void turbo_dsv_filter_run(turbo_dsv_filter_t *filter, turbo_dsv_row_callback_t callback,
+TURBO_PARSER_API void turbo_dsv_filter_run(turbo_dsv_filter_t *filter, turbo_dsv_row_callback_t callback,
                                     void *user_data);
 
 /**
@@ -247,14 +247,14 @@ CXX_C_API void turbo_dsv_filter_run(turbo_dsv_filter_t *filter, turbo_dsv_row_ca
  * @param opts Optional CSV options. NULL uses defaults.
  * @return Processor handle, or NULL on failure.
  */
-CXX_C_API turbo_csv_stream_processor_t *
+TURBO_PARSER_API turbo_csv_stream_processor_t *
 turbo_csv_stream_processor_create(const turbo_csv_options_t *opts);
 
 /**
  * @brief Destroy CSV stream processor.
  * @param p Processor handle.
  */
-CXX_C_API void turbo_csv_stream_processor_destroy(turbo_csv_stream_processor_t *p);
+TURBO_PARSER_API void turbo_csv_stream_processor_destroy(turbo_csv_stream_processor_t *p);
 
 /**
  * @brief Set filter expression before feeding rows.
@@ -262,7 +262,7 @@ CXX_C_API void turbo_csv_stream_processor_destroy(turbo_csv_stream_processor_t *
  * @param expr Filter expression.
  * @return true on success.
  */
-CXX_C_API bool turbo_csv_stream_processor_set_filter(turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API bool turbo_csv_stream_processor_set_filter(turbo_csv_stream_processor_t *p,
                                                      const char *expr);
 
 /**
@@ -270,7 +270,7 @@ CXX_C_API bool turbo_csv_stream_processor_set_filter(turbo_csv_stream_processor_
  * @param p Processor handle.
  * @param names Comma-separated column names.
  */
-CXX_C_API void turbo_csv_stream_processor_set_columns(turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API void turbo_csv_stream_processor_set_columns(turbo_csv_stream_processor_t *p,
                                                       const char *names);
 
 /**
@@ -279,27 +279,27 @@ CXX_C_API void turbo_csv_stream_processor_set_columns(turbo_csv_stream_processor
  * @param len Data length.
  * @param user_data Processor handle.
  */
-CXX_C_API void turbo_csv_stream_processor_feed(const char *data, size_t len, void *user_data);
+TURBO_PARSER_API void turbo_csv_stream_processor_feed(const char *data, size_t len, void *user_data);
 
 /**
  * @brief Finish streaming and flush remaining buffered row.
  * @param p Processor handle.
  */
-CXX_C_API void turbo_csv_stream_processor_finish(turbo_csv_stream_processor_t *p);
+TURBO_PARSER_API void turbo_csv_stream_processor_finish(turbo_csv_stream_processor_t *p);
 
 /**
  * @brief Get matched row count.
  * @param p Processor handle.
  * @return Number of matched rows.
  */
-CXX_C_API size_t turbo_csv_stream_processor_row_count(const turbo_csv_stream_processor_t *p);
+TURBO_PARSER_API size_t turbo_csv_stream_processor_row_count(const turbo_csv_stream_processor_t *p);
 
 /**
  * @brief Get detected column count.
  * @param p Processor handle.
  * @return Number of columns.
  */
-CXX_C_API size_t turbo_csv_stream_processor_col_count(const turbo_csv_stream_processor_t *p);
+TURBO_PARSER_API size_t turbo_csv_stream_processor_col_count(const turbo_csv_stream_processor_t *p);
 
 /**
  * @brief Get raw column name by index.
@@ -307,7 +307,7 @@ CXX_C_API size_t turbo_csv_stream_processor_col_count(const turbo_csv_stream_pro
  * @param idx Column index.
  * @return Column name or NULL.
  */
-CXX_C_API const char *turbo_csv_stream_processor_col_name(const turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API const char *turbo_csv_stream_processor_col_name(const turbo_csv_stream_processor_t *p,
                                                           size_t idx);
 
 /**
@@ -316,7 +316,7 @@ CXX_C_API const char *turbo_csv_stream_processor_col_name(const turbo_csv_stream
  * @param name Column name.
  * @return Column index or (size_t)-1.
  */
-CXX_C_API size_t turbo_csv_stream_processor_col_index(const turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API size_t turbo_csv_stream_processor_col_index(const turbo_csv_stream_processor_t *p,
                                                       const char *name);
 
 /**
@@ -326,7 +326,7 @@ CXX_C_API size_t turbo_csv_stream_processor_col_index(const turbo_csv_stream_pro
  * @param out_len Receives length.
  * @return Pointer to internal double array or NULL.
  */
-CXX_C_API const double *turbo_csv_stream_processor_col_data(const turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API const double *turbo_csv_stream_processor_col_data(const turbo_csv_stream_processor_t *p,
                                                             size_t col, size_t *out_len);
 
 /**
@@ -336,7 +336,7 @@ CXX_C_API const double *turbo_csv_stream_processor_col_data(const turbo_csv_stre
  * @param col Column index.
  * @return String pointer or NULL.
  */
-CXX_C_API const char *turbo_csv_stream_processor_get_str(const turbo_csv_stream_processor_t *p,
+TURBO_PARSER_API const char *turbo_csv_stream_processor_get_str(const turbo_csv_stream_processor_t *p,
                                                          size_t row, size_t col);
 
 /**
@@ -344,7 +344,7 @@ CXX_C_API const char *turbo_csv_stream_processor_get_str(const turbo_csv_stream_
  * @param p Processor handle.
  * @return Error string.
  */
-CXX_C_API const char *turbo_csv_stream_processor_error(const turbo_csv_stream_processor_t *p);
+TURBO_PARSER_API const char *turbo_csv_stream_processor_error(const turbo_csv_stream_processor_t *p);
 
 
 #ifdef __cplusplus

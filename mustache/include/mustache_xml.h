@@ -43,7 +43,7 @@ typedef struct MUSTACHE_XML_PROVIDER {
  * @param user_data User data passed to template loader
  * @return 0 on success, -1 on error
  */
-CXX_C_API int mustache_xml_provider_init(MUSTACHE_XML_PROVIDER *provider, void *xml_node,
+MUSTACHE_API int mustache_xml_provider_init(MUSTACHE_XML_PROVIDER *provider, void *xml_node,
                                           MUSTACHE_TEMPLATE *(*template_loader)(const char *,
                                                                                 size_t, void *),
                                           void *user_data);
@@ -53,14 +53,14 @@ CXX_C_API int mustache_xml_provider_init(MUSTACHE_XML_PROVIDER *provider, void *
  * or partial templates.
  * @param provider Provider to free. May be @c NULL.
  */
-CXX_C_API void mustache_xml_provider_free(MUSTACHE_XML_PROVIDER *provider);
+MUSTACHE_API void mustache_xml_provider_free(MUSTACHE_XML_PROVIDER *provider);
 
 /**
  * Return the provider status after direct use with mustache_process().
  * @param provider Provider to inspect.
  * @return 0 when no provider allocation failed, -1 for NULL or a failed provider.
  */
-CXX_C_API int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider);
+MUSTACHE_API int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider);
 
 /**
  * Render a mustache template with XML data
@@ -75,7 +75,7 @@ CXX_C_API int mustache_xml_provider_status(const MUSTACHE_XML_PROVIDER *provider
  *         allocation failure, or expansion-depth exhaustion. Partial output is
  *         retained.
  */
-CXX_C_API int mustache_render_xml(const MUSTACHE_TEMPLATE *templ, void *xml_node,
+MUSTACHE_API int mustache_render_xml(const MUSTACHE_TEMPLATE *templ, void *xml_node,
                                    const MUSTACHE_RENDERER *renderer, void *renderer_data,
                                    MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t,
                                                                          void *),

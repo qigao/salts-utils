@@ -59,19 +59,19 @@ typedef struct {
   } frame;
 } turbo_modbus_adu_t;
 
-CXX_C_API int turbo_modbus_tcp_peek_size(const uint8_t *data, size_t len, size_t *out_size);
-CXX_C_API int turbo_modbus_tcp_read(const uint8_t *data, size_t len, turbo_modbus_tcp_adu_t *out);
-CXX_C_API size_t turbo_modbus_tcp_write(const turbo_modbus_tcp_adu_t *adu, uint8_t *out,
+TURBO_PARSER_API int turbo_modbus_tcp_peek_size(const uint8_t *data, size_t len, size_t *out_size);
+TURBO_PARSER_API int turbo_modbus_tcp_read(const uint8_t *data, size_t len, turbo_modbus_tcp_adu_t *out);
+TURBO_PARSER_API size_t turbo_modbus_tcp_write(const turbo_modbus_tcp_adu_t *adu, uint8_t *out,
                                         size_t out_len);
 
-CXX_C_API uint16_t turbo_modbus_rtu_crc16(const uint8_t *data, size_t len);
-CXX_C_API int turbo_modbus_rtu_read(const uint8_t *data, size_t len, turbo_modbus_rtu_adu_t *out);
-CXX_C_API size_t turbo_modbus_rtu_write(const turbo_modbus_rtu_adu_t *adu, uint8_t *out,
+TURBO_PARSER_API uint16_t turbo_modbus_rtu_crc16(const uint8_t *data, size_t len);
+TURBO_PARSER_API int turbo_modbus_rtu_read(const uint8_t *data, size_t len, turbo_modbus_rtu_adu_t *out);
+TURBO_PARSER_API size_t turbo_modbus_rtu_write(const turbo_modbus_rtu_adu_t *adu, uint8_t *out,
                                         size_t out_len);
 
-CXX_C_API int turbo_modbus_read(turbo_modbus_transport_t transport, const uint8_t *data, size_t len,
+TURBO_PARSER_API int turbo_modbus_read(turbo_modbus_transport_t transport, const uint8_t *data, size_t len,
                                 turbo_modbus_adu_t *out);
-CXX_C_API size_t turbo_modbus_write(const turbo_modbus_adu_t *adu, uint8_t *out, size_t out_len);
+TURBO_PARSER_API size_t turbo_modbus_write(const turbo_modbus_adu_t *adu, uint8_t *out, size_t out_len);
 
 
 #ifdef __cplusplus

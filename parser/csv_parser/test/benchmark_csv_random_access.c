@@ -54,7 +54,7 @@ static uint64_t read_sequential_rows_cursor(csv_cursor_t *cursor, size_t rows) {
   size_t seen = 0;
   if (csv_cursor_rewind(cursor, 0) != 0) return 0;
   while (seen < rows && csv_cursor_next(cursor) == 1) {
-    tstr_v value = csv_cursor_field_v(cursor, 1);
+    vstr value = csv_cursor_field_v(cursor, 1);
     sum += (uint64_t)strtol(value.data ? value.data : "0", NULL, 10);
     ++seen;
   }
@@ -73,7 +73,7 @@ suite("CSV random access benchmark") {
     options.has_header = true;
     doc = csv_parse_opts(csv, strlen(csv), &options);
     check_not_null(doc);
-    check_size_eq(csv_row_count(doc), BENCHMARK_ROWS);
+    check_equal(csv_row_count(doc), BENCHMARK_ROWS);
     cursor = csv_cursor_new(doc, 0);
     check_not_null(cursor);
   }

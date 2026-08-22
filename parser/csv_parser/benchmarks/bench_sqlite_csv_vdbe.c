@@ -467,7 +467,7 @@ static void direct_csv_shutdown(void) {
 }
 
 spec("direct SQLite VDBE CSV scan") {
-  before_all() { check_int_eq(direct_csv_setup(), SQLITE_OK); }
+  before_all() { check_equal(direct_csv_setup(), SQLITE_OK); }
 
   after_all() { direct_csv_shutdown(); }
 
@@ -476,11 +476,11 @@ spec("direct SQLite VDBE CSV scan") {
     sqlite3_int64 sum = 0;
     size_t columns_before = g_direct_csv_vtab ? g_direct_csv_vtab->column_calls : 0;
     if (g_direct_csv_program) {
-      check_int_eq(direct_csv_execute(&count, &sum), SQLITE_DONE);
-      check_size_eq(count, g_direct_csv_expected_count);
-      check_long_eq(sum, g_direct_csv_expected_sum);
-      check_size_eq(g_direct_csv_vtab->filter_calls, 1U);
-      check_size_eq(g_direct_csv_vtab->column_calls - columns_before,
+      check_equal(direct_csv_execute(&count, &sum), SQLITE_DONE);
+      check_equal(count, g_direct_csv_expected_count);
+      check_equal(sum, g_direct_csv_expected_sum);
+      check_equal(g_direct_csv_vtab->filter_calls, 1U);
+      check_equal(g_direct_csv_vtab->column_calls - columns_before,
                     g_direct_csv_expected_count);
     }
   }
@@ -492,7 +492,7 @@ spec("direct SQLite VDBE CSV scan") {
                       g_direct_csv_content_length) {
         (void)direct_csv_rewind_and_execute();
       }
-      check_size_eq(g_direct_csv_failures, failures_before);
+      check_equal(g_direct_csv_failures, failures_before);
     }
   }
 }

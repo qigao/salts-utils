@@ -53,13 +53,13 @@ typedef bool (*turbo_cmd_validator_t)(const char *value, const char **error_mess
  * @param version Application version string.
  * @return Pointer to the new command parser.
  */
-CXX_C_API turbo_cmd_parser_t *turbo_cmd_create(const char *app_name, const char *version);
+TURBO_PARSER_API turbo_cmd_parser_t *turbo_cmd_create(const char *app_name, const char *version);
 
 /**
  * @brief Destroy a command line argument parser and free its resources.
  * @param parser Pointer to the command parser.
  */
-CXX_C_API void turbo_cmd_destroy(turbo_cmd_parser_t *parser);
+TURBO_PARSER_API void turbo_cmd_destroy(turbo_cmd_parser_t *parser);
 
 /* Basic argument types */
 /**
@@ -70,7 +70,7 @@ CXX_C_API void turbo_cmd_destroy(turbo_cmd_parser_t *parser);
  * @param short_name Short name (e.g., "-v").
  * @param desc Argument description for help message.
  */
-CXX_C_API void turbo_cmd_add_flag(turbo_cmd_parser_t *parser, bool *out, const char *name,
+TURBO_PARSER_API void turbo_cmd_add_flag(turbo_cmd_parser_t *parser, bool *out, const char *name,
                                   const char *short_name, const char *desc);
 
 /**
@@ -81,7 +81,7 @@ CXX_C_API void turbo_cmd_add_flag(turbo_cmd_parser_t *parser, bool *out, const c
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_string(turbo_cmd_parser_t *parser, char **out, const char *name,
+TURBO_PARSER_API void turbo_cmd_add_string(turbo_cmd_parser_t *parser, char **out, const char *name,
                                     const char *short_name, const char *desc);
 
 /**
@@ -92,7 +92,7 @@ CXX_C_API void turbo_cmd_add_string(turbo_cmd_parser_t *parser, char **out, cons
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_integer(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
+TURBO_PARSER_API void turbo_cmd_add_integer(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
                                      const char *short_name, const char *desc);
 
 /**
@@ -103,7 +103,7 @@ CXX_C_API void turbo_cmd_add_integer(turbo_cmd_parser_t *parser, int64_t *out, c
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_float(turbo_cmd_parser_t *parser, double *out, const char *name,
+TURBO_PARSER_API void turbo_cmd_add_float(turbo_cmd_parser_t *parser, double *out, const char *name,
                                    const char *short_name, const char *desc);
 
 /**
@@ -116,7 +116,7 @@ CXX_C_API void turbo_cmd_add_float(turbo_cmd_parser_t *parser, double *out, cons
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_string_list(turbo_cmd_parser_t *parser, char **out_arr,
+TURBO_PARSER_API void turbo_cmd_add_string_list(turbo_cmd_parser_t *parser, char **out_arr,
                                          uint32_t *out_count, uint32_t max_count, const char *name,
                                          const char *short_name, const char *desc);
 
@@ -130,7 +130,7 @@ CXX_C_API void turbo_cmd_add_string_list(turbo_cmd_parser_t *parser, char **out_
  * @param choices Array of valid options.
  * @param choices_count Size of choices array.
  */
-CXX_C_API void turbo_cmd_add_enum(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
+TURBO_PARSER_API void turbo_cmd_add_enum(turbo_cmd_parser_t *parser, int64_t *out, const char *name,
                                   const char *short_name, const char *desc,
                                   turbo_cmd_enum_t *choices, uint32_t choices_count);
 
@@ -142,7 +142,7 @@ CXX_C_API void turbo_cmd_add_enum(turbo_cmd_parser_t *parser, int64_t *out, cons
  * @param name Internal identifier name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_required_string(turbo_cmd_parser_t *parser, char **out,
+TURBO_PARSER_API void turbo_cmd_add_required_string(turbo_cmd_parser_t *parser, char **out,
                                              const char *name, const char *desc);
 
 /**
@@ -152,7 +152,7 @@ CXX_C_API void turbo_cmd_add_required_string(turbo_cmd_parser_t *parser, char **
  * @param name Internal identifier name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_add_required_integer(turbo_cmd_parser_t *parser, int64_t *out,
+TURBO_PARSER_API void turbo_cmd_add_required_integer(turbo_cmd_parser_t *parser, int64_t *out,
                                               const char *name, const char *desc);
 
 /* Argument modifiers (return index for chaining) */
@@ -162,7 +162,7 @@ CXX_C_API void turbo_cmd_add_required_integer(turbo_cmd_parser_t *parser, int64_
  * @param index Index of the argument to bind.
  * @param env_var Name of the environment variable.
  */
-CXX_C_API void turbo_cmd_set_env(turbo_cmd_parser_t *parser, uint32_t index, const char *env_var);
+TURBO_PARSER_API void turbo_cmd_set_env(turbo_cmd_parser_t *parser, uint32_t index, const char *env_var);
 
 /**
  * @brief Assign an argument to a logical group for help formatting.
@@ -170,7 +170,7 @@ CXX_C_API void turbo_cmd_set_env(turbo_cmd_parser_t *parser, uint32_t index, con
  * @param index Index of the argument.
  * @param group Group name.
  */
-CXX_C_API void turbo_cmd_set_group(turbo_cmd_parser_t *parser, uint32_t index, const char *group);
+TURBO_PARSER_API void turbo_cmd_set_group(turbo_cmd_parser_t *parser, uint32_t index, const char *group);
 
 /**
  * @brief Restrict a string argument to a fixed set of valid choices.
@@ -179,7 +179,7 @@ CXX_C_API void turbo_cmd_set_group(turbo_cmd_parser_t *parser, uint32_t index, c
  * @param choices Array of valid string choices.
  * @param count Number of choices in the array.
  */
-CXX_C_API void turbo_cmd_set_choices(turbo_cmd_parser_t *parser, uint32_t index,
+TURBO_PARSER_API void turbo_cmd_set_choices(turbo_cmd_parser_t *parser, uint32_t index,
                                      const char **choices, uint32_t count);
 
 /**
@@ -188,7 +188,7 @@ CXX_C_API void turbo_cmd_set_choices(turbo_cmd_parser_t *parser, uint32_t index,
  * @param index Index of the argument.
  * @param validator Pointer to the validator function.
  */
-CXX_C_API void turbo_cmd_set_validator(turbo_cmd_parser_t *parser, uint32_t index,
+TURBO_PARSER_API void turbo_cmd_set_validator(turbo_cmd_parser_t *parser, uint32_t index,
                                        turbo_cmd_validator_t validator);
 
 /**
@@ -196,7 +196,7 @@ CXX_C_API void turbo_cmd_set_validator(turbo_cmd_parser_t *parser, uint32_t inde
  * @param parser Pointer to the command parser.
  * @param index Index of the argument.
  */
-CXX_C_API void turbo_cmd_set_required(turbo_cmd_parser_t *parser, uint32_t index);
+TURBO_PARSER_API void turbo_cmd_set_required(turbo_cmd_parser_t *parser, uint32_t index);
 
 /* Get last added argument index (for modifier chaining) */
 /**
@@ -204,7 +204,7 @@ CXX_C_API void turbo_cmd_set_required(turbo_cmd_parser_t *parser, uint32_t index
  * @param parser Pointer to the command parser.
  * @return The 0-based index of the last argument added.
  */
-CXX_C_API uint32_t turbo_cmd_last_index(turbo_cmd_parser_t *parser);
+TURBO_PARSER_API uint32_t turbo_cmd_last_index(turbo_cmd_parser_t *parser);
 
 /* Subcommand support */
 /**
@@ -214,66 +214,66 @@ CXX_C_API uint32_t turbo_cmd_last_index(turbo_cmd_parser_t *parser);
  * @param desc Subcommand description.
  * @return Pointer to the new subcommand object.
  */
-CXX_C_API turbo_cmd_subcommand_t *turbo_cmd_add_subcommand(turbo_cmd_parser_t *parser,
+TURBO_PARSER_API turbo_cmd_subcommand_t *turbo_cmd_add_subcommand(turbo_cmd_parser_t *parser,
                                                            const char *name, const char *desc);
 
 /** Return the root command node owned by @p parser. */
-CXX_C_API turbo_cmd_node_t *turbo_cmd_root(turbo_cmd_parser_t *parser);
+TURBO_PARSER_API turbo_cmd_node_t *turbo_cmd_root(turbo_cmd_parser_t *parser);
 
 /**
  * Add a recursively nested command. Node pointers remain stable until parser
  * destruction. Registration fails after the first parse freezes the tree.
  */
-CXX_C_API turbo_cmd_node_t *turbo_cmd_add_command(turbo_cmd_node_t *parent,
+TURBO_PARSER_API turbo_cmd_node_t *turbo_cmd_add_command(turbo_cmd_node_t *parent,
                                                   const char *name,
                                                   const char *description);
 
 /* Node option APIs mirror the root parser APIs and return 0 on success. */
-CXX_C_API int turbo_cmd_node_add_flag(turbo_cmd_node_t *node, bool *out,
+TURBO_PARSER_API int turbo_cmd_node_add_flag(turbo_cmd_node_t *node, bool *out,
                                       const char *name, const char *short_name,
                                       const char *desc);
-CXX_C_API int turbo_cmd_node_add_string(turbo_cmd_node_t *node, char **out,
+TURBO_PARSER_API int turbo_cmd_node_add_string(turbo_cmd_node_t *node, char **out,
                                         const char *name, const char *short_name,
                                         const char *desc);
-CXX_C_API int turbo_cmd_node_add_integer(turbo_cmd_node_t *node, int64_t *out,
+TURBO_PARSER_API int turbo_cmd_node_add_integer(turbo_cmd_node_t *node, int64_t *out,
                                          const char *name, const char *short_name,
                                          const char *desc);
-CXX_C_API int turbo_cmd_node_add_float(turbo_cmd_node_t *node, double *out,
+TURBO_PARSER_API int turbo_cmd_node_add_float(turbo_cmd_node_t *node, double *out,
                                        const char *name, const char *short_name,
                                        const char *desc);
-CXX_C_API int turbo_cmd_node_add_string_list(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_add_string_list(turbo_cmd_node_t *node,
                                              char **out_arr,
                                              uint32_t *out_count,
                                              uint32_t max_count,
                                              const char *name,
                                              const char *short_name,
                                              const char *desc);
-CXX_C_API int turbo_cmd_node_add_enum(turbo_cmd_node_t *node, int64_t *out,
+TURBO_PARSER_API int turbo_cmd_node_add_enum(turbo_cmd_node_t *node, int64_t *out,
                                       const char *name, const char *short_name,
                                       const char *desc,
                                       turbo_cmd_enum_t *choices,
                                       uint32_t choices_count);
-CXX_C_API int turbo_cmd_node_add_required_string(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_add_required_string(turbo_cmd_node_t *node,
                                                  char **out,
                                                  const char *name,
                                                  const char *desc);
-CXX_C_API int turbo_cmd_node_add_required_integer(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_add_required_integer(turbo_cmd_node_t *node,
                                                   int64_t *out,
                                                   const char *name,
                                                   const char *desc);
-CXX_C_API uint32_t turbo_cmd_node_last_index(const turbo_cmd_node_t *node);
-CXX_C_API int turbo_cmd_node_set_env(turbo_cmd_node_t *node, uint32_t index,
+TURBO_PARSER_API uint32_t turbo_cmd_node_last_index(const turbo_cmd_node_t *node);
+TURBO_PARSER_API int turbo_cmd_node_set_env(turbo_cmd_node_t *node, uint32_t index,
                                      const char *env_var);
-CXX_C_API int turbo_cmd_node_set_group(turbo_cmd_node_t *node, uint32_t index,
+TURBO_PARSER_API int turbo_cmd_node_set_group(turbo_cmd_node_t *node, uint32_t index,
                                        const char *group);
-CXX_C_API int turbo_cmd_node_set_choices(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_set_choices(turbo_cmd_node_t *node,
                                          uint32_t index,
                                          const char **choices,
                                          uint32_t count);
-CXX_C_API int turbo_cmd_node_set_validator(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_set_validator(turbo_cmd_node_t *node,
                                            uint32_t index,
                                            turbo_cmd_validator_t validator);
-CXX_C_API int turbo_cmd_node_set_required(turbo_cmd_node_t *node,
+TURBO_PARSER_API int turbo_cmd_node_set_required(turbo_cmd_node_t *node,
                                           uint32_t index);
 
 /**
@@ -284,7 +284,7 @@ CXX_C_API int turbo_cmd_node_set_required(turbo_cmd_node_t *node,
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_sub_add_flag(turbo_cmd_subcommand_t *sub, bool *out, const char *name,
+TURBO_PARSER_API void turbo_cmd_sub_add_flag(turbo_cmd_subcommand_t *sub, bool *out, const char *name,
                                       const char *short_name, const char *desc);
 
 /**
@@ -295,7 +295,7 @@ CXX_C_API void turbo_cmd_sub_add_flag(turbo_cmd_subcommand_t *sub, bool *out, co
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_sub_add_string(turbo_cmd_subcommand_t *sub, char **out, const char *name,
+TURBO_PARSER_API void turbo_cmd_sub_add_string(turbo_cmd_subcommand_t *sub, char **out, const char *name,
                                         const char *short_name, const char *desc);
 
 /**
@@ -306,7 +306,7 @@ CXX_C_API void turbo_cmd_sub_add_string(turbo_cmd_subcommand_t *sub, char **out,
  * @param short_name Short name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_sub_add_integer(turbo_cmd_subcommand_t *sub, int64_t *out,
+TURBO_PARSER_API void turbo_cmd_sub_add_integer(turbo_cmd_subcommand_t *sub, int64_t *out,
                                          const char *name, const char *short_name,
                                          const char *desc);
 
@@ -317,7 +317,7 @@ CXX_C_API void turbo_cmd_sub_add_integer(turbo_cmd_subcommand_t *sub, int64_t *o
  * @param name Internal identifier name.
  * @param desc Description.
  */
-CXX_C_API void turbo_cmd_sub_add_required_string(turbo_cmd_subcommand_t *sub, char **out,
+TURBO_PARSER_API void turbo_cmd_sub_add_required_string(turbo_cmd_subcommand_t *sub, char **out,
                                                  const char *name, const char *desc);
 
 /* Parsing */
@@ -328,7 +328,7 @@ CXX_C_API void turbo_cmd_sub_add_required_string(turbo_cmd_subcommand_t *sub, ch
  * @param argv Array of argument strings.
  * @param colors true to enable colored help output.
  */
-CXX_C_API void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv, bool colors);
+TURBO_PARSER_API void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv, bool colors);
 
 /**
  * @brief Parse arguments starting from a subcommand.
@@ -338,7 +338,7 @@ CXX_C_API void turbo_cmd_parse(turbo_cmd_parser_t *parser, int argc, char **argv
  * @param colors true to enable colored output.
  * @return 0 on success, non-zero if internal error occurs.
  */
-CXX_C_API int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc, char **argv,
+TURBO_PARSER_API int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc, char **argv,
                                          bool colors);
 
 /**
@@ -347,12 +347,12 @@ CXX_C_API int turbo_cmd_parse_subcommand(turbo_cmd_parser_t *parser, int argc, c
  * Returns 0 when a structured result was produced and -1 for invalid API use
  * or allocation failure.
  */
-CXX_C_API int turbo_cmd_parse_ex(turbo_cmd_parser_t *parser, int argc,
+TURBO_PARSER_API int turbo_cmd_parse_ex(turbo_cmd_parser_t *parser, int argc,
                                  char **argv,
                                  turbo_cmd_parse_result_t *result);
 
 /** Render help for root or a selected node through a caller-owned sink. */
-CXX_C_API int turbo_cmd_render_help(const turbo_cmd_parser_t *parser,
+TURBO_PARSER_API int turbo_cmd_render_help(const turbo_cmd_parser_t *parser,
                                     const turbo_cmd_node_t *node,
                                     turbo_cmd_write_fn write_fn,
                                     void *write_context);
@@ -362,7 +362,7 @@ CXX_C_API int turbo_cmd_render_help(const turbo_cmd_parser_t *parser,
  * @param parser Pointer to the command parser.
  * @param colors true to enable colored output.
  */
-CXX_C_API void turbo_cmd_show_help(turbo_cmd_parser_t *parser, bool colors);
+TURBO_PARSER_API void turbo_cmd_show_help(turbo_cmd_parser_t *parser, bool colors);
 
 
 #ifdef __cplusplus

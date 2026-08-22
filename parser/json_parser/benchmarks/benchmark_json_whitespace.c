@@ -51,26 +51,26 @@ suite("JSON whitespace benchmark") {
 
   bench("SIMDe whitespace scanning") {
     benchmark_bytes("scalar 64KiB scan", 1000, WHITESPACE_BYTES) {
-      check_ptr_eq(json_skip_rfc_whitespace_scalar(json, json + WHITESPACE_BYTES),
-                   json + WHITESPACE_BYTES);
+      check_true(json_skip_rfc_whitespace_scalar(json, json + WHITESPACE_BYTES) ==
+                 json + WHITESPACE_BYTES);
     }
 
     benchmark_bytes("SIMDe 64KiB scan", 1000, WHITESPACE_BYTES) {
-      check_ptr_eq(json_skip_rfc_whitespace_simde(json, json + WHITESPACE_BYTES),
-                   json + WHITESPACE_BYTES);
+      check_true(json_skip_rfc_whitespace_simde(json, json + WHITESPACE_BYTES) ==
+                 json + WHITESPACE_BYTES);
     }
 
     benchmark_bytes("64KiB RFC whitespace prefix", 1000, WHITESPACE_BYTES) {
       json_value_t *value = json_parse(json, WHITESPACE_BYTES + sizeof("{\"value\":7}") - 1);
       check_not_null(value);
-      check_int_eq(json_get_int(value, "value", 0), 7);
+      check_equal(json_get_int(value, "value", 0), 7);
       json_free(value);
     }
 
     benchmark_bytes("64KiB plain ASCII string", 1000, WHITESPACE_BYTES) {
       json_value_t *value = json_parse(plain_string, WHITESPACE_BYTES + 2);
       check_not_null(value);
-      check_size_eq(json_string_len(value), WHITESPACE_BYTES);
+      check_equal(json_string_len(value), WHITESPACE_BYTES);
       json_free(value);
     }
   }

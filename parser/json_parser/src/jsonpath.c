@@ -2816,7 +2816,7 @@ static const json_value_t *jsonpath_program_match_next(
     const char *key = jsonpath_program_string(program, instruction);
     if (!key) return NULL;
     next = json_object_get_hashed_v(
-        cur, tstr_v_from_buf(key, instruction->string_len), instruction->key_hash);
+        cur, vstr_from_buf(key, instruction->string_len), instruction->key_hash);
     return next ? jsonpath_program_match_next(program, instruction->sibling, root, next,
                                               result, first_only)
                 : NULL;

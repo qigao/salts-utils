@@ -59,7 +59,7 @@ static turbo_selector_program_t *compile_selector(
   turbo_selector_schema_v1_t schema = test_schema();
   turbo_selector_program_t *program = NULL;
   diagnostic->size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-  check_int_eq(turbo_selector_compile_v1(source, strlen(source), &schema,
+  check_equal(turbo_selector_compile_v1(source, strlen(source), &schema,
                                          &program, diagnostic),
                TURBO_SELECTOR_OK);
   return program;
@@ -105,14 +105,14 @@ spec("bounded resource selector DSL") {
       size_t required = 0u;
 
       check_not_null(program);
-      check_uint_eq(turbo_selector_program_language_version(program), 1u);
-      check_size_eq(turbo_selector_program_predicate_count(program), 3u);
-      check_int_eq(turbo_selector_program_canonical_v1(
+      check_equal(turbo_selector_program_language_version(program), 1u);
+      check_equal(turbo_selector_program_predicate_count(program), 3u);
+      check_equal(turbo_selector_program_canonical_v1(
                        program, canonical, sizeof(canonical), &required,
                        &diagnostic),
                    TURBO_SELECTOR_OK);
-      check_str_eq(canonical, expected);
-      check_size_eq(required, strlen(expected));
+      check_equal(canonical, expected);
+      check_equal(required, strlen(expected));
 
       turbo_selector_program_destroy(program);
     }
@@ -128,11 +128,11 @@ spec("bounded resource selector DSL") {
       size_t required = 0u;
 
       check_not_null(program);
-      check_int_eq(turbo_selector_program_canonical_v1(
+      check_equal(turbo_selector_program_canonical_v1(
                        program, canonical, sizeof(canonical), &required,
                        &diagnostic),
                    TURBO_SELECTOR_OK);
-      check_str_eq(canonical, expected);
+      check_equal(canonical, expected);
 
       turbo_selector_program_destroy(program);
     }
@@ -147,13 +147,13 @@ spec("bounded resource selector DSL") {
       char canonical[64];
       size_t required = 0u;
 
-      check_int_eq(turbo_selector_program_canonical_v1(
+      check_equal(turbo_selector_program_canonical_v1(
                        program, canonical, sizeof(canonical), &required,
                        &diagnostic),
                    TURBO_SELECTOR_OK);
-      check_str_eq(canonical, expected);
+      check_equal(canonical, expected);
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        canonical, required, &schema, &round_trip, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_not_null(round_trip);
@@ -173,7 +173,7 @@ spec("bounded resource selector DSL") {
       bad_utf8[7] = (char)(unsigned char)0xc0u;
       bad_utf8[8] = (char)(unsigned char)0x80u;
 
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "region ==", strlen("region =="), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_SYNTAX_ERROR);
@@ -181,32 +181,32 @@ spec("bounded resource selector DSL") {
       check_true(diagnostic.byte_offset > 0u);
 
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "secret == \"x\"", strlen("secret == \"x\""),
                        &schema, &program, &diagnostic),
                    TURBO_SELECTOR_SEMANTIC_ERROR);
-      check_str_contains(diagnostic.message, "not allowed");
+      check_contains(diagnostic.message, "not allowed");
 
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "tag.tier.level == \"x\"",
                        strlen("tag.tier.level == \"x\""), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_SEMANTIC_ERROR);
 
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        bad_utf8, sizeof(bad_utf8), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_INVALID_UTF8);
 
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "role == \"\\uD800\"",
                        strlen("role == \"\\uD800\""), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_SEMANTIC_ERROR);
-      check_str_contains(diagnostic.message, "low surrogate");
+      check_contains(diagnostic.message, "low surrogate");
 
       memset(deep, 0, sizeof(deep));
       for (size_t index = 0u; index < TURBO_SELECTOR_MAX_DEPTH_V1 + 1u;
@@ -218,7 +218,7 @@ spec("bounded resource selector DSL") {
            ++index)
         deep[offset++] = ')';
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(deep, offset, &schema, &program,
+      check_equal(turbo_selector_compile_v1(deep, offset, &schema, &program,
                                              &diagnostic),
                    TURBO_SELECTOR_RESOURCE_LIMIT);
     }
@@ -230,11 +230,11 @@ spec("bounded resource selector DSL") {
       turbo_selector_program_t *program = NULL;
       const char *source = "role in [\"edge\", \"edge\"]";
 
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        source, strlen(source), &schema, &program, &diagnostic),
                    TURBO_SELECTOR_SEMANTIC_ERROR);
       check_null(program);
-      check_str_contains(diagnostic.message, "duplicate");
+      check_contains(diagnostic.message, "duplicate");
     }
 
     it("enforces source and decoded-string byte limits exactly") {
@@ -251,14 +251,14 @@ spec("bounded resource selector DSL") {
       memset(source + strlen("role == \"x\""), ' ',
              TURBO_SELECTOR_MAX_SOURCE_BYTES_V1 - strlen("role == \"x\""));
       source[TURBO_SELECTOR_MAX_SOURCE_BYTES_V1] = '\0';
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        source, TURBO_SELECTOR_MAX_SOURCE_BYTES_V1, &schema,
                        &program, &diagnostic),
                    TURBO_SELECTOR_OK);
       turbo_selector_program_destroy(program);
       program = NULL;
       source[TURBO_SELECTOR_MAX_SOURCE_BYTES_V1] = ' ';
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        source, TURBO_SELECTOR_MAX_SOURCE_BYTES_V1 + 1u,
                        &schema, &program, &diagnostic),
                    TURBO_SELECTOR_RESOURCE_LIMIT);
@@ -271,7 +271,7 @@ spec("bounded resource selector DSL") {
       string_source[prefix_size + TURBO_SELECTOR_MAX_STRING_BYTES_V1 + 1u] =
           '\0';
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        string_source, strlen(string_source), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_OK);
@@ -283,7 +283,7 @@ spec("bounded resource selector DSL") {
       string_source[prefix_size + TURBO_SELECTOR_MAX_STRING_BYTES_V1 + 2u] =
           '\0';
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        string_source, strlen(string_source), &schema, &program,
                        &diagnostic),
                    TURBO_SELECTOR_RESOURCE_LIMIT);
@@ -298,7 +298,7 @@ spec("bounded resource selector DSL") {
           TURBO_SELECTOR_MAX_LIST_ITEMS_V1);
 
       check_not_null(source);
-      check_int_eq(turbo_selector_compile_v1(source, strlen(source), &schema,
+      check_equal(turbo_selector_compile_v1(source, strlen(source), &schema,
                                              &program, &diagnostic),
                    TURBO_SELECTOR_OK);
       turbo_selector_program_destroy(program);
@@ -307,10 +307,10 @@ spec("bounded resource selector DSL") {
       source = make_membership_selector(TURBO_SELECTOR_MAX_LIST_ITEMS_V1 + 1u);
       check_not_null(source);
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(source, strlen(source), &schema,
+      check_equal(turbo_selector_compile_v1(source, strlen(source), &schema,
                                              &program, &diagnostic),
                    TURBO_SELECTOR_RESOURCE_LIMIT);
-      check_str_contains(diagnostic.message, "list item");
+      check_contains(diagnostic.message, "list item");
       free(source);
     }
 
@@ -321,16 +321,16 @@ spec("bounded resource selector DSL") {
       size_t required = 0u;
       char output[8];
 
-      check_int_eq(turbo_selector_program_canonical_v1(
+      check_equal(turbo_selector_program_canonical_v1(
                        program, NULL, 0u, &required, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_true(required > sizeof(output));
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_program_canonical_v1(
+      check_equal(turbo_selector_program_canonical_v1(
                        program, output, sizeof(output), &required,
                        &diagnostic),
                    TURBO_SELECTOR_BUFFER_TOO_SMALL);
-      check_int_eq(output[sizeof(output) - 1u], 0);
+      check_equal(output[sizeof(output) - 1u], 0);
       turbo_selector_program_destroy(program);
     }
 
@@ -343,14 +343,14 @@ spec("bounded resource selector DSL") {
           TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE};
       turbo_selector_program_t *program = NULL;
 
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "node.id == \"n1\"", strlen("node.id == \"n1\""),
                        &schema, &program, &diagnostic),
                    TURBO_SELECTOR_INVALID_ARGUMENT);
       check_null(program);
       schema.allowed_fields = reserved_fields;
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_compile_v1(
+      check_equal(turbo_selector_compile_v1(
                        "has == \"x\"", strlen("has == \"x\""), &schema,
                        &program, &diagnostic),
                    TURBO_SELECTOR_INVALID_ARGUMENT);
@@ -373,13 +373,13 @@ spec("bounded resource selector DSL") {
 
       check_not_null(program);
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        program, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_true(matched);
 
       record.role = "origin";
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        program, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_false(matched);
@@ -398,11 +398,11 @@ spec("bounded resource selector DSL") {
           compile_selector("!has(region)", &diagnostic);
       int matched = 1;
 
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        comparison, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_false(matched);
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        presence, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_true(matched);
@@ -420,12 +420,12 @@ spec("bounded resource selector DSL") {
           "region == \"eu\" || role not in [\"origin\"]", &diagnostic);
       int matched = 0;
 
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        program, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_true(matched);
       record.role = "origin";
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        program, &ops, &record, &matched, &diagnostic),
                    TURBO_SELECTOR_OK);
       check_false(matched);
@@ -441,11 +441,11 @@ spec("bounded resource selector DSL") {
       int matched = 1;
 
       diagnostic.size = TURBO_SELECTOR_DIAGNOSTIC_V1_SIZE;
-      check_int_eq(turbo_selector_program_evaluate_v1(
+      check_equal(turbo_selector_program_evaluate_v1(
                        program, &ops, NULL, &matched, &diagnostic),
                    TURBO_SELECTOR_EVALUATION_ERROR);
       check_false(matched);
-      check_str_contains(diagnostic.message, "not configured");
+      check_contains(diagnostic.message, "not configured");
 
       turbo_selector_program_destroy(program);
     }

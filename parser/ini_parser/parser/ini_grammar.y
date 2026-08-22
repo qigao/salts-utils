@@ -19,7 +19,7 @@
 #include <string.h>
 #include "turbo_str.h"
 
-static tstr_t ini_strndup(const char *s, size_t n) {
+static tstr ini_strndup(const char *s, size_t n) {
     return tstr_dup_len(s, n);
 }
 
@@ -58,7 +58,7 @@ static int ini_add_entry(ini_parse_ctx_t *ctx, const char *key, size_t key_len,
 
     for (ini_entry_t *e = ctx->current->entries; e; e = e->next) {
         if (tstr_len(e->key) == key_len && strncmp(e->key, key, key_len) == 0) {
-            tstr_t new_val = ini_strndup(value, value_len);
+            tstr new_val = ini_strndup(value, value_len);
             if (!new_val) return -1;
             tstr_free(e->value);
             e->value = new_val;

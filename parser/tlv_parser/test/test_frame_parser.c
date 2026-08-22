@@ -74,8 +74,8 @@ spec("frame_parser") {
             uint32_t size;
             FrameParseResult result = frame_peek_size(buf, sizeof(buf), &size);
 
-            check_int_eq(result, FRAME_PARSE_OK);
-            check_int_eq(size, 5); /* "Hello" = 5 bytes */
+            check_equal(result, FRAME_PARSE_OK);
+            check_equal(size, 5); /* "Hello" = 5 bytes */
         }
 
         it("should return need more if header is partial") {
@@ -86,7 +86,7 @@ spec("frame_parser") {
             uint32_t size;
             FrameParseResult result = frame_peek_size(buf, sizeof(buf), &size);
 
-            check_int_eq(result, FRAME_PARSE_NEED_MORE);
+            check_equal(result, FRAME_PARSE_NEED_MORE);
         }
 
         it("should return invalid head if first byte is wrong") {
@@ -96,7 +96,7 @@ spec("frame_parser") {
             uint32_t size;
             FrameParseResult result = frame_peek_size(buf, sizeof(buf), &size);
 
-            check_int_eq(result, FRAME_PARSE_INVALID_HEAD);
+            check_equal(result, FRAME_PARSE_INVALID_HEAD);
         }
     }
 
@@ -109,16 +109,16 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse(buf, frame_len, &frame, FRAME_PARSE_FLAG_NONE);
 
-            check_int_eq(result, FRAME_PARSE_OK);
-            check_int_eq(frame.head, 0xAA);
-            check_int_eq(frame.msg_id, 42);
-            check_int_eq(frame.version, 1);
-            check_int_eq(frame.payload_type, 1);
-            check_int_eq(frame.payload_size, 5);
+            check_equal(result, FRAME_PARSE_OK);
+            check_equal(frame.head, 0xAA);
+            check_equal(frame.msg_id, 42);
+            check_equal(frame.version, 1);
+            check_equal(frame.payload_type, 1);
+            check_equal(frame.payload_size, 5);
             check_not_null(frame.payload);
-            check_mem_eq(frame.payload, payload, 5);
-            check_int_eq(frame.tail, 0x55);
-            check_int_eq(frame.payload_owned, 0); /* zero-copy */
+            check_equal(frame.payload, payload, 5);
+            check_equal(frame.tail, 0x55);
+            check_equal(frame.payload_owned, 0); /* zero-copy */
         }
 
         it("should parse frame with empty payload") {
@@ -128,8 +128,8 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse(buf, frame_len, &frame, FRAME_PARSE_FLAG_NONE);
 
-            check_int_eq(result, FRAME_PARSE_OK);
-            check_int_eq(frame.payload_size, 0);
+            check_equal(result, FRAME_PARSE_OK);
+            check_equal(frame.payload_size, 0);
             check_null(frame.payload);
         }
 
@@ -140,7 +140,7 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse(buf, frame_len, &frame, FRAME_PARSE_FLAG_NONE);
 
-            check_int_eq(result, FRAME_PARSE_INVALID_TAIL);
+            check_equal(result, FRAME_PARSE_INVALID_TAIL);
         }
 
         it("should return crc mismatch if crc is corrupted") {
@@ -153,7 +153,7 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse(buf, frame_len, &frame, FRAME_PARSE_FLAG_NONE);
 
-            check_int_eq(result, FRAME_PARSE_CRC_MISMATCH);
+            check_equal(result, FRAME_PARSE_CRC_MISMATCH);
         }
 
         it("should skip crc if flag is set") {
@@ -166,7 +166,7 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse(buf, frame_len, &frame, FRAME_PARSE_FLAG_SKIP_CRC);
 
-            check_int_eq(result, FRAME_PARSE_OK); /* Should pass with skip flag */
+            check_equal(result, FRAME_PARSE_OK); /* Should pass with skip flag */
         }
 
         it("should return need more if data is partial") {
@@ -177,7 +177,7 @@ spec("frame_parser") {
             /* Only provide partial data */
             FrameParseResult result = frame_parse(buf, frame_len - 5, &frame, FRAME_PARSE_FLAG_NONE);
 
-            check_int_eq(result, FRAME_PARSE_NEED_MORE);
+            check_equal(result, FRAME_PARSE_NEED_MORE);
         }
     }
 
@@ -190,10 +190,10 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse_copy(buf, frame_len, &frame, NULL);
 
-            check_int_eq(result, FRAME_PARSE_OK);
+            check_equal(result, FRAME_PARSE_OK);
             check_not_null(frame.payload);
-            check_int_eq(frame.payload_owned, 1); /* heap-allocated */
-            check_mem_eq(frame.payload, payload, strlen(payload));
+            check_equal(frame.payload_owned, 1); /* heap-allocated */
+            check_equal(frame.payload, payload, strlen(payload));
 
             frame_free(&frame);
         }
@@ -209,11 +209,11 @@ spec("frame_parser") {
             frame_t frame;
             FrameParseResult result = frame_parse_copy(buf, frame_len, &frame, pool);
 
-            check_int_eq(result, FRAME_PARSE_OK);
+            check_equal(result, FRAME_PARSE_OK);
             check_not_null(frame.payload);
-            check_int_eq(frame.payload_owned, 0); /* pool-allocated */
-            check_ptr_eq(frame.payload_pool, pool);
-            check_mem_eq(frame.payload, payload, strlen(payload));
+            check_equal(frame.payload_owned, 0); /* pool-allocated */
+            check_true(frame.payload_pool == pool);
+            check_equal(frame.payload, payload, strlen(payload));
 
             frame_free(&frame);
             pool_destroy(pool);
@@ -222,9 +222,9 @@ spec("frame_parser") {
 
     describe("utilities") {
         it("should calculate total size") {
-            check_int_eq(frame_total_size(0), 16);
-            check_int_eq(frame_total_size(5), 21);
-            check_int_eq(frame_total_size(100), 116);
+            check_equal(frame_total_size(0), 16);
+            check_equal(frame_total_size(5), 21);
+            check_equal(frame_total_size(100), 116);
         }
 
         it("should free heap payload") {
@@ -237,7 +237,7 @@ spec("frame_parser") {
             frame_free(&frame);
 
             check_null(frame.payload);
-            check_int_eq(frame.payload_size, 0);
+            check_equal(frame.payload_size, 0);
         }
 
         it("should free pool payload") {
@@ -257,8 +257,8 @@ spec("frame_parser") {
             frame_free(&frame);
 
             check_null(frame.payload);
-            check_int_eq(frame.payload_size, 0);
-            check_int_eq(pool_get_used(pool), 0);
+            check_equal(frame.payload_size, 0);
+            check_equal(pool_get_used(pool), 0);
 
             pool_destroy(pool);
         }
@@ -283,7 +283,7 @@ spec("frame_parser") {
             uint32_t crc1 = crc32_compute(crc_table, data, strlen(data));
             uint32_t crc2 = crc32_compute(crc_table, data, strlen(data));
 
-            check_int_eq(crc1, crc2);
+            check_equal(crc1, crc2);
         }
 
         it("should produce different values for different data") {
@@ -307,7 +307,7 @@ spec("frame_parser") {
                 .payload_size = 10
             };
 
-            check_int_eq(frame_validate(&frame), PARSE_OK);
+            check_equal(frame_validate(&frame), PARSE_OK);
         }
 
         it("should fail on bad head") {
@@ -318,7 +318,7 @@ spec("frame_parser") {
                 .payload_type = FRAME_PAYLOAD_TYPE_TEXT
             };
 
-            check_int_eq(frame_validate(&frame), PARSE_ERR_INVALID_HEAD);
+            check_equal(frame_validate(&frame), PARSE_ERR_INVALID_HEAD);
         }
 
         it("should fail on bad tail") {
@@ -329,17 +329,17 @@ spec("frame_parser") {
                 .payload_type = FRAME_PAYLOAD_TYPE_TEXT
             };
 
-            check_int_eq(frame_validate(&frame), PARSE_ERR_INVALID_TAIL);
+            check_equal(frame_validate(&frame), PARSE_ERR_INVALID_TAIL);
         }
     }
 
     describe("error conversion") {
         it("should convert parse results to errors correctly") {
-            check_int_eq(frame_parse_result_to_error(FRAME_PARSE_OK), PARSE_OK);
-            check_int_eq(frame_parse_result_to_error(FRAME_PARSE_NEED_MORE), PARSE_ERR_TRUNCATED);
-            check_int_eq(frame_parse_result_to_error(FRAME_PARSE_INVALID_HEAD), PARSE_ERR_INVALID_HEAD);
-            check_int_eq(frame_parse_result_to_error(FRAME_PARSE_INVALID_TAIL), PARSE_ERR_INVALID_TAIL);
-            check_int_eq(frame_parse_result_to_error(FRAME_PARSE_CRC_MISMATCH), PARSE_ERR_CRC_MISMATCH);
+            check_equal(frame_parse_result_to_error(FRAME_PARSE_OK), PARSE_OK);
+            check_equal(frame_parse_result_to_error(FRAME_PARSE_NEED_MORE), PARSE_ERR_TRUNCATED);
+            check_equal(frame_parse_result_to_error(FRAME_PARSE_INVALID_HEAD), PARSE_ERR_INVALID_HEAD);
+            check_equal(frame_parse_result_to_error(FRAME_PARSE_INVALID_TAIL), PARSE_ERR_INVALID_TAIL);
+            check_equal(frame_parse_result_to_error(FRAME_PARSE_CRC_MISMATCH), PARSE_ERR_CRC_MISMATCH);
         }
     }
 }

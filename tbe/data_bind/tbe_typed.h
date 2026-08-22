@@ -3,10 +3,75 @@
 
 #include "data_bind.h"
 #include "turbo_str.h"
-#include "turbo_vec.h"
+#include <turbostl/vec.h>
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef __cplusplus
+#define TBE_TYPED_ALIGNOF(TYPE) alignof(TYPE)
+#else
+#define TBE_TYPED_ALIGNOF(TYPE) _Alignof(TYPE)
+#endif
+
+/* TBE generated records keep the raw vector as their complete field storage.
+ * This module-owned facade preserves that public layout while delegating every
+ * allocation and mutation to TurboSTL's bounded raw vector implementation. */
+#define TBE_TYPED_VEC_DEFINE(NAME, TYPE)                                                   \
+  typedef struct NAME {                                                                   \
+    turbo_vec_t raw;                                                                      \
+  } NAME;                                                                                 \
+  static inline turbo_stl_status NAME##_init(NAME *vec, size_t limit) {                   \
+    return vec ? turbo_vec_init_bytes(&vec->raw, sizeof(TYPE), TBE_TYPED_ALIGNOF(TYPE),   \
+                                      limit)                                               \
+               : TURBO_STL_INVALID_ARGUMENT;                                              \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_from(NAME *vec, const TYPE *elements,             \
+                                               size_t count, size_t limit) {               \
+    return vec ? turbo_vec_from_array_bytes(&vec->raw, elements, count, sizeof(TYPE),     \
+                                             TBE_TYPED_ALIGNOF(TYPE), limit)               \
+               : TURBO_STL_INVALID_ARGUMENT;                                              \
+  }                                                                                       \
+  static inline void NAME##_destroy(NAME *vec) {                                          \
+    if (vec) turbo_vec_destroy(&vec->raw);                                                 \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_clear(NAME *vec) {                                \
+    return vec ? turbo_vec_clear(&vec->raw) : TURBO_STL_INVALID_ARGUMENT;                 \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_reserve(NAME *vec, size_t capacity) {              \
+    return vec ? turbo_vec_reserve(&vec->raw, capacity) : TURBO_STL_INVALID_ARGUMENT;     \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_resize(NAME *vec, size_t size) {                  \
+    return vec ? turbo_vec_resize(&vec->raw, size) : TURBO_STL_INVALID_ARGUMENT;          \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_push(NAME *vec, TYPE value) {                     \
+    return vec ? turbo_vec_push(&vec->raw, &value) : TURBO_STL_INVALID_ARGUMENT;          \
+  }                                                                                       \
+  static inline turbo_stl_status NAME##_pop(NAME *vec, TYPE *out_value) {                 \
+    return vec ? turbo_vec_pop(&vec->raw, out_value) : TURBO_STL_INVALID_ARGUMENT;        \
+  }                                                                                       \
+  static inline TYPE *NAME##_at(NAME *vec, size_t index) {                                \
+    return vec ? (TYPE *)turbo_vec_at(&vec->raw, index) : NULL;                           \
+  }                                                                                       \
+  static inline const TYPE *NAME##_at_const(const NAME *vec, size_t index) {              \
+    return vec ? (const TYPE *)turbo_vec_at_const(&vec->raw, index) : NULL;               \
+  }                                                                                       \
+  static inline TYPE *NAME##_data(NAME *vec) {                                            \
+    return vec ? (TYPE *)turbo_vec_data(&vec->raw) : NULL;                               \
+  }                                                                                       \
+  static inline const TYPE *NAME##_data_const(const NAME *vec) {                          \
+    return vec ? (const TYPE *)turbo_vec_data_const(&vec->raw) : NULL;                   \
+  }                                                                                       \
+  static inline size_t NAME##_size(const NAME *vec) {                                     \
+    return vec ? turbo_vec_size(&vec->raw) : 0u;                                          \
+  }                                                                                       \
+  static inline size_t NAME##_capacity(const NAME *vec) {                                 \
+    return vec ? turbo_vec_capacity(&vec->raw) : 0u;                                      \
+  }                                                                                       \
+  static inline bool NAME##_empty(const NAME *vec) {                                      \
+    return !vec || turbo_vec_empty(&vec->raw);                                             \
+  }
 
 #ifdef __cplusplus
 extern "C" {
@@ -125,7 +190,7 @@ typedef struct TbeTypedDescriptor {
                      TBE_TYPED_BOOL, 0u, 0u, NULL, 0u, 0u, 0u, TBE_TYPED_BOOL,            \
                      TBE_TYPED_BOOL, NULL, 0u, 0u, OPTIONAL_BIT, FLAGS)
 
-/** Bind a scalar, enum, UUID, tstr_t string, or tbe_bytes_t member. */
+/** Bind a scalar, enum, UUID, tstr string, or tbe_bytes_t member. */
 #define TBE_TYPED_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, KIND, REQUIREMENT)                    \
   TBE_TYPED_PRIVATE_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, KIND, REQUIREMENT)
 
@@ -146,14 +211,14 @@ typedef struct TbeTypedDescriptor {
                      sizeof(ELEMENT_C_TYPE), FIXED_COUNT, OBJECT_TYPE, 0u, 0u, 0u,         \
                      TBE_TYPED_BOOL, TBE_TYPED_BOOL, NULL, 0u, 0u, OPTIONAL_BIT, FLAGS)
 
-/** Bind a TURBO_VEC_DEFINE-compatible list member. */
+/** Bind a TBE_TYPED_VEC_DEFINE-compatible list member. */
 #define TBE_TYPED_LIST_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, ELEMENT_KIND, ELEMENT_C_TYPE,     \
                              OBJECT_TYPE, REQUIREMENT)                                      \
   TBE_TYPED_PRIVATE_COLLECTION_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, TBE_TYPED_LIST,          \
                                      ELEMENT_KIND, ELEMENT_C_TYPE, OBJECT_TYPE, 0u,         \
                                      REQUIREMENT)
 
-/** Bind a TURBO_VEC_DEFINE-compatible set member. */
+/** Bind a TBE_TYPED_VEC_DEFINE-compatible set member. */
 #define TBE_TYPED_SET_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, ELEMENT_KIND, ELEMENT_C_TYPE,      \
                             OBJECT_TYPE, REQUIREMENT)                                       \
   TBE_TYPED_PRIVATE_COLLECTION_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, TBE_TYPED_SET,           \
@@ -185,8 +250,8 @@ typedef struct TbeTypedDescriptor {
       VALUE_KIND, VALUE_TYPE, 0u, 0u, OPTIONAL_BIT, FLAGS)
 
 /**
- * Bind a TURBO_VEC_DEFINE-compatible map member.
- * ENTRY_TYPE::KEY_MEMBER must be tstr_t; VALUE_TYPE is NULL except for objects.
+ * Bind a TBE_TYPED_VEC_DEFINE-compatible map member.
+ * ENTRY_TYPE::KEY_MEMBER must be tstr; VALUE_TYPE is NULL except for objects.
  */
 #define TBE_TYPED_MAP_FIELD(C_TYPE, MEMBER, SCHEMA_NAME, ENTRY_TYPE, KEY_MEMBER,             \
                             VALUE_MEMBER, VALUE_KIND, VALUE_TYPE, REQUIREMENT)                \
@@ -249,7 +314,7 @@ typedef struct TbeTypedDescriptor {
   tbe_typed_serialize_ex((CODEC), (BINDING).name, &(BINDING), (OBJECT), (FORMAT), (OUT),    \
                          (OUT_LEN), (ERROR))
 
-TURBO_VEC_DEFINE(tbe_bytes_t, uint8_t)
+TBE_TYPED_VEC_DEFINE(tbe_bytes_t, uint8_t)
 
 /**
  * Initialize an owning generated object from its descriptor.

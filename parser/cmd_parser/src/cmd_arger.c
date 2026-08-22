@@ -373,7 +373,7 @@ static void expand_args(int *argc_out, char ***argv_out, int argc_in, char **arg
         size_t len;
 
         while ((len = lex_next_arg(&p, &token_start)) > 0) {
-          tstr_t token = tstr_dup_len(token_start, len);
+          tstr token = tstr_dup_len(token_start, len);
           if (token) {
             char *token_cstr = tstr_to_cstr(token);
             tstr_free(token);

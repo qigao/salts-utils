@@ -173,18 +173,18 @@ spec("tbe_compiler") {
     it("should create string node") {
       Node *n = create_node_string("test_key", "test_val");
       check_not_null(n);
-      check_int_eq(n->type, NODE_STRING);
-      check_str_eq(n->name, "test_key");
-      check_str_eq(n->data.string_val, "test_val");
+      check_equal(n->type, NODE_STRING);
+      check_equal(n->name, "test_key");
+      check_equal(n->data.string_val, "test_val");
       node_free(n);
     }
 
     it("should create list node") {
       Node *n = create_node_list("list_key");
       check_not_null(n);
-      check_int_eq(n->type, NODE_LIST);
-      check_str_eq(n->name, "list_key");
-      check_int_eq(n->data.list.count, 0);
+      check_equal(n->type, NODE_LIST);
+      check_equal(n->name, "list_key");
+      check_equal(n->data.list.count, 0);
       node_free(n);
     }
 
@@ -192,8 +192,8 @@ spec("tbe_compiler") {
       Node *m = create_node_map(NULL);
       Node *v = create_node_string("key", "val");
       map_add(m, v);
-      check_int_eq(m->data.map.count, 1);
-      check_ptr_eq(m->data.map.items[0], v);
+      check_equal(m->data.map.count, 1);
+      check_true(m->data.map.items[0] == v);
       node_free(m); /* recursively frees v */
     }
   }
@@ -217,14 +217,14 @@ spec("tbe_compiler") {
 
       check_not_null(path);
       if (path) {
-        check_int_eq(tt_write_file(path, "seed", 4), 0);
+        check_equal(tt_write_file(path, "seed", 4), 0);
         read_only = fopen(path, "rb");
         check_not_null(read_only);
         if (read_only) {
-          check_int_ne(renderer.out_verbatim("x", 1, read_only), 0);
+          check_not_equal(renderer.out_verbatim("x", 1, read_only), 0);
           fclose(read_only);
         }
-        check_int_eq(tt_remove_file(path), 0);
+        check_equal(tt_remove_file(path), 0);
         free(path);
       }
     }
@@ -236,7 +236,7 @@ spec("tbe_compiler") {
 
       MUSTACHE_DATAPROVIDER p = mustache_helpers_provider();
       void *res = p.get_child_by_name(m, "key", 3, NULL);
-      check_ptr_eq(res, v);
+      check_true(res == v);
       void *res2 = p.get_child_by_name(m, "nokey", 5, NULL);
       check_null(res2);
       node_free(m);
@@ -254,8 +254,8 @@ spec("tbe_compiler") {
       void *r2 = p.get_child_by_index(l, 1, NULL);
       void *r3 = p.get_child_by_index(l, 2, NULL);
 
-      check_ptr_eq(r1, v1);
-      check_ptr_eq(r2, v2);
+      check_true(r1 == v1);
+      check_true(r2 == v2);
       check_null(r3);
       node_free(l);
     }
@@ -269,7 +269,7 @@ spec("tbe_compiler") {
 
       MUSTACHE_DATAPROVIDER p = mustache_helpers_provider();
       void *res = p.get_child_by_name(m, "child.grandchild", 16, NULL);
-      check_ptr_eq(res, grandchild);
+      check_true(res == grandchild);
 
       node_free(m);
     }
@@ -285,8 +285,8 @@ spec("tbe_compiler") {
       void *r1 = p.get_child_by_index(m, 0, NULL);
       void *r2 = p.get_child_by_index(m, 1, NULL);
 
-      check_ptr_eq(r1, v1);
-      check_ptr_eq(r2, v2);
+      check_true(r1 == v1);
+      check_true(r2 == v2);
       node_free(m);
     }
   }
@@ -296,10 +296,10 @@ spec("tbe_compiler") {
       uint8_t buf[8] = {0};
 
       tbe_wire_write_u32(buf, 0, 0x11223344u);
-      check_uint_eq(tbe_wire_read_u32(buf, 0), 0x11223344u);
+      check_equal(tbe_wire_read_u32(buf, 0), 0x11223344u);
 
       tbe_wire_write_i16(buf, 1, -1234);
-      check_int_eq(tbe_wire_read_i16(buf, 1), -1234);
+      check_equal(tbe_wire_read_i16(buf, 1), -1234);
     }
 
     it("should round-trip variable data writes and reads") {
@@ -309,7 +309,7 @@ spec("tbe_compiler") {
 
       check(tbe_wire_write_var_data(buf, sizeof(buf), 0, payload, 3));
       check(tbe_wire_read_var_data(buf, sizeof(buf), 0, &value));
-      check_uint_eq(value.size, 3);
+      check_equal(value.size, 3);
       check(memcmp(value.data, payload, 3) == 0);
     }
   }
@@ -319,7 +319,7 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       const char *empty = "";
       int res = parse_schema(empty, strlen(empty), root, NULL);
-      check_int_eq(res, 0);
+      check_equal(res, 0);
       node_free(root);
     }
 
@@ -327,16 +327,16 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       const char *schema = "composite Point { uint32_t x; uint32_t y; }";
       int res = parse_schema(schema, strlen(schema), root, NULL);
-      check_int_eq(res, 0);
+      check_equal(res, 0);
 
       Node *composites = find_child(root, "composites");
       check_not_null(composites);
-      check_str_eq(composites->name, "composites");
-      check_int_eq(composites->type, NODE_LIST);
-      check_int_eq(composites->data.list.count, 1);
+      check_equal(composites->name, "composites");
+      check_equal(composites->type, NODE_LIST);
+      check_equal(composites->data.list.count, 1);
 
       Node *point = composites->data.list.items[0];
-      check_int_eq(point->type, NODE_MAP);
+      check_equal(point->type, NODE_MAP);
 
       node_free(root);
     }
@@ -356,7 +356,7 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       if (rc == 0) {
         Node *messages;
         Node *fields;
@@ -369,16 +369,16 @@ spec("tbe_compiler") {
         enums = find_child(root, "enums");
         for (i = 0; i < 8; ++i) {
           Node *field = fields->data.list.items[i];
-          check_str_eq(find_child(field, "cpp_type")->data.string_val, cpp_types[i]);
-          check_str_eq(find_child(field, "go_type")->data.string_val, go_types[i]);
-          check_str_eq(find_child(field, "ts_type")->data.string_val, "number");
-          check_str_eq(find_child(field, "python_type")->data.string_val, "int");
-          check_str_eq(find_child(field, "rust_type")->data.string_val, rust_types[i]);
-          check_str_eq(find_child(field, "typed_kind")->data.string_val, typed_kinds[i]);
+          check_equal(find_child(field, "cpp_type")->data.string_val, cpp_types[i]);
+          check_equal(find_child(field, "go_type")->data.string_val, go_types[i]);
+          check_equal(find_child(field, "ts_type")->data.string_val, "number");
+          check_equal(find_child(field, "python_type")->data.string_val, "int");
+          check_equal(find_child(field, "rust_type")->data.string_val, rust_types[i]);
+          check_equal(find_child(field, "typed_kind")->data.string_val, typed_kinds[i]);
         }
-        check_str_eq(find_child(enums->data.list.items[0], "cpp_underlying_type")->data.string_val,
+        check_equal(find_child(enums->data.list.items[0], "cpp_underlying_type")->data.string_val,
                      "std::uint16_t");
-        check_str_eq(find_child(enums->data.list.items[0], "rust_underlying_type")->data.string_val,
+        check_equal(find_child(enums->data.list.items[0], "rust_underlying_type")->data.string_val,
                      "u16");
       }
 
@@ -395,7 +395,7 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       if (rc == 0) {
         Node *messages = find_child(root, "messages");
         Node *record = messages ? messages->data.list.items[0] : NULL;
@@ -406,14 +406,14 @@ spec("tbe_compiler") {
         check_not_null(fields);
         check_not_null(bitmap_size);
         if (fields != NULL && bitmap_size != NULL) {
-          check_size_eq(fields->data.list.count, 9u);
-          check_str_eq(bitmap_size->data.string_val, "2");
+          check_equal(fields->data.list.count, 9u);
+          check_equal(bitmap_size->data.string_val, "2");
           for (i = 0; i < fields->data.list.count; ++i) {
             Node *bit = find_child(fields->data.list.items[i], "optional_bit_index");
             char expected[16];
             snprintf(expected, sizeof(expected), "%zu", i);
             check_not_null(bit);
-            if (bit != NULL) check_str_eq(bit->data.string_val, expected);
+            if (bit != NULL) check_equal(bit->data.string_val, expected);
           }
         }
       }
@@ -425,7 +425,7 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       const char *schema = "message Bad { uint32_t no_semi }";
       int res = parse_schema_quietly(schema, strlen(schema), root);
-      check_int_eq(res, -1);
+      check_equal(res, -1);
       node_free(root);
     }
 
@@ -433,7 +433,7 @@ spec("tbe_compiler") {
       Node *root = create_node_map(NULL);
       const char *schema = "struct Point { uint32_t x; uint32_t y; }";
       int res = parse_schema_quietly(schema, strlen(schema), root);
-      check_int_eq(res, -1);
+      check_equal(res, -1);
       node_free(root);
     }
 
@@ -453,7 +453,7 @@ spec("tbe_compiler") {
 
         Node *root = create_node_map(NULL);
         int res = parse_schema(dat, size, root, NULL);
-        check_int_eq(res, 0);
+        check_equal(res, 0);
 
         Node *schema = NULL;
         Node *messages = NULL;
@@ -471,39 +471,39 @@ spec("tbe_compiler") {
         check_not_null(messages);
         check_not_null(composites);
         check_not_null(enums);
-        check_str_eq(find_child(schema, "schema_name")->data.string_val, "Session");
-        check_int_eq(messages->data.list.count, 2);
-        check_int_eq(composites->data.list.count, 1);
-        check_int_eq(enums->data.list.count, 1);
+        check_equal(find_child(schema, "schema_name")->data.string_val, "Session");
+        check_equal(messages->data.list.count, 2);
+        check_equal(composites->data.list.count, 1);
+        check_equal(enums->data.list.count, 1);
 
         node_free(root);
         free(dat);
       } else {
-        check_int_eq(1, 0); // Fail test if file not found
+        check_equal(1, 0); // Fail test if file not found
       }
     }
   }
 
   describe("C template rendering") {
     it("should resolve built-in templates through compiler core") {
-      check_str_eq(tbe_compiler_resolve_template(NULL, 0), "templates/c_structs.mustache");
-      check_str_eq(tbe_compiler_resolve_template(NULL, 1),
+      check_equal(tbe_compiler_resolve_template(NULL, 0), "templates/c_structs.mustache");
+      check_equal(tbe_compiler_resolve_template(NULL, 1),
                    "templates/python_dataclass.mustache");
-      check_str_eq(tbe_compiler_resolve_template(NULL, 2), "templates/rust_structs.mustache");
-      check_str_eq(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_CPP),
+      check_equal(tbe_compiler_resolve_template(NULL, 2), "templates/rust_structs.mustache");
+      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_CPP),
                    "templates/cpp_types.mustache");
-      check_str_eq(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_GO),
+      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_GO),
                    "templates/go_types.mustache");
-      check_str_eq(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_TS),
+      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_TS),
                    "templates/ts_types.mustache");
-      check_str_eq(tbe_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
+      check_equal(tbe_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
     }
 
     it("should parse schema files through compiler core") {
       Node *root = NULL;
       char *schema_data = NULL;
 
-      check_int_eq(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+      check_equal(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
       check_not_null(root);
       check_not_null(schema_data);
       check(find_child(root, "schema") != NULL);
@@ -521,15 +521,15 @@ spec("tbe_compiler") {
       char *output = NULL;
 
       cleanup_test_file(output_path);
-      check_int_eq(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
-      check_int_eq(tbe_compiler_render_file(root, C_STRUCT_TEMPLATE_FILE, output_path), 0);
+      check_equal(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+      check_equal(tbe_compiler_render_file(root, C_STRUCT_TEMPLATE_FILE, output_path), 0);
 
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       check(output_size > 0);
-      check_str_contains(output, "typedef struct Header_s {");
-      check_str_contains(output, "typedef struct LoginMessage_s {");
-      check_str_contains(output, "typedef struct Heartbeat_s {");
+      check_contains(output, "typedef struct Header_s {");
+      check_contains(output, "typedef struct LoginMessage_s {");
+      check_contains(output, "typedef struct Heartbeat_s {");
 
       free(output);
       free(schema_data);
@@ -551,13 +551,13 @@ spec("tbe_compiler") {
       };
 
       cleanup_test_file(output_path);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(tbe_compiler_run(&options), 0);
 
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       check(output_size > 0);
-      check_str_contains(output, "Session_WIRE_BIG_ENDIAN");
-      check_str_contains(output, "LoginMessage_builder_bind");
+      check_contains(output, "Session_WIRE_BIG_ENDIAN");
+      check_contains(output, "LoginMessage_builder_bind");
 
       free(output);
       cleanup_test_file(output_path);
@@ -587,24 +587,24 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(dsl_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       dsl = tt_read_file(dsl_path, &dsl_size);
       check_not_null(dsl);
       check(dsl_size > 0);
       if (dsl != NULL) {
-        check_str_contains(dsl, "package Market");
-        check_str_contains(dsl, "enum Side <int>");
-        check_str_contains(dsl, "declare Header");
-        check_str_contains(dsl, "seq: int");
-        check_str_contains(dsl, "declare Level");
-        check_str_contains(dsl, "price: uint64");
-        check_str_contains(dsl, "declare Book");
-        check_str_contains(dsl, "header: Header");
-        check_str_contains(dsl, "digest: Bytes");
-        check_str_contains(dsl, "request_id: UUID");
-        check_str_contains(dsl, "bids: List<Level>");
-        check_str_contains(dsl, "symbol: String");
+        check_contains(dsl, "package Market");
+        check_contains(dsl, "enum Side <int>");
+        check_contains(dsl, "declare Header");
+        check_contains(dsl, "seq: int");
+        check_contains(dsl, "declare Level");
+        check_contains(dsl, "price: uint64");
+        check_contains(dsl, "declare Book");
+        check_contains(dsl, "header: Header");
+        check_contains(dsl, "digest: Bytes");
+        check_contains(dsl, "request_id: UUID");
+        check_contains(dsl, "bids: List<Level>");
+        check_contains(dsl, "symbol: String");
       }
 
       free(dsl);
@@ -630,7 +630,7 @@ spec("tbe_compiler") {
 
       cleanup_test_file(header_path);
       cleanup_test_file(guest_path);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       guest = tt_read_file(guest_path, &guest_size);
       check_not_null(header);
@@ -638,16 +638,16 @@ spec("tbe_compiler") {
       check(header_size > 0);
       check(guest_size > 0);
       if (header != NULL) {
-        check_str_contains(header, "typedef struct tbe_guest_bridge_s");
-        check_str_contains(header, "uint32_t abi_version;");
-        check_str_contains(header, "record##_guest_from_json");
-        check_str_contains(header, "record##_guest_to_xml");
-        check_str_contains(header, "TBE_GUEST_DECLARE_RECORD(LoginMessage);");
+        check_contains(header, "typedef struct tbe_guest_bridge_s");
+        check_contains(header, "uint32_t abi_version;");
+        check_contains(header, "record##_guest_from_json");
+        check_contains(header, "record##_guest_to_xml");
+        check_contains(header, "TBE_GUEST_DECLARE_RECORD(LoginMessage);");
       }
       if (guest != NULL) {
-        check_str_contains(guest, "TBE_GUEST_SCHEMA_ID[] = \"Session\"");
-        check_str_contains(guest, "TBE_GUEST_DEFINE_RECORD(LoginMessage)");
-        check_str_contains(guest, "TBE_GUEST_FORMAT_CSV");
+        check_contains(guest, "TBE_GUEST_SCHEMA_ID[] = \"Session\"");
+        check_contains(guest, "TBE_GUEST_DEFINE_RECORD(LoginMessage)");
+        check_contains(guest, "TBE_GUEST_FORMAT_CSV");
       }
       free(header);
       free(guest);
@@ -677,16 +677,16 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       source = tt_read_file(source_path, &source_size);
       check_not_null(header);
       check_not_null(source);
-      if (header != NULL) check_str_contains(header, "uint32_t order_id;");
+      if (header != NULL) check_contains(header, "uint32_t order_id;");
       if (source != NULL) {
-        check_str_contains(source, ".name = \"id\"");
-        check_str_contains(source, "offsetof(Order_t, order_id)");
+        check_contains(source, ".name = \"id\"");
+        check_contains(source, "offsetof(Order_t, order_id)");
       }
 
       free(header);
@@ -716,7 +716,7 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -724,14 +724,14 @@ spec("tbe_compiler") {
       check(header_size > 0);
       check(lua_size > 0);
       if (header != NULL) {
-        check_str_contains(header, "LoginMessage_typed_type(void)");
-        check_str_contains(header, "LoginMessage_push_lua(struct lua_State *L");
-        check_str_contains(header, "LoginMessage_from_lua(struct lua_State *L");
+        check_contains(header, "LoginMessage_typed_type(void)");
+        check_contains(header, "LoginMessage_push_lua(struct lua_State *L");
+        check_contains(header, "LoginMessage_from_lua(struct lua_State *L");
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "#include \"turbo_lua.h\"");
-        check_str_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
-        check_str_contains(lua_source, "c11_lua_read_tbe_typed");
+        check_contains(lua_source, "#include \"turbo_lua.h\"");
+        check_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
+        check_contains(lua_source, "c11_lua_read_tbe_typed");
       }
 
       free(header);
@@ -789,34 +789,34 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
       check_not_null(lua_source);
       if (header != NULL) {
-        check_str_contains(header, "typedef struct Orders_lua_api_s");
-        check_str_contains(header, "DataBindStatus (*create_order)");
-        check_str_contains(header, "typedef struct Orders_lua_fetch_order_async_s");
-        check_str_contains(header, "Orders_lua_fetch_order_async_t *operation");
-        check_str_contains(header, "void (*destroy)(void *state, int canceled)");
-        check_str_contains(header, "size_t max_pending_operations");
+        check_contains(header, "typedef struct Orders_lua_api_s");
+        check_contains(header, "DataBindStatus (*create_order)");
+        check_contains(header, "typedef struct Orders_lua_fetch_order_async_s");
+        check_contains(header, "Orders_lua_fetch_order_async_t *operation");
+        check_contains(header, "void (*destroy)(void *state, int canceled)");
+        check_contains(header, "size_t max_pending_operations");
         check(strstr(header, "turbo_coro") == NULL);
         check(strstr(header, "coroutine_stack_size") == NULL);
-        check_str_contains(header, "Orders_lua_push_module");
+        check_contains(header, "Orders_lua_push_module");
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "#include \"turbo_lua.h\"");
-        check_str_contains(lua_source, "Orders_lua_call_create_order");
-        check_str_contains(lua_source, "Orders_lua_fetch_order_poll");
-        check_str_contains(lua_source, "Orders_lua_fetch_order_await");
-        check_str_contains(lua_source, "lua_yieldk");
-        check_str_contains(lua_source, "future->operation.poll");
-        check_str_contains(lua_source, "future->operation.destroy");
+        check_contains(lua_source, "#include \"turbo_lua.h\"");
+        check_contains(lua_source, "Orders_lua_call_create_order");
+        check_contains(lua_source, "Orders_lua_fetch_order_poll");
+        check_contains(lua_source, "Orders_lua_fetch_order_await");
+        check_contains(lua_source, "lua_yieldk");
+        check_contains(lua_source, "future->operation.poll");
+        check_contains(lua_source, "future->operation.destroy");
         check(strstr(lua_source, "turbo_coro") == NULL);
-        check_str_contains(lua_source, "CreateOrder_from_lua");
-        check_str_contains(lua_source, "OrderResult_push_lua");
+        check_contains(lua_source, "CreateOrder_from_lua");
+        check_contains(lua_source, "OrderResult_push_lua");
       }
 
       free(header);
@@ -853,7 +853,7 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -865,16 +865,16 @@ spec("tbe_compiler") {
       check_not_null(header);
       check_not_null(lua_source);
       if (header != NULL) {
-        check_str_contains(header, "typedef struct Rules_lua_limits_s");
-        check_str_contains(header, "typedef struct Rules_lua_client_s");
-        check_str_contains(header, "Rules_lua_client_close");
-        check_str_contains(header, "Rules_lua_client_evaluate_on_owner");
+        check_contains(header, "typedef struct Rules_lua_limits_s");
+        check_contains(header, "typedef struct Rules_lua_client_s");
+        check_contains(header, "Rules_lua_client_close");
+        check_contains(header, "Rules_lua_client_evaluate_on_owner");
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "struct Rules_lua_client_s");
-        check_str_contains(lua_source, "Rules_lua_client_create");
-        check_str_contains(lua_source, "Request_push_lua");
-        check_str_contains(lua_source, "Result_from_lua");
+        check_contains(lua_source, "struct Rules_lua_client_s");
+        check_contains(lua_source, "Rules_lua_client_create");
+        check_contains(lua_source, "Request_push_lua");
+        check_contains(lua_source, "Result_from_lua");
       }
 
       free(header);
@@ -911,21 +911,21 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
-      check_int_eq(tbe_compiler_run(&options), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
       check_not_null(lua_source);
       if (header != NULL) {
-        check_str_contains(header, "Stateful_lua_fetch_async_t");
-        check_str_contains(header, "size_t max_pending_operations");
+        check_contains(header, "Stateful_lua_fetch_async_t");
+        check_contains(header, "size_t max_pending_operations");
         check(strstr(header, "#include \"turbo_coro.h\"") == NULL);
         check(strstr(header, "coroutine_stack_size") == NULL);
       }
       if (lua_source != NULL) {
-        check_str_contains(lua_source, "future->operation.poll");
-        check_str_contains(lua_source, "future->operation.destroy");
+        check_contains(lua_source, "future->operation.poll");
+        check_contains(lua_source, "future->operation.destroy");
         check(strstr(lua_source, "turbo_coro_pool") == NULL);
       }
 
@@ -959,7 +959,7 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -989,7 +989,7 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -1004,16 +1004,16 @@ spec("tbe_compiler") {
         check_not_null(header);
         check_not_null(lua_source);
         if (header != NULL) {
-          check_str_contains(header, "typedef struct turbo_lua_executor turbo_lua_executor_t");
-          check_str_contains(header, "Orders_lua_client_close");
-          check_str_contains(header, "Orders_lua_client_fetch_order_async");
-          check_str_contains(header, "Orders_lua_fetch_order_future_poll");
-          check_str_contains(header, "Orders_lua_fetch_order_future_cancel");
+          check_contains(header, "typedef struct turbo_lua_executor turbo_lua_executor_t");
+          check_contains(header, "Orders_lua_client_close");
+          check_contains(header, "Orders_lua_client_fetch_order_async");
+          check_contains(header, "Orders_lua_fetch_order_future_poll");
+          check_contains(header, "Orders_lua_fetch_order_future_cancel");
         }
         if (lua_source != NULL) {
-          check_str_contains(lua_source, "tbe_typed_serialize_binary");
-          check_str_contains(lua_source, "turbo_lua_executor_try_post");
-          check_str_contains(lua_source, "Orders_lua_fetch_order_dispatch");
+          check_contains(lua_source, "tbe_typed_serialize_binary");
+          check_contains(lua_source, "turbo_lua_executor_try_post");
+          check_contains(lua_source, "Orders_lua_fetch_order_dispatch");
         }
         free(header);
         free(lua_source);
@@ -1045,7 +1045,7 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -1071,7 +1071,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -1096,7 +1096,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
-      check_int_eq(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(schema_path, schema), 0);
       check(tbe_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -1150,35 +1150,35 @@ spec("tbe_compiler") {
       check_not_null(rust_output);
       check_not_null(ts_output);
 
-      check_str_contains(cpp_output, "enum class Side : std::uint8_t");
-      check_str_contains(cpp_output, "std::vector<Level> bids;");
-      check_str_contains(cpp_output, "std::string symbol;");
-      check_str_contains(cpp_output, "std::vector<std::uint8_t> digest;");
-      check_str_contains(cpp_output, "turbo_uuid_t request_id;");
-      check_str_contains(cpp_output, "#include \"turbo_uuid.h\"");
+      check_contains(cpp_output, "enum class Side : std::uint8_t");
+      check_contains(cpp_output, "std::vector<Level> bids;");
+      check_contains(cpp_output, "std::string symbol;");
+      check_contains(cpp_output, "std::vector<std::uint8_t> digest;");
+      check_contains(cpp_output, "turbo_uuid_t request_id;");
+      check_contains(cpp_output, "#include \"turbo_uuid.h\"");
 
-      check_str_contains(go_output, "package market");
-      check_str_contains(go_output, "Bids []Level");
-      check_str_contains(go_output, "Symbol string");
-      check_str_contains(go_output, "Digest []byte");
-      check_str_contains(go_output, "RequestId [16]byte");
+      check_contains(go_output, "package market");
+      check_contains(go_output, "Bids []Level");
+      check_contains(go_output, "Symbol string");
+      check_contains(go_output, "Digest []byte");
+      check_contains(go_output, "RequestId [16]byte");
 
-      check_str_contains(py_output, "bids: list[Level]");
-      check_str_contains(py_output, "symbol: str");
-      check_str_contains(py_output, "digest: bytes");
-      check_str_contains(py_output, "request_id: str");
+      check_contains(py_output, "bids: list[Level]");
+      check_contains(py_output, "symbol: str");
+      check_contains(py_output, "digest: bytes");
+      check_contains(py_output, "request_id: str");
 
-      check_str_contains(rust_output, "#[repr(u8)]");
-      check_str_contains(rust_output, "pub bids: Vec<Level>");
-      check_str_contains(rust_output, "pub symbol: String");
-      check_str_contains(rust_output, "pub digest: Vec<u8>");
-      check_str_contains(rust_output, "pub request_id: [u8; 16]");
+      check_contains(rust_output, "#[repr(u8)]");
+      check_contains(rust_output, "pub bids: Vec<Level>");
+      check_contains(rust_output, "pub symbol: String");
+      check_contains(rust_output, "pub digest: Vec<u8>");
+      check_contains(rust_output, "pub request_id: [u8; 16]");
 
-      check_str_contains(ts_output, "export enum Side");
-      check_str_contains(ts_output, "bids: Array<Level>;");
-      check_str_contains(ts_output, "symbol: string;");
-      check_str_contains(ts_output, "digest: Uint8Array;");
-      check_str_contains(ts_output, "request_id: string;");
+      check_contains(ts_output, "export enum Side");
+      check_contains(ts_output, "bids: Array<Level>;");
+      check_contains(ts_output, "symbol: string;");
+      check_contains(ts_output, "digest: Uint8Array;");
+      check_contains(ts_output, "request_id: string;");
 
       free(cpp_output);
       free(go_output);
@@ -1193,19 +1193,19 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "#define Color_Red ((Color_t)UINT64_C(0))");
-      check_str_contains(output, "#define Color_Green ((Color_t)UINT64_C(5))");
-      check_str_contains(output, "#define Color_Blue ((Color_t)UINT64_C(6))");
-      check_str_contains(output, "bytes payload;");
-      check_str_contains(output, "uint8_t digest[16];");
-      check_str_contains(output, "typedef struct Blob_builder_s {");
-      check_str_contains(output, "static inline bool Blob_builder_bind");
-      check_str_contains(output, "static inline bool Blob_payload_set(");
-      check_str_contains(output, "return tbe_wire_write_var_data(view->data + payload_offset,");
-      check_str_contains(output, "static inline bool Blob_payload(");
-      check_str_contains(output, "tbe_var_data_t *value");
-      check_str_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
-      check_str_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
+      check_contains(output, "#define Color_Red ((Color_t)UINT64_C(0))");
+      check_contains(output, "#define Color_Green ((Color_t)UINT64_C(5))");
+      check_contains(output, "#define Color_Blue ((Color_t)UINT64_C(6))");
+      check_contains(output, "bytes payload;");
+      check_contains(output, "uint8_t digest[16];");
+      check_contains(output, "typedef struct Blob_builder_s {");
+      check_contains(output, "static inline bool Blob_builder_bind");
+      check_contains(output, "static inline bool Blob_payload_set(");
+      check_contains(output, "return tbe_wire_write_var_data(view->data + payload_offset,");
+      check_contains(output, "static inline bool Blob_payload(");
+      check_contains(output, "tbe_var_data_t *value");
+      check_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
+      check_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
       check(strstr(output, "uint8_t payload[") == NULL);
 
       free(output);
@@ -1216,13 +1216,13 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "#include \"turbo_uuid.h\"");
-      check_str_contains(output, "turbo_uuid_t request_id;");
-      check_str_contains(output, "enum { Event_BLOCK_LENGTH = 16 };");
-      check_str_contains(output, "static inline bool Event_request_id_set(");
-      check_str_contains(output, "const turbo_uuid_t *value");
-      check_str_contains(output, "static inline bool Event_request_id_get(");
-      check_str_contains(output, "turbo_uuid_t *value");
+      check_contains(output, "#include \"turbo_uuid.h\"");
+      check_contains(output, "turbo_uuid_t request_id;");
+      check_contains(output, "enum { Event_BLOCK_LENGTH = 16 };");
+      check_contains(output, "static inline bool Event_request_id_set(");
+      check_contains(output, "const turbo_uuid_t *value");
+      check_contains(output, "static inline bool Event_request_id_get(");
+      check_contains(output, "turbo_uuid_t *value");
 
       free(output);
     }
@@ -1241,22 +1241,22 @@ spec("tbe_compiler") {
         --output_len;
 
       check_not_null(output);
-      check_str_contains(output, "#ifndef GuardTest_GENERATED_H");
-      check_str_contains(output, "#define GuardTest_GENERATED_H");
-      check_size_ge(output_len, guard_end_len);
+      check_contains(output, "#ifndef GuardTest_GENERATED_H");
+      check_contains(output, "#define GuardTest_GENERATED_H");
+      check_greater_equal(output_len, guard_end_len);
       if (output_len >= guard_end_len)
-        check_mem_eq(output + output_len - guard_end_len, guard_end, guard_end_len);
-      check_str_contains(output, "typedef uint16_t Perms_t;");
-      check_str_contains(output, "typedef uint8_t Side_t;");
-      check_str_contains(output, "typedef uint64_t Wide_t;");
-      check_str_contains(
+        check_equal(output + output_len - guard_end_len, guard_end, guard_end_len);
+      check_contains(output, "typedef uint16_t Perms_t;");
+      check_contains(output, "typedef uint8_t Side_t;");
+      check_contains(output, "typedef uint64_t Wide_t;");
+      check_contains(
           output,
           "#define Wide_Max ((Wide_t)UINT64_C(18446744073709551615))");
       check(strstr(output, "typedef uint16 Perms_t;") == NULL);
       check(strstr(output, "Side_Sell = 2,") == NULL);
       check(strstr(output, "Perms_Execute = 4,") == NULL);
-      check_str_contains(output, "static inline bool Perms_has(");
-      check_str_contains(output, "static inline bool Side_is_valid(");
+      check_contains(output, "static inline bool Perms_has(");
+      check_contains(output, "static inline bool Side_is_valid(");
 
       free(output);
     }
@@ -1267,19 +1267,19 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "typedef struct Header_builder_s {");
-      check_str_contains(output, "typedef struct Envelope_builder_s {");
-      check_str_contains(output, "static inline bool Envelope_builder_bind");
-      check_str_contains(output, "static inline bool Envelope_channel_set");
-      check_str_contains(output, "enum { Envelope_header_OFFSET = 4 };");
-      check_str_contains(output, "static inline bool Envelope_header(");
-      check_str_contains(output, "Header_view_t *value");
-      check_str_contains(output, "return Header_view_bind(value, view->data + 4, view->size - 4);");
-      check_str_contains(output, "static inline bool Envelope_header_builder(");
-      check_str_contains(output, "Header_builder_t *value");
-      check_str_contains(output,
+      check_contains(output, "typedef struct Header_builder_s {");
+      check_contains(output, "typedef struct Envelope_builder_s {");
+      check_contains(output, "static inline bool Envelope_builder_bind");
+      check_contains(output, "static inline bool Envelope_channel_set");
+      check_contains(output, "enum { Envelope_header_OFFSET = 4 };");
+      check_contains(output, "static inline bool Envelope_header(");
+      check_contains(output, "Header_view_t *value");
+      check_contains(output, "return Header_view_bind(value, view->data + 4, view->size - 4);");
+      check_contains(output, "static inline bool Envelope_header_builder(");
+      check_contains(output, "Header_builder_t *value");
+      check_contains(output,
                          "return Header_builder_bind(value, view->data + 4, view->size - 4);");
-      check_str_contains(output, "static inline const uint8_t *Envelope_header_ptr");
+      check_contains(output, "static inline const uint8_t *Envelope_header_ptr");
 
       free(output);
     }
@@ -1290,22 +1290,22 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "typedef struct Quote_builder_s {");
-      check_str_contains(output, "static inline bool Quote_builder_bind");
-      check_str_contains(output, "enum { Quote_BLOCK_LENGTH = 5 };");
-      check_str_contains(output, "enum { Quote_side_OFFSET = 0 };");
-      check_str_contains(output, "enum { Quote_qty_OFFSET = 1 };");
-      check_str_contains(output, "Side_t side;");
-      check_str_contains(output, "static inline Side_t Quote_side_get");
-      check_str_contains(output, "static inline bool Quote_side_set");
-      check_str_contains(
+      check_contains(output, "typedef struct Quote_builder_s {");
+      check_contains(output, "static inline bool Quote_builder_bind");
+      check_contains(output, "enum { Quote_BLOCK_LENGTH = 5 };");
+      check_contains(output, "enum { Quote_side_OFFSET = 0 };");
+      check_contains(output, "enum { Quote_qty_OFFSET = 1 };");
+      check_contains(output, "Side_t side;");
+      check_contains(output, "static inline Side_t Quote_side_get");
+      check_contains(output, "static inline bool Quote_side_set");
+      check_contains(
           output,
           "tbe_wire_write_u8(view->data + 0, GeneratedSchema_WIRE_BIG_ENDIAN, (uint8_t)value);");
-      check_str_contains(output, "static inline bool Quote_qty_set");
-      check_str_contains(
+      check_contains(output, "static inline bool Quote_qty_set");
+      check_contains(
           output, "tbe_wire_write_u32(view->data + 1, GeneratedSchema_WIRE_BIG_ENDIAN, value);");
-      check_str_contains(output, "return (Side_t)tbe_wire_read_u8(view->data + 0,");
-      check_str_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN");
+      check_contains(output, "return (Side_t)tbe_wire_read_u8(view->data + 0,");
+      check_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN");
       check(strstr(output, "Side_view_t") == NULL);
 
       free(output);
@@ -1319,28 +1319,28 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "enum { Payloads_digest_OFFSET = 0 };");
-      check_str_contains(output, "enum { Payloads_points_OFFSET = 16 };");
-      check_str_contains(output, "enum { Payloads_values_OFFSET = 32 };");
-      check_str_contains(output, "enum { Payloads_sides_OFFSET = 48 };");
-      check_str_contains(output, "static inline bool Payloads_digest_set(");
-      check_str_contains(output, "size != 16");
-      check_str_contains(output, "TBE_GENERATED_MEMCPY(view->data + 0, data, 16);");
-      check_str_contains(output, "static inline bool Payloads_points_builder_at(");
-      check_str_contains(output, "Point_builder_t *value");
-      check_str_contains(output, "index >= 2");
-      check_str_contains(output, "element_offset = 16 + ((size_t)index * 8);");
-      check_str_contains(output, "return Point_builder_bind(value, view->data + element_offset, "
+      check_contains(output, "enum { Payloads_digest_OFFSET = 0 };");
+      check_contains(output, "enum { Payloads_points_OFFSET = 16 };");
+      check_contains(output, "enum { Payloads_values_OFFSET = 32 };");
+      check_contains(output, "enum { Payloads_sides_OFFSET = 48 };");
+      check_contains(output, "static inline bool Payloads_digest_set(");
+      check_contains(output, "size != 16");
+      check_contains(output, "TBE_GENERATED_MEMCPY(view->data + 0, data, 16);");
+      check_contains(output, "static inline bool Payloads_points_builder_at(");
+      check_contains(output, "Point_builder_t *value");
+      check_contains(output, "index >= 2");
+      check_contains(output, "element_offset = 16 + ((size_t)index * 8);");
+      check_contains(output, "return Point_builder_bind(value, view->data + element_offset, "
                                  "view->size - element_offset);");
-      check_str_contains(output, "static inline bool Payloads_values_set_at(");
-      check_str_contains(output, "index >= 4");
-      check_str_contains(output, "tbe_wire_write_u32(");
-      check_str_contains(output, "view->data + 32 + ((size_t)index * 4),");
-      check_str_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN, value);");
-      check_str_contains(output, "static inline bool Payloads_sides_set_at(");
-      check_str_contains(output, "tbe_wire_write_u8(");
-      check_str_contains(output, "view->data + 48 + ((size_t)index * 1),");
-      check_str_contains(output, "(uint8_t)value);");
+      check_contains(output, "static inline bool Payloads_values_set_at(");
+      check_contains(output, "index >= 4");
+      check_contains(output, "tbe_wire_write_u32(");
+      check_contains(output, "view->data + 32 + ((size_t)index * 4),");
+      check_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN, value);");
+      check_contains(output, "static inline bool Payloads_sides_set_at(");
+      check_contains(output, "tbe_wire_write_u8(");
+      check_contains(output, "view->data + 48 + ((size_t)index * 1),");
+      check_contains(output, "(uint8_t)value);");
 
       free(output);
     }
@@ -1357,44 +1357,44 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_str_contains(output, "typedef struct Header_s {");
-      check_str_contains(output, "typedef struct Level_s {");
-      check_str_contains(output, "typedef struct BookSnapshot_s {");
-      check_str_contains(output, "#include \"tbe_wire.h\"");
-      check_str_contains(output, "enum { Market_WIRE_BIG_ENDIAN = 0 };");
-      check_str_contains(output, "Header_t header;");
-      check_str_contains(output, "list<Level> bids;");
-      check_str_contains(output, "enum { Header_BLOCK_LENGTH = 12 };");
-      check_str_contains(output, "enum { BookSnapshot_BLOCK_LENGTH = 12 };");
-      check_str_contains(output, "enum { BookSnapshot_header_OFFSET = 0 };");
-      check_str_contains(output, "typedef struct Level_cursor_s {");
-      check_str_contains(output, "static inline bool Level_cursor_bind");
-      check_str_contains(
+      check_contains(output, "typedef struct Header_s {");
+      check_contains(output, "typedef struct Level_s {");
+      check_contains(output, "typedef struct BookSnapshot_s {");
+      check_contains(output, "#include \"tbe_wire.h\"");
+      check_contains(output, "enum { Market_WIRE_BIG_ENDIAN = 0 };");
+      check_contains(output, "Header_t header;");
+      check_contains(output, "list<Level> bids;");
+      check_contains(output, "enum { Header_BLOCK_LENGTH = 12 };");
+      check_contains(output, "enum { BookSnapshot_BLOCK_LENGTH = 12 };");
+      check_contains(output, "enum { BookSnapshot_header_OFFSET = 0 };");
+      check_contains(output, "typedef struct Level_cursor_s {");
+      check_contains(output, "static inline bool Level_cursor_bind");
+      check_contains(
           output,
           "cursor->block_length = tbe_wire_read_u16(cursor->data, Market_WIRE_BIG_ENDIAN);");
-      check_str_contains(output, "static inline bool Level_cursor_get");
-      check_str_contains(output, "typedef struct BookSnapshot_view_s {");
-      check_str_contains(output, "static inline bool BookSnapshot_view_bind");
-      check_str_contains(output, "typedef struct BookSnapshot_builder_s {");
-      check_str_contains(output, "static inline bool BookSnapshot_builder_bind");
-      check_str_contains(output, "static inline const uint8_t *BookSnapshot_header_ptr");
-      check_str_contains(output, "static inline bool BookSnapshot_bids_cursor");
-      check_str_contains(output, "static inline bool BookSnapshot_symbol(");
-      check_str_contains(output, "return tbe_wire_read_var_data(payload_data,");
-      check_str_contains(output, "static inline bool BookSnapshot_symbol_set(");
-      check_str_contains(output, "BookSnapshot_view_t read_view;");
-      check_str_contains(output, "if (!BookSnapshot_bids_cursor(&read_view, &previous)) {");
-      check_str_contains(output, "return tbe_wire_write_var_data(");
-      check_str_contains(output, "static inline bool BookSnapshot_source(");
-      check_str_contains(output, "tbe_wire_var_data_end(&previous);");
-      check_str_contains(output, "static inline bool BookSnapshot_source_set(");
-      check_str_contains(output, "if (!BookSnapshot_symbol(&read_view, &previous)) {");
-      check_str_contains(output, "return Level_cursor_bind(cursor, view->data + group_offset, "
+      check_contains(output, "static inline bool Level_cursor_get");
+      check_contains(output, "typedef struct BookSnapshot_view_s {");
+      check_contains(output, "static inline bool BookSnapshot_view_bind");
+      check_contains(output, "typedef struct BookSnapshot_builder_s {");
+      check_contains(output, "static inline bool BookSnapshot_builder_bind");
+      check_contains(output, "static inline const uint8_t *BookSnapshot_header_ptr");
+      check_contains(output, "static inline bool BookSnapshot_bids_cursor");
+      check_contains(output, "static inline bool BookSnapshot_symbol(");
+      check_contains(output, "return tbe_wire_read_var_data(payload_data,");
+      check_contains(output, "static inline bool BookSnapshot_symbol_set(");
+      check_contains(output, "BookSnapshot_view_t read_view;");
+      check_contains(output, "if (!BookSnapshot_bids_cursor(&read_view, &previous)) {");
+      check_contains(output, "return tbe_wire_write_var_data(");
+      check_contains(output, "static inline bool BookSnapshot_source(");
+      check_contains(output, "tbe_wire_var_data_end(&previous);");
+      check_contains(output, "static inline bool BookSnapshot_source_set(");
+      check_contains(output, "if (!BookSnapshot_symbol(&read_view, &previous)) {");
+      check_contains(output, "return Level_cursor_bind(cursor, view->data + group_offset, "
                                  "view->size - group_offset);");
-      check_str_contains(output, "if (!BookSnapshot_symbol(view, &previous)) {");
-      check_str_contains(output, "payload_data = tbe_wire_var_data_end(&previous);");
-      check_str_contains(output, "static inline uint32_t Header_seq_num_get");
-      check_str_contains(output,
+      check_contains(output, "if (!BookSnapshot_symbol(view, &previous)) {");
+      check_contains(output, "payload_data = tbe_wire_var_data_end(&previous);");
+      check_contains(output, "static inline uint32_t Header_seq_num_get");
+      check_contains(output,
                          "return tbe_wire_read_u32(view->data + 0, Market_WIRE_BIG_ENDIAN);");
 
       free(output);

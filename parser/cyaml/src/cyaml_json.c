@@ -305,7 +305,7 @@ static bool is_json_bool(const char* s, size_t len, bool* value)
         *value = true;
         return true;
     }
-    if (len == L_FALSE && cyaml_memicmp(s, S_FALSE, L_FALSE) == 0) {
+    if (len == L_FALSE && cyaml_memicmp(s, CYAML_S_FALSE, L_FALSE) == 0) {
         *value = false;
         return true;
     }
@@ -406,7 +406,7 @@ static bool json_scalar(json_emitter_t* e, const cyaml_node_t* n)
 
         bool bool_val;
         if (is_json_bool(str, len, &bool_val)) {
-            result = json_cstr(e, bool_val ? S_TRUE : S_FALSE);
+            result = json_cstr(e, bool_val ? S_TRUE : CYAML_S_FALSE);
             goto done;
         }
 

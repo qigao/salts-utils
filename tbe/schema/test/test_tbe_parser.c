@@ -29,7 +29,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *composites = NULL;
       for (size_t i = 0; i < root->data.map.count; i++) {
@@ -39,7 +39,7 @@ suite("tbe_parser") {
         }
       }
       check_not_null(composites);
-      check_uint_eq(composites->data.list.count, 1);
+      check_equal(composites->data.list.count, 1);
 
       Node *point = composites->data.list.items[0];
       check_not_null(point);
@@ -52,7 +52,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *enums = NULL;
       for (size_t i = 0; i < root->data.map.count; i++) {
@@ -62,7 +62,7 @@ suite("tbe_parser") {
         }
       }
       check_not_null(enums);
-      check_uint_eq(enums->data.list.count, 1);
+      check_equal(enums->data.list.count, 1);
 
       Node *color = enums->data.list.items[0];
       // Check underlying type
@@ -75,7 +75,7 @@ suite("tbe_parser") {
         }
       }
       check_not_null(utype);
-      check_str_eq(utype->data.string_val, "uint8");
+      check_equal(utype->data.string_val, "uint8");
 
       node_free(root);
     }
@@ -85,7 +85,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *messages = NULL;
       for (size_t i = 0; i < root->data.map.count; i++) {
@@ -110,7 +110,7 @@ suite("tbe_parser") {
       check_not_null(id_node);
       Node *id_val = find_child(id_node, "value");
       check_not_null(id_val);
-      check_str_eq(id_val->data.string_val, "100");
+      check_equal(id_val->data.string_val, "100");
 
       node_free(root);
     }
@@ -120,27 +120,27 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
       Node *data = composites->data.list.items[0];
       Node *fields = find_child(data, "fields");
 
       // Verify uint32_t (aliased from uint32)
       Node *u32 = fields->data.list.items[0];
-      check_str_eq(find_child(u32, "size_bytes")->data.string_val, "4");
-      check_str_eq(find_child(u32, "is_unsigned")->data.string_val, "1");
-      check_str_eq(find_child(u32, "is_numeric")->data.string_val, "1");
+      check_equal(find_child(u32, "size_bytes")->data.string_val, "4");
+      check_equal(find_child(u32, "is_unsigned")->data.string_val, "1");
+      check_equal(find_child(u32, "is_numeric")->data.string_val, "1");
 
       // Verify int64_t (aliased from int64)
       Node *i64 = fields->data.list.items[1];
-      check_str_eq(find_child(i64, "size_bytes")->data.string_val, "8");
+      check_equal(find_child(i64, "size_bytes")->data.string_val, "8");
       check_null(find_child(i64, "is_unsigned"));
-      check_str_eq(find_child(i64, "is_numeric")->data.string_val, "1");
+      check_equal(find_child(i64, "is_numeric")->data.string_val, "1");
 
       // Verify float
       Node *f32 = fields->data.list.items[2];
-      check_str_eq(find_child(f32, "size_bytes")->data.string_val, "4");
-      check_str_eq(find_child(f32, "is_float")->data.string_val, "1");
+      check_equal(find_child(f32, "size_bytes")->data.string_val, "4");
+      check_equal(find_child(f32, "is_float")->data.string_val, "1");
 
       node_free(root);
     }
@@ -152,27 +152,27 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *messages = find_child(root, "messages");
       Node *coll = messages->data.list.items[0];
       Node *fields = find_child(coll, "fields");
 
       // Point[10]
       Node *points = fields->data.list.items[0];
-      check_str_eq(find_child(points, "ctype")->data.string_val, "COLLECTION");
-      check_str_eq(find_child(points, "inner_type")->data.string_val, "Point");
-      check_str_eq(find_child(points, "length_field")->data.string_val, "10");
-      check_str_eq(find_child(points, "field_size_bytes")->data.string_val, "80");
-      check_str_eq(find_child(points, "element_size_bytes")->data.string_val, "8");
-      check_str_eq(find_child(points, "collection_element_is_composite")->data.string_val, "1");
+      check_equal(find_child(points, "ctype")->data.string_val, "COLLECTION");
+      check_equal(find_child(points, "inner_type")->data.string_val, "Point");
+      check_equal(find_child(points, "length_field")->data.string_val, "10");
+      check_equal(find_child(points, "field_size_bytes")->data.string_val, "80");
+      check_equal(find_child(points, "element_size_bytes")->data.string_val, "8");
+      check_equal(find_child(points, "collection_element_is_composite")->data.string_val, "1");
 
       Node *digest = fields->data.list.items[1];
-      check_str_eq(find_child(digest, "is_fixed_size")->data.string_val, "1");
-      check_str_eq(find_child(digest, "size_bytes")->data.string_val, "16");
+      check_equal(find_child(digest, "is_fixed_size")->data.string_val, "1");
+      check_equal(find_child(digest, "size_bytes")->data.string_val, "16");
 
       Node *payload = fields->data.list.items[2];
-      check_str_eq(find_child(payload, "is_variable_size")->data.string_val, "1");
-      check_str_eq(find_child(payload, "is_var_data")->data.string_val, "1");
+      check_equal(find_child(payload, "is_variable_size")->data.string_val, "1");
+      check_equal(find_child(payload, "is_var_data")->data.string_val, "1");
 
       node_free(root);
     }
@@ -185,7 +185,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *messages = find_child(root, "messages");
       Node *payloads = messages->data.list.items[0];
@@ -194,19 +194,19 @@ suite("tbe_parser") {
       Node *sides = fields->data.list.items[1];
       Node *points = fields->data.list.items[2];
 
-      check_str_eq(find_child(values, "element_size_bytes")->data.string_val, "4");
-      check_str_eq(find_child(values, "collection_element_is_primitive")->data.string_val, "1");
-      check_str_eq(find_child(values, "collection_element_host_type")->data.string_val, "uint32_t");
-      check_str_eq(find_child(values, "collection_element_wire_reader")->data.string_val, "u32");
+      check_equal(find_child(values, "element_size_bytes")->data.string_val, "4");
+      check_equal(find_child(values, "collection_element_is_primitive")->data.string_val, "1");
+      check_equal(find_child(values, "collection_element_host_type")->data.string_val, "uint32_t");
+      check_equal(find_child(values, "collection_element_wire_reader")->data.string_val, "u32");
 
-      check_str_eq(find_child(sides, "element_size_bytes")->data.string_val, "1");
-      check_str_eq(find_child(sides, "collection_element_is_enum")->data.string_val, "1");
-      check_str_eq(find_child(sides, "collection_element_enum_c_type")->data.string_val, "Side_t");
-      check_str_eq(find_child(sides, "collection_element_host_type")->data.string_val, "uint8_t");
-      check_str_eq(find_child(sides, "collection_element_wire_reader")->data.string_val, "u8");
+      check_equal(find_child(sides, "element_size_bytes")->data.string_val, "1");
+      check_equal(find_child(sides, "collection_element_is_enum")->data.string_val, "1");
+      check_equal(find_child(sides, "collection_element_enum_c_type")->data.string_val, "Side_t");
+      check_equal(find_child(sides, "collection_element_host_type")->data.string_val, "uint8_t");
+      check_equal(find_child(sides, "collection_element_wire_reader")->data.string_val, "u8");
 
-      check_str_eq(find_child(points, "element_size_bytes")->data.string_val, "8");
-      check_str_eq(find_child(points, "collection_element_is_composite")->data.string_val, "1");
+      check_equal(find_child(points, "element_size_bytes")->data.string_val, "8");
+      check_equal(find_child(points, "collection_element_is_composite")->data.string_val, "1");
 
       node_free(root);
     }
@@ -223,7 +223,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       if (rc == 0) {
         Node *messages = find_child(root, "messages");
         Node *aliases = messages->data.list.items[0];
@@ -232,21 +232,21 @@ suite("tbe_parser") {
         Node *code = fields->data.list.items[9];
         size_t i;
 
-        check_str_eq(find_child(aliases, "fixed_block_size")->data.string_val, "36");
+        check_equal(find_child(aliases, "fixed_block_size")->data.string_val, "36");
         for (i = 0; i < 8; ++i) {
           Node *field = fields->data.list.items[i];
-          check_str_eq(find_child(field, "host_type")->data.string_val, host_types[i]);
-          check_str_eq(find_child(field, "wire_reader")->data.string_val, wire_readers[i]);
-          check_str_eq(find_child(field, "field_size_bytes")->data.string_val, sizes[i]);
+          check_equal(find_child(field, "host_type")->data.string_val, host_types[i]);
+          check_equal(find_child(field, "wire_reader")->data.string_val, wire_readers[i]);
+          check_equal(find_child(field, "field_size_bytes")->data.string_val, sizes[i]);
         }
 
-        check_str_eq(find_child(values, "element_size_bytes")->data.string_val, "2");
-        check_str_eq(find_child(values, "collection_element_host_type")->data.string_val,
+        check_equal(find_child(values, "element_size_bytes")->data.string_val, "2");
+        check_equal(find_child(values, "collection_element_host_type")->data.string_val,
                      "uint16_t");
-        check_str_eq(find_child(values, "collection_element_wire_reader")->data.string_val,
+        check_equal(find_child(values, "collection_element_wire_reader")->data.string_val,
                      "u16");
-        check_str_eq(find_child(code, "enum_host_type")->data.string_val, "int16_t");
-        check_str_eq(find_child(code, "enum_wire_reader")->data.string_val, "i16");
+        check_equal(find_child(code, "enum_host_type")->data.string_val, "int16_t");
+        check_equal(find_child(code, "enum_wire_reader")->data.string_val, "i16");
       }
 
       node_free(root);
@@ -260,22 +260,22 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
       Node *messages = find_child(root, "messages");
       Node *enums = find_child(root, "enums");
 
-      check_uint_eq(composites->data.list.count, 1);
-      check_uint_eq(messages->data.list.count, 1);
-      check_uint_eq(enums->data.list.count, 1);
+      check_equal(composites->data.list.count, 1);
+      check_equal(messages->data.list.count, 1);
+      check_equal(enums->data.list.count, 1);
 
       Node *state_enum = enums->data.list.items[0];
-      check_str_eq(find_child(state_enum, "enum_name")->data.string_val, "State");
+      check_equal(find_child(state_enum, "enum_name")->data.string_val, "State");
 
       Node *msg_struct = messages->data.list.items[0];
-      check_str_eq(find_child(msg_struct, "message_name")->data.string_val, "Message");
+      check_equal(find_child(msg_struct, "message_name")->data.string_val, "Message");
       Node *msg_fields = find_child(msg_struct, "fields");
-      check_uint_eq(msg_fields->data.list.count, 3);
+      check_equal(msg_fields->data.list.count, 3);
 
       node_free(root);
     }
@@ -286,7 +286,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *messages = find_child(root, "messages");
       Node *quote = messages->data.list.items[0];
@@ -294,13 +294,13 @@ suite("tbe_parser") {
       Node *side = fields->data.list.items[0];
       Node *qty = fields->data.list.items[1];
 
-      check_str_eq(find_child(quote, "fixed_block_size")->data.string_val, "5");
-      check_str_eq(find_child(side, "is_enum_ref")->data.string_val, "1");
+      check_equal(find_child(quote, "fixed_block_size")->data.string_val, "5");
+      check_equal(find_child(side, "is_enum_ref")->data.string_val, "1");
       check_null(find_child(side, "is_composite_ref"));
-      check_str_eq(find_child(side, "offset")->data.string_val, "0");
-      check_str_eq(find_child(side, "field_size_bytes")->data.string_val, "1");
-      check_str_eq(find_child(qty, "offset")->data.string_val, "1");
-      check_str_eq(find_child(qty, "field_size_bytes")->data.string_val, "4");
+      check_equal(find_child(side, "offset")->data.string_val, "0");
+      check_equal(find_child(side, "field_size_bytes")->data.string_val, "1");
+      check_equal(find_child(qty, "offset")->data.string_val, "1");
+      check_equal(find_child(qty, "field_size_bytes")->data.string_val, "4");
 
       node_free(root);
     }
@@ -311,7 +311,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       // Verify enum attributes
       Node *enums = find_child(root, "enums");
@@ -321,8 +321,8 @@ suite("tbe_parser") {
 
       Node *mt_id = find_child(mt_attrs, "id");
       check_not_null(mt_id);
-      check_str_eq(find_child(mt_id, "name")->data.string_val, "id");
-      check_str_eq(find_child(mt_id, "value")->data.string_val, "1");
+      check_equal(find_child(mt_id, "name")->data.string_val, "id");
+      check_equal(find_child(mt_id, "value")->data.string_val, "1");
 
       // Verify fixed-size bytes
       Node *messages = find_child(root, "messages");
@@ -330,9 +330,9 @@ suite("tbe_parser") {
       Node *fields = find_child(lm, "fields");
       Node *ph = fields->data.list.items[0];
 
-      check_str_eq(find_child(ph, "is_bytes")->data.string_val, "1");
-      check_str_eq(find_child(ph, "size_bytes")->data.string_val, "16");
-      check_str_eq(find_child(ph, "is_fixed_size")->data.string_val, "1");
+      check_equal(find_child(ph, "is_bytes")->data.string_val, "1");
+      check_equal(find_child(ph, "size_bytes")->data.string_val, "16");
+      check_equal(find_child(ph, "is_fixed_size")->data.string_val, "1");
 
       node_free(root);
     }
@@ -343,15 +343,15 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
       Node *poly = composites->data.list.items[1];
       Node *fields = find_child(poly, "fields");
       Node *v = fields->data.list.items[0];
 
-      check_str_eq(find_child(v, "ctype")->data.string_val, "COLLECTION");
-      check_str_eq(find_child(v, "inner_type")->data.string_val, "Point");
-      check_str_eq(find_child(v, "length_field")->data.string_val, "4");
+      check_equal(find_child(v, "ctype")->data.string_val, "COLLECTION");
+      check_equal(find_child(v, "inner_type")->data.string_val, "Point");
+      check_equal(find_child(v, "length_field")->data.string_val, "4");
 
       node_free(root);
     }
@@ -363,15 +363,15 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *messages = find_child(root, "messages");
       Node *msg = messages->data.list.items[0];
       Node *fields = find_child(msg, "fields");
       Node *header = fields->data.list.items[0];
       Node *attrs = find_child(header, "attributes");
       Node *id = attrs->data.list.items[0];
-      check_str_eq(find_child(id, "name")->data.string_val, "id");
-      check_str_eq(find_child(id, "value")->data.string_val, "1");
+      check_equal(find_child(id, "name")->data.string_val, "id");
+      check_equal(find_child(id, "value")->data.string_val, "1");
       node_free(root);
     }
 
@@ -380,16 +380,16 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *enums = find_child(root, "enums");
       Node *color = enums->data.list.items[0];
       Node *items = find_child(color, "items");
 
-      check_uint_eq(items->data.list.count, 3);
-      check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "0");
-      check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "5");
-      check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "6");
+      check_equal(items->data.list.count, 3);
+      check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "0");
+      check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "5");
+      check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "6");
 
       node_free(root);
     }
@@ -399,18 +399,18 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *messages = find_child(root, "messages");
       Node *blob = messages->data.list.items[0];
       Node *fields = find_child(blob, "fields");
       Node *payload = fields->data.list.items[0];
 
-      check_str_eq(find_child(payload, "is_bytes")->data.string_val, "1");
-      check_str_eq(find_child(payload, "is_variable_size")->data.string_val, "1");
-      check_str_eq(find_child(payload, "var_data_accessor_accessible")->data.string_val, "1");
-      check_str_eq(find_child(payload, "is_first_var_data_field")->data.string_val, "1");
-      check_str_eq(find_child(payload, "var_data_from_block_length")->data.string_val, "1");
+      check_equal(find_child(payload, "is_bytes")->data.string_val, "1");
+      check_equal(find_child(payload, "is_variable_size")->data.string_val, "1");
+      check_equal(find_child(payload, "var_data_accessor_accessible")->data.string_val, "1");
+      check_equal(find_child(payload, "is_first_var_data_field")->data.string_val, "1");
+      check_equal(find_child(payload, "var_data_from_block_length")->data.string_val, "1");
       check_null(find_child(payload, "is_fixed_size"));
       check_null(find_child(payload, "size_bytes"));
 
@@ -422,7 +422,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *messages = find_child(root, "messages");
       Node *containers = messages->data.list.items[0];
@@ -431,21 +431,21 @@ suite("tbe_parser") {
       Node *tags = fields->data.list.items[1];
       Node *attrs = fields->data.list.items[2];
 
-      check_str_eq(find_child(values, "collection_kind")->data.string_val, "list");
-      check_str_eq(find_child(values, "inner_type")->data.string_val, "uint32");
-      check_str_eq(find_child(values, "is_variable_size")->data.string_val, "1");
+      check_equal(find_child(values, "collection_kind")->data.string_val, "list");
+      check_equal(find_child(values, "inner_type")->data.string_val, "uint32");
+      check_equal(find_child(values, "is_variable_size")->data.string_val, "1");
 
-      check_str_eq(find_child(tags, "collection_kind")->data.string_val, "set");
-      check_str_eq(find_child(tags, "inner_type")->data.string_val, "string");
-      check_str_eq(find_child(tags, "is_set")->data.string_val, "1");
-      check_str_eq(find_child(tags, "is_variable_size")->data.string_val, "1");
+      check_equal(find_child(tags, "collection_kind")->data.string_val, "set");
+      check_equal(find_child(tags, "inner_type")->data.string_val, "string");
+      check_equal(find_child(tags, "is_set")->data.string_val, "1");
+      check_equal(find_child(tags, "is_variable_size")->data.string_val, "1");
 
-      check_str_eq(find_child(attrs, "collection_kind")->data.string_val, "map");
-      check_str_eq(find_child(attrs, "key_type")->data.string_val, "string");
-      check_str_eq(find_child(attrs, "value_type")->data.string_val, "int32");
-      check_str_eq(find_child(attrs, "inner_type")->data.string_val, "int32");
-      check_str_eq(find_child(attrs, "is_map")->data.string_val, "1");
-      check_str_eq(find_child(attrs, "is_variable_size")->data.string_val, "1");
+      check_equal(find_child(attrs, "collection_kind")->data.string_val, "map");
+      check_equal(find_child(attrs, "key_type")->data.string_val, "string");
+      check_equal(find_child(attrs, "value_type")->data.string_val, "int32");
+      check_equal(find_child(attrs, "inner_type")->data.string_val, "int32");
+      check_equal(find_child(attrs, "is_map")->data.string_val, "1");
+      check_equal(find_child(attrs, "is_variable_size")->data.string_val, "1");
 
       node_free(root);
     }
@@ -456,9 +456,9 @@ suite("tbe_parser") {
       map_add(root, create_node_string("marker", "keep"));
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, -1);
-      check_uint_eq(root->data.map.count, 1);
-      check_str_eq(find_child(root, "marker")->data.string_val, "keep");
+      check_equal(rc, -1);
+      check_equal(root->data.map.count, 1);
+      check_equal(find_child(root, "marker")->data.string_val, "keep");
       check_null(find_child(root, "enums"));
       check_null(find_child(root, "messages"));
 
@@ -469,10 +469,10 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       map_add(root, create_node_string("marker", "keep"));
 
-      check_int_eq(parse_schema("composite First { int32 x; }",
+      check_equal(parse_schema("composite First { int32 x; }",
                                 strlen("composite First { int32 x; }"), root, NULL),
                    0);
-      check_int_eq(parse_schema("enum State { Idle = 1; } message Second { int32 y; }",
+      check_equal(parse_schema("enum State { Idle = 1; } message Second { int32 y; }",
                                 strlen("enum State { Idle = 1; } message Second { int32 y; }"),
                                 root, NULL),
                    0);
@@ -483,21 +483,21 @@ suite("tbe_parser") {
       Node *groups = find_child(root, "groups");
       Node *unions = find_child(root, "unions");
 
-      check_uint_eq(root->data.map.count, 6);
+      check_equal(root->data.map.count, 6);
       check_not_null(find_child(root, "marker"));
       check_not_null(messages);
       check_not_null(composites);
       check_not_null(enums);
       check_not_null(groups);
       check_not_null(unions);
-      check_uint_eq(messages->data.list.count, 1);
-      check_uint_eq(composites->data.list.count, 0);
-      check_uint_eq(enums->data.list.count, 1);
-      check_uint_eq(groups->data.list.count, 0);
-      check_uint_eq(unions->data.list.count, 0);
-      check_str_eq(find_child(messages->data.list.items[0], "message_name")->data.string_val,
+      check_equal(messages->data.list.count, 1);
+      check_equal(composites->data.list.count, 0);
+      check_equal(enums->data.list.count, 1);
+      check_equal(groups->data.list.count, 0);
+      check_equal(unions->data.list.count, 0);
+      check_equal(find_child(messages->data.list.items[0], "message_name")->data.string_val,
                    "Second");
-      check_str_eq(find_child(enums->data.list.items[0], "enum_name")->data.string_val, "State");
+      check_equal(find_child(enums->data.list.items[0], "enum_name")->data.string_val, "State");
 
       node_free(root);
     }
@@ -507,7 +507,7 @@ suite("tbe_parser") {
       int rc = parse_schema("struct Point { int32 x; int32 y; }",
                             strlen("struct Point { int32 x; int32 y; }"), root, NULL);
 
-      check_int_eq(rc, -1);
+      check_equal(rc, -1);
       node_free(root);
     }
 
@@ -525,7 +525,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       Node *schema_node = find_child(root, "schema");
       Node *schema_attrs = find_child(schema_node, "attributes");
@@ -534,79 +534,79 @@ suite("tbe_parser") {
       Node *messages = find_child(root, "messages");
 
       check_not_null(schema_node);
-      check_str_eq(find_child(schema_node, "schema_name")->data.string_val, "Market");
+      check_equal(find_child(schema_node, "schema_name")->data.string_val, "Market");
 
       check_not_null(schema_attrs);
       Node *byte_order_node = find_child(schema_attrs, "byte_order");
       check_not_null(byte_order_node);
       Node *byte_order_value = find_child(byte_order_node, "value");
       check_not_null(byte_order_value);
-      check_str_eq(byte_order_value->data.string_val, "little");
+      check_equal(byte_order_value->data.string_val, "little");
 
       check_not_null(composites);
       check_not_null(groups);
       check_not_null(messages);
-      check_uint_eq(composites->data.list.count, 1);
-      check_uint_eq(groups->data.list.count, 1);
-      check_uint_eq(messages->data.list.count, 1);
+      check_equal(composites->data.list.count, 1);
+      check_equal(groups->data.list.count, 1);
+      check_equal(messages->data.list.count, 1);
 
       Node *header = composites->data.list.items[0];
       Node *level = groups->data.list.items[0];
       Node *snapshot = messages->data.list.items[0];
       Node *snapshot_fields = find_child(snapshot, "fields");
 
-      check_str_eq(find_child(header, "composite_name")->data.string_val, "Header");
-      check_str_eq(find_child(level, "group_name")->data.string_val, "Level");
-      check_str_eq(find_child(snapshot, "message_name")->data.string_val, "BookSnapshot");
-      check_str_eq(find_child(header, "fixed_block_size")->data.string_val, "12");
-      check_str_eq(find_child(level, "fixed_block_size")->data.string_val, "12");
-      check_str_eq(find_child(level, "supports_group_cursor")->data.string_val, "1");
-      check_str_eq(find_child(snapshot, "fixed_block_size")->data.string_val, "28");
-      check_uint_eq(snapshot_fields->data.list.count, 5);
+      check_equal(find_child(header, "composite_name")->data.string_val, "Header");
+      check_equal(find_child(level, "group_name")->data.string_val, "Level");
+      check_equal(find_child(snapshot, "message_name")->data.string_val, "BookSnapshot");
+      check_equal(find_child(header, "fixed_block_size")->data.string_val, "12");
+      check_equal(find_child(level, "fixed_block_size")->data.string_val, "12");
+      check_equal(find_child(level, "supports_group_cursor")->data.string_val, "1");
+      check_equal(find_child(snapshot, "fixed_block_size")->data.string_val, "28");
+      check_equal(snapshot_fields->data.list.count, 5);
 
-      check_str_eq(
+      check_equal(
           find_child(snapshot_fields->data.list.items[0], "is_fixed_block")->data.string_val, "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[0], "offset")->data.string_val, "0");
-      check_str_eq(find_child(snapshot_fields->data.list.items[0], "field_size_bytes")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[0], "offset")->data.string_val, "0");
+      check_equal(find_child(snapshot_fields->data.list.items[0], "field_size_bytes")->data.string_val,
                    "12");
-      check_str_eq(
+      check_equal(
           find_child(snapshot_fields->data.list.items[1], "is_fixed_block")->data.string_val, "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[1], "offset")->data.string_val, "12");
-      check_str_eq(find_child(snapshot_fields->data.list.items[1], "length_field")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[1], "offset")->data.string_val, "12");
+      check_equal(find_child(snapshot_fields->data.list.items[1], "length_field")->data.string_val,
                    "16");
-      check_str_eq(find_child(snapshot_fields->data.list.items[1], "field_size_bytes")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[1], "field_size_bytes")->data.string_val,
                    "16");
-      check_str_eq(
+      check_equal(
           find_child(snapshot_fields->data.list.items[2], "is_group_field")->data.string_val, "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[2], "supports_group_cursor")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[2], "supports_group_cursor")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[2], "group_cursor_accessible")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[2], "group_cursor_accessible")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[2], "is_first_group_field")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[2], "is_first_group_field")->data.string_val,
                    "1");
       check_null(find_child(snapshot_fields->data.list.items[2], "offset"));
-      check_str_eq(find_child(snapshot_fields->data.list.items[2], "group_type")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[2], "group_type")->data.string_val,
                    "Level");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "is_var_data")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "is_var_data")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "var_data_accessor_accessible")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "var_data_accessor_accessible")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "is_first_var_data_field")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "is_first_var_data_field")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "var_data_from_previous_group")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "var_data_from_previous_group")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "previous_group_field_name")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "previous_group_field_name")->data.string_val,
                    "bids");
-      check_str_eq(find_child(snapshot_fields->data.list.items[3], "previous_group_type")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[3], "previous_group_type")->data.string_val,
                    "Level");
       check_null(find_child(snapshot_fields->data.list.items[3], "offset"));
-      check_str_eq(find_child(snapshot_fields->data.list.items[4], "is_var_data")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[4], "is_var_data")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[4], "var_data_accessor_accessible")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[4], "var_data_accessor_accessible")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[4], "var_data_from_previous_var_data")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[4], "var_data_from_previous_var_data")->data.string_val,
                    "1");
-      check_str_eq(find_child(snapshot_fields->data.list.items[4], "previous_var_data_field_name")->data.string_val,
+      check_equal(find_child(snapshot_fields->data.list.items[4], "previous_var_data_field_name")->data.string_val,
                    "symbol");
       check_null(find_child(snapshot_fields->data.list.items[4], "offset"));
 
@@ -618,7 +618,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, -1);
+      check_equal(rc, -1);
       node_free(root);
     }
 
@@ -628,7 +628,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       node_free(root);
     }
   }
@@ -641,20 +641,20 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
       check_not_null(enums);
-      check_uint_eq(enums->data.list.count, 1);
+      check_equal(enums->data.list.count, 1);
 
       Node *perms = enums->data.list.items[0];
-      check_str_eq(find_child(perms, "enum_name")->data.string_val, "Permissions");
-      check_str_eq(find_child(perms, "is_flags")->data.string_val, "1");
+      check_equal(find_child(perms, "enum_name")->data.string_val, "Permissions");
+      check_equal(find_child(perms, "is_flags")->data.string_val, "1");
 
       Node *items = find_child(perms, "items");
-      check_uint_eq(items->data.list.count, 3);
-      check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-      check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-      check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "4");
+      check_equal(items->data.list.count, 3);
+      check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+      check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+      check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "4");
 
       node_free(root);
     }
@@ -666,18 +666,18 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
       Node *flags = enums->data.list.items[0];
 
-      check_str_eq(find_child(flags, "enum_name")->data.string_val, "OrderFlags");
-      check_str_eq(find_child(flags, "underlying_type")->data.string_val, "uint8");
-      check_str_eq(find_child(flags, "is_flags")->data.string_val, "1");
+      check_equal(find_child(flags, "enum_name")->data.string_val, "OrderFlags");
+      check_equal(find_child(flags, "underlying_type")->data.string_val, "uint8");
+      check_equal(find_child(flags, "is_flags")->data.string_val, "1");
 
       Node *items = find_child(flags, "items");
-      check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-      check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-      check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "4");
+      check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+      check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+      check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "4");
 
       node_free(root);
     }
@@ -689,16 +689,16 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
       Node *status = enums->data.list.items[0];
       Node *items = find_child(status, "items");
 
-      check_uint_eq(items->data.list.count, 4);
-      check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-      check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-      check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "4");
-      check_str_eq(find_child(items->data.list.items[3], "value")->data.string_val, "8");
+      check_equal(items->data.list.count, 4);
+      check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+      check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+      check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "4");
+      check_equal(find_child(items->data.list.items[3], "value")->data.string_val, "8");
 
       node_free(root);
     }
@@ -710,15 +710,15 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
       Node *mixed = enums->data.list.items[0];
       Node *items = find_child(mixed, "items");
 
-      check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "1");
-      check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "2");
-      check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "16");
-      check_str_eq(find_child(items->data.list.items[3], "value")->data.string_val, "32");
+      check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "1");
+      check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "2");
+      check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "16");
+      check_equal(find_child(items->data.list.items[3], "value")->data.string_val, "32");
 
       node_free(root);
     }
@@ -732,9 +732,9 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, -1);
-      check_int_ne(err.code, TBE_OK);
-      check_int_gt(err.line, 0);
+      check_equal(rc, -1);
+      check_not_equal(err.code, TBE_OK);
+      check_greater(err.line, 0);
       node_free(root);
     }
 
@@ -742,8 +742,8 @@ suite("tbe_parser") {
       tbe_error_t err;
       int rc = parse_schema(NULL, 0, NULL, &err);
 
-      check_int_eq(rc, -1);
-      check_int_eq(err.code, TBE_ERR_INVALID_ARGUMENT);
+      check_equal(rc, -1);
+      check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
       node_free(NULL);  // Should handle NULL gracefully
     }
 
@@ -754,7 +754,7 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, 0, root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       node_free(root);
     }
 
@@ -765,7 +765,7 @@ suite("tbe_parser") {
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       node_free(root);
     }
   }

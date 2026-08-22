@@ -29,7 +29,7 @@ typedef struct {
 } dsv_index_config_t;
 
 typedef struct {
-    tstr_v text_equals;
+    vstr text_equals;
     bool has_lower_number;
     bool lower_inclusive;
     double lower_number;
@@ -126,7 +126,7 @@ int dsv_index_cursor_next(const dsv_index_t *index, dsv_index_cursor_t *cursor,
                           dsv_index_row_t *row);
 
 /** Borrow the exact source record, including its original record terminator. */
-tstr_v dsv_index_row_view(const dsv_index_t *index, const dsv_index_row_t *row);
+vstr dsv_index_row_view(const dsv_index_t *index, const dsv_index_row_t *row);
 
 #ifdef __cplusplus
 }

@@ -23,9 +23,9 @@
 #define ASSERT_MSG(cond, ...) check(cond, __VA_ARGS__)
 #define ASSERT_NOT_NULL(ptr) check_not_null(ptr)
 #define ASSERT_NULL(ptr) check_null(ptr)
-#define ASSERT_EQ(a, b) check_int_eq(a, b)
-#define ASSERT_STR_EQ(a, b) check_str_eq(a, b)
-#define ASSERT_FLOAT_EQ(a, b, epsilon) check_float_eq(a, b, epsilon)
+#define ASSERT_EQ(a, b) check_equal(a, b)
+#define ASSERT_STR_EQ(a, b) check_equal(a, b)
+#define ASSERT_FLOAT_EQ(a, b, epsilon) check_within(a, b, epsilon)
 #define ASSERT_TYPE(obj, type_check) check(type_check(obj), "Type check failed")
 
 /* ============================================================================
@@ -668,8 +668,8 @@ spec("toonc") {
         toonObject *value = TOONc_get(root, "value");
         ASSERT_NOT_NULL(value);
         ASSERT_TYPE(value, TOON_IS_STRING);
-        check_size_eq(value->str.len, VALUE_BYTES);
-        check_mem_eq(value->str.ptr, toon + sizeof(prefix) - 1, VALUE_BYTES);
+        check_equal(value->str.len, VALUE_BYTES);
+        check_equal(value->str.ptr, toon + sizeof(prefix) - 1, VALUE_BYTES);
 
         TOONc_free(root);
         free(toon);

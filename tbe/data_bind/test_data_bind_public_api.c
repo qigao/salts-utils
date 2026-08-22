@@ -78,21 +78,21 @@ static DataBindRecordAction collect_exact_record(void *user_data, const DataBind
 
 spec("data_bind public API") {
   it("should expose version and ABI metadata") {
-    check_int_eq(data_bind_library_version(), DATA_BIND_VERSION);
-    check_int_eq(data_bind_abi_version(), DATA_BIND_ABI_VERSION);
+    check_equal(data_bind_library_version(), DATA_BIND_VERSION);
+    check_equal(data_bind_abi_version(), DATA_BIND_ABI_VERSION);
     DataBindStatus (*feed_fn)(data_bind_stream_t *, const void *, size_t) = data_bind_stream_feed;
     DataBindStatus (*feed_file_fn)(data_bind_stream_t *, const char *) =
         data_bind_stream_feed_file;
     DataBindStatus (*finish_fn)(data_bind_stream_t *) = data_bind_stream_finish;
-    check_str_eq(data_bind_version_string(), "2.5.1");
-    check_str_eq(data_bind_format_name(DATA_BIND_FORMAT_BINARY), "bin");
-    check_str_eq(data_bind_format_name(DATA_BIND_FORMAT_JSON), "json");
+    check_equal(data_bind_version_string(), "2.5.1");
+    check_equal(data_bind_format_name(DATA_BIND_FORMAT_BINARY), "bin");
+    check_equal(data_bind_format_name(DATA_BIND_FORMAT_JSON), "json");
     check_null(data_bind_format_name((DataBindFormat)99));
     check_not_null(feed_fn);
     check_not_null(feed_file_fn);
     check_not_null(finish_fn);
-    check_str_eq(data_bind_status_name(DATA_BIND_ERR_TYPE_MISMATCH), "type_mismatch");
-    check_str_eq(data_bind_status_name(DATA_BIND_ERR_LIMIT), "limit");
+    check_equal(data_bind_status_name(DATA_BIND_ERR_TYPE_MISMATCH), "type_mismatch");
+    check_equal(data_bind_status_name(DATA_BIND_ERR_LIMIT), "limit");
   }
 
   it("should honor versioned error buffer boundaries") {
@@ -103,12 +103,12 @@ spec("data_bind public API") {
     } compact = {offsetof(DataBindError, line), DATA_BIND_OK, UINT32_C(0xa5a5a5a5)};
     DataBind *codec = NULL;
 
-    check_int_eq(data_bind_create_from_text("message {", 9u, &codec,
+    check_equal(data_bind_create_from_text("message {", 9u, &codec,
                                              (DataBindError *)&compact),
                  DATA_BIND_ERR_PARSE);
     check_null(codec);
-    check_int_eq(compact.code, DATA_BIND_ERR_PARSE);
-    check_uint_eq(compact.guard, UINT32_C(0xa5a5a5a5));
+    check_equal(compact.code, DATA_BIND_ERR_PARSE);
+    check_equal(compact.guard, UINT32_C(0xa5a5a5a5));
   }
 
   it("should bind JSON and XML through public opaque handles") {
@@ -119,7 +119,7 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create("test_public_api.tbe", &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -133,30 +133,30 @@ spec("data_bind public API") {
       const char *symbol = NULL;
       size_t symbol_len = 0;
       status = data_bind_parse_json(codec, "Order", json, strlen(json), &from_json, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       status = data_bind_parse_xml(codec, "Order", xml, strlen(xml), &from_xml, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
 
       check_not_null(from_json);
       check_not_null(from_xml);
-      check_int_eq(data_bind_value_get_int32(data_bind_value_get(from_json, "id"), &id),
+      check_equal(data_bind_value_get_int32(data_bind_value_get(from_json, "id"), &id),
                    DATA_BIND_OK);
-      check_int_eq(id, 7);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(from_json, "side")), 1);
+      check_equal(id, 7);
+      check_equal(data_bind_value_as_int(data_bind_value_get(from_json, "side")), 1);
       check(data_bind_value_kind(data_bind_value_get(from_json, "active")) == DATA_BIND_VALUE_BOOL);
-      check_int_eq(data_bind_value_get_bool(data_bind_value_get(from_json, "active"), &active),
+      check_equal(data_bind_value_get_bool(data_bind_value_get(from_json, "active"), &active),
                    DATA_BIND_OK);
-      check_int_eq(active, 1);
-      check_int_eq(data_bind_value_get_string(data_bind_value_get(from_json, "symbol"), &symbol,
+      check_equal(active, 1);
+      check_equal(data_bind_value_get_string(data_bind_value_get(from_json, "symbol"), &symbol,
                                               &symbol_len),
                    DATA_BIND_OK);
-      check_size_eq(symbol_len, 4);
-      check_str_eq(symbol, "ABCD");
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(from_xml, "id")), 8);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(from_xml, "side")), 2);
+      check_equal(symbol_len, 4);
+      check_equal(symbol, "ABCD");
+      check_equal(data_bind_value_as_int(data_bind_value_get(from_xml, "id")), 8);
+      check_equal(data_bind_value_as_int(data_bind_value_get(from_xml, "side")), 2);
       check(data_bind_value_kind(data_bind_value_get(from_xml, "active")) == DATA_BIND_VALUE_BOOL);
-      check_int_eq(data_bind_value_as_bool(data_bind_value_get(from_xml, "active")), 0);
-      check_str_eq(data_bind_value_as_string(data_bind_value_get(from_xml, "symbol")), "WXYZ");
+      check_equal(data_bind_value_as_bool(data_bind_value_get(from_xml, "active")), 0);
+      check_equal(data_bind_value_as_string(data_bind_value_get(from_xml, "symbol")), "WXYZ");
 
       data_bind_value_free(from_json);
       data_bind_value_free(from_xml);
@@ -173,19 +173,19 @@ spec("data_bind public API") {
     DataBindValue *order = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
       status = data_bind_parse_json(codec, "Order", json, strlen(json), &order, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(order);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(order, "id")), 9);
+      check_equal(data_bind_value_as_int(data_bind_value_get(order, "id")), 9);
       data_bind_value_free(order);
       order = NULL;
 
       status = data_bind_parse_json(codec, "Missing", json, strlen(json), &order, &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_NOT_FOUND);
+      check_equal(status, DATA_BIND_ERR_TYPE_NOT_FOUND);
       check_null(order);
       check(err.message[0] != '\0');
 
@@ -200,7 +200,7 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -225,23 +225,23 @@ spec("data_bind public API") {
           "<order><id>bad</id><side>Sell</side><symbol>WXYZ</symbol></order></orders>";
 
       status = data_bind_validate_json(codec, "Order", json_good, strlen(json_good), &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       status = data_bind_validate_json(codec, "Order", json_bad, strlen(json_bad), &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
 
       status = data_bind_validate_csv(codec, "Order", csv_good, strlen(csv_good), &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       status = data_bind_validate_csv(codec, "Order", csv_bad, strlen(csv_bad), &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
       status = data_bind_validate_csv(codec, "Choice", csv_union, strlen(csv_union), &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
 
       status =
           data_bind_validate_xml_path(codec, "Order", xml_good, strlen(xml_good), "//order", &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       status =
           data_bind_validate_xml_path(codec, "Order", xml_bad, strlen(xml_bad), "//order", &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
 
       data_bind_free(codec);
     }
@@ -253,7 +253,7 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -268,15 +268,15 @@ spec("data_bind public API") {
         const char *json_front = "{\"id\":1,\"side\":\"Buy\"";
         const char *json_back = ",\"symbol\":\"ABCD\"}";
         status = data_bind_stream_feed(stream, json_front, strlen(json_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, json_back, strlen(json_back));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 1);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "side")), 1);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(value, "symbol")), "ABCD");
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 1);
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "side")), 1);
+        check_equal(data_bind_value_as_string(data_bind_value_get(value, "symbol")), "ABCD");
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -287,11 +287,11 @@ spec("data_bind public API") {
       if (stream) {
         const char *path_obj = "{\"id\":3,\"side\":\"Sell\",\"symbol\":\"XYZ\"}";
         status = data_bind_stream_feed(stream, path_obj, strlen(path_obj));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 3);
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 3);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -303,18 +303,18 @@ spec("data_bind public API") {
         const char *json_arr_front = "[{\"id\":3,\"side\":\"Sell\",\"symbol\":\"XYZ\"},";
         const char *json_arr_back = "{\"id\":4,\"side\":\"Buy\",\"symbol\":\"DEF\"}]";
         status = data_bind_stream_feed(stream, json_arr_front, strlen(json_arr_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, json_arr_back, strlen(json_arr_back));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
         out_len = data_bind_value_count(value);
-        check_size_eq(out_len, 2);
+        check_equal(out_len, 2);
         item0 = data_bind_value_at(value, 0);
         item1 = data_bind_value_at(value, 1);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item0, "id")), 3);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item1, "id")), 4);
+        check_equal(data_bind_value_as_int(data_bind_value_get(item0, "id")), 3);
+        check_equal(data_bind_value_as_int(data_bind_value_get(item1, "id")), 4);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -328,17 +328,17 @@ spec("data_bind public API") {
             "{\"orders\":[{\"id\":7,\"side\":\"Buy\",\"symbol\":\"N1\"},";
         const char *nested_back =
             "{\"id\":8,\"side\":\"Sell\",\"symbol\":\"N2\"}],\"ignored\":true}";
-        check_int_eq(data_bind_stream_feed(stream, nested_front, strlen(nested_front)),
+        check_equal(data_bind_stream_feed(stream, nested_front, strlen(nested_front)),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, nested_back, strlen(nested_back)),
+        check_equal(data_bind_stream_feed(stream, nested_back, strlen(nested_back)),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 2);
-        check_int_eq(data_bind_value_as_int(
+        check_equal(data_bind_value_count(value), 2);
+        check_equal(data_bind_value_as_int(
                          data_bind_value_get(data_bind_value_at(value, 0), "id")),
                      7);
-        check_int_eq(data_bind_value_as_int(
+        check_equal(data_bind_value_as_int(
                          data_bind_value_get(data_bind_value_at(value, 1), "id")),
                      8);
         data_bind_value_free(value);
@@ -352,10 +352,10 @@ spec("data_bind public API") {
         const char *nested =
             "{\"orders\":[{\"id\":9,\"side\":\"Buy\",\"symbol\":\"N3\"},"
             "{\"id\":10,\"side\":\"Sell\",\"symbol\":\"N4\"}]}";
-        check_int_eq(data_bind_stream_feed(stream, nested, strlen(nested)), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_stream_feed(stream, nested, strlen(nested)), DATA_BIND_OK);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
         check_not_null(value);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 10);
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 10);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -368,11 +368,11 @@ spec("data_bind public API") {
         const char *filtered =
             "{\"orders\":[{\"id\":11,\"side\":\"Buy\",\"symbol\":\"F1\"},"
             "{\"id\":12,\"side\":\"Sell\",\"symbol\":\"F2\"}]}";
-        check_int_eq(data_bind_stream_feed(stream, filtered, strlen(filtered)), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_stream_feed(stream, filtered, strlen(filtered)), DATA_BIND_OK);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 1);
-        check_int_eq(data_bind_value_as_int(
+        check_equal(data_bind_value_count(value), 1);
+        check_equal(data_bind_value_as_int(
                          data_bind_value_get(data_bind_value_at(value, 0), "id")),
                      12);
         data_bind_value_free(value);
@@ -395,16 +395,16 @@ spec("data_bind public API") {
         for (part_index = 0; part_index < part_count; ++part_index) {
           status =
               data_bind_stream_feed(stream, json_parts[part_index], strlen(json_parts[part_index]));
-          check_int_eq(status, DATA_BIND_OK);
+          check_equal(status, DATA_BIND_OK);
         }
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_value_count(value), 2);
         item0 = data_bind_value_at(value, 0);
         item1 = data_bind_value_at(value, 1);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item0, "id")), 5);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(item1, "symbol")), "BBB");
+        check_equal(data_bind_value_as_int(data_bind_value_get(item0, "id")), 5);
+        check_equal(data_bind_value_as_string(data_bind_value_get(item1, "symbol")), "BBB");
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -416,14 +416,14 @@ spec("data_bind public API") {
         const char *csv_head = "id,side,symbol\n1,Buy,ABCD\n";
         const char *csv_tail = "2,Sell,WXYZ\n";
         status = data_bind_stream_feed(stream, csv_head, strlen(csv_head));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, csv_tail, strlen(csv_tail));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
         out_len = data_bind_value_count(value);
-        check_size_eq(out_len, 2);
+        check_equal(out_len, 2);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -436,17 +436,17 @@ spec("data_bind public API") {
         const char *csv_front = "id,side,symbol\n10,Buy,AB";
         const char *csv_back = "CD\n11,Sell,\"W,XYZ\"\n";
         status = data_bind_stream_feed(stream, csv_front, strlen(csv_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, csv_back, strlen(csv_back));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
         out_len = data_bind_value_count(value);
-        check_size_eq(out_len, 1);
+        check_equal(out_len, 1);
         item0 = data_bind_value_at(value, 0);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item0, "id")), 11);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(item0, "symbol")), "W,XYZ");
+        check_equal(data_bind_value_as_int(data_bind_value_get(item0, "id")), 11);
+        check_equal(data_bind_value_as_string(data_bind_value_get(item0, "symbol")), "W,XYZ");
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -459,16 +459,16 @@ spec("data_bind public API") {
         const char *csv_front = "id,side,symbol\n12,Sell,\"W\"";
         const char *csv_back = "\"XYZ\"\n";
         status = data_bind_stream_feed(stream, csv_front, strlen(csv_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, csv_back, strlen(csv_back));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 1);
+        check_equal(data_bind_value_count(value), 1);
         item0 = data_bind_value_at(value, 0);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item0, "id")), 12);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(item0, "symbol")), "W\"XYZ");
+        check_equal(data_bind_value_as_int(data_bind_value_get(item0, "id")), 12);
+        check_equal(data_bind_value_as_string(data_bind_value_get(item0, "symbol")), "W\"XYZ");
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -482,14 +482,14 @@ spec("data_bind public API") {
         const char *xml_back =
             "<order><id>8</id><side>Sell</side><symbol>WXYZ</symbol></order></orders>";
         status = data_bind_stream_feed(stream, xml_front, strlen(xml_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, xml_back, strlen(xml_back));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
         out_len = data_bind_value_count(value);
-        check_size_eq(out_len, 2);
+        check_equal(out_len, 2);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -517,7 +517,7 @@ spec("data_bind public API") {
     record_callback_state state = {0};
     DataBindStreamLimits limits = DATA_BIND_STREAM_LIMITS_INIT;
 
-    check_int_eq(data_bind_create_from_text(order_schema, strlen(order_schema), &codec, &err),
+    check_equal(data_bind_create_from_text(order_schema, strlen(order_schema), &codec, &err),
                  DATA_BIND_OK);
     if (codec != NULL) {
       stream = data_bind_stream_json_all_create(codec, "Order", &value, &err);
@@ -526,11 +526,11 @@ spec("data_bind public API") {
         limits.max_input_bytes = 16u;
         limits.max_record_bytes = 16u;
         limits.max_field_bytes = 8u;
-        check_int_eq(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, orders, strlen(orders)), DATA_BIND_ERR_LIMIT);
-        check_int_eq(err.code, DATA_BIND_ERR_LIMIT);
-        check_size_eq(state.count, 0u);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
+        check_equal(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
+        check_equal(data_bind_stream_feed(stream, orders, strlen(orders)), DATA_BIND_ERR_LIMIT);
+        check_equal(err.code, DATA_BIND_ERR_LIMIT);
+        check_equal(state.count, 0u);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
         check_null(value);
       }
       data_bind_stream_destroy(stream);
@@ -541,13 +541,13 @@ spec("data_bind public API") {
       stream = data_bind_stream_json_all_create(codec, "Order", &value, &err);
       check_not_null(stream);
       if (stream != NULL) {
-        check_int_eq(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, orders, strlen(orders)), DATA_BIND_ERR_LIMIT);
-        check_int_eq(err.code, DATA_BIND_ERR_LIMIT);
-        check_size_eq(state.count, 1u);
-        check_int_eq(state.ids[0], 1);
+        check_equal(data_bind_stream_feed(stream, orders, strlen(orders)), DATA_BIND_ERR_LIMIT);
+        check_equal(err.code, DATA_BIND_ERR_LIMIT);
+        check_equal(state.count, 1u);
+        check_equal(state.ids[0], 1);
       }
       data_bind_stream_destroy(stream);
       data_bind_value_free(value);
@@ -557,13 +557,13 @@ spec("data_bind public API") {
       stream = data_bind_stream_yaml_all_create(codec, "Order", &value, &err);
       check_not_null(stream);
       if (stream != NULL) {
-        check_int_eq(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, yaml_orders, strlen(yaml_orders)),
+        check_equal(data_bind_stream_feed(stream, yaml_orders, strlen(yaml_orders)),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
-        check_size_eq(state.count, 0u);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
+        check_equal(state.count, 0u);
         check_null(value);
       }
       data_bind_stream_destroy(stream);
@@ -571,7 +571,7 @@ spec("data_bind public API") {
       codec = NULL;
     }
 
-    check_int_eq(data_bind_create_from_text(text_schema, strlen(text_schema), &codec, &err),
+    check_equal(data_bind_create_from_text(text_schema, strlen(text_schema), &codec, &err),
                  DATA_BIND_OK);
     if (codec != NULL) {
       limits = (DataBindStreamLimits)DATA_BIND_STREAM_LIMITS_INIT;
@@ -581,9 +581,9 @@ spec("data_bind public API") {
       stream = data_bind_stream_csv_all_create(codec, "Text", &value, &err);
       check_not_null(stream);
       if (stream != NULL) {
-        check_int_eq(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
-        check_int_eq(err.code, DATA_BIND_ERR_LIMIT);
+        check_equal(data_bind_stream_set_limits(stream, &limits), DATA_BIND_OK);
+        check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
+        check_equal(err.code, DATA_BIND_ERR_LIMIT);
       }
       data_bind_stream_destroy(stream);
     }
@@ -599,7 +599,7 @@ spec("data_bind public API") {
     DataBindValue *value = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -609,13 +609,13 @@ spec("data_bind public API") {
         const char *json_front = "{\"id\":1,";
         const char *json_bad = "]";
         status = data_bind_stream_feed(stream, json_front, strlen(json_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, json_bad, strlen(json_bad));
         if (status == DATA_BIND_OK) {
           status = data_bind_stream_finish(stream);
         }
-        check_int_eq(status, DATA_BIND_ERR_PARSE);
-        check_int_eq(err.code, DATA_BIND_ERR_PARSE);
+        check_equal(status, DATA_BIND_ERR_PARSE);
+        check_equal(err.code, DATA_BIND_ERR_PARSE);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -627,9 +627,9 @@ spec("data_bind public API") {
       if (stream) {
         const char *valid_json =
             "{\"orders\":[{\"id\":1,\"side\":\"Buy\",\"symbol\":\"A\"}]}";
-        check_int_eq(data_bind_stream_feed(stream, valid_json, strlen(valid_json)), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_PARSE);
-        check_int_eq(err.code, DATA_BIND_ERR_PARSE);
+        check_equal(data_bind_stream_feed(stream, valid_json, strlen(valid_json)), DATA_BIND_OK);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_PARSE);
+        check_equal(err.code, DATA_BIND_ERR_PARSE);
         check_null(value);
         data_bind_stream_destroy(stream);
         stream = NULL;
@@ -640,8 +640,8 @@ spec("data_bind public API") {
       if (stream) {
         const char yaml_bad[] = {'i', 'd', ':', ' ', -128, '\0'};
         status = data_bind_stream_feed(stream, yaml_bad, sizeof(yaml_bad));
-        check_int_eq(status, DATA_BIND_ERR_PARSE);
-        check_int_eq(err.code, DATA_BIND_ERR_PARSE);
+        check_equal(status, DATA_BIND_ERR_PARSE);
+        check_equal(err.code, DATA_BIND_ERR_PARSE);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -654,13 +654,13 @@ spec("data_bind public API") {
         const char *xml_front = "<orders><order>";
         const char *xml_bad = "</orders>";
         status = data_bind_stream_feed(stream, xml_front, strlen(xml_front));
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_feed(stream, xml_bad, strlen(xml_bad));
         if (status == DATA_BIND_OK) {
           status = data_bind_stream_finish(stream);
         }
-        check_int_eq(status, DATA_BIND_ERR_PARSE);
-        check_int_eq(err.code, DATA_BIND_ERR_PARSE);
+        check_equal(status, DATA_BIND_ERR_PARSE);
+        check_equal(err.code, DATA_BIND_ERR_PARSE);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -688,41 +688,41 @@ spec("data_bind public API") {
     DataBindMapEntry source_entry;
     DataBindMapEntry copy_entry;
 
-    check_int_eq(data_bind_value_clone(NULL, &sentinel), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(data_bind_value_clone(NULL, &sentinel), DATA_BIND_ERR_INVALID_ARG);
     check_null(sentinel);
-    check_int_eq(data_bind_value_clone((const DataBindValue *)(uintptr_t)1u, NULL),
+    check_equal(data_bind_value_clone((const DataBindValue *)(uintptr_t)1u, NULL),
                  DATA_BIND_ERR_INVALID_ARG);
 
     status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
     if (codec) {
       status = data_bind_parse_json(codec, "Book", json, strlen(json), &source, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(source);
       if (source) {
         source_header = data_bind_value_get(source, "header");
         source_entry = data_bind_value_map_entry_at(data_bind_value_get(source, "attrs"), 0u);
-        check_int_eq(data_bind_value_clone(source, &copy), DATA_BIND_OK);
+        check_equal(data_bind_value_clone(source, &copy), DATA_BIND_OK);
         check_not_null(copy);
-        check_ptr_ne(copy, source);
+        check_true(copy != source);
         copy_header = data_bind_value_get(copy, "header");
         copy_entry = data_bind_value_map_entry_at(data_bind_value_get(copy, "attrs"), 0u);
-        check_ptr_ne(copy_header, source_header);
-        check_ptr_ne(copy_entry.key, source_entry.key);
-        check_ptr_ne(data_bind_value_as_string(data_bind_value_get(copy, "symbol")),
-                     data_bind_value_as_string(data_bind_value_get(source, "symbol")));
+        check_true(copy_header != source_header);
+        check_true(copy_entry.key != source_entry.key);
+        check_true(data_bind_value_as_string(data_bind_value_get(copy, "symbol")) !=
+                   data_bind_value_as_string(data_bind_value_get(source, "symbol")));
         data_bind_value_free(source);
         source = NULL;
 
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(copy_header, "seq")), 7);
-        check_int_eq(data_bind_value_as_int64(data_bind_value_get(copy_header, "ts")), 99);
-        check_size_eq(data_bind_value_count(data_bind_value_get(copy, "values")), 2u);
-        check_int_eq(
+        check_equal(data_bind_value_as_int(data_bind_value_get(copy_header, "seq")), 7);
+        check_equal(data_bind_value_as_int64(data_bind_value_get(copy_header, "ts")), 99);
+        check_equal(data_bind_value_count(data_bind_value_get(copy, "values")), 2u);
+        check_equal(
             data_bind_value_as_int(data_bind_value_at(data_bind_value_get(copy, "values"), 1u)), 4);
-        check_str_eq(copy_entry.key, "x");
-        check_int_eq(data_bind_value_as_int(copy_entry.value), 30);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(copy, "symbol")), "ABCD");
+        check_equal(copy_entry.key, "x");
+        check_equal(data_bind_value_as_int(copy_entry.value), 30);
+        check_equal(data_bind_value_as_string(data_bind_value_get(copy, "symbol")), "ABCD");
       }
       data_bind_value_free(source);
       data_bind_value_free(copy);
@@ -745,50 +745,50 @@ spec("data_bind public API") {
     size_t serialized_len = 0;
     serialized_output output = {0};
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "Payload", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Payload", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
       check_not_null(object);
     }
     if (object) {
-      check_str_eq(data_bind_object_type_name(object), "Payload");
-      check_long_eq(
+      check_equal(data_bind_object_type_name(object), "Payload");
+      check_equal(
           data_bind_value_as_int64(data_bind_value_get(data_bind_object_value(object), "id")),
           INT64_C(9007199254740993));
-      check_int_eq(data_bind_object_serialize_json(codec, object, &serialized, &serialized_len,
+      check_equal(data_bind_object_serialize_json(codec, object, &serialized, &serialized_len,
                                                    &err),
                    DATA_BIND_OK);
       check_not_null(serialized);
-      check_str_contains(serialized, "\"id\":9007199254740993");
-      check_str_contains(serialized, "\"emoji\":\"");
-      check_str_contains(serialized, "\"raw\":\"Az\"");
+      check_contains(serialized, "\"id\":9007199254740993");
+      check_contains(serialized, "\"emoji\":\"");
+      check_contains(serialized, "\"raw\":\"Az\"");
       check(serialized_len == strlen(serialized));
       data_bind_serialized_free(serialized);
 
-      check_int_eq(data_bind_object_serialize_yaml(codec, object, &yaml, NULL, &err), DATA_BIND_OK);
-      check_str_contains(yaml, "9007199254740993");
+      check_equal(data_bind_object_serialize_yaml(codec, object, &yaml, NULL, &err), DATA_BIND_OK);
+      check_contains(yaml, "9007199254740993");
       check_null(strstr(yaml, "\"9007199254740993\""));
-      check_int_eq(data_bind_object_from_yaml(codec, "Payload", yaml, strlen(yaml),
+      check_equal(data_bind_object_from_yaml(codec, "Payload", yaml, strlen(yaml),
                                               &yaml_roundtrip, &err),
                    DATA_BIND_OK);
       check_not_null(yaml_roundtrip);
       if (yaml_roundtrip) {
-        check_long_eq(data_bind_value_as_int64(
+        check_equal(data_bind_value_as_int64(
                           data_bind_value_get(data_bind_object_value(yaml_roundtrip), "id")),
                       INT64_C(9007199254740993));
       }
       data_bind_object_free(yaml_roundtrip);
       data_bind_serialized_free(yaml);
 
-      check_int_eq(data_bind_object_serialize_xml(codec, object, &xml, NULL, &err), DATA_BIND_OK);
-      check_str_contains(xml, "<id>9007199254740993</id>");
+      check_equal(data_bind_object_serialize_xml(codec, object, &xml, NULL, &err), DATA_BIND_OK);
+      check_contains(xml, "<id>9007199254740993</id>");
       data_bind_serialized_free(xml);
 
-      check_int_eq(data_bind_object_write_json(codec, object, collect_serialized, &output, &err),
+      check_equal(data_bind_object_write_json(codec, object, collect_serialized, &output, &err),
                    DATA_BIND_OK);
-      check_str_contains(output.data, "9007199254740993");
+      check_contains(output.data, "9007199254740993");
       data_bind_object_free(object);
     }
     data_bind_free(codec);
@@ -822,9 +822,9 @@ spec("data_bind public API") {
     uint64_t unsigned_value = 0;
     int64_t signed_value = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "CsvRow", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "CsvRow", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
       check_not_null(object);
     }
@@ -833,78 +833,78 @@ spec("data_bind public API") {
       DataBindMapEntry entry;
       char text[128];
       size_t bytes_len = 0;
-      check_int_eq(data_bind_object_serialize_csv(codec, object, &csv, &csv_len, &err),
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv, &csv_len, &err),
                    DATA_BIND_OK);
       check_not_null(csv);
-      check_size_eq(csv_len, strlen(csv));
-      check_str_contains(csv, "meta.seq");
-      check_str_contains(csv, "fixed[1]");
-      check_str_contains(csv, "values[1]");
-      check_str_contains(csv, "attrs.min_value");
-      check_str_contains(csv, "18446744073709551615");
-      check_str_contains(csv, "-9223372036854775808");
-      check_str_contains(csv, "\"A,\"\"B\"\"");
+      check_equal(csv_len, strlen(csv));
+      check_contains(csv, "meta.seq");
+      check_contains(csv, "fixed[1]");
+      check_contains(csv, "values[1]");
+      check_contains(csv, "attrs.min_value");
+      check_contains(csv, "18446744073709551615");
+      check_contains(csv, "-9223372036854775808");
+      check_contains(csv, "\"A,\"\"B\"\"");
       check(csv_len >= 2 && csv[csv_len - 2] == '\r' && csv[csv_len - 1] == '\n');
 
-      check_int_eq(data_bind_object_from_csv(codec, "CsvRow", csv, csv_len, 0, &roundtrip, &err),
+      check_equal(data_bind_object_from_csv(codec, "CsvRow", csv, csv_len, 0, &roundtrip, &err),
                    DATA_BIND_OK);
       check_not_null(roundtrip);
       root = data_bind_object_value(roundtrip);
-      check_int_eq(data_bind_value_get_uint64(data_bind_value_get(root, "id"), &unsigned_value),
+      check_equal(data_bind_value_get_uint64(data_bind_value_get(root, "id"), &unsigned_value),
                    DATA_BIND_OK);
       check(unsigned_value == UINT64_MAX);
       check_true(data_bind_value_as_bool(data_bind_value_get(root, "active")));
-      check_double_eq(data_bind_value_as_double(data_bind_value_get(root, "ratio")), 1.25, 0.0);
-      check_str_eq(data_bind_value_as_uuid_string(data_bind_value_get(root, "uid"), text,
+      check_within(data_bind_value_as_double(data_bind_value_get(root, "ratio")), 1.25, 0.0);
+      check_equal(data_bind_value_as_uuid_string(data_bind_value_get(root, "uid"), text,
                                                   sizeof(text)),
                    "01890f3e-5c5a-7cc2-9f2b-8b7f47f0c001");
-      check_str_eq(data_bind_value_as_datetime_string(data_bind_value_get(root, "created"), text,
+      check_equal(data_bind_value_as_datetime_string(data_bind_value_get(root, "created"), text,
                                                       sizeof(text)),
                    "Sat, 04 Mar 2006 13:27:54 GMT");
-      check_str_eq(data_bind_value_as_date_string(data_bind_value_get(root, "day"), text,
+      check_equal(data_bind_value_as_date_string(data_bind_value_get(root, "day"), text,
                                                   sizeof(text)),
                    "2026-07-15");
-      check_str_eq(data_bind_value_as_time_string(data_bind_value_get(root, "at"), text,
+      check_equal(data_bind_value_as_time_string(data_bind_value_get(root, "at"), text,
                                                   sizeof(text)),
                    "09:30:05.123");
-      check_int_eq((int)data_bind_value_as_duration_milliseconds(
+      check_equal((int)data_bind_value_as_duration_milliseconds(
                        data_bind_value_get(root, "span")),
                    3723000);
-      check_str_eq(data_bind_value_as_decimal_string(data_bind_value_get(root, "price"), text,
+      check_equal(data_bind_value_as_decimal_string(data_bind_value_get(root, "price"), text,
                                                      sizeof(text)),
                    "12.34");
-      check_str_eq(data_bind_value_as_bigint_string(data_bind_value_get(root, "total")),
+      check_equal(data_bind_value_as_bigint_string(data_bind_value_get(root, "total")),
                    "123456789012345678901234567890");
-      check_str_eq(data_bind_value_as_money_string(data_bind_value_get(root, "cost"), text,
+      check_equal(data_bind_value_as_money_string(data_bind_value_get(root, "cost"), text,
                                                    sizeof(text)),
                    "USD 12.34");
-      check_str_eq(data_bind_value_as_string(data_bind_value_get(root, "note")), "A,\"B\"\nC");
-      check_mem_eq(data_bind_value_as_bytes(data_bind_value_get(root, "raw"), &bytes_len), "Az",
+      check_equal(data_bind_value_as_string(data_bind_value_get(root, "note")), "A,\"B\"\nC");
+      check_equal(data_bind_value_as_bytes(data_bind_value_get(root, "raw"), &bytes_len), "Az",
                    2u);
-      check_size_eq(bytes_len, 2u);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(bytes_len, 2u);
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_value_get(root, "meta"), "seq")),
                    7);
-      check_int_eq(data_bind_value_as_int(data_bind_value_at(data_bind_value_get(root, "fixed"),
+      check_equal(data_bind_value_as_int(data_bind_value_at(data_bind_value_get(root, "fixed"),
                                                               1u)),
                    32767);
-      check_int_eq(data_bind_value_get_uint64(
+      check_equal(data_bind_value_get_uint64(
                        data_bind_value_at(data_bind_value_get(root, "values"), 1u),
                        &unsigned_value),
                    DATA_BIND_OK);
       check(unsigned_value == UINT32_MAX);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(root, "side")), 2);
-      check_size_eq(data_bind_value_count(data_bind_value_get(root, "tags")), 2u);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "side")), 2);
+      check_equal(data_bind_value_count(data_bind_value_get(root, "tags")), 2u);
       entry = data_bind_value_map_entry_at(data_bind_value_get(root, "attrs"), 0u);
-      check_str_eq(entry.key, "min_value");
-      check_int_eq(data_bind_value_get_int64(entry.value, &signed_value), DATA_BIND_OK);
+      check_equal(entry.key, "min_value");
+      check_equal(data_bind_value_get_int64(entry.value, &signed_value), DATA_BIND_OK);
       check(signed_value == INT64_MIN);
 
-      check_int_eq(data_bind_object_write_csv(codec, object, collect_serialized, &output, &err),
+      check_equal(data_bind_object_write_csv(codec, object, collect_serialized, &output, &err),
                    DATA_BIND_OK);
-      check_size_eq(output.len, csv_len);
-      check_str_eq(output.data, csv);
-      check_int_eq(data_bind_object_serialize_csv(codec, object, NULL, NULL, &err),
+      check_equal(output.len, csv_len);
+      check_equal(output.data, csv);
+      check_equal(data_bind_object_serialize_csv(codec, object, NULL, NULL, &err),
                    DATA_BIND_ERR_INVALID_ARG);
     }
     data_bind_serialized_free(csv);
@@ -921,16 +921,16 @@ spec("data_bind public API") {
     DataBindError err = DATA_BIND_ERROR_INIT;
     char *csv = NULL;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "Empty", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Empty", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
     }
     if (object) {
-      check_int_eq(data_bind_object_serialize_csv(codec, object, &csv, NULL, &err),
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv, NULL, &err),
                    DATA_BIND_ERR_TYPE_MISMATCH);
       check_null(csv);
-      check_str_contains(err.message, "losslessly");
+      check_contains(err.message, "losslessly");
     }
     data_bind_object_free(object);
     data_bind_free(codec);
@@ -946,19 +946,19 @@ spec("data_bind public API") {
     DataBindError err = DATA_BIND_ERROR_INIT;
     char *serialized = NULL;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_yaml(codec, "Item", yaml, strlen(yaml), &object, &err),
+      check_equal(data_bind_object_from_yaml(codec, "Item", yaml, strlen(yaml), &object, &err),
                    DATA_BIND_OK);
-      check_str_eq(
+      check_equal(
           data_bind_value_as_string(data_bind_value_get(data_bind_object_value(object), "name")),
           "yaml");
-      check_int_eq(data_bind_object_serialize_yaml(codec, object, &serialized, NULL, &err),
+      check_equal(data_bind_object_serialize_yaml(codec, object, &serialized, NULL, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_from_yaml(codec, "Item", serialized, strlen(serialized),
+      check_equal(data_bind_object_from_yaml(codec, "Item", serialized, strlen(serialized),
                                               &roundtrip, &err),
                    DATA_BIND_OK);
-      check_str_eq(
+      check_equal(
           data_bind_value_as_string(data_bind_value_get(data_bind_object_value(roundtrip), "name")),
           "yaml");
       data_bind_serialized_free(serialized);
@@ -967,17 +967,17 @@ spec("data_bind public API") {
       object = NULL;
       roundtrip = NULL;
 
-      check_int_eq(data_bind_object_from_xml(codec, "Item", xml, strlen(xml), &object, &err),
+      check_equal(data_bind_object_from_xml(codec, "Item", xml, strlen(xml), &object, &err),
                    DATA_BIND_OK);
-      check_str_eq(
+      check_equal(
           data_bind_value_as_string(data_bind_value_get(data_bind_object_value(object), "name")),
           "xml");
-      check_int_eq(data_bind_object_serialize_xml(codec, object, &serialized, NULL, &err),
+      check_equal(data_bind_object_serialize_xml(codec, object, &serialized, NULL, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_from_xml(codec, "Item", serialized, strlen(serialized),
+      check_equal(data_bind_object_from_xml(codec, "Item", serialized, strlen(serialized),
                                              &roundtrip, &err),
                    DATA_BIND_OK);
-      check_str_eq(
+      check_equal(
           data_bind_value_as_string(data_bind_value_get(data_bind_object_value(roundtrip), "name")),
           "xml");
       data_bind_serialized_free(serialized);
@@ -1010,34 +1010,34 @@ spec("data_bind public API") {
              huge);
     snprintf(fractional, sizeof(fractional),
              "{\"id\":1,\"count\":1.5,\"at\":\"09:30\",\"huge\":\"%s\"}", huge);
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "Exact", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Exact", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
       check_not_null(object);
       if (object) {
         id = data_bind_value_get(data_bind_object_value(object), "id");
         check(data_bind_value_kind(id) == DATA_BIND_VALUE_UINT64);
-        check_int_eq(data_bind_value_get_uint64(id, &exact), DATA_BIND_OK);
+        check_equal(data_bind_value_get_uint64(id, &exact), DATA_BIND_OK);
         check(exact == UINT64_MAX);
-        check_int_eq(data_bind_value_has_any_bits(id, UINT64_C(1) << 63, &has_bits), DATA_BIND_OK);
+        check_equal(data_bind_value_has_any_bits(id, UINT64_C(1) << 63, &has_bits), DATA_BIND_OK);
         check_true(has_bits);
-        check_int_eq(data_bind_value_has_all_bits(id, UINT64_C(0x8000000000000001), &has_bits),
+        check_equal(data_bind_value_has_all_bits(id, UINT64_C(0x8000000000000001), &has_bits),
                      DATA_BIND_OK);
         check_true(has_bits);
-        check_int_eq(data_bind_value_has_all_bits(id, 0, &has_bits), DATA_BIND_ERR_INVALID_ARG);
-        check_int_eq(data_bind_value_get_time(
+        check_equal(data_bind_value_has_all_bits(id, 0, &has_bits), DATA_BIND_ERR_INVALID_ARG);
+        check_equal(data_bind_value_get_time(
                          data_bind_value_get(data_bind_object_value(object), "at"), &time),
                      DATA_BIND_OK);
-        check_int_eq(time.hour, 9);
-        check_int_eq(time.minute, 30);
-        check_int_eq(time.second, 5);
-        check_int_eq(data_bind_object_serialize_xml(codec, object, &serialized, NULL, &err),
+        check_equal(time.hour, 9);
+        check_equal(time.minute, 30);
+        check_equal(time.second, 5);
+        check_equal(data_bind_object_serialize_xml(codec, object, &serialized, NULL, &err),
                      DATA_BIND_OK);
-        check_str_contains(serialized, huge);
+        check_contains(serialized, huge);
         data_bind_serialized_free(serialized);
       }
-      check_int_eq(data_bind_parse_json(codec, "Exact", fractional, strlen(fractional), &value,
+      check_equal(data_bind_parse_json(codec, "Exact", fractional, strlen(fractional), &value,
                                         &err),
                    DATA_BIND_ERR_TYPE_MISMATCH);
       check_null(value);
@@ -1055,22 +1055,22 @@ spec("data_bind public API") {
     DataBindObject *copy = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_bin(codec, "Item", bin, sizeof(bin), &object, &err),
+      check_equal(data_bind_object_from_bin(codec, "Item", bin, sizeof(bin), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_clone(object, &copy), DATA_BIND_OK);
-      check_ptr_ne(data_bind_object_value(object), data_bind_object_value(copy));
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(data_bind_object_value(copy), "id")),
+      check_equal(data_bind_object_clone(object, &copy), DATA_BIND_OK);
+      check_true(data_bind_object_value(object) != data_bind_object_value(copy));
+      check_equal(data_bind_value_as_int(data_bind_value_get(data_bind_object_value(copy), "id")),
                    5);
       data_bind_object_free(copy);
       data_bind_object_free(object);
       object = NULL;
       copy = NULL;
 
-      check_int_eq(data_bind_object_from_csv(codec, "Item", csv, strlen(csv), 0, &object, &err),
+      check_equal(data_bind_object_from_csv(codec, "Item", csv, strlen(csv), 0, &object, &err),
                    DATA_BIND_OK);
-      check_str_eq(
+      check_equal(
           data_bind_value_as_string(data_bind_value_get(data_bind_object_value(object), "name")),
           "csv");
       data_bind_object_free(object);
@@ -1090,23 +1090,23 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                    DATA_BIND_OK);
-      check_size_eq(wire_len, sizeof(expected));
-      if (wire && wire_len == sizeof(expected)) check_mem_eq(wire, expected, sizeof(expected));
-      check_int_eq(data_bind_object_from_bin(codec, "Order", wire, wire_len, &roundtrip, &err),
+      check_equal(wire_len, sizeof(expected));
+      if (wire && wire_len == sizeof(expected)) check_equal(wire, expected, sizeof(expected));
+      check_equal(data_bind_object_from_bin(codec, "Order", wire, wire_len, &roundtrip, &err),
                    DATA_BIND_OK);
       if (roundtrip) {
         const DataBindValue *value = data_bind_object_value(roundtrip);
         check(data_bind_value_kind(data_bind_value_get(value, "id")) == DATA_BIND_VALUE_INT);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 7);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "side")), 1);
-        check_int_eq(data_bind_value_as_bool(data_bind_value_get(value, "active")), 1);
-        check_str_eq(data_bind_value_as_string(data_bind_value_get(value, "symbol")), "ABCD");
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 7);
+        check_equal(data_bind_value_as_int(data_bind_value_get(value, "side")), 1);
+        check_equal(data_bind_value_as_bool(data_bind_value_get(value, "active")), 1);
+        check_equal(data_bind_value_as_string(data_bind_value_get(value, "symbol")), "ABCD");
       }
       data_bind_binary_free(wire);
       data_bind_object_free(roundtrip);
@@ -1132,43 +1132,43 @@ spec("data_bind public API") {
     char *serialized_json = NULL;
     size_t serialized_json_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(data_bind_object_from_json(codec, "Text", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Text", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
       if (object != NULL) {
         const DataBindValue *value = data_bind_value_get(data_bind_object_value(object), "value");
-        check_int_eq(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
-        check_size_eq(text_len, 3u);
-        if (text != NULL && text_len == 3u) check_mem_eq(text, "A\0B", 3u);
-        check_int_eq(data_bind_value_clone(value, &copy), DATA_BIND_OK);
-        check_int_eq(data_bind_value_get_string(copy, &text, &text_len), DATA_BIND_OK);
-        check_size_eq(text_len, 3u);
-        if (text != NULL && text_len == 3u) check_mem_eq(text, "A\0B", 3u);
-        check_int_eq(data_bind_object_serialize_json(codec, object, &serialized_json,
+        check_equal(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
+        check_equal(text_len, 3u);
+        if (text != NULL && text_len == 3u) check_equal(text, "A\0B", 3u);
+        check_equal(data_bind_value_clone(value, &copy), DATA_BIND_OK);
+        check_equal(data_bind_value_get_string(copy, &text, &text_len), DATA_BIND_OK);
+        check_equal(text_len, 3u);
+        if (text != NULL && text_len == 3u) check_equal(text, "A\0B", 3u);
+        check_equal(data_bind_object_serialize_json(codec, object, &serialized_json,
                                                      &serialized_json_len, &err),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_object_from_json(codec, "Text", serialized_json,
+        check_equal(data_bind_object_from_json(codec, "Text", serialized_json,
                                                 serialized_json_len, &json_roundtrip, &err),
                      DATA_BIND_OK);
         if (json_roundtrip != NULL) {
           value = data_bind_value_get(data_bind_object_value(json_roundtrip), "value");
-          check_int_eq(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
-          check_size_eq(text_len, 3u);
-          if (text != NULL && text_len == 3u) check_mem_eq(text, "A\0B", 3u);
+          check_equal(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
+          check_equal(text_len, 3u);
+          if (text != NULL && text_len == 3u) check_equal(text, "A\0B", 3u);
         }
-        check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+        check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                      DATA_BIND_OK);
-        check_size_eq(wire_len, sizeof(expected));
+        check_equal(wire_len, sizeof(expected));
         if (wire != NULL && wire_len == sizeof(expected))
-          check_mem_eq(wire, expected, sizeof(expected));
-        check_int_eq(data_bind_object_from_bin(codec, "Text", wire, wire_len, &roundtrip, &err),
+          check_equal(wire, expected, sizeof(expected));
+        check_equal(data_bind_object_from_bin(codec, "Text", wire, wire_len, &roundtrip, &err),
                      DATA_BIND_OK);
         if (roundtrip != NULL) {
           value = data_bind_value_get(data_bind_object_value(roundtrip), "value");
-          check_int_eq(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
-          check_size_eq(text_len, 3u);
-          if (text != NULL && text_len == 3u) check_mem_eq(text, "A\0B", 3u);
+          check_equal(data_bind_value_get_string(value, &text, &text_len), DATA_BIND_OK);
+          check_equal(text_len, 3u);
+          if (text != NULL && text_len == 3u) check_equal(text, "A\0B", 3u);
         }
       }
     }
@@ -1188,9 +1188,9 @@ spec("data_bind public API") {
     DataBindObject *object = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(data_bind_object_from_bin(codec, "Text", wire, sizeof(wire), &object, &err),
+      check_equal(data_bind_object_from_bin(codec, "Text", wire, sizeof(wire), &object, &err),
                    DATA_BIND_ERR_TYPE_MISMATCH);
       check_null(object);
     }
@@ -1214,7 +1214,7 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
       const DataBindValue *root;
       const DataBindValue *values;
@@ -1225,11 +1225,11 @@ spec("data_bind public API") {
       DataBindMapEntry entry;
       uint64_t exact = 0;
       size_t raw_len = 0;
-      check_int_eq(data_bind_object_from_json(codec, "Values", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Values", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_from_bin(codec, "Values", wire, wire_len, &roundtrip, &err),
+      check_equal(data_bind_object_from_bin(codec, "Values", wire, wire_len, &roundtrip, &err),
                    DATA_BIND_OK);
       root = data_bind_object_value(roundtrip);
       values = data_bind_value_get(root, "values");
@@ -1237,23 +1237,23 @@ spec("data_bind public API") {
       attrs = data_bind_value_get(root, "attrs");
       large_ids = data_bind_value_get(root, "large_ids");
       large_attrs = data_bind_value_get(root, "large_attrs");
-      check_size_eq(data_bind_value_count(data_bind_value_get(root, "fixed")), 2u);
+      check_equal(data_bind_value_count(data_bind_value_get(root, "fixed")), 2u);
       check(data_bind_value_as_int64(data_bind_value_at(data_bind_value_get(root, "fixed"), 1u)) ==
             INT64_C(4294967295));
       check(data_bind_value_as_int64(data_bind_value_at(values, 2u)) == INT64_C(4294967295));
       check(data_bind_value_as_int64(data_bind_value_at(ids, 1u)) == INT64_C(4294967295));
       entry = data_bind_value_map_entry_at(attrs, 0u);
-      check_str_eq(entry.key, "max");
+      check_equal(entry.key, "max");
       check(data_bind_value_as_int64(entry.value) == INT64_C(4294967295));
-      check_int_eq(data_bind_value_get_uint64(data_bind_value_at(large_ids, 1u), &exact),
+      check_equal(data_bind_value_get_uint64(data_bind_value_at(large_ids, 1u), &exact),
                    DATA_BIND_OK);
       check(exact == UINT64_MAX);
       entry = data_bind_value_map_entry_at(large_attrs, 0u);
-      check_str_eq(entry.key, "max");
-      check_int_eq(data_bind_value_get_uint64(entry.value, &exact), DATA_BIND_OK);
+      check_equal(entry.key, "max");
+      check_equal(data_bind_value_get_uint64(entry.value, &exact), DATA_BIND_OK);
       check(exact == UINT64_MAX);
-      check_mem_eq(data_bind_value_as_bytes(data_bind_value_get(root, "raw"), &raw_len), "Az", 2u);
-      check_size_eq(raw_len, 2u);
+      check_equal(data_bind_value_as_bytes(data_bind_value_get(root, "raw"), &raw_len), "Az", 2u);
+      check_equal(raw_len, 2u);
       data_bind_binary_free(wire);
       data_bind_object_free(roundtrip);
       data_bind_object_free(object);
@@ -1279,7 +1279,7 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
       const DataBindValue *root;
       const DataBindValue *fixed;
@@ -1289,44 +1289,44 @@ spec("data_bind public API") {
       int64_t signed_value = 0;
       uint64_t unsigned_value = 0;
 
-      check_int_eq(data_bind_object_from_json(codec, "Aliases", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Aliases", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_from_bin(codec, "Aliases", wire, wire_len, &roundtrip, &err),
+      check_equal(data_bind_object_from_bin(codec, "Aliases", wire, wire_len, &roundtrip, &err),
                    DATA_BIND_OK);
 
       root = data_bind_object_value(roundtrip);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(root, "a")), -128);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(root, "b")), 255);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(root, "c")), -32768);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(root, "d")), 65535);
-      check_int_eq(data_bind_value_get_int64(data_bind_value_get(root, "e"), &signed_value),
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "a")), -128);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "b")), 255);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "c")), -32768);
+      check_equal(data_bind_value_as_int(data_bind_value_get(root, "d")), 65535);
+      check_equal(data_bind_value_get_int64(data_bind_value_get(root, "e"), &signed_value),
                    DATA_BIND_OK);
       check(signed_value == INT64_C(-2147483648));
-      check_int_eq(data_bind_value_get_uint64(data_bind_value_get(root, "f"), &unsigned_value),
+      check_equal(data_bind_value_get_uint64(data_bind_value_get(root, "f"), &unsigned_value),
                    DATA_BIND_OK);
       check(unsigned_value == UINT64_C(4294967295));
-      check_int_eq(data_bind_value_get_int64(data_bind_value_get(root, "g"), &signed_value),
+      check_equal(data_bind_value_get_int64(data_bind_value_get(root, "g"), &signed_value),
                    DATA_BIND_OK);
       check(signed_value == INT64_MIN);
-      check_int_eq(data_bind_value_get_uint64(data_bind_value_get(root, "h"), &unsigned_value),
+      check_equal(data_bind_value_get_uint64(data_bind_value_get(root, "h"), &unsigned_value),
                    DATA_BIND_OK);
       check(unsigned_value == UINT64_MAX);
 
       fixed = data_bind_value_get(root, "fixed");
       signed_list = data_bind_value_get(root, "signed_list");
       unsigned_set = data_bind_value_get(root, "unsigned_set");
-      check_size_eq(data_bind_value_count(fixed), 2u);
-      check_int_eq(data_bind_value_as_int(data_bind_value_at(fixed, 1u)), 65535);
-      check_int_eq(data_bind_value_as_int(data_bind_value_at(signed_list, 1u)), -32768);
-      check_int_eq(data_bind_value_get_uint64(data_bind_value_at(unsigned_set, 1u),
+      check_equal(data_bind_value_count(fixed), 2u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(fixed, 1u)), 65535);
+      check_equal(data_bind_value_as_int(data_bind_value_at(signed_list, 1u)), -32768);
+      check_equal(data_bind_value_get_uint64(data_bind_value_at(unsigned_set, 1u),
                                               &unsigned_value),
                    DATA_BIND_OK);
       check(unsigned_value == UINT64_C(4294967295));
       entry = data_bind_value_map_entry_at(data_bind_value_get(root, "signed_map"), 0u);
-      check_str_eq(entry.key, "min");
-      check_int_eq(data_bind_value_get_int64(entry.value, &signed_value), DATA_BIND_OK);
+      check_equal(entry.key, "min");
+      check_equal(data_bind_value_get_int64(entry.value, &signed_value), DATA_BIND_OK);
       check(signed_value == INT64_MIN);
 
       data_bind_binary_free(wire);
@@ -1343,7 +1343,7 @@ spec("data_bind public API") {
     DataBindObject *object = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
       check(data_bind_object_from_bin(codec, "Values", wire, sizeof(wire), &object, &err) !=
             DATA_BIND_OK);
@@ -1366,29 +1366,29 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
       const DataBindValue *root;
       const DataBindValue *bids;
-      check_int_eq(data_bind_object_from_json(codec, "Book", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Book", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_from_bin(codec, "Book", wire, wire_len, &roundtrip, &err),
+      check_equal(data_bind_object_from_bin(codec, "Book", wire, wire_len, &roundtrip, &err),
                    DATA_BIND_OK);
       root = data_bind_object_value(roundtrip);
       bids = data_bind_value_get(root, "bids");
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_value_get(root, "header"), "seq")),
                    7);
-      check_int_eq(data_bind_value_as_int64(
+      check_equal(data_bind_value_as_int64(
                        data_bind_value_get(data_bind_value_get(root, "header"), "ts")),
                    9);
-      check_size_eq(data_bind_value_count(bids), 2u);
-      check_int_eq(data_bind_value_as_int64(
+      check_equal(data_bind_value_count(bids), 2u);
+      check_equal(data_bind_value_as_int64(
                        data_bind_value_get(data_bind_value_at(bids, 1u), "price")),
                    200);
-      check_str_eq(data_bind_value_as_string(data_bind_value_get(root, "symbol")), "ABCD");
+      check_equal(data_bind_value_as_string(data_bind_value_get(root, "symbol")), "ABCD");
       data_bind_binary_free(wire);
       data_bind_object_free(roundtrip);
       data_bind_object_free(object);
@@ -1407,23 +1407,23 @@ spec("data_bind public API") {
     size_t wire_len = 0;
 
     memset(output, 0xa5, sizeof(output));
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     if (codec) {
-      check_int_eq(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin_into(codec, object, output, sizeof(guard),
+      check_equal(data_bind_object_serialize_bin_into(codec, object, output, sizeof(guard),
                                                        &wire_len, &err),
                    DATA_BIND_ERR_BUFFER_TOO_SMALL);
-      check_size_eq(wire_len, sizeof(output));
-      check_mem_eq(output, guard, sizeof(guard));
+      check_equal(wire_len, sizeof(output));
+      check_equal(output, guard, sizeof(guard));
       wire_len = 0;
-      check_int_eq(data_bind_object_serialize_bin_into(codec, object, NULL, 0, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin_into(codec, object, NULL, 0, &wire_len, &err),
                    DATA_BIND_ERR_BUFFER_TOO_SMALL);
-      check_size_eq(wire_len, sizeof(output));
-      check_int_eq(data_bind_object_serialize_bin_into(codec, object, output, sizeof(output),
+      check_equal(wire_len, sizeof(output));
+      check_equal(data_bind_object_serialize_bin_into(codec, object, output, sizeof(output),
                                                        &wire_len, &err),
                    DATA_BIND_OK);
-      check_size_eq(wire_len, sizeof(output));
+      check_equal(wire_len, sizeof(output));
       data_bind_object_free(object);
       data_bind_free(codec);
     }
@@ -1440,18 +1440,18 @@ spec("data_bind public API") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(optional_schema, strlen(optional_schema), &codec, &err),
+    check_equal(data_bind_create_from_text(optional_schema, strlen(optional_schema), &codec, &err),
                  DATA_BIND_OK);
-    check_int_eq(data_bind_create_from_text(other_schema, strlen(other_schema), &other, &err),
+    check_equal(data_bind_create_from_text(other_schema, strlen(other_schema), &other, &err),
                  DATA_BIND_OK);
     if (codec && other) {
-      check_int_eq(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len, &err),
                    DATA_BIND_ERR_SCHEMA);
       check_null(wire);
-      check_size_eq(wire_len, 0u);
-      check_int_eq(data_bind_object_serialize_bin(other, object, &wire, &wire_len, &err),
+      check_equal(wire_len, 0u);
+      check_equal(data_bind_object_serialize_bin(other, object, &wire, &wire_len, &err),
                    DATA_BIND_ERR_SCHEMA);
     }
     data_bind_object_free(object);
@@ -1475,29 +1475,29 @@ spec("data_bind public API") {
     char *output = NULL;
     size_t output_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
-    check_int_eq(data_bind_create_from_text(equivalent_schema, strlen(equivalent_schema),
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(equivalent_schema, strlen(equivalent_schema),
                                             &equivalent, &err),
                  DATA_BIND_OK);
-    check_int_eq(data_bind_create_from_text(mismatched_schema, strlen(mismatched_schema),
+    check_equal(data_bind_create_from_text(mismatched_schema, strlen(mismatched_schema),
                                             &mismatched, &err),
                  DATA_BIND_OK);
     if (codec && equivalent && mismatched) {
-      check_int_eq(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Item", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_clone(object, &copy), DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_json(equivalent, copy, &output, &output_len, &err),
+      check_equal(data_bind_object_clone(object, &copy), DATA_BIND_OK);
+      check_equal(data_bind_object_serialize_json(equivalent, copy, &output, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_eq(output, json);
+      check_equal(output, json);
       data_bind_serialized_free(output);
       output = NULL;
       output_len = 0;
 
-      check_int_eq(data_bind_object_serialize_json(mismatched, object, &output, &output_len, &err),
+      check_equal(data_bind_object_serialize_json(mismatched, object, &output, &output_len, &err),
                    DATA_BIND_ERR_SCHEMA);
       check_null(output);
-      check_size_eq(output_len, 0u);
-      check_str_eq(err.path, "Item");
+      check_equal(output_len, 0u);
+      check_equal(err.path, "Item");
     }
     data_bind_serialized_free(output);
     data_bind_object_free(copy);
@@ -1521,37 +1521,37 @@ spec("data_bind public API") {
     size_t source_len = 0;
     size_t copy_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec) {
-      check_int_eq(data_bind_parse_json(codec, "Values", json, strlen(json), &source, &err),
+      check_equal(data_bind_parse_json(codec, "Values", json, strlen(json), &source, &err),
                    DATA_BIND_OK);
       check_not_null(source);
       if (source) {
         source_tags = data_bind_value_get(source, "tags");
         source_bytes = data_bind_value_as_bytes(data_bind_value_get(source, "raw"), &source_len);
-        check_int_eq(data_bind_value_clone(source, &copy), DATA_BIND_OK);
+        check_equal(data_bind_value_clone(source, &copy), DATA_BIND_OK);
         check_not_null(copy);
         copy_tags = data_bind_value_get(copy, "tags");
         copy_bytes = data_bind_value_as_bytes(data_bind_value_get(copy, "raw"), &copy_len);
         check(data_bind_value_kind(copy_tags) == DATA_BIND_VALUE_SET);
-        check_size_eq(data_bind_value_count(copy_tags), 2u);
-        check_ptr_ne(copy_tags, source_tags);
-        check_ptr_ne(data_bind_value_as_string(data_bind_value_at(copy_tags, 0u)),
-                     data_bind_value_as_string(data_bind_value_at(source_tags, 0u)));
-        check_size_eq(copy_len, source_len);
-        check_ptr_ne(copy_bytes, source_bytes);
-        check_mem_eq(copy_bytes, source_bytes, source_len);
+        check_equal(data_bind_value_count(copy_tags), 2u);
+        check_true(copy_tags != source_tags);
+        check_true(data_bind_value_as_string(data_bind_value_at(copy_tags, 0u)) !=
+                   data_bind_value_as_string(data_bind_value_at(source_tags, 0u)));
+        check_equal(copy_len, source_len);
+        check_true(copy_bytes != source_bytes);
+        check_equal(copy_bytes, source_bytes, source_len);
       }
       data_bind_value_free(source);
       source = NULL;
       if (copy) {
-        check_str_eq(
+        check_equal(
             data_bind_value_as_string(data_bind_value_at(data_bind_value_get(copy, "tags"), 1u)),
             "beta");
         copy_bytes = data_bind_value_as_bytes(data_bind_value_get(copy, "raw"), &copy_len);
-        check_size_eq(copy_len, 2u);
-        check_mem_eq(copy_bytes, "Az", 2u);
+        check_equal(copy_len, 2u);
+        check_equal(copy_bytes, "Az", 2u);
       }
       data_bind_value_free(copy);
       data_bind_free(codec);
@@ -1578,46 +1578,46 @@ spec("data_bind public API") {
     char text[64];
     const char *source_bigint;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec) {
-      check_int_eq(data_bind_parse_json(codec, "Scalars", json, strlen(json), &source, &err),
+      check_equal(data_bind_parse_json(codec, "Scalars", json, strlen(json), &source, &err),
                    DATA_BIND_OK);
       check_not_null(source);
       if (source) {
         source_bigint = data_bind_value_as_bigint_string(data_bind_value_get(source, "count"));
-        check_int_eq(data_bind_value_clone(source, &copy), DATA_BIND_OK);
+        check_equal(data_bind_value_clone(source, &copy), DATA_BIND_OK);
         check_not_null(copy);
-        check_ptr_ne(copy, source);
-        check_ptr_ne(data_bind_value_as_bigint_string(data_bind_value_get(copy, "count")),
-                     source_bigint);
+        check_true(copy != source);
+        check_true(data_bind_value_as_bigint_string(data_bind_value_get(copy, "count")) !=
+                   source_bigint);
       }
       data_bind_value_free(source);
       source = NULL;
       if (copy) {
         check(data_bind_value_as_uuid(data_bind_value_get(copy, "id"), uuid.bytes));
-        check_str_eq(
+        check_equal(
             data_bind_value_as_uuid_string(data_bind_value_get(copy, "id"), text, sizeof(text)),
             "01890f3e-5c5a-7cc2-9f2b-8b7f47f0c001");
-        check_double_eq(data_bind_value_as_datetime_timestamp(data_bind_value_get(copy, "at")),
+        check_within(data_bind_value_as_datetime_timestamp(data_bind_value_get(copy, "at")),
                         1141478874.0, 0.001);
-        check_int_eq(data_bind_value_get_date(data_bind_value_get(copy, "d"), &date), DATA_BIND_OK);
-        check_int_eq(date.year, 2026);
-        check_int_eq(data_bind_value_get_time(data_bind_value_get(copy, "t"), &time), DATA_BIND_OK);
-        check_int_eq(time.millisecond, 123);
-        check_int_eq(
+        check_equal(data_bind_value_get_date(data_bind_value_get(copy, "d"), &date), DATA_BIND_OK);
+        check_equal(date.year, 2026);
+        check_equal(data_bind_value_get_time(data_bind_value_get(copy, "t"), &time), DATA_BIND_OK);
+        check_equal(time.millisecond, 123);
+        check_equal(
             (int)data_bind_value_as_duration_milliseconds(data_bind_value_get(copy, "span")),
             5405250);
-        check_int_eq(data_bind_value_get_decimal(data_bind_value_get(copy, "price"), &decimal),
+        check_equal(data_bind_value_get_decimal(data_bind_value_get(copy, "price"), &decimal),
                      DATA_BIND_OK);
-        check_int_eq((int)decimal.mantissa, 12345);
-        check_int_eq(decimal.scale, 2);
-        check_str_eq(data_bind_value_as_bigint_string(data_bind_value_get(copy, "count")),
+        check_equal((int)decimal.mantissa, 12345);
+        check_equal(decimal.scale, 2);
+        check_equal(data_bind_value_as_bigint_string(data_bind_value_get(copy, "count")),
                      "123456789012345678901234567890");
-        check_int_eq(data_bind_value_get_money(data_bind_value_get(copy, "total"), &money),
+        check_equal(data_bind_value_get_money(data_bind_value_get(copy, "total"), &money),
                      DATA_BIND_OK);
-        check_str_eq(money.currency, "EUR");
-        check_int_eq((int)money.amount.mantissa, 9999);
+        check_equal(money.currency, "EUR");
+        check_equal((int)money.amount.mantissa, 9999);
       }
       data_bind_value_free(copy);
       data_bind_free(codec);
@@ -1645,58 +1645,58 @@ spec("data_bind public API") {
     DataBindValue *stream_value = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
       data_bind_stream_t *stream;
       record_callback_state state = {0};
       status = data_bind_parse_yaml(codec, "Order", yaml_root, strlen(yaml_root), &value, &err);
-      check_int_eq(status, DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 9);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 9);
       data_bind_value_free(value);
       value = NULL;
 
       status = data_bind_parse_yaml_all(codec, "Order", yaml_sequence, strlen(yaml_sequence), &all,
                                         &err);
-      check_int_eq(status, DATA_BIND_OK);
-      check_size_eq(data_bind_value_count(all), 2);
+      check_equal(status, DATA_BIND_OK);
+      check_equal(data_bind_value_count(all), 2);
       data_bind_value_free(all);
       all = NULL;
-      check_int_eq(
+      check_equal(
           data_bind_validate_yaml(codec, "Order", yaml_sequence, strlen(yaml_sequence), &err),
           DATA_BIND_OK);
 
       status =
           data_bind_parse_yaml_path(codec, "Order", yaml, strlen(yaml), "/orders[1]", &value, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(value);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "id")), 8);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(value, "side")), 2);
+      check_equal(data_bind_value_as_int(data_bind_value_get(value, "id")), 8);
+      check_equal(data_bind_value_as_int(data_bind_value_get(value, "side")), 2);
 
       status = data_bind_parse_yaml_path_all(codec, "Order", yaml, strlen(yaml), "/orders[*]", &all,
                                              &err);
-      check_int_eq(status, DATA_BIND_OK);
-      check_size_eq(data_bind_value_count(all), 2);
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(data_bind_value_at(all, 0), "id")),
+      check_equal(status, DATA_BIND_OK);
+      check_equal(data_bind_value_count(all), 2);
+      check_equal(data_bind_value_as_int(data_bind_value_get(data_bind_value_at(all, 0), "id")),
                    7);
-      check_int_eq(
+      check_equal(
           data_bind_validate_yaml_path(codec, "Order", yaml, strlen(yaml), "/orders[0]", &err),
           DATA_BIND_OK);
 
       stream = data_bind_stream_yaml_all_create(codec, "Order", &stream_value, &err);
       check_not_null(stream);
       if (stream) {
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, yaml_sequence, 19), DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, yaml_sequence + 19, strlen(yaml_sequence) - 19),
+        check_equal(data_bind_stream_feed(stream, yaml_sequence, 19), DATA_BIND_OK);
+        check_equal(data_bind_stream_feed(stream, yaml_sequence + 19, strlen(yaml_sequence) - 19),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-        check_size_eq(state.count, 2);
-        check_int_eq(state.ids[0], 1);
-        check_int_eq(state.ids[1], 2);
-        check_size_eq(data_bind_value_count(stream_value), 2);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(state.count, 2);
+        check_equal(state.ids[0], 1);
+        check_equal(state.ids[1], 2);
+        check_equal(data_bind_value_count(stream_value), 2);
         data_bind_stream_destroy(stream);
       }
 
@@ -1706,14 +1706,14 @@ spec("data_bind public API") {
       value = NULL;
       status =
           data_bind_parse_yaml_path(codec, "Order", yaml, strlen(yaml), "/missing", &value, &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
       check_null(value);
       status =
           data_bind_parse_yaml_path(codec, "Order", yaml, strlen(yaml), "/orders[", &value, &err);
-      check_int_eq(status, DATA_BIND_ERR_PARSE);
+      check_equal(status, DATA_BIND_ERR_PARSE);
       check_null(value);
       status = data_bind_parse_yaml(codec, "Order", "? [a, b]\n: 1\n", 14, &value, &err);
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
       check_null(value);
       data_bind_free(codec);
     }
@@ -1725,7 +1725,7 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -1738,15 +1738,15 @@ spec("data_bind public API") {
       if (stream) {
         const char *first = "[{\"id\":1,\"side\":\"Buy\",\"symbol\":\"A\"},";
         const char *second = "{\"id\":2,\"side\":\"Sell\",\"symbol\":\"B\"}]";
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
-        check_size_eq(state.count, 1);
-        check_int_eq(state.ids[0], 1);
-        check_int_eq(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
-        check_size_eq(state.count, 2);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
+        check_equal(state.count, 1);
+        check_equal(state.ids[0], 1);
+        check_equal(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
+        check_equal(state.count, 2);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_value_count(value), 2);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -1758,16 +1758,16 @@ spec("data_bind public API") {
       if (stream) {
         const char *first = "id,side,symbol\n10,Buy,A\n11,Se";
         const char *second = "ll,B\n12,Sell,C\n";
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
-        check_size_eq(state.count, 0);
-        check_int_eq(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
-        check_size_eq(state.count, 2);
-        check_int_eq(state.ids[0], 11);
-        check_int_eq(state.ids[1], 12);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
+        check_equal(state.count, 0);
+        check_equal(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
+        check_equal(state.count, 2);
+        check_equal(state.ids[0], 11);
+        check_equal(state.ids[1], 12);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_value_count(value), 2);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -1780,15 +1780,15 @@ spec("data_bind public API") {
         const char *first = "<orders><order><id>20</id><side>Buy</side><symbol>A</symbol></order>";
         const char *second =
             "<order><id>21</id><side>Sell</side><symbol>B</symbol></order></orders>";
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
-        check_size_eq(state.count, 1);
-        check_int_eq(state.ids[0], 20);
-        check_int_eq(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
-        check_size_eq(state.count, 2);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_stream_feed(stream, first, strlen(first)), DATA_BIND_OK);
+        check_equal(state.count, 1);
+        check_equal(state.ids[0], 20);
+        check_equal(data_bind_stream_feed(stream, second, strlen(second)), DATA_BIND_OK);
+        check_equal(state.count, 2);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_value_count(value), 2);
         data_bind_value_free(value);
         data_bind_stream_destroy(stream);
       }
@@ -1811,7 +1811,7 @@ spec("data_bind public API") {
     data_bind_stream_t *stream = NULL;
     size_t format_index;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     for (format_index = 0; codec != NULL && format_index < 4; ++format_index) {
       state = (record_callback_state){0};
@@ -1826,19 +1826,19 @@ spec("data_bind public API") {
       }
       check_not_null(stream);
       if (stream != NULL) {
-        check_int_eq(data_bind_stream_set_output_mode(
+        check_equal(data_bind_stream_set_output_mode(
                          stream, DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, inputs[format_index],
+        check_equal(data_bind_stream_feed(stream, inputs[format_index],
                                            strlen(inputs[format_index])),
                      DATA_BIND_OK);
-        if (format_index < 3) check_size_eq(state.count, 2u);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-        check_size_eq(state.count, 2u);
-        check_int_eq(state.ids[0], 1);
-        check_int_eq(state.ids[1], 2);
+        if (format_index < 3) check_equal(state.count, 2u);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(state.count, 2u);
+        check_equal(state.ids[0], 1);
+        check_equal(state.ids[1], 2);
         check_null(value);
       }
       data_bind_stream_destroy(stream);
@@ -1849,15 +1849,15 @@ spec("data_bind public API") {
     stream = data_bind_stream_json_path_create(codec, "Order", "$[1]", &value, &err);
     check_not_null(stream);
     if (stream != NULL) {
-      check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+      check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_stream_set_output_mode(stream,
+      check_equal(data_bind_stream_set_output_mode(stream,
                                                     DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_stream_feed(stream, inputs[0], strlen(inputs[0])), DATA_BIND_OK);
-      check_size_eq(state.count, 1u);
-      check_int_eq(state.ids[0], 2);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
+      check_equal(data_bind_stream_feed(stream, inputs[0], strlen(inputs[0])), DATA_BIND_OK);
+      check_equal(state.count, 1u);
+      check_equal(state.ids[0], 2);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
       check_null(value);
     }
     data_bind_stream_destroy(stream);
@@ -1866,13 +1866,13 @@ spec("data_bind public API") {
     stream = data_bind_stream_json_all_create(codec, "Order", &value, &err);
     check_not_null(stream);
     if (stream != NULL) {
-      check_int_eq(data_bind_stream_set_output_mode(stream,
+      check_equal(data_bind_stream_set_output_mode(stream,
                                                     DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_stream_feed(stream, inputs[0], strlen(inputs[0])),
+      check_equal(data_bind_stream_feed(stream, inputs[0], strlen(inputs[0])),
                    DATA_BIND_ERR_INVALID_ARG);
-      check_int_eq(err.code, DATA_BIND_ERR_INVALID_ARG);
-      check_str_contains(err.message, "requires a record callback");
+      check_equal(err.code, DATA_BIND_ERR_INVALID_ARG);
+      check_contains(err.message, "requires a record callback");
       check_null(value);
     }
     data_bind_stream_destroy(stream);
@@ -1891,21 +1891,21 @@ spec("data_bind public API") {
     exact_record_state state = {0};
     data_bind_stream_t *stream;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     stream = data_bind_stream_json_all_create(codec, "Exact", &value, &err);
     check_not_null(stream);
     if (stream) {
-      check_int_eq(data_bind_stream_set_record_callback(stream, collect_exact_record, &state),
+      check_equal(data_bind_stream_set_record_callback(stream, collect_exact_record, &state),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_stream_feed(stream, parts[0], strlen(parts[0])), DATA_BIND_OK);
-      check_size_eq(state.count, 0);
-      check_int_eq(data_bind_stream_feed(stream, parts[1], strlen(parts[1])), DATA_BIND_OK);
-      check_size_eq(state.count, 1);
-      check_int_eq(data_bind_stream_feed(stream, parts[2], strlen(parts[2])), DATA_BIND_OK);
-      check_size_eq(state.count, 2);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
-      check_size_eq(data_bind_value_count(value), 2);
+      check_equal(data_bind_stream_feed(stream, parts[0], strlen(parts[0])), DATA_BIND_OK);
+      check_equal(state.count, 0);
+      check_equal(data_bind_stream_feed(stream, parts[1], strlen(parts[1])), DATA_BIND_OK);
+      check_equal(state.count, 1);
+      check_equal(data_bind_stream_feed(stream, parts[2], strlen(parts[2])), DATA_BIND_OK);
+      check_equal(state.count, 2);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+      check_equal(data_bind_value_count(value), 2);
       check(state.signed_values[0] == INT64_C(9007199254740993));
       check(state.unsigned_values[0] == UINT64_MAX);
       check(state.signed_values[1] == INT64_MIN);
@@ -1923,7 +1923,7 @@ spec("data_bind public API") {
     DataBindValue *value = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
 
     if (codec) {
       data_bind_stream_t *stream = data_bind_stream_json_all_create(codec, "Order", &value, &err);
@@ -1931,19 +1931,19 @@ spec("data_bind public API") {
       state.stop_after = 1;
       check_not_null(stream);
       if (stream) {
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_set_output_mode(
+        check_equal(data_bind_stream_set_output_mode(
                          stream, DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
-        check_size_eq(state.count, 1);
-        check_int_eq(data_bind_stream_set_output_mode(
+        check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
+        check_equal(state.count, 1);
+        check_equal(data_bind_stream_set_output_mode(
                          stream, DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                      DATA_BIND_ERR_INVALID_ARG);
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_ERR_INVALID_ARG);
-        check_int_eq(data_bind_stream_finish(stream), DATA_BIND_OK);
+        check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
         check_null(value);
         data_bind_stream_destroy(stream);
       }
@@ -1953,14 +1953,14 @@ spec("data_bind public API") {
       state.fail = 1;
       check_not_null(stream);
       if (stream) {
-        check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+        check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_set_output_mode(
+        check_equal(data_bind_stream_set_output_mode(
                          stream, DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
                      DATA_BIND_OK);
-        check_int_eq(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_ERR_RUNTIME);
-        check_int_eq(err.code, DATA_BIND_ERR_RUNTIME);
-        check_str_contains(err.message, "Record callback failed");
+        check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_ERR_RUNTIME);
+        check_equal(err.code, DATA_BIND_ERR_RUNTIME);
+        check_contains(err.message, "Record callback failed");
         check_null(value);
         data_bind_stream_destroy(stream);
       }
@@ -1977,7 +1977,7 @@ spec("data_bind public API") {
     DataBindValue *value = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     write_schema_file(json_path, "[{\"id\":10,\"side\":\"Buy\",\"symbol\":\"ABCD\"},"
@@ -1994,13 +1994,13 @@ spec("data_bind public API") {
       check_not_null(stream);
       if (stream) {
         status = data_bind_stream_feed_file(stream, csv_path);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 1);
+        check_equal(data_bind_value_count(value), 1);
         item = data_bind_value_at(value, 0);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item, "id")), 11);
+        check_equal(data_bind_value_as_int(data_bind_value_get(item, "id")), 11);
         data_bind_value_free(value);
         value = NULL;
         data_bind_stream_destroy(stream);
@@ -2010,13 +2010,13 @@ spec("data_bind public API") {
       check_not_null(stream);
       if (stream) {
         status = data_bind_stream_feed_file(stream, json_path);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         status = data_bind_stream_finish(stream);
-        check_int_eq(status, DATA_BIND_OK);
+        check_equal(status, DATA_BIND_OK);
         check_not_null(value);
-        check_size_eq(data_bind_value_count(value), 2);
+        check_equal(data_bind_value_count(value), 2);
         item = data_bind_value_at(value, 1);
-        check_int_eq(data_bind_value_as_int(data_bind_value_get(item, "id")), 11);
+        check_equal(data_bind_value_as_int(data_bind_value_get(item, "id")), 11);
         data_bind_value_free(value);
         data_bind_stream_destroy(stream);
       }
@@ -2035,7 +2035,7 @@ spec("data_bind public API") {
     DataBindValue *event = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -2046,20 +2046,20 @@ spec("data_bind public API") {
       char text[64];
 
       status = data_bind_parse_json(codec, "Event", json, strlen(json), &event, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(event);
-      check_int_eq(data_bind_value_get_datetime(data_bind_value_get(event, "at"), &dt),
+      check_equal(data_bind_value_get_datetime(data_bind_value_get(event, "at"), &dt),
                    DATA_BIND_OK);
-      check_int_eq(dt.year, 2006);
-      check_int_eq(data_bind_value_get_date(data_bind_value_get(event, "d"), &date), DATA_BIND_OK);
-      check_int_eq(date.year, 2026);
-      check_int_eq(data_bind_value_get_time(data_bind_value_get(event, "t"), &time), DATA_BIND_OK);
-      check_int_eq(time.millisecond, 123);
-      check_int_eq(
+      check_equal(dt.year, 2006);
+      check_equal(data_bind_value_get_date(data_bind_value_get(event, "d"), &date), DATA_BIND_OK);
+      check_equal(date.year, 2026);
+      check_equal(data_bind_value_get_time(data_bind_value_get(event, "t"), &time), DATA_BIND_OK);
+      check_equal(time.millisecond, 123);
+      check_equal(
           data_bind_value_get_duration_milliseconds(data_bind_value_get(event, "span"), &span_ms),
           DATA_BIND_OK);
-      check_int_eq((int)span_ms, 5405250);
-      check_str_eq(data_bind_value_as_duration_string(data_bind_value_get(event, "span"), text,
+      check_equal((int)span_ms, 5405250);
+      check_equal(data_bind_value_as_duration_string(data_bind_value_get(event, "span"), text,
                                                       sizeof(text)),
                    "1:30:05.250");
       data_bind_value_free(event);
@@ -2078,36 +2078,36 @@ spec("data_bind public API") {
     DataBindDecimal decimal;
     char text[64];
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
       status = data_bind_parse_json(codec, "Quote", json, strlen(json), &quote, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(quote);
       check(data_bind_value_kind(data_bind_value_get(quote, "price")) == DATA_BIND_VALUE_DECIMAL);
-      check_int_eq(data_bind_value_get_decimal(data_bind_value_get(quote, "price"), &decimal),
+      check_equal(data_bind_value_get_decimal(data_bind_value_get(quote, "price"), &decimal),
                    DATA_BIND_OK);
-      check_int_eq((int)decimal.mantissa, 12345);
-      check_int_eq(decimal.scale, 2);
-      check_str_eq(data_bind_value_as_decimal_string(data_bind_value_get(quote, "price"), text,
+      check_equal((int)decimal.mantissa, 12345);
+      check_equal(decimal.scale, 2);
+      check_equal(data_bind_value_as_decimal_string(data_bind_value_get(quote, "price"), text,
                                                      sizeof(text)),
                    "123.45");
       data_bind_value_free(quote);
       quote = NULL;
 
       status = data_bind_parse_csv(codec, "Quote", csv, strlen(csv), 0, &quote, &err);
-      check_int_eq(status, DATA_BIND_OK);
-      check_int_eq(data_bind_value_get_decimal(data_bind_value_get(quote, "price"), &decimal),
+      check_equal(status, DATA_BIND_OK);
+      check_equal(data_bind_value_get_decimal(data_bind_value_get(quote, "price"), &decimal),
                    DATA_BIND_OK);
-      check_int_eq((int)decimal.mantissa, -125);
-      check_int_eq(decimal.scale, 3);
+      check_equal((int)decimal.mantissa, -125);
+      check_equal(decimal.scale, 3);
       data_bind_value_free(quote);
       quote = NULL;
 
       status = data_bind_parse_xml(codec, "Quote", xml, strlen(xml), &quote, &err);
-      check_int_eq(status, DATA_BIND_OK);
-      check_str_eq(data_bind_value_as_decimal_string(data_bind_value_get(quote, "price"), text,
+      check_equal(status, DATA_BIND_OK);
+      check_equal(data_bind_value_as_decimal_string(data_bind_value_get(quote, "price"), text,
                                                      sizeof(text)),
                    "42");
       data_bind_value_free(quote);
@@ -2117,7 +2117,7 @@ spec("data_bind public API") {
         const char *bad_json = "{\"price\":\"bad\"}";
         status = data_bind_validate_json(codec, "Quote", bad_json, strlen(bad_json), &err);
       }
-      check_int_eq(status, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(status, DATA_BIND_ERR_TYPE_MISMATCH);
       data_bind_free(codec);
     }
   }
@@ -2134,26 +2134,26 @@ spec("data_bind public API") {
     DataBindMoney money;
     char text[64];
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
       status = data_bind_parse_json(codec, "Invoice", json, strlen(json), &invoice, &err);
-      check_int_eq(status, DATA_BIND_OK);
+      check_equal(status, DATA_BIND_OK);
       check_not_null(invoice);
       check(data_bind_value_kind(data_bind_value_get(invoice, "id")) == DATA_BIND_VALUE_BIGINT);
-      check_int_eq(
+      check_equal(
           data_bind_value_get_bigint(data_bind_value_get(invoice, "id"), &bigint, &bigint_len),
           DATA_BIND_OK);
-      check_str_eq(bigint, "123456789012345678901234567890");
-      check_size_eq(bigint_len, strlen("123456789012345678901234567890"));
+      check_equal(bigint, "123456789012345678901234567890");
+      check_equal(bigint_len, strlen("123456789012345678901234567890"));
       check(data_bind_value_kind(data_bind_value_get(invoice, "total")) == DATA_BIND_VALUE_MONEY);
-      check_int_eq(data_bind_value_get_money(data_bind_value_get(invoice, "total"), &money),
+      check_equal(data_bind_value_get_money(data_bind_value_get(invoice, "total"), &money),
                    DATA_BIND_OK);
-      check_str_eq(money.currency, "USD");
-      check_int_eq((int)money.amount.mantissa, 12345);
-      check_int_eq(money.amount.scale, 2);
-      check_str_eq(data_bind_value_as_money_string(data_bind_value_get(invoice, "total"), text,
+      check_equal(money.currency, "USD");
+      check_equal((int)money.amount.mantissa, 12345);
+      check_equal(money.amount.scale, 2);
+      check_equal(data_bind_value_as_money_string(data_bind_value_get(invoice, "total"), text,
                                                    sizeof(text)),
                    "USD 123.45");
 
@@ -2173,35 +2173,35 @@ spec("data_bind public API") {
     DataBindObject *object = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
-      check_int_eq(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_object_value(object), "id")),
                    7);
-      check_str_eq(data_bind_value_as_string(
+      check_equal(data_bind_value_as_string(
                        data_bind_value_get(data_bind_object_value(object), "name")),
                    "JSON");
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(data_bind_object_from_json(codec, "Order", legacy_json, strlen(legacy_json),
+      check_equal(data_bind_object_from_json(codec, "Order", legacy_json, strlen(legacy_json),
                                               &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_object_value(object), "id")),
                    8);
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(data_bind_object_from_yaml(codec, "Order", yaml, strlen(yaml), &object, &err),
+      check_equal(data_bind_object_from_yaml(codec, "Order", yaml, strlen(yaml), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_object_value(object), "id")),
                    9);
-      check_str_eq(data_bind_value_as_string(
+      check_equal(data_bind_value_as_string(
                        data_bind_value_get(data_bind_object_value(object), "name")),
                    "YAML");
       data_bind_object_free(object);
@@ -2220,26 +2220,26 @@ spec("data_bind public API") {
     DataBindObject *object = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
-      check_int_eq(data_bind_object_from_xml(codec, "Order", xml, strlen(xml), &object, &err),
+      check_equal(data_bind_object_from_xml(codec, "Order", xml, strlen(xml), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_object_value(object), "id")),
                    10);
-      check_str_eq(data_bind_value_as_string(
+      check_equal(data_bind_value_as_string(
                        data_bind_value_get(data_bind_object_value(object), "name")),
                    "XML");
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(data_bind_object_from_csv(codec, "Order", csv, strlen(csv), 0, &object, &err),
+      check_equal(data_bind_object_from_csv(codec, "Order", csv, strlen(csv), 0, &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_value_as_int(
+      check_equal(data_bind_value_as_int(
                        data_bind_value_get(data_bind_object_value(object), "id")),
                    11);
-      check_str_eq(data_bind_value_as_string(
+      check_equal(data_bind_value_as_string(
                        data_bind_value_get(data_bind_object_value(object), "name")),
                    "CSV");
       data_bind_object_free(object);
@@ -2261,29 +2261,29 @@ spec("data_bind public API") {
     char *csv_output = NULL;
     size_t output_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
-      check_int_eq(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
+      check_equal(data_bind_object_from_json(codec, "Order", json, strlen(json), &object, &err),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_json(codec, object, &json_output, &output_len, &err),
+      check_equal(data_bind_object_serialize_json(codec, object, &json_output, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(json_output, "\"orderId\":12");
-      check_str_contains(json_output, "\"shipping\"");
-      check_str_contains(json_output, "\"postalCode\":90210");
+      check_contains(json_output, "\"orderId\":12");
+      check_contains(json_output, "\"shipping\"");
+      check_contains(json_output, "\"postalCode\":90210");
       check_null(strstr(json_output, "\"id\""));
-      check_int_eq(data_bind_object_serialize_yaml(codec, object, &yaml_output, &output_len, &err),
+      check_equal(data_bind_object_serialize_yaml(codec, object, &yaml_output, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(yaml_output, "orderId");
-      check_str_contains(yaml_output, "postalCode");
-      check_int_eq(data_bind_object_serialize_xml(codec, object, &xml_output, &output_len, &err),
+      check_contains(yaml_output, "orderId");
+      check_contains(yaml_output, "postalCode");
+      check_equal(data_bind_object_serialize_xml(codec, object, &xml_output, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(xml_output, "<orderId>12</orderId>");
-      check_str_contains(xml_output, "<postalCode>90210</postalCode>");
-      check_int_eq(data_bind_object_serialize_csv(codec, object, &csv_output, &output_len, &err),
+      check_contains(xml_output, "<orderId>12</orderId>");
+      check_contains(xml_output, "<postalCode>90210</postalCode>");
+      check_equal(data_bind_object_serialize_csv(codec, object, &csv_output, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(csv_output, "orderId");
-      check_str_contains(csv_output, "shipping.postalCode");
+      check_contains(csv_output, "orderId");
+      check_contains(csv_output, "shipping.postalCode");
 
       check_not_null(data_bind_value_get(data_bind_object_value(object), "id"));
       check_null(data_bind_value_get(data_bind_object_value(object), "orderId"));
@@ -2311,38 +2311,38 @@ spec("data_bind public API") {
     DataBindError err = DATA_BIND_ERROR_INIT;
     const DataBindValue *choice;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
-      check_int_eq(
+      check_equal(
           data_bind_object_from_json(codec, "Envelope", json, strlen(json), &object, &err),
           DATA_BIND_OK);
       choice = data_bind_value_get(data_bind_object_value(object), "choice");
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 21);
+      check_equal(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 21);
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(
+      check_equal(
           data_bind_object_from_yaml(codec, "Envelope", yaml, strlen(yaml), &object, &err),
           DATA_BIND_OK);
       choice = data_bind_value_get(data_bind_object_value(object), "choice");
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 22);
+      check_equal(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 22);
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(
+      check_equal(
           data_bind_object_from_xml(codec, "Envelope", xml, strlen(xml), &object, &err),
           DATA_BIND_OK);
       choice = data_bind_value_get(data_bind_object_value(object), "choice");
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 23);
+      check_equal(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 23);
       data_bind_object_free(object);
       object = NULL;
 
-      check_int_eq(
+      check_equal(
           data_bind_object_from_csv(codec, "Envelope", csv, strlen(csv), 0, &object, &err),
           DATA_BIND_OK);
       choice = data_bind_value_get(data_bind_object_value(object), "choice");
-      check_int_eq(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 24);
+      check_equal(data_bind_value_as_int(data_bind_value_get(choice, "buy")), 24);
       data_bind_object_free(object);
       data_bind_free(codec);
     }
@@ -2361,21 +2361,21 @@ spec("data_bind public API") {
     char *mapped_csv = NULL;
     size_t output_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL) {
-      check_int_eq(
+      check_equal(
           data_bind_object_from_json(codec, "Envelope", json, strlen(json), &object, &err),
           DATA_BIND_OK);
-      check_int_eq(data_bind_object_serialize_json(codec, object, &mapped_json, &output_len, &err),
+      check_equal(data_bind_object_serialize_json(codec, object, &mapped_json, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(mapped_json, "\"payload\":{\"buyOrder\":25}");
-      check_int_eq(data_bind_object_serialize_xml(codec, object, &mapped_xml, &output_len, &err),
+      check_contains(mapped_json, "\"payload\":{\"buyOrder\":25}");
+      check_equal(data_bind_object_serialize_xml(codec, object, &mapped_xml, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(mapped_xml, "<buyOrder>25</buyOrder>");
-      check_int_eq(data_bind_object_serialize_csv(codec, object, &mapped_csv, &output_len, &err),
+      check_contains(mapped_xml, "<buyOrder>25</buyOrder>");
+      check_equal(data_bind_object_serialize_csv(codec, object, &mapped_csv, &output_len, &err),
                    DATA_BIND_OK);
-      check_str_contains(mapped_csv, "payload.buyOrder");
+      check_contains(mapped_csv, "payload.buyOrder");
 
       data_bind_serialized_free(mapped_json);
       data_bind_serialized_free(mapped_xml);
@@ -2392,11 +2392,11 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err),
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err),
                  DATA_BIND_ERR_SCHEMA);
     check_null(codec);
-    check_str_eq(err.path, "Collision.first");
-    check_str_contains(err.message, "shared");
+    check_equal(err.path, "Collision.first");
+    check_contains(err.message, "shared");
   }
 
   it("should reject non-portable generic binding names") {
@@ -2404,11 +2404,11 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &err),
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &err),
                  DATA_BIND_ERR_SCHEMA);
     check_null(codec);
-    check_str_eq(err.path, "Invalid.value");
-    check_str_contains(err.message, "not portable");
+    check_equal(err.path, "Invalid.value");
+    check_contains(err.message, "not portable");
   }
 
   it("should honor reflection struct size guards") {
@@ -2418,7 +2418,7 @@ spec("data_bind public API") {
     DataBind *codec = NULL;
     DataBindError err = DATA_BIND_ERROR_INIT;
     DataBindStatus status = data_bind_create_from_text(schema, strlen(schema), &codec, &err);
-    check_int_eq(status, DATA_BIND_OK);
+    check_equal(status, DATA_BIND_OK);
     check_not_null(codec);
 
     if (codec) {
@@ -2444,40 +2444,40 @@ spec("data_bind public API") {
       memcpy(type_buf.guard, guard, sizeof(guard));
       type_buf.type.size = offsetof(DataBindSchemaType, fixed_block_size);
       check(data_bind_schema_find_type(codec, "Order", &type_buf.type) == 1);
-      check_size_eq(type_buf.type.size, offsetof(DataBindSchemaType, fixed_block_size));
-      check_str_eq(type_buf.type.name, "Order");
-      check_mem_eq(type_buf.guard, guard, sizeof(guard));
+      check_equal(type_buf.type.size, offsetof(DataBindSchemaType, fixed_block_size));
+      check_equal(type_buf.type.name, "Order");
+      check_equal(type_buf.guard, guard, sizeof(guard));
 
       memset(&field_buf, 0, sizeof(field_buf));
       memcpy(field_buf.guard, guard, sizeof(guard));
       field_buf.field.size = offsetof(DataBindSchemaField, offset);
       check(data_bind_schema_field_at(codec, "Order", 1, &field_buf.field) == 1);
-      check_size_eq(field_buf.field.size, offsetof(DataBindSchemaField, offset));
-      check_str_eq(field_buf.field.name, "side");
-      check_str_eq(field_buf.field.kind, "enum");
-      check_mem_eq(field_buf.guard, guard, sizeof(guard));
+      check_equal(field_buf.field.size, offsetof(DataBindSchemaField, offset));
+      check_equal(field_buf.field.name, "side");
+      check_equal(field_buf.field.kind, "enum");
+      check_equal(field_buf.guard, guard, sizeof(guard));
 
       memset(&item_buf, 0, sizeof(item_buf));
       memcpy(item_buf.guard, guard, sizeof(guard));
       item_buf.item.size = offsetof(DataBindSchemaEnumItem, value);
       check(data_bind_schema_enum_item_at(codec, "Side", 0, &item_buf.item) == 1);
-      check_size_eq(item_buf.item.size, offsetof(DataBindSchemaEnumItem, value));
-      check_str_eq(item_buf.item.name, "Buy");
-      check_mem_eq(item_buf.guard, guard, sizeof(guard));
+      check_equal(item_buf.item.size, offsetof(DataBindSchemaEnumItem, value));
+      check_equal(item_buf.item.name, "Buy");
+      check_equal(item_buf.guard, guard, sizeof(guard));
 
       memset(&attr_buf, 0, sizeof(attr_buf));
       memcpy(attr_buf.guard, guard, sizeof(guard));
       attr_buf.attr.size = offsetof(DataBindSchemaAttribute, value);
       check(data_bind_schema_attribute_at(codec, 0, &attr_buf.attr) == 1);
-      check_size_eq(attr_buf.attr.size, offsetof(DataBindSchemaAttribute, value));
-      check_str_eq(attr_buf.attr.name, "id");
-      check_mem_eq(attr_buf.guard, guard, sizeof(guard));
+      check_equal(attr_buf.attr.size, offsetof(DataBindSchemaAttribute, value));
+      check_equal(attr_buf.attr.name, "id");
+      check_equal(attr_buf.guard, guard, sizeof(guard));
 
       type_buf.type.size = offsetof(DataBindSchemaType, fixed_block_size);
       memcpy(type_buf.guard, guard, sizeof(guard));
       check(data_bind_schema_find_type(codec, "Missing", &type_buf.type) == 0);
-      check_size_eq(type_buf.type.size, offsetof(DataBindSchemaType, fixed_block_size));
-      check_mem_eq(type_buf.guard, guard, sizeof(guard));
+      check_equal(type_buf.type.size, offsetof(DataBindSchemaType, fixed_block_size));
+      check_equal(type_buf.guard, guard, sizeof(guard));
 
       data_bind_free(codec);
     }
@@ -2492,19 +2492,19 @@ spec("data_bind public API") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     size_t i;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
     for (i = 0; codec != NULL && i < 3u; ++i) {
       const DataBindValue *number;
-      check_int_eq(data_bind_parse_json(codec, "Number", inputs[i], strlen(inputs[i]), &value,
+      check_equal(data_bind_parse_json(codec, "Number", inputs[i], strlen(inputs[i]), &value,
                                         &error),
                    DATA_BIND_OK);
       number = data_bind_value_get(value, "value");
       check_not_null(number);
       if (i < 2u) {
-        check_int_eq(data_bind_value_as_int(number), 0);
+        check_equal(data_bind_value_as_int(number), 0);
         check(data_bind_value_as_int64(number) == INT64_C(0));
       } else {
-        check_int_eq(data_bind_value_as_int(number), 42);
+        check_equal(data_bind_value_as_int(number), 42);
         check(data_bind_value_as_int64(number) == INT64_C(42));
       }
       data_bind_value_free(value);
@@ -2523,14 +2523,14 @@ spec("data_bind public API") {
     data_bind_stream_t *stream;
 
     state.fail = 1;
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
     stream = data_bind_stream_yaml_all_create(codec, "Order", &value, &error);
     check_not_null(stream);
     if (stream != NULL) {
-      check_int_eq(data_bind_stream_set_record_callback(stream, collect_record, &state),
+      check_equal(data_bind_stream_set_record_callback(stream, collect_record, &state),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_RUNTIME);
+      check_equal(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_RUNTIME);
       check_null(value);
       data_bind_stream_destroy(stream);
       stream = NULL;
@@ -2555,21 +2555,21 @@ spec("data_bind public API") {
     config.output_mode = DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY;
     config.record_callback = collect_record;
     config.record_callback_user = &state;
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error), DATA_BIND_OK);
     config.format = DATA_BIND_FORMAT_BINARY;
     error.code = DATA_BIND_ERR_PARSE;
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error),
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error),
                  DATA_BIND_ERR_INVALID_ARG);
     check_null(stream);
-    check_int_eq(error.code, DATA_BIND_ERR_INVALID_ARG);
+    check_equal(error.code, DATA_BIND_ERR_INVALID_ARG);
     config.format = DATA_BIND_FORMAT_JSON;
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
     check_not_null(stream);
     if (stream != NULL) {
-      check_int_eq(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_ERR_CANCELED);
-      check_size_eq(state.count, 1u);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_CANCELED);
-      check_int_eq(data_bind_stream_cancel(stream), DATA_BIND_ERR_CANCELED);
+      check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_ERR_CANCELED);
+      check_equal(state.count, 1u);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_CANCELED);
+      check_equal(data_bind_stream_cancel(stream), DATA_BIND_ERR_CANCELED);
       data_bind_stream_destroy(stream);
     }
     data_bind_free(codec);
@@ -2592,19 +2592,19 @@ spec("data_bind public API") {
     config.out_value = &value;
     config.query_limits.max_steps = 1;
 
-    check_int_eq(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error),
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error),
                  DATA_BIND_OK);
     check_not_null(stream);
     if (stream != NULL) {
-      check_int_eq(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
-      check_int_eq(error.code, DATA_BIND_ERR_LIMIT);
+      check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
+      check_equal(error.code, DATA_BIND_ERR_LIMIT);
       check_null(value);
-      check_int_eq(data_bind_stream_query_diagnostic(stream, &diagnostic),
+      check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic),
                    DATA_BIND_OK);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       check(strstr(diagnostic.message, "limit") != NULL);
       data_bind_stream_destroy(stream);
       stream = NULL;
@@ -2613,13 +2613,13 @@ spec("data_bind public API") {
     config.format = DATA_BIND_FORMAT_YAML;
     config.path = "/orders[?@.id > 0 && @.id < 3]";
     diagnostic = (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
     if (stream != NULL) {
       const char *yaml = "orders:\n  - id: 1\n  - id: 2\n";
-      check_int_eq(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
-      check_int_eq(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
+      check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2627,12 +2627,12 @@ spec("data_bind public API") {
     config.format = DATA_BIND_FORMAT_CSV;
     config.path = "id + 1 > 0";
     diagnostic = (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
     if (stream != NULL) {
       const char *csv = "id_n\n1\n";
-      check_int_eq(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
-      check_int_eq(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
+      check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2640,13 +2640,13 @@ spec("data_bind public API") {
     config.format = DATA_BIND_FORMAT_XML;
     config.path = "//order[1 + 1 = 2]";
     diagnostic = (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-    check_int_eq(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error), DATA_BIND_OK);
     if (stream != NULL) {
       const char *xml = "<orders><order><id>1</id></order></orders>";
-      check_int_eq(data_bind_stream_feed(stream, xml, strlen(xml)), DATA_BIND_OK);
-      check_int_eq(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
-      check_int_eq(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(data_bind_stream_feed(stream, xml, strlen(xml)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
+      check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
     }
     data_bind_free(codec);

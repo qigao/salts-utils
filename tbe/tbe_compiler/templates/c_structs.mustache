@@ -322,13 +322,13 @@ static inline const uint8_t *{{name}}_cursor_end(const {{name}}_cursor_t *cursor
 {{#fields}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
-    tstr_t key;
+    tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -676,13 +676,13 @@ static inline const uint8_t *{{owner_name}}_{{name}}_ptr(const {{owner_name}}_vi
 {{#fields}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
-    tstr_t key;
+    tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -1262,13 +1262,13 @@ static inline const uint8_t *{{owner_name}}_{{name}}_ptr(const {{owner_name}}_vi
 {{#fields}}
 {{#typed_needs_map_vector}}
 typedef struct {{typed_map_entry_type}} {
-    tstr_t key;
+    tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TURBO_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}

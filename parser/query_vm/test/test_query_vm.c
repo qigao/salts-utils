@@ -174,7 +174,7 @@ suite("query vm") {
           {QVM_OP_LOAD_CONST, 0, 0, 0, 1, 0},
       };
       qvm_verify_error_t error;
-      check_int_eq(qvm_verify_slice(program, 3, 0, 3, 2, 2, 0, &error),
+      check_equal(qvm_verify_slice(program, 3, 0, 3, 2, 2, 0, &error),
                    QVM_STATUS_OK);
     }
 
@@ -186,9 +186,9 @@ suite("query vm") {
       qvm_instruction_t bad_register[] = {
           {QVM_OP_LOAD_CONST, 0, QVM_MAX_REGISTERS, 0, 0, 0},
       };
-      check_int_eq(qvm_verify_slice(backward, 2, 0, 2, 1, 1, 0, NULL),
+      check_equal(qvm_verify_slice(backward, 2, 0, 2, 1, 1, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_int_eq(qvm_verify_slice(bad_register, 1, 0, 1, QVM_MAX_REGISTERS,
+      check_equal(qvm_verify_slice(bad_register, 1, 0, 1, QVM_MAX_REGISTERS,
                                     1, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
     }
@@ -203,9 +203,9 @@ suite("query vm") {
           {QVM_OP_TRUE, 0, 0, 0, 0, 0},
           {QVM_OP_NOT, 0, 0, 0, 0, 0},
       };
-      check_int_eq(qvm_verify_slice(direct, 1, 0, 1, 2, 0, 0, NULL),
+      check_equal(qvm_verify_slice(direct, 1, 0, 1, 2, 0, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_int_eq(qvm_verify_slice(branch, 4, 0, 4, 2, 0, 0, NULL),
+      check_equal(qvm_verify_slice(branch, 4, 0, 4, 2, 0, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
     }
 
@@ -216,13 +216,13 @@ suite("query vm") {
       qvm_limits_t limits = qvm_default_limits();
       qvm_diagnostic_t diagnostic;
       limits.max_instructions = 0;
-      check_int_eq(qvm_verify_slice_ex(program, 1, 0, 1, 1, 0, 0, &limits,
+      check_equal(qvm_verify_slice_ex(program, 1, 0, 1, 1, 0, 0, &limits,
                                        &diagnostic),
                    QVM_STATUS_RESOURCE_LIMIT);
-      check_int_eq(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
-      check_uint_eq(diagnostic.instruction, 0);
-      check_uint_eq(diagnostic.opcode, QVM_NO_OPCODE);
-      check_uint_eq(diagnostic.operand, 1);
+      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
+      check_equal(diagnostic.instruction, 0);
+      check_equal(diagnostic.opcode, QVM_NO_OPCODE);
+      check_equal(diagnostic.operand, 1);
     }
 
     it("reports the failing instruction and operand") {
@@ -230,13 +230,13 @@ suite("query vm") {
           {QVM_OP_LOAD_CONST, 0, 2, 0, 0, 0},
       };
       qvm_diagnostic_t diagnostic;
-      check_int_eq(qvm_verify_slice(program, 1, 0, 1, 1, 1, 0,
+      check_equal(qvm_verify_slice(program, 1, 0, 1, 1, 1, 0,
                                     &diagnostic),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_uint_eq(diagnostic.instruction, 0);
-      check_uint_eq(diagnostic.opcode, QVM_OP_LOAD_CONST);
-      check_uint_eq(diagnostic.operand, 2);
-      check_str_eq(diagnostic.message,
+      check_equal(diagnostic.instruction, 0);
+      check_equal(diagnostic.opcode, QVM_OP_LOAD_CONST);
+      check_equal(diagnostic.operand, 2);
+      check_equal(diagnostic.message,
                    "destination register is out of range");
     }
 
@@ -255,12 +255,12 @@ suite("query vm") {
           {QVM_OP_BAND, 0, 0, 0, 0, QVM_MAX_REGISTERS},
       };
       qvm_verify_error_t error;
-      check_int_eq(qvm_verify_slice(select_bad, 3, 0, 3, 2, 1, 0, &error),
+      check_equal(qvm_verify_slice(select_bad, 3, 0, 3, 2, 1, 0, &error),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_uint_eq(error.operand, QVM_MAX_REGISTERS);
-      check_int_eq(qvm_verify_slice(bnot_bad, 1, 0, 1, 1, 0, 0, NULL),
+      check_equal(error.operand, QVM_MAX_REGISTERS);
+      check_equal(qvm_verify_slice(bnot_bad, 1, 0, 1, 1, 0, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_int_eq(qvm_verify_slice(band_bad, 3, 0, 3, 2, 1, 0, NULL),
+      check_equal(qvm_verify_slice(band_bad, 3, 0, 3, 2, 1, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
     }
 
@@ -270,7 +270,7 @@ suite("query vm") {
           {QVM_OP_TRUE, 0, 2, 0, 0, 0},
           {QVM_OP_SELECT, 0, 0, 3, 1, 2},
       };
-      check_int_eq(qvm_verify_slice(program, 3, 0, 3, 4, 0, 0, NULL),
+      check_equal(qvm_verify_slice(program, 3, 0, 3, 4, 0, 0, NULL),
                    QVM_STATUS_INVALID_PROGRAM);
     }
   }
@@ -289,11 +289,11 @@ suite("query vm") {
       backend.operands[0].boolean = 0;
       backend.operands[1].type = TEST_BOOL;
       backend.operands[1].boolean = 1;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq(out.type, TEST_BOOL);
+      check_equal(out.type, TEST_BOOL);
       check_false(out.boolean);
-      check_int_eq(backend.resolve_count, 1);
+      check_equal(backend.resolve_count, 1);
     }
 
     it("uses the single-instruction numeric leaf path") {
@@ -307,11 +307,11 @@ suite("query vm") {
       backend.operands[0].number = 1.0;
       backend.operands[1].type = TEST_NUMBER;
       backend.operands[1].number = 2.0;
-      check_int_eq(qvm_execute(program, 1, 0, 1, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 1, 0, 1, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
       check_true(out.boolean);
-      check_int_eq(backend.leaf_count, 1);
-      check_int_eq(backend.resolve_count, 0);
+      check_equal(backend.leaf_count, 1);
+      check_equal(backend.resolve_count, 0);
     }
 
     it("stops when the execution step budget is exhausted") {
@@ -327,13 +327,13 @@ suite("query vm") {
       limits.max_steps = 1;
       backend.operands[0].type = TEST_BOOL;
       backend.operands[1].type = TEST_BOOL;
-      check_int_eq(qvm_execute_ex(program, 2, 0, 2, &ops, &backend, NULL,
+      check_equal(qvm_execute_ex(program, 2, 0, 2, &ops, &backend, NULL,
                                   &out, &limits, &diagnostic),
                    QVM_STATUS_RESOURCE_LIMIT);
-      check_uint_eq(diagnostic.instruction, 1);
-      check_uint_eq(diagnostic.opcode, QVM_OP_LOAD_CONST);
-      check_uint_eq(diagnostic.operand, 1);
-      check_int_eq(backend.resolve_count, 1);
+      check_equal(diagnostic.instruction, 1);
+      check_equal(diagnostic.opcode, QVM_OP_LOAD_CONST);
+      check_equal(diagnostic.operand, 1);
+      check_equal(backend.resolve_count, 1);
     }
 
     it("reports backend failures with bytecode context") {
@@ -348,12 +348,12 @@ suite("query vm") {
       qvm_value_t out;
       backend.operands[0].type = TEST_NUMBER;
       backend.operands[1].type = TEST_NUMBER;
-      check_int_eq(qvm_execute_ex(program, 3, 0, 3, &ops, &backend, NULL,
+      check_equal(qvm_execute_ex(program, 3, 0, 3, &ops, &backend, NULL,
                                   &out, NULL, &diagnostic),
                    QVM_STATUS_BACKEND_ERROR);
-      check_uint_eq(diagnostic.instruction, 2);
-      check_uint_eq(diagnostic.opcode, QVM_OP_MOD);
-      check_str_eq(diagnostic.message, "QVM binary backend failed");
+      check_equal(diagnostic.instruction, 2);
+      check_equal(diagnostic.opcode, QVM_OP_MOD);
+      check_equal(diagnostic.message, "QVM binary backend failed");
     }
 
     it("rejects malformed bytecode before register access") {
@@ -364,12 +364,12 @@ suite("query vm") {
       qvm_exec_ops_t ops = test_ops();
       qvm_diagnostic_t diagnostic;
       qvm_value_t out;
-      check_int_eq(qvm_execute_ex(program, 1, 0, 1, &ops, &backend, NULL,
+      check_equal(qvm_execute_ex(program, 1, 0, 1, &ops, &backend, NULL,
                                   &out, NULL, &diagnostic),
                    QVM_STATUS_INVALID_PROGRAM);
-      check_uint_eq(diagnostic.instruction, 0);
-      check_uint_eq(diagnostic.opcode, QVM_OP_NOT);
-      check_uint_eq(diagnostic.operand, QVM_MAX_REGISTERS);
+      check_equal(diagnostic.instruction, 0);
+      check_equal(diagnostic.opcode, QVM_OP_NOT);
+      check_equal(diagnostic.operand, QVM_MAX_REGISTERS);
     }
 
     it("selects between two registers by truthiness") {
@@ -388,15 +388,15 @@ suite("query vm") {
       backend.operands[1].number = 11.0;
       backend.operands[2].type = TEST_NUMBER;
       backend.operands[2].number = 22.0;
-      check_int_eq(qvm_execute(program, 4, 0, 4, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 4, 0, 4, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq(out.type, TEST_NUMBER);
-      check_int_eq((int)out.number, 11);
+      check_equal(out.type, TEST_NUMBER);
+      check_equal((int)out.number, 11);
 
       backend.operands[0].boolean = 0;
-      check_int_eq(qvm_execute(program, 4, 0, 4, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 4, 0, 4, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 22);
+      check_equal((int)out.number, 22);
     }
 
     it("executes bitwise and shift operations through the binary backend") {
@@ -412,37 +412,37 @@ suite("query vm") {
       backend.operands[0].number = 6.0;
       backend.operands[1].type = TEST_NUMBER;
       backend.operands[1].number = 3.0;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 2);
+      check_equal((int)out.number, 2);
 
       program[2].op = QVM_OP_BOR;
       backend.operands[0].number = 4.0;
       backend.operands[1].number = 1.0;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 5);
+      check_equal((int)out.number, 5);
 
       program[2].op = QVM_OP_BXOR;
       backend.operands[0].number = 6.0;
       backend.operands[1].number = 3.0;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 5);
+      check_equal((int)out.number, 5);
 
       program[2].op = QVM_OP_LSHIFT;
       backend.operands[0].number = 1.0;
       backend.operands[1].number = 4.0;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 16);
+      check_equal((int)out.number, 16);
 
       program[2].op = QVM_OP_RSHIFT;
       backend.operands[0].number = 16.0;
       backend.operands[1].number = 2.0;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, 4);
+      check_equal((int)out.number, 4);
     }
 
     it("executes bitwise not through the unary backend") {
@@ -455,9 +455,9 @@ suite("query vm") {
       qvm_value_t out;
       backend.operands[0].type = TEST_NUMBER;
       backend.operands[0].number = 0.0;
-      check_int_eq(qvm_execute(program, 2, 0, 2, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 2, 0, 2, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq((int)out.number, -1);
+      check_equal((int)out.number, -1);
     }
 
     it("concatenates strings through the binary backend") {
@@ -475,11 +475,11 @@ suite("query vm") {
       backend.operands[1].type = TEST_STRING;
       backend.operands[1].str = "bar";
       backend.operands[1].length = 3;
-      check_int_eq(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
+      check_equal(qvm_execute(program, 3, 0, 3, &ops, &backend, NULL, &out),
                    QVM_STATUS_OK);
-      check_int_eq(out.type, TEST_STRING);
-      check_size_eq(out.length, 6);
-      check_str_eq(out.str, "foobar");
+      check_equal(out.type, TEST_STRING);
+      check_equal(out.length, 6);
+      check_equal(out.str, "foobar");
     }
   }
 
@@ -491,19 +491,19 @@ suite("query vm") {
       };
       char buffer[256];
       size_t required = 0;
-      check_int_eq(qvm_disassemble_slice(program, 2, 0, 2, NULL, 0,
+      check_equal(qvm_disassemble_slice(program, 2, 0, 2, NULL, 0,
                                          &required, NULL),
                    QVM_STATUS_BUFFER_TOO_SMALL);
-      check_size_gt(required, 0);
-      check_int_eq(qvm_disassemble_slice(program, 2, 0, 2, buffer,
+      check_greater(required, 0);
+      check_equal(qvm_disassemble_slice(program, 2, 0, 2, buffer,
                                          sizeof(buffer), &required, NULL),
                    QVM_STATUS_OK);
-      check_str_contains(buffer, "0000 TRUE");
-      check_str_contains(buffer, "0001 NOT");
-      check_str_eq(qvm_opcode_name(QVM_OP_NOT), "NOT");
-      check_str_eq(qvm_opcode_name(QVM_OP_BAND), "BAND");
-      check_str_eq(qvm_opcode_name(QVM_OP_SELECT), "SELECT");
-      check_str_eq(qvm_opcode_name((qvm_opcode_t)QVM_OP_COUNT_VALUE),
+      check_contains(buffer, "0000 TRUE");
+      check_contains(buffer, "0001 NOT");
+      check_equal(qvm_opcode_name(QVM_OP_NOT), "NOT");
+      check_equal(qvm_opcode_name(QVM_OP_BAND), "BAND");
+      check_equal(qvm_opcode_name(QVM_OP_SELECT), "SELECT");
+      check_equal(qvm_opcode_name((qvm_opcode_t)QVM_OP_COUNT_VALUE),
                    "UNKNOWN");
     }
   }

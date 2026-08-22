@@ -38,7 +38,7 @@ typedef struct MUSTACHE_JSON_PROVIDER {
  * @param user_data User data passed to template loader
  * @return 0 on success, -1 on error
  */
-CXX_C_API int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, json_value_t *json_data,
+MUSTACHE_API int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, json_value_t *json_data,
                                           MUSTACHE_TEMPLATE *(*template_loader)(const char *,
                                                                                 size_t, void *),
                                           void *user_data);
@@ -55,7 +55,7 @@ CXX_C_API int mustache_json_provider_init(MUSTACHE_JSON_PROVIDER *provider, json
  * @param arena Non-NULL arena that outlives the render.
  * @return 0 on success, -1 for invalid arguments.
  */
-CXX_C_API int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provider,
+MUSTACHE_API int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provider,
                                                 json_value_t *json_data,
                                                 MUSTACHE_TEMPLATE *(*template_loader)(const char *,
                                                                                       size_t,
@@ -74,7 +74,7 @@ CXX_C_API int mustache_json_provider_init_arena(MUSTACHE_JSON_PROVIDER *provider
  * @return 0 on success; -1 on invalid arguments, callback failure, allocation
  *         failure, or expansion-depth exhaustion. Partial output is retained.
  */
-CXX_C_API int mustache_render_json(const MUSTACHE_TEMPLATE *templ, json_value_t *json_data,
+MUSTACHE_API int mustache_render_json(const MUSTACHE_TEMPLATE *templ, json_value_t *json_data,
                                    const MUSTACHE_RENDERER *renderer, void *renderer_data,
                                    MUSTACHE_TEMPLATE *(*template_loader)(const char *, size_t,
                                                                          void *),

@@ -7,7 +7,23 @@
 #include <stdint.h>
 #include <time.h>
 #include <turbo_error.h>
-#include <turbo_str_view.h>
+#include <turbo_vstr.h>
+
+#ifndef TURBO_PARSER_API
+  #if defined(_WIN32)
+    #if defined(TURBO_PARSER_BUILD_DLL)
+      #define TURBO_PARSER_API __declspec(dllexport)
+    #elif defined(TURBO_PARSER_USE_DLL)
+      #define TURBO_PARSER_API __declspec(dllimport)
+    #else
+      #define TURBO_PARSER_API
+    #endif
+  #elif defined(__GNUC__) && __GNUC__ >= 4
+    #define TURBO_PARSER_API __attribute__((visibility("default")))
+  #else
+    #define TURBO_PARSER_API
+  #endif
+#endif
 
 /** Serialized byte sink. Calls may use arbitrary non-empty chunk boundaries. */
 typedef int (*turbo_write_fn)(const void *data, size_t len, void *user);

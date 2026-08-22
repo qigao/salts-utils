@@ -117,7 +117,7 @@ static void *json_get_child_by_name(void *node, const char *name, size_t size,
     return NULL;
   }
 
-  return json_object_get_v(json_node, tstr_v_from_buf(name, size));
+  return json_object_get_v(json_node, vstr_from_buf(name, size));
 }
 
 static void *json_get_child_by_index(void *node, unsigned index, void *provider_data) {

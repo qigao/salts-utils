@@ -45,20 +45,20 @@ typedef struct {
  * @param out Address of a pointer (turbo_toml_t **) to store the result.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_parse_toml(const uint8_t *data, size_t len, void *out);
+TURBO_PARSER_API int turbo_parse_toml(const uint8_t *data, size_t len, void *out);
 
 /**
  * @brief Free TOML data and set pointer to NULL.
  * @param out Address of the pointer (turbo_toml_t **) to free.
  */
-CXX_C_API void turbo_free_toml(void *out);
+TURBO_PARSER_API void turbo_free_toml(void *out);
 
 /**
  * @brief Get the number of entries in a TOML table.
  * @param table Pointer to TOML table.
  * @return Number of entries.
  */
-CXX_C_API int turbo_toml_len(const turbo_toml_t *table);
+TURBO_PARSER_API int turbo_toml_len(const turbo_toml_t *table);
 
 /**
  * @brief Get the key name at a specific index in a TOML table.
@@ -67,7 +67,7 @@ CXX_C_API int turbo_toml_len(const turbo_toml_t *table);
  * @param keylen Optional pointer to store key string length.
  * @return Key name string.
  */
-CXX_C_API const char *turbo_toml_key(const turbo_toml_t *table, int index, int *keylen);
+TURBO_PARSER_API const char *turbo_toml_key(const turbo_toml_t *table, int index, int *keylen);
 
 /**
  * @brief Get a string value from a TOML table by key.
@@ -75,7 +75,7 @@ CXX_C_API const char *turbo_toml_key(const turbo_toml_t *table, int index, int *
  * @param key Entry key.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_string(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_string(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get a boolean value from a TOML table by key.
@@ -83,7 +83,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_string(const turbo_toml_t *table, const 
  * @param key Entry key.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_bool(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_bool(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get an integer value from a TOML table by key.
@@ -91,7 +91,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_bool(const turbo_toml_t *table, const ch
  * @param key Entry key.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_int(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_int(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get a floating-point value from a TOML table by key.
@@ -99,7 +99,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_int(const turbo_toml_t *table, const cha
  * @param key Entry key.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_double(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_double(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get a timestamp value from a TOML table by key.
@@ -107,7 +107,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_double(const turbo_toml_t *table, const 
  * @param key Entry key.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_timestamp(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_timestamp(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get a sub-array from a TOML table by key.
@@ -115,7 +115,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_timestamp(const turbo_toml_t *table, con
  * @param key Entry key.
  * @return Pointer to TOML array if found, NULL otherwise.
  */
-CXX_C_API turbo_toml_array_t *turbo_toml_array(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_array_t *turbo_toml_array(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get a nested table from a TOML table by key.
@@ -123,14 +123,14 @@ CXX_C_API turbo_toml_array_t *turbo_toml_array(const turbo_toml_t *table, const 
  * @param key Entry key.
  * @return Pointer to TOML table if found, NULL otherwise.
  */
-CXX_C_API turbo_toml_t *turbo_toml_table(const turbo_toml_t *table, const char *key);
+TURBO_PARSER_API turbo_toml_t *turbo_toml_table(const turbo_toml_t *table, const char *key);
 
 /**
  * @brief Get the number of elements in a TOML array.
  * @param array Pointer to TOML array.
  * @return Element count.
  */
-CXX_C_API int turbo_toml_array_len(const turbo_toml_array_t *array);
+TURBO_PARSER_API int turbo_toml_array_len(const turbo_toml_array_t *array);
 
 /**
  * @brief Get a string value from a TOML array by index.
@@ -138,7 +138,7 @@ CXX_C_API int turbo_toml_array_len(const turbo_toml_array_t *array);
  * @param idx Element index.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_array_string(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_array_string(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get a boolean value from a TOML array by index.
@@ -146,7 +146,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_array_string(const turbo_toml_array_t *a
  * @param idx Element index.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_array_bool(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_array_bool(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get an integer value from a TOML array by index.
@@ -154,7 +154,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_array_bool(const turbo_toml_array_t *arr
  * @param idx Element index.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_array_int(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_array_int(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get a floating-point value from a TOML array by index.
@@ -162,7 +162,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_array_int(const turbo_toml_array_t *arra
  * @param idx Element index.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_array_double(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_array_double(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get a timestamp value from a TOML array by index.
@@ -170,7 +170,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_array_double(const turbo_toml_array_t *a
  * @param idx Element index.
  * @return Result value structure.
  */
-CXX_C_API turbo_toml_value_t turbo_toml_array_timestamp(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_value_t turbo_toml_array_timestamp(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get a nested array from a TOML array by index.
@@ -178,7 +178,7 @@ CXX_C_API turbo_toml_value_t turbo_toml_array_timestamp(const turbo_toml_array_t
  * @param idx Element index.
  * @return Pointer to TOML array if found, NULL otherwise.
  */
-CXX_C_API turbo_toml_array_t *turbo_toml_array_array(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_array_t *turbo_toml_array_array(const turbo_toml_array_t *array, int idx);
 
 /**
  * @brief Get a nested table from a TOML array by index.
@@ -186,7 +186,7 @@ CXX_C_API turbo_toml_array_t *turbo_toml_array_array(const turbo_toml_array_t *a
  * @param idx Element index.
  * @return Pointer to TOML table if found, NULL otherwise.
  */
-CXX_C_API turbo_toml_t *turbo_toml_array_table(const turbo_toml_array_t *array, int idx);
+TURBO_PARSER_API turbo_toml_t *turbo_toml_array_table(const turbo_toml_array_t *array, int idx);
 
 #ifdef __cplusplus
 }

@@ -31,7 +31,10 @@ target_link_libraries(
           cyaml_json_adapter
           cxml)
 
-target_compile_definitions(turbo_parser PRIVATE SHARED_CXX)
+target_compile_definitions(turbo_parser PRIVATE TURBO_PARSER_BUILD_DLL)
+if(WIN32)
+  target_compile_definitions(turbo_parser INTERFACE TURBO_PARSER_USE_DLL)
+endif()
 
 install(
   TARGETS turbo_parser

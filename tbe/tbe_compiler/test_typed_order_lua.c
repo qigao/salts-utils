@@ -27,7 +27,7 @@ typedef struct TestOrderApiContext {
 typedef struct TestAsyncOrderOperation {
   TestOrderApiContext *context;
   uint32_t id;
-  tstr_t symbol;
+  tstr symbol;
   unsigned polls;
 } TestAsyncOrderOperation;
 
@@ -221,9 +221,9 @@ spec("generated typed Order Lua adapter") {
     Order_init(&order);
     check_not_null(L);
     if (L != NULL) luaL_openlibs(L);
-    check_int_eq(Orders_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(Orders_codec_create(&codec, &error), DATA_BIND_OK);
     if (codec != NULL)
-      check_int_eq(Order_from_json(codec, &order, json, strlen(json), &error),
+      check_equal(Order_from_json(codec, &order, json, strlen(json), &error),
                    DATA_BIND_OK);
   }
 
@@ -237,8 +237,8 @@ spec("generated typed Order Lua adapter") {
     size_t payload_len = 0;
     const char *payload;
 
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
-    check_int_eq(lua_gettop(L), 1);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
+    check_equal(lua_gettop(L), 1);
     check_true(lua_istable(L, -1));
     check_lua_integer_field(L, -1, "id", 42);
     check_lua_integer_field(L, -1, "min_value", -99);
@@ -252,7 +252,7 @@ spec("generated typed Order Lua adapter") {
 
     lua_getfield(L, -1, "fills");
     check_true(lua_istable(L, -1));
-    check_int_eq((int)lua_rawlen(L, -1), 1);
+    check_equal((int)lua_rawlen(L, -1), 1);
     lua_rawgeti(L, -1, 1);
     check_lua_integer_field(L, -1, "price", 100);
     check_lua_integer_field(L, -1, "qty", 3);
@@ -260,20 +260,20 @@ spec("generated typed Order Lua adapter") {
 
     lua_getfield(L, -1, "payload");
     payload = lua_tolstring(L, -1, &payload_len);
-    check_size_eq(payload_len, 3u);
-    check_mem_eq(payload, "raw", 3u);
+    check_equal(payload_len, 3u);
+    check_equal(payload, "raw", 3u);
     lua_pop(L, 1);
 
     lua_getfield(L, -1, "request_id");
-    check_str_eq(lua_tostring(L, -1), TEST_ORDER_REQUEST_ID);
+    check_equal(lua_tostring(L, -1), TEST_ORDER_REQUEST_ID);
     lua_pop(L, 1);
   }
 
   it("should restore the stack when an integer cannot fit Lua") {
     int base = lua_gettop(L);
     order.max_value = UINT64_MAX;
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_ERR_LIMIT);
-    check_int_eq(lua_gettop(L), base);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_ERR_LIMIT);
+    check_equal(lua_gettop(L), base);
   }
 
   it("should transactionally copy a Lua table into an owning record") {
@@ -281,21 +281,21 @@ spec("generated typed Order Lua adapter") {
     const Fill_t *fill;
 
     Order_init(&decoded);
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
-    check_int_eq(Order_from_lua(L, -1, &decoded, 16u, 64u), DATA_BIND_OK);
-    check_int_eq(lua_gettop(L), 1);
-    check_uint_eq(decoded.order_id, 42u);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
+    check_equal(Order_from_lua(L, -1, &decoded, 16u, 64u), DATA_BIND_OK);
+    check_equal(lua_gettop(L), 1);
+    check_equal(decoded.order_id, 42u);
     check(decoded.min_value == -99);
     check(decoded.max_value == 99u);
-    check_uint_eq(decoded.routing_hint, 9u);
-    check_str_eq(decoded.symbol, "ABC");
-    check_str_eq(decoded.client_tag, "edge-a");
-    check_size_eq(Order_fills_vec_t_size(&decoded.fills), 1u);
+    check_equal(decoded.routing_hint, 9u);
+    check_equal(decoded.symbol, "ABC");
+    check_equal(decoded.client_tag, "edge-a");
+    check_equal(Order_fills_vec_t_size(&decoded.fills), 1u);
     fill = Order_fills_vec_t_at_const(&decoded.fills, 0u);
     check_not_null(fill);
     if (fill != NULL) {
-      check_int_eq(fill->price, 100);
-      check_uint_eq(fill->qty, 3u);
+      check_equal(fill->price, 100);
+      check_equal(fill->qty, 3u);
     }
     Order_clear(&decoded);
   }
@@ -303,46 +303,46 @@ spec("generated typed Order Lua adapter") {
   it("should preserve the destination and stack when Lua input is invalid") {
     int base;
 
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
     lua_pushstring(L, "not-an-integer");
     lua_setfield(L, -2, "id");
     base = lua_gettop(L);
-    check_int_eq(Order_from_lua(L, -1, &order, 16u, 64u),
+    check_equal(Order_from_lua(L, -1, &order, 16u, 64u),
                  DATA_BIND_ERR_TYPE_MISMATCH);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(order.order_id, 42u);
-    check_str_eq(order.symbol, "ABC");
+    check_equal(lua_gettop(L), base);
+    check_equal(order.order_id, 42u);
+    check_equal(order.symbol, "ABC");
   }
 
   it("should reject unknown Lua record keys without modifying the destination") {
     int base;
 
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
     lua_pushboolean(L, 1);
     lua_setfield(L, -2, "unexpected");
     base = lua_gettop(L);
-    check_int_eq(Order_from_lua(L, -1, &order, 16u, 64u),
+    check_equal(Order_from_lua(L, -1, &order, 16u, 64u),
                  DATA_BIND_ERR_TYPE_MISMATCH);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(order.order_id, 42u);
-    check_str_eq(order.symbol, "ABC");
+    check_equal(lua_gettop(L), base);
+    check_equal(order.order_id, 42u);
+    check_equal(order.symbol, "ABC");
   }
 
   it("should reject Lua containers above the caller limit") {
     int base;
 
-    check_int_eq(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
+    check_equal(Order_push_lua(L, &order, 16u), DATA_BIND_OK);
     base = lua_gettop(L);
-    check_int_eq(Order_from_lua(L, -1, &order, 16u, 2u), DATA_BIND_ERR_LIMIT);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(order.order_id, 42u);
-    check_size_eq(tbe_bytes_t_size(&order.payload), 3u);
+    check_equal(Order_from_lua(L, -1, &order, 16u, 2u), DATA_BIND_ERR_LIMIT);
+    check_equal(lua_gettop(L), base);
+    check_equal(order.order_id, 42u);
+    check_equal(tbe_bytes_t_size(&order.payload), 3u);
   }
 
   it("should enforce the configured nesting depth") {
     int base = lua_gettop(L);
-    check_int_eq(Order_push_lua(L, &order, 1u), DATA_BIND_ERR_LIMIT);
-    check_int_eq(lua_gettop(L), base);
+    check_equal(Order_push_lua(L, &order, 1u), DATA_BIND_ERR_LIMIT);
+    check_equal(lua_gettop(L), base);
   }
 
   it("should call a Lua import with typed C request and response objects") {
@@ -366,26 +366,26 @@ spec("generated typed Order Lua adapter") {
         "return { id = request.id + 1, symbol = request.symbol .. '-lua' }, nil "
         "end }");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
+    check_equal(lua_status, LUA_OK);
 
     base = lua_gettop(L);
-    check_int_eq(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
-    check_int_eq(lua_gettop(L), base);
+    check_equal(lua_gettop(L), base);
     lua_pop(L, 1);
     base = lua_gettop(L);
 
-    check_int_eq(Orders_lua_client_enrich_order_on_owner(
+    check_equal(Orders_lua_client_enrich_order_on_owner(
                      client, &request, &response, &call_error),
                  DATA_BIND_OK);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(response.id, 42u);
-    check_str_eq(response.symbol, "ABC-lua");
+    check_equal(lua_gettop(L), base);
+    check_equal(response.id, 42u);
+    check_equal(response.symbol, "ABC-lua");
 
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -405,14 +405,14 @@ spec("generated typed Order Lua adapter") {
     request.id = 41u;
     request.symbol = tstr_dup("OWNER");
     check_not_null(request.symbol);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return { enrich_order = function(request) "
             "return { id = request.id, symbol = request.symbol }, nil end }"),
         LUA_OK);
-    check_int_eq(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
@@ -422,17 +422,17 @@ spec("generated typed Order Lua adapter") {
     context.response = &response;
     context.call_error = (DataBindError)DATA_BIND_ERROR_INIT;
     context.close_error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_int_eq(turbo_thread_create(&thread, test_lua_client_non_owner,
+    check_equal(turbo_thread_create(&thread, test_lua_client_non_owner,
                                      &context),
                  0);
-    check_int_eq(turbo_thread_join(&thread), 0);
-    check_int_eq(context.call_status, DATA_BIND_ERR_RUNTIME);
-    check_str_eq(context.call_error.path, "executor.owner");
-    check_int_eq(context.close_status, DATA_BIND_ERR_RUNTIME);
-    check_str_eq(context.close_error.path, "executor.owner");
+    check_equal(turbo_thread_join(&thread), 0);
+    check_equal(context.call_status, DATA_BIND_ERR_RUNTIME);
+    check_equal(context.call_error.path, "executor.owner");
+    check_equal(context.close_status, DATA_BIND_ERR_RUNTIME);
+    check_equal(context.close_error.path, "executor.owner");
 
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -457,7 +457,7 @@ spec("generated typed Order Lua adapter") {
     request.id = 10u;
     request.symbol = tstr_dup("ASYNC");
     check_not_null(request.symbol);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return { enrich_order_deferred = function(request) "
@@ -465,9 +465,9 @@ spec("generated typed Order Lua adapter") {
             "end }"),
         LUA_OK);
     executor_config.queue_capacity = 2u;
-    check_int_eq(turbo_lua_executor_create(&executor, L, &executor_config),
+    check_equal(turbo_lua_executor_create(&executor, L, &executor_config),
                  TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
@@ -475,34 +475,34 @@ spec("generated typed Order Lua adapter") {
     producer_context.client = client;
     producer_context.request = &request;
     producer_context.error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_int_eq(
+    check_equal(
         turbo_thread_create(&producer, test_lua_client_producer,
                             &producer_context),
         0);
-    check_int_eq(turbo_thread_join(&producer), 0);
-    check_int_eq(producer_context.status, DATA_BIND_OK);
+    check_equal(turbo_thread_join(&producer), 0);
+    check_equal(producer_context.status, DATA_BIND_OK);
     future = producer_context.future;
     check_not_null(future);
     AsyncLuaOrder_clear(&request);
     check_false(Orders_lua_enrich_order_deferred_future_done(future));
-    check_int_eq(Orders_lua_enrich_order_deferred_future_poll(
+    check_equal(Orders_lua_enrich_order_deferred_future_poll(
                      future, &done, &response, &call_error),
                  DATA_BIND_OK);
     check_false(done);
 
-    check_int_eq(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
-    check_size_eq(processed, 1u);
+    check_equal(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
+    check_equal(processed, 1u);
     check_true(Orders_lua_enrich_order_deferred_future_done(future));
-    check_int_eq(Orders_lua_enrich_order_deferred_future_poll(
+    check_equal(Orders_lua_enrich_order_deferred_future_poll(
                      future, &done, &response, &call_error),
                  DATA_BIND_OK);
     check_true(done);
-    check_uint_eq(response.id, 15u);
-    check_str_eq(response.symbol, "ASYNC-lua");
+    check_equal(response.id, 15u);
+    check_equal(response.symbol, "ASYNC-lua");
 
     Orders_lua_enrich_order_deferred_future_destroy(future);
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
   }
 
@@ -528,28 +528,28 @@ spec("generated typed Order Lua adapter") {
     config.on_start = test_managed_lua_client_start;
     config.on_stop = test_managed_lua_client_stop;
     config.context = &context;
-    check_int_eq(turbo_lua_worker_create(&managed, &config), TURBO_OK);
-    check_int_eq(context.start_status, DATA_BIND_OK);
+    check_equal(turbo_lua_worker_create(&managed, &config), TURBO_OK);
+    check_equal(context.start_status, DATA_BIND_OK);
 
-    check_int_eq(Orders_lua_client_enrich_order_deferred_async(
+    check_equal(Orders_lua_client_enrich_order_deferred_async(
                      context.client, &request, &future, &future_error),
                  DATA_BIND_OK);
     AsyncLuaOrder_clear(&request);
-    check_int_eq(turbo_lua_worker_stop(
+    check_equal(turbo_lua_worker_stop(
                      managed, TURBO_LUA_EXECUTOR_SHUTDOWN_DRAIN),
                  TURBO_OK);
-    check_int_eq(context.close_status, DATA_BIND_OK);
+    check_equal(context.close_status, DATA_BIND_OK);
     check_null(context.client);
     check_true(Orders_lua_enrich_order_deferred_future_done(future));
-    check_int_eq(Orders_lua_enrich_order_deferred_future_poll(
+    check_equal(Orders_lua_enrich_order_deferred_future_poll(
                      future, &done, &response, &future_error),
                  DATA_BIND_OK);
     check_true(done);
-    check_uint_eq(response.id, 23u);
-    check_str_eq(response.symbol, "ASYNC-worker");
+    check_equal(response.id, 23u);
+    check_equal(response.symbol, "ASYNC-worker");
 
     Orders_lua_enrich_order_deferred_future_destroy(future);
-    check_int_eq(turbo_lua_worker_destroy(managed), TURBO_OK);
+    check_equal(turbo_lua_worker_destroy(managed), TURBO_OK);
     OrderResult_clear(&response);
   }
 
@@ -571,39 +571,39 @@ spec("generated typed Order Lua adapter") {
     OrderResult_init(&response);
     request.symbol = tstr_dup("CANCEL");
     check_not_null(request.symbol);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return { enrich_order_deferred = function(request) "
             "return { id = request.id, symbol = request.symbol }, nil end }"),
         LUA_OK);
     executor_config.queue_capacity = 1u;
-    check_int_eq(turbo_lua_executor_create(&executor, L, &executor_config),
+    check_equal(turbo_lua_executor_create(&executor, L, &executor_config),
                  TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
 
-    check_int_eq(Orders_lua_client_enrich_order_deferred_async(
+    check_equal(Orders_lua_client_enrich_order_deferred_async(
                      client, &request, &first, &call_error),
                  DATA_BIND_OK);
-    check_int_eq(Orders_lua_client_enrich_order_deferred_async(
+    check_equal(Orders_lua_client_enrich_order_deferred_async(
                      client, &request, &second, &call_error),
                  DATA_BIND_ERR_LIMIT);
     check_null(second);
-    check_str_eq(call_error.path, "executor");
+    check_equal(call_error.path, "executor");
     check_true(Orders_lua_enrich_order_deferred_future_cancel(first));
-    check_int_eq(Orders_lua_enrich_order_deferred_future_poll(
+    check_equal(Orders_lua_enrich_order_deferred_future_poll(
                      first, &done, &response, &call_error),
                  DATA_BIND_ERR_CANCELED);
     check_true(done);
-    check_int_eq(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
-    check_size_eq(processed, 1u);
+    check_equal(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
+    check_equal(processed, 1u);
 
     Orders_lua_enrich_order_deferred_future_destroy(first);
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     AsyncLuaOrder_clear(&request);
   }
@@ -625,32 +625,32 @@ spec("generated typed Order Lua adapter") {
     response.symbol = tstr_dup("kept");
     check_not_null(request.symbol);
     check_not_null(response.symbol);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return { enrich_order = function(_) "
             "return nil, { code = 8, path = 'lua.enrich_order', "
             "message = 'order rejected' } end }"),
         LUA_OK);
-    check_int_eq(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
     base = lua_gettop(L);
 
-    check_int_eq(Orders_lua_client_enrich_order_on_owner(
+    check_equal(Orders_lua_client_enrich_order_on_owner(
                      client, &request, &response, &call_error),
                  DATA_BIND_ERR_RUNTIME);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(response.id, 99u);
-    check_str_eq(response.symbol, "kept");
-    check_int_eq(call_error.code, DATA_BIND_ERR_RUNTIME);
-    check_str_eq(call_error.path, "lua.enrich_order");
-    check_str_eq(call_error.message, "order rejected");
+    check_equal(lua_gettop(L), base);
+    check_equal(response.id, 99u);
+    check_equal(response.symbol, "kept");
+    check_equal(call_error.code, DATA_BIND_ERR_RUNTIME);
+    check_equal(call_error.path, "lua.enrich_order");
+    check_equal(call_error.message, "order rejected");
 
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -669,30 +669,30 @@ spec("generated typed Order Lua adapter") {
     response.id = 77u;
     response.symbol = tstr_dup("unchanged");
     check_not_null(response.symbol);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return { enrich_order = function(_) "
             "return { id = 'wrong', symbol = 'invalid' }, nil end }"),
         LUA_OK);
-    check_int_eq(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
     base = lua_gettop(L);
 
-    check_int_eq(Orders_lua_client_enrich_order_on_owner(
+    check_equal(Orders_lua_client_enrich_order_on_owner(
                      client, &request, &response, &call_error),
                  DATA_BIND_ERR_TYPE_MISMATCH);
-    check_int_eq(lua_gettop(L), base);
-    check_uint_eq(response.id, 77u);
-    check_str_eq(response.symbol, "unchanged");
-    check_int_eq(call_error.code, DATA_BIND_ERR_TYPE_MISMATCH);
-    check_str_eq(call_error.path, "response");
+    check_equal(lua_gettop(L), base);
+    check_equal(response.id, 77u);
+    check_equal(response.symbol, "unchanged");
+    check_equal(call_error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(call_error.path, "response");
 
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -708,29 +708,29 @@ spec("generated typed Order Lua adapter") {
 
     LuaOrder_init(&request);
     OrderResult_init(&response);
-    check_int_eq(
+    check_equal(
         luaL_dostring(
             L,
             "return setmetatable({}, { __index = function() "
             "error('module index escaped protected call') end })"),
         LUA_OK);
-    check_int_eq(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
-    check_int_eq(Orders_lua_client_create(&client, executor, -1, &limits,
+    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
     lua_pop(L, 1);
     base = lua_gettop(L);
 
-    check_int_eq(Orders_lua_client_enrich_order_on_owner(
+    check_equal(Orders_lua_client_enrich_order_on_owner(
                      client, &request, &response, &call_error),
                  DATA_BIND_ERR_RUNTIME);
-    check_int_eq(lua_gettop(L), base);
-    check_int_eq(call_error.code, DATA_BIND_ERR_RUNTIME);
-    check_str_eq(call_error.path, "enrich_order");
-    check_str_contains(call_error.message, "missing");
+    check_equal(lua_gettop(L), base);
+    check_equal(call_error.code, DATA_BIND_ERR_RUNTIME);
+    check_equal(call_error.path, "enrich_order");
+    check_contains(call_error.message, "missing");
 
-    check_int_eq(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_int_eq(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
+    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -741,7 +741,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -752,8 +752,8 @@ spec("generated typed Order Lua adapter") {
         "}); assert(err == nil, err and err.message); assert(result.id == 42); "
         "assert(result.symbol == 'ABC')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.calls, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.calls, 1u);
   }
 
   it("should return structured Lua errors without bypassing cleanup") {
@@ -764,7 +764,7 @@ spec("generated typed Order Lua adapter") {
 
     context.next_status = DATA_BIND_ERR_RUNTIME;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -777,8 +777,8 @@ spec("generated typed Order Lua adapter") {
         "assert(err.path == 'orders.create_order'); "
         "assert(err.message == 'order rejected')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.calls, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.calls, 1u);
   }
 
   it("should reject an invalid request before entering the callback") {
@@ -787,7 +787,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -795,8 +795,8 @@ spec("generated typed Order Lua adapter") {
         "assert(result == nil); assert(err.code == 6); "
         "assert(err.path == 'request')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.calls, 0u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.calls, 0u);
   }
 
   it("should advance one explicit state-machine step per poll") {
@@ -805,7 +805,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -819,11 +819,11 @@ spec("generated typed Order Lua adapter") {
         "assert(done and err == nil); assert(result.id == 7); "
         "assert(result.symbol == 'XYZ'); assert(future:done())");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_calls, 1u);
-    check_uint_eq(context.async_steps, 2u);
-    check_uint_eq(context.async_destroys, 1u);
-    check_uint_eq(context.cancellations, 0u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_calls, 1u);
+    check_equal(context.async_steps, 2u);
+    check_equal(context.async_destroys, 1u);
+    check_equal(context.cancellations, 0u);
   }
 
   it("should reject incomplete explicit Future hooks without leaking state") {
@@ -833,16 +833,16 @@ spec("generated typed Order Lua adapter") {
     int lua_status;
 
     api.fetch_order = test_invalid_future;
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
         "local future, err = orders.fetch_order({id=22, symbol='BAD'}); "
         "assert(future == nil and err.code == 1 and err.path == 'operation')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_destroys, 1u);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_destroys, 1u);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should await an async operation through Lua coroutine continuations") {
@@ -851,7 +851,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -870,11 +870,11 @@ spec("generated typed Order Lua adapter") {
         "assert(id == 9 and symbol == 'AWAIT'); "
         "assert(coroutine.status(co) == 'dead')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_calls, 1u);
-    check_uint_eq(context.async_steps, 2u);
-    check_uint_eq(context.async_destroys, 1u);
-    check_uint_eq(context.cancellations, 0u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_calls, 1u);
+    check_equal(context.async_steps, 2u);
+    check_equal(context.async_destroys, 1u);
+    check_equal(context.cancellations, 0u);
   }
 
   it("should reject await on the main Lua thread without advancing") {
@@ -883,7 +883,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -892,11 +892,11 @@ spec("generated typed Order Lua adapter") {
         "assert(result == nil and err.code == 1 and err.path == 'await'); "
         "assert(not future:done()); assert(future:cancel())");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_calls, 1u);
-    check_uint_eq(context.async_steps, 0u);
-    check_uint_eq(context.async_destroys, 1u);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_calls, 1u);
+    check_equal(context.async_steps, 0u);
+    check_equal(context.async_destroys, 1u);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should cancel await when its suspended Lua coroutine is collected") {
@@ -905,7 +905,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -917,10 +917,10 @@ spec("generated typed Order Lua adapter") {
         "co = nil; token = nil; "
         "collectgarbage('collect'); collectgarbage('collect')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_calls, 1u);
-    check_uint_eq(context.async_steps, 1u);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_calls, 1u);
+    check_equal(context.async_steps, 1u);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should cancel a suspended async operation exactly once") {
@@ -929,7 +929,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -940,9 +940,9 @@ spec("generated typed Order Lua adapter") {
         "local completed, result, err = future:poll(); "
         "assert(completed and result == nil and err.code == 11)");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.async_calls, 1u);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.async_calls, 1u);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should enforce the pending async operation limit") {
@@ -951,7 +951,7 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 1u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
@@ -959,8 +959,8 @@ spec("generated typed Order Lua adapter") {
         "local second, err = orders.fetch_order({id=2, symbol='B'}); "
         "assert(second == nil and err.code == 9); assert(first:cancel())");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should cancel a suspended future during Lua collection") {
@@ -969,15 +969,15 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
         "local future = assert(orders.fetch_order({id=3, symbol='GC'})); "
         "assert(not future:poll()); future = nil; collectgarbage('collect')");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(lua_status, LUA_OK);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should cancel pending futures before the Lua module is destroyed") {
@@ -986,17 +986,17 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int lua_status;
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
+    check_equal(Orders_lua_push_module(L, &api, &limits), DATA_BIND_OK);
     lua_setglobal(L, "orders");
     lua_status = luaL_dostring(
         L,
         "pending = assert(orders.fetch_order({id=4, symbol='CLOSE'})); "
         "assert(not pending:poll())");
     if (lua_status != LUA_OK) info("Lua error: %s", lua_tostring(L, -1));
-    check_int_eq(lua_status, LUA_OK);
+    check_equal(lua_status, LUA_OK);
     lua_close(L);
     L = NULL;
-    check_uint_eq(context.cancellations, 1u);
+    check_equal(context.cancellations, 1u);
   }
 
   it("should fail module creation atomically for an incomplete API") {
@@ -1004,8 +1004,8 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     int base = lua_gettop(L);
 
-    check_int_eq(Orders_lua_push_module(L, &api, &limits),
+    check_equal(Orders_lua_push_module(L, &api, &limits),
                  DATA_BIND_ERR_INVALID_ARG);
-    check_int_eq(lua_gettop(L), base);
+    check_equal(lua_gettop(L), base);
   }
 }

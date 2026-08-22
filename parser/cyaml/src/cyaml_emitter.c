@@ -278,7 +278,7 @@ static bool needs_quoting_ex(const char* s, size_t len, size_t tag_len)
             return true;
         if (len == L_TRUE && cyaml_memicmp(s, S_TRUE, L_TRUE) == 0)
             return true;
-        if (len == L_FALSE && cyaml_memicmp(s, S_FALSE, L_FALSE) == 0)
+        if (len == L_FALSE && cyaml_memicmp(s, CYAML_S_FALSE, L_FALSE) == 0)
             return true;
         if (len == L_TILDE && s[0] == C_TILDE)
             return true;

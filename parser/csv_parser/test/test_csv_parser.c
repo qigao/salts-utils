@@ -89,15 +89,15 @@ spec("csv_parser") {
       const char *csv = "a,b,c\n1,2,3\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 2);
-      check_int_eq(csv_column_count(doc), 3);
+      check_equal(csv_row_count(doc), 2);
+      check_equal(csv_column_count(doc), 3);
 
-      check_str_eq(csv_get(doc, 0, 0), "a");
-      check_str_eq(csv_get(doc, 0, 1), "b");
-      check_str_eq(csv_get(doc, 0, 2), "c");
-      check_str_eq(csv_get(doc, 1, 0), "1");
-      check_str_eq(csv_get(doc, 1, 1), "2");
-      check_str_eq(csv_get(doc, 1, 2), "3");
+      check_equal(csv_get(doc, 0, 0), "a");
+      check_equal(csv_get(doc, 0, 1), "b");
+      check_equal(csv_get(doc, 0, 2), "c");
+      check_equal(csv_get(doc, 1, 0), "1");
+      check_equal(csv_get(doc, 1, 1), "2");
+      check_equal(csv_get(doc, 1, 2), "3");
 
       csv_free(doc);
     }
@@ -106,10 +106,10 @@ spec("csv_parser") {
       const char *csv = "a,b,c\n1,2,3";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 2);
+      check_equal(csv_row_count(doc), 2);
 
-      check_str_eq(csv_get(doc, 0, 0), "a");
-      check_str_eq(csv_get(doc, 1, 2), "3");
+      check_equal(csv_get(doc, 0, 0), "a");
+      check_equal(csv_get(doc, 1, 2), "3");
 
       csv_free(doc);
     }
@@ -118,10 +118,10 @@ spec("csv_parser") {
       const char *csv = "a,b,c\r\n1,2,3\r\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 2);
+      check_equal(csv_row_count(doc), 2);
 
-      check_str_eq(csv_get(doc, 0, 0), "a");
-      check_str_eq(csv_get(doc, 1, 2), "3");
+      check_equal(csv_get(doc, 0, 0), "a");
+      check_equal(csv_get(doc, 1, 2), "3");
 
       csv_free(doc);
     }
@@ -132,12 +132,12 @@ spec("csv_parser") {
       const char *csv = "a,,c\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 1);
-      check_int_eq(csv_column_count(doc), 3);
+      check_equal(csv_row_count(doc), 1);
+      check_equal(csv_column_count(doc), 3);
 
-      check_str_eq(csv_get(doc, 0, 0), "a");
-      check_str_eq(csv_get(doc, 0, 1), "");
-      check_str_eq(csv_get(doc, 0, 2), "c");
+      check_equal(csv_get(doc, 0, 0), "a");
+      check_equal(csv_get(doc, 0, 1), "");
+      check_equal(csv_get(doc, 0, 2), "c");
 
       csv_free(doc);
     }
@@ -147,9 +147,9 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "");
-      check_str_eq(csv_get(doc, 0, 1), "b");
-      check_str_eq(csv_get(doc, 0, 2), "c");
+      check_equal(csv_get(doc, 0, 0), "");
+      check_equal(csv_get(doc, 0, 1), "b");
+      check_equal(csv_get(doc, 0, 2), "c");
 
       csv_free(doc);
     }
@@ -159,9 +159,9 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "a");
-      check_str_eq(csv_get(doc, 0, 1), "b");
-      check_str_eq(csv_get(doc, 0, 2), "");
+      check_equal(csv_get(doc, 0, 0), "a");
+      check_equal(csv_get(doc, 0, 1), "b");
+      check_equal(csv_get(doc, 0, 2), "");
 
       csv_free(doc);
     }
@@ -170,11 +170,11 @@ spec("csv_parser") {
       const char *csv = ",,\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_column_count(doc), 3);
+      check_equal(csv_column_count(doc), 3);
 
-      check_str_eq(csv_get(doc, 0, 0), "");
-      check_str_eq(csv_get(doc, 0, 1), "");
-      check_str_eq(csv_get(doc, 0, 2), "");
+      check_equal(csv_get(doc, 0, 0), "");
+      check_equal(csv_get(doc, 0, 1), "");
+      check_equal(csv_get(doc, 0, 2), "");
 
       csv_free(doc);
     }
@@ -186,8 +186,8 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "hello");
-      check_str_eq(csv_get(doc, 0, 1), "world");
+      check_equal(csv_get(doc, 0, 0), "hello");
+      check_equal(csv_get(doc, 0, 1), "world");
 
       csv_free(doc);
     }
@@ -196,10 +196,10 @@ spec("csv_parser") {
       const char *csv = "\"hello, world\",test\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_column_count(doc), 2);
+      check_equal(csv_column_count(doc), 2);
 
-      check_str_eq(csv_get(doc, 0, 0), "hello, world");
-      check_str_eq(csv_get(doc, 0, 1), "test");
+      check_equal(csv_get(doc, 0, 0), "hello, world");
+      check_equal(csv_get(doc, 0, 1), "test");
 
       csv_free(doc);
     }
@@ -208,10 +208,10 @@ spec("csv_parser") {
       const char *csv = "\"line1\nline2\",test\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 1);
+      check_equal(csv_row_count(doc), 1);
 
-      check_str_eq(csv_get(doc, 0, 0), "line1\nline2");
-      check_str_eq(csv_get(doc, 0, 1), "test");
+      check_equal(csv_get(doc, 0, 0), "line1\nline2");
+      check_equal(csv_get(doc, 0, 1), "test");
 
       csv_free(doc);
     }
@@ -220,9 +220,9 @@ spec("csv_parser") {
       const char *csv = "\"line1\r\nline2\",test\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 1);
+      check_equal(csv_row_count(doc), 1);
 
-      check_str_eq(csv_get(doc, 0, 0), "line1\r\nline2");
+      check_equal(csv_get(doc, 0, 0), "line1\r\nline2");
 
       csv_free(doc);
     }
@@ -234,8 +234,8 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "say \"hello\"");
-      check_str_eq(csv_get(doc, 0, 1), "test");
+      check_equal(csv_get(doc, 0, 0), "say \"hello\"");
+      check_equal(csv_get(doc, 0, 1), "test");
 
       csv_free(doc);
     }
@@ -245,8 +245,8 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "\"a\"");
-      check_str_eq(csv_get(doc, 0, 1), "\"");
+      check_equal(csv_get(doc, 0, 0), "\"a\"");
+      check_equal(csv_get(doc, 0, 1), "\"");
 
       csv_free(doc);
     }
@@ -256,8 +256,8 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_str_eq(csv_get(doc, 0, 0), "");
-      check_str_eq(csv_get(doc, 0, 1), "b");
+      check_equal(csv_get(doc, 0, 0), "");
+      check_equal(csv_get(doc, 0, 1), "b");
 
       csv_free(doc);
     }
@@ -272,15 +272,15 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
       check(csv_has_header(doc));
-      check_int_eq(csv_row_count(doc), 2);
+      check_equal(csv_row_count(doc), 2);
 
-      check_str_eq(csv_header_get(doc, 0), "name");
-      check_str_eq(csv_header_get(doc, 1), "age");
-      check_str_eq(csv_header_get(doc, 2), "city");
+      check_equal(csv_header_get(doc, 0), "name");
+      check_equal(csv_header_get(doc, 1), "age");
+      check_equal(csv_header_get(doc, 2), "city");
 
-      check_str_eq(csv_get(doc, 0, 0), "Alice");
-      check_str_eq(csv_get(doc, 0, 1), "30");
-      check_str_eq(csv_get(doc, 1, 0), "Bob");
+      check_equal(csv_get(doc, 0, 0), "Alice");
+      check_equal(csv_get(doc, 0, 1), "30");
+      check_equal(csv_get(doc, 1, 0), "Bob");
 
       csv_free(doc);
     }
@@ -293,10 +293,10 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
 
-      check_str_eq(csv_get_by_name(doc, 0, "name"), "Alice");
-      check_str_eq(csv_get_by_name(doc, 0, "age"), "30");
-      check_str_eq(csv_get_by_name(doc, 0, "city"), "NYC");
-      check_str_eq(csv_get_by_name(doc, 1, "name"), "Bob");
+      check_equal(csv_get_by_name(doc, 0, "name"), "Alice");
+      check_equal(csv_get_by_name(doc, 0, "age"), "30");
+      check_equal(csv_get_by_name(doc, 0, "city"), "NYC");
+      check_equal(csv_get_by_name(doc, 1, "name"), "Bob");
 
       check_null(csv_get_by_name(doc, 0, "nonexistent"));
 
@@ -311,10 +311,10 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
 
-      check_int_eq((int)csv_find_column(doc, "name"), 0);
-      check_int_eq((int)csv_find_column(doc, "age"), 1);
-      check_int_eq((int)csv_find_column(doc, "city"), 2);
-      check_int_eq((int)csv_find_column(doc, "nonexistent"), -1);
+      check_equal((int)csv_find_column(doc, "name"), 0);
+      check_equal((int)csv_find_column(doc, "age"), 1);
+      check_equal((int)csv_find_column(doc, "city"), 2);
+      check_equal((int)csv_find_column(doc, "nonexistent"), -1);
 
       csv_free(doc);
     }
@@ -329,10 +329,10 @@ spec("csv_parser") {
 
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 3);
-      check_int_eq(csv_column_count(doc), 2);
-      check_str_eq(csv_get(doc, 1, 1), "hello; world");
-      check_str_eq(csv_get(doc, 2, 1), "it's ok");
+      check_equal(csv_row_count(doc), 3);
+      check_equal(csv_column_count(doc), 2);
+      check_equal(csv_get(doc, 1, 1), "hello; world");
+      check_equal(csv_get(doc, 2, 1), "it's ok");
 
       csv_free(doc);
     }
@@ -344,10 +344,10 @@ spec("csv_parser") {
 
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 3);
-      check_str_eq(csv_get(doc, 0, 0), "a");
+      check_equal(csv_row_count(doc), 3);
+      check_equal(csv_get(doc, 0, 0), "a");
       check_null(csv_get(doc, 1, 0));
-      check_str_eq(csv_get(doc, 2, 0), "b");
+      check_equal(csv_get(doc, 2, 0), "b");
 
       csv_free(doc);
     }
@@ -359,10 +359,10 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_int_eq(csv_get_int(doc, 0, 0, -1), 10);
-      check_int_eq(csv_get_int(doc, 0, 1, -1), 20);
-      check_int_eq(csv_get_int(doc, 0, 2, -1), 0);   // "abc" -> 0
-      check_int_eq(csv_get_int(doc, 0, 99, -1), -1); // Out of bounds
+      check_equal(csv_get_int(doc, 0, 0, -1), 10);
+      check_equal(csv_get_int(doc, 0, 1, -1), 20);
+      check_equal(csv_get_int(doc, 0, 2, -1), 0);   // "abc" -> 0
+      check_equal(csv_get_int(doc, 0, 99, -1), -1); // Out of bounds
 
       csv_free(doc);
     }
@@ -372,9 +372,9 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
 
-      check_float_eq(csv_get_double(doc, 0, 0, 0.0), 1.5, 0.01);
-      check_float_eq(csv_get_double(doc, 0, 1, 0.0), 2.7, 0.01);
-      check_float_eq(csv_get_double(doc, 0, 2, 0.0), 3.0, 0.01);
+      check_within(csv_get_double(doc, 0, 0, 0.0), 1.5, 0.01);
+      check_within(csv_get_double(doc, 0, 1, 0.0), 2.7, 0.01);
+      check_within(csv_get_double(doc, 0, 2, 0.0), 3.0, 0.01);
 
       csv_free(doc);
     }
@@ -407,10 +407,10 @@ spec("csv_parser") {
       stream_test_ctx_t ctx = {0};
       int ret = csv_parse_stream(csv, strlen(csv), &handler, &ctx);
 
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.row_count, 2);
-      check_int_eq(ctx.field_count, 6);
-      check_str_eq(ctx.last_field, "3");
+      check_equal(ret, 0);
+      check_equal(ctx.row_count, 2);
+      check_equal(ctx.field_count, 6);
+      check_equal(ctx.last_field, "3");
     }
 
     it("should support streaming parsing of quoted data") {
@@ -421,9 +421,9 @@ spec("csv_parser") {
       stream_test_ctx_t ctx = {0};
       int ret = csv_parse_stream(csv, strlen(csv), &handler, &ctx);
 
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.field_count, 2);
-      check_str_eq(ctx.last_field, "say \"hi\"");
+      check_equal(ret, 0);
+      check_equal(ctx.field_count, 2);
+      check_equal(ctx.last_field, "say \"hi\"");
     }
 
     it("should honor streaming parser options") {
@@ -438,10 +438,10 @@ spec("csv_parser") {
       stream_test_ctx_t ctx = {0};
       int ret = csv_parse_stream_opts(csv, strlen(csv), &handler, &ctx, &opts);
 
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.row_count, 2);
-      check_int_eq(ctx.field_count, 4);
-      check_str_eq(ctx.last_field, "2");
+      check_equal(ret, 0);
+      check_equal(ctx.row_count, 2);
+      check_equal(ctx.field_count, 4);
+      check_equal(ctx.last_field, "2");
     }
   }
 
@@ -453,19 +453,19 @@ spec("csv_parser") {
       check_not_null(iter);
 
       check(csv_iter_next(iter));
-      check_int_eq(csv_iter_field_count(iter), 3);
-      check_str_eq(csv_iter_field(iter, 0), "a");
-      check_str_eq(csv_iter_field(iter, 1), "b");
-      check_str_eq(csv_iter_field(iter, 2), "c");
-      check_int_eq(csv_iter_row_index(iter), 0);
+      check_equal(csv_iter_field_count(iter), 3);
+      check_equal(csv_iter_field(iter, 0), "a");
+      check_equal(csv_iter_field(iter, 1), "b");
+      check_equal(csv_iter_field(iter, 2), "c");
+      check_equal(csv_iter_row_index(iter), 0);
 
       check(csv_iter_next(iter));
-      check_str_eq(csv_iter_field(iter, 0), "1");
-      check_int_eq(csv_iter_row_index(iter), 1);
+      check_equal(csv_iter_field(iter, 0), "1");
+      check_equal(csv_iter_row_index(iter), 1);
 
       check(csv_iter_next(iter));
-      check_str_eq(csv_iter_field(iter, 0), "4");
-      check_int_eq(csv_iter_row_index(iter), 2);
+      check_equal(csv_iter_field(iter, 0), "4");
+      check_equal(csv_iter_row_index(iter), 2);
 
       check(!csv_iter_next(iter));
 
@@ -479,9 +479,9 @@ spec("csv_parser") {
       check_not_null(iter);
 
       check(csv_iter_next(iter));
-      check_int_eq(csv_iter_field_count(iter), 2);
-      check_str_eq(csv_iter_field(iter, 0), "hello, world");
-      check_str_eq(csv_iter_field(iter, 1), "line1\nline2");
+      check_equal(csv_iter_field_count(iter), 2);
+      check_equal(csv_iter_field(iter, 0), "hello, world");
+      check_equal(csv_iter_field(iter, 1), "line1\nline2");
 
       csv_iter_free(iter);
     }
@@ -496,12 +496,12 @@ spec("csv_parser") {
       check_not_null(iter);
 
       check(csv_iter_next(iter));
-      check_int_eq(csv_iter_field_count(iter), 2);
-      check_str_eq(csv_iter_field(iter, 1), "y;y");
+      check_equal(csv_iter_field_count(iter), 2);
+      check_equal(csv_iter_field(iter, 1), "y;y");
 
       check(csv_iter_next(iter));
-      check_str_eq(csv_iter_field(iter, 0), "1");
-      check_str_eq(csv_iter_field(iter, 1), "2");
+      check_equal(csv_iter_field(iter, 0), "1");
+      check_equal(csv_iter_field(iter, 1), "2");
 
       check(!csv_iter_next(iter));
       csv_iter_free(iter);
@@ -513,9 +513,9 @@ spec("csv_parser") {
       const char *csv = "hello\n";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 1);
-      check_int_eq(csv_column_count(doc), 1);
-      check_str_eq(csv_get(doc, 0, 0), "hello");
+      check_equal(csv_row_count(doc), 1);
+      check_equal(csv_column_count(doc), 1);
+      check_equal(csv_get(doc, 0, 0), "hello");
       csv_free(doc);
     }
 
@@ -523,8 +523,8 @@ spec("csv_parser") {
       const char *csv = "hello";
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 1);
-      check_str_eq(csv_get(doc, 0, 0), "hello");
+      check_equal(csv_row_count(doc), 1);
+      check_equal(csv_get(doc, 0, 0), "hello");
       csv_free(doc);
     }
 
@@ -534,9 +534,9 @@ spec("csv_parser") {
       check_not_null(doc);
 
       // RFC 4180: spaces are part of the field
-      check_str_eq(csv_get(doc, 0, 0), " a ");
-      check_str_eq(csv_get(doc, 0, 1), " b ");
-      check_str_eq(csv_get(doc, 0, 2), " c ");
+      check_equal(csv_get(doc, 0, 0), " a ");
+      check_equal(csv_get(doc, 0, 1), " b ");
+      check_equal(csv_get(doc, 0, 2), " c ");
 
       csv_free(doc);
     }
@@ -553,9 +553,9 @@ spec("csv_parser") {
 
       csv_doc_t *doc = csv_parse(csv, FIELD_BYTES + sizeof(",end\n") - 1);
       check_not_null(doc);
-      check_size_eq(strlen(csv_get(doc, 0, 0)), FIELD_BYTES);
-      check_mem_eq(csv_get(doc, 0, 0), csv, FIELD_BYTES);
-      check_str_eq(csv_get(doc, 0, 1), "end");
+      check_equal(strlen(csv_get(doc, 0, 0)), FIELD_BYTES);
+      check_equal(csv_get(doc, 0, 0), csv, FIELD_BYTES);
+      check_equal(csv_get(doc, 0, 1), "end");
 
       csv_free(doc);
       free(csv);
@@ -570,9 +570,9 @@ spec("csv_parser") {
 
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_row_count(doc), 100);
-      check_int_eq(csv_get_int(doc, 99, 0, -1), 99);
-      check_int_eq(csv_get_int(doc, 99, 1, -1), 198);
+      check_equal(csv_row_count(doc), 100);
+      check_equal(csv_get_int(doc, 99, 0, -1), 99);
+      check_equal(csv_get_int(doc, 99, 1, -1), 198);
 
       csv_free(doc);
     }
@@ -585,7 +585,7 @@ spec("csv_parser") {
       csv_options_t opts = CSV_OPTIONS_DEFAULT;
 
       check_not_null(csv);
-      offset += (size_t)fmt(csv + offset, capacity - offset, "id,value\n");
+      offset += (size_t)fmt_text(csv + offset, capacity - offset, "id,value\n");
       for (int i = 0; i < ROWS; ++i) {
         offset += (size_t)fmt(csv + offset, capacity - offset, "{},{}\n", i, i * 3);
       }
@@ -593,11 +593,11 @@ spec("csv_parser") {
 
       csv_doc_t *doc = csv_parse_opts(csv, offset, &opts);
       check_not_null(doc);
-      check_size_eq(csv_row_count(doc), ROWS);
-      check_str_eq(csv_header_get(doc, 0), "id");
-      check_str_eq(csv_get(doc, 0, 1), "0");
-      check_str_eq(csv_get(doc, 2048, 1), "6144");
-      check_str_eq(csv_get(doc, ROWS - 1, 1), "12285");
+      check_equal(csv_row_count(doc), ROWS);
+      check_equal(csv_header_get(doc, 0), "id");
+      check_equal(csv_get(doc, 0, 1), "0");
+      check_equal(csv_get(doc, 2048, 1), "6144");
+      check_equal(csv_get(doc, ROWS - 1, 1), "12285");
 
       csv_free(doc);
       free(csv);
@@ -622,10 +622,10 @@ spec("csv_parser") {
 
       csv_doc_t *doc2 = csv_parse_opts(out, strlen(out), &opts);
       check_not_null(doc2);
-      check_int_eq(csv_row_count(doc2), 2);
-      check_str_eq(csv_header_get(doc2, 0), "a");
-      check_str_eq(csv_get(doc2, 0, 0), "1");
-      check_str_eq(csv_get(doc2, 1, 2), "6");
+      check_equal(csv_row_count(doc2), 2);
+      check_equal(csv_header_get(doc2, 0), "a");
+      check_equal(csv_get(doc2, 0, 0), "1");
+      check_equal(csv_get(doc2, 1, 2), "6");
 
       csv_free(doc2);
       free(out);
@@ -643,8 +643,8 @@ spec("csv_parser") {
 
       csv_doc_t *doc2 = csv_parse_opts(out, strlen(out), &opts);
       check_not_null(doc2);
-      check_str_eq(csv_get(doc2, 0, 0), "hello, world");
-      check_str_eq(csv_get(doc2, 1, 0), "say \"hi\"");
+      check_equal(csv_get(doc2, 0, 0), "hello, world");
+      check_equal(csv_get(doc2, 1, 0), "say \"hi\"");
 
       csv_free(doc2);
       free(out);
@@ -662,8 +662,8 @@ spec("csv_parser") {
 
       csv_doc_t *doc2 = csv_parse_opts(out, strlen(out), &opts);
       check_not_null(doc2);
-      check_str_eq(csv_get(doc2, 0, 0), "line1\nline2");
-      check_str_eq(csv_get(doc2, 0, 1), "ok");
+      check_equal(csv_get(doc2, 0, 0), "line1\nline2");
+      check_equal(csv_get(doc2, 0, 1), "ok");
 
       csv_free(doc2);
       free(out);
@@ -685,10 +685,10 @@ spec("csv_parser") {
 
       csv_doc_t *doc2 = csv_parse_opts(out, strlen(out), &opts);
       check_not_null(doc2);
-      check_int_eq(csv_has_header(doc2), 1);
-      check_str_eq(csv_header_get(doc2, 0), "x");
-      check_str_eq(csv_header_get(doc2, 1), "y");
-      check_str_eq(csv_header_get(doc2, 2), "z");
+      check_equal(csv_has_header(doc2), 1);
+      check_equal(csv_header_get(doc2, 0), "x");
+      check_equal(csv_header_get(doc2, 1), "y");
+      check_equal(csv_header_get(doc2, 2), "z");
 
       csv_free(doc2);
       free(out);
@@ -702,11 +702,11 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse_opts(csv, strlen(csv), &opts);
       check_not_null(doc);
 
-      check_int_eq(csv_write_records(doc, capture_csv_record, &state), 0);
-      check_size_eq(state.count, 3);
-      check_str_eq(state.records[0], "name,value\n");
-      check_str_eq(state.records[1], "\"line1\nline2\",\"say \"\"hi\"\"\"\n");
-      check_str_eq(state.records[2], "tail,end\n");
+      check_equal(csv_write_records(doc, capture_csv_record, &state), 0);
+      check_equal(state.count, 3);
+      check_equal(state.records[0], "name,value\n");
+      check_equal(state.records[1], "\"line1\nline2\",\"say \"\"hi\"\"\"\n");
+      check_equal(state.records[2], "tail,end\n");
       csv_free(doc);
     }
 
@@ -715,8 +715,8 @@ spec("csv_parser") {
       csv_write_state_t state = {.fail_at = 2};
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       check_not_null(doc);
-      check_int_eq(csv_write_records(doc, capture_csv_record, &state), -1);
-      check_size_eq(state.count, 2);
+      check_equal(csv_write_records(doc, capture_csv_record, &state), -1);
+      check_equal(state.count, 2);
       csv_free(doc);
     }
 
@@ -725,27 +725,27 @@ spec("csv_parser") {
       csv_doc_t *doc = csv_parse(csv, strlen(csv));
       csv_cursor_t *cursor;
       size_t field_count = 0;
-      const tstr_v *fields;
+      const vstr *fields;
 
       check_not_null(doc);
       cursor = csv_cursor_new(doc, 1);
       check_not_null(cursor);
 
-      check_int_eq(csv_cursor_next(cursor), 1);
-      check_size_eq(csv_cursor_row_index(cursor), 1);
+      check_equal(csv_cursor_next(cursor), 1);
+      check_equal(csv_cursor_row_index(cursor), 1);
       fields = csv_cursor_fields(cursor, &field_count);
-      check_size_eq(field_count, 2);
-      check_str_eq(fields[0].data, "1");
-      check_str_eq(csv_cursor_field_v(cursor, 1).data, "2");
+      check_equal(field_count, 2);
+      check_equal(fields[0].data, "1");
+      check_equal(csv_cursor_field_v(cursor, 1).data, "2");
 
-      check_int_eq(csv_cursor_next(cursor), 1);
-      check_size_eq(csv_cursor_row_index(cursor), 2);
+      check_equal(csv_cursor_next(cursor), 1);
+      check_equal(csv_cursor_row_index(cursor), 2);
       fields = csv_cursor_fields(cursor, &field_count);
-      check_size_eq(field_count, 2);
-      check_str_eq(fields[0].data, "3");
-      check_int_eq(csv_cursor_next(cursor), 0);
+      check_equal(field_count, 2);
+      check_equal(fields[0].data, "3");
+      check_equal(csv_cursor_next(cursor), 0);
       check_null(csv_cursor_fields(cursor, &field_count));
-      check_size_eq(field_count, 0);
+      check_equal(field_count, 0);
 
       csv_cursor_free(cursor);
       csv_free(doc);
@@ -782,12 +782,12 @@ spec("csv_parser") {
 
       opts.has_header = true;
       plan.ctx = &state;
-      check_int_eq(csv_filter_scan_opts(csv, strlen(csv), &opts, &plan, &matches), 0);
-      check_size_eq(matches, 2);
-      check_size_eq(state.count, 2);
-      check_size_eq(state.last_row, 3);
-      check_int_eq(state.age_sum, 45);
-      check_str_eq(state.note, "ok");
+      check_equal(csv_filter_scan_opts(csv, strlen(csv), &opts, &plan, &matches), 0);
+      check_equal(matches, 2);
+      check_equal(state.count, 2);
+      check_equal(state.last_row, 3);
+      check_equal(state.age_sum, 45);
+      check_equal(state.note, "ok");
     }
   }
 }

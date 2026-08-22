@@ -61,7 +61,7 @@ void test_cyaml_parse_simple_map(void)
     check_not_null(doc);
     check_not_null(cyaml_root(doc));
     check_true(cyaml_is_map(cyaml_root(doc)));
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 1);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 1);
 
     
     cyaml_pair_t* pair = cyaml_map_at(cyaml_root(doc), 0);
@@ -81,7 +81,7 @@ void test_cyaml_parse_simple_seq(void)
     check_not_null(doc);
     check_not_null(cyaml_root(doc));
     check_true(cyaml_is_seq(cyaml_root(doc)));
-    check_uint_eq(cyaml_seq_len(cyaml_root(doc)), 3);
+    check_equal(cyaml_seq_len(cyaml_root(doc)), 3);
 
     
     const char* expected[] = { "one", "two", "three" };
@@ -110,8 +110,8 @@ void test_cyaml_parse_rejects_duplicate_keys_by_default(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
-    check_uint_eq(err.span.start_line, 2);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.span.start_line, 2);
     check_true(err.msg[0] != '\0');
 }
 
@@ -123,7 +123,7 @@ void test_cyaml_parse_rejects_duplicate_keys_when_disabled(void)
     opts.dup_keys = false;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
 }
 
 void test_cyaml_parse_rejects_duplicate_keys_without_error_output(void)
@@ -140,7 +140,7 @@ void test_cyaml_parse_allows_duplicate_keys_when_enabled(void)
     opts.dup_keys = true;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 2);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 2);
     cyaml_free(doc);
 }
 
@@ -150,8 +150,8 @@ void test_cyaml_parse_rejects_nested_duplicate_keys(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
-    check_uint_eq(err.span.start_line, 3);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.span.start_line, 3);
 }
 
 void test_cyaml_parse_rejects_equivalent_quoted_key(void)
@@ -160,8 +160,8 @@ void test_cyaml_parse_rejects_equivalent_quoted_key(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
-    check_uint_eq(err.span.start_line, 2);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.span.start_line, 2);
 }
 
 void test_cyaml_parse_rejects_duplicate_complex_keys(void)
@@ -170,8 +170,8 @@ void test_cyaml_parse_rejects_duplicate_complex_keys(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
-    check_uint_eq(err.span.start_line, 3);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.span.start_line, 3);
 }
 
 void test_cyaml_parse_rejects_duplicate_recursive_alias_keys(void)
@@ -180,8 +180,8 @@ void test_cyaml_parse_rejects_duplicate_recursive_alias_keys(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_null(doc);
-    check_int_eq(err.code, CYAML_ERR_DUP_KEY);
-    check_uint_eq(err.span.start_line, 3);
+    check_equal(err.code, CYAML_ERR_DUP_KEY);
+    check_equal(err.span.start_line, 3);
 }
 
 void test_cyaml_parse_accepts_distinct_keys(void)
@@ -190,7 +190,7 @@ void test_cyaml_parse_accepts_distinct_keys(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 2);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 2);
     cyaml_free(doc);
 }
 
@@ -200,7 +200,7 @@ void test_cyaml_parse_accepts_distinct_typed_keys(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 2);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 2);
     cyaml_free(doc);
 }
 
@@ -224,7 +224,7 @@ void test_cyaml_parse_stream_single_doc(void)
     cyaml_error_t err;
     cyaml_stream_t* stream = cyaml_parse_stream(yaml, strlen(yaml), NULL, &err);
     check_not_null(stream);
-    check_uint_eq(cyaml_stream_count(stream), 1);
+    check_equal(cyaml_stream_count(stream), 1);
     check_not_null(cyaml_stream_doc(stream, 0));
     cyaml_stream_free(stream);
 }
@@ -235,7 +235,7 @@ void test_cyaml_parse_stream_multi_doc(void)
     cyaml_error_t err;
     cyaml_stream_t* stream = cyaml_parse_stream(yaml, strlen(yaml), NULL, &err);
     check_not_null(stream);
-    check_uint_eq(cyaml_stream_count(stream), 3);
+    check_equal(cyaml_stream_count(stream), 3);
 
     
     const char* expected[] = { "first", "second", "third" };
@@ -262,7 +262,7 @@ void test_cyaml_stream_doc_out_of_bounds(void)
 
 void test_cyaml_stream_count_null(void)
 {
-    check_uint_eq(cyaml_stream_count(NULL), 0);
+    check_equal(cyaml_stream_count(NULL), 0);
 }
 
 void test_cyaml_stream_doc_null(void)
@@ -287,7 +287,7 @@ void test_cyaml_src(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
     check_not_null(cyaml_src(doc));
-    check_ptr_eq(cyaml_src(doc), yaml);
+    check_true(cyaml_src(doc) == yaml);
     cyaml_free(doc);
 }
 
@@ -302,13 +302,13 @@ void test_cyaml_src_len(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_src_len(doc), strlen(yaml));
+    check_equal(cyaml_src_len(doc), strlen(yaml));
     cyaml_free(doc);
 }
 
 void test_cyaml_src_len_null(void)
 {
-    check_uint_eq(cyaml_src_len(NULL), 0);
+    check_equal(cyaml_src_len(NULL), 0);
 }
 
 void test_cyaml_span_ptr(void)
@@ -333,7 +333,7 @@ void test_cyaml_span_dup(void)
     cyaml_node_t* root = cyaml_root(doc);
     char* dup = cyaml_span_dup(doc, root->span);
     check_not_null(dup);
-    check_str_eq(dup, "hello");
+    check_equal(dup, "hello");
     free(dup);
     cyaml_free(doc);
 }
@@ -346,7 +346,7 @@ void test_cyaml_scalar_str_plain(void)
     check_not_null(doc);
     char* str = cyaml_scalar_str(doc, cyaml_root(doc));
     check_not_null(str);
-    check_str_eq(str, "hello world");
+    check_equal(str, "hello world");
     free(str);
     cyaml_free(doc);
 }
@@ -359,7 +359,7 @@ void test_cyaml_scalar_str_quoted(void)
     check_not_null(doc);
     char* str = cyaml_scalar_str(doc, cyaml_root(doc));
     check_not_null(str);
-    check_str_eq(str, "hello\nworld");
+    check_equal(str, "hello\nworld");
     free(str);
     cyaml_free(doc);
 }
@@ -477,7 +477,7 @@ void test_cyaml_val(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
     cyaml_span_t span = cyaml_val(cyaml_root(doc));
-    check_uint_eq(span.len, 5);
+    check_equal(span.len, 5);
     cyaml_free(doc);
 }
 
@@ -489,7 +489,7 @@ void test_cyaml_str(void)
     check_not_null(doc);
     const char* str = cyaml_str(doc, cyaml_root(doc));
     check_not_null(str);
-    check_mem_eq(str, "hello", 5);
+    check_equal(str, "hello", 5);
     cyaml_free(doc);
 }
 
@@ -499,7 +499,7 @@ void test_cyaml_len(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_len(cyaml_root(doc)), 5);
+    check_equal(cyaml_len(cyaml_root(doc)), 5);
     cyaml_free(doc);
 }
 
@@ -511,7 +511,7 @@ void test_cyaml_as_int_positive(void)
     check_not_null(doc);
     int64_t val;
     check_true(cyaml_as_int(doc, cyaml_root(doc), &val));
-    check_long_eq(val, 42);
+    check_equal(val, 42);
     cyaml_free(doc);
 }
 
@@ -523,7 +523,7 @@ void test_cyaml_as_int_negative(void)
     check_not_null(doc);
     int64_t val;
     check_true(cyaml_as_int(doc, cyaml_root(doc), &val));
-    check_long_eq(val, -123);
+    check_equal(val, -123);
     cyaml_free(doc);
 }
 
@@ -535,7 +535,7 @@ void test_cyaml_as_int_hex(void)
     check_not_null(doc);
     int64_t val;
     check_true(cyaml_as_int(doc, cyaml_root(doc), &val));
-    check_long_eq(val, 255);
+    check_equal(val, 255);
     cyaml_free(doc);
 }
 
@@ -547,7 +547,7 @@ void test_cyaml_as_int_octal(void)
     check_not_null(doc);
     int64_t val;
     check_true(cyaml_as_int(doc, cyaml_root(doc), &val));
-    check_long_eq(val, 63);
+    check_equal(val, 63);
     cyaml_free(doc);
 }
 
@@ -570,7 +570,7 @@ void test_cyaml_as_uint(void)
     check_not_null(doc);
     uint64_t val;
     check_true(cyaml_as_uint(doc, cyaml_root(doc), &val));
-    check_hex64_eq(val, 12345678901234ULL);
+    check_equal(val, 12345678901234ULL);
     cyaml_free(doc);
 }
 
@@ -582,7 +582,7 @@ void test_cyaml_as_float_normal(void)
     check_not_null(doc);
     double val;
     check_true(cyaml_as_float(doc, cyaml_root(doc), &val));
-    check_double_within_abs(val, 3.14159, 0.00001);
+    check_within(val, 3.14159, 0.00001);
     cyaml_free(doc);
 }
 
@@ -694,11 +694,11 @@ void test_cyaml_scalar_kind_null(void)
     for (size_t i = 0; i < sizeof(nulls) / sizeof(nulls[0]); i++) {
         cyaml_doc_t* doc = cyaml_parse(nulls[i], strlen(nulls[i]), NULL, NULL);
         check_not_null(doc);
-        check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_NULL);
+        check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_NULL);
         cyaml_free(doc);
     }
     
-    check_int_eq(cyaml_scalar_kind(NULL, NULL), CYAML_KIND_NULL);
+    check_equal(cyaml_scalar_kind(NULL, NULL), CYAML_KIND_NULL);
 }
 
 void test_cyaml_scalar_kind_bool(void)
@@ -707,7 +707,7 @@ void test_cyaml_scalar_kind_bool(void)
     for (size_t i = 0; i < sizeof(bools) / sizeof(bools[0]); i++) {
         cyaml_doc_t* doc = cyaml_parse(bools[i], strlen(bools[i]), NULL, NULL);
         check_not_null(doc);
-        check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_BOOL);
+        check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_BOOL);
         cyaml_free(doc);
     }
 }
@@ -718,7 +718,7 @@ void test_cyaml_scalar_kind_int(void)
     for (size_t i = 0; i < sizeof(ints) / sizeof(ints[0]); i++) {
         cyaml_doc_t* doc = cyaml_parse(ints[i], strlen(ints[i]), NULL, NULL);
         check_not_null(doc);
-        check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_INT);
+        check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_INT);
         cyaml_free(doc);
     }
 }
@@ -729,7 +729,7 @@ void test_cyaml_scalar_kind_float(void)
     for (size_t i = 0; i < sizeof(floats) / sizeof(floats[0]); i++) {
         cyaml_doc_t* doc = cyaml_parse(floats[i], strlen(floats[i]), NULL, NULL);
         check_not_null(doc);
-        check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_FLOAT);
+        check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_FLOAT);
         cyaml_free(doc);
     }
 }
@@ -740,7 +740,7 @@ void test_cyaml_scalar_kind_string(void)
     for (size_t i = 0; i < sizeof(strings) / sizeof(strings[0]); i++) {
         cyaml_doc_t* doc = cyaml_parse(strings[i], strlen(strings[i]), NULL, NULL);
         check_not_null(doc);
-        check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
+        check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
         cyaml_free(doc);
     }
 }
@@ -751,13 +751,13 @@ void test_cyaml_scalar_kind_quoted_string(void)
     const char* yaml = "'123'";
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, NULL);
     check_not_null(doc);
-    check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
+    check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
     cyaml_free(doc);
 
     yaml = "\"true\"";
     doc = cyaml_parse(yaml, strlen(yaml), NULL, NULL);
     check_not_null(doc);
-    check_int_eq(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
+    check_equal(cyaml_scalar_kind(doc, cyaml_root(doc)), CYAML_KIND_STRING);
     cyaml_free(doc);
 }
 
@@ -767,7 +767,7 @@ void test_cyaml_seq_len(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_seq_len(cyaml_root(doc)), 3);
+    check_equal(cyaml_seq_len(cyaml_root(doc)), 3);
 
     
     const char* expected[] = { "a", "b", "c" };
@@ -781,7 +781,7 @@ void test_cyaml_seq_len(void)
 
 void test_cyaml_seq_len_null(void)
 {
-    check_uint_eq(cyaml_seq_len(NULL), 0);
+    check_equal(cyaml_seq_len(NULL), 0);
 }
 
 void test_cyaml_seq_get(void)
@@ -820,7 +820,7 @@ void test_cyaml_map_len(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 3);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 3);
 
     
     const char* keys[] = { "a", "b", "c" };
@@ -838,7 +838,7 @@ void test_cyaml_map_len(void)
 
 void test_cyaml_map_len_null(void)
 {
-    check_uint_eq(cyaml_map_len(NULL), 0);
+    check_equal(cyaml_map_len(NULL), 0);
 }
 
 void test_cyaml_map_at(void)
@@ -884,7 +884,7 @@ void test_cyaml_get(void)
     check_true(cyaml_span_eq(doc, name->span, "John"));
     int64_t age_val;
     check_true(cyaml_as_int(doc, age, &age_val));
-    check_long_eq(age_val, 30);
+    check_equal(age_val, 30);
     cyaml_free(doc);
 }
 
@@ -1001,7 +1001,7 @@ void test_cyaml_new_int(void)
     check_true(cyaml_is_scalar(node));
     int64_t val;
     check_true(cyaml_as_int(doc, node, &val));
-    check_long_eq(val, -42);
+    check_equal(val, -42);
     cyaml_free(doc);
 }
 
@@ -1014,7 +1014,7 @@ void test_cyaml_new_uint(void)
     check_true(cyaml_is_scalar(node));
     uint64_t val;
     check_true(cyaml_as_uint(doc, node, &val));
-    check_hex64_eq(val, 18446744073709551615ULL);
+    check_equal(val, 18446744073709551615ULL);
     cyaml_free(doc);
 }
 
@@ -1027,7 +1027,7 @@ void test_cyaml_new_float(void)
     check_true(cyaml_is_scalar(node));
     double val;
     check_true(cyaml_as_float(doc, node, &val));
-    check_double_within_abs(val, 3.14159, 0.00001);
+    check_within(val, 3.14159, 0.00001);
     cyaml_free(doc);
 }
 
@@ -1064,7 +1064,7 @@ void test_cyaml_new_seq(void)
     cyaml_node_t* seq = cyaml_new_seq(doc);
     check_not_null(seq);
     check_true(cyaml_is_seq(seq));
-    check_uint_eq(cyaml_seq_len(seq), 0);
+    check_equal(cyaml_seq_len(seq), 0);
     cyaml_free(doc);
 }
 
@@ -1075,7 +1075,7 @@ void test_cyaml_new_map(void)
     cyaml_node_t* map = cyaml_new_map(doc);
     check_not_null(map);
     check_true(cyaml_is_map(map));
-    check_uint_eq(cyaml_map_len(map), 0);
+    check_equal(cyaml_map_len(map), 0);
     cyaml_free(doc);
 }
 
@@ -1086,7 +1086,7 @@ void test_cyaml_seq_push(void)
     cyaml_node_t* seq = cyaml_new_seq(doc);
     check_true(cyaml_seq_push(seq, cyaml_new_cstr(doc, "one")));
     check_true(cyaml_seq_push(seq, cyaml_new_cstr(doc, "two")));
-    check_uint_eq(cyaml_seq_len(seq), 2);
+    check_equal(cyaml_seq_len(seq), 2);
     cyaml_free(doc);
 }
 
@@ -1096,7 +1096,7 @@ void test_cyaml_map_set(void)
     check_not_null(doc);
     cyaml_node_t* map = cyaml_new_map(doc);
     check_true(cyaml_map_set(doc, map, "name", cyaml_new_cstr(doc, "value")));
-    check_uint_eq(cyaml_map_len(map), 1);
+    check_equal(cyaml_map_len(map), 1);
     check_true(cyaml_has(doc, map, "name"));
     cyaml_free(doc);
 }
@@ -1107,7 +1107,7 @@ void test_cyaml_set_root(void)
     check_not_null(doc);
     cyaml_node_t* root = cyaml_new_cstr(doc, "root value");
     cyaml_set_root(doc, root);
-    check_ptr_eq(cyaml_root(doc), root);
+    check_true(cyaml_root(doc) == root);
     cyaml_free(doc);
 }
 
@@ -1117,13 +1117,13 @@ void test_cyaml_node_new(void)
     check_not_null(doc);
     cyaml_node_t* scalar = cyaml_node_new(doc, CYAML_SCALAR);
     check_not_null(scalar);
-    check_int_eq(scalar->type, CYAML_SCALAR);
+    check_equal(scalar->type, CYAML_SCALAR);
     cyaml_node_t* seq = cyaml_node_new(doc, CYAML_SEQ);
     check_not_null(seq);
-    check_int_eq(seq->type, CYAML_SEQ);
+    check_equal(seq->type, CYAML_SEQ);
     cyaml_node_t* map = cyaml_node_new(doc, CYAML_MAP);
     check_not_null(map);
-    check_int_eq(map->type, CYAML_MAP);
+    check_equal(map->type, CYAML_MAP);
     cyaml_free(doc);
 }
 
@@ -1295,12 +1295,12 @@ void test_cyaml_stream_json_multi(void)
     cyaml_error_t err;
     cyaml_stream_t* stream = cyaml_parse_stream(input, strlen(input), NULL, &err);
     check_not_null(stream);
-    check_uint_eq(cyaml_stream_count(stream), 2);
+    check_equal(cyaml_stream_count(stream), 2);
 
     size_t len;
     char* json = cyaml_stream_json(stream, 0, &len);
     check_not_null(json);
-    check_int_eq(json[0], '[');
+    check_equal(json[0], '[');
     check_not_null(strstr(json, "\"one\""));
     check_not_null(strstr(json, "\"two\""));
     free(json);
@@ -1326,7 +1326,7 @@ void test_nested_structures(void)
     check_not_null(bob_age);
     int64_t age;
     check_true(cyaml_as_int(doc, bob_age, &age));
-    check_long_eq(age, 25);
+    check_equal(age, 25);
 
     cyaml_free(doc);
 }
@@ -1373,7 +1373,7 @@ void test_round_trip(void)
     check_not_null(port);
     int64_t port_val;
     check_true(cyaml_as_int(doc2, port, &port_val));
-    check_long_eq(port_val, 8080);
+    check_equal(port_val, 8080);
 
     free(output);
     cyaml_free(doc);
@@ -1399,7 +1399,7 @@ void test_iteration_macros(void)
         check_true(cyaml_span_eq(doc, item->span, expected[i]));
         count++;
     }
-    check_uint_eq(count, 3);
+    check_equal(count, 3);
 
     cyaml_free(doc);
 
@@ -1425,7 +1425,7 @@ void test_iteration_macros(void)
         check_true(cyaml_span_eq(doc, pair->val->span, exp_vals[j]));
         count++;
     }
-    check_uint_eq(count, 3);
+    check_equal(count, 3);
 
     cyaml_free(doc);
 }
@@ -1437,7 +1437,7 @@ void test_flow_style(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
     check_true(cyaml_is_map(cyaml_root(doc)));
-    check_uint_eq(cyaml_map_len(cyaml_root(doc)), 2);
+    check_equal(cyaml_map_len(cyaml_root(doc)), 2);
 
     
     cyaml_node_t* key_val = cyaml_get(doc, cyaml_root(doc), "key");
@@ -1447,7 +1447,7 @@ void test_flow_style(void)
     check_true(cyaml_span_eq(doc, key_val->span, "value"));
     int64_t num;
     check_true(cyaml_as_int(doc, num_val, &num));
-    check_long_eq(num, 123);
+    check_equal(num, 123);
     cyaml_free(doc);
 }
 
@@ -1458,7 +1458,7 @@ void test_flow_sequence(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
     check_true(cyaml_is_seq(cyaml_root(doc)));
-    check_uint_eq(cyaml_seq_len(cyaml_root(doc)), 3);
+    check_equal(cyaml_seq_len(cyaml_root(doc)), 3);
 
     
     const char* expected[] = { "one", "two", "three" };
@@ -1507,10 +1507,10 @@ void test_cyaml_set_anchor(void)
     cyaml_doc_t* doc = cyaml_doc_new();
     cyaml_node_t* node = cyaml_new_cstr(doc, "value");
     check_true(cyaml_set_anchor(doc, node, "myanchor"));
-    check_uint_eq(cyaml_anchor_len(node), 8);
+    check_equal(cyaml_anchor_len(node), 8);
     const char* anchor = cyaml_anchor(doc, node);
     check_not_null(anchor);
-    check_mem_eq(anchor, "myanchor", 8);
+    check_equal(anchor, "myanchor", 8);
     cyaml_free(doc);
 }
 
@@ -1521,7 +1521,7 @@ void test_cyaml_set_anchor_clear(void)
     check_true(cyaml_set_anchor(doc, node, "anchor"));
     check_true(cyaml_anchor_len(node) > 0);
     check_true(cyaml_set_anchor(doc, node, NULL));
-    check_uint_eq(cyaml_anchor_len(node), 0);
+    check_equal(cyaml_anchor_len(node), 0);
     cyaml_free(doc);
 }
 
@@ -1533,7 +1533,7 @@ void test_cyaml_new_alias(void)
     cyaml_node_t* alias = cyaml_new_alias(doc, target);
     check_not_null(alias);
     check_true(cyaml_is_alias(alias));
-    check_ptr_eq(alias->alias.target, target);
+    check_true(alias->alias.target == target);
     cyaml_free(doc);
 }
 
@@ -1559,7 +1559,7 @@ void test_cyaml_find_anchor(void)
 
     cyaml_node_t* found = cyaml_find_anchor(doc, "myref");
     check_not_null(found);
-    check_ptr_eq(found, val);
+    check_true(found == val);
 
     check_null(cyaml_find_anchor(doc, "nonexistent"));
     cyaml_free(doc);
@@ -1580,7 +1580,7 @@ void test_cyaml_find_anchor_nested(void)
 
     cyaml_node_t* found = cyaml_find_anchor(doc, "deepanchor");
     check_not_null(found);
-    check_ptr_eq(found, deep);
+    check_true(found == deep);
     cyaml_free(doc);
 }
 
@@ -1608,7 +1608,7 @@ void test_cyaml_node_copy_seq(void)
     cyaml_node_t* copy = cyaml_node_copy(doc, doc, seq);
     check_not_null(copy);
     check_true(cyaml_is_seq(copy));
-    check_uint_eq(cyaml_seq_len(copy), 2);
+    check_equal(cyaml_seq_len(copy), 2);
     check((copy) != (seq));
     cyaml_free(doc);
 }
@@ -1623,7 +1623,7 @@ void test_cyaml_node_copy_map(void)
     cyaml_node_t* copy = cyaml_node_copy(doc, doc, map);
     check_not_null(copy);
     check_true(cyaml_is_map(copy));
-    check_uint_eq(cyaml_map_len(copy), 2);
+    check_equal(cyaml_map_len(copy), 2);
     check((copy) != (map));
 
     cyaml_node_t* val1 = cyaml_get(doc, copy, "key1");
@@ -1665,7 +1665,7 @@ void test_cyaml_map_merge_simple(void)
     cyaml_map_set(doc, src, "b", cyaml_new_int(doc, 2));
 
     check_true(cyaml_map_merge(doc, dst, src));
-    check_uint_eq(cyaml_map_len(dst), 2);
+    check_equal(cyaml_map_len(dst), 2);
     check_true(cyaml_has(doc, dst, "a"));
     check_true(cyaml_has(doc, dst, "b"));
     cyaml_free(doc);
@@ -1681,11 +1681,11 @@ void test_cyaml_map_merge_overwrite(void)
     cyaml_map_set(doc, src, "key", cyaml_new_int(doc, 99));
 
     check_true(cyaml_map_merge(doc, dst, src));
-    check_uint_eq(cyaml_map_len(dst), 1);
+    check_equal(cyaml_map_len(dst), 1);
 
     int64_t val;
     check_true(cyaml_as_int(doc, cyaml_get(doc, dst, "key"), &val));
-    check_long_eq(val, 99);
+    check_equal(val, 99);
     cyaml_free(doc);
 }
 
@@ -1712,11 +1712,11 @@ void test_cyaml_map_merge_deep(void)
     
     cyaml_node_t* merged_config = cyaml_get(doc, dst, "config");
     check_not_null(merged_config);
-    check_uint_eq(cyaml_map_len(merged_config), 3);
+    check_equal(cyaml_map_len(merged_config), 3);
 
     int64_t port;
     check_true(cyaml_as_int(doc, cyaml_get(doc, merged_config, "port"), &port));
-    check_long_eq(port, 8080); 
+    check_equal(port, 8080);
 
     check_true(cyaml_has(doc, merged_config, "host")); 
     check_true(cyaml_has(doc, merged_config, "debug")); 
@@ -1750,7 +1750,7 @@ void test_cyaml_resolve_aliases(void)
 
 void test_cyaml_comment_count_null(void)
 {
-    check_uint_eq(cyaml_comment_count(NULL), 0);
+    check_equal(cyaml_comment_count(NULL), 0);
 }
 
 void test_cyaml_comment_count_no_comments_option(void)
@@ -1760,7 +1760,7 @@ void test_cyaml_comment_count_no_comments_option(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     check_not_null(doc);
     
-    check_uint_eq(cyaml_comment_count(doc), 0);
+    check_equal(cyaml_comment_count(doc), 0);
     cyaml_free(doc);
 }
 
@@ -1779,8 +1779,8 @@ void test_cyaml_comment_count_with_comments(void)
 void test_cyaml_comment_at_null(void)
 {
     cyaml_span_t span = cyaml_comment_at(NULL, 0);
-    check_uint_eq(span.len, 0);
-    check_uint_eq(span.off, 0);
+    check_equal(span.len, 0);
+    check_equal(span.off, 0);
 }
 
 void test_cyaml_comment_at_out_of_bounds(void)
@@ -1792,7 +1792,7 @@ void test_cyaml_comment_at_out_of_bounds(void)
     check_not_null(doc);
     
     cyaml_span_t span = cyaml_comment_at(doc, 1000);
-    check_uint_eq(span.len, 0);
+    check_equal(span.len, 0);
     cyaml_free(doc);
 }
 
@@ -2082,9 +2082,9 @@ void test_cyaml_scanf_basic(void)
     bool ssl = false;
 
     int count = cyaml_scanf(doc, "/server/host %255s /server/port %u /server/ssl %b", host, &port, &ssl);
-    check_int_eq(count, 3);
-    check_str_eq(host, "localhost");
-    check_uint_eq(port, 8080);
+    check_equal(count, 3);
+    check_equal(host, "localhost");
+    check_equal(port, 8080);
     check_true(ssl);
 
     cyaml_free(doc);
@@ -2102,11 +2102,11 @@ void test_cyaml_scanf_integers(void)
     int64_t d = 0;
 
     int count = cyaml_scanf(doc, "/a %d /b %lld /c %llu /d %lld", &a, &b, &c, &d);
-    check_int_eq(count, 4);
-    check_int_eq(a, 42);
-    check_long_eq(b, -17);
-    check_hex64_eq(c, 31);
-    check_long_eq(d, 63);
+    check_equal(count, 4);
+    check_equal(a, 42);
+    check_equal(b, -17);
+    check_equal(c, 31);
+    check_equal(d, 63);
 
     cyaml_free(doc);
 }
@@ -2121,9 +2121,9 @@ void test_cyaml_scanf_floats(void)
     double temp = 0;
 
     int count = cyaml_scanf(doc, "/pi %f /temp %lf", &pi, &temp);
-    check_int_eq(count, 2);
-    check_float_within_abs(pi, 3.14159f, 0.0001f);
-    check_double_within_abs(temp, -273.15, 0.0001);
+    check_equal(count, 2);
+    check_within(pi, 3.14159f, 0.0001f);
+    check_within(temp, -273.15, 0.0001);
 
     cyaml_free(doc);
 }
@@ -2136,10 +2136,10 @@ void test_cyaml_scanf_node_ptr(void)
 
     cyaml_node_t* items = NULL;
     int count = cyaml_scanf(doc, "/items %n", &items);
-    check_int_eq(count, 1);
+    check_equal(count, 1);
     check_not_null(items);
     check_true(cyaml_is_seq(items));
-    check_uint_eq(cyaml_seq_len(items), 2);
+    check_equal(cyaml_seq_len(items), 2);
 
     cyaml_free(doc);
 }
@@ -2156,9 +2156,9 @@ void test_cyaml_node_scanf_relative(void)
     char name[64] = { 0 };
     int age = 0;
     int count = cyaml_node_scanf(doc, user, "name %63s age %d", name, &age);
-    check_int_eq(count, 2);
-    check_str_eq(name, "alice");
-    check_int_eq(age, 30);
+    check_equal(count, 2);
+    check_equal(name, "alice");
+    check_equal(age, 30);
 
     cyaml_free(doc);
 }
@@ -2175,7 +2175,7 @@ void test_cyaml_buildf_scalar(void)
 
     int64_t v;
     check_true(cyaml_as_int(doc, n, &v));
-    check_long_eq(v, 42);
+    check_equal(v, 42);
 
     cyaml_free(doc);
 }
@@ -2200,7 +2200,7 @@ void test_cyaml_buildf_map(void)
     cyaml_node_t* n = cyaml_buildf(doc, "name: %s\nage: %d", "alice", 30);
     check_not_null(n);
     check_true(cyaml_is_map(n));
-    check_uint_eq(cyaml_map_len(n), 2);
+    check_equal(cyaml_map_len(n), 2);
 
     cyaml_free(doc);
 }
@@ -2213,7 +2213,7 @@ void test_cyaml_buildf_seq(void)
     cyaml_node_t* n = cyaml_buildf(doc, "- %s\n- %s\n- %d", "one", "two", 3);
     check_not_null(n);
     check_true(cyaml_is_seq(n));
-    check_uint_eq(cyaml_seq_len(n), 3);
+    check_equal(cyaml_seq_len(n), 3);
 
     cyaml_free(doc);
 }
@@ -2260,7 +2260,7 @@ void test_cyaml_insert_at_nested(void)
     cyaml_node_t* server = cyaml_path(doc, "/server");
     check_not_null(server);
     check_true(cyaml_is_map(server));
-    check_uint_eq(cyaml_map_len(server), 2);
+    check_equal(cyaml_map_len(server), 2);
 
     cyaml_free(doc);
 }
@@ -2278,7 +2278,7 @@ void test_cyaml_insertf(void)
 
     int64_t timeout;
     check_true(cyaml_as_int(doc, cyaml_get(doc, config, "timeout"), &timeout));
-    check_long_eq(timeout, 30);
+    check_equal(timeout, 30);
 
     cyaml_free(doc);
 }
@@ -2289,9 +2289,9 @@ void test_cyaml_delete_at(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, NULL);
     check_not_null(doc);
 
-    check_uint_eq(cyaml_map_len(doc->root), 3);
+    check_equal(cyaml_map_len(doc->root), 3);
     check_true(cyaml_delete_at(doc, "/b"));
-    check_uint_eq(cyaml_map_len(doc->root), 2);
+    check_equal(cyaml_map_len(doc->root), 2);
     check_null(cyaml_get(doc, doc->root, "b"));
 
     cyaml_free(doc);
@@ -2310,10 +2310,10 @@ void test_cyaml_append_at(void)
     cyaml_map_set(doc, root, "items", items);
     doc->root = root;
 
-    check_uint_eq(cyaml_seq_len(items), 2);
+    check_equal(cyaml_seq_len(items), 2);
 
     check_true(cyaml_append_at(doc, "/items", cyaml_new_cstr(doc, "three")));
-    check_uint_eq(cyaml_seq_len(items), 3);
+    check_equal(cyaml_seq_len(items), 3);
 
     cyaml_free(doc);
 }
@@ -2331,7 +2331,7 @@ void test_cyaml_appendf(void)
     check_true(cyaml_appendf(doc, "/users", "name: %s\nage: %d", "alice", 30));
 
     cyaml_node_t* users = cyaml_path(doc, "/users");
-    check_uint_eq(cyaml_seq_len(users), 1);
+    check_equal(cyaml_seq_len(users), 1);
 
     cyaml_node_t* user = cyaml_seq_get(users, 0);
     check_true(cyaml_is_map(user));

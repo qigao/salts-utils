@@ -65,8 +65,8 @@ spec("soa_parser") {
     it("should successfully find a registered schema by its ID") {
         const soa_schema_t *found = soa_find_schema(0x0001);
         check_not_null(found);
-        check_int_eq(found->schema_id, 0x0001);
-        check_int_eq(found->column_count, 3);
+        check_equal(found->schema_id, 0x0001);
+        check_equal(found->column_count, 3);
     }
 
     it("should return NULL when searching for a non-existent schema ID") {
@@ -75,16 +75,16 @@ spec("soa_parser") {
     }
 
     it("should return correct byte width for all SOA types") {
-        check_int_eq(soa_type_width(SOA_TYPE_I8), 1);
-        check_int_eq(soa_type_width(SOA_TYPE_U8), 1);
-        check_int_eq(soa_type_width(SOA_TYPE_I16), 2);
-        check_int_eq(soa_type_width(SOA_TYPE_U16), 2);
-        check_int_eq(soa_type_width(SOA_TYPE_I32), 4);
-        check_int_eq(soa_type_width(SOA_TYPE_U32), 4);
-        check_int_eq(soa_type_width(SOA_TYPE_I64), 8);
-        check_int_eq(soa_type_width(SOA_TYPE_U64), 8);
-        check_int_eq(soa_type_width(SOA_TYPE_F32), 4);
-        check_int_eq(soa_type_width(SOA_TYPE_F64), 8);
+        check_equal(soa_type_width(SOA_TYPE_I8), 1);
+        check_equal(soa_type_width(SOA_TYPE_U8), 1);
+        check_equal(soa_type_width(SOA_TYPE_I16), 2);
+        check_equal(soa_type_width(SOA_TYPE_U16), 2);
+        check_equal(soa_type_width(SOA_TYPE_I32), 4);
+        check_equal(soa_type_width(SOA_TYPE_U32), 4);
+        check_equal(soa_type_width(SOA_TYPE_I64), 8);
+        check_equal(soa_type_width(SOA_TYPE_U64), 8);
+        check_equal(soa_type_width(SOA_TYPE_F32), 4);
+        check_equal(soa_type_width(SOA_TYPE_F64), 8);
     }
   }
 
@@ -118,12 +118,12 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, total, &batch);
 
-        check_int_eq(result, SOA_PARSE_OK);
-        check_int_eq(batch.count, 2);
-        check_int_eq(batch.schema_id, 0x0001);
+        check_equal(result, SOA_PARSE_OK);
+        check_equal(batch.count, 2);
+        check_equal(batch.schema_id, 0x0001);
         check_not_null(batch.schema);
-        check_int_eq(batch.present_mask, 0x07);
-        check_size_eq(batch.consumed, total);
+        check_equal(batch.present_mask, 0x07);
+        check_equal(batch.consumed, total);
 
         /* Verify column pointers */
         check_not_null(batch.columns[0]);
@@ -131,12 +131,12 @@ spec("soa_parser") {
         check_not_null(batch.columns[2]);
 
         /* Verify data access */
-        check_int_eq((int)soa_get_i64(&batch, 0, 0), 1000);
-        check_int_eq((int)soa_get_i64(&batch, 0, 1), 2000);
-        check_int_eq(soa_get_u16(&batch, 1, 0), 42);
-        check_int_eq(soa_get_u16(&batch, 1, 1), 43);
-        check_float_eq(soa_get_f32(&batch, 2, 0), 3.14f, 1e-6f);
-        check_float_eq(soa_get_f32(&batch, 2, 1), 2.71f, 1e-6f);
+        check_equal((int)soa_get_i64(&batch, 0, 0), 1000);
+        check_equal((int)soa_get_i64(&batch, 0, 1), 2000);
+        check_equal(soa_get_u16(&batch, 1, 0), 42);
+        check_equal(soa_get_u16(&batch, 1, 1), 43);
+        check_within(soa_get_f32(&batch, 2, 0), 3.14f, 1e-6f);
+        check_within(soa_get_f32(&batch, 2, 1), 2.71f, 1e-6f);
     }
 
     it("should correctly handle batches with partial columns present") {
@@ -162,8 +162,8 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, total, &batch);
 
-        check_int_eq(result, SOA_PARSE_OK);
-        check_int_eq(batch.present_mask, 0x05);
+        check_equal(result, SOA_PARSE_OK);
+        check_equal(batch.present_mask, 0x05);
 
         /* Column 0 and 2 should be present, column 1 should be NULL */
         check_not_null(batch.columns[0]);
@@ -182,8 +182,8 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
 
-        check_int_eq(result, SOA_PARSE_OK);
-        check_int_eq(batch.count, 0);
+        check_equal(result, SOA_PARSE_OK);
+        check_equal(batch.count, 0);
     }
 
     it("should return SOA_PARSE_NEED_MORE when header is incomplete") {
@@ -192,7 +192,7 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, sizeof(buf), &batch);
 
-        check_int_eq(result, SOA_PARSE_NEED_MORE);
+        check_equal(result, SOA_PARSE_NEED_MORE);
     }
 
     it("should return SOA_PARSE_NEED_MORE when column data is missing") {
@@ -207,7 +207,7 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
 
-        check_int_eq(result, SOA_PARSE_NEED_MORE);
+        check_equal(result, SOA_PARSE_NEED_MORE);
     }
 
     it("should return SOA_PARSE_UNKNOWN_SCHEMA for unregistered schema IDs") {
@@ -221,7 +221,7 @@ spec("soa_parser") {
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
 
-        check_int_eq(result, SOA_PARSE_UNKNOWN_SCHEMA);
+        check_equal(result, SOA_PARSE_UNKNOWN_SCHEMA);
     }
   }
 
@@ -235,9 +235,9 @@ spec("soa_parser") {
         uint16_t schema = 0;
         SoaParseResult result = soa_peek_header(buf, sizeof(buf), &count, &schema);
 
-        check_int_eq(result, SOA_PARSE_OK);
-        check_int_eq(count, 100);
-        check_int_eq(schema, 0x0042);
+        check_equal(result, SOA_PARSE_OK);
+        check_equal(count, 100);
+        check_equal(schema, 0x0042);
     }
   }
 
@@ -245,15 +245,15 @@ spec("soa_parser") {
     it("should calculate correct wire size for various batch configurations") {
         /* All 3 columns present: header(7) + 10*(8+2+4) = 7 + 140 = 147 */
         size_t size = soa_wire_size(&sensor_schema, 10, 0x07);
-        check_size_eq(size, 147);
+        check_equal(size, 147);
 
         /* Only column 0 (I64): header(7) + 10*8 = 87 */
         size = soa_wire_size(&sensor_schema, 10, 0x01);
-        check_size_eq(size, 87);
+        check_equal(size, 87);
 
         /* No columns: just header */
         size = soa_wire_size(&sensor_schema, 10, 0x00);
-        check_size_eq(size, 7);
+        check_equal(size, 7);
     }
 
     it("should build a valid batch header correctly") {
@@ -261,25 +261,25 @@ spec("soa_parser") {
 
         size_t written = soa_build_header(&sensor_schema, 42, 0x05, buf, sizeof(buf));
 
-        check_size_eq(written, 7);
+        check_equal(written, 7);
 
         /* Verify count */
         uint32_t count = buf[0] | ((uint32_t)buf[1] << 8) |
                          ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
-        check_int_eq(count, 42);
+        check_equal(count, 42);
 
         /* Verify schema_id */
         uint16_t schema = buf[4] | ((uint16_t)buf[5] << 8);
-        check_int_eq(schema, 0x0001);
+        check_equal(schema, 0x0001);
 
         /* Verify bitmap */
-        check_int_eq(buf[6], 0x05);
+        check_equal(buf[6], 0x05);
     }
 
     it("should return 0 when destination buffer is too small for header") {
         uint8_t buf[4];
         size_t written = soa_build_header(&sensor_schema, 42, 0x07, buf, sizeof(buf));
-        check_size_eq(written, 0);
+        check_equal(written, 0);
     }
   }
 
@@ -311,12 +311,12 @@ spec("soa_parser") {
 
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
-        check_int_eq(result, SOA_PARSE_OK);
+        check_equal(result, SOA_PARSE_OK);
 
-        check_int_eq(soa_get_i8(&batch, 0, 0), -10);
-        check_int_eq(soa_get_i8(&batch, 0, 1), 127);
-        check_int_eq(soa_get_u8(&batch, 1, 0), 200);
-        check_int_eq(soa_get_u8(&batch, 1, 1), 255);
+        check_equal(soa_get_i8(&batch, 0, 0), -10);
+        check_equal(soa_get_i8(&batch, 0, 1), 127);
+        check_equal(soa_get_u8(&batch, 1, 0), 200);
+        check_equal(soa_get_u8(&batch, 1, 1), 255);
     }
 
     it("should correctly access I32 and U32 column data") {
@@ -344,12 +344,12 @@ spec("soa_parser") {
 
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
-        check_int_eq(result, SOA_PARSE_OK);
+        check_equal(result, SOA_PARSE_OK);
 
-        check_int_eq(soa_get_i32(&batch, 0, 0), -12345);
-        check_int_eq(soa_get_i32(&batch, 0, 1), 67890);
-        check_int_eq(soa_get_u32(&batch, 1, 0), 0xDEADBEEF);
-        check_int_eq(soa_get_u32(&batch, 1, 1), 0xCAFEBABE);
+        check_equal(soa_get_i32(&batch, 0, 0), -12345);
+        check_equal(soa_get_i32(&batch, 0, 1), 67890);
+        check_equal(soa_get_u32(&batch, 1, 0), 0xDEADBEEF);
+        check_equal(soa_get_u32(&batch, 1, 1), 0xCAFEBABE);
     }
 
     it("should correctly access F64 column data with appropriate precision") {
@@ -376,10 +376,10 @@ spec("soa_parser") {
 
         soa_batch_t batch;
         SoaParseResult result = soa_parse(buf, p - buf, &batch);
-        check_int_eq(result, SOA_PARSE_OK);
+        check_equal(result, SOA_PARSE_OK);
 
-        check_float_eq(soa_get_f64(&batch, 0, 0), 3.14159265358979, 1e-12);
-        check_float_eq(soa_get_f64(&batch, 0, 1), 2.71828182845904, 1e-12);
+        check_within(soa_get_f64(&batch, 0, 0), 3.14159265358979, 1e-12);
+        check_within(soa_get_f64(&batch, 0, 1), 2.71828182845904, 1e-12);
     }
   }
 
@@ -393,10 +393,10 @@ spec("soa_parser") {
     }
 
     it("should calculate correct header byte size based on column count") {
-        check_size_eq(soa_header_size(1), 7);   /* 4 + 2 + 1 */
-        check_size_eq(soa_header_size(8), 7);   /* 4 + 2 + 1 */
-        check_size_eq(soa_header_size(9), 8);   /* 4 + 2 + 2 */
-        check_size_eq(soa_header_size(16), 8);  /* 4 + 2 + 2 */
+        check_equal(soa_header_size(1), 7);   /* 4 + 2 + 1 */
+        check_equal(soa_header_size(8), 7);   /* 4 + 2 + 1 */
+        check_equal(soa_header_size(9), 8);   /* 4 + 2 + 2 */
+        check_equal(soa_header_size(16), 8);  /* 4 + 2 + 2 */
     }
   }
 }

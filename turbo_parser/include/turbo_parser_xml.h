@@ -64,7 +64,7 @@ typedef struct turbo_xml_sax_handler_s {
  * @param out Address of a pointer (turbo_xml_doc_t **) to store the result.
  * @return 0 on success, error code otherwise.
  */
-CXX_C_API int turbo_parse_xml(const uint8_t *data, size_t len, turbo_xml_doc_t **out);
+TURBO_PARSER_API int turbo_parse_xml(const uint8_t *data, size_t len, turbo_xml_doc_t **out);
 
 /**
  * @brief Parse one complete XML document with SAX callbacks.
@@ -76,7 +76,7 @@ CXX_C_API int turbo_parse_xml(const uint8_t *data, size_t len, turbo_xml_doc_t *
  * callbacks.
  * @return 0 on success, -1 on parse or callback failure.
  */
-CXX_C_API int turbo_parse_xml_sax(const uint8_t *data, size_t len,
+TURBO_PARSER_API int turbo_parse_xml_sax(const uint8_t *data, size_t len,
                                   const turbo_xml_sax_handler_t *handler, void *ctx);
 
 /* Incremental XML SAX parser. Call feed() with any chunk size, then finish() once at EOF.
@@ -84,53 +84,53 @@ CXX_C_API int turbo_parse_xml_sax(const uint8_t *data, size_t len,
  * Callback pointers are valid only for the duration of the callback. Returning non-zero
  * from a
  * callback stops parsing. Text and attribute values are raw XML slices. */
-CXX_C_API turbo_xml_sax_parser_t *
+TURBO_PARSER_API turbo_xml_sax_parser_t *
 turbo_xml_sax_parser_create(const turbo_xml_sax_handler_t *handler, void *ctx);
-CXX_C_API int turbo_xml_sax_parser_feed(turbo_xml_sax_parser_t *parser, const char *data,
+TURBO_PARSER_API int turbo_xml_sax_parser_feed(turbo_xml_sax_parser_t *parser, const char *data,
                                         size_t len);
-CXX_C_API int turbo_xml_sax_parser_finish(turbo_xml_sax_parser_t *parser);
-CXX_C_API const char *turbo_xml_sax_parser_error(const turbo_xml_sax_parser_t *parser);
-CXX_C_API void turbo_xml_sax_parser_destroy(turbo_xml_sax_parser_t *parser);
+TURBO_PARSER_API int turbo_xml_sax_parser_finish(turbo_xml_sax_parser_t *parser);
+TURBO_PARSER_API const char *turbo_xml_sax_parser_error(const turbo_xml_sax_parser_t *parser);
+TURBO_PARSER_API void turbo_xml_sax_parser_destroy(turbo_xml_sax_parser_t *parser);
 
 /**
  * @brief Free XML data and set pointer to NULL.
  * @param out Address of the pointer
  * (turbo_xml_doc_t **) to free.
  */
-CXX_C_API void turbo_free_xml(turbo_xml_doc_t **out);
-CXX_C_API char *turbo_xml_serialize(const turbo_xml_doc_t *doc, size_t *out_len);
-CXX_C_API void turbo_xml_string_free(char *str);
-CXX_C_API void turbo_xml_serialize_free(char *str);
-CXX_C_API int turbo_xml_write(const turbo_xml_doc_t *doc, turbo_write_fn write, void *user);
-CXX_C_API turbo_xml_doc_t *turbo_xml_create_document(const char *root_name);
-CXX_C_API turbo_xml_node_t *turbo_xml_add_element(void *parent, const char *name);
-CXX_C_API int turbo_xml_set_text(turbo_xml_node_t *node, const char *text);
+TURBO_PARSER_API void turbo_free_xml(turbo_xml_doc_t **out);
+TURBO_PARSER_API char *turbo_xml_serialize(const turbo_xml_doc_t *doc, size_t *out_len);
+TURBO_PARSER_API void turbo_xml_string_free(char *str);
+TURBO_PARSER_API void turbo_xml_serialize_free(char *str);
+TURBO_PARSER_API int turbo_xml_write(const turbo_xml_doc_t *doc, turbo_write_fn write, void *user);
+TURBO_PARSER_API turbo_xml_doc_t *turbo_xml_create_document(const char *root_name);
+TURBO_PARSER_API turbo_xml_node_t *turbo_xml_add_element(void *parent, const char *name);
+TURBO_PARSER_API int turbo_xml_set_text(turbo_xml_node_t *node, const char *text);
 
 /**
  * @brief Get the root element of an XML document.
  * @param doc Pointer to the XML document.
  * @return Pointer to the root element.
  */
-CXX_C_API turbo_xml_node_t *turbo_xml_root_element(const turbo_xml_doc_t *doc);
+TURBO_PARSER_API turbo_xml_node_t *turbo_xml_root_element(const turbo_xml_doc_t *doc);
 
 /**
  * @brief Get the name of an XML node.
  * @param node Pointer to the XML node.
  * @return Pointer to the name string.
  */
-CXX_C_API const char *turbo_xml_node_name(const turbo_xml_node_t *node);
+TURBO_PARSER_API const char *turbo_xml_node_name(const turbo_xml_node_t *node);
 
 /**
  * @brief Initialize an XML node list.
  * @param list Target list.
  */
-CXX_C_API void turbo_xml_list_init(turbo_xml_list_t *list);
+TURBO_PARSER_API void turbo_xml_list_init(turbo_xml_list_t *list);
 
 /**
  * @brief Free an XML node list.
  * @param list Target list.
  */
-CXX_C_API void turbo_xml_list_free(turbo_xml_list_t *list);
+TURBO_PARSER_API void turbo_xml_list_free(turbo_xml_list_t *list);
 
 /**
  * @brief Find the first XML node matching a query.
@@ -139,7 +139,7 @@ CXX_C_API void turbo_xml_list_free(turbo_xml_list_t *list);
  * Query string.
  * @return Matching node or NULL.
  */
-CXX_C_API turbo_xml_node_t *turbo_xml_find(turbo_xml_node_t *root, const char *query);
+TURBO_PARSER_API turbo_xml_node_t *turbo_xml_find(turbo_xml_node_t *root, const char *query);
 
 /**
  * @brief Find all XML nodes matching a query.
@@ -148,7 +148,7 @@ CXX_C_API turbo_xml_node_t *turbo_xml_find(turbo_xml_node_t *root, const char *q
  * string.
  * @param out Target list.
  */
-CXX_C_API void turbo_xml_find_all(turbo_xml_node_t *root, const char *query, turbo_xml_list_t *out);
+TURBO_PARSER_API void turbo_xml_find_all(turbo_xml_node_t *root, const char *query, turbo_xml_list_t *out);
 
 /**
  * @brief Duplicate the text content of an XML node.
@@ -156,7 +156,7 @@ CXX_C_API void turbo_xml_find_all(turbo_xml_node_t *root, const char *query, tur
  * @return
  * Newly allocated string or NULL.
  */
-CXX_C_API char *turbo_xml_text_dup(turbo_xml_node_t *node);
+TURBO_PARSER_API char *turbo_xml_text_dup(turbo_xml_node_t *node);
 
 /**
  * @brief Duplicate the text content of a named child element.
@@ -166,7 +166,7 @@ CXX_C_API char *turbo_xml_text_dup(turbo_xml_node_t *node);
  * @return Newly allocated string. Returns an empty string if not
  * found.
  */
-CXX_C_API char *turbo_xml_child_text_dup(turbo_xml_node_t *parent, const char *name);
+TURBO_PARSER_API char *turbo_xml_child_text_dup(turbo_xml_node_t *parent, const char *name);
 
 /**
  * @brief Get text content of XML nodes matching XPath expression.
@@ -174,7 +174,7 @@ CXX_C_API char *turbo_xml_child_text_dup(turbo_xml_node_t *parent, const char *n
  * @param xpath XPath expression.
  * @return Pointer to text content of first matching node, or NULL if not found.
  */
-CXX_C_API const char *turbo_xml_get_text(const turbo_xml_doc_t *doc, const char *xpath);
+TURBO_PARSER_API const char *turbo_xml_get_text(const turbo_xml_doc_t *doc, const char *xpath);
 
 /**
  * @brief Count XML nodes matching XPath expression.
@@ -182,7 +182,7 @@ CXX_C_API const char *turbo_xml_get_text(const turbo_xml_doc_t *doc, const char 
  * @param xpath XPath expression.
  * @return Number of matching nodes.
  */
-CXX_C_API size_t turbo_xml_count(const turbo_xml_doc_t *doc, const char *xpath);
+TURBO_PARSER_API size_t turbo_xml_count(const turbo_xml_doc_t *doc, const char *xpath);
 
 /**
  * @brief Get the first XML node matching an XPath expression.
@@ -192,7 +192,7 @@ CXX_C_API size_t turbo_xml_count(const turbo_xml_doc_t *doc, const char *xpath);
  * @return First matching opaque XML node pointer, or
  * NULL.
  */
-CXX_C_API turbo_xml_xpath_node_t *turbo_xml_xpath_get(const turbo_xml_doc_t *doc,
+TURBO_PARSER_API turbo_xml_xpath_node_t *turbo_xml_xpath_get(const turbo_xml_doc_t *doc,
                                                       const char *xpath);
 
 /**
@@ -203,12 +203,12 @@ CXX_C_API turbo_xml_xpath_node_t *turbo_xml_xpath_get(const turbo_xml_doc_t *doc
  * @param out Target list. Contains non-owning opaque
  * XML node pointers.
  */
-CXX_C_API void turbo_xml_xpath_query(const turbo_xml_doc_t *doc, const char *xpath,
+TURBO_PARSER_API void turbo_xml_xpath_query(const turbo_xml_doc_t *doc, const char *xpath,
                                       turbo_xml_list_t *out);
 /** Execute XPath with copied per-call limits and append borrowed nodes to out.
  * out is initialized even on failure and must be released with
  * turbo_xml_list_free(). */
-CXX_C_API turbo_query_status_t turbo_xml_xpath_query_ex(
+TURBO_PARSER_API turbo_query_status_t turbo_xml_xpath_query_ex(
     const turbo_xml_doc_t *doc, const char *xpath, turbo_xml_list_t *out,
     const turbo_query_limits_t *limits, turbo_query_diagnostic_t *diagnostic);
 
@@ -219,7 +219,7 @@ CXX_C_API turbo_query_status_t turbo_xml_xpath_query_ex(
  * @param xpath XPath expression.
  * @return Number of matching nodes.
  */
-CXX_C_API size_t turbo_xml_xpath_count(const turbo_xml_doc_t *doc, const char *xpath);
+TURBO_PARSER_API size_t turbo_xml_xpath_count(const turbo_xml_doc_t *doc, const char *xpath);
 
 /**
  * @brief Get text content of the first XML node matching an XPath expression.
@@ -229,7 +229,7 @@ CXX_C_API size_t turbo_xml_xpath_count(const turbo_xml_doc_t *doc, const char *x
  * @return Pointer to text content
  * of first matching node, or NULL if not found.
  */
-CXX_C_API const char *turbo_xml_xpath_text(const turbo_xml_doc_t *doc, const char *xpath);
+TURBO_PARSER_API const char *turbo_xml_xpath_text(const turbo_xml_doc_t *doc, const char *xpath);
 
 /**
  * @brief Get the type of an opaque XPath node.
@@ -237,7 +237,7 @@ CXX_C_API const char *turbo_xml_xpath_text(const turbo_xml_doc_t *doc, const cha
  * turbo_xml_xpath_get/query.
  * @return Stable TurboNet XML node type.
  */
-CXX_C_API turbo_xml_node_type_t turbo_xml_xpath_node_type(const turbo_xml_xpath_node_t *node);
+TURBO_PARSER_API turbo_xml_node_type_t turbo_xml_xpath_node_type(const turbo_xml_xpath_node_t *node);
 
 /**
  * @brief Get the stable string name for an opaque XPath node type.
@@ -246,7 +246,7 @@ CXX_C_API turbo_xml_node_type_t turbo_xml_xpath_node_type(const turbo_xml_xpath_
  * @return Type name such as "element", "text", or "attribute".
 
  */
-CXX_C_API const char *turbo_xml_xpath_node_type_name(const turbo_xml_xpath_node_t *node);
+TURBO_PARSER_API const char *turbo_xml_xpath_node_type_name(const turbo_xml_xpath_node_t *node);
 
 /**
  * @brief Get the qualified name for an opaque XPath node when it has one.
@@ -255,7 +255,7 @@ CXX_C_API const char *turbo_xml_xpath_node_type_name(const turbo_xml_xpath_node_
  * @return Node name, or NULL for unnamed node kinds.
 
  */
-CXX_C_API const char *turbo_xml_xpath_node_name(const turbo_xml_xpath_node_t *node);
+TURBO_PARSER_API const char *turbo_xml_xpath_node_name(const turbo_xml_xpath_node_t *node);
 
 /**
  * @brief Get textual value for an opaque XPath node when it has one.
@@ -264,7 +264,7 @@ CXX_C_API const char *turbo_xml_xpath_node_name(const turbo_xml_xpath_node_t *no
  * @return Text value, or NULL when unavailable. The
  * pointer is non-owning.
  */
-CXX_C_API const char *turbo_xml_xpath_node_text(const turbo_xml_xpath_node_t *node);
+TURBO_PARSER_API const char *turbo_xml_xpath_node_text(const turbo_xml_xpath_node_t *node);
 
 /**
  * @brief Serialize an opaque XPath node to XML/text.
@@ -273,7 +273,7 @@ CXX_C_API const char *turbo_xml_xpath_node_text(const turbo_xml_xpath_node_t *no
  * @return Newly allocated string, or NULL. Free with
  * turbo_xml_string_free().
  */
-CXX_C_API char *turbo_xml_xpath_node_xml_dup(const turbo_xml_xpath_node_t *node);
+TURBO_PARSER_API char *turbo_xml_xpath_node_xml_dup(const turbo_xml_xpath_node_t *node);
 
 
 #ifdef __cplusplus

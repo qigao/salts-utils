@@ -34,28 +34,28 @@ suite("enum_helpers") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *enums = find_child(root, "enums");
             check_not_null(enums);
-            check_uint_eq(enums->data.list.count, 1);
+            check_equal(enums->data.list.count, 1);
 
             Node *user_role = enums->data.list.items[0];
             
             // 检查项目数量
             Node *count_node = find_child(user_role, "items_count");
             check_not_null(count_node);
-            check_str_eq(count_node->data.string_val, "4");
+            check_equal(count_node->data.string_val, "4");
             
             // 检查最小值
             Node *min_node = find_child(user_role, "min_value");
             check_not_null(min_node);
-            check_str_eq(min_node->data.string_val, "UserRole_Guest");
+            check_equal(min_node->data.string_val, "UserRole_Guest");
             
             // 检查最大值
             Node *max_node = find_child(user_role, "max_value");
             check_not_null(max_node);
-            check_str_eq(max_node->data.string_val, "UserRole_Admin");
+            check_equal(max_node->data.string_val, "UserRole_Admin");
 
             node_free(root);
         }
@@ -69,19 +69,19 @@ suite("enum_helpers") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *enums = find_child(root, "enums");
             Node *status = enums->data.list.items[0];
             
             // 检查项目数量
-            check_str_eq(find_child(status, "items_count")->data.string_val, "3");
+            check_equal(find_child(status, "items_count")->data.string_val, "3");
             
             // 检查最小值（应该是Active=5）
-            check_str_eq(find_child(status, "min_value")->data.string_val, "Status_Active");
+            check_equal(find_child(status, "min_value")->data.string_val, "Status_Active");
             
             // 检查最大值（应该是Error=20）
-            check_str_eq(find_child(status, "max_value")->data.string_val, "Status_Error");
+            check_equal(find_child(status, "max_value")->data.string_val, "Status_Error");
 
             node_free(root);
         }

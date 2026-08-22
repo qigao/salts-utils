@@ -447,9 +447,9 @@ static int eval_num(dsv_op_t op, double lhs, double rhs) {
     }
 }
 
-static int eval_str(dsv_op_t op, tstr_v lhs, const char *rhs, size_t rhs_len) {
+static int eval_str(dsv_op_t op, vstr lhs, const char *rhs, size_t rhs_len) {
     int c;
-    if (!lhs.data) lhs = tstr_v_from_buf("", 0);
+    if (!lhs.data) lhs = vstr_from_buf("", 0);
     c = cmp_bytes(lhs.data, lhs.len, rhs, rhs_len);
     switch (op) {
         case DSV_OP_EQ: return c == 0;
@@ -592,18 +592,18 @@ done:
     return ok;
 }
 
-static tstr_v dsv_value_at(const tstr_v *fields, size_t field_count, size_t col_idx) {
-    if (!fields || col_idx >= field_count) return tstr_v_from_buf("", 0);
+static vstr dsv_value_at(const vstr *fields, size_t field_count, size_t col_idx) {
+    if (!fields || col_idx >= field_count) return vstr_from_buf("", 0);
     return fields[col_idx];
 }
 
-static double dsv_value_double_at(const tstr_v *fields, size_t field_count, size_t col_idx) {
-    tstr_v value = dsv_value_at(fields, field_count, col_idx);
+static double dsv_value_double_at(const vstr *fields, size_t field_count, size_t col_idx) {
+    vstr value = dsv_value_at(fields, field_count, col_idx);
     return dsv_fast_atof(value.data, value.len);
 }
 
 static int eval_lhs_numeric_expr_values(const dsv_filter_t *filter, const dsv_clause_t *clause,
-                                        const tstr_v *fields, size_t field_count,
+                                        const vstr *fields, size_t field_count,
                                         double *out_value) {
     size_t i;
     size_t sp = 0;
@@ -955,7 +955,7 @@ fallback:
 
 typedef struct {
     const dsv_filter_t *filter;
-    const tstr_v *fields;
+    const vstr *fields;
     size_t field_count;
     size_t row_index;
 } dsv_qvm_ctx_t;
@@ -1005,7 +1005,7 @@ static int dsv_qvm_resolve_value(const dsv_qvm_ctx_t *ctx, uint32_t operand,
                     value = csv_get_double(filter->doc, ctx->row_index, op->col_idx, 0.0);
                 dsv_qvm_make_number(NULL, value, out);
             } else {
-                tstr_v value;
+                vstr value;
                 if (ctx->fields)
                     value = dsv_value_at(ctx->fields, ctx->field_count, op->col_idx);
                 else
@@ -1077,7 +1077,7 @@ static int dsv_qvm_binary(void *opaque, qvm_opcode_t op, uint32_t arg,
             if (left->type == DSV_QVM_STRING && right->type == DSV_QVM_STRING) {
                 dsv_qvm_make_bool(NULL,
                                   eval_str((dsv_op_t)arg,
-                                           tstr_v_from_buf(left->str, left->length),
+                                           vstr_from_buf(left->str, left->length),
                                            right->str, right->length),
                                   out);
                 return 1;
@@ -1112,7 +1112,7 @@ static int dsv_qvm_leaf(void *opaque, qvm_opcode_t op, uint32_t arg,
         result = eval_num((dsv_op_t)arg, lhs.number, rhs.number);
     } else {
         if (lhs.type != DSV_QVM_STRING || rhs.type != DSV_QVM_STRING) return 0;
-        result = eval_str((dsv_op_t)arg, tstr_v_from_buf(lhs.str, lhs.length),
+        result = eval_str((dsv_op_t)arg, vstr_from_buf(lhs.str, lhs.length),
                           rhs.str, rhs.length);
     }
     dsv_qvm_make_bool(NULL, result, out);
@@ -1200,7 +1200,7 @@ static int build_direct_scan_plan(dsv_filter_t *filter) {
         predicates[i].op = (csv_scan_op_t)clause->op;
         if (clause->rhs_is_string) {
             predicates[i].type = CSV_SCAN_VALUE_TEXT;
-            predicates[i].text = tstr_v_from_buf(clause->rhs_str, clause->rhs_str_len);
+            predicates[i].text = vstr_from_buf(clause->rhs_str, clause->rhs_str_len);
         } else {
             predicates[i].type = CSV_SCAN_VALUE_DOUBLE;
             predicates[i].number = clause->rhs_num;
@@ -1421,7 +1421,7 @@ void dsv_filter_set_output_delimiter(dsv_filter_t *filter, char delimiter) {
     if (filter) filter->output_delim = delimiter;
 }
 
-static int dsv_field_needs_quote(tstr_v value, char delimiter) {
+static int dsv_field_needs_quote(vstr value, char delimiter) {
     size_t i;
     if (!value.data) return 0;
     for (i = 0; i < value.len; i++) {
@@ -1431,7 +1431,7 @@ static int dsv_field_needs_quote(tstr_v value, char delimiter) {
     return 0;
 }
 
-static size_t dsv_rendered_field_len(tstr_v value, char delimiter) {
+static size_t dsv_rendered_field_len(vstr value, char delimiter) {
     size_t i;
     size_t len = value.len;
     if (!dsv_field_needs_quote(value, delimiter)) return len;
@@ -1440,10 +1440,10 @@ static size_t dsv_rendered_field_len(tstr_v value, char delimiter) {
     return len;
 }
 
-static void dsv_render_field(char *dst, size_t *offset, tstr_v value, char delimiter) {
+static void dsv_render_field(char *dst, size_t *offset, vstr value, char delimiter) {
     size_t i;
     int quote = dsv_field_needs_quote(value, delimiter);
-    if (!value.data) value = tstr_v_from_buf("", 0);
+    if (!value.data) value = vstr_from_buf("", 0);
     if (quote) dst[(*offset)++] = '"';
     for (i = 0; i < value.len; i++) {
         if (quote && value.data[i] == '"') dst[(*offset)++] = '"';
@@ -1452,14 +1452,14 @@ static void dsv_render_field(char *dst, size_t *offset, tstr_v value, char delim
     if (quote) dst[(*offset)++] = '"';
 }
 
-static int dsv_render_values(const dsv_filter_t *filter, const tstr_v *fields,
-                             size_t field_count, tstr_t *buffer) {
+static int dsv_render_values(const dsv_filter_t *filter, const vstr *fields,
+                             size_t field_count, tstr *buffer) {
     size_t total = 0;
     size_t col;
-    tstr_t next;
+    tstr next;
 
     for (col = 0; col < filter->col_count; ++col) {
-        tstr_v value = dsv_value_at(fields, field_count, col);
+        vstr value = dsv_value_at(fields, field_count, col);
         size_t field_len = dsv_rendered_field_len(value, filter->output_delim);
         size_t separator_len = col > 0 ? 1 : 0;
         if (field_len > (size_t)-1 - separator_len ||
@@ -1476,7 +1476,7 @@ static int dsv_render_values(const dsv_filter_t *filter, const tstr_v *fields,
     {
         size_t offset = 0;
         for (col = 0; col < filter->col_count; ++col) {
-            tstr_v value = dsv_value_at(fields, field_count, col);
+            vstr value = dsv_value_at(fields, field_count, col);
             if (col > 0) (*buffer)[offset++] = filter->output_delim;
             dsv_render_field(*buffer, &offset, value, filter->output_delim);
         }
@@ -1496,7 +1496,7 @@ static int dsv_filter_check_row_native(dsv_filter_t *filter, size_t row_index) {
         int clause_ok;
 
         if (c->rhs_is_string) {
-            tstr_v lhs = csv_get_v(filter->doc, row_index, c->col_idx);
+            vstr lhs = csv_get_v(filter->doc, row_index, c->col_idx);
             clause_ok = eval_str(c->op, lhs, c->rhs_str, c->rhs_str_len);
         } else {
             double lhs = 0.0;
@@ -1518,7 +1518,7 @@ static int dsv_filter_check_row_native(dsv_filter_t *filter, size_t row_index) {
     return result ? 1 : 0;
 }
 
-static int dsv_filter_check_values_native(dsv_filter_t *filter, const tstr_v *fields, size_t field_count) {
+static int dsv_filter_check_values_native(dsv_filter_t *filter, const vstr *fields, size_t field_count) {
     size_t i;
     int result = 0;
     if (!filter || !filter->compiled || !fields) return -1;
@@ -1528,7 +1528,7 @@ static int dsv_filter_check_values_native(dsv_filter_t *filter, const tstr_v *fi
         int clause_ok;
 
         if (c->rhs_is_string) {
-            tstr_v lhs = dsv_value_at(fields, field_count, c->col_idx);
+            vstr lhs = dsv_value_at(fields, field_count, c->col_idx);
             clause_ok = eval_str(c->op, lhs, c->rhs_str, c->rhs_str_len);
         } else {
             double lhs = 0.0;
@@ -1581,7 +1581,7 @@ int dsv_filter_check_row(dsv_filter_t *filter, size_t row_index) {
     return dsv_qvm_truthy(&ctx, &result) ? 1 : 0;
 }
 
-int dsv_filter_check_values(dsv_filter_t *filter, const tstr_v *fields,
+int dsv_filter_check_values(dsv_filter_t *filter, const vstr *fields,
                             size_t field_count) {
     dsv_qvm_ctx_t ctx;
     qvm_value_t result;
@@ -1601,7 +1601,7 @@ int dsv_filter_check_values(dsv_filter_t *filter, const tstr_v *fields,
 
 void dsv_filter_run(dsv_filter_t *filter, dsv_row_callback_t callback, void *user_data) {
     csv_cursor_t *cursor;
-    tstr_t rendered = NULL;
+    tstr rendered = NULL;
     int rc;
     if (!filter || !callback) return;
 
@@ -1613,7 +1613,7 @@ void dsv_filter_run(dsv_filter_t *filter, dsv_row_callback_t callback, void *use
 
     while ((rc = csv_cursor_next(cursor)) > 0) {
         size_t field_count = 0;
-        const tstr_v *fields = csv_cursor_fields(cursor, &field_count);
+        const vstr *fields = csv_cursor_fields(cursor, &field_count);
         int match = dsv_filter_check_values(filter, fields, field_count);
         if (match != 1) continue;
         if (!dsv_render_values(filter, fields, field_count, &rendered)) {
@@ -1700,7 +1700,7 @@ static int dsv_index_plan_intersect_text(dsv_filter_t *filter,
                                          dsv_index_plan_range_t *ranges,
                                          size_t *range_count,
                                          const dsv_clause_t *clause) {
-    tstr_v value = tstr_v_from_buf(clause->rhs_str, clause->rhs_str_len);
+    vstr value = vstr_from_buf(clause->rhs_str, clause->rhs_str_len);
     size_t input;
     size_t output = 0;
     if (clause->op != DSV_OP_EQ && clause->op != DSV_OP_NE) {
@@ -1718,7 +1718,7 @@ static int dsv_index_plan_intersect_text(dsv_filter_t *filter,
             range.has_text = 1;
             ranges[output++] = range;
         } else {
-            int equal = tstr_v_eq(range.query.text_equals, value);
+            int equal = vstr_eq(range.query.text_equals, value);
             if ((clause->op == DSV_OP_EQ && equal) ||
                 (clause->op == DSV_OP_NE && !equal))
                 ranges[output++] = range;
@@ -1811,7 +1811,7 @@ static int dsv_index_plan_union_clause(dsv_filter_t *filter,
             return 0;
         }
         range.has_text = 1;
-        range.query.text_equals = tstr_v_from_buf(clause->rhs_str, clause->rhs_str_len);
+        range.query.text_equals = vstr_from_buf(clause->rhs_str, clause->rhs_str_len);
         if (!dsv_index_plan_append(ranges, range_count, &range)) goto capacity;
         return 1;
     }

@@ -43,8 +43,8 @@ typedef struct MUSTACHE_TEMPLATE_IMPL {
 
 static inline void mustache_buffer_free(MUSTACHE_BUFFER *buf) { free(buf->data); }
 
-static int mustache_tstr_append(tstr_t *s, const char *data, size_t n) {
-  tstr_t next;
+static int mustache_tstr_append(tstr *s, const char *data, size_t n) {
+  tstr next;
 
   if (!s)
     return -1;
@@ -1026,7 +1026,7 @@ err:
   }
 }
 
-MUSTACHE_TEMPLATE *mustache_compile_v(tstr_v templ, const MUSTACHE_PARSER *parser,
+MUSTACHE_TEMPLATE *mustache_compile_v(vstr templ, const MUSTACHE_PARSER *parser,
                                       void *parser_data, unsigned flags) {
   return mustache_compile(templ.data, templ.len, parser, parser_data, flags);
 }
@@ -1249,7 +1249,7 @@ static int mustache_process_impl(const MUSTACHE_TEMPLATE *t, const MUSTACHE_REND
       uint64_t len = mustache_decode_u64(insns, reg_pc, &reg_pc);
       if (reg_node != NULL && provider->is_lambda && provider->call_lambda &&
           provider->is_lambda(reg_node, provider_data)) {
-        tstr_t raw = NULL;
+        tstr raw = NULL;
 #if SIZE_MAX < UINT64_MAX
         if (len > (uint64_t)SIZE_MAX) {
           ret = -1;
@@ -1279,7 +1279,7 @@ static int mustache_process_impl(const MUSTACHE_TEMPLATE *t, const MUSTACHE_REND
           size_t opener_len = 2;
           size_t closer_len = 2;
           MUSTACHE_TEMPLATE *lambda_t = NULL;
-          tstr_t wrapped = NULL;
+          tstr wrapped = NULL;
 
           if (source) {
             (void)mustache_find_delimiters(source, source_len, (off_t)start_off, opener,
@@ -1423,7 +1423,7 @@ int mustache_process(const MUSTACHE_TEMPLATE *t, const MUSTACHE_RENDERER *render
                              MUSTACHE_DEFAULT_MAX_RENDER_DEPTH);
 }
 
-/* String renderer implementation using tstr_t */
+/* String renderer implementation using tstr */
 static size_t mustache_html_escape(char ch, const char **escaped) {
   switch (ch) {
   case '<':
@@ -1464,7 +1464,7 @@ static int string_out_escaped(const char *output, size_t size, void *renderer_da
   if (size > SIZE_MAX / MUSTACHE_HTML_ESCAPE_MAX_LENGTH) {
     return -1;
   }
-  tstr_t buf = tstr_reserve(renderer->buffer, size * 6);
+  tstr buf = tstr_reserve(renderer->buffer, size * 6);
   if (!buf) {
     return -1;
   }

@@ -65,13 +65,13 @@ static char *generate_array_of_numbers(size_t count) {
     return NULL;
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "[");
   for (size_t i = 0; i < count; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos, "{}", i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "]");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "]");
   return buf;
 }
 
@@ -82,15 +82,15 @@ static char *generate_array_of_objects(size_t count) {
     return NULL;
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "[");
   for (size_t i = 0; i < count; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"id\":{},\"name\":\"item_{}\",\"value\":{}.{},\"active\":true}}", i, i,
                i * 10, i % 10);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "]");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "]");
   return buf;
 }
 
@@ -104,9 +104,9 @@ static char *generate_nested_object(int depth) {
   for (int i = 0; i < depth; i++) {
     pos += fmt(buf + pos, buf_size - (size_t)pos, "{{\"level{}\":", i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"deep_value\"");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"deep_value\"");
   for (int i = 0; i < depth; i++) {
-    pos += fmt(buf + pos, buf_size - (size_t)pos, "}}");
+    pos += fmt_text(buf + pos, buf_size - (size_t)pos, "}}");
   }
   return buf;
 }
@@ -127,13 +127,13 @@ static char *generate_string_heavy(size_t string_count, size_t string_len) {
   value[string_len] = '\0';
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "{{");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "{{");
   for (size_t i = 0; i < string_count; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos, "\"key{}\":\"{}\"", i, value);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "}}");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "}}");
 
   free(value);
   return buf;
@@ -146,31 +146,31 @@ static char *generate_mqtt_proxy_config(size_t listeners, size_t upstreams, size
     return NULL;
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "{{\"listeners\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "{{\"listeners\":[");
   for (size_t i = 0; i < listeners; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"port\":{},\"transport\":\"tcp\",\"host\":\"0.0.0.0\"}}", 1883 + i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"upstreams\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"upstreams\":[");
   for (size_t i = 0; i < upstreams; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"host\":\"10.0.0.{}\",\"port\":1883,\"weight\":{}}}", i + 1, (i % 3) + 1);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"filters\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"filters\":[");
   for (size_t i = 0; i < filters; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"type\":\"topic\",\"action\":\"deny\",\"pattern\":\"$SYS/{}/#\"}}", i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"settings\":{{");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"max_clients\":10000,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"connect_timeout_ms\":5000,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"hash_replicas\":150}}}}");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"settings\":{{");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"max_clients\":10000,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"connect_timeout_ms\":5000,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"hash_replicas\":150}}}}");
 
   return buf;
 }
@@ -264,7 +264,7 @@ static void benchmark_dom_query_workload(const benchmark_t *bench) {
     break;
   }
   case BENCH_STRINGS_100_X_1000: {
-    tstr_v s = json_get_string_v(root, "key0");
+    vstr s = json_get_string_v(root, "key0");
     g_sink_size += s.len;
     break;
   }
@@ -334,7 +334,7 @@ static int sax_stop_on_first_key(void *ctx, const char *key, size_t len) {
 
 #define JSON_SAX_BENCH(IDX)                                                                        \
   benchmark(g_benchmarks[(IDX)].name, g_benchmarks[(IDX)].iterations, 1) {                                                        \
-    check_int_eq(json_parse_sax(g_benchmarks[(IDX)].json, g_benchmarks[(IDX)].json_len,           \
+    check_equal(json_parse_sax(g_benchmarks[(IDX)].json, g_benchmarks[(IDX)].json_len,           \
                                 &null_handler, NULL),                                              \
                  0);                                                                               \
   }
@@ -347,10 +347,10 @@ static int sax_stop_on_first_key(void *ctx, const char *key, size_t len) {
 #define JSON_SAX_EARLY_STOP_BENCH(IDX)                                                             \
   benchmark(g_benchmarks[(IDX)].name, g_benchmarks[(IDX)].iterations, 1) {  \
     sax_early_stop_ctx_t early_ctx = {0};                                                          \
-    check_int_eq(json_parse_sax(g_benchmarks[(IDX)].json, g_benchmarks[(IDX)].json_len,           \
+    check_equal(json_parse_sax(g_benchmarks[(IDX)].json, g_benchmarks[(IDX)].json_len,           \
                                 &early_stop_handler, &early_ctx),                                  \
                  -1);                                                                              \
-    check_int_eq(early_ctx.seen_first, 1);                                                         \
+    check_equal(early_ctx.seen_first, 1);                                                         \
   }
 
 suite("json_parser benchmark") {

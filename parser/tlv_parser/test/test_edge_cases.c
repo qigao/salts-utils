@@ -7,23 +7,23 @@ spec("uri_parser_edge_cases") {
     it("should handle empty string") {
         uri_t url;
         int result = uri_parse("", &url);
-        check_int_eq(result, 0);
-        check_int_eq(url.valid, 0);
+        check_equal(result, 0);
+        check_equal(url.valid, 0);
     }
 
     it("should handle malformed scheme") {
         uri_t url;
         // Scheme cannot start with digit
         int result = uri_parse("123://example.com", &url);
-        check_int_eq(result, 0);
-        check_int_eq(url.valid, 0);
+        check_equal(result, 0);
+        check_equal(url.valid, 0);
     }
 
     it("should handle missing scheme") {
         uri_t url;
         int result = uri_parse("//example.com/path", &url);
-        check_int_eq(result, 0);
-        check_int_eq(url.valid, 0);
+        check_equal(result, 0);
+        check_equal(url.valid, 0);
     }
 
     it("should handle invalid port range") {
@@ -39,7 +39,7 @@ spec("uri_parser_edge_cases") {
         int result = uri_parse("http://example.com:abc", &url);
         // Should parse successfully but port might be 0
         if (result == 1) {
-            check_int_eq(url.port, 0);  // atoi("abc") returns 0
+            check_equal(url.port, 0);  // atoi("abc") returns 0
         }
     }
 
@@ -60,7 +60,7 @@ spec("uri_parser_edge_cases") {
             check(strlen(url.scheme) < sizeof(url.scheme));
         } else {
             // Parser rejected it - that's also valid behavior
-            check_int_eq(result, 0);
+            check_equal(result, 0);
         }
     }
 
@@ -111,15 +111,15 @@ spec("uri_parser_edge_cases") {
         // Missing closing bracket - parser returns failure
         int result = uri_parse("http://[2001:db8::1", &url);
 
-        check_int_eq(result, 0);  
-        check_str_eq(url.host, "");  // Host should be empty on failure
+        check_equal(result, 0);
+        check_equal(url.host, "");  // Host should be empty on failure
     }
 
     it("should handle empty host") {
         uri_t url;
         int result = uri_parse("http:///path", &url);
         if (result == 1) {
-            check_str_eq(url.host, "");
+            check_equal(url.host, "");
         }
     }
 
@@ -134,7 +134,7 @@ spec("uri_parser_edge_cases") {
         int result = uri_parse(long_url, &url);
 
         if (result == 1) {
-            check_str_eq(url.host, "example.com");
+            check_equal(url.host, "example.com");
             check(strlen(url.path) > 100);
         }
     }
@@ -146,7 +146,7 @@ spec("uri_parser_edge_cases") {
 
         // Should stop at null byte
         if (result == 1) {
-            check_str_eq(url.scheme, "http");
+            check_equal(url.scheme, "http");
         }
     }
 
@@ -154,40 +154,40 @@ spec("uri_parser_edge_cases") {
         uri_t url;
         int result = uri_parse("https://example.com/path with spaces", &url);
         if (result == 1) {
-            check_str_eq(url.path, "/path with spaces");
+            check_equal(url.path, "/path with spaces");
         }
     }
 
     it("should fail on scheme only") {
         uri_t url;
         int result = uri_parse("http:", &url);
-        check_int_eq(result, 0);  // Should fail - no authority
+        check_equal(result, 0);  // Should fail - no authority
     }
 
     it("should handle valid edge cases") {
         uri_t url;
         // URL with just scheme and host
         int result = uri_parse("https://example.com", &url);
-        check_int_eq(result, 1);
-        check_str_eq(url.path, "");  // Empty path is valid
+        check_equal(result, 1);
+        check_equal(url.path, "");  // Empty path is valid
 
         // URL with port but no path
         result = uri_parse("http://example.com:80", &url);
-        check_int_eq(result, 1);
-        check_int_eq(url.port, 80);
+        check_equal(result, 1);
+        check_equal(url.port, 80);
 
         // URL with empty query
         result = uri_parse("http://example.com?", &url);
         if (result == 1) {
-            check_str_eq(url.query, "");
+            check_equal(url.query, "");
         }
     }
 
     it("should be robust against null/malformed input") {
         uri_t url;
-        check_int_eq(uri_parse(NULL, &url), 0);
-        check_int_eq(uri_parse("http://example.com", NULL), 0);
-        check_int_eq(uri_parse(":", &url), 0);
-        check_int_eq(uri_parse("http", &url), 0);
+        check_equal(uri_parse(NULL, &url), 0);
+        check_equal(uri_parse("http://example.com", NULL), 0);
+        check_equal(uri_parse(":", &url), 0);
+        check_equal(uri_parse("http", &url), 0);
     }
 }

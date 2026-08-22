@@ -26,7 +26,7 @@ void IniParse(void *, int, ini_token_t, ini_parse_ctx_t *);
 
 static ini_section_t *ini_find_section(ini_t *ini, const char *name) {
     if (!name) name = "";
-    tstr_v name_v = tstr_v_from_cstr(name);
+    vstr name_v = vstr_from_cstr(name);
     for (ini_section_t *s = ini->sections; s; s = s->next) {
         if (tstr_eq_v(s->name, name_v)) {
             return s;
@@ -35,9 +35,9 @@ static ini_section_t *ini_find_section(ini_t *ini, const char *name) {
     return NULL;
 }
 
-static ini_section_t *ini_find_section_v(ini_t *ini, tstr_v name) {
+static ini_section_t *ini_find_section_v(ini_t *ini, vstr name) {
     if (!name.data) {
-        name = tstr_v_from_cstr("");
+        name = vstr_from_cstr("");
     }
     for (ini_section_t *s = ini->sections; s; s = s->next) {
         if (tstr_eq_v(s->name, name)) {
@@ -162,7 +162,7 @@ const char *ini_get(ini_t *ini, const char *section, const char *key) {
     ini_section_t *s = ini_find_section(ini, section);
     if (!s) return NULL;
 
-    tstr_v key_v = tstr_v_from_cstr(key);
+    vstr key_v = vstr_from_cstr(key);
     for (ini_entry_t *e = s->entries; e; e = e->next) {
         if (tstr_eq_v(e->key, key_v)) {
             return e->value;
@@ -171,33 +171,33 @@ const char *ini_get(ini_t *ini, const char *section, const char *key) {
     return NULL;
 }
 
-tstr_v ini_get_v(ini_t *ini, const char *section, const char *key) {
-    if (!ini || !key) return tstr_v_from_buf(NULL, 0);
+vstr ini_get_v(ini_t *ini, const char *section, const char *key) {
+    if (!ini || !key) return vstr_from_buf(NULL, 0);
 
     ini_section_t *s = ini_find_section(ini, section);
-    if (!s) return tstr_v_from_buf(NULL, 0);
+    if (!s) return vstr_from_buf(NULL, 0);
 
-    tstr_v key_v = tstr_v_from_cstr(key);
+    vstr key_v = vstr_from_cstr(key);
     for (ini_entry_t *e = s->entries; e; e = e->next) {
         if (tstr_eq_v(e->key, key_v)) {
             return tstr_to_v(e->value);
         }
     }
-    return tstr_v_from_buf(NULL, 0);
+    return vstr_from_buf(NULL, 0);
 }
 
-tstr_v ini_get_vv(ini_t *ini, tstr_v section, tstr_v key) {
-    if (!ini || !key.data) return tstr_v_from_buf(NULL, 0);
+vstr ini_get_vv(ini_t *ini, vstr section, vstr key) {
+    if (!ini || !key.data) return vstr_from_buf(NULL, 0);
 
     ini_section_t *s = ini_find_section_v(ini, section);
-    if (!s) return tstr_v_from_buf(NULL, 0);
+    if (!s) return vstr_from_buf(NULL, 0);
 
     for (ini_entry_t *e = s->entries; e; e = e->next) {
         if (tstr_eq_v(e->key, key)) {
             return tstr_to_v(e->value);
         }
     }
-    return tstr_v_from_buf(NULL, 0);
+    return vstr_from_buf(NULL, 0);
 }
 
 int ini_get_int(ini_t *ini, const char *section, const char *key, int default_val) {
@@ -233,12 +233,12 @@ double ini_get_double(ini_t *ini, const char *section, const char *key, double d
     return (end != val) ? result : default_val;
 }
 
-int ini_get_int_v(ini_t *ini, tstr_v section, tstr_v key, int default_val) {
-    tstr_v val = ini_get_vv(ini, section, key);
+int ini_get_int_v(ini_t *ini, vstr section, vstr key, int default_val) {
+    vstr val = ini_get_vv(ini, section, key);
     if (!val.data) return default_val;
 
     char *end;
-    char *cstr = tstr_v_to_cstr(val);
+    char *cstr = vstr_to_cstr(val);
     if (!cstr) return default_val;
     long result = strtol(cstr, &end, 0);
     int ret = (end != cstr) ? (int)result : default_val;
@@ -246,27 +246,27 @@ int ini_get_int_v(ini_t *ini, tstr_v section, tstr_v key, int default_val) {
     return ret;
 }
 
-bool ini_get_bool_v(ini_t *ini, tstr_v section, tstr_v key, bool default_val) {
-    tstr_v val = ini_get_vv(ini, section, key);
+bool ini_get_bool_v(ini_t *ini, vstr section, vstr key, bool default_val) {
+    vstr val = ini_get_vv(ini, section, key);
     if (!val.data) return default_val;
 
     if (val.len == 1 && val.data[0] == '1') return true;
     if (val.len == 1 && val.data[0] == '0') return false;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("true"))) return true;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("false"))) return false;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("yes"))) return true;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("no"))) return false;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("on"))) return true;
-    if (tstr_v_ieq(val, tstr_v_from_cstr("off"))) return false;
+    if (vstr_ieq(val, vstr_from_cstr("true"))) return true;
+    if (vstr_ieq(val, vstr_from_cstr("false"))) return false;
+    if (vstr_ieq(val, vstr_from_cstr("yes"))) return true;
+    if (vstr_ieq(val, vstr_from_cstr("no"))) return false;
+    if (vstr_ieq(val, vstr_from_cstr("on"))) return true;
+    if (vstr_ieq(val, vstr_from_cstr("off"))) return false;
     return default_val;
 }
 
-double ini_get_double_v(ini_t *ini, tstr_v section, tstr_v key, double default_val) {
-    tstr_v val = ini_get_vv(ini, section, key);
+double ini_get_double_v(ini_t *ini, vstr section, vstr key, double default_val) {
+    vstr val = ini_get_vv(ini, section, key);
     if (!val.data) return default_val;
 
     char *end;
-    char *cstr = tstr_v_to_cstr(val);
+    char *cstr = vstr_to_cstr(val);
     if (!cstr) return default_val;
     double result = strtod(cstr, &end);
     double ret = (end != cstr) ? result : default_val;
@@ -288,14 +288,14 @@ const char *ini_section_name(ini_t *ini, size_t index) {
     return NULL;
 }
 
-tstr_v ini_section_name_v(ini_t *ini, size_t index) {
-    if (!ini) return tstr_v_from_buf(NULL, 0);
+vstr ini_section_name_v(ini_t *ini, size_t index) {
+    if (!ini) return vstr_from_buf(NULL, 0);
 
     size_t i = 0;
     for (ini_section_t *s = ini->sections; s; s = s->next, i++) {
         if (i == index) return tstr_to_v(s->name);
     }
-    return tstr_v_from_buf(NULL, 0);
+    return vstr_from_buf(NULL, 0);
 }
 
 size_t ini_key_count(ini_t *ini, const char *section) {
@@ -311,7 +311,7 @@ size_t ini_key_count(ini_t *ini, const char *section) {
     return count;
 }
 
-size_t ini_key_count_v(ini_t *ini, tstr_v section) {
+size_t ini_key_count_v(ini_t *ini, vstr section) {
     if (!ini) return 0;
 
     ini_section_t *s = ini_find_section_v(ini, section);
@@ -337,15 +337,15 @@ const char *ini_key_name(ini_t *ini, const char *section, size_t index) {
     return NULL;
 }
 
-tstr_v ini_key_name_v(ini_t *ini, tstr_v section, size_t index) {
-    if (!ini) return tstr_v_from_buf(NULL, 0);
+vstr ini_key_name_v(ini_t *ini, vstr section, size_t index) {
+    if (!ini) return vstr_from_buf(NULL, 0);
 
     ini_section_t *s = ini_find_section_v(ini, section);
-    if (!s) return tstr_v_from_buf(NULL, 0);
+    if (!s) return vstr_from_buf(NULL, 0);
 
     size_t i = 0;
     for (ini_entry_t *e = s->entries; e; e = e->next, i++) {
         if (i == index) return tstr_to_v(e->key);
     }
-    return tstr_v_from_buf(NULL, 0);
+    return vstr_from_buf(NULL, 0);
 }

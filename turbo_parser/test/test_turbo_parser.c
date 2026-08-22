@@ -165,9 +165,9 @@ spec("turbo_parser") {
       turbo_json_doc_t *result = NULL;
       int rc = turbo_parse_json((const uint8_t *)json_data, strlen(json_data), &result);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(result);
-      check_int_eq(turbo_json_type(result), TURBO_JSON_OBJECT);
+      check_equal(turbo_json_type(result), TURBO_JSON_OBJECT);
 
       turbo_free_json(&result);
       check_null(result);
@@ -178,24 +178,24 @@ spec("turbo_parser") {
       json_raw_number_capture capture = {0};
       turbo_json_sax_parser_t *parser;
 
-      check_int_eq(turbo_parse_json_sax_raw((const uint8_t *)"18446744073709551615", 20,
+      check_equal(turbo_parse_json_sax_raw((const uint8_t *)"18446744073709551615", 20,
                                             &handler, &capture),
                    0);
-      check_str_eq(capture.values[0], "18446744073709551615");
+      check_equal(capture.values[0], "18446744073709551615");
 
       memset(&capture, 0, sizeof(capture));
       parser = turbo_json_sax_parser_create_raw(&handler, &capture);
       check_not_null(parser);
-      check_int_eq(turbo_json_sax_parser_feed(parser, "[-922337203685",
+      check_equal(turbo_json_sax_parser_feed(parser, "[-922337203685",
                                               strlen("[-922337203685")),
                    0);
-      check_int_eq(turbo_json_sax_parser_feed(parser, "4775808,9007199254740993]",
+      check_equal(turbo_json_sax_parser_feed(parser, "4775808,9007199254740993]",
                                               strlen("4775808,9007199254740993]")),
                    0);
-      check_int_eq(turbo_json_sax_parser_finish(parser), 0);
-      check_size_eq(capture.count, 2);
-      check_str_eq(capture.values[0], "-9223372036854775808");
-      check_str_eq(capture.values[1], "9007199254740993");
+      check_equal(turbo_json_sax_parser_finish(parser), 0);
+      check_equal(capture.count, 2);
+      check_equal(capture.values[0], "-9223372036854775808");
+      check_equal(capture.values[1], "9007199254740993");
       turbo_json_sax_parser_destroy(parser);
     }
 
@@ -274,7 +274,7 @@ spec("turbo_parser") {
       turbo_json_object_set_string(root, "stderr", "");
       turbo_json_object_set_string(root, "stderr", "line 1\\line 2\n\"oops\"");
 
-      check_str_eq(turbo_json_get_string(root, "stderr"), "line 1\\line 2\n\"oops\"");
+      check_equal(turbo_json_get_string(root, "stderr"), "line 1\\line 2\n\"oops\"");
 
       serialized = turbo_json_serialize(root, NULL);
       check_not_null(serialized);
@@ -289,18 +289,18 @@ spec("turbo_parser") {
                               "{\"port\":8883,\"transport\":\"tls\"}]}";
       json_value_t *root = NULL;
       int rc = turbo_parse_json((const uint8_t *)json_data, strlen(json_data), &root);
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(root);
 
       json_value_t *transport = turbo_json_path_get(root, "$.listeners[-1].transport");
       check_not_null(transport);
-      check_str_eq(turbo_json_string(transport), "tls");
+      check_equal(turbo_json_string(transport), "tls");
 
       turbo_json_path_result_t *ports = turbo_json_path_query(root, "$.listeners[*].port");
       check_not_null(ports);
-      check_size_eq(turbo_json_path_result_size(ports), 2);
-      check_int_eq((int)turbo_json_number(turbo_json_path_result_get(ports, 0)), 1883);
-      check_int_eq((int)turbo_json_number(turbo_json_path_result_get(ports, 1)), 8883);
+      check_equal(turbo_json_path_result_size(ports), 2);
+      check_equal((int)turbo_json_number(turbo_json_path_result_get(ports, 0)), 1883);
+      check_equal((int)turbo_json_number(turbo_json_path_result_get(ports, 1)), 8883);
 
       turbo_json_path_result_free(ports);
       turbo_free_json(&root);
@@ -313,11 +313,11 @@ spec("turbo_parser") {
       turbo_json_path_program_t *program;
       int rc = turbo_parse_json((const uint8_t *)json_data, strlen(json_data), &root);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(root);
       program = turbo_json_path_compile("$.users[1].name");
       check_not_null(program);
-      check_str_eq(turbo_json_string(turbo_json_path_get_compiled(root, program)), "Bob");
+      check_equal(turbo_json_string(turbo_json_path_get_compiled(root, program)), "Bob");
       turbo_json_path_program_free(program);
       turbo_free_json(&root);
     }
@@ -333,14 +333,14 @@ spec("turbo_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(turbo_json_path_stream_feed(stream, json_data, 10), 0);
-      check_int_eq(turbo_json_path_stream_feed(stream, json_data + 10,
+      check_equal(turbo_json_path_stream_feed(stream, json_data, 10), 0);
+      check_equal(turbo_json_path_stream_feed(stream, json_data + 10,
                                                strlen(json_data) - 10),
                    0);
-      check_int_eq(turbo_json_path_stream_finish(stream), 0);
-      check_size_eq(turbo_json_path_stream_match_count(stream), 3);
-      check_size_eq(capture.count, 3);
-      check_str_eq(capture.values[1], "9007199254740993");
+      check_equal(turbo_json_path_stream_finish(stream), 0);
+      check_equal(turbo_json_path_stream_match_count(stream), 3);
+      check_equal(capture.count, 3);
+      check_equal(capture.values[1], "9007199254740993");
 
       turbo_json_path_stream_destroy(stream);
       turbo_json_path_program_free(program);
@@ -360,22 +360,22 @@ spec("turbo_parser") {
       json_value_t *json;
       char *text;
 
-      check_int_eq(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
+      check_equal(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
       check_not_null(doc);
       memset(yaml_data, 'x', strlen(yaml_data));
 
       matches = turbo_yaml_path_query(doc, NULL, "/users[*]/name");
       check_not_null(matches);
       check_null(turbo_yaml_path_result_error(matches));
-      check_size_eq(turbo_yaml_path_result_size(matches), 2);
+      check_equal(turbo_yaml_path_result_size(matches), 2);
       name = turbo_yaml_path_result_get(matches, 1);
       text = turbo_yaml_scalar_dup(doc, name);
-      check_str_eq(text, "Bob");
+      check_equal(text, "Bob");
       turbo_yaml_string_free(text);
 
       json = turbo_yaml_to_json(doc);
       check_not_null(json);
-      check_str_eq(turbo_json_string(turbo_json_path_get(json, "$.users[0].name")), "Alice");
+      check_equal(turbo_json_string(turbo_json_path_get(json, "$.users[0].name")), "Alice");
       turbo_free_json(&json);
       turbo_yaml_path_result_free(matches);
       turbo_free_yaml(&doc);
@@ -390,18 +390,18 @@ spec("turbo_parser") {
       turbo_yaml_location_t location = {0};
       char *text;
 
-      check_int_eq(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
+      check_equal(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
       root = turbo_yaml_root(doc);
       check_true(turbo_yaml_mapping_contains(doc, root, "name"));
       check_false(turbo_yaml_mapping_contains(doc, root, "missing"));
       name = turbo_yaml_mapping_get(doc, root, "name");
       check_not_null(name);
       text = turbo_yaml_scalar_dup(doc, name);
-      check_str_eq(text, "turbo");
+      check_equal(text, "turbo");
       turbo_yaml_string_free(text);
       check_true(turbo_yaml_node_location(name, &location));
-      check_uint_eq(location.start_line, 1);
-      check_uint_eq(location.start_column, 7);
+      check_equal(location.start_line, 1);
+      check_equal(location.start_column, 7);
       check_false(turbo_yaml_node_location(NULL, &location));
       turbo_free_yaml(&doc);
     }
@@ -411,11 +411,11 @@ spec("turbo_parser") {
       turbo_yaml_doc_t *doc = (turbo_yaml_doc_t *)(uintptr_t)1;
       turbo_yaml_error_t error = {0};
 
-      check_int_ne(turbo_parse_yaml_ex((const uint8_t *)yaml_data, strlen(yaml_data), &doc, &error),
+      check_not_equal(turbo_parse_yaml_ex((const uint8_t *)yaml_data, strlen(yaml_data), &doc, &error),
                    0);
       check_null(doc);
-      check_int_eq(error.code, TURBO_YAML_ERROR_DUPLICATE_KEY);
-      check_uint_eq(error.location.start_line, 2);
+      check_equal(error.code, TURBO_YAML_ERROR_DUPLICATE_KEY);
+      check_equal(error.location.start_line, 2);
       check(error.message[0] != '\0');
     }
 
@@ -426,13 +426,13 @@ spec("turbo_parser") {
       turbo_yaml_node_t *defaults;
       turbo_yaml_node_t *alias;
 
-      check_int_eq(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
+      check_equal(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
       root = turbo_yaml_root(doc);
       defaults = turbo_yaml_mapping_get(doc, root, "defaults");
       alias = turbo_yaml_mapping_get(doc, root, "copy");
       check_not_null(defaults);
-      check_int_eq(turbo_yaml_node_type(alias), TURBO_YAML_NODE_ALIAS);
-      check_ptr_eq(turbo_yaml_alias_target(alias), defaults);
+      check_equal(turbo_yaml_node_type(alias), TURBO_YAML_NODE_ALIAS);
+      check_true(turbo_yaml_alias_target(alias) == defaults);
       check_null(turbo_yaml_alias_target(defaults));
       turbo_free_yaml(&doc);
     }
@@ -444,7 +444,7 @@ spec("turbo_parser") {
       char *emitted;
       size_t emitted_len = 0;
 
-      check_int_eq(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
+      check_equal(turbo_parse_yaml((const uint8_t *)yaml_data, strlen(yaml_data), &doc), 0);
       emitted = turbo_yaml_serialize(doc, &emitted_len);
       check_not_null(emitted);
       check(emitted_len > 0);
@@ -466,24 +466,24 @@ spec("turbo_parser") {
       yaml_sax_counts counts = {0};
       turbo_yaml_sax_parser_t *parser = turbo_yaml_sax_parser_create(&yaml_sax_handler, &counts);
       check_not_null(parser);
-      check_int_eq(turbo_yaml_sax_parser_feed(parser, parts[0], strlen(parts[0])), 0);
-      check_int_eq(counts.documents, 1);
-      check_int_eq(counts.mappings, 1);
-      check_int_eq(counts.scalars, 1);
-      check_str_eq(counts.values[0], "name");
-      check_int_eq(turbo_yaml_sax_parser_feed(parser, parts[1], strlen(parts[1])), 0);
-      check_int_eq(counts.sequences, 1);
-      check_int_eq(counts.scalars, 3);
-      check_str_eq(counts.values[1], "turbo");
-      check_int_eq(turbo_yaml_sax_parser_feed(parser, parts[2], strlen(parts[2])), 0);
-      check_int_eq(counts.scalars, 4);
-      check_int_eq(turbo_yaml_sax_parser_finish(parser), 0);
-      check_int_eq(counts.documents, 1);
-      check_int_eq(counts.mappings, 1);
-      check_int_eq(counts.sequences, 1);
-      check_int_eq(counts.keys, 2);
-      check_int_eq(counts.scalars, 5);
-      check_str_eq(counts.values[4], "2");
+      check_equal(turbo_yaml_sax_parser_feed(parser, parts[0], strlen(parts[0])), 0);
+      check_equal(counts.documents, 1);
+      check_equal(counts.mappings, 1);
+      check_equal(counts.scalars, 1);
+      check_equal(counts.values[0], "name");
+      check_equal(turbo_yaml_sax_parser_feed(parser, parts[1], strlen(parts[1])), 0);
+      check_equal(counts.sequences, 1);
+      check_equal(counts.scalars, 3);
+      check_equal(counts.values[1], "turbo");
+      check_equal(turbo_yaml_sax_parser_feed(parser, parts[2], strlen(parts[2])), 0);
+      check_equal(counts.scalars, 4);
+      check_equal(turbo_yaml_sax_parser_finish(parser), 0);
+      check_equal(counts.documents, 1);
+      check_equal(counts.mappings, 1);
+      check_equal(counts.sequences, 1);
+      check_equal(counts.keys, 2);
+      check_equal(counts.scalars, 5);
+      check_equal(counts.values[4], "2");
       turbo_yaml_sax_parser_destroy(parser);
     }
   }
@@ -499,11 +499,11 @@ spec("turbo_parser") {
       check_not_null(doc);
       check_not_null(root);
       check_not_null(name);
-      check_int_eq(turbo_xml_set_text(name, "turbo & utils"), 0);
+      check_equal(turbo_xml_set_text(name, "turbo & utils"), 0);
       xml = turbo_xml_serialize(doc, &len);
       check_not_null(xml);
       check(strstr(xml, "turbo &amp; utils") != NULL);
-      check_int_eq(turbo_parse_xml((const uint8_t *)xml, len, &parsed), 0);
+      check_equal(turbo_parse_xml((const uint8_t *)xml, len, &parsed), 0);
       check_not_null(parsed);
       turbo_xml_serialize_free(xml);
       turbo_free_xml(&parsed);
@@ -521,19 +521,19 @@ spec("turbo_parser") {
       size_t len = 0;
       char *text;
 
-      check_int_eq(turbo_parse_csv_opts((const uint8_t *)csv, strlen(csv), &opts, &doc), 0);
+      check_equal(turbo_parse_csv_opts((const uint8_t *)csv, strlen(csv), &opts, &doc), 0);
       check_not_null(doc);
       text = turbo_csv_serialize(doc, &len);
       check_not_null(text);
-      check_size_eq(len, strlen(text));
-      check_str_eq(text, csv);
-      check_int_eq(turbo_csv_write(doc, capture_csv_write, &capture), 0);
-      check_str_eq(capture.bytes, csv);
+      check_equal(len, strlen(text));
+      check_equal(text, csv);
+      check_equal(turbo_csv_write(doc, capture_csv_write, &capture), 0);
+      check_equal(capture.bytes, csv);
       memset(&capture, 0, sizeof(capture));
-      check_int_eq(turbo_csv_write_records(doc, capture_csv_write, &capture), 0);
-      check_size_eq(capture.count, 2);
-      check_str_eq(capture.records[0], "name,value\n");
-      check_str_eq(capture.records[1], "\"line1\nline2\",ok\n");
+      check_equal(turbo_csv_write_records(doc, capture_csv_write, &capture), 0);
+      check_equal(capture.count, 2);
+      check_equal(capture.records[0], "name,value\n");
+      check_equal(capture.records[1], "\"line1\nline2\",ok\n");
 
       turbo_csv_serialize_free(text);
       turbo_free_csv(&doc);
@@ -550,15 +550,15 @@ spec("turbo_parser") {
       turbo_csv_sax_parser_t *parser = turbo_csv_sax_parser_create(&handler, &capture, NULL);
       check_not_null(parser);
       for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i)
-        check_int_eq(turbo_csv_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
-      check_int_eq(turbo_csv_sax_parser_finish(parser), 0);
-      check_size_eq(capture.rows_started, 2);
-      check_size_eq(capture.rows_ended, 2);
-      check_size_eq(capture.fields, 4);
-      check_str_eq(capture.values[0], "name");
-      check_str_eq(capture.values[1], "note");
-      check_str_eq(capture.values[2], "line1\nline2");
-      check_str_eq(capture.values[3], "ok");
+        check_equal(turbo_csv_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
+      check_equal(turbo_csv_sax_parser_finish(parser), 0);
+      check_equal(capture.rows_started, 2);
+      check_equal(capture.rows_ended, 2);
+      check_equal(capture.fields, 4);
+      check_equal(capture.values[0], "name");
+      check_equal(capture.values[1], "note");
+      check_equal(capture.values[2], "line1\nline2");
+      check_equal(capture.values[3], "ok");
       turbo_csv_sax_parser_destroy(parser);
     }
 
@@ -573,11 +573,11 @@ spec("turbo_parser") {
       turbo_csv_sax_parser_t *parser = turbo_csv_sax_parser_create(&handler, &capture, NULL);
       check_not_null(parser);
       for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i)
-        check_int_eq(turbo_csv_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
-      check_int_eq(turbo_csv_sax_parser_finish(parser), 0);
-      check_size_eq(capture.rows_ended, 2);
-      check_size_eq(capture.fields, 2);
-      check_str_eq(capture.values[1], "say \"hi\"");
+        check_equal(turbo_csv_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
+      check_equal(turbo_csv_sax_parser_finish(parser), 0);
+      check_equal(capture.rows_ended, 2);
+      check_equal(capture.fields, 2);
+      check_equal(capture.values[1], "say \"hi\"");
       turbo_csv_sax_parser_destroy(parser);
     }
   }
@@ -602,43 +602,43 @@ spec("turbo_parser") {
 
       limits.max_steps = 1;
 
-      check_int_eq(turbo_parse_json((const uint8_t *)json_text, strlen(json_text), &json), 0);
+      check_equal(turbo_parse_json((const uint8_t *)json_text, strlen(json_text), &json), 0);
       json_program = turbo_json_path_compile_ex(
           "$.items[?(@.id > 0 && @.id < 3)]", &limits, &diagnostic);
       check_not_null(json_program);
       check_null(turbo_json_path_query_compiled_ex(json, json_program, &diagnostic));
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       turbo_json_path_program_free(json_program);
       turbo_free_json(&json);
 
       diagnostic = (turbo_query_diagnostic_t)TURBO_QUERY_DIAGNOSTIC_INIT;
-      check_int_eq(turbo_parse_yaml((const uint8_t *)yaml_text, strlen(yaml_text), &yaml), 0);
+      check_equal(turbo_parse_yaml((const uint8_t *)yaml_text, strlen(yaml_text), &yaml), 0);
       yaml_result = turbo_yaml_path_query_ex(yaml, NULL, "/items[?@ + 1 > 1]", &limits,
                                              &diagnostic);
       check_not_null(yaml_result);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       check_not_null(turbo_yaml_path_result_error(yaml_result));
       turbo_yaml_path_result_free(yaml_result);
       turbo_free_yaml(&yaml);
 
       diagnostic = (turbo_query_diagnostic_t)TURBO_QUERY_DIAGNOSTIC_INIT;
-      check_int_eq(turbo_parse_csv_opts((const uint8_t *)csv_text, strlen(csv_text),
+      check_equal(turbo_parse_csv_opts((const uint8_t *)csv_text, strlen(csv_text),
                                         &csv_options, &csv), 0);
       filter = turbo_dsv_filter_create(csv, 0);
       check_not_null(filter);
       check(turbo_dsv_filter_compile_ex(filter, "id + 1 > 0", &limits, &diagnostic));
-      check_int_eq(turbo_dsv_filter_check_row(filter, 1), -1);
-      check_int_eq(turbo_dsv_filter_query_diagnostic(filter, &diagnostic),
+      check_equal(turbo_dsv_filter_check_row(filter, 1), -1);
+      check_equal(turbo_dsv_filter_query_diagnostic(filter, &diagnostic),
                    TURBO_QUERY_RESOURCE_LIMIT);
       turbo_dsv_filter_destroy(filter);
       turbo_free_csv(&csv);
 
       diagnostic = (turbo_query_diagnostic_t)TURBO_QUERY_DIAGNOSTIC_INIT;
-      check_int_eq(turbo_parse_xml((const uint8_t *)xml_text, strlen(xml_text), &xml), 0);
-      check_int_eq(turbo_xml_xpath_query_ex(xml, "/fruit/name[1 + 1 = 2]",
+      check_equal(turbo_parse_xml((const uint8_t *)xml_text, strlen(xml_text), &xml), 0);
+      check_equal(turbo_xml_xpath_query_ex(xml, "/fruit/name[1 + 1 = 2]",
                                            &xml_result, &limits, &diagnostic),
                    TURBO_QUERY_RESOURCE_LIMIT);
-      check_int_eq(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
       turbo_xml_list_free(&xml_result);
       turbo_free_xml(&xml);
     }
@@ -650,7 +650,7 @@ spec("turbo_parser") {
       void *result = NULL;
       int rc = turbo_parse_ini((const uint8_t *)ini_data, strlen(ini_data), &result);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(result);
 
       turbo_free_ini(&result);
@@ -664,7 +664,7 @@ spec("turbo_parser") {
       void *result = NULL;
       int rc = turbo_parse_uri((const uint8_t *)uri_data, strlen(uri_data), &result);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(result);
 
       turbo_free_uri(&result);
@@ -698,8 +698,8 @@ spec("turbo_parser") {
 
       check(verbose);
       check_not_null(output);
-      check_str_eq(output, "file.txt");
-      check_long_eq(count, 10);
+      check_equal(output, "file.txt");
+      check_equal(count, 10);
 
       free(arg0);
       free(arg1);
@@ -722,7 +722,7 @@ spec("turbo_parser") {
                       "--selector", "region=ap", "--limit=25"};
 
       check_not_null(parser);
-      check_int_eq(turbo_cmd_node_add_flag(turbo_cmd_root(parser), &verbose,
+      check_equal(turbo_cmd_node_add_flag(turbo_cmd_root(parser), &verbose,
                                            "verbose", "v",
                                            "Enable diagnostics"), 0);
       nodes = turbo_cmd_add_command(turbo_cmd_root(parser), "nodes",
@@ -730,19 +730,19 @@ spec("turbo_parser") {
       check_not_null(nodes);
       list = turbo_cmd_add_command(nodes, "list", "List nodes");
       check_not_null(list);
-      check_int_eq(turbo_cmd_node_add_string(list, &selector, "selector", "s",
+      check_equal(turbo_cmd_node_add_string(list, &selector, "selector", "s",
                                              "Node selector"), 0);
-      check_int_eq(turbo_cmd_node_add_integer(list, &limit, "limit", "l",
+      check_equal(turbo_cmd_node_add_integer(list, &limit, "limit", "l",
                                               "Page size"), 0);
 
       memset(&result, 0, sizeof(result));
       result.size = sizeof(result);
-      check_int_eq(turbo_cmd_parse_ex(parser, 7, argv, &result), 0);
-      check_int_eq(result.status, TURBO_CMD_PARSE_OK);
-      check_ptr_eq(result.leaf, list);
+      check_equal(turbo_cmd_parse_ex(parser, 7, argv, &result), 0);
+      check_equal(result.status, TURBO_CMD_PARSE_OK);
+      check_true(result.leaf == list);
       check_true(verbose);
-      check_str_eq(selector, "region=ap");
-      check_long_eq(limit, 25);
+      check_equal(selector, "region=ap");
+      check_equal(limit, 25);
       check_null(turbo_cmd_add_command(nodes, "show", "Frozen tree"));
 
       turbo_cmd_destroy(parser);
@@ -764,26 +764,26 @@ spec("turbo_parser") {
       check_not_null(operations);
       show = turbo_cmd_add_command(operations, "show", "Show one operation");
       check_not_null(show);
-      check_int_eq(turbo_cmd_node_add_required_string(
+      check_equal(turbo_cmd_node_add_required_string(
                        show, &operation_id, "operation-id", "Operation ID"),
                    0);
 
       memset(&result, 0, sizeof(result));
       result.size = sizeof(result);
-      check_int_eq(turbo_cmd_parse_ex(parser, 3, invalid_argv, &result), 0);
-      check_int_eq(result.status, TURBO_CMD_PARSE_INVALID);
-      check_str_eq(result.error_code, "unknown-command");
-      check_int_eq(result.argument_index, 2);
+      check_equal(turbo_cmd_parse_ex(parser, 3, invalid_argv, &result), 0);
+      check_equal(result.status, TURBO_CMD_PARSE_INVALID);
+      check_equal(result.error_code, "unknown-command");
+      check_equal(result.argument_index, 2);
 
       result.size = sizeof(result);
-      check_int_eq(turbo_cmd_parse_ex(parser, 4, help_argv, &result), 0);
-      check_int_eq(result.status, TURBO_CMD_PARSE_HELP);
-      check_ptr_eq(result.leaf, show);
+      check_equal(turbo_cmd_parse_ex(parser, 4, help_argv, &result), 0);
+      check_equal(result.status, TURBO_CMD_PARSE_HELP);
+      check_true(result.leaf == show);
       memset(&output, 0, sizeof(output));
-      check_int_eq(turbo_cmd_render_help(parser, result.leaf, test_cmd_write,
+      check_equal(turbo_cmd_render_help(parser, result.leaf, test_cmd_write,
                                          &output), 0);
-      check_str_contains(output.data, "meshctl operations show");
-      check_str_contains(output.data, "operation-id");
+      check_contains(output.data, "meshctl operations show");
+      check_contains(output.data, "operation-id");
 
       turbo_cmd_destroy(parser);
     }
@@ -801,18 +801,18 @@ spec("turbo_parser") {
       turbo_toon_node_t *root = NULL;
       int rc = turbo_parse_toon((const uint8_t *)toon_data, strlen(toon_data), &root);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(root);
-      check_int_eq(turbo_toon_type(root), TURBO_TOON_OBJECT);
+      check_equal(turbo_toon_type(root), TURBO_TOON_OBJECT);
 
       turbo_toon_node_t *host = turbo_toon_get(root, "server.host");
       check_not_null(host);
-      check_int_eq(turbo_toon_type(host), TURBO_TOON_STRING);
-      check_str_eq(turbo_toon_string(host), "localhost");
+      check_equal(turbo_toon_type(host), TURBO_TOON_STRING);
+      check_equal(turbo_toon_string(host), "localhost");
 
       turbo_toon_node_t *port = turbo_toon_get(root, "server.port");
       check_not_null(port);
-      check_int_eq(turbo_toon_int(port), 1883);
+      check_equal(turbo_toon_int(port), 1883);
 
       turbo_toon_node_t *enabled = turbo_toon_get(root, "server.enabled");
       check_not_null(enabled);
@@ -820,16 +820,16 @@ spec("turbo_parser") {
 
       turbo_toon_node_t *timeout = turbo_toon_get(root, "server.timeout");
       check_not_null(timeout);
-      check_float_eq(turbo_toon_number(timeout), 5.5, 0.001);
+      check_within(turbo_toon_number(timeout), 5.5, 0.001);
 
       turbo_toon_node_t *topics = turbo_toon_get(root, "topics");
       check_not_null(topics);
-      check_int_eq(turbo_toon_type(topics), TURBO_TOON_LIST);
-      check_uint_eq(turbo_toon_array_size(topics), 3);
+      check_equal(turbo_toon_type(topics), TURBO_TOON_LIST);
+      check_equal(turbo_toon_array_size(topics), 3);
 
       turbo_toon_node_t *topic0 = turbo_toon_array_get(topics, 0);
       check_not_null(topic0);
-      check_str_eq(turbo_toon_string(topic0), "a");
+      check_equal(turbo_toon_string(topic0), "a");
 
       // Test serialization
       size_t serialized_len = 0;
@@ -857,9 +857,9 @@ spec("turbo_parser") {
       turbo_toon_node_t *toon = turbo_toon_from_json(json_in, strlen(json_in));
 
       check_not_null(toon);
-      check_int_eq(turbo_toon_type(toon), TURBO_TOON_OBJECT);
-      check_str_eq(turbo_toon_string(turbo_toon_get(toon, "name")), "test");
-      check_int_eq(turbo_toon_int(turbo_toon_get(toon, "value")), 123);
+      check_equal(turbo_toon_type(toon), TURBO_TOON_OBJECT);
+      check_equal(turbo_toon_string(turbo_toon_get(toon, "name")), "test");
+      check_equal(turbo_toon_int(turbo_toon_get(toon, "value")), 123);
 
       turbo_free_toon(&toon);
       check_null(toon);
@@ -872,27 +872,27 @@ spec("turbo_parser") {
       turbo_json_doc_t *roundtrip = NULL;
       turbo_toon_node_t *toon = NULL;
 
-      check_int_eq(turbo_parse_json((const uint8_t *)json_text,
+      check_equal(turbo_parse_json((const uint8_t *)json_text,
                                     sizeof(json_text) - 1U, &json),
                    TURBO_OK);
       check_not_null(json);
-      check_int_eq(turbo_toon_from_json_doc(json, &toon), TURBO_OK);
+      check_equal(turbo_toon_from_json_doc(json, &toon), TURBO_OK);
       check_not_null(toon);
       turbo_free_json(&json);
       check_null(json);
 
       if (toon) {
-        check_str_eq(turbo_toon_string(turbo_toon_get(toon, "name")),
+        check_equal(turbo_toon_string(turbo_toon_get(toon, "name")),
                      "Ada");
-        check_int_eq(turbo_toon_to_json_doc(toon, &roundtrip), TURBO_OK);
+        check_equal(turbo_toon_to_json_doc(toon, &roundtrip), TURBO_OK);
         check_not_null(roundtrip);
       }
       turbo_free_toon(&toon);
       check_null(toon);
 
       if (roundtrip) {
-        check_str_eq(turbo_json_get_string(roundtrip, "name"), "Ada");
-        check_size_eq(turbo_json_array_size(
+        check_equal(turbo_json_get_string(roundtrip, "name"), "Ada");
+        check_equal(turbo_json_array_size(
                           turbo_json_object_get(roundtrip, "items")),
                       2U);
       }
@@ -904,12 +904,12 @@ spec("turbo_parser") {
       turbo_json_doc_t *json = (turbo_json_doc_t *)(uintptr_t)1;
       turbo_toon_node_t *toon = (turbo_toon_node_t *)(uintptr_t)1;
 
-      check_int_eq(turbo_toon_from_json_doc(NULL, &toon), TURBO_EINVAL);
+      check_equal(turbo_toon_from_json_doc(NULL, &toon), TURBO_EINVAL);
       check_null(toon);
-      check_int_eq(turbo_toon_to_json_doc(NULL, &json), TURBO_EINVAL);
+      check_equal(turbo_toon_to_json_doc(NULL, &json), TURBO_EINVAL);
       check_null(json);
-      check_int_eq(turbo_toon_from_json_doc(NULL, NULL), TURBO_EINVAL);
-      check_int_eq(turbo_toon_to_json_doc(NULL, NULL), TURBO_EINVAL);
+      check_equal(turbo_toon_from_json_doc(NULL, NULL), TURBO_EINVAL);
+      check_equal(turbo_toon_to_json_doc(NULL, NULL), TURBO_EINVAL);
     }
   }
 
@@ -923,11 +923,11 @@ spec("turbo_parser") {
       }
 
       int rc = turbo_dotenv_load(env_file, true);
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
 
       char *val = getenv("TURBO_PARSER_TEST");
       check_not_null(val);
-      check_str_eq(val, "success");
+      check_equal(val, "success");
 
       remove(env_file);
     }
@@ -941,20 +941,20 @@ spec("turbo_parser") {
       char *argv[] = {"turbo-parser-test"};
 
       check_not_null(path);
-      check_int_eq(tt_write_file(path, content, sizeof(content) - 1u), 0);
-      check_int_eq(test_process_environment_set(name, "process-value"), 0);
-      check_int_eq(turbo_dotenv_load(path, false), 0);
+      check_equal(tt_write_file(path, content, sizeof(content) - 1u), 0);
+      check_equal(test_process_environment_set(name, "process-value"), 0);
+      check_equal(turbo_dotenv_load(path, false), 0);
 
       parser = turbo_cmd_create("turbo-parser-test", "1.0");
       check_not_null(parser);
       turbo_cmd_add_string(parser, &resolved, "value", NULL, "Environment-backed value");
       turbo_cmd_set_env(parser, turbo_cmd_last_index(parser), name);
       turbo_cmd_parse(parser, 1, argv, false);
-      check_str_eq(resolved, "process-value");
+      check_equal(resolved, "process-value");
 
       turbo_cmd_destroy(parser);
-      check_int_eq(test_process_environment_set(name, NULL), 0);
-      check_int_eq(tt_remove_file(path), 0);
+      check_equal(test_process_environment_set(name, NULL), 0);
+      check_equal(tt_remove_file(path), 0);
       free(path);
     }
   }
@@ -977,7 +977,7 @@ spec("turbo_parser") {
       turbo_toml_t *root = NULL;
       int rc = turbo_parse_toml((const uint8_t *)toml_data, strlen(toml_data), &root);
 
-      check_int_eq(rc, 0);
+      check_equal(rc, 0);
       check_not_null(root);
 
       // Test table access
@@ -987,13 +987,13 @@ spec("turbo_parser") {
       // Test string
       turbo_toml_value_t host = turbo_toml_string(server, "host");
       check(host.ok);
-      check_str_eq(host.u.s, "localhost");
+      check_equal(host.u.s, "localhost");
       free(host.u.s);
 
       // Test int
       turbo_toml_value_t port = turbo_toml_int(server, "port");
       check(port.ok);
-      check_int_eq(port.u.i, 8080);
+      check_equal(port.u.i, 8080);
 
       // Test bool
       turbo_toml_value_t enabled = turbo_toml_bool(server, "enabled");
@@ -1003,23 +1003,23 @@ spec("turbo_parser") {
       // Test double
       turbo_toml_value_t timeout = turbo_toml_double(server, "timeout");
       check(timeout.ok);
-      check_float_eq(timeout.u.d, 5.0, 0.001);
+      check_within(timeout.u.d, 5.0, 0.001);
 
       // Test timestamp
       turbo_toml_value_t started = turbo_toml_timestamp(server, "started");
       check(started.ok);
-      check_int_eq(started.u.ts.kind, 'd');
+      check_equal(started.u.ts.kind, 'd');
 
       // Test array of tables
       turbo_toml_array_t *dbs = turbo_toml_array(root, "databases");
       check_not_null(dbs);
-      check_int_eq(turbo_toml_array_len(dbs), 2);
+      check_equal(turbo_toml_array_len(dbs), 2);
 
       turbo_toml_t *db1 = turbo_toml_array_table(dbs, 0);
       check_not_null(db1);
       turbo_toml_value_t name1 = turbo_toml_string(db1, "name");
       check(name1.ok);
-      check_str_eq(name1.u.s, "db1");
+      check_equal(name1.u.s, "db1");
       free(name1.u.s);
 
       turbo_free_toml(&root);
@@ -1033,15 +1033,15 @@ spec("turbo_parser") {
       const char *dt_str = "2006-03-14T13:27:54.123+03:45";
       int rc = turbo_parse_datetime(dt_str, strlen(dt_str), &dt);
 
-      check_int_eq(rc, 0);
-      check_int_eq(dt.year, 2006);
-      check_int_eq(dt.month, 3);
-      check_int_eq(dt.day, 14);
-      check_int_eq(dt.hour, 13);
-      check_int_eq(dt.minute, 27);
-      check_int_eq(dt.second, 54);
-      check_int_eq(dt.millisecond, 123);
-      check_int_eq(dt.tz_offset, 225);
+      check_equal(rc, 0);
+      check_equal(dt.year, 2006);
+      check_equal(dt.month, 3);
+      check_equal(dt.day, 14);
+      check_equal(dt.hour, 13);
+      check_equal(dt.minute, 27);
+      check_equal(dt.second, 54);
+      check_equal(dt.millisecond, 123);
+      check_equal(dt.tz_offset, 225);
       check(dt.has_tz);
 
       // Test conversion to time_t
@@ -1074,15 +1074,15 @@ spec("turbo_parser") {
       uint8_t buf[TURBO_MODBUS_TCP_MAX_ADU_SIZE];
 
       size_t written = turbo_modbus_tcp_write(&adu, buf, sizeof(buf));
-      check_size_eq(written, 12);
+      check_equal(written, 12);
 
       turbo_modbus_tcp_adu_t parsed;
       int rc = turbo_modbus_tcp_read(buf, written, &parsed);
-      check_int_eq(rc, TURBO_MODBUS_PARSE_OK);
-      check_int_eq(parsed.transaction_id, 0x1234);
-      check_int_eq(parsed.unit_id, 0x11);
-      check_int_eq(parsed.pdu.function_code, 0x03);
-      check_mem_eq(parsed.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(rc, TURBO_MODBUS_PARSE_OK);
+      check_equal(parsed.transaction_id, 0x1234);
+      check_equal(parsed.unit_id, 0x11);
+      check_equal(parsed.pdu.function_code, 0x03);
+      check_equal(parsed.pdu.data, pdu_data, sizeof(pdu_data));
     }
 
     it("should write and read a Modbus RTU struct") {
@@ -1099,16 +1099,16 @@ spec("turbo_parser") {
       uint8_t buf[TURBO_MODBUS_RTU_MAX_ADU_SIZE];
 
       size_t written = turbo_modbus_rtu_write(&adu, buf, sizeof(buf));
-      check_size_eq(written, 8);
-      check_int_eq(buf[6], 0xC5);
-      check_int_eq(buf[7], 0xCD);
+      check_equal(written, 8);
+      check_equal(buf[6], 0xC5);
+      check_equal(buf[7], 0xCD);
 
       turbo_modbus_rtu_adu_t parsed;
       int rc = turbo_modbus_rtu_read(buf, written, &parsed);
-      check_int_eq(rc, TURBO_MODBUS_PARSE_OK);
-      check_int_eq(parsed.address, 0x01);
-      check_int_eq(parsed.pdu.function_code, 0x03);
-      check_mem_eq(parsed.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(rc, TURBO_MODBUS_PARSE_OK);
+      check_equal(parsed.address, 0x01);
+      check_equal(parsed.pdu.function_code, 0x03);
+      check_equal(parsed.pdu.data, pdu_data, sizeof(pdu_data));
     }
 
     it("should round trip through generic Modbus read and write") {
@@ -1136,11 +1136,11 @@ spec("turbo_parser") {
 
       turbo_modbus_adu_t parsed;
       int rc = turbo_modbus_read(TURBO_MODBUS_TRANSPORT_TCP, buf, written, &parsed);
-      check_int_eq(rc, TURBO_MODBUS_PARSE_OK);
+      check_equal(rc, TURBO_MODBUS_PARSE_OK);
 
       size_t out_len = turbo_modbus_write(&parsed, out, sizeof(out));
-      check_size_eq(out_len, written);
-      check_mem_eq(out, buf, written);
+      check_equal(out_len, written);
+      check_equal(out, buf, written);
     }
   }
 }

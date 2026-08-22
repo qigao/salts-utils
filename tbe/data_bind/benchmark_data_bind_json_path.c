@@ -34,7 +34,7 @@ static void data_bind_json_path_bench_prepare(void) {
   size_t i;
   int written;
 
-  check_int_eq(data_bind_create_from_text(
+  check_equal(data_bind_create_from_text(
                    DATA_BIND_JSON_PATH_BENCH_SCHEMA,
                    sizeof(DATA_BIND_JSON_PATH_BENCH_SCHEMA) - 1U, &g_json_path_codec, NULL),
                DATA_BIND_OK);
@@ -146,9 +146,9 @@ spec("DataBind JSONPath benchmarks") {
     consumed = data_bind_json_path_bench_callback_only();
     check_not_null(dom);
     check_not_null(streamed);
-    check_size_eq(data_bind_value_count(dom), DATA_BIND_JSON_PATH_BENCH_RECORDS);
-    check_size_eq(data_bind_value_count(streamed), DATA_BIND_JSON_PATH_BENCH_RECORDS);
-    check_size_eq(consumed, DATA_BIND_JSON_PATH_BENCH_RECORDS);
+    check_equal(data_bind_value_count(dom), DATA_BIND_JSON_PATH_BENCH_RECORDS);
+    check_equal(data_bind_value_count(streamed), DATA_BIND_JSON_PATH_BENCH_RECORDS);
+    check_equal(consumed, DATA_BIND_JSON_PATH_BENCH_RECORDS);
     data_bind_value_free(streamed);
     data_bind_value_free(dom);
   }
@@ -192,7 +192,7 @@ spec("DataBind JSONPath benchmarks") {
       g_json_path_sink += data_bind_json_path_bench_callback_only();
     }
 
-    check_size_eq(g_json_path_failures, 0U);
+    check_equal(g_json_path_failures, 0U);
     check_true(g_json_path_sink != 0U);
   }
 }

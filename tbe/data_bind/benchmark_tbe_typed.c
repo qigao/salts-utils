@@ -9,7 +9,7 @@
 
 typedef struct TypedBenchOrder {
   uint32_t id;
-  tstr_t symbol;
+  tstr symbol;
   double price;
 } TypedBenchOrder;
 
@@ -38,15 +38,15 @@ static size_t g_typed_bench_failures;
 
 spec("DataBind typed benchmarks") {
   before_all() {
-    check_int_eq(data_bind_create_from_text(TYPED_BENCH_SCHEMA, sizeof(TYPED_BENCH_SCHEMA) - 1u,
+    check_equal(data_bind_create_from_text(TYPED_BENCH_SCHEMA, sizeof(TYPED_BENCH_SCHEMA) - 1u,
                                             &g_typed_bench_codec, &g_typed_bench_error),
                  DATA_BIND_OK);
     check_not_null(g_typed_bench_codec);
-    check_int_eq(TBE_TYPED_BIND_INIT(TYPED_BENCH_ORDER, &g_typed_bench_order,
+    check_equal(TBE_TYPED_BIND_INIT(TYPED_BENCH_ORDER, &g_typed_bench_order,
                                      &g_typed_bench_error),
                  DATA_BIND_OK);
     if (g_typed_bench_codec != NULL) {
-      check_int_eq(TBE_TYPED_BIND_PARSE(g_typed_bench_codec, TYPED_BENCH_ORDER, "json",
+      check_equal(TBE_TYPED_BIND_PARSE(g_typed_bench_codec, TYPED_BENCH_ORDER, "json",
                                         TYPED_BENCH_JSON, sizeof(TYPED_BENCH_JSON) - 1u, 0u,
                                         &g_typed_bench_order, &g_typed_bench_error),
                    DATA_BIND_OK);
@@ -87,7 +87,7 @@ spec("DataBind typed benchmarks") {
       }
     }
 
-    check_size_eq(g_typed_bench_failures, 0u);
-    check_size_gt(g_typed_bench_sink, 0u);
+    check_equal(g_typed_bench_failures, 0u);
+    check_greater(g_typed_bench_sink, 0u);
   }
 }

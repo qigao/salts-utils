@@ -9,12 +9,12 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "/");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_SLASH);
+        check_equal(lexer.tok.type, YPATH_TOK_SLASH);
 
         ypath_lex_init(&lexer, "/");
         lexer.in_filter = true;
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_DIV);
+        check_equal(lexer.tok.type, YPATH_TOK_DIV);
     }
 
     it("recognizes idiv and matches only inside filters") {
@@ -22,16 +22,16 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "idiv matches");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDENT);
+        check_equal(lexer.tok.type, YPATH_TOK_IDENT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDENT);
+        check_equal(lexer.tok.type, YPATH_TOK_IDENT);
 
         ypath_lex_init(&lexer, "idiv matches");
         lexer.in_filter = true;
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDIV);
+        check_equal(lexer.tok.type, YPATH_TOK_IDIV);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_MATCHES);
+        check_equal(lexer.tok.type, YPATH_TOK_MATCHES);
     }
 
     it("keeps keyword prefixes as identifiers") {
@@ -39,17 +39,17 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "true_value falsehood nullable true false null");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDENT);
+        check_equal(lexer.tok.type, YPATH_TOK_IDENT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDENT);
+        check_equal(lexer.tok.type, YPATH_TOK_IDENT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_IDENT);
+        check_equal(lexer.tok.type, YPATH_TOK_IDENT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_TRUE);
+        check_equal(lexer.tok.type, YPATH_TOK_TRUE);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_FALSE);
+        check_equal(lexer.tok.type, YPATH_TOK_FALSE);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_NULL);
+        check_equal(lexer.tok.type, YPATH_TOK_NULL);
     }
 
     it("saturates out of range integers") {
@@ -57,10 +57,10 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "999999999999999999999999 -999999999999999999999999");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_INT);
+        check_equal(lexer.tok.type, YPATH_TOK_INT);
         check_true(lexer.tok.val.i == INT64_MAX);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_INT);
+        check_equal(lexer.tok.type, YPATH_TOK_INT);
         check_true(lexer.tok.val.i == INT64_MIN);
     }
 
@@ -69,8 +69,8 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "1e309");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_ERROR);
-        check_str_eq(lexer.error, "exponent overflow");
+        check_equal(lexer.tok.type, YPATH_TOK_ERROR);
+        check_equal(lexer.error, "exponent overflow");
     }
 
     it("returns borrowed string contents without quotes") {
@@ -79,12 +79,12 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, source);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_STRING);
-        check_ptr_eq(lexer.tok.start, source + 1);
-        check_uint_eq(lexer.tok.len, 13);
+        check_equal(lexer.tok.type, YPATH_TOK_STRING);
+        check_true(lexer.tok.start == source + 1);
+        check_equal(lexer.tok.len, 13);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_STRING);
-        check_uint_eq(lexer.tok.len, 5);
+        check_equal(lexer.tok.type, YPATH_TOK_STRING);
+        check_equal(lexer.tok.len, 5);
     }
 
     it("tokenizes single | and & as bitwise operators") {
@@ -92,21 +92,21 @@ suite("cyaml YPATH re2c lexer") {
 
         ypath_lex_init(&lexer, "|");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_BOR);
+        check_equal(lexer.tok.type, YPATH_TOK_BOR);
         ypath_lex_init(&lexer, "&");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_BAND);
+        check_equal(lexer.tok.type, YPATH_TOK_BAND);
         ypath_lex_init(&lexer, "^");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_CARET);
+        check_equal(lexer.tok.type, YPATH_TOK_CARET);
         ypath_lex_init(&lexer, "<< >> ~ ,");
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_LSHIFT);
+        check_equal(lexer.tok.type, YPATH_TOK_LSHIFT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_RSHIFT);
+        check_equal(lexer.tok.type, YPATH_TOK_RSHIFT);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_TILDE);
+        check_equal(lexer.tok.type, YPATH_TOK_TILDE);
         ypath_lex_next(&lexer);
-        check_int_eq(lexer.tok.type, YPATH_TOK_COMMA);
+        check_equal(lexer.tok.type, YPATH_TOK_COMMA);
     }
 }

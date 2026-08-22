@@ -392,7 +392,7 @@ static void run_spec_test_case(const char* test_name, const char* template_str,
         printf("Expected: '%s'\n", expected);
         printf("Got:      '%s'\n", buf.data);
     }
-    check_str_eq(buf.data, expected);
+    check_equal(buf.data, expected);
 
     // Cleanup
     for (i = 0; provider_data.partial_dict[i].templ != NULL; i++) {

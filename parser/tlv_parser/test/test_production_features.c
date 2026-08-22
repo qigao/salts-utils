@@ -68,9 +68,9 @@ spec("uri_parser_production") {
             ParseErrorInfo error;
             parse_error_set(&error, PARSE_ERR_CRC_MISMATCH, 10, 123, NULL);
             
-            check_int_eq(error.code, PARSE_ERR_CRC_MISMATCH);
-            check_int_eq(error.offset, 10);
-            check_int_eq(error.msg_id, 123);
+            check_equal(error.code, PARSE_ERR_CRC_MISMATCH);
+            check_equal(error.offset, 10);
+            check_equal(error.msg_id, 123);
             check_not_null(error.message);
             
             const char *err_str = parse_error_string(PARSE_ERR_CRC_MISMATCH);
@@ -87,26 +87,26 @@ spec("uri_parser_production") {
             frame.payload_type = FRAME_PAYLOAD_TYPE_TEXT;
             frame.payload_size = 100;
             
-            check_int_eq(frame_validate(&frame), PARSE_OK);
+            check_equal(frame_validate(&frame), PARSE_OK);
             
             // Invalid head
             frame.head = 0xFF;
-            check_int_eq(frame_validate(&frame), PARSE_ERR_INVALID_HEAD);
+            check_equal(frame_validate(&frame), PARSE_ERR_INVALID_HEAD);
             frame.head = FRAME_HEAD;
             
             // Invalid tail
             frame.tail = 0xFF;
-            check_int_eq(frame_validate(&frame), PARSE_ERR_INVALID_TAIL);
+            check_equal(frame_validate(&frame), PARSE_ERR_INVALID_TAIL);
             frame.tail = FRAME_TAIL;
             
             // Invalid version
             frame.version = 0xFF;
-            check_int_eq(frame_validate(&frame), PARSE_ERR_INVALID_VERSION);
+            check_equal(frame_validate(&frame), PARSE_ERR_INVALID_VERSION);
             frame.version = FRAME_VERSION;
             
             // Payload too large
             frame.payload_size = MAX_PAYLOAD_SIZE + 1;
-            check_int_eq(frame_validate(&frame), PARSE_ERR_PAYLOAD_TOO_LARGE);
+            check_equal(frame_validate(&frame), PARSE_ERR_PAYLOAD_TOO_LARGE);
         }
     }
 
@@ -117,18 +117,18 @@ spec("uri_parser_production") {
             
             void *ptr1 = pool_alloc(pool, 100);
             check_not_null(ptr1);
-            check_size_eq(pool_get_used(pool), 100);
+            check_equal(pool_get_used(pool), 100);
             
             void *ptr2 = pool_alloc(pool, 200);
             check_not_null(ptr2);
-            check_size_eq(pool_get_used(pool), 304);
+            check_equal(pool_get_used(pool), 304);
             
             pool_reset(pool);
-            check_size_eq(pool_get_used(pool), 0);
+            check_equal(pool_get_used(pool), 0);
             
             void *ptr3 = pool_alloc(pool, 50);
             check_not_null(ptr3);
-            check_ptr_eq(ptr1, ptr3);  // Reused memory
+            check_true(ptr1 == ptr3);  // Reused memory
             
             pool_destroy(pool);
         }
@@ -160,12 +160,12 @@ spec("uri_parser_production") {
             memset(&frame, 0, sizeof(frame));
             StreamState state = stream_parser_feed(sp, buffer, frame_len, &frame);
             
-            check_int_eq(state, STREAM_FRAME_COMPLETE);
-            check_int_eq(frame.head, 0xAA);
-            check_int_eq(frame.msg_id, 1);
-            check_int_eq(frame.version, 0x01);
-            check_int_eq(frame.payload_size, strlen(payload));
-            check_int_eq(frame.tail, 0x55);
+            check_equal(state, STREAM_FRAME_COMPLETE);
+            check_equal(frame.head, 0xAA);
+            check_equal(frame.msg_id, 1);
+            check_equal(frame.version, 0x01);
+            check_equal(frame.payload_size, strlen(payload));
+            check_equal(frame.tail, 0x55);
             
             frame_free(&frame);
             stream_parser_destroy(sp);
@@ -184,16 +184,16 @@ spec("uri_parser_production") {
             
             // Feed first 10 bytes (incomplete header)
             StreamState state = stream_parser_feed(sp, buffer, 10, &frame);
-            check_int_eq(state, STREAM_NEED_MORE_DATA);
+            check_equal(state, STREAM_NEED_MORE_DATA);
             
             // Feed next 10 bytes (still incomplete)
             state = stream_parser_feed(sp, buffer + 10, 10, &frame);
-            check_int_eq(state, STREAM_NEED_MORE_DATA);
+            check_equal(state, STREAM_NEED_MORE_DATA);
             
             // Feed remaining bytes
             state = stream_parser_feed(sp, buffer + 20, frame_len - 20, &frame);
-            check_int_eq(state, STREAM_FRAME_COMPLETE);
-            check_int_eq(frame.msg_id, 2);
+            check_equal(state, STREAM_FRAME_COMPLETE);
+            check_equal(frame.msg_id, 2);
             
             frame_free(&frame);
             stream_parser_destroy(sp);
@@ -212,15 +212,15 @@ spec("uri_parser_production") {
             // Feed first frame
             memset(&frame, 0, sizeof(frame));
             StreamState state = stream_parser_feed(sp, buffer1, len1, &frame);
-            check_int_eq(state, STREAM_FRAME_COMPLETE);
-            check_int_eq(frame.msg_id, 1);
+            check_equal(state, STREAM_FRAME_COMPLETE);
+            check_equal(frame.msg_id, 1);
             frame_free(&frame);
             
             // Feed second frame
             memset(&frame, 0, sizeof(frame));
             state = stream_parser_feed(sp, buffer2, len2, &frame);
-            check_int_eq(state, STREAM_FRAME_COMPLETE);
-            check_int_eq(frame.msg_id, 2);
+            check_equal(state, STREAM_FRAME_COMPLETE);
+            check_equal(frame.msg_id, 2);
             frame_free(&frame);
             
             stream_parser_destroy(sp);
@@ -232,21 +232,21 @@ spec("uri_parser_production") {
             ParserStats stats;
             parser_stats_init(&stats);
             
-            check_int_eq(stats.frames_parsed, 0);
-            check_int_eq(stats.frames_failed, 0);
+            check_equal(stats.frames_parsed, 0);
+            check_equal(stats.frames_failed, 0);
             
             // Simulate successful parse
             parser_stats_update(&stats, PARSE_OK, 100, 1000);
-            check_int_eq(stats.frames_parsed, 1);
-            check_int_eq(stats.bytes_processed, 100);
+            check_equal(stats.frames_parsed, 1);
+            check_equal(stats.bytes_processed, 100);
             
             // Simulate failed parse
             parser_stats_update(&stats, PARSE_ERR_CRC_MISMATCH, 0, 500);
-            check_int_eq(stats.frames_failed, 1);
-            check_int_eq(stats.crc_errors, 1);
+            check_equal(stats.frames_failed, 1);
+            check_equal(stats.crc_errors, 1);
             
             double error_rate = parser_stats_error_rate(&stats);
-            check_float_eq(error_rate, 50.0, 0.001);
+            check_within(error_rate, 50.0, 0.001);
         }
     }
 
@@ -258,7 +258,7 @@ spec("uri_parser_production") {
             
             ParserStats *stats = parser_context_get_stats(ctx);
             check_not_null(stats);
-            check_int_eq(stats->frames_parsed, 0);
+            check_equal(stats->frames_parsed, 0);
             
             ParseErrorInfo *error = parser_context_get_error(ctx);
             check_not_null(error);
@@ -271,7 +271,7 @@ spec("uri_parser_production") {
             check_not_null(ctx1);
             
             ParserContext *ctx2 = parser_get_context();
-            check_ptr_eq(ctx1, ctx2);  // Same thread, same context
+            check_true(ctx1 == ctx2);  // Same thread, same context
         }
     }
 }

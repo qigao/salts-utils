@@ -21,7 +21,10 @@ cmake_config_target(
   FOLDER "cron"
   EXPORT_NAME Cron)
 
-target_compile_definitions(${TARGET_NAME} PRIVATE SHARED_CXX)
+target_compile_definitions(${TARGET_NAME} PRIVATE TURBO_CRON_BUILD_DLL)
+if(WIN32)
+  target_compile_definitions(${TARGET_NAME} INTERFACE TURBO_CRON_USE_DLL)
+endif()
 
 target_include_directories(
   ${TARGET_NAME}

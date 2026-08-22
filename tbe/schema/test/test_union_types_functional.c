@@ -20,29 +20,29 @@ suite("union_types_functional") {
     describe("Result tag enum") {
         it("should have correct tag values") {
             /* Variants are indexed in declaration order, starting at 0 */
-            check_int_eq(Result_tag_success, 0);
-            check_int_eq(Result_tag_error,   1);
+            check_equal(Result_tag_success, 0);
+            check_equal(Result_tag_error,   1);
         }
 
         it("should have COUNT equal to variant count") {
-            check_int_eq(Result_tag_COUNT, 2);
+            check_equal(Result_tag_COUNT, 2);
         }
     }
 
     describe("Result_get_tag") {
         it("should return COUNT when buf is NULL") {
-            check_int_eq(Result_get_tag(NULL, 16), Result_tag_COUNT);
+            check_equal(Result_get_tag(NULL, 16), Result_tag_COUNT);
         }
 
         it("should return COUNT when size < 1") {
             uint8_t buf[16] = {0};
-            check_int_eq(Result_get_tag(buf, 0), Result_tag_COUNT);
+            check_equal(Result_get_tag(buf, 0), Result_tag_COUNT);
         }
 
         it("should read the tag byte from buf[0]") {
             uint8_t buf[16] = {0};
             buf[0] = (uint8_t)Result_tag_error;
-            check_int_eq(Result_get_tag(buf, sizeof(buf)), Result_tag_error);
+            check_equal(Result_get_tag(buf, sizeof(buf)), Result_tag_error);
         }
     }
 
@@ -50,7 +50,7 @@ suite("union_types_functional") {
         it("should write tag byte to buf[0]") {
             uint8_t buf[16] = {0};
             Result_set_tag(buf, sizeof(buf), Result_tag_success);
-            check_int_eq((int)buf[0], (int)Result_tag_success);
+            check_equal((int)buf[0], (int)Result_tag_success);
         }
 
         it("should be a no-op when buf is NULL") {
@@ -63,7 +63,7 @@ suite("union_types_functional") {
             uint8_t buf[16] = {0xFF};
             Result_set_tag(buf, 0, Result_tag_success);
             /* buf[0] must remain unchanged */
-            check_int_eq((int)buf[0], 0xFF);
+            check_equal((int)buf[0], 0xFF);
         }
     }
 
@@ -84,7 +84,7 @@ suite("union_types_functional") {
             size_t psz = 0;
             const uint8_t *p = Result_payload(buf, sizeof(buf), &psz);
             check(p == buf + 1);
-            check_uint_eq(psz, sizeof(buf) - 1);
+            check_equal(psz, sizeof(buf) - 1);
         }
 
         it("should accept NULL payload_size out-param") {
@@ -110,10 +110,10 @@ suite("union_types_functional") {
             size_t psz = 0;
             uint8_t *p = Result_payload_mut(buf, sizeof(buf), &psz);
             check(p == buf + 1);
-            check_uint_eq(psz, sizeof(buf) - 1);
+            check_equal(psz, sizeof(buf) - 1);
             /* Verify the pointer is actually writable */
             p[0] = 0xAB;
-            check_int_eq((int)buf[1], 0xAB);
+            check_equal((int)buf[1], 0xAB);
         }
     }
 
@@ -122,17 +122,17 @@ suite("union_types_functional") {
             uint8_t buf[32] = {0};
 
             Result_set_tag(buf, sizeof(buf), Result_tag_error);
-            check_int_eq(Result_get_tag(buf, sizeof(buf)), Result_tag_error);
+            check_equal(Result_get_tag(buf, sizeof(buf)), Result_tag_error);
 
             size_t psz = 0;
             uint8_t *p = Result_payload_mut(buf, sizeof(buf), &psz);
             check(p != NULL);
-            check_uint_eq(psz, sizeof(buf) - 1);
+            check_equal(psz, sizeof(buf) - 1);
 
             /* Write a sentinel into the payload */
             p[0] = 0x42;
             const uint8_t *rp = Result_payload(buf, sizeof(buf), NULL);
-            check_int_eq((int)rp[0], 0x42);
+            check_equal((int)rp[0], 0x42);
         }
     }
 }

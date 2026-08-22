@@ -16,8 +16,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <turbo_hash.h>
 #include <turbo_str.h>
+#include <turbostl/hash_map.h>
 
 #define MAX_ERROR_LEN 512
 #define JSON_ARRAY_INDEX_THRESHOLD 8U
@@ -602,7 +602,7 @@ void JsonParse(void *parser, int tokenType, json_token_t token, json_parse_ctx_t
 
 json_value_t *json_parse(const char *content, size_t len) {
   if (!content || len == 0) {
-    fmt(g_error, sizeof(g_error), "Empty input");
+    fmt_text(g_error, sizeof(g_error), "Empty input");
     return NULL;
   }
 
@@ -611,14 +611,14 @@ json_value_t *json_parse(const char *content, size_t len) {
   size_t estimated = len < JSON_POOL_MIN_SIZE ? JSON_POOL_MIN_SIZE : len;
   json_arena_t *arena = json_arena_create_sized(estimated);
   if (!arena) {
-    fmt(g_error, sizeof(g_error), "Failed to create arena");
+    fmt_text(g_error, sizeof(g_error), "Failed to create arena");
     return NULL;
   }
 
   json_lexer_t lexer;
   char *terminated_content = json_arena_alloc(arena, len + 1);
   if (!terminated_content) {
-    fmt(g_error, sizeof(g_error), "Failed to allocate buffer");
+    fmt_text(g_error, sizeof(g_error), "Failed to allocate buffer");
     json_arena_free(arena);
     return NULL;
   }
@@ -629,7 +629,7 @@ json_value_t *json_parse(const char *content, size_t len) {
 
   void *parser = JsonParseAlloc(malloc);
   if (!parser) {
-    fmt(g_error, sizeof(g_error), "Failed to allocate parser");
+    fmt_text(g_error, sizeof(g_error), "Failed to allocate parser");
     json_arena_free(arena);
     return NULL;
   }
@@ -672,7 +672,7 @@ json_value_t *json_parse(const char *content, size_t len) {
 
 json_value_t *json_parse_file(const char *filename) {
   if (!filename) {
-    fmt(g_error, sizeof(g_error), "NULL filename");
+    fmt_text(g_error, sizeof(g_error), "NULL filename");
     return NULL;
   }
 
@@ -695,7 +695,7 @@ json_value_t *json_parse_file(const char *filename) {
   char *buf = (char *)malloc((size_t)size + 1);
   if (!buf) {
     fclose(f);
-    fmt(g_error, sizeof(g_error), "Memory allocation failed");
+    fmt_text(g_error, sizeof(g_error), "Memory allocation failed");
     return NULL;
   }
 
@@ -704,7 +704,7 @@ json_value_t *json_parse_file(const char *filename) {
 
   if (read != (size_t)size) {
     free(buf);
-    fmt(g_error, sizeof(g_error), "Failed to read file");
+    fmt_text(g_error, sizeof(g_error), "Failed to read file");
     return NULL;
   }
 
@@ -751,9 +751,9 @@ size_t json_string_len(const json_value_t *value) {
   return value && value->type == JSON_STRING ? value->data.string_val.len : 0;
 }
 
-tstr_v json_string_v(const json_value_t *value) {
-  if (!value || value->type != JSON_STRING) return tstr_v_from_buf(NULL, 0);
-  return tstr_v_from_buf(value->data.string_val.str, value->data.string_val.len);
+vstr json_string_v(const json_value_t *value) {
+  if (!value || value->type != JSON_STRING) return vstr_from_buf(NULL, 0);
+  return vstr_from_buf(value->data.string_val.str, value->data.string_val.len);
 }
 
 size_t json_object_size(const json_value_t *obj) {
@@ -786,19 +786,19 @@ size_t json_object_key_len(const json_value_t *obj, size_t index) {
   return pair ? pair->key_len : 0;
 }
 
-tstr_v json_object_key_v(const json_value_t *obj, size_t index) {
-  if (!obj || obj->type != JSON_OBJECT) return tstr_v_from_buf(NULL, 0);
-  if (index >= obj->data.object_val.count) return tstr_v_from_buf(NULL, 0);
+vstr json_object_key_v(const json_value_t *obj, size_t index) {
+  if (!obj || obj->type != JSON_OBJECT) return vstr_from_buf(NULL, 0);
+  if (index >= obj->data.object_val.count) return vstr_from_buf(NULL, 0);
   if (obj->data.object_val.index) {
     const json_pair_t *pair = obj->data.object_val.index->members[index];
-    return tstr_v_from_buf(pair->key, pair->key_len);
+    return vstr_from_buf(pair->key, pair->key_len);
   }
 
   json_pair_t *pair = obj->data.object_val.pairs;
   for (size_t i = 0; pair && i < index; i++) {
     pair = pair->next;
   }
-  return pair ? tstr_v_from_buf(pair->key, pair->key_len) : tstr_v_from_buf(NULL, 0);
+  return pair ? vstr_from_buf(pair->key, pair->key_len) : vstr_from_buf(NULL, 0);
 }
 
 json_value_t *json_object_value(const json_value_t *obj, size_t index) {
@@ -816,10 +816,10 @@ json_value_t *json_object_value(const json_value_t *obj, size_t index) {
 
 json_value_t *json_object_get(const json_value_t *obj, const char *key) {
   if (!obj || obj->type != JSON_OBJECT || !key) return NULL;
-  return json_object_get_v(obj, tstr_v_from_cstr(key));
+  return json_object_get_v(obj, vstr_from_cstr(key));
 }
 
-json_value_t *json_object_get_v(const json_value_t *obj, tstr_v key) {
+json_value_t *json_object_get_v(const json_value_t *obj, vstr key) {
   if (!obj || obj->type != JSON_OBJECT || !key.data) return NULL;
   if (obj->data.object_val.index)
     return json_object_get_hashed_v(obj, key,
@@ -831,7 +831,7 @@ json_value_t *json_object_get_v(const json_value_t *obj, tstr_v key) {
   return NULL;
 }
 
-json_value_t *json_object_get_hashed_v(const json_value_t *obj, tstr_v key,
+json_value_t *json_object_get_hashed_v(const json_value_t *obj, vstr key,
                                        size_t key_hash) {
   json_pair_t *indexed;
   if (!obj || obj->type != JSON_OBJECT || !key.data) return NULL;
@@ -888,27 +888,27 @@ const char *json_get_string(const json_value_t *obj, const char *key) {
   return v && v->type == JSON_STRING ? v->data.string_val.str : NULL;
 }
 
-tstr_v json_get_string_v(const json_value_t *obj, const char *key) {
+vstr json_get_string_v(const json_value_t *obj, const char *key) {
   json_value_t *v = json_object_get(obj, key);
   return json_string_v(v);
 }
 
-int json_get_int_v(const json_value_t *obj, tstr_v key, int def) {
+int json_get_int_v(const json_value_t *obj, vstr key, int def) {
   json_value_t *v = json_object_get_v(obj, key);
   return v && v->type == JSON_NUMBER ? (int)v->data.number_val.value : def;
 }
 
-bool json_get_bool_v(const json_value_t *obj, tstr_v key, bool def) {
+bool json_get_bool_v(const json_value_t *obj, vstr key, bool def) {
   json_value_t *v = json_object_get_v(obj, key);
   return v && v->type == JSON_BOOL ? v->data.bool_val : def;
 }
 
-double json_get_double_v(const json_value_t *obj, tstr_v key, double def) {
+double json_get_double_v(const json_value_t *obj, vstr key, double def) {
   json_value_t *v = json_object_get_v(obj, key);
   return v && v->type == JSON_NUMBER ? v->data.number_val.value : def;
 }
 
-tstr_v json_get_string_vv(const json_value_t *obj, tstr_v key) {
+vstr json_get_string_vv(const json_value_t *obj, vstr key) {
   json_value_t *v = json_object_get_v(obj, key);
   return json_string_v(v);
 }
@@ -1436,9 +1436,9 @@ struct json_sax_parser_s {
   bool done;
   bool failed;
   bool finished;
-  tstr_t buffer;
+  tstr buffer;
   size_t pos;
-  tstr_t scratch;
+  tstr scratch;
   char error[MAX_ERROR_LEN];
 };
 
@@ -1480,7 +1480,7 @@ static int sax_unescape_to_buffer(json_sax_parser_t *parser, const char *src, si
     parser->scratch = tstr_new_len(NULL, len);
   } else {
     tstr_clear(parser->scratch);
-    tstr_t next = tstr_reserve(parser->scratch, len);
+    tstr next = tstr_reserve(parser->scratch, len);
     if (!next) {
       json_sax_set_error(parser, "Out of memory");
       return -1;
@@ -2032,13 +2032,13 @@ static int json_sax_parser_run(json_sax_parser_t *parser, bool final) {
 static json_sax_parser_t *json_sax_parser_create_common(
     const json_sax_handler_t *handler, const json_sax_handler_raw_t *raw_handler, void *ctx) {
   if ((handler == NULL) == (raw_handler == NULL)) {
-    fmt(g_error, sizeof(g_error), "Invalid arguments");
+    fmt_text(g_error, sizeof(g_error), "Invalid arguments");
     return NULL;
   }
 
   json_sax_parser_t *parser = (json_sax_parser_t *)calloc(1, sizeof(*parser));
   if (!parser) {
-    fmt(g_error, sizeof(g_error), "Out of memory");
+    fmt_text(g_error, sizeof(g_error), "Out of memory");
     return NULL;
   }
 
@@ -2060,7 +2060,7 @@ static json_sax_parser_t *json_sax_parser_create_common(
   parser->buffer = tstr_new();
   if (!parser->buffer) {
     free(parser);
-    fmt(g_error, sizeof(g_error), "Out of memory");
+    fmt_text(g_error, sizeof(g_error), "Out of memory");
     return NULL;
   }
   return parser;
@@ -2076,7 +2076,7 @@ json_sax_parser_t *json_sax_parser_create_raw(const json_sax_handler_raw_t *hand
 
 int json_sax_parser_feed(json_sax_parser_t *parser, const char *data, size_t len) {
   if (!parser || (!data && len > 0)) {
-    fmt(g_error, sizeof(g_error), "Invalid arguments");
+    fmt_text(g_error, sizeof(g_error), "Invalid arguments");
     return -1;
   }
   if (parser->failed) return -1;
@@ -2086,7 +2086,7 @@ int json_sax_parser_feed(json_sax_parser_t *parser, const char *data, size_t len
   }
   if (len == 0) return 0;
 
-  tstr_t next = tstr_cat_len(parser->buffer, data, len);
+  tstr next = tstr_cat_len(parser->buffer, data, len);
   if (!next) {
     json_sax_set_error(parser, "Out of memory");
     return -1;
@@ -2098,7 +2098,7 @@ int json_sax_parser_feed(json_sax_parser_t *parser, const char *data, size_t len
 
 int json_sax_parser_finish(json_sax_parser_t *parser) {
   if (!parser) {
-    fmt(g_error, sizeof(g_error), "Invalid arguments");
+    fmt_text(g_error, sizeof(g_error), "Invalid arguments");
     return -1;
   }
   if (parser->failed) return -1;
@@ -2134,7 +2134,7 @@ void json_sax_parser_destroy(json_sax_parser_t *parser) {
 
 int json_parse_sax(const char *content, size_t len, const json_sax_handler_t *handler, void *ctx) {
   if (!content || len == 0 || !handler) {
-    fmt(g_error, sizeof(g_error), "Invalid arguments");
+    fmt_text(g_error, sizeof(g_error), "Invalid arguments");
     return -1;
   }
 
@@ -2150,7 +2150,7 @@ int json_parse_sax(const char *content, size_t len, const json_sax_handler_t *ha
 int json_parse_sax_raw(const char *content, size_t len,
                        const json_sax_handler_raw_t *handler, void *ctx) {
   if (!content || len == 0 || !handler) {
-    fmt(g_error, sizeof(g_error), "Invalid arguments");
+    fmt_text(g_error, sizeof(g_error), "Invalid arguments");
     return -1;
   }
 

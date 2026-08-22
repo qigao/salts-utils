@@ -127,7 +127,7 @@ bool json_object_set_arena_ex(json_arena_t *arena, json_value_t *obj, const char
                               size_t key_len, int key_owned, json_value_t *val);
 bool json_object_build_index(json_arena_t *arena, json_value_t *obj);
 size_t json_object_key_hash(const char *key, size_t key_len);
-json_value_t *json_object_get_hashed_v(const json_value_t *obj, tstr_v key,
+json_value_t *json_object_get_hashed_v(const json_value_t *obj, vstr key,
                                        size_t key_hash);
 
 #ifdef __cplusplus

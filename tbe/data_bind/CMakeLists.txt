@@ -28,6 +28,7 @@ target_link_libraries(${TARGET_NAME}
     TurboParser::TbeSchema
   PUBLIC
     TurboUtils::Core
+    TurboUtils::STL
     TurboParser::Parser
 )
 

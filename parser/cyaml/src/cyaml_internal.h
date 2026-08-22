@@ -64,7 +64,7 @@ extern "C" {
 // YAML Core Schema string constants
 #define S_NULL "null"
 #define S_TRUE "true"
-#define S_FALSE "false"
+#define CYAML_S_FALSE "false"
 #define S_TILDE "~"
 #define S_NAN ".nan"
 #define S_INF ".inf"

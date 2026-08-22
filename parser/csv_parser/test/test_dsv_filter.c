@@ -53,9 +53,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "price > 100 and volume >= 100"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -73,9 +73,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "sym == \"AAPL\""));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 1);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 1);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -83,15 +83,15 @@ spec("dsv_filter") {
 
         it("should evaluate compiled filters on field views") {
             const char *csv = "price_n,volume_n,sym_s\n";
-            tstr_v row1[] = {
-                tstr_v_from_buf("50", 2),
-                tstr_v_from_buf("100", 3),
-                tstr_v_from_buf("AAPL", 4),
+            vstr row1[] = {
+                vstr_from_buf("50", 2),
+                vstr_from_buf("100", 3),
+                vstr_from_buf("AAPL", 4),
             };
-            tstr_v row2[] = {
-                tstr_v_from_buf("150", 3),
-                tstr_v_from_buf("200", 3),
-                tstr_v_from_buf("GOOG", 4),
+            vstr row2[] = {
+                vstr_from_buf("150", 3),
+                vstr_from_buf("200", 3),
+                vstr_from_buf("GOOG", 4),
             };
             csv_doc_t *doc = csv_parse(csv, strlen(csv));
             check_not_null(doc);
@@ -100,8 +100,8 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "price > 100 and sym == \"GOOG\""));
 
-            check_int_eq(dsv_filter_check_values(f, row1, 3), 0);
-            check_int_eq(dsv_filter_check_values(f, row2, 3), 1);
+            check_equal(dsv_filter_check_values(f, row1, 3), 0);
+            check_equal(dsv_filter_check_values(f, row2, 3), 1);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -129,11 +129,11 @@ spec("dsv_filter") {
             check_not_null(filter);
             check(dsv_filter_compile(filter, "score > 90 and country == \"CN\""));
             opts.has_header = true;
-            check_int_eq(dsv_filter_scan(filter, csv, strlen(csv), &opts, &projection, 1,
+            check_equal(dsv_filter_scan(filter, csv, strlen(csv), &opts, &projection, 1,
                                          on_scan_match, &ctx, &matches), 0);
-            check_size_eq(matches, 2);
-            check_size_eq(ctx.count, 2);
-            check_int_eq(ctx.sum, 45);
+            check_equal(matches, 2);
+            check_equal(ctx.count, 2);
+            check_equal(ctx.sum, 45);
 
             dsv_filter_destroy(filter);
             csv_free(doc);
@@ -150,8 +150,8 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "id > 10 and side == \"Sell\""));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -174,9 +174,9 @@ spec("dsv_filter") {
 
             dsv_filter_run(f, on_row, &ctx);
 
-            check_int_eq(ctx.count, 2);
-            check_int_eq(ctx.last_row, 3);
-            check_str_eq(ctx.last_row_text, "250|300|MSFT");
+            check_equal(ctx.count, 2);
+            check_equal(ctx.last_row, 3);
+            check_equal(ctx.last_row_text, "250|300|MSFT");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -198,8 +198,8 @@ spec("dsv_filter") {
 
             dsv_filter_run(f, on_row, &ctx);
 
-            check_int_eq(ctx.count, 1);
-            check_str_eq(ctx.last_row_text, "2|\"say \"\"hi\"\"\"");
+            check_equal(ctx.count, 1);
+            check_equal(ctx.last_row_text, "2|\"say \"\"hi\"\"\"");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -217,9 +217,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "left + right >= 10"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -237,9 +237,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "value - 2 == 3"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -257,9 +257,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "a + b - 1 + c == 5"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -276,14 +276,14 @@ spec("dsv_filter") {
             dsv_filter_t *f = dsv_filter_create(doc, 0);
             check_not_null(f);
             check(dsv_filter_compile(f, "a + -b == 2"));
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             check(dsv_filter_compile(f, "a - -b == 12"));
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -301,14 +301,14 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(dsv_filter_compile(f, "a + b * c == 14"));
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             check(dsv_filter_compile(f, "a / b + c == 7"));
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -326,9 +326,9 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(dsv_filter_compile(f, "a * -b == -6"));
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -346,14 +346,14 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(dsv_filter_compile(f, "a * (b + c) == 14"));
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             check(dsv_filter_compile(f, "a * (b + (c - 1)) == 8"));
-            check_int_eq(dsv_filter_check_row(f, 1), 0);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 0);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -373,11 +373,11 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "a > 1 or b > 2 and c > 3"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 1);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
-            check_int_eq(dsv_filter_check_row(f, 4), 0);
-            check_int_eq(dsv_filter_check_row(f, 5), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 1);
+            check_equal(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 4), 0);
+            check_equal(dsv_filter_check_row(f, 5), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -395,9 +395,9 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "code > 1 and code == \"3\""));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -418,10 +418,10 @@ spec("dsv_filter") {
                 "a > 0 and b > 0 and a < 10 and b < 10 and "
                 "a >= 2 and b >= 2 and a != 5 and b != 5"));
 
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
-            check_int_eq(dsv_filter_check_row(f, 3), 0);
-            check_int_eq(dsv_filter_check_row(f, 4), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 3), 0);
+            check_equal(dsv_filter_check_row(f, 4), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -454,8 +454,8 @@ spec("dsv_filter") {
             f = dsv_filter_create(doc, 0);
             check_not_null(f);
             check(dsv_filter_compile(f, expr));
-            check_int_eq(dsv_filter_check_row(f, 1), 1);
-            check_int_eq(dsv_filter_check_row(f, 2), 0);
+            check_equal(dsv_filter_check_row(f, 1), 1);
+            check_equal(dsv_filter_check_row(f, 2), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -463,15 +463,15 @@ spec("dsv_filter") {
 
         it("should evaluate lhs arithmetic on field views") {
             const char *csv = "left_n,right_n,sym_s\n";
-            tstr_v row1[] = {
-                tstr_v_from_buf("5", 1),
-                tstr_v_from_buf("3", 1),
-                tstr_v_from_buf("A", 1),
+            vstr row1[] = {
+                vstr_from_buf("5", 1),
+                vstr_from_buf("3", 1),
+                vstr_from_buf("A", 1),
             };
-            tstr_v row2[] = {
-                tstr_v_from_buf("4", 1),
-                tstr_v_from_buf("2", 1),
-                tstr_v_from_buf("B", 1),
+            vstr row2[] = {
+                vstr_from_buf("4", 1),
+                vstr_from_buf("2", 1),
+                vstr_from_buf("B", 1),
             };
             csv_doc_t *doc = csv_parse(csv, strlen(csv));
             check_not_null(doc);
@@ -480,8 +480,8 @@ spec("dsv_filter") {
             check_not_null(f);
             check(dsv_filter_compile(f, "left + right == 8"));
 
-            check_int_eq(dsv_filter_check_values(f, row1, 3), 1);
-            check_int_eq(dsv_filter_check_values(f, row2, 3), 0);
+            check_equal(dsv_filter_check_values(f, row1, 3), 1);
+            check_equal(dsv_filter_check_values(f, row2, 3), 0);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -501,10 +501,10 @@ spec("dsv_filter") {
             filter = dsv_filter_create(doc, 0);
             check_not_null(filter);
             check(dsv_filter_compile(filter, "score > 90 or country == \"CN\""));
-            check_int_eq(dsv_filter_scan(filter, csv, strlen(csv), NULL, NULL, 0,
+            check_equal(dsv_filter_scan(filter, csv, strlen(csv), NULL, NULL, 0,
                                          NULL, NULL, &matches), -1);
-            check_str_contains(dsv_filter_error(filter), "simple predicates");
-            check_size_eq(matches, 0);
+            check_contains(dsv_filter_error(filter), "simple predicates");
+            check_equal(matches, 0);
 
             dsv_filter_destroy(filter);
             csv_free(doc);
@@ -518,7 +518,7 @@ spec("dsv_filter") {
             dsv_filter_t *f = dsv_filter_create(doc, 0);
             check_not_null(f);
 
-            check_int_eq(dsv_filter_check_row(f, 1), -1);
+            check_equal(dsv_filter_check_row(f, 1), -1);
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -529,7 +529,7 @@ spec("dsv_filter") {
             csv_doc_t *doc = csv_parse(csv, strlen(csv));
             check_not_null(doc);
 
-            check_str_eq(dsv_filter_error(NULL), "");
+            check_equal(dsv_filter_error(NULL), "");
             check_null(dsv_filter_create(doc, 99));
 
             csv_free(doc);
@@ -574,7 +574,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "sym + 1 == 2"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: arithmetic on string column");
+            check_equal(dsv_filter_error(f), "invalid filter: arithmetic on string column");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -589,7 +589,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price + sym > 10"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: arithmetic requires numeric columns");
+            check_equal(dsv_filter_error(f), "invalid filter: arithmetic requires numeric columns");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -604,7 +604,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price + 1 == \"11\""));
-            check_str_eq(dsv_filter_error(f), "invalid filter: arithmetic cannot compare to string");
+            check_equal(dsv_filter_error(f), "invalid filter: arithmetic cannot compare to string");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -619,7 +619,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price + == 10"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
+            check_equal(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -634,7 +634,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price + 1 - == 10"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
+            check_equal(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -649,7 +649,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price + - == 10"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
+            check_equal(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -664,7 +664,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "price * == 10"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
+            check_equal(dsv_filter_error(f), "invalid filter: expected column or number after +/-");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -679,10 +679,10 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "a * (b + 1 == 3"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: unbalanced parentheses in arithmetic expression");
+            check_equal(dsv_filter_error(f), "invalid filter: unbalanced parentheses in arithmetic expression");
 
             check(!dsv_filter_compile(f, "a * () == 0"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: empty parentheses in arithmetic expression");
+            check_equal(dsv_filter_error(f), "invalid filter: empty parentheses in arithmetic expression");
 
             dsv_filter_destroy(f);
             csv_free(doc);
@@ -697,7 +697,7 @@ spec("dsv_filter") {
             check_not_null(f);
 
             check(!dsv_filter_compile(f, "a * (b + @) == 0"));
-            check_str_eq(dsv_filter_error(f), "invalid filter: invalid character in arithmetic expression");
+            check_equal(dsv_filter_error(f), "invalid filter: invalid character in arithmetic expression");
 
             dsv_filter_destroy(f);
             csv_free(doc);

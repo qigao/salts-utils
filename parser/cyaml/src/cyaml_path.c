@@ -1001,7 +1001,7 @@ static bool ypath_str_truthy(const char* s, uint32_t len)
 {
     if (len == 0)
         return false;
-    if (YPATH_STR_EQ(s, len, S_NULL, L_NULL) || YPATH_STR_EQ(s, len, S_FALSE, L_FALSE) || YPATH_STR_EQ(s, len, S_TILDE, L_TILDE) || YPATH_STR_EQ(s, len, "0", 1))
+    if (YPATH_STR_EQ(s, len, S_NULL, L_NULL) || YPATH_STR_EQ(s, len, CYAML_S_FALSE, L_FALSE) || YPATH_STR_EQ(s, len, S_TILDE, L_TILDE) || YPATH_STR_EQ(s, len, "0", 1))
         return false;
     return true;
 }
@@ -1155,14 +1155,14 @@ static bool ypath_val_eq(const ypath_val_t* a, const ypath_val_t* b, const char*
     if (ta.type == YPATH_VAL_STR && tb.type == YPATH_VAL_BOOL) {
         if (YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, S_TRUE, L_TRUE))
             return tb.v.b;
-        if (YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, S_FALSE, L_FALSE))
+        if (YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, CYAML_S_FALSE, L_FALSE))
             return !tb.v.b;
         return false;
     }
     if (tb.type == YPATH_VAL_STR && ta.type == YPATH_VAL_BOOL) {
         if (YPATH_STR_EQ(tb.v.str.s, tb.v.str.len, S_TRUE, L_TRUE))
             return ta.v.b;
-        if (YPATH_STR_EQ(tb.v.str.s, tb.v.str.len, S_FALSE, L_FALSE))
+        if (YPATH_STR_EQ(tb.v.str.s, tb.v.str.len, CYAML_S_FALSE, L_FALSE))
             return !ta.v.b;
         return false;
     }
@@ -1768,7 +1768,7 @@ static void ypath_print_expr(const ypath_expr_t* e, int ind)
         printf("STRING '%.*s'\n", (int)e->v.str.len, e->v.str.s);
         break;
     case YPATH_EXPR_BOOL:
-        printf("BOOL %s\n", e->v.b ? S_TRUE : S_FALSE);
+        printf("BOOL %s\n", e->v.b ? S_TRUE : CYAML_S_FALSE);
         break;
     case YPATH_EXPR_NULL:
         printf("NULL\n");

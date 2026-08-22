@@ -40,7 +40,7 @@ suite("tbe_robustness") {
                 check_not_null(nested);
                 if (nested == NULL) break;
                 int result = map_add(current, nested);
-                check_int_eq(result, 0);
+                check_equal(result, 0);
                 if (result != 0) {
                     node_free(nested);
                     break;
@@ -71,25 +71,25 @@ suite("tbe_robustness") {
         it("should handle null pointer gracefully in wire functions") {
             // Test null pointer handling in wire read functions
             uint8_t result_u8 = tbe_wire_read_u8(NULL, 0);
-            check_int_eq(result_u8, 0);
+            check_equal(result_u8, 0);
             
             int8_t result_i8 = tbe_wire_read_i8(NULL, 0);
-            check_int_eq(result_i8, 0);
+            check_equal(result_i8, 0);
             
             uint16_t result_u16 = tbe_wire_read_u16(NULL, 0);
-            check_int_eq(result_u16, 0);
+            check_equal(result_u16, 0);
             
             uint32_t result_u32 = tbe_wire_read_u32(NULL, 0);
-            check_int_eq(result_u32, 0);
+            check_equal(result_u32, 0);
             
             uint64_t result_u64 = tbe_wire_read_u64(NULL, 0);
-            check_int_eq(result_u64, 0);
+            check_equal(result_u64, 0);
             
             float result_f32 = tbe_wire_read_f32(NULL, 0);
-            check_float_eq(result_f32, 0.0f, 0.0f);
+            check_within(result_f32, 0.0f, 0.0f);
             
             double result_f64 = tbe_wire_read_f64(NULL, 0);
-            check_double_eq(result_f64, 0.0, 0.0);
+            check_within(result_f64, 0.0, 0.0);
             
             // Test write functions don't crash with null pointers
             tbe_wire_write_u8(NULL, 0, 42);
@@ -101,7 +101,7 @@ suite("tbe_robustness") {
             tbe_wire_write_f64(NULL, 0, 2.718281828);
             
             // If we get here, no crashes occurred
-            check_int_eq(1, 1);
+            check_equal(1, 1);
         }
         
         it("should handle allocation failures gracefully") {
@@ -110,18 +110,18 @@ suite("tbe_robustness") {
             tbe_error_t err;
             
             int rc = parse_schema(NULL, 0, root, &err);
-            check_int_eq(rc, -1);
-            check_int_eq(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(rc, -1);
+            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
             rc = parse_schema("test", 4, NULL, &err);
-            check_int_eq(rc, -1);
-            check_int_eq(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(rc, -1);
+            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
             // Test with extremely large input
             char large_text[] = "message Test { uint32 x; }";
             rc = parse_schema(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
-            check_int_eq(rc, -1);
-            check_int_eq(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(rc, -1);
+            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
             node_free(root);
         }
@@ -140,13 +140,13 @@ suite("tbe_robustness") {
             tbe_error_set(&err, TBE_ERR_SYNTAX_ERROR, 1, 1, long_msg);
             
             // Message should be truncated but not cause buffer overflow
-            check_int_eq(err.code, TBE_ERR_SYNTAX_ERROR);
-            check_int_eq(err.line, 1);
-            check_int_eq(err.column, 1);
-            check_int_le(strlen(err.message), 255);  // Should be truncated
+            check_equal(err.code, TBE_ERR_SYNTAX_ERROR);
+            check_equal(err.line, 1);
+            check_equal(err.column, 1);
+            check_less_equal(strlen(err.message), 255);  // Should be truncated
             
             // Should still be null-terminated
-            check_int_eq(err.message[255], '\0');
+            check_equal(err.message[255], '\0');
         }
         
         it("should handle empty and null error messages") {
@@ -155,13 +155,13 @@ suite("tbe_robustness") {
             
             // Test with empty string
             tbe_error_set(&err, TBE_ERR_IO_ERROR, -1, -1, "");
-            check_int_eq(err.code, TBE_ERR_IO_ERROR);
-            check_str_eq(err.message, "I/O error");  // Should use default
+            check_equal(err.code, TBE_ERR_IO_ERROR);
+            check_equal(err.message, "I/O error");  // Should use default
             
             // Test with NULL message
             tbe_error_set(&err, TBE_ERR_LEXER_ERROR, -1, -1, NULL);
-            check_int_eq(err.code, TBE_ERR_LEXER_ERROR);
-            check_str_eq(err.message, "Lexer error");  // Should use default
+            check_equal(err.code, TBE_ERR_LEXER_ERROR);
+            check_equal(err.message, "Lexer error");  // Should use default
         }
     }
     
@@ -190,7 +190,7 @@ suite("tbe_robustness") {
             tbe_error_t err;
             int rc = parse_schema(large_schema, strlen(large_schema), root, &err);
             
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
             
             // Verify all declarations were parsed
             Node *enums = find_child(root, "enums");
@@ -200,9 +200,9 @@ suite("tbe_robustness") {
             check_not_null(enums);
             check_not_null(composites);
             check_not_null(messages);
-            check_uint_eq(enums->data.list.count, 20);
-            check_uint_eq(composites->data.list.count, 20);
-            check_uint_eq(messages->data.list.count, 20);
+            check_equal(enums->data.list.count, 20);
+            check_equal(composites->data.list.count, 20);
+            check_equal(messages->data.list.count, 20);
             
             node_free(root);
             free(large_schema);
@@ -213,28 +213,28 @@ suite("tbe_robustness") {
         it("should provide version information") {
             const char *version = tbe_version();
             check_not_null(version);
-            check_str_eq(version, "1.0.0");
+            check_equal(version, "1.0.0");
             
             int major = -1, minor = -1, patch = -1;
             tbe_version_components(&major, &minor, &patch);
-            check_int_eq(major, 1);
-            check_int_eq(minor, 0);
-            check_int_eq(patch, 0);
+            check_equal(major, 1);
+            check_equal(minor, 0);
+            check_equal(patch, 0);
         }
         
         it("should check version compatibility correctly") {
             // Same version should be compatible
-            check_int_eq(tbe_version_compatible(1, 0, 0), 1);
+            check_equal(tbe_version_compatible(1, 0, 0), 1);
             
             // Higher minor version should be compatible
-            check_int_eq(tbe_version_compatible(1, 0, 0), 1);  // Our version is 1.0.0
+            check_equal(tbe_version_compatible(1, 0, 0), 1);  // Our version is 1.0.0
             
             // Different major version should not be compatible
-            check_int_eq(tbe_version_compatible(2, 0, 0), 0);
-            check_int_eq(tbe_version_compatible(0, 9, 0), 0);
+            check_equal(tbe_version_compatible(2, 0, 0), 0);
+            check_equal(tbe_version_compatible(0, 9, 0), 0);
             
             // Higher required minor version should not be compatible
-            check_int_eq(tbe_version_compatible(1, 1, 0), 0);
+            check_equal(tbe_version_compatible(1, 1, 0), 0);
         }
     }
 
@@ -245,11 +245,11 @@ suite("tbe_robustness") {
             tbe_error_t err;
 
             tbe_error_init(&err);
-            check_int_eq(parse_schema(schema_text, strlen(schema_text), root, &err), -1);
-            check_int_eq(err.code, TBE_ERR_SYNTAX_ERROR);
+            check_equal(parse_schema(schema_text, strlen(schema_text), root, &err), -1);
+            check_equal(err.code, TBE_ERR_SYNTAX_ERROR);
             check(err.line > 0);
             check(err.column > 0);
-            check_str_eq(err.message, "Syntax error at line 2, column 8");
+            check_equal(err.message, "Syntax error at line 2, column 8");
 
             node_free(root);
         }

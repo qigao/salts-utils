@@ -360,7 +360,7 @@ static const char *tbe_compiler_typed_named_kind(Node *root, const char *type,
   const char *scalar = tbe_compiler_typed_c_scalar(type);
   Node *record;
   if (type && strcmp(type, "string") == 0) {
-    snprintf(c_type, c_type_size, "tstr_t");
+    snprintf(c_type, c_type_size, "tstr");
     descriptor[0] = '\0';
     return "TBE_TYPED_STRING";
   }
@@ -575,7 +575,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field) {
     return;
   }
   if (tbe_compiler_has_child(field, "is_var_data") && type && strcmp(type, "string") == 0) {
-    snprintf(declaration, sizeof(declaration), "tstr_t %s;", c_name);
+    snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
     tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
     tbe_compiler_set_string(field, "typed_declaration", declaration);

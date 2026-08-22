@@ -89,15 +89,15 @@ spec("static DSV sidecar index") {
         .covering_int64_column = 1,
         .has_header = false,
     };
-    check_int_eq(index_generate_data(), 0);
-    check_size_eq(g_content_length, 2316982U);
+    check_equal(index_generate_data(), 0);
+    check_equal(g_content_length, 2316982U);
     g_index_path = tt_make_temp_file("benchmark-dsv-index", ".idx");
     check_not_null(g_index_path);
     g_index = dsv_index_create();
     check_not_null(g_index);
-    check_int_eq(dsv_index_build_memory(g_index, g_index_path, g_content,
+    check_equal(dsv_index_build_memory(g_index, g_index_path, g_content,
                                         g_content_length, &config), 0);
-    check_int_eq(dsv_index_open_memory(g_index, g_index_path, g_content,
+    check_equal(dsv_index_open_memory(g_index, g_index_path, g_content,
                                        g_content_length), 0);
     g_header = csv_parse("id_n,age_n,country_s,score_n\n",
                          strlen("id_n,age_n,country_s,score_n\n"));
@@ -125,8 +125,8 @@ spec("static DSV sidecar index") {
   }
 
   it("returns the covering projection without reading CSV rows") {
-    check_int_eq(index_execute(g_filter, g_expected_count, g_expected_sum), 0);
-    check_int_eq(index_execute(g_or_filter, g_or_expected_count, g_or_expected_sum), 0);
+    check_equal(index_execute(g_filter, g_expected_count, g_expected_sum), 0);
+    check_equal(index_execute(g_or_filter, g_or_expected_count, g_or_expected_sum), 0);
   }
 
   bench("composite range seek") {
@@ -135,7 +135,7 @@ spec("static DSV sidecar index") {
                   g_expected_count) {
       if (index_execute(g_filter, g_expected_count, g_expected_sum) != 0) ++g_failures;
     }
-    check_size_eq(g_failures, failures_before);
+    check_equal(g_failures, failures_before);
   }
 
   bench("OR union seek") {
@@ -145,6 +145,6 @@ spec("static DSV sidecar index") {
       if (index_execute(g_or_filter, g_or_expected_count, g_or_expected_sum) != 0)
         ++g_failures;
     }
-    check_size_eq(g_failures, failures_before);
+    check_equal(g_failures, failures_before);
   }
 }

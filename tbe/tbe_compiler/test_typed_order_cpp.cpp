@@ -1,6 +1,6 @@
 #include "typed_order.h"
 
-#include "tinytest.h"
+#include "tinytest.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +29,7 @@ spec("generated typed Order C++ owner") {
     DataBind *codec = nullptr;
     Orders_typed::OrderOwner order;
 
-    check_int_eq(Orders_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(Orders_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != nullptr) {
       char *serialized = nullptr;
@@ -37,27 +37,27 @@ spec("generated typed Order C++ owner") {
       std::size_t serialized_len = 0;
       std::size_t wire_len = 0;
       Orders_typed::OrderOwner decoded;
-      check_int_eq(order.from_json(codec, json, std::strlen(json), &error), DATA_BIND_OK);
-      check_uint_eq(order->order_id, 42u);
-      check_uint_eq(order->header.seq, 7u);
-      check_str_eq(order->symbol, "ABC");
-      check_uint_eq(order->_presence[0],
+      check_equal(order.from_json(codec, json, std::strlen(json), &error), DATA_BIND_OK);
+      check_equal(order->order_id, 42u);
+      check_equal(order->header.seq, 7u);
+      check_equal(order->symbol, "ABC");
+      check_equal(order->_presence[0],
                     (1u << Order_OPTIONAL_routing_hint) | (1u << Order_OPTIONAL_client_tag));
-      check_uint_eq(order->routing_hint, 12u);
-      check_str_eq(order->client_tag, "cpp");
-      check_int_eq(order.to_json(codec, &serialized, &serialized_len, &error), DATA_BIND_OK);
+      check_equal(order->routing_hint, 12u);
+      check_equal(order->client_tag, "cpp");
+      check_equal(order.to_json(codec, &serialized, &serialized_len, &error), DATA_BIND_OK);
       check_not_null(serialized);
-      check_size_gt(serialized_len, 0);
-      check_int_eq(order.to_bin(&wire, &wire_len, &error), DATA_BIND_OK);
+      check_greater(serialized_len, 0);
+      check_equal(order.to_bin(&wire, &wire_len, &error), DATA_BIND_OK);
       check_not_null(wire);
-      check_size_gt(wire_len, 0);
+      check_greater(wire_len, 0);
       if (wire != nullptr) {
-        check_int_eq(decoded.from_bin(codec, wire, wire_len, &error), DATA_BIND_OK);
-        check_uint_eq(decoded->order_id, 42u);
-        check_str_eq(decoded->symbol, "ABC");
-        check_uint_eq(decoded->_presence[0], order->_presence[0]);
-        check_uint_eq(decoded->routing_hint, 12u);
-        check_str_eq(decoded->client_tag, "cpp");
+        check_equal(decoded.from_bin(codec, wire, wire_len, &error), DATA_BIND_OK);
+        check_equal(decoded->order_id, 42u);
+        check_equal(decoded->symbol, "ABC");
+        check_equal(decoded->_presence[0], order->_presence[0]);
+        check_equal(decoded->routing_hint, 12u);
+        check_equal(decoded->client_tag, "cpp");
       }
       tbe_typed_serialized_free(serialized);
       tbe_typed_serialized_free(wire);
@@ -69,11 +69,11 @@ spec("generated typed Order C++ owner") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     CppMacroRecord record;
 
-    check_int_eq(TBE_TYPED_BIND_INIT(CPP_MACRO_RECORD_BINDING, &record, &error), DATA_BIND_OK);
+    check_equal(TBE_TYPED_BIND_INIT(CPP_MACRO_RECORD_BINDING, &record, &error), DATA_BIND_OK);
     record.id = 7;
-    check_str_eq(CPP_MACRO_RECORD_BINDING.name, "CppMacroRecord");
-    check_size_eq(CPP_MACRO_RECORD_BINDING.size, sizeof(CppMacroRecord));
-    check_uint_eq(record.id, 7u);
+    check_equal(CPP_MACRO_RECORD_BINDING.name, "CppMacroRecord");
+    check_equal(CPP_MACRO_RECORD_BINDING.size, sizeof(CppMacroRecord));
+    check_equal(record.id, 7u);
     TBE_TYPED_BIND_CLEAR(CPP_MACRO_RECORD_BINDING, &record);
   }
 }

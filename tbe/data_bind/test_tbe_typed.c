@@ -9,7 +9,7 @@
 typedef struct TestPacket {
   uint16_t code;
   uint32_t count;
-  tstr_t name;
+  tstr name;
   uint8_t presence[1];
 } TestPacket;
 
@@ -45,7 +45,7 @@ static const TbeTypedType TEST_PACKET_TYPE = {
     .presence_size = 1,
     .wire_big_endian = 1};
 
-TURBO_VEC_DEFINE(test_u32_vec_t, uint32_t)
+TBE_TYPED_VEC_DEFINE(test_u32_vec_t, uint32_t)
 
 typedef struct TestValues {
   test_u32_vec_t values;
@@ -95,7 +95,7 @@ static const TbeTypedType TEST_FIXED_VALUES_TYPE = {
 };
 
 typedef struct TestText {
-  tstr_t text;
+  tstr text;
 } TestText;
 
 static const TbeTypedField TEST_TEXT_FIELDS[] = {{
@@ -189,11 +189,11 @@ static const TbeTypedType TEST_BYTES_TYPE = {
     .field_count = sizeof(TEST_BYTES_FIELDS) / sizeof(TEST_BYTES_FIELDS[0]),
 };
 
-TURBO_VEC_DEFINE(macro_u32_vec_t, uint32_t)
+TBE_TYPED_VEC_DEFINE(macro_u32_vec_t, uint32_t)
 
 typedef struct MacroOrder {
   uint32_t order_id;
-  tstr_t note;
+  tstr note;
   macro_u32_vec_t values;
   uint8_t presence[1];
 } MacroOrder;
@@ -206,7 +206,7 @@ TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE(
                          TBE_TYPED_REQUIRED));
 
 typedef struct InvalidMacroOrder {
-  tstr_t note;
+  tstr note;
 } InvalidMacroOrder;
 
 TBE_TYPED_DEFINE_STRUCT(
@@ -222,14 +222,14 @@ TBE_TYPED_DEFINE_STRUCT(
     MACRO_CHILD_BINDING, MacroChild, "MacroChild",
     TBE_TYPED_FIELD(MacroChild, code, "code", TBE_TYPED_U16, TBE_TYPED_REQUIRED));
 
-TURBO_VEC_DEFINE(macro_child_vec_t, MacroChild)
+TBE_TYPED_VEC_DEFINE(macro_child_vec_t, MacroChild)
 
 typedef struct MacroChildMapEntry {
-  tstr_t key;
+  tstr key;
   MacroChild value;
 } MacroChildMapEntry;
 
-TURBO_VEC_DEFINE(macro_child_map_vec_t, MacroChildMapEntry)
+TBE_TYPED_VEC_DEFINE(macro_child_map_vec_t, MacroChildMapEntry)
 
 typedef struct MacroCollections {
   MacroChild child;
@@ -280,10 +280,10 @@ spec("typed DataBind binary") {
     uint8_t *wire = NULL;
     size_t wire_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_PACKET_TYPE, &source, &error), DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_PACKET_TYPE, &decoded, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_PACKET_TYPE, &source, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_PACKET_TYPE, &decoded, &error), DATA_BIND_OK);
     source.presence[0] = 1;
     source.code = UINT16_C(0x1234);
     source.count = UINT32_C(0x01020304);
@@ -291,19 +291,19 @@ spec("typed DataBind binary") {
     check_not_null(source.name);
 
     if (codec != NULL && source.name != NULL) {
-      check_int_eq(tbe_typed_validate_schema(codec, "Packet", &TEST_PACKET_TYPE, &error),
+      check_equal(tbe_typed_validate_schema(codec, "Packet", &TEST_PACKET_TYPE, &error),
                    DATA_BIND_OK);
-      check_int_eq(tbe_typed_serialize_binary(&TEST_PACKET_TYPE, &source, &wire, &wire_len, &error),
+      check_equal(tbe_typed_serialize_binary(&TEST_PACKET_TYPE, &source, &wire, &wire_len, &error),
                    DATA_BIND_OK);
-      check_size_eq(wire_len, sizeof(expected));
-      check_mem_eq(wire, expected, sizeof(expected));
-      check_int_eq(tbe_typed_parse(codec, "Packet", &TEST_PACKET_TYPE, "bin", wire, wire_len, 0,
+      check_equal(wire_len, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      check_equal(tbe_typed_parse(codec, "Packet", &TEST_PACKET_TYPE, "bin", wire, wire_len, 0,
                                    &decoded, &error),
                    DATA_BIND_OK);
-      check_uint_eq(decoded.presence[0], 1u);
-      check_uint_eq(decoded.code, UINT16_C(0x1234));
-      check_uint_eq(decoded.count, UINT32_C(0x01020304));
-      check_str_eq(decoded.name, "ABC");
+      check_equal(decoded.presence[0], 1u);
+      check_equal(decoded.code, UINT16_C(0x1234));
+      check_equal(decoded.count, UINT32_C(0x01020304));
+      check_equal(decoded.name, "ABC");
     }
 
     tbe_typed_serialized_free(wire);
@@ -321,10 +321,10 @@ spec("typed DataBind binary") {
     TbeTypedType wrong_order = TEST_PACKET_TYPE;
 
     wrong_order.wire_big_endian = 0;
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
     if (codec != NULL)
-      check_int_eq(tbe_typed_validate_schema(codec, "Packet", &wrong_order, &error),
+      check_equal(tbe_typed_validate_schema(codec, "Packet", &wrong_order, &error),
                    DATA_BIND_ERR_SCHEMA);
     data_bind_free(codec);
   }
@@ -334,20 +334,20 @@ spec("typed DataBind binary") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TestPacket packet;
 
-    check_int_eq(tbe_typed_init(&TEST_PACKET_TYPE, &packet, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_PACKET_TYPE, &packet, &error), DATA_BIND_OK);
     packet.presence[0] = 1;
     packet.code = 9;
     packet.count = 11;
     packet.name = tstr_dup("stable");
     check_not_null(packet.name);
     if (packet.name != NULL) {
-      check_int_eq(tbe_typed_parse_binary(&TEST_PACKET_TYPE, truncated, sizeof(truncated), &packet,
+      check_equal(tbe_typed_parse_binary(&TEST_PACKET_TYPE, truncated, sizeof(truncated), &packet,
                                           &error),
                    DATA_BIND_ERR_PARSE);
-      check_uint_eq(packet.presence[0], 1u);
-      check_uint_eq(packet.code, 9u);
-      check_uint_eq(packet.count, 11u);
-      check_str_eq(packet.name, "stable");
+      check_equal(packet.presence[0], 1u);
+      check_equal(packet.code, 9u);
+      check_equal(packet.count, 11u);
+      check_equal(packet.name, "stable");
     }
     tbe_typed_clear(&TEST_PACKET_TYPE, &packet);
   }
@@ -358,15 +358,15 @@ spec("typed DataBind binary") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TestPacket packet;
 
-    check_int_eq(tbe_typed_init(&TEST_PACKET_TYPE, &packet, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_PACKET_TYPE, &packet, &error), DATA_BIND_OK);
     packet.count = 11;
     packet.name = tstr_dup("stable");
     check_not_null(packet.name);
     if (packet.name != NULL) {
-      check_int_eq(tbe_typed_parse_binary(&TEST_PACKET_TYPE, wire, sizeof(wire), &packet, &error),
+      check_equal(tbe_typed_parse_binary(&TEST_PACKET_TYPE, wire, sizeof(wire), &packet, &error),
                    DATA_BIND_ERR_PARSE);
-      check_uint_eq(packet.count, 11u);
-      check_str_eq(packet.name, "stable");
+      check_equal(packet.count, 11u);
+      check_equal(packet.name, "stable");
     }
     tbe_typed_clear(&TEST_PACKET_TYPE, &packet);
   }
@@ -386,27 +386,27 @@ spec("typed DataBind binary") {
     char *encoded_json = NULL;
     size_t json_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &value, &error), DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &decoded, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &value, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_WIDE_ENUM_TYPE, &decoded, &error), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(tbe_typed_parse(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, "json", json,
+      check_equal(tbe_typed_parse(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, "json", json,
                                    sizeof(json) - 1, 0, &value, &error),
                    DATA_BIND_OK);
       check(value.value == UINT64_MAX);
-      check_int_eq(tbe_typed_serialize_binary(&TEST_WIDE_ENUM_TYPE, &value, &wire, &wire_len,
+      check_equal(tbe_typed_serialize_binary(&TEST_WIDE_ENUM_TYPE, &value, &wire, &wire_len,
                                               &error),
                    DATA_BIND_OK);
-      check_size_eq(wire_len, sizeof(expected));
-      check_mem_eq(wire, expected, sizeof(expected));
-      check_int_eq(tbe_typed_parse_binary(&TEST_WIDE_ENUM_TYPE, wire, wire_len, &decoded, &error),
+      check_equal(wire_len, sizeof(expected));
+      check_equal(wire, expected, sizeof(expected));
+      check_equal(tbe_typed_parse_binary(&TEST_WIDE_ENUM_TYPE, wire, wire_len, &decoded, &error),
                    DATA_BIND_OK);
       check(decoded.value == UINT64_MAX);
-      check_int_eq(tbe_typed_serialize(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, &value, "json",
+      check_equal(tbe_typed_serialize(codec, "WideRecord", &TEST_WIDE_ENUM_TYPE, &value, "json",
                                       &encoded_json, &json_len, &error),
                    DATA_BIND_OK);
-      check_str_eq(encoded_json, "{\"value\":18446744073709551615}");
+      check_equal(encoded_json, "{\"value\":18446744073709551615}");
     }
     tbe_typed_serialized_free(encoded_json);
     tbe_typed_serialized_free(wire);
@@ -426,11 +426,11 @@ spec("typed DataBind binary") {
     TestWideEnum value;
 
     flags_type.name = "WideFlagsRecord";
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&flags_type, &value, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&flags_type, &value, &error), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(tbe_typed_parse(codec, "WideFlagsRecord", &flags_type, "json", json,
+      check_equal(tbe_typed_parse(codec, "WideFlagsRecord", &flags_type, "json", json,
                                    sizeof(json) - 1, 0, &value, &error),
                    DATA_BIND_OK);
       check(value.value == (UINT64_C(1) | (UINT64_C(1) << 63)));
@@ -446,15 +446,15 @@ spec("typed DataBind binary") {
     DataBind *codec = NULL;
     TestFloat32 value;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_FLOAT32_TYPE, &value, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_FLOAT32_TYPE, &value, &error), DATA_BIND_OK);
     value.value = 1.0f;
     if (codec != NULL) {
-      check_int_eq(tbe_typed_parse(codec, "FloatRecord", &TEST_FLOAT32_TYPE, "json", json,
+      check_equal(tbe_typed_parse(codec, "FloatRecord", &TEST_FLOAT32_TYPE, "json", json,
                                    sizeof(json) - 1, 0, &value, &error),
                    DATA_BIND_ERR_TYPE_MISMATCH);
-      check_float_eq(value.value, 1.0f, 0.0f);
+      check_within(value.value, 1.0f, 0.0f);
     }
     tbe_typed_clear(&TEST_FLOAT32_TYPE, &value);
     data_bind_free(codec);
@@ -465,14 +465,14 @@ spec("typed DataBind binary") {
     TestBytes bytes;
     json_value_t *json;
 
-    check_int_eq(tbe_typed_init(&TEST_BYTES_TYPE, &bytes, &error), DATA_BIND_OK);
-    check_int_eq(turbo_vec_resize((turbo_vec_t *)&bytes.value, 2), TURBO_OK);
+    check_equal(tbe_typed_init(&TEST_BYTES_TYPE, &bytes, &error), DATA_BIND_OK);
+    check_equal(turbo_vec_resize((turbo_vec_t *)&bytes.value, 2), TURBO_STL_OK);
     if (tbe_bytes_t_data(&bytes.value) != NULL) {
       tbe_bytes_t_data(&bytes.value)[0] = UINT8_C(0xc3);
       tbe_bytes_t_data(&bytes.value)[1] = UINT8_C(0x28);
       json = tbe_typed_to_json(&TEST_BYTES_TYPE, &bytes, &error);
       check_null(json);
-      check_int_eq(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
       tbe_typed_json_free(&json);
     }
     tbe_typed_clear(&TEST_BYTES_TYPE, &bytes);
@@ -489,23 +489,23 @@ spec("typed DataBind binary") {
     DataBindValue *invalid = NULL;
     TestText text;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
     text.text = tstr_dup("stable");
     check_not_null(text.text);
     if (codec != NULL && text.text != NULL) {
-      check_int_eq(data_bind_parse_json(codec, "Text", valid_json, sizeof(valid_json) - 1,
+      check_equal(data_bind_parse_json(codec, "Text", valid_json, sizeof(valid_json) - 1,
                                         &valid, &error),
                    DATA_BIND_OK);
-      check_int_eq(data_bind_parse_json(codec, "Number", invalid_json, sizeof(invalid_json) - 1,
+      check_equal(data_bind_parse_json(codec, "Number", invalid_json, sizeof(invalid_json) - 1,
                                         &invalid, &error),
                    DATA_BIND_OK);
-      check_int_eq(tbe_typed_from_value(&TEST_TEXT_TYPE, valid, &text, &error), DATA_BIND_OK);
-      check_str_eq(text.text, "replacement");
-      check_int_eq(tbe_typed_from_value(&TEST_TEXT_TYPE, invalid, &text, &error),
+      check_equal(tbe_typed_from_value(&TEST_TEXT_TYPE, valid, &text, &error), DATA_BIND_OK);
+      check_equal(text.text, "replacement");
+      check_equal(tbe_typed_from_value(&TEST_TEXT_TYPE, invalid, &text, &error),
                    DATA_BIND_ERR_TYPE_MISMATCH);
-      check_str_eq(text.text, "replacement");
+      check_equal(text.text, "replacement");
     }
     data_bind_value_free(invalid);
     data_bind_value_free(valid);
@@ -522,34 +522,34 @@ spec("typed DataBind binary") {
     MacroCollections collections;
     json_value_t *json = NULL;
 
-    check_int_eq(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
     text.text = tstr_dup_len(invalid_utf8, sizeof(invalid_utf8) - 1u);
     check_not_null(text.text);
     if (text.text != NULL) {
       json = tbe_typed_to_json(&TEST_TEXT_TYPE, &text, &error);
       check_null(json);
-      check_int_eq(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
     }
     tbe_typed_json_free(&json);
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
 
-    check_int_eq(tbe_typed_init(&TEST_FLOAT32_TYPE, &number, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_FLOAT32_TYPE, &number, &error), DATA_BIND_OK);
     number.value = NAN;
     json = tbe_typed_to_json(&TEST_FLOAT32_TYPE, &number, &error);
     check_null(json);
-    check_int_eq(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
     tbe_typed_json_free(&json);
     tbe_typed_clear(&TEST_FLOAT32_TYPE, &number);
 
-    check_int_eq(tbe_typed_init(&TEST_FLOAT64_TYPE, &double_number, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_FLOAT64_TYPE, &double_number, &error), DATA_BIND_OK);
     double_number.value = INFINITY;
     json = tbe_typed_to_json(&TEST_FLOAT64_TYPE, &double_number, &error);
     check_null(json);
-    check_int_eq(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
     tbe_typed_json_free(&json);
     tbe_typed_clear(&TEST_FLOAT64_TYPE, &double_number);
 
-    check_int_eq(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
+    check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
                  DATA_BIND_OK);
     {
       MacroChildMapEntry entry = {0};
@@ -558,18 +558,18 @@ spec("typed DataBind binary") {
       check_not_null(entry.key);
       if (entry.key != NULL) {
         push_status = macro_child_map_vec_t_push(&collections.children_by_name, entry);
-        check_int_eq(push_status, TURBO_OK);
+        check_equal(push_status, TURBO_OK);
         if (push_status != TURBO_OK) tstr_free(entry.key);
       }
     }
-    check_size_eq(macro_child_map_vec_t_size(&collections.children_by_name), 1u);
+    check_equal(macro_child_map_vec_t_size(&collections.children_by_name), 1u);
     if (macro_child_map_vec_t_size(&collections.children_by_name) == 1u) {
       MacroChildMapEntry *entry = macro_child_map_vec_t_at(&collections.children_by_name, 0u);
       check_not_null(entry->key);
       if (entry->key != NULL) {
         json = tbe_typed_to_json(&MACRO_COLLECTIONS_BINDING, &collections, &error);
         check_null(json);
-        check_int_eq(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
+        check_equal(error.code, DATA_BIND_ERR_TYPE_MISMATCH);
       }
       tbe_typed_json_free(&json);
     }
@@ -592,11 +592,11 @@ spec("typed DataBind binary") {
     memcpy(expected, output, sizeof(output));
     memset(&packet, 0, sizeof(packet));
 
-    check_int_eq(tbe_typed_serialize_binary_into(&invalid, &packet, output, sizeof(output),
+    check_equal(tbe_typed_serialize_binary_into(&invalid, &packet, output, sizeof(output),
                                                  &out_len, &error),
                  DATA_BIND_ERR_SCHEMA);
-    check_size_eq(out_len, 0u);
-    check_mem_eq(output, expected, sizeof(output));
+    check_equal(out_len, 0u);
+    check_equal(output, expected, sizeof(output));
   }
 
   it("keeps variable collections compatible through the typed struct API") {
@@ -606,21 +606,21 @@ spec("typed DataBind binary") {
     DataBind *codec = NULL;
     TestValues values;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_VALUES_TYPE, &values, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_VALUES_TYPE, &values, &error), DATA_BIND_OK);
     if (codec != NULL) {
       const uint32_t *items;
-      check_int_eq(tbe_typed_validate_schema(codec, "Values", &TEST_VALUES_TYPE, &error),
+      check_equal(tbe_typed_validate_schema(codec, "Values", &TEST_VALUES_TYPE, &error),
                    DATA_BIND_OK);
-      check_int_eq(tbe_typed_parse(codec, "Values", &TEST_VALUES_TYPE, "bin", wire, sizeof(wire),
+      check_equal(tbe_typed_parse(codec, "Values", &TEST_VALUES_TYPE, "bin", wire, sizeof(wire),
                                    0, &values, &error),
                    DATA_BIND_OK);
-      check_size_eq(test_u32_vec_t_size(&values.values), 2u);
+      check_equal(test_u32_vec_t_size(&values.values), 2u);
       items = test_u32_vec_t_data_const(&values.values);
       if (test_u32_vec_t_size(&values.values) == 2u) {
-        check_uint_eq(items[0], 7u);
-        check_uint_eq(items[1], 9u);
+        check_equal(items[0], 7u);
+        check_equal(items[1], 9u);
       }
     }
     tbe_typed_clear(&TEST_VALUES_TYPE, &values);
@@ -634,18 +634,18 @@ spec("typed DataBind binary") {
     DataBind *codec = NULL;
     TestFixedValues values;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_FIXED_VALUES_TYPE, &values, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_FIXED_VALUES_TYPE, &values, &error), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(tbe_typed_validate_schema(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE,
+      check_equal(tbe_typed_validate_schema(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE,
                                              &error),
                    DATA_BIND_OK);
-      check_int_eq(tbe_typed_parse(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE, "bin", wire,
+      check_equal(tbe_typed_parse(codec, "FixedValues", &TEST_FIXED_VALUES_TYPE, "bin", wire,
                                    sizeof(wire), 0, &values, &error),
                    DATA_BIND_OK);
-      check_uint_eq(values.values[0], UINT16_C(0x1234));
-      check_uint_eq(values.values[1], UINT16_C(0xabcd));
+      check_equal(values.values[0], UINT16_C(0x1234));
+      check_equal(values.values[1], UINT16_C(0xabcd));
     }
     tbe_typed_clear(&TEST_FIXED_VALUES_TYPE, &values);
     data_bind_free(codec);
@@ -656,10 +656,10 @@ spec("typed DataBind binary") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     TestText text;
 
-    check_int_eq(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
-    check_int_eq(tbe_typed_parse_binary(&TEST_TEXT_TYPE, wire, sizeof(wire), &text, &error),
+    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_parse_binary(&TEST_TEXT_TYPE, wire, sizeof(wire), &text, &error),
                  DATA_BIND_OK);
-    check_str_eq(text.text, "abc");
+    check_equal(text.text, "abc");
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
   }
 
@@ -672,17 +672,17 @@ spec("typed DataBind binary") {
     char *json = NULL;
     size_t json_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
+    check_equal(tbe_typed_init(&TEST_TEXT_TYPE, &text, &error), DATA_BIND_OK);
     text.text = tstr_dup("mapped");
     check_not_null(text.text);
     if (codec != NULL && text.text != NULL) {
-      check_int_eq(tbe_typed_serialize(codec, "Text", &TEST_TEXT_TYPE, &text, "json", &json,
+      check_equal(tbe_typed_serialize(codec, "Text", &TEST_TEXT_TYPE, &text, "json", &json,
                                       &json_len, &error),
                    DATA_BIND_OK);
-      check_str_eq(json, "{\"displayText\":\"mapped\"}");
-      check_size_eq(json_len, strlen(json));
+      check_equal(json, "{\"displayText\":\"mapped\"}");
+      check_equal(json_len, strlen(json));
     }
     tbe_typed_serialized_free(json);
     tbe_typed_clear(&TEST_TEXT_TYPE, &text);
@@ -704,27 +704,27 @@ spec("typed DataBind binary") {
     char *mapped = NULL;
     size_t mapped_len = 0;
 
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1, &codec, &error),
                  DATA_BIND_OK);
-    check_int_eq(TBE_TYPED_BIND_INIT(MACRO_ORDER_BINDING, &order, &error), DATA_BIND_OK);
+    check_equal(TBE_TYPED_BIND_INIT(MACRO_ORDER_BINDING, &order, &error), DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(TBE_TYPED_BIND_PARSE(codec, MACRO_ORDER_BINDING, "json", json,
+      check_equal(TBE_TYPED_BIND_PARSE(codec, MACRO_ORDER_BINDING, "json", json,
                                         sizeof(json) - 1, 0, &order, &error),
                    DATA_BIND_OK);
-      check_uint_eq(order.order_id, 42u);
-      check_str_eq(order.note, "macro");
-      check_uint_eq(order.presence[0], 1u);
-      check_size_eq(macro_u32_vec_t_size(&order.values), 2u);
+      check_equal(order.order_id, 42u);
+      check_equal(order.note, "macro");
+      check_equal(order.presence[0], 1u);
+      check_equal(macro_u32_vec_t_size(&order.values), 2u);
       values = macro_u32_vec_t_data_const(&order.values);
       if (macro_u32_vec_t_size(&order.values) == 2u) {
-        check_uint_eq(values[0], 7u);
-        check_uint_eq(values[1], 9u);
+        check_equal(values[0], 7u);
+        check_equal(values[1], 9u);
       }
-      check_int_eq(TBE_TYPED_BIND_SERIALIZE(codec, MACRO_ORDER_BINDING, &order, "json", &mapped,
+      check_equal(TBE_TYPED_BIND_SERIALIZE(codec, MACRO_ORDER_BINDING, &order, "json", &mapped,
                                            &mapped_len, &error),
                    DATA_BIND_OK);
-      check_str_eq(mapped, "{\"orderId\":42,\"note\":\"macro\",\"values\":[7,9]}");
-      check_size_eq(mapped_len, strlen(mapped));
+      check_equal(mapped, "{\"orderId\":42,\"note\":\"macro\",\"values\":[7,9]}");
+      check_equal(mapped_len, strlen(mapped));
     }
     tbe_typed_serialized_free(mapped);
     TBE_TYPED_BIND_CLEAR(MACRO_ORDER_BINDING, &order);
@@ -735,22 +735,22 @@ spec("typed DataBind binary") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     InvalidMacroOrder order;
 
-    check_int_eq(TBE_TYPED_BIND_INIT(INVALID_MACRO_ORDER_BINDING, &order, &error),
+    check_equal(TBE_TYPED_BIND_INIT(INVALID_MACRO_ORDER_BINDING, &order, &error),
                  DATA_BIND_ERR_SCHEMA);
-    check_str_contains(error.message, "presence bitmap");
+    check_contains(error.message, "presence bitmap");
   }
 
   it("validates all composite macro field families") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     MacroCollections collections;
 
-    check_int_eq(tbe_typed_validate_descriptor(&MACRO_COLLECTIONS_BINDING, &error),
+    check_equal(tbe_typed_validate_descriptor(&MACRO_COLLECTIONS_BINDING, &error),
                  DATA_BIND_OK);
-    check_int_eq(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
+    check_equal(TBE_TYPED_BIND_INIT(MACRO_COLLECTIONS_BINDING, &collections, &error),
                  DATA_BIND_OK);
-    check_size_eq(macro_child_vec_t_size(&collections.children), 0u);
-    check_size_eq(macro_child_vec_t_size(&collections.unique_children), 0u);
-    check_size_eq(macro_child_map_vec_t_size(&collections.children_by_name), 0u);
+    check_equal(macro_child_vec_t_size(&collections.children), 0u);
+    check_equal(macro_child_vec_t_size(&collections.unique_children), 0u);
+    check_equal(macro_child_map_vec_t_size(&collections.children_by_name), 0u);
     TBE_TYPED_BIND_CLEAR(MACRO_COLLECTIONS_BINDING, &collections);
   }
 
@@ -761,11 +761,11 @@ spec("typed DataBind binary") {
     uint8_t *encoded = NULL;
     size_t encoded_len = 0;
 
-    check_int_eq(tbe_typed_serialize_binary(&MACRO_WIRE_BINDING, &wire, &encoded, &encoded_len,
+    check_equal(tbe_typed_serialize_binary(&MACRO_WIRE_BINDING, &wire, &encoded, &encoded_len,
                                             &error),
                  DATA_BIND_OK);
-    check_size_eq(encoded_len, sizeof(expected));
-    check_mem_eq(encoded, expected, sizeof(expected));
+    check_equal(encoded_len, sizeof(expected));
+    check_equal(encoded, expected, sizeof(expected));
     tbe_typed_serialized_free(encoded);
   }
 
@@ -775,14 +775,14 @@ spec("typed DataBind binary") {
     uint8_t output[4] = {0};
     size_t required = 0;
 
-    check_int_eq(tbe_typed_serialize_binary_into(&MACRO_WIRE_BINDING, &wire, NULL, 0, &required,
+    check_equal(tbe_typed_serialize_binary_into(&MACRO_WIRE_BINDING, &wire, NULL, 0, &required,
                                                  &error),
                  DATA_BIND_ERR_BUFFER_TOO_SMALL);
-    check_size_eq(required, sizeof(output));
-    check_int_eq(tbe_typed_serialize_binary_into(&MACRO_WIRE_BINDING, &wire, output,
+    check_equal(required, sizeof(output));
+    check_equal(tbe_typed_serialize_binary_into(&MACRO_WIRE_BINDING, &wire, output,
                                                  sizeof(output), &required, &error),
                  DATA_BIND_OK);
-    check_size_eq(required, sizeof(output));
+    check_equal(required, sizeof(output));
   }
 
   it("validates versioned descriptors and enum-based format APIs") {
@@ -795,25 +795,25 @@ spec("typed DataBind binary") {
     size_t encoded_len = 0;
     TbeTypedDescriptor incompatible = MACRO_WIRE_BINDING_descriptor;
 
-    check_int_eq(tbe_typed_descriptor_validate(&MACRO_WIRE_BINDING_descriptor, &error),
+    check_equal(tbe_typed_descriptor_validate(&MACRO_WIRE_BINDING_descriptor, &error),
                  DATA_BIND_OK);
     incompatible.abi_version++;
-    check_int_eq(tbe_typed_descriptor_validate(&incompatible, &error), DATA_BIND_ERR_SCHEMA);
-    check_int_eq(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error),
+    check_equal(tbe_typed_descriptor_validate(&incompatible, &error), DATA_BIND_ERR_SCHEMA);
+    check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u, &codec, &error),
                  DATA_BIND_OK);
     if (codec != NULL) {
-      check_int_eq(tbe_typed_descriptor_parse(codec, "MacroWire",
+      check_equal(tbe_typed_descriptor_parse(codec, "MacroWire",
                                               &MACRO_WIRE_BINDING_descriptor,
                                               DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0,
                                               &wire, &error),
                    DATA_BIND_OK);
-      check_uint_eq(wire.id, 7u);
-      check_int_eq(tbe_typed_descriptor_serialize(codec, "MacroWire",
+      check_equal(wire.id, 7u);
+      check_equal(tbe_typed_descriptor_serialize(codec, "MacroWire",
                                                   &MACRO_WIRE_BINDING_descriptor, &wire,
                                                   DATA_BIND_FORMAT_JSON, &encoded, &encoded_len,
                                                   &error),
                    DATA_BIND_OK);
-      check_str_eq(encoded, json);
+      check_equal(encoded, json);
     }
     tbe_typed_serialized_free(encoded);
     data_bind_free(codec);

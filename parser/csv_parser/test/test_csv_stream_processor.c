@@ -25,29 +25,29 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_str_eq(csv_stream_processor_error(p), "");
-            check_int_eq(csv_stream_processor_row_count(p), 3);
-            check_int_eq(csv_stream_processor_col_count(p), 3);
+            check_equal(csv_stream_processor_error(p), "");
+            check_equal(csv_stream_processor_row_count(p), 3);
+            check_equal(csv_stream_processor_col_count(p), 3);
 
             size_t len = 0;
             const double *prices = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 3);
-            check_float_eq(prices[0], 100.5, 0.01);
-            check_float_eq(prices[1], 200.3, 0.01);
-            check_float_eq(prices[2], 50.1, 0.01);
+            check_equal(len, 3);
+            check_within(prices[0], 100.5, 0.01);
+            check_within(prices[1], 200.3, 0.01);
+            check_within(prices[2], 50.1, 0.01);
 
             const double *volumes = csv_stream_processor_col_data(p, 1, &len);
-            check_int_eq(len, 3);
-            check_float_eq(volumes[0], 1000.0, 0.01);
-            check_float_eq(volumes[1], 2000.0, 0.01);
-            check_float_eq(volumes[2], 500.0, 0.01);
+            check_equal(len, 3);
+            check_within(volumes[0], 1000.0, 0.01);
+            check_within(volumes[1], 2000.0, 0.01);
+            check_within(volumes[2], 500.0, 0.01);
 
             /* String access */
-            check_str_eq(csv_stream_processor_get_str(p, 0, 2), "AAPL");
-            check_str_eq(csv_stream_processor_get_str(p, 1, 2), "GOOG");
-            check_str_eq(csv_stream_processor_get_str(p, 2, 2), "MSFT");
+            check_equal(csv_stream_processor_get_str(p, 0, 2), "AAPL");
+            check_equal(csv_stream_processor_get_str(p, 1, 2), "GOOG");
+            check_equal(csv_stream_processor_get_str(p, 2, 2), "MSFT");
             check_null(csv_stream_processor_col_data(p, 2, &len));
-            check_int_eq(len, 0);
+            check_equal(len, 0);
 
             csv_stream_processor_destroy(p);
         }
@@ -67,14 +67,14 @@ spec("csv_stream_processor") {
             }
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 3);
+            check_equal(csv_stream_processor_row_count(p), 3);
 
             size_t len = 0;
             const double *x = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 3);
-            check_float_eq(x[0], 10.0, 0.01);
-            check_float_eq(x[1], 30.0, 0.01);
-            check_float_eq(x[2], 50.0, 0.01);
+            check_equal(len, 3);
+            check_within(x[0], 10.0, 0.01);
+            check_within(x[1], 30.0, 0.01);
+            check_within(x[2], 50.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -86,13 +86,13 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             size_t len = 0;
             const double *a = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 2);
-            check_float_eq(a[0], 1.0, 0.01);
-            check_float_eq(a[1], 3.0, 0.01);
+            check_equal(len, 2);
+            check_within(a[0], 1.0, 0.01);
+            check_within(a[1], 3.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -104,12 +104,12 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             size_t len = 0;
             const double *v = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(v[0], 100.0, 0.01);
-            check_float_eq(v[1], 200.0, 0.01);
+            check_within(v[0], 100.0, 0.01);
+            check_within(v[1], 200.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -126,14 +126,14 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_str_eq(csv_stream_processor_error(p), "");
-            check_int_eq(csv_stream_processor_row_count(p), 1);
-            check_str_eq(csv_stream_processor_get_str(p, 0, 0), "hello; world");
+            check_equal(csv_stream_processor_error(p), "");
+            check_equal(csv_stream_processor_row_count(p), 1);
+            check_equal(csv_stream_processor_get_str(p, 0, 0), "hello; world");
 
             size_t len = 0;
             const double *v = csv_stream_processor_col_data(p, 1, &len);
-            check_int_eq(len, 1);
-            check_float_eq(v[0], 42.0, 0.01);
+            check_equal(len, 1);
+            check_within(v[0], 42.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -148,16 +148,16 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_col_index(p, "price"), 0);
-            check_int_eq(csv_stream_processor_col_index(p, "name"), 1);
-            check_int_eq(csv_stream_processor_col_index(p, "volume"), 2);
+            check_equal(csv_stream_processor_col_index(p, "price"), 0);
+            check_equal(csv_stream_processor_col_index(p, "name"), 1);
+            check_equal(csv_stream_processor_col_index(p, "volume"), 2);
 
             /* Also match raw name */
-            check_int_eq(csv_stream_processor_col_index(p, "price_n"), 0);
-            check_int_eq(csv_stream_processor_col_index(p, "name_s"), 1);
+            check_equal(csv_stream_processor_col_index(p, "price_n"), 0);
+            check_equal(csv_stream_processor_col_index(p, "name_s"), 1);
 
             /* Not found */
-            check_size_eq(csv_stream_processor_col_index(p, "nonexistent"), (size_t)-1);
+            check_equal(csv_stream_processor_col_index(p, "nonexistent"), (size_t)-1);
 
             csv_stream_processor_destroy(p);
         }
@@ -169,8 +169,8 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_str_eq(csv_stream_processor_col_name(p, 0), "alpha_n");
-            check_str_eq(csv_stream_processor_col_name(p, 1), "beta_s");
+            check_equal(csv_stream_processor_col_name(p, 0), "alpha_n");
+            check_equal(csv_stream_processor_col_name(p, 1), "beta_s");
             check_null(csv_stream_processor_col_name(p, 99));
 
             csv_stream_processor_destroy(p);
@@ -191,17 +191,17 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             size_t len = 0;
             const double *prices = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 2);
-            check_float_eq(prices[0], 150.0, 0.01);
-            check_float_eq(prices[1], 200.0, 0.01);
+            check_equal(len, 2);
+            check_within(prices[0], 150.0, 0.01);
+            check_within(prices[1], 200.0, 0.01);
 
             const double *volumes = csv_stream_processor_col_data(p, 1, &len);
-            check_float_eq(volumes[0], 200.0, 0.01);
-            check_float_eq(volumes[1], 400.0, 0.01);
+            check_within(volumes[0], 200.0, 0.01);
+            check_within(volumes[1], 400.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -218,12 +218,12 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             size_t len = 0;
             const double *prices = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(prices[0], 150.0, 0.01);
-            check_float_eq(prices[1], 200.0, 0.01);
+            check_within(prices[0], 150.0, 0.01);
+            check_within(prices[1], 200.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -235,7 +235,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 3);
+            check_equal(csv_stream_processor_row_count(p), 3);
             csv_stream_processor_destroy(p);
         }
 
@@ -250,12 +250,12 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             size_t len = 0;
             const double *prices = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(prices[0], 100.0, 0.01);
-            check_float_eq(prices[1], 150.0, 0.01);
+            check_within(prices[0], 100.0, 0.01);
+            check_within(prices[1], 150.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -271,7 +271,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             check(csv_stream_processor_error(p)[0] != '\0');
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -287,7 +287,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             check(csv_stream_processor_error(p)[0] != '\0');
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -303,7 +303,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             check(csv_stream_processor_error(p)[0] != '\0');
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -319,7 +319,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             check(csv_stream_processor_error(p)[0] != '\0');
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -335,7 +335,7 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             check(csv_stream_processor_error(p)[0] != '\0');
-            check_int_eq(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -352,9 +352,9 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 2);
-            check_str_eq(csv_stream_processor_get_str(p, 0, 0), "hello, world");
-            check_str_eq(csv_stream_processor_get_str(p, 1, 0), "simple");
+            check_equal(csv_stream_processor_row_count(p), 2);
+            check_equal(csv_stream_processor_get_str(p, 0, 0), "hello, world");
+            check_equal(csv_stream_processor_get_str(p, 1, 0), "simple");
 
             csv_stream_processor_destroy(p);
         }
@@ -367,8 +367,8 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 1);
-            check_str_eq(csv_stream_processor_get_str(p, 0, 0), "say \"hi\"");
+            check_equal(csv_stream_processor_row_count(p), 1);
+            check_equal(csv_stream_processor_get_str(p, 0, 0), "say \"hi\"");
 
             csv_stream_processor_destroy(p);
         }
@@ -380,8 +380,8 @@ spec("csv_stream_processor") {
             csv_stream_processor_t *p = csv_stream_processor_create(NULL);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 0);
-            check_int_eq(csv_stream_processor_col_count(p), 0);
+            check_equal(csv_stream_processor_row_count(p), 0);
+            check_equal(csv_stream_processor_col_count(p), 0);
 
             csv_stream_processor_destroy(p);
         }
@@ -393,8 +393,8 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, strlen(csv), p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 0);
-            check_int_eq(csv_stream_processor_col_count(p), 2);
+            check_equal(csv_stream_processor_row_count(p), 0);
+            check_equal(csv_stream_processor_col_count(p), 2);
 
             csv_stream_processor_destroy(p);
         }
@@ -411,14 +411,14 @@ spec("csv_stream_processor") {
             csv_stream_processor_feed(csv, csv_len, p);
             csv_stream_processor_finish(p);
 
-            check_str_eq(csv_stream_processor_error(p), "");
-            check_int_eq(csv_stream_processor_row_count(p), 1);
-            check_int_eq(csv_stream_processor_col_count(p), 1);
+            check_equal(csv_stream_processor_error(p), "");
+            check_equal(csv_stream_processor_row_count(p), 1);
+            check_equal(csv_stream_processor_col_count(p), 1);
 
             size_t len = 0;
             const double *v = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 1);
-            check_float_eq(v[0], 42.0, 0.01);
+            check_equal(len, 1);
+            check_within(v[0], 42.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -433,10 +433,10 @@ spec("csv_stream_processor") {
             }
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 1);
+            check_equal(csv_stream_processor_row_count(p), 1);
             size_t len = 0;
             const double *v = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(v[0], 42.0, 0.01);
+            check_within(v[0], 42.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -454,16 +454,16 @@ spec("csv_stream_processor") {
             }
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 10000);
+            check_equal(csv_stream_processor_row_count(p), 10000);
 
             size_t len = 0;
             const double *x = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 10000);
-            check_float_eq(x[0], 0.0, 0.01);
-            check_float_eq(x[9999], 9999.0, 0.01);
+            check_equal(len, 10000);
+            check_within(x[0], 0.0, 0.01);
+            check_within(x[9999], 9999.0, 0.01);
 
             const double *y = csv_stream_processor_col_data(p, 1, &len);
-            check_float_eq(y[9999], 19998.0, 0.01);
+            check_within(y[9999], 19998.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -483,12 +483,12 @@ spec("csv_stream_processor") {
             csv_stream_processor_finish(p);
 
             /* 5001..9999 = 4999 rows */
-            check_int_eq(csv_stream_processor_row_count(p), 4999);
+            check_equal(csv_stream_processor_row_count(p), 4999);
 
             size_t len = 0;
             const double *x = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(x[0], 5001.0, 0.01);
-            check_float_eq(x[4998], 9999.0, 0.01);
+            check_within(x[0], 5001.0, 0.01);
+            check_within(x[4998], 9999.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }
@@ -526,23 +526,23 @@ spec("csv_stream_processor") {
             if (buf_len > 0) csv_stream_processor_feed(buf, buf_len, p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), (size_t)total_rows);
-            check_int_eq(csv_stream_processor_col_count(p), 6);
+            check_equal(csv_stream_processor_row_count(p), (size_t)total_rows);
+            check_equal(csv_stream_processor_col_count(p), 6);
 
             /* Selected columns have data */
             size_t len = 0;
             const double *close_col = csv_stream_processor_col_data(p, 4, &len);
-            check_int_eq(len, (size_t)total_rows);
-            check_float_eq(close_col[0], 100.1, 0.01);
-            check_float_eq(close_col[999999], 110.09, 0.01);
+            check_equal(len, (size_t)total_rows);
+            check_within(close_col[0], 100.1, 0.01);
+            check_within(close_col[999999], 110.09, 0.01);
 
             const double *vol = csv_stream_processor_col_data(p, 5, &len);
-            check_int_eq(len, (size_t)total_rows);
-            check_float_eq(vol[0], 1000.0, 0.01);
+            check_equal(len, (size_t)total_rows);
+            check_within(vol[0], 1000.0, 0.01);
 
             /* Unselected columns have no data */
             const double *ts = csv_stream_processor_col_data(p, 0, &len);
-            check_int_eq(len, 0);
+            check_equal(len, 0);
             (void)ts;
 
             csv_stream_processor_destroy(p);
@@ -576,12 +576,12 @@ spec("csv_stream_processor") {
             if (buf_len > 0) csv_stream_processor_feed(buf, buf_len, p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), (size_t)expected_match);
+            check_equal(csv_stream_processor_row_count(p), (size_t)expected_match);
 
             /* Verify filtered data is correct — first match should have volume > 5500 */
             size_t len = 0;
             const double *volumes = csv_stream_processor_col_data(p, 1, &len);
-            check_int_eq(len, (size_t)expected_match);
+            check_equal(len, (size_t)expected_match);
             for (size_t i = 0; i < len && i < 100; i++) {
                 check(volumes[i] > 5500.0);
             }
@@ -617,12 +617,12 @@ spec("csv_stream_processor") {
             if (buf_len > 0) csv_stream_processor_feed(buf, buf_len, p);
             csv_stream_processor_finish(p);
 
-            check_int_eq(csv_stream_processor_row_count(p), 1000000);
+            check_equal(csv_stream_processor_row_count(p), 1000000);
 
             size_t len = 0;
             const double *v = csv_stream_processor_col_data(p, 0, &len);
-            check_float_eq(v[0], 0.0, 0.01);
-            check_float_eq(v[999999], 999999.0, 0.01);
+            check_within(v[0], 0.0, 0.01);
+            check_within(v[999999], 999999.0, 0.01);
 
             csv_stream_processor_destroy(p);
         }

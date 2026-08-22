@@ -112,7 +112,9 @@ csv_doc_t *csv_doc_new_arena(csv_arena_t *arena) {
     if (!doc) return NULL;
     memset(doc, 0, sizeof(csv_doc_t));
     doc->arena = arena;
-    if (turbo_vec_init(&doc->row_index, sizeof(csv_row_node_t *)) != TURBO_OK) return NULL;
+    if (turbo_vec_init_bytes(&doc->row_index, sizeof(csv_row_node_t *),
+                             _Alignof(csv_row_node_t *), SIZE_MAX) != TURBO_STL_OK)
+        return NULL;
     return doc;
 }
 
@@ -152,7 +154,7 @@ void csv_row_add_field(csv_arena_t *arena, csv_row_node_t *row,
 
 int csv_doc_add_row(csv_doc_t *doc, csv_row_node_t *row) {
     if (!doc || !row) return -1;
-    if (turbo_vec_push(&doc->row_index, &row) != TURBO_OK) return -1;
+    if (turbo_vec_push(&doc->row_index, &row) != TURBO_STL_OK) return -1;
 
     row->next = NULL;
     if (doc->rows_tail) {
@@ -203,7 +205,8 @@ csv_cursor_t *csv_cursor_new(const csv_doc_t *doc, size_t first_row) {
     if (!doc || first_row > doc->row_count) return NULL;
     cursor = (csv_cursor_t *)calloc(1, sizeof(*cursor));
     if (!cursor) return NULL;
-    if (turbo_vec_init(&cursor->fields, sizeof(tstr_v)) != TURBO_OK) {
+    if (turbo_vec_init_bytes(&cursor->fields, sizeof(vstr), _Alignof(vstr),
+                             doc->column_count) != TURBO_STL_OK) {
         free(cursor);
         return NULL;
     }
@@ -271,22 +274,23 @@ size_t csv_cursor_row_index(const csv_cursor_t *cursor) {
     return cursor ? cursor->current_row : (size_t)-1;
 }
 
-const tstr_v *csv_cursor_fields(const csv_cursor_t *cursor, size_t *field_count) {
+const vstr *csv_cursor_fields(const csv_cursor_t *cursor, size_t *field_count) {
     csv_cursor_t *mutable_cursor = (csv_cursor_t *)cursor;
     csv_field_node_t *field;
-    tstr_v *views;
+    vstr *views;
     size_t index;
     if (!cursor || cursor->error || cursor->current_row == (size_t)-1) {
         if (field_count) *field_count = 0;
         return NULL;
     }
     if (!cursor->fields_valid) {
-        if (turbo_vec_resize(&mutable_cursor->fields, cursor->current_field_count) != TURBO_OK) {
+        if (turbo_vec_resize(&mutable_cursor->fields, cursor->current_field_count) !=
+            TURBO_STL_OK) {
             mutable_cursor->error = 1;
             if (field_count) *field_count = 0;
             return NULL;
         }
-        views = (tstr_v *)turbo_vec_data(&mutable_cursor->fields);
+        views = (vstr *)turbo_vec_data(&mutable_cursor->fields);
         field = cursor->current_fields;
         for (index = 0; index < turbo_vec_size(&cursor->fields); ++index) {
             if (!field) {
@@ -295,27 +299,27 @@ const tstr_v *csv_cursor_fields(const csv_cursor_t *cursor, size_t *field_count)
                 if (field_count) *field_count = 0;
                 return NULL;
             }
-            views[index] = tstr_v_from_buf(field->value, field->length);
+            views[index] = vstr_from_buf(field->value, field->length);
             field = field->next;
         }
         mutable_cursor->fields_valid = 1;
     }
     if (field_count) *field_count = turbo_vec_size(&cursor->fields);
     if (turbo_vec_empty(&cursor->fields)) return NULL;
-    return (const tstr_v *)turbo_vec_data_const(&cursor->fields);
+    return (const vstr *)turbo_vec_data_const(&cursor->fields);
 }
 
-tstr_v csv_cursor_field_v(const csv_cursor_t *cursor, size_t col) {
+vstr csv_cursor_field_v(const csv_cursor_t *cursor, size_t col) {
     csv_field_node_t *field;
     if (!cursor || cursor->error || cursor->current_row == (size_t)-1) {
-        return tstr_v_from_buf(NULL, 0);
+        return vstr_from_buf(NULL, 0);
     }
     field = cursor->current_fields;
     while (field && col > 0) {
         field = field->next;
         --col;
     }
-    return field ? tstr_v_from_buf(field->value, field->length) : tstr_v_from_buf(NULL, 0);
+    return field ? vstr_from_buf(field->value, field->length) : vstr_from_buf(NULL, 0);
 }
 
 /* ============================================================================
@@ -455,7 +459,7 @@ static int csv_scan_opts(const char *content, size_t len, const csv_options_t *o
 
     if (in_quote) {
         if (error && error_cap > 0) {
-            fmt(error, error_cap, "Unterminated quoted field");
+            fmt_text(error, error_cap, "Unterminated quoted field");
         }
         free(field);
         return -1;
@@ -471,7 +475,7 @@ static int csv_scan_opts(const char *content, size_t len, const csv_options_t *o
     return 0;
 
 oom:
-    if (error && error_cap > 0) fmt(error, error_cap, "Out of memory parsing CSV");
+    if (error && error_cap > 0) fmt_text(error, error_cap, "Out of memory parsing CSV");
 fail:
     free(field);
     return -1;
@@ -515,20 +519,20 @@ csv_doc_t *csv_parse(const char *content, size_t len) {
 csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *opts) {
     csv_options_t normalized = csv_normalize_opts(opts);
     if (!content || len == 0) {
-        fmt(g_error_msg, sizeof(g_error_msg), "Empty input");
+        fmt_text(g_error_msg, sizeof(g_error_msg), "Empty input");
         return NULL;
     }
 
     csv_arena_t *arena = csv_arena_create_sized(len < 4096 ? 4096 : len / 4);
     if (!arena) {
-        fmt(g_error_msg, sizeof(g_error_msg), "Failed to allocate arena");
+        fmt_text(g_error_msg, sizeof(g_error_msg), "Failed to allocate arena");
         return NULL;
     }
 
     csv_doc_t *doc = csv_doc_new_arena(arena);
     if (!doc) {
         csv_arena_free(arena);
-        fmt(g_error_msg, sizeof(g_error_msg), "Failed to allocate document");
+        fmt_text(g_error_msg, sizeof(g_error_msg), "Failed to allocate document");
         return NULL;
     }
 
@@ -541,7 +545,7 @@ csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *
         csv_token_t token;
         int ret;
         if (!current_row) {
-            fmt(g_error_msg, sizeof(g_error_msg), "Out of memory parsing CSV rows");
+            fmt_text(g_error_msg, sizeof(g_error_msg), "Out of memory parsing CSV rows");
             turbo_vec_destroy(&doc->row_index);
             csv_arena_free(arena);
             return NULL;
@@ -565,7 +569,7 @@ csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *
                 case CSV_TOKEN_NEWLINE:
                     if (current_row->field_count > 0) {
                         if (csv_doc_add_row(doc, current_row) != 0) {
-                            fmt(g_error_msg, sizeof(g_error_msg), "Out of memory indexing CSV rows");
+                            fmt_text(g_error_msg, sizeof(g_error_msg), "Out of memory indexing CSV rows");
                             turbo_vec_destroy(&doc->row_index);
                             csv_arena_free(arena);
                             return NULL;
@@ -573,7 +577,7 @@ csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *
                     }
                     current_row = csv_row_new_arena(arena);
                     if (!current_row) {
-                        fmt(g_error_msg, sizeof(g_error_msg), "Out of memory parsing CSV rows");
+                        fmt_text(g_error_msg, sizeof(g_error_msg), "Out of memory parsing CSV rows");
                         turbo_vec_destroy(&doc->row_index);
                         csv_arena_free(arena);
                         return NULL;
@@ -585,7 +589,7 @@ csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *
         // Add final row if not empty
         if (current_row && current_row->field_count > 0) {
             if (csv_doc_add_row(doc, current_row) != 0) {
-                fmt(g_error_msg, sizeof(g_error_msg), "Out of memory indexing CSV rows");
+                fmt_text(g_error_msg, sizeof(g_error_msg), "Out of memory indexing CSV rows");
                 turbo_vec_destroy(&doc->row_index);
                 csv_arena_free(arena);
                 return NULL;
@@ -612,8 +616,8 @@ csv_doc_t *csv_parse_opts(const char *content, size_t len, const csv_options_t *
     if (normalized.has_header && doc->rows) {
         doc->header = doc->rows;
         doc->rows = doc->rows->next;
-        if (turbo_vec_erase(&doc->row_index, 0, NULL) != TURBO_OK) {
-            fmt(g_error_msg, sizeof(g_error_msg), "Failed to index CSV header");
+        if (turbo_vec_erase(&doc->row_index, 0, NULL) != TURBO_STL_OK) {
+            fmt_text(g_error_msg, sizeof(g_error_msg), "Failed to index CSV header");
             turbo_vec_destroy(&doc->row_index);
             csv_arena_free(arena);
             return NULL;
@@ -642,14 +646,14 @@ csv_doc_t *csv_parse_file_opts(const char *filename, const csv_options_t *opts) 
 
     if (size <= 0) {
         fclose(fp);
-        fmt(g_error_msg, sizeof(g_error_msg), "Empty file");
+        fmt_text(g_error_msg, sizeof(g_error_msg), "Empty file");
         return NULL;
     }
 
     char *content = (char *)malloc((size_t)size + 1);
     if (!content) {
         fclose(fp);
-        fmt(g_error_msg, sizeof(g_error_msg), "Out of memory");
+        fmt_text(g_error_msg, sizeof(g_error_msg), "Out of memory");
         return NULL;
     }
 
@@ -696,10 +700,10 @@ size_t csv_get_len(const csv_doc_t *doc, size_t row, size_t col) {
     return f ? f->length : 0;
 }
 
-tstr_v csv_get_v(const csv_doc_t *doc, size_t row, size_t col) {
+vstr csv_get_v(const csv_doc_t *doc, size_t row, size_t col) {
     csv_row_node_t *r = get_row_at(doc, row);
     csv_field_node_t *f = get_field_at(r, col);
-    return f ? tstr_v_from_buf(f->value, f->length) : tstr_v_from_buf(NULL, 0);
+    return f ? vstr_from_buf(f->value, f->length) : vstr_from_buf(NULL, 0);
 }
 
 const char *csv_header_get(const csv_doc_t *doc, size_t col) {
@@ -714,10 +718,10 @@ size_t csv_header_get_len(const csv_doc_t *doc, size_t col) {
     return f ? f->length : 0;
 }
 
-tstr_v csv_header_get_v(const csv_doc_t *doc, size_t col) {
-    if (!doc || !doc->header) return tstr_v_from_buf(NULL, 0);
+vstr csv_header_get_v(const csv_doc_t *doc, size_t col) {
+    if (!doc || !doc->header) return vstr_from_buf(NULL, 0);
     csv_field_node_t *f = get_field_at(doc->header, col);
-    return f ? tstr_v_from_buf(f->value, f->length) : tstr_v_from_buf(NULL, 0);
+    return f ? vstr_from_buf(f->value, f->length) : vstr_from_buf(NULL, 0);
 }
 
 int csv_get_int(const csv_doc_t *doc, size_t row, size_t col, int def) {
@@ -744,16 +748,16 @@ bool csv_get_bool(const csv_doc_t *doc, size_t row, size_t col, bool def) {
 
 size_t csv_find_column(const csv_doc_t *doc, const char *header_name) {
     if (!doc || !doc->header || !header_name) return (size_t)-1;
-    return csv_find_column_v(doc, tstr_v_from_cstr(header_name));
+    return csv_find_column_v(doc, vstr_from_cstr(header_name));
 }
 
-size_t csv_find_column_v(const csv_doc_t *doc, tstr_v header_name) {
+size_t csv_find_column_v(const csv_doc_t *doc, vstr header_name) {
     if (!doc || !doc->header || !header_name.data) return (size_t)-1;
 
     size_t col = 0;
     csv_field_node_t *f = doc->header->fields;
     while (f) {
-        if (f->value && tstr_v_eq(tstr_v_from_buf(f->value, f->length), header_name)) {
+        if (f->value && vstr_eq(vstr_from_buf(f->value, f->length), header_name)) {
             return col;
         }
         f = f->next;
@@ -768,9 +772,9 @@ const char *csv_get_by_name(const csv_doc_t *doc, size_t row, const char *col_na
     return csv_get(doc, row, col);
 }
 
-tstr_v csv_get_by_name_v(const csv_doc_t *doc, size_t row, tstr_v col_name) {
+vstr csv_get_by_name_v(const csv_doc_t *doc, size_t row, vstr col_name) {
     size_t col = csv_find_column_v(doc, col_name);
-    if (col == (size_t)-1) return tstr_v_from_buf(NULL, 0);
+    if (col == (size_t)-1) return vstr_from_buf(NULL, 0);
     return csv_get_v(doc, row, col);
 }
 
@@ -1145,7 +1149,7 @@ int csv_parse_stream_opts(const char *content, size_t len,
  * ============================================================================ */
 
 typedef struct {
-    tstr_v value;
+    vstr value;
     int    needs_unescape;
     int    present;
 } csv_scan_field_t;
@@ -1160,7 +1164,7 @@ static int csv_scan_fail(const char *message) {
     return -1;
 }
 
-static int csv_scan_parse_int64(tstr_v text, int64_t *value) {
+static int csv_scan_parse_int64(vstr text, int64_t *value) {
     uint64_t magnitude = 0;
     uint64_t limit = (uint64_t)INT64_MAX;
     size_t index = 0;
@@ -1191,7 +1195,7 @@ static int csv_scan_parse_int64(tstr_v text, int64_t *value) {
     return 0;
 }
 
-static int csv_scan_parse_double(tstr_v text, double *value) {
+static int csv_scan_parse_double(vstr text, double *value) {
     const char *cursor;
     const char *end;
     uint64_t mantissa = 0;
@@ -1238,7 +1242,7 @@ static int csv_scan_parse_double(tstr_v text, double *value) {
     return 0;
 }
 
-static int csv_scan_text_compare(csv_scan_field_t field, tstr_v rhs) {
+static int csv_scan_text_compare(csv_scan_field_t field, vstr rhs) {
     size_t source_index = 0;
     size_t rhs_index = 0;
 
@@ -1306,7 +1310,7 @@ static int csv_scan_predicate_matches(const csv_scan_predicate_t *predicate,
 }
 
 static int csv_scan_decode(csv_scan_decode_buffer_t *buffer, csv_scan_field_t field,
-                           tstr_v *value) {
+                           vstr *value) {
     size_t source_index;
     size_t output_index = 0;
 
@@ -1329,7 +1333,7 @@ static int csv_scan_decode(csv_scan_decode_buffer_t *buffer, csv_scan_field_t fi
             ++source_index;
         }
     }
-    *value = tstr_v_from_buf(buffer->data, output_index);
+    *value = vstr_from_buf(buffer->data, output_index);
     return 0;
 }
 
@@ -1343,7 +1347,7 @@ static int csv_scan_finalize_row(const csv_scan_plan_t *plan, size_t row_index,
     for (index = 0; index < plan->predicate_count; ++index) {
         int predicate_matches;
         csv_scan_field_t field = predicates[index];
-        if (!field.present) field.value = tstr_v_from_buf("", 0);
+        if (!field.present) field.value = vstr_from_buf("", 0);
         if (csv_scan_predicate_matches(&plan->predicates[index], field, &predicate_matches) != 0)
             return csv_scan_fail("invalid integer predicate field");
         if (!predicate_matches) {
@@ -1355,7 +1359,7 @@ static int csv_scan_finalize_row(const csv_scan_plan_t *plan, size_t row_index,
 
     for (index = 0; index < plan->projection_count; ++index) {
         csv_scan_field_t field = projections[index];
-        if (!field.present) field.value = tstr_v_from_buf("", 0);
+        if (!field.present) field.value = vstr_from_buf("", 0);
         values[index].type = plan->projections[index].type;
         if (values[index].type == CSV_SCAN_VALUE_INT64) {
             if (field.needs_unescape ||
@@ -1455,7 +1459,7 @@ int csv_filter_scan_opts(const char *content, size_t len, const csv_options_t *o
                 int projection_index = projection_column[column];
                 if (predicate_index >= 0 || projection_index >= 0) {
                     csv_scan_field_t field = {
-                        .value = tstr_v_from_buf(token.value, token.length),
+                        .value = vstr_from_buf(token.value, token.length),
                         .needs_unescape = token.needs_unescape,
                         .present = 1,
                     };
@@ -1689,9 +1693,9 @@ size_t csv_iter_field_len(const csv_iter_t *iter, size_t col) {
     return iter->field_lens[col];
 }
 
-tstr_v csv_iter_field_v(const csv_iter_t *iter, size_t col) {
-    if (!iter || col >= iter->field_count) return tstr_v_from_buf(NULL, 0);
-    return tstr_v_from_buf(iter->fields[col], iter->field_lens[col]);
+vstr csv_iter_field_v(const csv_iter_t *iter, size_t col) {
+    if (!iter || col >= iter->field_count) return vstr_from_buf(NULL, 0);
+    return vstr_from_buf(iter->fields[col], iter->field_lens[col]);
 }
 
 size_t csv_iter_row_index(const csv_iter_t *iter) {

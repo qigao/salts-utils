@@ -68,7 +68,7 @@ static void check_status_ok(DataBindStatus status, const DataBindError *error) {
   if (status != DATA_BIND_OK && error != NULL)
     fprintf(stderr, "DataBind failure: status=%d path=%s message=%s\n", (int)status, error->path,
             error->message);
-  check_int_eq(status, DATA_BIND_OK);
+  check_equal(status, DATA_BIND_OK);
 }
 
 static void check_order(const Order_t *order) {
@@ -78,28 +78,28 @@ static void check_order(const Order_t *order) {
 
   check_not_null(order);
   if (order == NULL) return;
-  check_int_eq(order->header.seq, 7);
-  check_int_eq(order->order_id, 42);
+  check_equal(order->header.seq, 7);
+  check_equal(order->order_id, 42);
   check(order->min_value == INT64_MIN);
   check(order->max_value == UINT64_MAX);
-  check_int_eq(turbo_uuid_parse(TEST_ORDER_REQUEST_ID, &expected_request_id), TURBO_OK);
+  check_equal(turbo_uuid_parse(TEST_ORDER_REQUEST_ID, &expected_request_id), TURBO_OK);
   check_true(turbo_uuid_equal(&order->request_id, &expected_request_id));
-  check_int_eq(order->side, Side_Buy);
-  check_str_eq(order->symbol, "ABC");
-  check_size_eq(tbe_bytes_t_size(&order->payload), 3);
-  check_mem_eq(tbe_bytes_t_data_const(&order->payload), "raw", 3);
-  check_size_eq(Order_fills_vec_t_size(&order->fills), 2);
+  check_equal(order->side, Side_Buy);
+  check_equal(order->symbol, "ABC");
+  check_equal(tbe_bytes_t_size(&order->payload), 3);
+  check_equal(tbe_bytes_t_data_const(&order->payload), "raw", 3);
+  check_equal(Order_fills_vec_t_size(&order->fills), 2);
   first = Order_fills_vec_t_at_const(&order->fills, 0);
   second = Order_fills_vec_t_at_const(&order->fills, 1);
   check_not_null(first);
   check_not_null(second);
   if (first != NULL) {
-    check_int_eq(first->price, 100);
-    check_int_eq(first->qty, 3);
+    check_equal(first->price, 100);
+    check_equal(first->qty, 3);
   }
   if (second != NULL) {
-    check_int_eq(second->price, 101);
-    check_int_eq(second->qty, 4);
+    check_equal(second->price, 101);
+    check_equal(second->qty, 4);
   }
 }
 
@@ -122,10 +122,10 @@ spec("generated typed Order") {
 
   before_each() {
     Order_init(&order);
-    check_int_eq(Orders_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(Orders_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
     if (codec != NULL)
-      check_int_eq(Order_from_json(codec, &order, json, strlen(json), &error), DATA_BIND_OK);
+      check_equal(Order_from_json(codec, &order, json, strlen(json), &error), DATA_BIND_OK);
   }
 
   after_each() {
@@ -139,7 +139,7 @@ spec("generated typed Order") {
     char *encoded = NULL;
     size_t encoded_len = 0;
 
-    check_uint_eq(order._presence[0], 0u);
+    check_equal(order._presence[0], 0u);
     check_status_ok(Order_to_json(codec, &order, &encoded, &encoded_len, &error), &error);
     check_not_null(encoded);
     if (encoded != NULL) {
@@ -162,13 +162,13 @@ spec("generated typed Order") {
 
     Order_set_optional_field(&builder, (Order_optional_field_t)-1);
     Order_set_optional_field(&builder, (Order_optional_field_t)Order_OPTIONAL_FIELD_COUNT);
-    check_uint_eq(presence[0], 0u);
+    check_equal(presence[0], 0u);
 
     view.size = 0;
     builder.size = 0;
     Order_set_optional_field(&builder, Order_OPTIONAL_routing_hint);
     check_false(Order_has_optional_field(&view, Order_OPTIONAL_routing_hint));
-    check_uint_eq(presence[0], 0u);
+    check_equal(presence[0], 0u);
   }
 
   it("should preserve optional presence through text and binary bindings") {
@@ -183,18 +183,18 @@ spec("generated typed Order") {
     Order_init(&decoded);
     check_status_ok(Order_from_json(codec, &present, optional_json, strlen(optional_json), &error),
                     &error);
-    check_uint_eq(present._presence[0],
+    check_equal(present._presence[0],
                   (1u << Order_OPTIONAL_routing_hint) | (1u << Order_OPTIONAL_client_tag));
-    check_uint_eq(present.routing_hint, 9u);
-    check_str_eq(present.client_tag, "edge-a");
+    check_equal(present.routing_hint, 9u);
+    check_equal(present.client_tag, "edge-a");
     check_status_ok(Order_to_json(codec, &present, &encoded, &encoded_len, &error), &error);
-    check_str_contains(encoded, "\"routing_hint\":9");
-    check_str_contains(encoded, "\"client_tag\":\"edge-a\"");
+    check_contains(encoded, "\"routing_hint\":9");
+    check_contains(encoded, "\"client_tag\":\"edge-a\"");
     check_status_ok(Order_to_bin(&present, &wire, &wire_len, &error), &error);
     check_status_ok(Order_from_bin(codec, &decoded, wire, wire_len, &error), &error);
-    check_uint_eq(decoded._presence[0], present._presence[0]);
-    check_uint_eq(decoded.routing_hint, 9u);
-    check_str_eq(decoded.client_tag, "edge-a");
+    check_equal(decoded._presence[0], present._presence[0]);
+    check_equal(decoded.routing_hint, 9u);
+    check_equal(decoded.client_tag, "edge-a");
 
     tbe_typed_serialized_free(wire);
     tbe_typed_serialized_free(encoded);
@@ -207,9 +207,9 @@ spec("generated typed Order") {
     size_t encoded_len = 0;
     Order_t decoded;
     Order_init(&decoded);
-    check_int_eq(Order_to_bin(&order, &encoded, &encoded_len, &error), DATA_BIND_OK);
+    check_equal(Order_to_bin(&order, &encoded, &encoded_len, &error), DATA_BIND_OK);
     check_not_null(encoded);
-    check_size_gt(encoded_len, 0);
+    check_greater(encoded_len, 0);
     if (encoded != NULL) {
       check_status_ok(Order_from_bin(codec, &decoded, encoded, encoded_len, &error), &error);
       check_order(&decoded);
@@ -223,9 +223,9 @@ spec("generated typed Order") {
     size_t encoded_len = 0;
     check_status_ok(Order_to_bin(&order, &encoded, &encoded_len, &error), &error);
     check_not_null(encoded);
-    check_size_gt(encoded_len, 1);
+    check_greater(encoded_len, 1);
     if (encoded != NULL && encoded_len > 1) {
-      check_int_eq(Order_from_bin(codec, &order, encoded, encoded_len - 1, &error),
+      check_equal(Order_from_bin(codec, &order, encoded, encoded_len - 1, &error),
                    DATA_BIND_ERR_PARSE);
       check_order(&order);
     }
@@ -237,11 +237,11 @@ spec("generated typed Order") {
         "schema Other [byte_order(little)]; message Order { uint32 id; }";
     DataBind *other = NULL;
     uint8_t wire[4] = {0};
-    check_int_eq(data_bind_create_from_text(other_schema, sizeof(other_schema) - 1, &other, &error),
+    check_equal(data_bind_create_from_text(other_schema, sizeof(other_schema) - 1, &other, &error),
                  DATA_BIND_OK);
     check_not_null(other);
     if (other != NULL) {
-      check_int_eq(Order_from_bin(other, &order, wire, sizeof(wire), &error), DATA_BIND_ERR_SCHEMA);
+      check_equal(Order_from_bin(other, &order, wire, sizeof(wire), &error), DATA_BIND_ERR_SCHEMA);
       check_order(&order);
     }
     data_bind_free(other);
@@ -289,13 +289,13 @@ spec("generated typed Order") {
     size_t output_len = 0;
 
     check_status_ok(Order_to_json(codec, &order, &json_output, &output_len, &error), &error);
-    check_str_contains(json_output, "\"orderId\":42");
+    check_contains(json_output, "\"orderId\":42");
     check_status_ok(Order_to_yaml(codec, &order, &yaml_output, &output_len, &error), &error);
-    check_str_contains(yaml_output, "orderId");
+    check_contains(yaml_output, "orderId");
     check_status_ok(Order_to_csv(codec, &order, &csv_output, &output_len, &error), &error);
-    check_str_contains(csv_output, "orderId");
+    check_contains(csv_output, "orderId");
     check_status_ok(Order_to_xml(codec, &order, &xml_output, &output_len, &error), &error);
-    check_str_contains(xml_output, "<orderId>42</orderId>");
+    check_contains(xml_output, "<orderId>42</orderId>");
 
     tbe_typed_serialized_free(json_output);
     tbe_typed_serialized_free(yaml_output);
@@ -317,9 +317,9 @@ spec("generated typed Order") {
 
     check_not_null(schema_codec);
     if (schema_codec == NULL) return;
-    check_size_eq(schema_codec->struct_size, sizeof(*schema_codec));
-    check_int_eq(schema_codec->abi_version, TBE_SCHEMA_CODEC_ABI_VERSION);
-    check_str_eq(schema_codec->schema_id, "Orders");
+    check_equal(schema_codec->struct_size, sizeof(*schema_codec));
+    check_equal(schema_codec->abi_version, TBE_SCHEMA_CODEC_ABI_VERSION);
+    check_equal(schema_codec->schema_id, "Orders");
     check_not_null(schema_codec->create);
     check_not_null(schema_codec->text_to_binary_into);
     check_not_null(schema_codec->binary_to_text);
@@ -329,7 +329,7 @@ spec("generated typed Order") {
                                                       strlen(json), 0, wire, sizeof(wire),
                                                       &wire_len, &error),
                     &error);
-    check_size_gt(wire_len, 0);
+    check_greater(wire_len, 0);
 
     if (wire_len != 0) {
       for (i = 0; i < sizeof(formats) / sizeof(formats[0]); ++i) {
@@ -344,7 +344,7 @@ spec("generated typed Order") {
                                                      &text, &text_len, &error),
                         &error);
         check_not_null(text);
-        check_size_gt(text_len, 0);
+        check_greater(text_len, 0);
         if (text != NULL) {
           check_status_ok(schema_codec->text_to_binary_into(
                               codec, "Order", formats[i], text, text_len, 0, roundtrip_wire,
@@ -364,16 +364,16 @@ spec("generated typed Order") {
 
     wire_len = 0;
 
-    check_int_eq(schema_codec->text_to_binary_into(codec, "Missing", TBE_SCHEMA_FORMAT_JSON, json,
+    check_equal(schema_codec->text_to_binary_into(codec, "Missing", TBE_SCHEMA_FORMAT_JSON, json,
                                                    strlen(json), 0, wire, sizeof(wire), &wire_len,
                                                    &error),
                  DATA_BIND_ERR_TYPE_NOT_FOUND);
-    check_size_eq(wire_len, 0);
+    check_equal(wire_len, 0);
 
-    check_int_eq(schema_codec->text_to_binary_into(codec, "Order", TBE_SCHEMA_FORMAT_JSON, json,
+    check_equal(schema_codec->text_to_binary_into(codec, "Order", TBE_SCHEMA_FORMAT_JSON, json,
                                                    strlen(json), 0, wire, 1, &wire_len, &error),
                  DATA_BIND_ERR_BUFFER_TOO_SMALL);
-    check_size_gt(wire_len, 1);
+    check_greater(wire_len, 1);
   }
 
   it("should route guest text formats through the injected bridge") {
@@ -402,55 +402,55 @@ spec("generated typed Order") {
       context.wire = encoded;
       context.wire_size = (uint32_t)encoded_len;
 
-      check_int_eq(Order_guest_from_json(&bridge, json, strlen(json), guest_wire,
+      check_equal(Order_guest_from_json(&bridge, json, strlen(json), guest_wire,
                                          sizeof(guest_wire), &output_len, &view),
                    TBE_GUEST_OK);
-      check_int_eq(context.observed_format, TBE_GUEST_FORMAT_JSON);
-      check_int_eq(context.observed_csv_row, 0);
-      check_size_eq(output_len, encoded_len);
-      check_mem_eq(view.data, encoded, encoded_len);
+      check_equal(context.observed_format, TBE_GUEST_FORMAT_JSON);
+      check_equal(context.observed_csv_row, 0);
+      check_equal(output_len, encoded_len);
+      check_equal(view.data, encoded, encoded_len);
 
-      check_int_eq(Order_guest_from_yaml(&bridge, json, strlen(json), guest_wire,
+      check_equal(Order_guest_from_yaml(&bridge, json, strlen(json), guest_wire,
                                          sizeof(guest_wire), &output_len, &view),
                    TBE_GUEST_OK);
-      check_int_eq(context.observed_format, TBE_GUEST_FORMAT_YAML);
+      check_equal(context.observed_format, TBE_GUEST_FORMAT_YAML);
 
-      check_int_eq(Order_guest_from_csv(&bridge, json, strlen(json), 3, guest_wire,
+      check_equal(Order_guest_from_csv(&bridge, json, strlen(json), 3, guest_wire,
                                         sizeof(guest_wire), &output_len, &view),
                    TBE_GUEST_OK);
-      check_int_eq(context.observed_format, TBE_GUEST_FORMAT_CSV);
-      check_int_eq(context.observed_csv_row, 3);
+      check_equal(context.observed_format, TBE_GUEST_FORMAT_CSV);
+      check_equal(context.observed_csv_row, 3);
 
-      check_int_eq(Order_guest_from_xml(&bridge, json, strlen(json), guest_wire, sizeof(guest_wire),
+      check_equal(Order_guest_from_xml(&bridge, json, strlen(json), guest_wire, sizeof(guest_wire),
                                         &output_len, &view),
                    TBE_GUEST_OK);
-      check_int_eq(context.observed_format, TBE_GUEST_FORMAT_XML);
+      check_equal(context.observed_format, TBE_GUEST_FORMAT_XML);
 
-      check_int_eq(Order_guest_to_json(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
+      check_equal(Order_guest_to_json(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
                    TBE_GUEST_OK);
-      check_mem_eq(guest_text, "json", output_len);
-      check_int_eq(Order_guest_to_yaml(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
+      check_equal(guest_text, "json", output_len);
+      check_equal(Order_guest_to_yaml(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
                    TBE_GUEST_OK);
-      check_mem_eq(guest_text, "yaml", output_len);
-      check_int_eq(Order_guest_to_csv(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
+      check_equal(guest_text, "yaml", output_len);
+      check_equal(Order_guest_to_csv(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
                    TBE_GUEST_OK);
-      check_mem_eq(guest_text, "csv", output_len);
-      check_int_eq(Order_guest_to_xml(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
+      check_equal(guest_text, "csv", output_len);
+      check_equal(Order_guest_to_xml(&bridge, &view, guest_text, sizeof(guest_text), &output_len),
                    TBE_GUEST_OK);
-      check_mem_eq(guest_text, "xml", output_len);
+      check_equal(guest_text, "xml", output_len);
 
       bridge.abi_version = 0;
-      check_int_eq(Order_guest_from_json(&bridge, json, strlen(json), guest_wire,
+      check_equal(Order_guest_from_json(&bridge, json, strlen(json), guest_wire,
                                          sizeof(guest_wire), &output_len, &view),
                    TBE_GUEST_EBRIDGE);
       check_null(view.data);
-      check_size_eq(view.size, 0);
+      check_equal(view.size, 0);
       bridge.abi_version = TBE_GUEST_BRIDGE_ABI_VERSION;
 
-      check_int_eq(
+      check_equal(
           Order_guest_from_json(&bridge, json, strlen(json), guest_wire, 1, &output_len, &view),
           TEST_BRIDGE_CAPACITY_ERROR);
-      check_size_eq(output_len, encoded_len);
+      check_equal(output_len, encoded_len);
       tbe_typed_serialized_free(encoded);
     }
   }

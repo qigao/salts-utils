@@ -78,8 +78,8 @@ static int xml_provider_failed(const MUSTACHE_XML_PROVIDER *provider) {
     return provider && provider->list_capacity == MUSTACHE_XML_PROVIDER_ERROR_CAPACITY;
 }
 
-static int xml_name_eq(const char *candidate, tstr_v expected) {
-    return candidate && tstr_v_eq(tstr_v_from_cstr(candidate), expected);
+static int xml_name_eq(const char *candidate, vstr expected) {
+    return candidate && vstr_eq(vstr_from_cstr(candidate), expected);
 }
 
 static void *add_surrogate(MUSTACHE_XML_PROVIDER *p, size_t count) {
@@ -201,7 +201,7 @@ static void *xml_get_root(void *provider_data) {
 
 static void *xml_get_child_by_name(void *node, const char *name, size_t size, void *provider_data) {
     MUSTACHE_XML_PROVIDER *p = (MUSTACHE_XML_PROVIDER *)provider_data;
-    tstr_v expected = tstr_v_from_buf(name, size);
+    vstr expected = vstr_from_buf(name, size);
     if (!node || !name || is_surrogate(node) || xml_provider_failed(p)) return NULL;
 
     _cxml_node_t type = _cxml_get_node_type(node);

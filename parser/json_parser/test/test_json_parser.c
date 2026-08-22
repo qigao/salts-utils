@@ -213,7 +213,7 @@ spec("json_parser") {
     it("should parse null correctly") {
       json_value_t *v = json_parse("null", 4);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_NULL);
+      check_equal(json_type(v), JSON_NULL);
       check(json_is_null(v));
       json_free(v);
     }
@@ -221,7 +221,7 @@ spec("json_parser") {
     it("should parse true correctly") {
       json_value_t *v = json_parse("true", 4);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_BOOL);
+      check_equal(json_type(v), JSON_BOOL);
       check(json_bool(v));
       json_free(v);
     }
@@ -229,7 +229,7 @@ spec("json_parser") {
     it("should parse false correctly") {
       json_value_t *v = json_parse("false", 5);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_BOOL);
+      check_equal(json_type(v), JSON_BOOL);
       check(!json_bool(v));
       json_free(v);
     }
@@ -239,32 +239,32 @@ spec("json_parser") {
     it("should parse integers correctly") {
       json_value_t *v = json_parse("42", 2);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_NUMBER);
-      check_float_eq(json_number(v), 42.0, 0.001);
+      check_equal(json_type(v), JSON_NUMBER);
+      check_within(json_number(v), 42.0, 0.001);
       json_free(v);
     }
 
     it("should parse negative numbers correctly") {
       json_value_t *v = json_parse("-123", 4);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_NUMBER);
-      check_float_eq(json_number(v), -123.0, 0.001);
+      check_equal(json_type(v), JSON_NUMBER);
+      check_within(json_number(v), -123.0, 0.001);
       json_free(v);
     }
 
     it("should parse floating point numbers correctly") {
       json_value_t *v = json_parse("3.14159", 7);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_NUMBER);
-      check_float_eq(json_number(v), 3.14159, 0.00001);
+      check_equal(json_type(v), JSON_NUMBER);
+      check_within(json_number(v), 3.14159, 0.00001);
       json_free(v);
     }
 
     it("should parse scientific notation correctly") {
       json_value_t *v = json_parse("1.5e10", 6);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_NUMBER);
-      check_float_eq(json_number(v), 1.5e10, 0.001);
+      check_equal(json_type(v), JSON_NUMBER);
+      check_within(json_number(v), 1.5e10, 0.001);
       json_free(v);
     }
 
@@ -274,15 +274,15 @@ spec("json_parser") {
       char *serialized;
       json_value_t *v = json_parse(number, strlen(number));
       check_not_null(v);
-      check_str_eq(json_number_text(v, &len), number);
-      check_size_eq(len, strlen(number));
+      check_equal(json_number_text(v, &len), number);
+      check_equal(len, strlen(number));
       json_free(v);
 
       v = json_create_uint64(UINT64_MAX);
       check_not_null(v);
       serialized = json_serialize(v, NULL);
       check_not_null(serialized);
-      check_str_eq(serialized, number);
+      check_equal(serialized, number);
       free(serialized);
       json_free(v);
     }
@@ -292,25 +292,25 @@ spec("json_parser") {
     it("should parse simple strings correctly") {
       json_value_t *v = json_parse("\"hello\"", 7);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_STRING);
-      check_str_eq(json_string(v), "hello");
-      check_size_eq(json_string_len(v), 5);
+      check_equal(json_type(v), JSON_STRING);
+      check_equal(json_string(v), "hello");
+      check_equal(json_string_len(v), 5);
       json_free(v);
     }
 
     it("should handle escape sequences in strings") {
       json_value_t *v = json_parse("\"hello\\nworld\"", 14);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_STRING);
-      check_str_eq(json_string(v), "hello\nworld");
+      check_equal(json_type(v), JSON_STRING);
+      check_equal(json_string(v), "hello\nworld");
       json_free(v);
     }
 
     it("should handle unicode escape sequences") {
       json_value_t *v = json_parse("\"\\u0041\\u0042\"", 14);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_STRING);
-      check_str_eq(json_string(v), "AB");
+      check_equal(json_type(v), JSON_STRING);
+      check_equal(json_string(v), "AB");
       json_free(v);
     }
 
@@ -319,10 +319,10 @@ spec("json_parser") {
       const char emoji[] = "\xF0\x9F\x98\x80";
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
-      check_size_eq(json_object_key_len(v, 0), 4);
-      check_mem_eq(json_object_key(v, 0), emoji, 4);
-      check_size_eq(json_string_len(json_object_value(v, 0)), 4);
-      check_mem_eq(json_string(json_object_value(v, 0)), emoji, 4);
+      check_equal(json_object_key_len(v, 0), 4);
+      check_equal(json_object_key(v, 0), emoji, 4);
+      check_equal(json_string_len(json_object_value(v, 0)), 4);
+      check_equal(json_string(json_object_value(v, 0)), emoji, 4);
       json_free(v);
     }
 
@@ -331,7 +331,7 @@ spec("json_parser") {
       for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
         json_value_t *v = json_parse(invalid[i], strlen(invalid[i]));
         check_null(v);
-        check_str_contains(json_get_error(), "surrogate");
+        check_contains(json_get_error(), "surrogate");
       }
     }
   }
@@ -340,31 +340,31 @@ spec("json_parser") {
     it("should parse empty arrays correctly") {
       json_value_t *v = json_parse("[]", 2);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_ARRAY);
-      check_size_eq(json_array_size(v), 0);
+      check_equal(json_type(v), JSON_ARRAY);
+      check_equal(json_array_size(v), 0);
       json_free(v);
     }
 
     it("should parse simple arrays correctly") {
       json_value_t *v = json_parse("[1, 2, 3]", 9);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_ARRAY);
-      check_size_eq(json_array_size(v), 3);
-      check_float_eq(json_number(json_array_get(v, 0)), 1.0, 0.001);
-      check_float_eq(json_number(json_array_get(v, 1)), 2.0, 0.001);
-      check_float_eq(json_number(json_array_get(v, 2)), 3.0, 0.001);
+      check_equal(json_type(v), JSON_ARRAY);
+      check_equal(json_array_size(v), 3);
+      check_within(json_number(json_array_get(v, 0)), 1.0, 0.001);
+      check_within(json_number(json_array_get(v, 1)), 2.0, 0.001);
+      check_within(json_number(json_array_get(v, 2)), 3.0, 0.001);
       json_free(v);
     }
 
     it("should handle nested arrays correctly") {
       json_value_t *v = json_parse("[[1, 2], [3, 4]]", 16);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_ARRAY);
-      check_size_eq(json_array_size(v), 2);
+      check_equal(json_type(v), JSON_ARRAY);
+      check_equal(json_array_size(v), 2);
 
       json_value_t *inner = json_array_get(v, 0);
-      check_int_eq(json_type(inner), JSON_ARRAY);
-      check_size_eq(json_array_size(inner), 2);
+      check_equal(json_type(inner), JSON_ARRAY);
+      check_equal(json_array_size(inner), 2);
 
       json_free(v);
     }
@@ -374,8 +374,8 @@ spec("json_parser") {
     it("should parse empty objects correctly") {
       json_value_t *v = json_parse("{}", 2);
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_OBJECT);
-      check_size_eq(json_object_size(v), 0);
+      check_equal(json_type(v), JSON_OBJECT);
+      check_equal(json_object_size(v), 0);
       json_free(v);
     }
 
@@ -383,11 +383,11 @@ spec("json_parser") {
       const char *json = "{\"name\": \"test\", \"value\": 42}";
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
-      check_int_eq(json_type(v), JSON_OBJECT);
-      check_size_eq(json_object_size(v), 2);
+      check_equal(json_type(v), JSON_OBJECT);
+      check_equal(json_object_size(v), 2);
 
-      check_str_eq(json_get_string(v, "name"), "test");
-      check_int_eq(json_get_int(v, "value", 0), 42);
+      check_equal(json_get_string(v, "name"), "test");
+      check_equal(json_get_int(v, "value", 0), 42);
 
       json_free(v);
     }
@@ -399,9 +399,9 @@ spec("json_parser") {
 
       json_value_t *outer = json_object_get(v, "outer");
       check_not_null(outer);
-      check_int_eq(json_type(outer), JSON_OBJECT);
+      check_equal(json_type(outer), JSON_OBJECT);
 
-      check_int_eq(json_get_int(outer, "inner", 0), 123);
+      check_equal(json_get_int(outer, "inner", 0), 123);
 
       json_free(v);
     }
@@ -418,13 +418,13 @@ spec("json_parser") {
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
 
-      check_str_eq(json_get_string(v, "string"), "hello");
-      check_float_eq(json_get_double(v, "number", 0), 3.14, 0.01);
+      check_equal(json_get_string(v, "string"), "hello");
+      check_within(json_get_double(v, "number", 0), 3.14, 0.01);
       check(json_get_bool(v, "bool", false));
       check(json_is_null(json_object_get(v, "null")));
 
       json_value_t *arr = json_object_get(v, "array");
-      check_size_eq(json_array_size(arr), 3);
+      check_equal(json_array_size(arr), 3);
 
       json_free(v);
     }
@@ -448,21 +448,21 @@ spec("json_parser") {
       check_not_null(v);
 
       json_value_t *listeners = json_object_get(v, "listeners");
-      check_size_eq(json_array_size(listeners), 2);
+      check_equal(json_array_size(listeners), 2);
 
       json_value_t *l0 = json_array_get(listeners, 0);
-      check_int_eq(json_get_int(l0, "port", 0), 1883);
-      check_str_eq(json_get_string(l0, "transport"), "tcp");
+      check_equal(json_get_int(l0, "port", 0), 1883);
+      check_equal(json_get_string(l0, "transport"), "tcp");
 
       json_value_t *upstreams = json_object_get(v, "upstreams");
-      check_size_eq(json_array_size(upstreams), 1);
+      check_equal(json_array_size(upstreams), 1);
 
       json_value_t *u0 = json_array_get(upstreams, 0);
-      check_str_eq(json_get_string(u0, "host"), "10.0.0.1");
-      check_int_eq(json_get_int(u0, "weight", 0), 3);
+      check_equal(json_get_string(u0, "host"), "10.0.0.1");
+      check_equal(json_get_int(u0, "weight", 0), 3);
 
       json_value_t *settings = json_object_get(v, "settings");
-      check_int_eq(json_get_int(settings, "max_clients", 0), 10000);
+      check_equal(json_get_int(settings, "max_clients", 0), 10000);
 
       json_free(v);
     }
@@ -478,7 +478,7 @@ spec("json_parser") {
       for (int i = 0; i < KEY_COUNT; ++i) {
         int written = snprintf(json + offset, BUFFER_CAPACITY - offset,
                                "%s\"key_%d\":%d", i == 0 ? "" : ",", i, i);
-        check_int_gt(written, 0);
+        check_greater(written, 0);
         check((size_t)written < BUFFER_CAPACITY - offset);
         offset += (size_t)written;
       }
@@ -487,13 +487,13 @@ spec("json_parser") {
 
       v = json_parse(json, offset);
       check_not_null(v);
-      check_size_eq(json_object_size(v), KEY_COUNT);
-      check_int_eq(json_get_int(v, "key_0", -1), 0);
-      check_int_eq(json_get_int(v, "key_63", -1), 63);
-      check_int_eq(json_get_int(v, "key_127", -1), 127);
+      check_equal(json_object_size(v), KEY_COUNT);
+      check_equal(json_get_int(v, "key_0", -1), 0);
+      check_equal(json_get_int(v, "key_63", -1), 63);
+      check_equal(json_get_int(v, "key_127", -1), 127);
       check_null(json_object_get(v, "missing"));
-      check_str_eq(json_object_key(v, KEY_COUNT - 1), "key_127");
-      check_int_eq((int)json_number(json_path_get(v, "$.key_127")), 127);
+      check_equal(json_object_key(v, KEY_COUNT - 1), "key_127");
+      check_equal((int)json_number(json_path_get(v, "$.key_127")), 127);
 
       json_free(v);
       free(json);
@@ -507,17 +507,17 @@ spec("json_parser") {
       check_not_null(obj);
       for (int i = 0; i < INITIAL_KEYS; ++i) {
         int written = snprintf(key, sizeof(key), "key_%d", i);
-        check_int_gt(written, 0);
+        check_greater(written, 0);
         json_object_set_number(obj, key, (double)i);
       }
       json_object_set_number(obj, "key_31", 999.0);
       json_object_set_number(obj, "key_40", 40.0);
 
-      check_size_eq(json_object_size(obj), INITIAL_KEYS + 1);
-      check_float_eq(json_get_double(obj, "key_31", -1.0), 999.0, 0.001);
-      check_float_eq(json_get_double(obj, "key_40", -1.0), 40.0, 0.001);
-      check_str_eq(json_object_key(obj, 31), "key_31");
-      check_str_eq(json_object_key(obj, INITIAL_KEYS), "key_40");
+      check_equal(json_object_size(obj), INITIAL_KEYS + 1);
+      check_within(json_get_double(obj, "key_31", -1.0), 999.0, 0.001);
+      check_within(json_get_double(obj, "key_40", -1.0), 40.0, 0.001);
+      check_equal(json_object_key(obj, 31), "key_31");
+      check_equal(json_object_key(obj, INITIAL_KEYS), "key_40");
       json_free(obj);
     }
 
@@ -531,16 +531,16 @@ spec("json_parser") {
       char *serialized;
 
       check_not_null(v);
-      check_size_eq(json_object_size(v), 17);
-      check_int_eq((int)json_number(json_object_get(v, "dup")), 1);
+      check_equal(json_object_size(v), 17);
+      check_equal((int)json_number(json_object_get(v, "dup")), 1);
       serialized = json_serialize(v, NULL);
       check_not_null(serialized);
-      check_str_eq(serialized, json);
+      check_equal(serialized, json);
       json_serialize_free(serialized);
       json_object_set_number(v, "dup", 7.0);
-      check_size_eq(json_object_size(v), 17);
-      check_int_eq((int)json_number(json_object_get(v, "dup")), 7);
-      check_int_eq((int)json_number(json_object_value(v, 16)), 2);
+      check_equal(json_object_size(v), 17);
+      check_equal((int)json_number(json_object_get(v, "dup")), 7);
+      check_equal((int)json_number(json_object_value(v, 16)), 2);
       json_free(v);
     }
   }
@@ -553,16 +553,16 @@ spec("json_parser") {
       check_not_null(obj);
       check_not_null(value);
       check_true(json_object_add_n(obj, "a\0b", 3, value));
-      check_size_eq(json_object_size(obj), 1);
-      check_size_eq(json_object_key_len(obj, 0), 3);
-      check_mem_eq(json_object_key(obj, 0), "a\0b", 3);
-      check_size_eq(json_string_len(json_object_value(obj, 0)), 3);
-      check_mem_eq(json_string(json_object_value(obj, 0)), "x\0y", 3);
+      check_equal(json_object_size(obj), 1);
+      check_equal(json_object_key_len(obj, 0), 3);
+      check_equal(json_object_key(obj, 0), "a\0b", 3);
+      check_equal(json_string_len(json_object_value(obj, 0)), 3);
+      check_equal(json_string(json_object_value(obj, 0)), "x\0y", 3);
 
       size_t len = 0;
       char *serialized = json_serialize(obj, &len);
       check_not_null(serialized);
-      check_str_eq(serialized, "{\"a\\u0000b\":\"x\\u0000y\"}");
+      check_equal(serialized, "{\"a\\u0000b\":\"x\\u0000y\"}");
       json_serialize_free(serialized);
       json_free(obj);
     }
@@ -573,11 +573,11 @@ spec("json_parser") {
       size_t len = 0;
       char *serialized = json_serialize(value, &len);
       check_not_null(serialized);
-      check_str_eq(serialized, "9007199254740993");
-      check_size_eq(len, 16);
+      check_equal(serialized, "9007199254740993");
+      check_equal(len, 16);
       json_serialize_free(serialized);
       serialized = json_serialize(copy, &len);
-      check_str_eq(serialized, "9007199254740993");
+      check_equal(serialized, "9007199254740993");
       json_serialize_free(serialized);
       json_free(copy);
       json_free(value);
@@ -593,10 +593,10 @@ spec("json_parser") {
       check_false(json_array_add_checked(array, NULL));
       check_false(json_object_add_checked(array, "key", value));
       check_false(json_object_add_n(array, "key", 3, value));
-      check_size_eq(json_array_size(array), 0);
+      check_equal(json_array_size(array), 0);
 
       check_true(json_array_add_checked(array, value));
-      check_size_eq(json_array_size(array), 1);
+      check_equal(json_array_size(array), 1);
       json_free(array);
     }
 
@@ -610,8 +610,8 @@ spec("json_parser") {
       check_not_null(value);
       check_true(json_array_add_checked(first, value));
       check_false(json_array_add_checked(second, value));
-      check_size_eq(json_array_size(first), 1);
-      check_size_eq(json_array_size(second), 0);
+      check_equal(json_array_size(first), 1);
+      check_equal(json_array_size(second), 0);
 
       json_free(second);
       json_free(first);
@@ -625,8 +625,8 @@ spec("json_parser") {
       check_not_null(child);
       check_true(json_array_add_checked(parent, child));
       check_false(json_array_add_checked(child, parent));
-      check_size_eq(json_array_size(parent), 1);
-      check_size_eq(json_array_size(child), 0);
+      check_equal(json_array_size(parent), 1);
+      check_equal(json_array_size(child), 0);
       json_free(parent);
     }
 
@@ -638,7 +638,7 @@ spec("json_parser") {
       check_not_null(array);
       json_array_add(array, json_create_bool(true));
       json_object_add(obj, "items", array);
-      check_size_eq(json_array_size(json_object_get(obj, "items")), 1);
+      check_equal(json_array_size(json_object_get(obj, "items")), 1);
       check_true(json_bool(json_array_get(json_object_get(obj, "items"), 0)));
       json_free(obj);
     }
@@ -647,7 +647,7 @@ spec("json_parser") {
       const char *json = "  \n\t { \"key\" : \"value\" } \n";
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
-      check_str_eq(json_get_string(v, "key"), "value");
+      check_equal(json_get_string(v, "key"), "value");
       json_free(v);
     }
 
@@ -655,15 +655,15 @@ spec("json_parser") {
       const char *json = "{\"a\": 1, \"b\": 2, \"c\": 3}";
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
-      check_size_eq(json_object_size(v), 3);
+      check_equal(json_object_size(v), 3);
 
-      check_str_eq(json_object_key(v, 0), "a");
-      check_str_eq(json_object_key(v, 1), "b");
-      check_str_eq(json_object_key(v, 2), "c");
+      check_equal(json_object_key(v, 0), "a");
+      check_equal(json_object_key(v, 1), "b");
+      check_equal(json_object_key(v, 2), "c");
 
-      check_float_eq(json_number(json_object_value(v, 0)), 1.0, 0.001);
-      check_float_eq(json_number(json_object_value(v, 1)), 2.0, 0.001);
-      check_float_eq(json_number(json_object_value(v, 2)), 3.0, 0.001);
+      check_within(json_number(json_object_value(v, 0)), 1.0, 0.001);
+      check_within(json_number(json_object_value(v, 1)), 2.0, 0.001);
+      check_within(json_number(json_object_value(v, 2)), 3.0, 0.001);
 
       json_free(v);
     }
@@ -682,7 +682,7 @@ spec("json_parser") {
 
       json_value_t *v = json_parse(json, WHITESPACE_BYTES + sizeof(suffix) - 1);
       check_not_null(v);
-      check_int_eq(json_get_int(v, "value", 0), 7);
+      check_equal(json_get_int(v, "value", 0), 7);
 
       json_free(v);
       free(json);
@@ -700,8 +700,8 @@ spec("json_parser") {
 
       json_value_t *v = json_parse(json, STRING_BYTES + 2);
       check_not_null(v);
-      check_size_eq(json_string_len(v), STRING_BYTES);
-      check_mem_eq(json_string(v), json + 1, STRING_BYTES);
+      check_equal(json_string_len(v), STRING_BYTES);
+      check_equal(json_string(v), json + 1, STRING_BYTES);
 
       json_free(v);
       free(json);
@@ -717,8 +717,8 @@ spec("json_parser") {
 
       json_value_t *selected = json_path_get(v, "$['\\uD83D\\uDE00']");
       check_not_null(selected);
-      check_int_eq((int)json_number(selected), 7);
-      check_mem_eq(json_object_key(v, 0), emoji, 4);
+      check_equal((int)json_number(selected), 7);
+      check_equal(json_object_key(v, 0), emoji, 4);
 
       check_null(json_path_get(v, "$['\\uD83D']"));
       check_not_null(json_path_get_error());
@@ -733,11 +733,11 @@ spec("json_parser") {
 
       json_value_t *port = json_path_get(v, "$.listeners[0].port");
       check_not_null(port);
-      check_int_eq((int)json_number(port), 1883);
+      check_equal((int)json_number(port), 1883);
 
       json_value_t *last = json_path_get(v, "$.listeners[-1].transport");
       check_not_null(last);
-      check_str_eq(json_string(last), "tls");
+      check_equal(json_string(last), "tls");
 
       json_free(v);
     }
@@ -749,9 +749,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.listeners[*].transport");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "tcp");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "tls");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "tcp");
+      check_equal(json_string(json_path_result_get(result, 1)), "tls");
 
       json_path_result_free(result);
       json_free(v);
@@ -766,9 +766,9 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.settings['max_clients','connect_timeout_ms']");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_int_eq((int)json_number(json_path_result_get(result, 0)), 10000);
-      check_int_eq((int)json_number(json_path_result_get(result, 1)), 5000);
+      check_equal(json_path_result_size(result), 2);
+      check_equal((int)json_number(json_path_result_get(result, 0)), 10000);
+      check_equal((int)json_number(json_path_result_get(result, 1)), 5000);
 
       json_path_result_free(result);
       json_free(v);
@@ -783,9 +783,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.listeners[@.port >= 8000].transport");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "tls");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "ws");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "tls");
+      check_equal(json_string(json_path_result_get(result, 1)), "ws");
 
       json_path_result_free(result);
       json_free(v);
@@ -818,10 +818,10 @@ spec("json_parser") {
 
       json_value_t *v = json_parse(json, offset);
       check_not_null(v);
-      check_size_eq(json_array_size(v), ELEMENTS);
-      check_float_eq(json_number(json_array_get(v, 0)), 0.0, 0.001);
-      check_float_eq(json_number(json_array_get(v, 2048)), 2048.0, 0.001);
-      check_float_eq(json_number(json_array_get(v, ELEMENTS - 1)), 4095.0, 0.001);
+      check_equal(json_array_size(v), ELEMENTS);
+      check_within(json_number(json_array_get(v, 0)), 0.0, 0.001);
+      check_within(json_number(json_array_get(v, 2048)), 2048.0, 0.001);
+      check_within(json_number(json_array_get(v, ELEMENTS - 1)), 4095.0, 0.001);
 
       json_free(v);
       free(json);
@@ -841,8 +841,8 @@ spec("json_parser") {
       check_not_null(first);
       check_not_null(second);
       memset(expr, 'x', sizeof(expr) - 1U);
-      check_str_eq(json_string(json_path_get_compiled(first, program)), "tls");
-      check_str_eq(json_string(json_path_get_compiled(second, program)), "ws");
+      check_equal(json_string(json_path_get_compiled(first, program)), "tls");
+      check_equal(json_string(json_path_get_compiled(second, program)), "ws");
 
       json_free(second);
       json_free(first);
@@ -870,12 +870,12 @@ spec("json_parser") {
       union_result = json_path_query_compiled(root, union_program);
       check_not_null(filtered);
       check_not_null(union_result);
-      check_size_eq(json_path_result_size(filtered), 2);
-      check_str_eq(json_string(json_path_result_get(filtered, 0)), "tls");
-      check_str_eq(json_string(json_path_result_get(filtered, 1)), "ws");
-      check_size_eq(json_path_result_size(union_result), 2);
-      check_int_eq((int)json_number(json_path_result_get(union_result, 0)), 10000);
-      check_int_eq((int)json_number(json_path_result_get(union_result, 1)), 5000);
+      check_equal(json_path_result_size(filtered), 2);
+      check_equal(json_string(json_path_result_get(filtered, 0)), "tls");
+      check_equal(json_string(json_path_result_get(filtered, 1)), "ws");
+      check_equal(json_path_result_size(union_result), 2);
+      check_equal((int)json_number(json_path_result_get(union_result, 0)), 10000);
+      check_equal((int)json_number(json_path_result_get(union_result, 1)), 5000);
 
       json_path_result_free(union_result);
       json_path_result_free(filtered);
@@ -893,15 +893,15 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.items[@.name ~ '^[a-z]+-[0-9]+$'].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "alpha-1");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "beta-2");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "alpha-1");
+      check_equal(json_string(json_path_result_get(result, 1)), "beta-2");
 
       json_path_result_t *anchored =
           json_path_query(v, "$.items[@.name ~ '^alpha'].name");
       check_not_null(anchored);
-      check_size_eq(json_path_result_size(anchored), 1);
-      check_str_eq(json_string(json_path_result_get(anchored, 0)), "alpha-1");
+      check_equal(json_path_result_size(anchored), 1);
+      check_equal(json_string(json_path_result_get(anchored, 0)), "alpha-1");
 
       json_path_result_free(anchored);
       json_path_result_free(result);
@@ -917,9 +917,9 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.items[@.code ~ /^[A-C]-[0-9]+$/].code");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "A-1");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "B-22");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "A-1");
+      check_equal(json_string(json_path_result_get(result, 1)), "B-22");
 
       json_path_result_free(result);
       json_free(v);
@@ -934,14 +934,14 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.items[contains(@.name, 'alph')].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "alpha-1");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "alphabet");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "alpha-1");
+      check_equal(json_string(json_path_result_get(result, 1)), "alphabet");
 
       json_path_result_t *missing =
           json_path_query(v, "$.items[contains(@.name, 'xyz')].name");
       check_not_null(missing);
-      check_size_eq(json_path_result_size(missing), 0);
+      check_equal(json_path_result_size(missing), 0);
 
       json_path_result_free(missing);
       json_path_result_free(result);
@@ -955,17 +955,17 @@ spec("json_parser") {
 
       json_path_result_t *empty = json_path_query(v, "$.items[contains(@.name, '')].name");
       check_not_null(empty);
-      check_size_eq(json_path_result_size(empty), 3);
+      check_equal(json_path_result_size(empty), 3);
 
       json_path_result_t *whole = json_path_query(v, "$.items[contains(@.name, 'alpha-1')].name");
       check_not_null(whole);
-      check_size_eq(json_path_result_size(whole), 1);
-      check_str_eq(json_string(json_path_result_get(whole, 0)), "alpha-1");
+      check_equal(json_path_result_size(whole), 1);
+      check_equal(json_string(json_path_result_get(whole, 0)), "alpha-1");
 
       json_path_result_t *tail = json_path_query(v, "$.items[contains(@.name, 'eta')].name");
       check_not_null(tail);
-      check_size_eq(json_path_result_size(tail), 1);
-      check_str_eq(json_string(json_path_result_get(tail, 0)), "beta");
+      check_equal(json_path_result_size(tail), 1);
+      check_equal(json_string(json_path_result_get(tail, 0)), "beta");
 
       json_path_result_free(tail);
       json_path_result_free(whole);
@@ -977,7 +977,7 @@ spec("json_parser") {
       const char *json = "{\"contains\":\"payload\",\"items\":[1]}";
       json_value_t *v = json_parse(json, strlen(json));
       check_not_null(v);
-      check_str_eq(json_string(json_path_get(v, "$.contains")), "payload");
+      check_equal(json_string(json_path_get(v, "$.contains")), "payload");
       json_free(v);
     }
 
@@ -988,7 +988,7 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.items[@.name ~ '['].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
 
       json_path_result_free(result);
       json_free(v);
@@ -1011,12 +1011,12 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.store..price");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 5);
-      check_float_eq(json_number(json_path_result_get(result, 0)), 8.95, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 1)), 12.99, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 2)), 8.99, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 3)), 22.99, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
+      check_equal(json_path_result_size(result), 5);
+      check_within(json_number(json_path_result_get(result, 0)), 8.95, 0.001);
+      check_within(json_number(json_path_result_get(result, 1)), 12.99, 0.001);
+      check_within(json_number(json_path_result_get(result, 2)), 8.99, 0.001);
+      check_within(json_number(json_path_result_get(result, 3)), 22.99, 0.001);
+      check_within(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
 
       json_path_result_free(result);
       json_free(v);
@@ -1038,11 +1038,11 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$..author");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 4);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "Nigel Rees");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "Evelyn Waugh");
-      check_str_eq(json_string(json_path_result_get(result, 2)), "Herman Melville");
-      check_str_eq(json_string(json_path_result_get(result, 3)), "J. R. R. Tolkien");
+      check_equal(json_path_result_size(result), 4);
+      check_equal(json_string(json_path_result_get(result, 0)), "Nigel Rees");
+      check_equal(json_string(json_path_result_get(result, 1)), "Evelyn Waugh");
+      check_equal(json_string(json_path_result_get(result, 2)), "Herman Melville");
+      check_equal(json_string(json_path_result_get(result, 3)), "J. R. R. Tolkien");
 
       json_path_result_free(result);
       json_free(v);
@@ -1057,14 +1057,14 @@ spec("json_parser") {
 
       json_path_result_t *by_index = json_path_query(v, "$..book[2]");
       check_not_null(by_index);
-      check_size_eq(json_path_result_size(by_index), 1);
-      check_str_eq(json_string(json_path_get(json_path_result_get(by_index, 0), "$.title")),
+      check_equal(json_path_result_size(by_index), 1);
+      check_equal(json_string(json_path_get(json_path_result_get(by_index, 0), "$.title")),
                    "Moby Dick");
 
       json_path_result_t *by_negative = json_path_query(v, "$..book[-1]");
       check_not_null(by_negative);
-      check_size_eq(json_path_result_size(by_negative), 1);
-      check_str_eq(json_string(json_path_get(json_path_result_get(by_negative, 0), "$.title")),
+      check_equal(json_path_result_size(by_negative), 1);
+      check_equal(json_string(json_path_get(json_path_result_get(by_negative, 0), "$.title")),
                    "The Lord of the Rings");
 
       json_path_result_free(by_negative);
@@ -1088,11 +1088,11 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$..*");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 27);
-      check_int_eq((int)json_type(json_path_result_get(result, 0)), (int)JSON_OBJECT);
-      check_int_eq((int)json_type(json_path_result_get(result, 1)), (int)JSON_ARRAY);
-      check_str_eq(json_string(json_path_result_get(result, 9)), "Sayings of the Century");
-      check_float_eq(json_number(json_path_result_get(result, 26)), 19.95, 0.001);
+      check_equal(json_path_result_size(result), 27);
+      check_equal((int)json_type(json_path_result_get(result, 0)), (int)JSON_OBJECT);
+      check_equal((int)json_type(json_path_result_get(result, 1)), (int)JSON_ARRAY);
+      check_equal(json_string(json_path_result_get(result, 9)), "Sayings of the Century");
+      check_within(json_number(json_path_result_get(result, 26)), 19.95, 0.001);
 
       json_path_result_free(result);
       json_free(v);
@@ -1108,10 +1108,10 @@ spec("json_parser") {
       json_path_result_t *bracket = json_path_query(v, "$..['price']");
       check_not_null(shorthand);
       check_not_null(bracket);
-      check_size_eq(json_path_result_size(shorthand), 3);
-      check_size_eq(json_path_result_size(bracket), 3);
+      check_equal(json_path_result_size(shorthand), 3);
+      check_equal(json_path_result_size(bracket), 3);
       for (size_t i = 0; i < 3; ++i) {
-        check_float_eq(json_number(json_path_result_get(shorthand, i)),
+        check_within(json_number(json_path_result_get(shorthand, i)),
                        json_number(json_path_result_get(bracket, i)), 0.001);
       }
 
@@ -1129,12 +1129,12 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$..['price','author']");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 5);
-      check_float_eq(json_number(json_path_result_get(result, 0)), 8.95, 0.001);
-      check_str_eq(json_string(json_path_result_get(result, 1)), "Nigel Rees");
-      check_float_eq(json_number(json_path_result_get(result, 2)), 12.99, 0.001);
-      check_str_eq(json_string(json_path_result_get(result, 3)), "Evelyn Waugh");
-      check_float_eq(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
+      check_equal(json_path_result_size(result), 5);
+      check_within(json_number(json_path_result_get(result, 0)), 8.95, 0.001);
+      check_equal(json_string(json_path_result_get(result, 1)), "Nigel Rees");
+      check_within(json_number(json_path_result_get(result, 2)), 12.99, 0.001);
+      check_equal(json_string(json_path_result_get(result, 3)), "Evelyn Waugh");
+      check_within(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
 
       json_path_result_free(result);
       json_free(v);
@@ -1147,9 +1147,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$['b','a']");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_int_eq((int)json_number(json_path_result_get(result, 0)), 2);
-      check_int_eq((int)json_number(json_path_result_get(result, 1)), 1);
+      check_equal(json_path_result_size(result), 2);
+      check_equal((int)json_number(json_path_result_get(result, 0)), 2);
+      check_equal((int)json_number(json_path_result_get(result, 1)), 1);
 
       json_path_result_free(result);
       json_free(v);
@@ -1162,9 +1162,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.items[1,0]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_int_eq((int)json_number(json_path_result_get(result, 0)), 20);
-      check_int_eq((int)json_number(json_path_result_get(result, 1)), 10);
+      check_equal(json_path_result_size(result), 2);
+      check_equal((int)json_number(json_path_result_get(result, 0)), 20);
+      check_equal((int)json_number(json_path_result_get(result, 1)), 10);
 
       json_path_result_free(result);
       json_free(v);
@@ -1177,9 +1177,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.settings['price','price']");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_float_eq(json_number(json_path_result_get(result, 0)), 19.95, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 1)), 19.95, 0.001);
+      check_equal(json_path_result_size(result), 2);
+      check_within(json_number(json_path_result_get(result, 0)), 19.95, 0.001);
+      check_within(json_number(json_path_result_get(result, 1)), 19.95, 0.001);
 
       json_path_result_free(result);
       json_free(v);
@@ -1194,12 +1194,12 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$..['author','price']");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 5);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "Nigel Rees");
-      check_float_eq(json_number(json_path_result_get(result, 1)), 8.95, 0.001);
-      check_str_eq(json_string(json_path_result_get(result, 2)), "Evelyn Waugh");
-      check_float_eq(json_number(json_path_result_get(result, 3)), 12.99, 0.001);
-      check_float_eq(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
+      check_equal(json_path_result_size(result), 5);
+      check_equal(json_string(json_path_result_get(result, 0)), "Nigel Rees");
+      check_within(json_number(json_path_result_get(result, 1)), 8.95, 0.001);
+      check_equal(json_string(json_path_result_get(result, 2)), "Evelyn Waugh");
+      check_within(json_number(json_path_result_get(result, 3)), 12.99, 0.001);
+      check_within(json_number(json_path_result_get(result, 4)), 19.95, 0.001);
 
       json_path_result_free(result);
       json_free(v);
@@ -1213,9 +1213,9 @@ spec("json_parser") {
 
       json_path_result_t *result = json_path_query(v, "$.store['bicycle','book'].title");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "B");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "A");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "B");
+      check_equal(json_string(json_path_result_get(result, 1)), "A");
 
       json_path_result_free(result);
       json_free(v);
@@ -1229,7 +1229,7 @@ spec("json_parser") {
 
       json_value_t *price = json_path_get(v, "$..price");
       check_not_null(price);
-      check_float_eq(json_number(price), 8.95, 0.001);
+      check_within(json_number(price), 8.95, 0.001);
 
       json_free(v);
     }
@@ -1241,7 +1241,7 @@ spec("json_parser") {
 
       check_not_null(program);
       check_null(json_path_stream_create(program, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
 
       json_path_program_free(program);
     }
@@ -1268,15 +1268,15 @@ spec("json_parser") {
       check_not_null(program);
       check_not_null(stream);
       for (size_t i = 0; i < strlen(json); ++i)
-        check_int_eq(json_path_stream_feed(stream, json + i, 1), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
+        check_equal(json_path_stream_feed(stream, json + i, 1), 0);
+      check_equal(json_path_stream_finish(stream), 0);
       check_null(json_path_stream_error(stream));
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.match_starts, 2);
-      check_size_eq(capture.match_ends, 2);
-      check_size_eq(capture.strings, 2);
-      check_str_eq(capture.string_values[0], "Alice");
-      check_str_eq(capture.string_values[1], "Bob");
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.match_starts, 2);
+      check_equal(capture.match_ends, 2);
+      check_equal(capture.strings, 2);
+      check_equal(capture.string_values[0], "Alice");
+      check_equal(capture.string_values[1], "Bob");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1292,17 +1292,17 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 1);
-      check_int_eq(capture.last_match_type, JSON_OBJECT);
-      check_size_eq(capture.objects_started, 1);
-      check_size_eq(capture.objects_ended, 1);
-      check_size_eq(capture.keys, 2);
-      check_size_eq(capture.strings, 1);
-      check_size_eq(capture.numbers, 1);
-      check_str_eq(capture.string_values[0], "B");
-      check_str_eq(capture.number_values[0], "2");
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 1);
+      check_equal(capture.last_match_type, JSON_OBJECT);
+      check_equal(capture.objects_started, 1);
+      check_equal(capture.objects_ended, 1);
+      check_equal(capture.keys, 2);
+      check_equal(capture.strings, 1);
+      check_equal(capture.numbers, 1);
+      check_equal(capture.string_values[0], "B");
+      check_equal(capture.number_values[0], "2");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1317,13 +1317,13 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, 11), 0);
-      check_int_eq(json_path_stream_feed(stream, json + 11, strlen(json) - 11), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.numbers, 2);
-      check_str_eq(capture.number_values[0], "100");
-      check_str_eq(capture.number_values[1], "200");
+      check_equal(json_path_stream_feed(stream, json, 11), 0);
+      check_equal(json_path_stream_feed(stream, json + 11, strlen(json) - 11), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.numbers, 2);
+      check_equal(capture.number_values[0], "100");
+      check_equal(capture.number_values[1], "200");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1338,12 +1338,12 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.numbers, 2);
-      check_str_eq(capture.number_values[0], "10");
-      check_str_eq(capture.number_values[1], "30");
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.numbers, 2);
+      check_equal(capture.number_values[0], "10");
+      check_equal(capture.number_values[1], "30");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1359,9 +1359,9 @@ spec("json_parser") {
       check_not_null(filter);
       check_not_null(negative);
       check_null(json_path_stream_create(filter, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
       check_null(json_path_stream_create(negative, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
 
       json_path_program_free(negative);
       json_path_program_free(filter);
@@ -1377,9 +1377,9 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, "{\"name\":\"stop\"}", 15), -1);
-      check_str_contains(json_path_stream_error(stream), "callback");
-      check_size_eq(json_path_stream_match_count(stream), 0);
+      check_equal(json_path_stream_feed(stream, "{\"name\":\"stop\"}", 15), -1);
+      check_contains(json_path_stream_error(stream), "callback");
+      check_equal(json_path_stream_match_count(stream), 0);
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1391,9 +1391,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[1:3]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "b");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "b");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1404,9 +1404,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[5:]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "f");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "g");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "f");
+      check_equal(json_string(json_path_result_get(result, 1)), "g");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1417,9 +1417,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[1:5:2]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "b");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "d");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "b");
+      check_equal(json_string(json_path_result_get(result, 1)), "d");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1430,9 +1430,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[5:1:-2]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "f");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "d");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "f");
+      check_equal(json_string(json_path_result_get(result, 1)), "d");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1443,10 +1443,10 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[::-1]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 7);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "g");
-      check_str_eq(json_string(json_path_result_get(result, 3)), "d");
-      check_str_eq(json_string(json_path_result_get(result, 6)), "a");
+      check_equal(json_path_result_size(result), 7);
+      check_equal(json_string(json_path_result_get(result, 0)), "g");
+      check_equal(json_string(json_path_result_get(result, 3)), "d");
+      check_equal(json_string(json_path_result_get(result, 6)), "a");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1457,11 +1457,11 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[::2]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 4);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "a");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
-      check_str_eq(json_string(json_path_result_get(result, 2)), "e");
-      check_str_eq(json_string(json_path_result_get(result, 3)), "g");
+      check_equal(json_path_result_size(result), 4);
+      check_equal(json_string(json_path_result_get(result, 0)), "a");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_string(json_path_result_get(result, 2)), "e");
+      check_equal(json_string(json_path_result_get(result, 3)), "g");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1472,7 +1472,7 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[::0]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
       json_path_result_free(result);
       json_free(v);
     }
@@ -1483,7 +1483,7 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[3:1]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
       json_path_result_free(result);
       json_free(v);
     }
@@ -1494,9 +1494,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[-3:-1]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "e");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "f");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "e");
+      check_equal(json_string(json_path_result_get(result, 1)), "f");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1507,9 +1507,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.arr[:-2]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 5);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "a");
-      check_str_eq(json_string(json_path_result_get(result, 4)), "e");
+      check_equal(json_path_result_size(result), 5);
+      check_equal(json_string(json_path_result_get(result, 0)), "a");
+      check_equal(json_string(json_path_result_get(result, 4)), "e");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1520,9 +1520,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$[1:3]");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "b");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "b");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1533,7 +1533,7 @@ spec("json_parser") {
       check_not_null(v);
       json_value_t *value = json_path_get(v, "$.arr[2:4]");
       check_not_null(value);
-      check_str_eq(json_string(value), "c");
+      check_equal(json_string(value), "c");
       json_free(v);
     }
 
@@ -1544,9 +1544,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.store.book[0:2].title");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "a");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "b");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "a");
+      check_equal(json_string(json_path_result_get(result, 1)), "b");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1557,12 +1557,12 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *sliced = json_path_query(v, "$..arr[0:2]");
       check_not_null(sliced);
-      check_size_eq(json_path_result_size(sliced), 2);
-      check_int_eq((int)json_number(json_path_result_get(sliced, 0)), 1);
-      check_int_eq((int)json_number(json_path_result_get(sliced, 1)), 2);
+      check_equal(json_path_result_size(sliced), 2);
+      check_equal((int)json_number(json_path_result_get(sliced, 0)), 1);
+      check_equal((int)json_number(json_path_result_get(sliced, 1)), 2);
       json_path_result_t *object_slice = json_path_query(v, "$.obj[0:2]");
       check_not_null(object_slice);
-      check_size_eq(json_path_result_size(object_slice), 0);
+      check_equal(json_path_result_size(object_slice), 0);
       json_path_result_free(object_slice);
       json_path_result_free(sliced);
       json_free(v);
@@ -1576,9 +1576,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.items[?@.price < 10].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "a");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "a");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1593,11 +1593,11 @@ spec("json_parser") {
       json_path_result_t *paren = json_path_query(v, "$.items[(@.price < 10)].name");
       check_not_null(qmark);
       check_not_null(paren);
-      check_size_eq(json_path_result_size(qmark), 2);
-      check_size_eq(json_path_result_size(paren), 2);
-      check_str_eq(json_string(json_path_result_get(qmark, 0)),
+      check_equal(json_path_result_size(qmark), 2);
+      check_equal(json_path_result_size(paren), 2);
+      check_equal(json_string(json_path_result_get(qmark, 0)),
                    json_string(json_path_result_get(paren, 0)));
-      check_str_eq(json_string(json_path_result_get(qmark, 1)),
+      check_equal(json_string(json_path_result_get(qmark, 1)),
                    json_string(json_path_result_get(paren, 1)));
       json_path_result_free(paren);
       json_path_result_free(qmark);
@@ -1612,9 +1612,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.items[?@.isbn].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "a");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "a");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1628,8 +1628,8 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.items[?(@.price < 10 && @.stock > 0)].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 1);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "c");
+      check_equal(json_path_result_size(result), 1);
+      check_equal(json_string(json_path_result_get(result, 0)), "c");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1643,9 +1643,9 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$..book[?@.price < 10].title");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "t1");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "t3");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "t1");
+      check_equal(json_string(json_path_result_get(result, 1)), "t3");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1658,15 +1658,15 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.items[?2 < @.port].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "b");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "c");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "b");
+      check_equal(json_string(json_path_result_get(result, 1)), "c");
 
       json_path_result_t *strings =
           json_path_query(v, "$.items[?'b' == @.name].port");
       check_not_null(strings);
-      check_size_eq(json_path_result_size(strings), 1);
-      check_int_eq((int)json_number(json_path_result_get(strings, 0)), 5);
+      check_equal(json_path_result_size(strings), 1);
+      check_equal((int)json_number(json_path_result_get(strings, 0)), 5);
 
       json_path_result_free(strings);
       json_path_result_free(result);
@@ -1681,8 +1681,8 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.items[?!@.isbn].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 1);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "b");
+      check_equal(json_path_result_size(result), 1);
+      check_equal(json_string(json_path_result_get(result, 0)), "b");
       json_path_result_free(result);
       json_free(v);
     }
@@ -1694,8 +1694,8 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *result = json_path_query(v, "$.items[?@.name == 'alpha'].price");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 1);
-      check_int_eq((int)json_number(json_path_result_get(result, 0)), 5);
+      check_equal(json_path_result_size(result), 1);
+      check_equal((int)json_number(json_path_result_get(result, 0)), 5);
       json_path_result_free(result);
       json_free(v);
     }
@@ -1707,7 +1707,7 @@ spec("json_parser") {
 
       check_not_null(program);
       check_null(json_path_stream_create(program, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
 
       json_path_program_free(program);
     }
@@ -1719,7 +1719,7 @@ spec("json_parser") {
 
       check_not_null(program);
       check_null(json_path_stream_create(program, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
 
       json_path_program_free(program);
     }
@@ -1733,14 +1733,14 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
       check_null(json_path_stream_error(stream));
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.match_starts, 1);
-      check_size_eq(capture.match_ends, 1);
-      check_size_eq(capture.numbers, 1);
-      check_str_eq(capture.number_values[0], "100");
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.match_starts, 1);
+      check_equal(capture.match_ends, 1);
+      check_equal(capture.numbers, 1);
+      check_equal(capture.number_values[0], "100");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1756,24 +1756,24 @@ spec("json_parser") {
 
       json_path_result_t *long_title = json_path_query(v, "$.store.book[?length(@.title) > 10].title");
       check_not_null(long_title);
-      check_size_eq(json_path_result_size(long_title), 1);
-      check_str_eq(json_string(json_path_result_get(long_title, 0)), "a very long title here");
+      check_equal(json_path_result_size(long_title), 1);
+      check_equal(json_string(json_path_result_get(long_title, 0)), "a very long title here");
 
       json_path_result_t *two_authors = json_path_query(v, "$.store.book[?count(@.authors[*]) > 1].title");
       check_not_null(two_authors);
-      check_size_eq(json_path_result_size(two_authors), 2);
-      check_str_eq(json_string(json_path_result_get(two_authors, 0)), "a very long title here");
-      check_str_eq(json_string(json_path_result_get(two_authors, 1)), "xy");
+      check_equal(json_path_result_size(two_authors), 2);
+      check_equal(json_string(json_path_result_get(two_authors, 0)), "a very long title here");
+      check_equal(json_string(json_path_result_get(two_authors, 1)), "xy");
 
       json_path_result_t *two_members = json_path_query(v, "$.store.book[?length(@.meta) == 2].title");
       check_not_null(two_members);
-      check_size_eq(json_path_result_size(two_members), 1);
-      check_str_eq(json_string(json_path_result_get(two_members, 0)), "abc");
+      check_equal(json_path_result_size(two_members), 1);
+      check_equal(json_string(json_path_result_get(two_members, 0)), "abc");
 
       json_path_result_t *exact_count = json_path_query(v, "$.store.book[?count(@.authors[*]) == 3].title");
       check_not_null(exact_count);
-      check_size_eq(json_path_result_size(exact_count), 1);
-      check_str_eq(json_string(json_path_result_get(exact_count, 0)), "xy");
+      check_equal(json_path_result_size(exact_count), 1);
+      check_equal(json_string(json_path_result_get(exact_count, 0)), "xy");
 
       json_path_result_free(exact_count);
       json_path_result_free(two_members);
@@ -1789,14 +1789,14 @@ spec("json_parser") {
 
       json_path_result_t *big = json_path_query(v, "$.groups[?length() > 2]");
       check_not_null(big);
-      check_size_eq(json_path_result_size(big), 1);
-      check_str_eq(json_string(json_array_get(json_path_result_get(big, 0), 0)), "a");
-      check_str_eq(json_string(json_array_get(json_path_result_get(big, 0), 2)), "c");
+      check_equal(json_path_result_size(big), 1);
+      check_equal(json_string(json_array_get(json_path_result_get(big, 0), 0)), "a");
+      check_equal(json_string(json_array_get(json_path_result_get(big, 0), 2)), "c");
 
       json_path_result_t *solo = json_path_query(v, "$.solo[?length() == 1]");
       check_not_null(solo);
-      check_size_eq(json_path_result_size(solo), 1);
-      check_str_eq(json_string(json_array_get(json_path_result_get(solo, 0), 0)), "a");
+      check_equal(json_path_result_size(solo), 1);
+      check_equal(json_string(json_array_get(json_path_result_get(solo, 0), 0)), "a");
 
       json_path_result_free(solo);
       json_path_result_free(big);
@@ -1810,13 +1810,13 @@ spec("json_parser") {
 
       json_path_result_t *two_chars = json_path_query(v, "$.items[?length(@.name) == 2].name");
       check_not_null(two_chars);
-      check_size_eq(json_path_result_size(two_chars), 1);
-      check_str_eq(json_string(json_path_result_get(two_chars, 0)), "中文");
+      check_equal(json_path_result_size(two_chars), 1);
+      check_equal(json_string(json_path_result_get(two_chars, 0)), "中文");
 
       json_path_result_t *one_char = json_path_query(v, "$.items[?length(@.name) == 1].name");
       check_not_null(one_char);
-      check_size_eq(json_path_result_size(one_char), 1);
-      check_str_eq(json_string(json_path_result_get(one_char, 0)), "é");
+      check_equal(json_path_result_size(one_char), 1);
+      check_equal(json_string(json_path_result_get(one_char, 0)), "é");
 
       json_path_result_free(one_char);
       json_path_result_free(two_chars);
@@ -1833,23 +1833,23 @@ spec("json_parser") {
       /* match() requires the whole string to match the pattern. */
       json_path_result_t *full = json_path_query(v, "$.items[?match(@.code, 'A-1')].name");
       check_not_null(full);
-      check_size_eq(json_path_result_size(full), 1);
-      check_str_eq(json_string(json_path_result_get(full, 0)), "alpha");
+      check_equal(json_path_result_size(full), 1);
+      check_equal(json_string(json_path_result_get(full, 0)), "alpha");
 
       /* search() finds the pattern anywhere in the string. */
       json_path_result_t *any = json_path_query(v, "$.items[?search(@.code, 'A-1')].name");
       check_not_null(any);
-      check_size_eq(json_path_result_size(any), 2);
-      check_str_eq(json_string(json_path_result_get(any, 0)), "alpha");
-      check_str_eq(json_string(json_path_result_get(any, 1)), "gamma");
+      check_equal(json_path_result_size(any), 2);
+      check_equal(json_string(json_path_result_get(any, 0)), "alpha");
+      check_equal(json_string(json_path_result_get(any, 1)), "gamma");
 
       /* Anchored patterns work with both forms. */
       json_path_result_t *anchored =
           json_path_query(v, "$.items[?match(@.code, '^[A-C]-[0-9]+$')].name");
       check_not_null(anchored);
-      check_size_eq(json_path_result_size(anchored), 2);
-      check_str_eq(json_string(json_path_result_get(anchored, 0)), "alpha");
-      check_str_eq(json_string(json_path_result_get(anchored, 1)), "beta");
+      check_equal(json_path_result_size(anchored), 2);
+      check_equal(json_string(json_path_result_get(anchored, 0)), "alpha");
+      check_equal(json_string(json_path_result_get(anchored, 1)), "beta");
 
       json_path_result_free(anchored);
       json_path_result_free(any);
@@ -1865,13 +1865,13 @@ spec("json_parser") {
       json_path_result_t *result =
           json_path_query(v, "$.items[?contains_ci(@.name, 'alph')].name");
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 2);
-      check_str_eq(json_string(json_path_result_get(result, 0)), "Alpha-1");
-      check_str_eq(json_string(json_path_result_get(result, 1)), "ALPHABET");
+      check_equal(json_path_result_size(result), 2);
+      check_equal(json_string(json_path_result_get(result, 0)), "Alpha-1");
+      check_equal(json_string(json_path_result_get(result, 1)), "ALPHABET");
 
       json_path_result_t *missing = json_path_query(v, "$.items[?contains_ci(@.name, 'zzz')].name");
       check_not_null(missing);
-      check_size_eq(json_path_result_size(missing), 0);
+      check_equal(json_path_result_size(missing), 0);
 
       json_path_result_free(missing);
       json_path_result_free(result);
@@ -1884,7 +1884,7 @@ spec("json_parser") {
       check_not_null(v);
       json_value_t *value = json_path_get(v, "$.contains_ci");
       check_not_null(value);
-      check_int_eq((int)json_number(value), 42);
+      check_equal((int)json_number(value), 42);
       json_free(v);
     }
 
@@ -1894,10 +1894,10 @@ spec("json_parser") {
       check_not_null(v);
       json_value_t *m = json_path_get(v, "$.match");
       check_not_null(m);
-      check_int_eq((int)json_number(m), 1);
+      check_equal((int)json_number(m), 1);
       json_value_t *s = json_path_get(v, "$.search");
       check_not_null(s);
-      check_int_eq((int)json_number(s), 2);
+      check_equal((int)json_number(s), 2);
       json_free(v);
     }
 
@@ -1907,10 +1907,10 @@ spec("json_parser") {
       check_not_null(v);
       json_value_t *length = json_path_get(v, "$.length");
       check_not_null(length);
-      check_int_eq((int)json_number(length), 5);
+      check_equal((int)json_number(length), 5);
       json_value_t *count = json_path_get(v, "$.count");
       check_not_null(count);
-      check_int_eq((int)json_number(count), 7);
+      check_equal((int)json_number(count), 7);
       json_free(v);
     }
 
@@ -1933,7 +1933,7 @@ spec("json_parser") {
       check_not_null(program);
       json_path_result_t *result = json_path_query_compiled(v, program);
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
       json_path_result_free(result);
       json_path_program_free(program);
       json_free(v);
@@ -1945,10 +1945,10 @@ spec("json_parser") {
       check_not_null(v);
       json_path_result_t *all = json_path_query(v, "$.items[?true]");
       check_not_null(all);
-      check_size_eq(json_path_result_size(all), 3);
+      check_equal(json_path_result_size(all), 3);
       json_path_result_t *none = json_path_query(v, "$.items[?false]");
       check_not_null(none);
-      check_size_eq(json_path_result_size(none), 0);
+      check_equal(json_path_result_size(none), 0);
       json_path_result_free(none);
       json_path_result_free(all);
       json_free(v);
@@ -1963,16 +1963,16 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
       check_null(json_path_stream_error(stream));
-      check_size_eq(json_path_stream_match_count(stream), 3);
-      check_size_eq(capture.match_starts, 3);
-      check_size_eq(capture.match_ends, 3);
-      check_size_eq(capture.numbers, 3);
-      check_str_eq(capture.number_values[0], "3");
-      check_str_eq(capture.number_values[1], "4");
-      check_str_eq(capture.number_values[2], "5");
+      check_equal(json_path_stream_match_count(stream), 3);
+      check_equal(capture.match_starts, 3);
+      check_equal(capture.match_ends, 3);
+      check_equal(capture.numbers, 3);
+      check_equal(capture.number_values[0], "3");
+      check_equal(capture.number_values[1], "4");
+      check_equal(capture.number_values[2], "5");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -1987,10 +1987,10 @@ spec("json_parser") {
 
       check_not_null(eq);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 1);
-      check_str_eq(capture.number_values[0], "2");
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 1);
+      check_equal(capture.number_values[0], "2");
 
       json_path_stream_destroy(stream);
       json_path_program_free(eq);
@@ -2000,10 +2000,10 @@ spec("json_parser") {
       json_path_stream_t *rstream = json_path_stream_create(reversed, &handler, &capture);
       check_not_null(reversed);
       check_not_null(rstream);
-      check_int_eq(json_path_stream_feed(rstream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(rstream), 0);
-      check_size_eq(json_path_stream_match_count(rstream), 1);
-      check_str_eq(capture.number_values[0], "3");
+      check_equal(json_path_stream_feed(rstream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(rstream), 0);
+      check_equal(json_path_stream_match_count(rstream), 1);
+      check_equal(capture.number_values[0], "3");
 
       json_path_stream_destroy(rstream);
       json_path_program_free(reversed);
@@ -2018,12 +2018,12 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.strings, 2);
-      check_str_eq(capture.string_values[0], "on");
-      check_str_eq(capture.string_values[1], "on");
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.strings, 2);
+      check_equal(capture.string_values[0], "on");
+      check_equal(capture.string_values[1], "on");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -2038,11 +2038,11 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.match_starts, 2);
-      check_size_eq(capture.match_ends, 2);
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.match_starts, 2);
+      check_equal(capture.match_ends, 2);
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -2059,12 +2059,12 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
       check_null(json_path_stream_error(stream));
-      check_size_eq(json_path_stream_match_count(stream), 1);
-      check_size_eq(capture.strings, 1);
-      check_str_eq(capture.string_values[0], long_value);
+      check_equal(json_path_stream_match_count(stream), 1);
+      check_equal(capture.strings, 1);
+      check_equal(capture.string_values[0], long_value);
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -2079,9 +2079,9 @@ spec("json_parser") {
       check_not_null(continued);
       check_not_null(boolean);
       check_null(json_path_stream_create(continued, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
       check_null(json_path_stream_create(boolean, &handler, &capture));
-      check_str_contains(json_path_get_error(), "not streamable");
+      check_contains(json_path_get_error(), "not streamable");
 
       json_path_program_free(boolean);
       json_path_program_free(continued);
@@ -2096,14 +2096,14 @@ spec("json_parser") {
 
       check_not_null(program);
       check_not_null(stream);
-      check_int_eq(json_path_stream_feed(stream, json, strlen(json)), 0);
-      check_int_eq(json_path_stream_finish(stream), 0);
+      check_equal(json_path_stream_feed(stream, json, strlen(json)), 0);
+      check_equal(json_path_stream_finish(stream), 0);
       check_null(json_path_stream_error(stream));
-      check_size_eq(json_path_stream_match_count(stream), 2);
-      check_size_eq(capture.match_starts, 1);
-      check_size_eq(capture.match_ends, 1);
-      check_size_eq(capture.numbers, 1);
-      check_str_eq(capture.number_values[0], "10");
+      check_equal(json_path_stream_match_count(stream), 2);
+      check_equal(capture.match_starts, 1);
+      check_equal(capture.match_ends, 1);
+      check_equal(capture.numbers, 1);
+      check_equal(capture.number_values[0], "10");
 
       json_path_stream_destroy(stream);
       json_path_program_free(program);
@@ -2129,13 +2129,13 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.object_start_count, 1);
-      check_int_eq(ctx.object_end_count, 1);
-      check_int_eq(ctx.key_count, 2);
-      check_int_eq(ctx.string_count, 1);
-      check_int_eq(ctx.number_count, 1);
-      check_float_eq(ctx.last_number, 42.0, 0.001);
+      check_equal(ret, 0);
+      check_equal(ctx.object_start_count, 1);
+      check_equal(ctx.object_end_count, 1);
+      check_equal(ctx.key_count, 2);
+      check_equal(ctx.string_count, 1);
+      check_equal(ctx.number_count, 1);
+      check_within(ctx.last_number, 42.0, 0.001);
     }
 
     it("should SAX parse an array correctly") {
@@ -2143,11 +2143,11 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
-      check_int_eq(ctx.number_count, 5);
-      check_float_eq(ctx.last_number, 5.0, 0.001);
+      check_equal(ret, 0);
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
+      check_equal(ctx.number_count, 5);
+      check_within(ctx.last_number, 5.0, 0.001);
     }
 
     it("should SAX parse nested structures correctly") {
@@ -2155,14 +2155,14 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.object_start_count, 2);
-      check_int_eq(ctx.object_end_count, 2);
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
-      check_int_eq(ctx.key_count, 3);
-      check_int_eq(ctx.number_count, 2);
-      check_int_eq(ctx.bool_count, 1);
+      check_equal(ret, 0);
+      check_equal(ctx.object_start_count, 2);
+      check_equal(ctx.object_end_count, 2);
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
+      check_equal(ctx.key_count, 3);
+      check_equal(ctx.number_count, 2);
+      check_equal(ctx.bool_count, 1);
     }
 
     it("should SAX parse all JSON types correctly") {
@@ -2171,15 +2171,15 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.null_count, 1);
-      check_int_eq(ctx.bool_count, 1);
-      check_int_eq(ctx.number_count, 1);
-      check_int_eq(ctx.string_count, 1);
-      check_int_eq(ctx.object_start_count, 2);
-      check_int_eq(ctx.object_end_count, 2);
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
+      check_equal(ret, 0);
+      check_equal(ctx.null_count, 1);
+      check_equal(ctx.bool_count, 1);
+      check_equal(ctx.number_count, 1);
+      check_equal(ctx.string_count, 1);
+      check_equal(ctx.object_start_count, 2);
+      check_equal(ctx.object_end_count, 2);
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
     }
 
     it("should handle empty objects in SAX") {
@@ -2187,9 +2187,9 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.object_start_count, 1);
-      check_int_eq(ctx.object_end_count, 1);
+      check_equal(ret, 0);
+      check_equal(ctx.object_start_count, 1);
+      check_equal(ctx.object_end_count, 1);
     }
 
     it("should handle empty arrays in SAX") {
@@ -2197,9 +2197,9 @@ spec("json_parser") {
       sax_test_ctx_t ctx = {0};
 
       int ret = json_parse_sax(json, strlen(json), &test_handler, &ctx);
-      check_int_eq(ret, 0);
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
+      check_equal(ret, 0);
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
     }
 
     it("should incrementally SAX parse split strings, literals, and numbers") {
@@ -2210,21 +2210,21 @@ spec("json_parser") {
       check_not_null(parser);
 
       for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
-        check_int_eq(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
+        check_equal(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
       }
-      check_int_eq(json_sax_parser_finish(parser), 0);
+      check_equal(json_sax_parser_finish(parser), 0);
 
-      check_int_eq(ctx.object_start_count, 1);
-      check_int_eq(ctx.object_end_count, 1);
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
-      check_int_eq(ctx.key_count, 2);
-      check_int_eq(ctx.string_count, 1);
-      check_str_eq(ctx.last_string, "a\"b");
-      check_int_eq(ctx.bool_count, 1);
-      check_int_eq(ctx.null_count, 1);
-      check_int_eq(ctx.number_count, 1);
-      check_float_eq(ctx.last_number, 1250.0, 0.001);
+      check_equal(ctx.object_start_count, 1);
+      check_equal(ctx.object_end_count, 1);
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
+      check_equal(ctx.key_count, 2);
+      check_equal(ctx.string_count, 1);
+      check_equal(ctx.last_string, "a\"b");
+      check_equal(ctx.bool_count, 1);
+      check_equal(ctx.null_count, 1);
+      check_equal(ctx.number_count, 1);
+      check_within(ctx.last_number, 1250.0, 0.001);
 
       json_sax_parser_destroy(parser);
     }
@@ -2236,20 +2236,20 @@ spec("json_parser") {
       check_not_null(parser);
 
       for (size_t i = 0; i < strlen(json); ++i) {
-        check_int_eq(json_sax_parser_feed(parser, json + i, 1), 0);
+        check_equal(json_sax_parser_feed(parser, json + i, 1), 0);
       }
-      check_int_eq(json_sax_parser_finish(parser), 0);
+      check_equal(json_sax_parser_finish(parser), 0);
 
-      check_int_eq(ctx.array_start_count, 1);
-      check_int_eq(ctx.array_end_count, 1);
-      check_int_eq(ctx.object_start_count, 1);
-      check_int_eq(ctx.object_end_count, 1);
-      check_int_eq(ctx.key_count, 1);
-      check_int_eq(ctx.string_count, 1);
-      check_int_eq(ctx.number_count, 2);
-      check_float_eq(ctx.last_number, 2.0, 0.001);
-      check_str_eq(ctx.last_key, "x");
-      check_str_eq(ctx.last_string, "y");
+      check_equal(ctx.array_start_count, 1);
+      check_equal(ctx.array_end_count, 1);
+      check_equal(ctx.object_start_count, 1);
+      check_equal(ctx.object_end_count, 1);
+      check_equal(ctx.key_count, 1);
+      check_equal(ctx.string_count, 1);
+      check_equal(ctx.number_count, 2);
+      check_within(ctx.last_number, 2.0, 0.001);
+      check_equal(ctx.last_key, "x");
+      check_equal(ctx.last_string, "y");
 
       json_sax_parser_destroy(parser);
     }
@@ -2262,27 +2262,27 @@ spec("json_parser") {
       check_not_null(parser);
 
       for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
-        check_int_eq(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
+        check_equal(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
       }
-      check_int_eq(json_sax_parser_finish(parser), 0);
-      check_int_eq(ctx.number_count, 3);
-      check_str_eq(ctx.raw_numbers[0], "9007199254740993");
-      check_str_eq(ctx.raw_numbers[1], "-9223372036854775808");
-      check_str_eq(ctx.raw_numbers[2], "18446744073709551615");
+      check_equal(json_sax_parser_finish(parser), 0);
+      check_equal(ctx.number_count, 3);
+      check_equal(ctx.raw_numbers[0], "9007199254740993");
+      check_equal(ctx.raw_numbers[1], "-9223372036854775808");
+      check_equal(ctx.raw_numbers[2], "18446744073709551615");
       json_sax_parser_destroy(parser);
 
       memset(&ctx, 0, sizeof(ctx));
-      check_int_eq(json_parse_sax_raw("1.25e+9", 7, &test_raw_handler, &ctx), 0);
-      check_str_eq(ctx.raw_numbers[0], "1.25e+9");
+      check_equal(json_parse_sax_raw("1.25e+9", 7, &test_raw_handler, &ctx), 0);
+      check_equal(ctx.raw_numbers[0], "1.25e+9");
       check_null(json_sax_parser_create_raw(NULL, &ctx));
-      check_int_eq(json_parse_sax_raw(NULL, 0, &test_raw_handler, &ctx), -1);
+      check_equal(json_parse_sax_raw(NULL, 0, &test_raw_handler, &ctx), -1);
     }
 
     it("should retain legacy double number callbacks") {
       sax_test_ctx_t ctx = {0};
-      check_int_eq(json_parse_sax("9007199254740993", 16, &test_handler, &ctx), 0);
-      check_int_eq(ctx.number_count, 1);
-      check_double_within_abs(ctx.last_number, 9007199254740992.0, 0.0);
+      check_equal(json_parse_sax("9007199254740993", 16, &test_handler, &ctx), 0);
+      check_equal(ctx.number_count, 1);
+      check_within(ctx.last_number, 9007199254740992.0, 0.0);
     }
 
     it("should SAX decode surrogate pairs across chunks") {
@@ -2293,10 +2293,10 @@ spec("json_parser") {
       check_not_null(parser);
 
       for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i)
-        check_int_eq(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
-      check_int_eq(json_sax_parser_finish(parser), 0);
-      check_mem_eq(ctx.last_key, emoji, 4);
-      check_mem_eq(ctx.last_string, emoji, 4);
+        check_equal(json_sax_parser_feed(parser, parts[i], strlen(parts[i])), 0);
+      check_equal(json_sax_parser_finish(parser), 0);
+      check_equal(ctx.last_key, emoji, 4);
+      check_equal(ctx.last_string, emoji, 4);
 
       json_sax_parser_destroy(parser);
     }
@@ -2305,7 +2305,7 @@ spec("json_parser") {
       const char *invalid[] = {"\"\\uD83D\"", "\"\\uDE00\"", "\"\\uD83D\\n\""};
       for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
         sax_test_ctx_t ctx = {0};
-        check_int_eq(json_parse_sax(invalid[i], strlen(invalid[i]), &test_handler, &ctx), -1);
+        check_equal(json_parse_sax(invalid[i], strlen(invalid[i]), &test_handler, &ctx), -1);
       }
     }
 
@@ -2315,8 +2315,8 @@ spec("json_parser") {
       json_sax_parser_t *parser = json_sax_parser_create(&test_handler, &ctx);
       check_not_null(parser);
 
-      check_int_eq(json_sax_parser_feed(parser, json, strlen(json)), 0);
-      check_int_eq(json_sax_parser_finish(parser), -1);
+      check_equal(json_sax_parser_feed(parser, json, strlen(json)), 0);
+      check_equal(json_sax_parser_finish(parser), -1);
       check_not_null(json_sax_parser_error(parser));
 
       json_sax_parser_destroy(parser);
@@ -2329,8 +2329,8 @@ spec("json_parser") {
 
       json_sax_parser_t *parser = json_sax_parser_create(&handler, &ctx);
       check_not_null(parser);
-      check_int_eq(json_sax_parser_feed(parser, "\"stop\"", 6), -1);
-      check_str_contains(json_sax_parser_error(parser), "callback");
+      check_equal(json_sax_parser_feed(parser, "\"stop\"", 6), -1);
+      check_contains(json_sax_parser_error(parser), "callback");
 
       json_sax_parser_destroy(parser);
     }
@@ -2338,7 +2338,7 @@ spec("json_parser") {
     it("should reject extra data after one JSON document in SAX") {
       sax_test_ctx_t ctx = {0};
       int ret = json_parse_sax("true false", strlen("true false"), &test_handler, &ctx);
-      check_int_eq(ret, -1);
+      check_equal(ret, -1);
     }
   }
 }

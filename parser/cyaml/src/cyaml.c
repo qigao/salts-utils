@@ -310,7 +310,7 @@ CYAML_API bool cyaml_as_bool(const cyaml_doc_t* doc, const cyaml_node_t* n, bool
         *out = true;
         return true;
     }
-    if (s.len == L_FALSE && cyaml_memicmp(p, S_FALSE, L_FALSE) == 0) {
+    if (s.len == L_FALSE && cyaml_memicmp(p, CYAML_S_FALSE, L_FALSE) == 0) {
         *out = false;
         return true;
     }
@@ -428,7 +428,7 @@ CYAML_API cyaml_scalar_kind_t cyaml_scalar_kind(const cyaml_doc_t* doc, const cy
 
     if (s.len == L_TRUE && cyaml_memicmp(p, S_TRUE, L_TRUE) == 0)
         return CYAML_KIND_BOOL;
-    if (s.len == L_FALSE && cyaml_memicmp(p, S_FALSE, L_FALSE) == 0)
+    if (s.len == L_FALSE && cyaml_memicmp(p, CYAML_S_FALSE, L_FALSE) == 0)
         return CYAML_KIND_BOOL;
 
     if (s.len == L_NAN && cyaml_memicmp(p, S_NAN, L_NAN) == 0)
@@ -647,7 +647,7 @@ CYAML_API cyaml_node_t* cyaml_new_float(cyaml_doc_t* doc, double val)
 
 CYAML_API cyaml_node_t* cyaml_new_bool(cyaml_doc_t* doc, bool val)
 {
-    return cyaml_new_str(doc, val ? S_TRUE : S_FALSE, val ? L_TRUE : L_FALSE);
+    return cyaml_new_str(doc, val ? S_TRUE : CYAML_S_FALSE, val ? L_TRUE : L_FALSE);
 }
 
 CYAML_API cyaml_node_t* cyaml_new_seq(cyaml_doc_t* doc)

@@ -8,21 +8,21 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-static tstr_t concat(tstr_t buffer, const char *string)
+static tstr concat(tstr buffer, const char *string)
 {
     if (!string) return buffer;
-    tstr_t updated = tstr_cat(buffer, string);
+    tstr updated = tstr_cat(buffer, string);
     return updated ? updated : buffer;
 }
 
-static tstr_t resolve_nested(const char *value)
+static tstr resolve_nested(const char *value)
 {
     if (!value) return NULL;
     
     // Simple check for ${}
     if (!strstr(value, "${")) return tstr_dup(value);
 
-    tstr_t result = NULL;
+    tstr result = NULL;
     const char *ptr = value;
     const char *start;
 
@@ -30,7 +30,7 @@ static tstr_t resolve_nested(const char *value)
         // Concat everything before ${
         if (start > ptr) {
             size_t len = start - ptr;
-            tstr_t updated = tstr_cat_len(result, ptr, len);
+            tstr updated = tstr_cat_len(result, ptr, len);
             if (updated) {
                 result = updated;
             }
@@ -40,7 +40,7 @@ static tstr_t resolve_nested(const char *value)
         if (!end) break; // Unterminated ${
 
         size_t name_len = end - (start + 2);
-        tstr_t name = tstr_dup_len(start + 2, name_len);
+        tstr name = tstr_dup_len(start + 2, name_len);
         if (!name) break;
 
         char *env_val = NULL;
@@ -98,7 +98,7 @@ int dotenv_load(const char *path, bool overwrite)
     dotenv_lexer_init(&lexer, buffer, read_len);
 
     dotenv_token_t token;
-    tstr_t current_key = NULL;
+    tstr current_key = NULL;
 
     while (dotenv_lexer_next(&lexer, &token) > 0) {
         if (token.type == DOTENV_TOKEN_KEY) {
@@ -106,14 +106,14 @@ int dotenv_load(const char *path, bool overwrite)
             current_key = tstr_dup_len(token.value, token.length);
         } else if (token.type == DOTENV_TOKEN_VALUE) {
             if (current_key) {
-                tstr_t raw_val = tstr_dup_len(token.value, token.length);
+                tstr raw_val = tstr_dup_len(token.value, token.length);
                 if (!raw_val) {
                     tstr_free(current_key);
                     current_key = NULL;
                     continue;
                 }
 
-                tstr_t final_val = resolve_nested(raw_val);
+                tstr final_val = resolve_nested(raw_val);
                 dotenv_environment_set(current_key, final_val, overwrite ? 1 : 0);
 
                 tstr_free(raw_val);

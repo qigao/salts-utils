@@ -86,9 +86,9 @@ suite("c11 lua bind") {
         c11_lua_get(L, 2, &d_val);
         c11_lua_get(L, 1, &i_val);
 
-        check_int_eq(i_val, 42);
-        check_double_eq(d_val, 3.14159, 0.00001);
-        check_str_eq(s_val, "Hello C11");
+        check_equal(i_val, 42);
+        check_within(d_val, 3.14159, 0.00001);
+        check_equal(s_val, "Hello C11");
         check_true(b_val);
         lua_pop(L, 4);
     }
@@ -101,100 +101,100 @@ suite("c11 lua bind") {
         bool boolean = false;
 
         lua_pushinteger(L, 42);
-        check_int_eq(c11_lua_get_checked(L, -1, &integer), TURBO_OK);
-        check_int_eq(integer, 42);
+        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_OK);
+        check_equal(integer, 42);
         lua_pop(L, 1);
 
         lua_pushnumber(L, 3.5);
         integer = 77;
-        check_int_eq(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
-        check_int_eq(integer, 77);
-        check_int_eq(c11_lua_get_checked(L, -1, &number), TURBO_OK);
-        check_double_eq(number, 3.5, 0.00001);
+        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
+        check_equal(integer, 77);
+        check_equal(c11_lua_get_checked(L, -1, &number), TURBO_OK);
+        check_within(number, 3.5, 0.00001);
         lua_pop(L, 1);
 
         lua_pushinteger(L, beyond_int);
         integer = 88;
-        check_int_eq(c11_lua_get_checked(L, -1, &integer), TURBO_ERANGE);
-        check_int_eq(integer, 88);
+        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_ERANGE);
+        check_equal(integer, 88);
         lua_pop(L, 1);
 
         lua_pushinteger(L, -1);
         byte = 9;
-        check_int_eq(c11_lua_get_checked(L, -1, &byte), TURBO_ERANGE);
-        check_int_eq(byte, 9);
+        check_equal(c11_lua_get_checked(L, -1, &byte), TURBO_ERANGE);
+        check_equal(byte, 9);
         lua_pop(L, 1);
 
         lua_pushboolean(L, 1);
-        check_int_eq(c11_lua_get_checked(L, -1, &boolean), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &boolean), TURBO_OK);
         check_true(boolean);
         lua_pop(L, 1);
 
         lua_pushstring(L, "12");
         integer = 99;
-        check_int_eq(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
-        check_int_eq(integer, 99);
+        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
+        check_equal(integer, 99);
         lua_pop(L, 1);
     }
 
-    it("copies binary Lua strings into owned tstr_t values") {
+    it("copies binary Lua strings into owned tstr values") {
         static const char payload[] = {'A', '\0', 'B'};
-        tstr_t owned = NULL;
+        tstr owned = NULL;
 
         lua_pushlstring(L, payload, sizeof(payload));
-        check_int_eq(c11_lua_get_checked(L, -1, &owned), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &owned), TURBO_OK);
         lua_pop(L, 1);
 
         check_not_null(owned);
-        check_size_eq(tstr_len(owned), sizeof(payload));
-        check_mem_eq(owned, payload, sizeof(payload));
+        check_equal(tstr_len(owned), sizeof(payload));
+        check_equal(owned, payload, sizeof(payload));
         tstr_free(owned);
     }
 
     it("adapts ordinary typed C functions to Lua") {
-        check_int_eq(C11_LUA_BIND_AS(L, "answer", typed_answer), TURBO_OK);
-        check_int_eq(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
-        check_int_eq(C11_LUA_BIND_AS(L, "blend", typed_blend), TURBO_OK);
-        check_int_eq(C11_LUA_BIND_AS(L, "notify", typed_notify), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "answer", typed_answer), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "blend", typed_blend), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "notify", typed_notify), TURBO_OK);
 
-        check_int_eq(luaL_dostring(
+        check_equal(luaL_dostring(
                          L,
                          "assert(answer() == 42);"
                          "assert(add(20, 22) == 42);"
                          "assert(blend(10.0, 20.0, 0.25) == 12.5);"
                          "notify('ready');"),
                      LUA_OK);
-        check_int_eq(typed_notification_count, 1);
+        check_equal(typed_notification_count, 1);
     }
 
     it("adapts functions with nine parameters") {
-        check_int_eq(C11_LUA_BIND(L, typed_sum9), TURBO_OK);
-        check_int_eq(C11_LUA_BIND(L, typed_capture9), TURBO_OK);
+        check_equal(C11_LUA_BIND(L, typed_sum9), TURBO_OK);
+        check_equal(C11_LUA_BIND(L, typed_capture9), TURBO_OK);
 
-        check_int_eq(luaL_dostring(
+        check_equal(luaL_dostring(
                          L,
                          "assert(typed_sum9(1,2,3,4,5,6,7,8,9) == 45);"
                          "typed_capture9(1,2,3,4,5,6,7,8,9)"),
                      LUA_OK);
-        check_int_eq(typed_captured_sum, 45);
+        check_equal(typed_captured_sum, 45);
     }
 
     it("rejects typed function arity and argument mismatches") {
-        check_int_eq(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
 
-        check_int_ne(luaL_dostring(L, "return add(1)"), LUA_OK);
-        check_str_contains(lua_tostring(L, -1), "expects 2 argument");
+        check_not_equal(luaL_dostring(L, "return add(1)"), LUA_OK);
+        check_contains(lua_tostring(L, -1), "expects 2 argument");
         lua_pop(L, 1);
 
-        check_int_ne(luaL_dostring(L, "return add('1', 2)"), LUA_OK);
-        check_str_contains(lua_tostring(L, -1), "argument type mismatch");
+        check_not_equal(luaL_dostring(L, "return add('1', 2)"), LUA_OK);
+        check_contains(lua_tostring(L, -1), "argument type mismatch");
         lua_pop(L, 1);
     }
 
     it("binds a yieldable C function through the common binder") {
-        check_int_eq(C11_LUA_BIND_AS(L, "fetch", typed_fetch), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "fetch", typed_fetch), TURBO_OK);
 
-        check_int_eq(luaL_dostring(
+        check_equal(luaL_dostring(
                          L,
                          "local co = coroutine.create(function() return fetch(42) end);"
                          "local ok, pending = coroutine.resume(co);"
@@ -207,8 +207,8 @@ suite("c11 lua bind") {
     }
 
     it("rejects coroutine suspension from the main Lua thread") {
-        check_int_eq(C11_LUA_BIND(L, typed_fetch), TURBO_OK);
-        check_int_ne(luaL_dostring(L, "return typed_fetch(1)"), LUA_OK);
+        check_equal(C11_LUA_BIND(L, typed_fetch), TURBO_OK);
+        check_not_equal(luaL_dostring(L, "return typed_fetch(1)"), LUA_OK);
         check_true(lua_isstring(L, -1));
         lua_pop(L, 1);
     }
@@ -216,32 +216,32 @@ suite("c11 lua bind") {
     it("runs scripts in inherited and isolated environments") {
         int base = lua_gettop(L);
 
-        check_int_eq(c11_lua_create_environment(L, "missing_child", "missing_parent", true),
+        check_equal(c11_lua_create_environment(L, "missing_child", "missing_parent", true),
                      TURBO_ENOENT);
-        check_int_eq(lua_gettop(L), base);
+        check_equal(lua_gettop(L), base);
 
-        check_int_eq(c11_lua_create_environment(L, "parent_env", NULL, true), TURBO_OK);
-        check_int_eq(c11_lua_create_environment(L, "child_env", "parent_env", true), TURBO_OK);
-        check_int_eq(c11_lua_run_script_in_environment(L, "parent_env", "shared = 8"),
+        check_equal(c11_lua_create_environment(L, "parent_env", NULL, true), TURBO_OK);
+        check_equal(c11_lua_create_environment(L, "child_env", "parent_env", true), TURBO_OK);
+        check_equal(c11_lua_run_script_in_environment(L, "parent_env", "shared = 8"),
                      LUA_OK);
-        check_int_eq(c11_lua_run_script_in_environment(L, "child_env", "x = shared + 1"),
+        check_equal(c11_lua_run_script_in_environment(L, "child_env", "x = shared + 1"),
                      LUA_OK);
 
         lua_getglobal(L, "child_env");
         lua_getfield(L, -1, "x");
-        check_int_eq(lua_tointeger(L, -1), 9);
+        check_equal(lua_tointeger(L, -1), 9);
         lua_pop(L, 2);
 
         lua_getglobal(L, "shared");
         check_true(lua_isnil(L, -1));
         lua_pop(L, 1);
 
-        check_int_eq(c11_lua_create_isolated_environment(L, "isolated", NULL), TURBO_OK);
-        check_int_ne(c11_lua_run_script_in_environment(L, "isolated", "print('blocked')"),
+        check_equal(c11_lua_create_isolated_environment(L, "isolated", NULL), TURBO_OK);
+        check_not_equal(c11_lua_run_script_in_environment(L, "isolated", "print('blocked')"),
                      LUA_OK);
         check_true(lua_isstring(L, -1));
         lua_pop(L, 1);
-        check_int_eq(lua_gettop(L), base);
+        check_equal(lua_gettop(L), base);
     }
 
     it("retains and releases registry references") {
@@ -250,68 +250,68 @@ suite("c11 lua bind") {
         lua_newtable(L);
         lua_pushinteger(L, 17);
         lua_setfield(L, -2, "value");
-        check_int_eq(c11_lua_ref_create(L, -1, &ref), TURBO_OK);
+        check_equal(c11_lua_ref_create(L, -1, &ref), TURBO_OK);
         lua_pop(L, 1);
 
         check_true(c11_lua_ref_is_valid(&ref));
-        check_int_eq(c11_lua_ref_push(L, &ref), TURBO_OK);
+        check_equal(c11_lua_ref_push(L, &ref), TURBO_OK);
         lua_getfield(L, -1, "value");
-        check_int_eq(lua_tointeger(L, -1), 17);
+        check_equal(lua_tointeger(L, -1), 17);
         lua_pop(L, 2);
 
-        check_int_eq(c11_lua_ref_release(&ref), TURBO_OK);
+        check_equal(c11_lua_ref_release(&ref), TURBO_OK);
         check_false(c11_lua_ref_is_valid(&ref));
-        check_int_eq(c11_lua_ref_push(L, &ref), TURBO_ENOENT);
+        check_equal(c11_lua_ref_push(L, &ref), TURBO_ENOENT);
     }
 
     it("calls global functions through a protected boundary") {
-        check_int_eq(C11_LUA_BIND_AS(L, "sum", typed_add), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "sum", typed_add), TURBO_OK);
 
         lua_pushinteger(L, 20);
         lua_pushinteger(L, 22);
-        check_int_eq(c11_lua_pcall_global(L, "sum", 2, 1), LUA_OK);
-        check_int_eq(lua_tointeger(L, -1), 42);
+        check_equal(c11_lua_pcall_global(L, "sum", 2, 1), LUA_OK);
+        check_equal(lua_tointeger(L, -1), 42);
         lua_pop(L, 1);
 
         lua_pushinteger(L, 1);
-        check_int_eq(c11_lua_pcall_global(L, "missing", 1, 1), LUA_ERRRUN);
+        check_equal(c11_lua_pcall_global(L, "missing", 1, 1), LUA_ERRRUN);
         check_true(lua_isstring(L, -1));
-        check_str_contains(lua_tostring(L, -1), "not callable");
+        check_contains(lua_tostring(L, -1), "not callable");
         lua_pop(L, 1);
     }
 
-    it("pushes tstr_t and tstr_v to Lua") {
-        tstr_t owned = tstr_dup("Owned String");
-        tstr_v view = tstr_v_from_cstr("View String");
+    it("pushes tstr and vstr to Lua") {
+        tstr owned = tstr_dup("Owned String");
+        vstr view = vstr_from_cstr("View String");
 
         c11_lua_push(L, owned);
         c11_lua_push(L, view);
         c11_lua_push(L, 42);
 
-        check_str_eq(lua_tostring(L, 1), "Owned String");
-        check_str_eq(lua_tostring(L, 2), "View String");
-        check_int_eq(lua_tointeger(L, 3), 42);
+        check_equal(lua_tostring(L, 1), "Owned String");
+        check_equal(lua_tostring(L, 2), "View String");
+        check_equal(lua_tointeger(L, 3), 42);
 
         lua_pop(L, 3);
         tstr_free(owned);
     }
 
-    it("gets tstr_t and tstr_v from Lua") {
+    it("gets tstr and vstr from Lua") {
         lua_pushstring(L, "Test String");
 
-        tstr_t owned = NULL;
+        tstr owned = NULL;
         c11_lua_get(L, -1, &owned);
-        check_str_eq(owned, "Test String");
+        check_equal(owned, "Test String");
 
-        tstr_v view;
+        vstr view;
         c11_lua_get(L, -1, &view);
-        check_int_eq(view.len, 11);
+        check_equal(view.len, 11);
         check_true(memcmp(view.data, "Test String", 11) == 0);
 
         lua_pop(L, 1);
 
         // ✅ owned still valid after pop
-        check_str_eq(owned, "Test String");
+        check_equal(owned, "Test String");
         tstr_free(owned);
 
         // ⚠️ view.data is now DANGLING - do not access

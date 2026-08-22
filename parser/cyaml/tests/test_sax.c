@@ -138,29 +138,29 @@ spec("cyaml incremental SAX")
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
 
-            check_int_eq(cyaml_sax_parser_feed(parser, "name: tur", 9), 0);
-            check_int_eq(state.document_starts, 1);
-            check_int_eq(state.mapping_starts, 1);
-            check_int_eq(state.value_count, 1);
-            check_str_eq(state.values[0], "name");
+            check_equal(cyaml_sax_parser_feed(parser, "name: tur", 9), 0);
+            check_equal(state.document_starts, 1);
+            check_equal(state.mapping_starts, 1);
+            check_equal(state.value_count, 1);
+            check_equal(state.values[0], "name");
 
-            check_int_eq(cyaml_sax_parser_feed(parser, "bo\nitems:\n  - 1",
+            check_equal(cyaml_sax_parser_feed(parser, "bo\nitems:\n  - 1",
                              sizeof("bo\nitems:\n  - 1") - 1),
                 0);
-            check_int_eq(state.sequence_starts, 1);
-            check_int_eq(state.value_count, 3);
-            check_str_eq(state.values[1], "turbo");
-            check_str_eq(state.values[2], "items");
+            check_equal(state.sequence_starts, 1);
+            check_equal(state.value_count, 3);
+            check_equal(state.values[1], "turbo");
+            check_equal(state.values[2], "items");
 
-            check_int_eq(cyaml_sax_parser_feed(parser, "\n  - 2\n", 7), 0);
-            check_int_eq(state.value_count, 4);
-            check_str_eq(state.values[3], "1");
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
-            check_int_eq(state.value_count, 5);
-            check_str_eq(state.values[4], "2");
-            check_int_eq(state.sequence_ends, 1);
-            check_int_eq(state.mapping_ends, 1);
-            check_int_eq(state.document_ends, 1);
+            check_equal(cyaml_sax_parser_feed(parser, "\n  - 2\n", 7), 0);
+            check_equal(state.value_count, 4);
+            check_equal(state.values[3], "1");
+            check_equal(cyaml_sax_parser_finish(parser), 0);
+            check_equal(state.value_count, 5);
+            check_equal(state.values[4], "2");
+            check_equal(state.sequence_ends, 1);
+            check_equal(state.mapping_ends, 1);
+            check_equal(state.document_ends, 1);
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -169,12 +169,12 @@ spec("cyaml incremental SAX")
             sax_state_t state = { 0 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, "key: \"hel", 9), 0);
-            check_int_eq(state.value_count, 1);
-            check_int_eq(cyaml_sax_parser_feed(parser, "lo\"\n", 4), 0);
-            check_int_eq(state.value_count, 2);
-            check_str_eq(state.values[1], "hello");
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
+            check_equal(cyaml_sax_parser_feed(parser, "key: \"hel", 9), 0);
+            check_equal(state.value_count, 1);
+            check_equal(cyaml_sax_parser_feed(parser, "lo\"\n", 4), 0);
+            check_equal(state.value_count, 2);
+            check_equal(state.values[1], "hello");
+            check_equal(cyaml_sax_parser_finish(parser), 0);
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -183,18 +183,18 @@ spec("cyaml incremental SAX")
             sax_state_t state = { 0 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, "text: |\n  line one\n",
+            check_equal(cyaml_sax_parser_feed(parser, "text: |\n  line one\n",
                              sizeof("text: |\n  line one\n") - 1),
                 0);
-            check_int_eq(state.value_count, 1);
-            check_int_eq(cyaml_sax_parser_feed(parser, "  line two\nnext: value\n",
+            check_equal(state.value_count, 1);
+            check_equal(cyaml_sax_parser_feed(parser, "  line two\nnext: value\n",
                              sizeof("  line two\nnext: value\n") - 1),
                 0);
-            check_int_eq(state.value_count, 3);
-            check_str_eq(state.values[1], "line one\nline two\n");
-            check_str_eq(state.values[2], "next");
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
-            check_str_eq(state.values[3], "value");
+            check_equal(state.value_count, 3);
+            check_equal(state.values[1], "line one\nline two\n");
+            check_equal(state.values[2], "next");
+            check_equal(cyaml_sax_parser_finish(parser), 0);
+            check_equal(state.values[3], "value");
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -206,12 +206,12 @@ spec("cyaml incremental SAX")
             size_t i;
             check_not_null(parser);
             for (i = 0; i < sizeof(input) - 1; ++i)
-                check_int_eq(cyaml_sax_parser_feed(parser, input + i, 1), 0);
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
-            check_int_eq(state.value_count, 5);
-            check_mem_eq(state.values[1], "\xE4\xB8\xAD\xF0\x9F\x98\x80", 7);
-            check_int_eq(state.sequence_starts, 1);
-            check_int_eq(state.sequence_ends, 1);
+                check_equal(cyaml_sax_parser_feed(parser, input + i, 1), 0);
+            check_equal(cyaml_sax_parser_finish(parser), 0);
+            check_equal(state.value_count, 5);
+            check_equal(state.values[1], "\xE4\xB8\xAD\xF0\x9F\x98\x80", 7);
+            check_equal(state.sequence_starts, 1);
+            check_equal(state.sequence_ends, 1);
             cyaml_sax_parser_destroy(parser);
         }
     }
@@ -226,13 +226,13 @@ spec("cyaml incremental SAX")
             size_t i;
             check_not_null(parser);
             for (i = 0; i < sizeof(input) - 1; ++i)
-                check_int_eq(cyaml_sax_parser_feed(parser, input + i, 1), 0);
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
-            check_int_eq(state.document_starts, 2);
-            check_int_eq(state.document_ends, 2);
-            check_int_eq(state.value_count, 2);
-            check_str_eq(state.values[0], "one");
-            check_str_eq(state.values[1], "two");
+                check_equal(cyaml_sax_parser_feed(parser, input + i, 1), 0);
+            check_equal(cyaml_sax_parser_finish(parser), 0);
+            check_equal(state.document_starts, 2);
+            check_equal(state.document_ends, 2);
+            check_equal(state.value_count, 2);
+            check_equal(state.values[0], "one");
+            check_equal(state.values[1], "two");
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -242,14 +242,14 @@ spec("cyaml incremental SAX")
             sax_state_t state = { 0 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
+            check_equal(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
+            check_equal(cyaml_sax_parser_finish(parser), 0);
             check_true(state.last_sequence_start_is_key);
             check_true(state.last_sequence_end_is_key);
             check_false(state.value_is_key[0]);
             check_false(state.value_is_key[1]);
             check_false(state.value_is_key[2]);
-            check_str_eq(state.values[2], "value");
+            check_equal(state.values[2], "value");
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -259,9 +259,9 @@ spec("cyaml incremental SAX")
             sax_state_t state = { 0 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
-            check_int_eq(cyaml_sax_parser_finish(parser), 0);
-            check_int_eq(state.aliases, 1);
+            check_equal(cyaml_sax_parser_feed(parser, input, sizeof(input) - 1), 0);
+            check_equal(cyaml_sax_parser_finish(parser), 0);
+            check_equal(state.aliases, 1);
             cyaml_sax_parser_destroy(parser);
         }
     }
@@ -274,9 +274,9 @@ spec("cyaml incremental SAX")
             sax_state_t state = { 0 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, input, sizeof(input)), -1);
+            check_equal(cyaml_sax_parser_feed(parser, input, sizeof(input)), -1);
             check_not_null(cyaml_sax_parser_error(parser));
-            check_int_eq(cyaml_sax_parser_error(parser)->code, CYAML_ERR_SYNTAX);
+            check_equal(cyaml_sax_parser_error(parser)->code, CYAML_ERR_SYNTAX);
             cyaml_sax_parser_destroy(parser);
         }
 
@@ -287,8 +287,8 @@ spec("cyaml incremental SAX")
             cyaml_sax_parser_t* parser
                 = cyaml_sax_parser_create(&sax_handler, &state, &opts);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, "a: 1\n", 5), 0);
-            check_int_eq(cyaml_sax_parser_feed(parser, "b: 2\n", 5), -1);
+            check_equal(cyaml_sax_parser_feed(parser, "a: 1\n", 5), 0);
+            check_equal(cyaml_sax_parser_feed(parser, "b: 2\n", 5), -1);
             check_not_null(cyaml_sax_parser_error(parser));
             cyaml_sax_parser_destroy(parser);
         }
@@ -301,8 +301,8 @@ spec("cyaml incremental SAX")
                 sax_state_t state = { 0 };
                 cyaml_sax_parser_t* parser = make_parser(&state);
                 check_not_null(parser);
-                check_int_eq(cyaml_sax_parser_feed(parser, inputs[i], strlen(inputs[i])), 0);
-                check_int_eq(cyaml_sax_parser_finish(parser), -1);
+                check_equal(cyaml_sax_parser_feed(parser, inputs[i], strlen(inputs[i])), 0);
+                check_equal(cyaml_sax_parser_finish(parser), -1);
                 check_not_null(cyaml_sax_parser_error(parser));
                 cyaml_sax_parser_destroy(parser);
             }
@@ -313,10 +313,10 @@ spec("cyaml incremental SAX")
             sax_state_t state = { .fail_at = 2 };
             cyaml_sax_parser_t* parser = make_parser(&state);
             check_not_null(parser);
-            check_int_eq(cyaml_sax_parser_feed(parser, "key: value\n", 11), -1);
+            check_equal(cyaml_sax_parser_feed(parser, "key: value\n", 11), -1);
             check_not_null(cyaml_sax_parser_error(parser));
-            check_int_eq(cyaml_sax_parser_feed(parser, "next: value\n", 12), -1);
-            check_int_eq(cyaml_sax_parser_finish(parser), -1);
+            check_equal(cyaml_sax_parser_feed(parser, "next: value\n", 12), -1);
+            check_equal(cyaml_sax_parser_finish(parser), -1);
             cyaml_sax_parser_destroy(parser);
         }
     }

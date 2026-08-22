@@ -45,13 +45,13 @@ static char *generate_object_with_keys(size_t num_keys) {
     return NULL;
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "{{");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "{{");
   for (size_t i = 0; i < num_keys; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos, "\"key_{}\":{}", i, i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "}}");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "}}");
   return buf;
 }
 
@@ -63,32 +63,32 @@ static char *generate_mqtt_config(size_t listeners, size_t upstreams, size_t fil
     return NULL;
 
   int pos = 0;
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "{{\"listeners\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "{{\"listeners\":[");
   for (size_t i = 0; i < listeners; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"port\":{},\"transport\":\"tcp\",\"host\":\"0.0.0.0\"}}", 1883 + i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"upstreams\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"upstreams\":[");
   for (size_t i = 0; i < upstreams; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"host\":\"10.0.0.{}\",\"port\":1883,\"weight\":{}}}", i + 1, (i % 3) + 1);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"filters\":[");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"filters\":[");
   for (size_t i = 0; i < filters; i++) {
     if (i > 0)
-      pos += fmt(buf + pos, buf_size - (size_t)pos, ",");
+      pos += fmt_text(buf + pos, buf_size - (size_t)pos, ",");
     pos += fmt(buf + pos, buf_size - (size_t)pos,
                "{{\"type\":\"topic\",\"action\":\"deny\",\"pattern\":\"$SYS/{}/#\"}}", i);
   }
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "],\"max_clients\":10000,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"connect_timeout_ms\":5000,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"keepalive_sec\":60,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"max_packet_size\":268435456,");
-  pos += fmt(buf + pos, buf_size - (size_t)pos, "\"hash_replicas\":150}}");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "],\"max_clients\":10000,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"connect_timeout_ms\":5000,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"keepalive_sec\":60,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"max_packet_size\":268435456,");
+  pos += fmt_text(buf + pos, buf_size - (size_t)pos, "\"hash_replicas\":150}}");
 
   return buf;
 }

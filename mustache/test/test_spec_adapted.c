@@ -245,7 +245,7 @@ run_case(const char* templ, const char* data, const char* partials, const char* 
             check_not_null(json_partials);
             
             if (json_partials) {
-                check_int_eq(json_type(json_partials), JSON_OBJECT);
+                check_equal(json_type(json_partials), JSON_OBJECT);
                 if (json_type(json_partials) == JSON_OBJECT) {
                     for(i = 0; i < json_object_size(json_partials); i++) {
                         const char* key = json_object_key(json_partials, i);
@@ -271,7 +271,7 @@ run_case(const char* templ, const char* data, const char* partials, const char* 
     }
 
     buf.data[buf.n] = '\0';
-    check_str_eq(buf.data, expected);
+    check_equal(buf.data, expected);
 
     if (json_partials) json_free(json_partials);
     if (t) mustache_release(t);

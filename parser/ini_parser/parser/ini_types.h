@@ -14,13 +14,13 @@ extern "C" {
 #endif
 
 typedef struct ini_entry_s {
-    tstr_t key;
-    tstr_t value;
+    tstr key;
+    tstr value;
     struct ini_entry_s *next;
 } ini_entry_t;
 
 typedef struct ini_section_s {
-    tstr_t name;
+    tstr name;
     ini_entry_t *entries;
     ini_entry_t *entries_tail;
     struct ini_section_s *next;

@@ -11,6 +11,7 @@
 #include "re.h"
 #include "schema_builtin_type.h"
 #include "schema_parser_dsl.h"
+#include "tbe_typed.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
 #include "turbo_fs.h"
@@ -18,7 +19,7 @@
 #include "turbo_str.h"
 #include "turbo_thread.h"
 #include "turbo_uuid.h"
-#include "turbo_vec.h"
+#include <turbostl/typed.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -204,7 +205,7 @@ struct data_bind_stream_t {
   char *csv_field;
   size_t csv_field_len;
   size_t csv_field_capacity;
-  tstr_v *csv_fields;
+  vstr *csv_fields;
   char **csv_field_storage;
   size_t csv_field_count;
   size_t csv_fields_capacity;
@@ -223,7 +224,7 @@ struct data_bind_stream_t {
   size_t json_frame_capacity;
   size_t json_sax_depth;
   char *xml_stream_target;
-  tstr_t xml_capture;
+  tstr xml_capture;
   size_t xml_capture_depth;
   size_t csv_data_row;
   int csv_header_seen;
@@ -712,7 +713,7 @@ static DataBindValue *dbv_bool(int value) {
 static DataBindValue *dbv_string_n(const char *value, size_t len) {
   DataBindValue *v = dbv_new(DATA_BIND_VALUE_STRING);
   if (v == NULL || (value == NULL && len != 0) || len == SIZE_MAX ||
-      !tstr_v_utf8_valid(tstr_v_from_buf(value != NULL ? value : "", len))) {
+      !vstr_utf8_valid(vstr_from_buf(value != NULL ? value : "", len))) {
     data_bind_value_free(v);
     return NULL;
   }
@@ -4838,7 +4839,7 @@ static DataBindStatus db_binary_read_scalar(data_bind_binary_reader_t *reader,
     if (field->kind == EF_VAR_BYTES)
       value = dbv_bytes(data, length);
     else {
-      if (!tstr_v_utf8_valid(tstr_v_from_buf((const char *)data, length)))
+      if (!vstr_utf8_valid(vstr_from_buf((const char *)data, length)))
         return db_error_set(reader->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
                             "Binary string field is not valid UTF-8");
       value = dbv_string_n((const char *)data, length);
@@ -5989,7 +5990,7 @@ static int data_bind_stream_json_path_on_array_end(void *ctx) {
 }
 
 static int data_bind_stream_xml_append(data_bind_stream_t *parser, const char *text, size_t len) {
-  tstr_t next;
+  tstr next;
   if (parser == NULL || !parser->xml_capture_active || len == 0) return 0;
   next = tstr_cat_len(parser->xml_capture, text, len);
   if (next == NULL) {
@@ -6319,7 +6320,7 @@ static void data_bind_stream_csv_clear_fields(data_bind_stream_t *parser) {
 
 static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
   char **grown_storage;
-  tstr_v *grown_fields;
+  vstr *grown_fields;
   char *field_copy;
   size_t next_capacity;
 
@@ -6327,7 +6328,7 @@ static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
   if (parser->csv_field_count >= parser->csv_fields_capacity) {
     next_capacity = parser->csv_fields_capacity == 0 ? 8 : parser->csv_fields_capacity * 2;
     if (next_capacity <= parser->csv_fields_capacity) return 0;
-    grown_fields = (tstr_v *)realloc(parser->csv_fields, next_capacity * sizeof(*grown_fields));
+    grown_fields = (vstr *)realloc(parser->csv_fields, next_capacity * sizeof(*grown_fields));
     if (grown_fields == NULL) return 0;
     parser->csv_fields = grown_fields;
     grown_storage =
@@ -6342,7 +6343,7 @@ static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
   if (parser->csv_field_len > 0) memcpy(field_copy, parser->csv_field, parser->csv_field_len);
   field_copy[parser->csv_field_len] = '\0';
   parser->csv_field_storage[parser->csv_field_count] = field_copy;
-  parser->csv_fields[parser->csv_field_count] = tstr_v_from_buf(field_copy, parser->csv_field_len);
+  parser->csv_fields[parser->csv_field_count] = vstr_from_buf(field_copy, parser->csv_field_len);
   parser->csv_field_count++;
   parser->csv_field_len = 0;
   if (parser->csv_field != NULL) parser->csv_field[0] = '\0';
@@ -9235,16 +9236,16 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
     break;
   case DATA_BIND_VALUE_STRING:
     if (value->data.string_val.ptr == NULL ||
-        !tstr_v_utf8_valid(
-            tstr_v_from_buf(value->data.string_val.ptr, value->data.string_val.len))) {
+        !vstr_utf8_valid(
+            vstr_from_buf(value->data.string_val.ptr, value->data.string_val.len))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
     json = turbo_json_create_string_n(value->data.string_val.ptr, value->data.string_val.len);
     break;
   case DATA_BIND_VALUE_BYTES:
-    if (!tstr_v_utf8_valid(
-            tstr_v_from_buf((const char *)value->data.bytes_val.ptr, value->data.bytes_val.len))) {
+    if (!vstr_utf8_valid(
+            vstr_from_buf((const char *)value->data.bytes_val.ptr, value->data.bytes_val.len))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
@@ -9364,7 +9365,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       const char *key = value->data.map_val.items[i].key;
       json_value_t *child =
           data_bind_value_to_json(value->data.map_val.items[i].value, depth + 1, status);
-      if (key == NULL || !tstr_v_utf8_valid(tstr_v_from_cstr(key))) {
+      if (key == NULL || !vstr_utf8_valid(vstr_from_cstr(key))) {
         turbo_free_json(&child);
         turbo_free_json(&json);
         *status = DATA_BIND_ERR_TYPE_MISMATCH;
@@ -9491,15 +9492,15 @@ static int data_bind_value_to_xml(const DataBindValue *value, turbo_xml_node_t *
   case DATA_BIND_VALUE_STRING:
     return value->data.string_val.ptr &&
            memchr(value->data.string_val.ptr, '\0', value->data.string_val.len) == NULL &&
-           tstr_v_utf8_valid(
-               tstr_v_from_buf(value->data.string_val.ptr, value->data.string_val.len)) &&
+           vstr_utf8_valid(
+               vstr_from_buf(value->data.string_val.ptr, value->data.string_val.len)) &&
            turbo_xml_set_text(node, value->data.string_val.ptr) == 0;
   case DATA_BIND_VALUE_BYTES:
     if (memchr(value->data.bytes_val.ptr, '\0', value->data.bytes_val.len)) return 0;
     if (value->data.bytes_val.len >= sizeof(text)) return 0;
     memcpy(text, value->data.bytes_val.ptr, value->data.bytes_val.len);
     text[value->data.bytes_val.len] = '\0';
-    return tstr_v_utf8_valid(tstr_v_from_buf(text, value->data.bytes_val.len)) &&
+    return vstr_utf8_valid(vstr_from_buf(text, value->data.bytes_val.len)) &&
            turbo_xml_set_text(node, text) == 0;
   case DATA_BIND_VALUE_BIGINT:
     return value->data.bigint_val.ptr && turbo_xml_set_text(node, value->data.bigint_val.ptr) == 0;
@@ -9575,11 +9576,11 @@ static DataBindStatus data_bind_object_serialize_xml_canonical(
 #define DATA_BIND_CSV_MAX_PATH_LENGTH 255u
 
 typedef struct data_bind_csv_cell {
-  tstr_t path;
-  tstr_t text;
+  tstr path;
+  tstr text;
 } data_bind_csv_cell_t;
 
-TURBO_VEC_DEFINE(data_bind_csv_cell_vec_t, data_bind_csv_cell_t)
+TBE_TYPED_VEC_DEFINE(data_bind_csv_cell_vec_t, data_bind_csv_cell_t)
 
 static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {
   size_t i;
@@ -9594,8 +9595,8 @@ static void data_bind_csv_cells_destroy(data_bind_csv_cell_vec_t *cells) {
   data_bind_csv_cell_vec_t_destroy(cells);
 }
 
-static int data_bind_csv_tstr_append(tstr_t *out, const char *data, size_t len) {
-  tstr_t next;
+static int data_bind_csv_tstr_append(tstr *out, const char *data, size_t len) {
+  tstr next;
   if (out == NULL || *out == NULL || (data == NULL && len != 0)) return 0;
   next = tstr_cat_len(*out, data, len);
   if (next == NULL) return 0;
@@ -9607,15 +9608,15 @@ static int data_bind_csv_path_component_valid(const char *component) {
   if (component == NULL || component[0] == '\0' || strchr(component, '.') != NULL ||
       strchr(component, '[') != NULL)
     return 0;
-  return tstr_v_utf8_valid(tstr_v_from_cstr(component));
+  return vstr_utf8_valid(vstr_from_cstr(component));
 }
 
-static tstr_t data_bind_csv_child_path(const tstr_t prefix, const char *name,
+static tstr data_bind_csv_child_path(const tstr prefix, const char *name,
                                        DataBindStatus *status) {
   size_t prefix_len = prefix != NULL ? tstr_len(prefix) : 0;
   size_t name_len;
   size_t separator_len = prefix_len != 0 ? 1u : 0u;
-  tstr_t path;
+  tstr path;
   if (status == NULL) return NULL;
   *status = DATA_BIND_ERR_TYPE_MISMATCH;
   if (!data_bind_csv_path_component_valid(name)) return NULL;
@@ -9638,12 +9639,12 @@ static tstr_t data_bind_csv_child_path(const tstr_t prefix, const char *name,
   return path;
 }
 
-static tstr_t data_bind_csv_index_path(const tstr_t prefix, size_t index,
+static tstr data_bind_csv_index_path(const tstr prefix, size_t index,
                                        DataBindStatus *status) {
   char suffix[32];
   int suffix_len;
   size_t prefix_len;
-  tstr_t path;
+  tstr path;
   if (status == NULL) return NULL;
   *status = DATA_BIND_ERR_TYPE_MISMATCH;
   if (prefix == NULL || tstr_empty(prefix)) return NULL;
@@ -9667,9 +9668,9 @@ static tstr_t data_bind_csv_index_path(const tstr_t prefix, size_t index,
   return path;
 }
 
-static tstr_t data_bind_csv_scalar_text(const DataBindValue *value, DataBindStatus *status) {
+static tstr data_bind_csv_scalar_text(const DataBindValue *value, DataBindStatus *status) {
   char text[128];
-  tstr_t result = NULL;
+  tstr result = NULL;
   if (status == NULL) return NULL;
   *status = DATA_BIND_ERR_TYPE_MISMATCH;
   if (value == NULL) return NULL;
@@ -9677,7 +9678,7 @@ static tstr_t data_bind_csv_scalar_text(const DataBindValue *value, DataBindStat
     const char *string = value->data.string_val.ptr;
     size_t len = value->data.string_val.len;
     if (string == NULL || memchr(string, '\0', len) != NULL ||
-        !tstr_v_utf8_valid(tstr_v_from_buf(string, len)))
+        !vstr_utf8_valid(vstr_from_buf(string, len)))
       return NULL;
     result = tstr_dup_len(string, len);
   } else if (value->kind == DATA_BIND_VALUE_BYTES) {
@@ -9685,7 +9686,7 @@ static tstr_t data_bind_csv_scalar_text(const DataBindValue *value, DataBindStat
     size_t len = value->data.bytes_val.len;
     if (len != 0 &&
         (bytes == NULL || memchr(bytes, '\0', len) != NULL ||
-         !tstr_v_utf8_valid(tstr_v_from_buf(bytes, len))))
+         !vstr_utf8_valid(vstr_from_buf(bytes, len))))
       return NULL;
     result = len != 0 ? tstr_dup_len(bytes, len) : tstr_new();
   } else if (value->kind == DATA_BIND_VALUE_BIGINT) {
@@ -9704,7 +9705,7 @@ static tstr_t data_bind_csv_scalar_text(const DataBindValue *value, DataBindStat
 }
 
 static DataBindStatus data_bind_csv_add_scalar(data_bind_csv_cell_vec_t *cells,
-                                               const tstr_t path,
+                                               const tstr path,
                                                const DataBindValue *value) {
   data_bind_csv_cell_t cell = {0};
   DataBindStatus status;
@@ -9715,7 +9716,7 @@ static DataBindStatus data_bind_csv_add_scalar(data_bind_csv_cell_vec_t *cells,
     tstr_free(cell.path);
     return status;
   }
-  if (data_bind_csv_cell_vec_t_push(cells, cell) != TURBO_OK) {
+  if (data_bind_csv_cell_vec_t_push(cells, cell) != TURBO_STL_OK) {
     tstr_free(cell.path);
     tstr_free(cell.text);
     return DATA_BIND_ERR_OOM;
@@ -9725,7 +9726,7 @@ static DataBindStatus data_bind_csv_add_scalar(data_bind_csv_cell_vec_t *cells,
 
 static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cells,
                                                   const DataBindValue *value,
-                                                  const tstr_t path, unsigned depth) {
+                                                  const tstr path, unsigned depth) {
   size_t i;
   if (cells == NULL || value == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (depth > DATA_BIND_JSON_MAX_DEPTH) return DATA_BIND_ERR_RUNTIME;
@@ -9734,7 +9735,7 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
     if (value->data.object_val.count == 0) return DATA_BIND_ERR_TYPE_MISMATCH;
     for (i = 0; i < value->data.object_val.count; ++i) {
       DataBindStatus status;
-      tstr_t child_path =
+      tstr child_path =
           data_bind_csv_child_path(path, value->data.object_val.items[i].name, &status);
       if (child_path == NULL) return status;
       status = data_bind_csv_flatten_value(cells, value->data.object_val.items[i].value,
@@ -9749,7 +9750,7 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
       return DATA_BIND_ERR_TYPE_MISMATCH;
     for (i = 0; i < value->data.array_val.count; ++i) {
       DataBindStatus status;
-      tstr_t child_path = data_bind_csv_index_path(path, i, &status);
+      tstr child_path = data_bind_csv_index_path(path, i, &status);
       if (child_path == NULL) return status;
       status = data_bind_csv_flatten_value(cells, value->data.array_val.items[i], child_path,
                                            depth + 1);
@@ -9762,7 +9763,7 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
       return DATA_BIND_ERR_TYPE_MISMATCH;
     for (i = 0; i < value->data.map_val.count; ++i) {
       DataBindStatus status;
-      tstr_t child_path =
+      tstr child_path =
           data_bind_csv_child_path(path, value->data.map_val.items[i].key, &status);
       if (child_path == NULL) return status;
       status = data_bind_csv_flatten_value(cells, value->data.map_val.items[i].value,
@@ -9778,7 +9779,7 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
   }
 }
 
-static int data_bind_csv_append_field(tstr_t *csv, const tstr_t field) {
+static int data_bind_csv_append_field(tstr *csv, const tstr field) {
   size_t i;
   size_t start = 0;
   size_t len;
@@ -9805,9 +9806,9 @@ static int data_bind_csv_append_field(tstr_t *csv, const tstr_t field) {
 
 static DataBindStatus data_bind_object_serialize_csv_canonical(
     const DataBindObject *object, char **out_csv, size_t *out_len, DataBindError *error) {
-  data_bind_csv_cell_vec_t cells;
+  data_bind_csv_cell_vec_t cells = {0};
   DataBindStatus status;
-  tstr_t csv = NULL;
+  tstr csv = NULL;
   size_t i;
   if (out_csv != NULL) *out_csv = NULL;
   if (out_len != NULL) *out_len = 0;
@@ -9818,7 +9819,7 @@ static DataBindStatus data_bind_object_serialize_csv_canonical(
       object->value->kind == DATA_BIND_VALUE_SET || object->value->kind == DATA_BIND_VALUE_MAP)
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, "csv", -1, -1,
                         "A CSV object must contain one record or scalar value");
-  if (data_bind_csv_cell_vec_t_init(&cells) != TURBO_OK)
+  if (data_bind_csv_cell_vec_t_init(&cells, SIZE_MAX) != TURBO_STL_OK)
     return db_error_set(error, DATA_BIND_ERR_OOM, "csv", -1, -1,
                         "Out of memory creating CSV columns");
   status = data_bind_csv_flatten_value(&cells, object->value, NULL, 0);

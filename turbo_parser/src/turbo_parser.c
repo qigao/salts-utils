@@ -903,9 +903,9 @@ int turbo_parse_xml(const uint8_t *data, size_t len, turbo_xml_doc_t **out) {
 struct turbo_xml_sax_parser_s {
   turbo_xml_sax_handler_t handler;
   void *ctx;
-  tstr_t buffer;
+  tstr buffer;
   size_t pos;
-  tstr_t stack[TURBO_XML_SAX_MAX_DEPTH];
+  tstr stack[TURBO_XML_SAX_MAX_DEPTH];
   size_t depth;
   bool started;
   bool finished;
@@ -1015,7 +1015,7 @@ static int turbo_xml_sax_push(turbo_xml_sax_parser_t *parser, const char *name, 
     turbo_xml_sax_set_error(parser, "Max XML depth exceeded");
     return -1;
   }
-  tstr_t owned = tstr_dup_len(name, name_len);
+  tstr owned = tstr_dup_len(name, name_len);
   if (!owned) {
     turbo_xml_sax_set_error(parser, "Out of memory");
     return -1;
@@ -1030,7 +1030,7 @@ static int turbo_xml_sax_pop(turbo_xml_sax_parser_t *parser, const char *name, s
     return -1;
   }
 
-  tstr_t top = parser->stack[parser->depth - 1];
+  tstr top = parser->stack[parser->depth - 1];
   if (tstr_len(top) != name_len || memcmp(top, name, name_len) != 0) {
     turbo_xml_sax_set_error(parser, "Mismatched closing element");
     return -1;
@@ -1388,13 +1388,13 @@ static int turbo_xml_sax_run(turbo_xml_sax_parser_t *parser, bool final) {
 turbo_xml_sax_parser_t *turbo_xml_sax_parser_create(const turbo_xml_sax_handler_t *handler,
                                                     void *ctx) {
   if (!handler) {
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
     return NULL;
   }
 
   turbo_xml_sax_parser_t *parser = (turbo_xml_sax_parser_t *)calloc(1, sizeof(*parser));
   if (!parser) {
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Out of memory");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Out of memory");
     return NULL;
   }
   parser->handler = *handler;
@@ -1402,7 +1402,7 @@ turbo_xml_sax_parser_t *turbo_xml_sax_parser_create(const turbo_xml_sax_handler_
   parser->buffer = tstr_new();
   if (!parser->buffer) {
     free(parser);
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Out of memory");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Out of memory");
     return NULL;
   }
   return parser;
@@ -1410,7 +1410,7 @@ turbo_xml_sax_parser_t *turbo_xml_sax_parser_create(const turbo_xml_sax_handler_
 
 int turbo_xml_sax_parser_feed(turbo_xml_sax_parser_t *parser, const char *data, size_t len) {
   if (!parser || (!data && len > 0)) {
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
     return -1;
   }
   if (parser->failed) return -1;
@@ -1420,7 +1420,7 @@ int turbo_xml_sax_parser_feed(turbo_xml_sax_parser_t *parser, const char *data, 
   }
   if (len == 0) return 0;
 
-  tstr_t next = tstr_cat_len(parser->buffer, data, len);
+  tstr next = tstr_cat_len(parser->buffer, data, len);
   if (!next) {
     turbo_xml_sax_set_error(parser, "Out of memory");
     return -1;
@@ -1431,7 +1431,7 @@ int turbo_xml_sax_parser_feed(turbo_xml_sax_parser_t *parser, const char *data, 
 
 int turbo_xml_sax_parser_finish(turbo_xml_sax_parser_t *parser) {
   if (!parser) {
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
     return -1;
   }
   if (parser->failed) return -1;
@@ -1471,7 +1471,7 @@ void turbo_xml_sax_parser_destroy(turbo_xml_sax_parser_t *parser) {
 int turbo_parse_xml_sax(const uint8_t *data, size_t len, const turbo_xml_sax_handler_t *handler,
                         void *ctx) {
   if (!data || len == 0 || !handler) {
-    fmt(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
+    fmt_text(g_xml_sax_error, sizeof(g_xml_sax_error), "Invalid arguments");
     return -1;
   }
 
@@ -2200,7 +2200,7 @@ int turbo_dsv_filter_check_row(turbo_dsv_filter_t *filter, size_t row_index) {
   return dsv_filter_check_row((dsv_filter_t *)filter, row_index);
 }
 
-int turbo_dsv_filter_check_values(turbo_dsv_filter_t *filter, const tstr_v *fields,
+int turbo_dsv_filter_check_values(turbo_dsv_filter_t *filter, const vstr *fields,
                                   size_t field_count) {
   return dsv_filter_check_values((dsv_filter_t *)filter, fields, field_count);
 }

@@ -293,7 +293,7 @@ static inline bool buildf_needs_quoting(const char* s)
         if (CYAML_IS_BREAK(s[i]) || s[i] == ':' || s[i] == C_HASH)
             return true;
 
-    if ((len == L_TRUE && memcmp(s, S_TRUE, L_TRUE) == 0) || (len == L_FALSE && memcmp(s, S_FALSE, L_FALSE) == 0) || (len == L_NULL && memcmp(s, S_NULL, L_NULL) == 0) || (len == L_TILDE && *s == C_TILDE))
+    if ((len == L_TRUE && memcmp(s, S_TRUE, L_TRUE) == 0) || (len == L_FALSE && memcmp(s, CYAML_S_FALSE, L_FALSE) == 0) || (len == L_NULL && memcmp(s, S_NULL, L_NULL) == 0) || (len == L_TILDE && *s == C_TILDE))
         return true;
 
     if (CYAML_IS_DIGIT(*s) || ((*s == '-' || *s == '+') && CYAML_IS_DIGIT(s[1])) || *s == '.')
@@ -430,7 +430,7 @@ CYAML_API cyaml_node_t* cyaml_vbuildf(cyaml_doc_t* doc, const char* format, va_l
         }
         case 'b': {
             int v = va_arg(ap, int);
-            written = snprintf(out, (size_t)(end - out), "%s", v ? S_TRUE : S_FALSE);
+            written = snprintf(out, (size_t)(end - out), "%s", v ? S_TRUE : CYAML_S_FALSE);
             break;
         }
         default:

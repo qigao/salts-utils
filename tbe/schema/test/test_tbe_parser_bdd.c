@@ -23,7 +23,7 @@ static Node *find_child(Node *parent, const char *name) {
 }
 
 suite("TBE Schema Parser") {
-  section("Basic Type Declarations") {
+  group("Basic Type Declarations") {
     given("a simple composite definition") {
       const char *schema = "composite Point { int32 x; int32 y; }";
       Node *root = create_node_map("root");
@@ -32,13 +32,13 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("should create composites list") {
           Node *composites = find_child(root, "composites");
           check_not_null(composites);
-          check_uint_eq(composites->data.list.count, 1);
+          check_equal(composites->data.list.count, 1);
         }
 
         then("should have correct composite name") {
@@ -59,7 +59,7 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("should have correct underlying type") {
@@ -68,7 +68,7 @@ suite("TBE Schema Parser") {
           Node *color = enums->data.list.items[0];
           Node *utype = find_child(color, "underlying_type");
           check_not_null(utype);
-          check_str_eq(utype->data.string_val, "uint8");
+          check_equal(utype->data.string_val, "uint8");
         }
       }
 
@@ -83,13 +83,13 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("should create messages list") {
           Node *messages = find_child(root, "messages");
           check_not_null(messages);
-          check_uint_eq(messages->data.list.count, 1);
+          check_equal(messages->data.list.count, 1);
         }
       }
 
@@ -97,7 +97,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Schema Attributes") {
+  group("Schema Attributes") {
     given("a schema declaration with attributes") {
       const char *schema = "schema Market [id(7), version(2), byte_order(little)];";
       Node *root = create_node_map("root");
@@ -106,7 +106,7 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("should have schema node") {
@@ -117,13 +117,13 @@ suite("TBE Schema Parser") {
         then("should have correct schema name") {
           Node *schema_node = find_child(root, "schema");
           Node *name = find_child(schema_node, "schema_name");
-          check_str_eq(name->data.string_val, "Market");
+          check_equal(name->data.string_val, "Market");
         }
 
         then("should have wire byte order") {
           Node *schema_node = find_child(root, "schema");
           Node *byte_order = find_child(schema_node, "wire_byte_order");
-          check_str_eq(byte_order->data.string_val, "little");
+          check_equal(byte_order->data.string_val, "little");
         }
       }
 
@@ -138,7 +138,7 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
 
         then("should have attributes") {
@@ -155,7 +155,7 @@ suite("TBE Schema Parser") {
           Node *id_node = find_child(attrs, "id");
           check_not_null(id_node);
           Node *id_val = find_child(id_node, "value");
-          check_str_eq(id_val->data.string_val, "100");
+          check_equal(id_val->data.string_val, "100");
         }
       }
 
@@ -163,7 +163,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Field Type Metadata") {
+  group("Field Type Metadata") {
     given("a composite with various numeric types") {
       const char *schema = "composite Data { uint32 u32; int64 i64; float f32; double d64; byte b; }";
       Node *root = create_node_map("root");
@@ -176,22 +176,22 @@ suite("TBE Schema Parser") {
 
         then("should annotate uint32 correctly") {
           Node *u32 = fields->data.list.items[0];
-          check_str_eq(find_child(u32, "size_bytes")->data.string_val, "4");
-          check_str_eq(find_child(u32, "is_unsigned")->data.string_val, "1");
-          check_str_eq(find_child(u32, "is_numeric")->data.string_val, "1");
+          check_equal(find_child(u32, "size_bytes")->data.string_val, "4");
+          check_equal(find_child(u32, "is_unsigned")->data.string_val, "1");
+          check_equal(find_child(u32, "is_numeric")->data.string_val, "1");
         }
 
         then("should annotate int64 correctly") {
           Node *i64 = fields->data.list.items[1];
-          check_str_eq(find_child(i64, "size_bytes")->data.string_val, "8");
+          check_equal(find_child(i64, "size_bytes")->data.string_val, "8");
           check_null(find_child(i64, "is_unsigned"));
-          check_str_eq(find_child(i64, "is_numeric")->data.string_val, "1");
+          check_equal(find_child(i64, "is_numeric")->data.string_val, "1");
         }
 
         then("should annotate float correctly") {
           Node *f32 = fields->data.list.items[2];
-          check_str_eq(find_child(f32, "size_bytes")->data.string_val, "4");
-          check_str_eq(find_child(f32, "is_float")->data.string_val, "1");
+          check_equal(find_child(f32, "size_bytes")->data.string_val, "4");
+          check_equal(find_child(f32, "is_float")->data.string_val, "1");
         }
       }
 
@@ -199,7 +199,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Fixed Arrays and Variable Data") {
+  group("Fixed Arrays and Variable Data") {
     given("a message with fixed array and variable data") {
       const char *schema =
         "composite Point { int32 x; int32 y; } "
@@ -214,27 +214,27 @@ suite("TBE Schema Parser") {
 
         then("should recognize fixed array") {
           Node *points = fields->data.list.items[0];
-          check_str_eq(find_child(points, "ctype")->data.string_val, "COLLECTION");
-          check_str_eq(find_child(points, "inner_type")->data.string_val, "Point");
-          check_str_eq(find_child(points, "length_field")->data.string_val, "10");
+          check_equal(find_child(points, "ctype")->data.string_val, "COLLECTION");
+          check_equal(find_child(points, "inner_type")->data.string_val, "Point");
+          check_equal(find_child(points, "length_field")->data.string_val, "10");
         }
 
         then("should calculate array size") {
           Node *points = fields->data.list.items[0];
-          check_str_eq(find_child(points, "field_size_bytes")->data.string_val, "80");
-          check_str_eq(find_child(points, "element_size_bytes")->data.string_val, "8");
+          check_equal(find_child(points, "field_size_bytes")->data.string_val, "80");
+          check_equal(find_child(points, "element_size_bytes")->data.string_val, "8");
         }
 
         then("should recognize fixed bytes") {
           Node *digest = fields->data.list.items[1];
-          check_str_eq(find_child(digest, "is_fixed_size")->data.string_val, "1");
-          check_str_eq(find_child(digest, "size_bytes")->data.string_val, "16");
+          check_equal(find_child(digest, "is_fixed_size")->data.string_val, "1");
+          check_equal(find_child(digest, "size_bytes")->data.string_val, "16");
         }
 
         then("should recognize variable bytes") {
           Node *payload = fields->data.list.items[2];
-          check_str_eq(find_child(payload, "is_variable_size")->data.string_val, "1");
-          check_str_eq(find_child(payload, "is_var_data")->data.string_val, "1");
+          check_equal(find_child(payload, "is_variable_size")->data.string_val, "1");
+          check_equal(find_child(payload, "is_var_data")->data.string_val, "1");
         }
       }
 
@@ -242,7 +242,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Enum Auto-increment") {
+  group("Enum Auto-increment") {
     given("an enum with mixed explicit and implicit values") {
       const char *schema = "enum Color { Red; Green = 5; Blue; }";
       Node *root = create_node_map("root");
@@ -254,15 +254,15 @@ suite("TBE Schema Parser") {
         Node *items = find_child(color, "items");
 
         then("should start at 0 for first item") {
-          check_str_eq(find_child(items->data.list.items[0], "value")->data.string_val, "0");
+          check_equal(find_child(items->data.list.items[0], "value")->data.string_val, "0");
         }
 
         then("should use explicit value") {
-          check_str_eq(find_child(items->data.list.items[1], "value")->data.string_val, "5");
+          check_equal(find_child(items->data.list.items[1], "value")->data.string_val, "5");
         }
 
         then("should continue from explicit value") {
-          check_str_eq(find_child(items->data.list.items[2], "value")->data.string_val, "6");
+          check_equal(find_child(items->data.list.items[2], "value")->data.string_val, "6");
         }
       }
 
@@ -270,7 +270,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Layout Calculation") {
+  group("Layout Calculation") {
     given("a message with fixed-size fields") {
       const char *schema = "enum Side <uint8> { Buy = 1; Sell = 2; } message Quote { Side side; uint32 qty; }";
       Node *root = create_node_map("root");
@@ -282,21 +282,21 @@ suite("TBE Schema Parser") {
         Node *fields = find_child(quote, "fields");
 
         then("should calculate total block size") {
-          check_str_eq(find_child(quote, "fixed_block_size")->data.string_val, "5");
+          check_equal(find_child(quote, "fixed_block_size")->data.string_val, "5");
         }
 
         then("should calculate field offsets") {
           Node *side = fields->data.list.items[0];
           Node *qty = fields->data.list.items[1];
-          check_str_eq(find_child(side, "offset")->data.string_val, "0");
-          check_str_eq(find_child(qty, "offset")->data.string_val, "1");
+          check_equal(find_child(side, "offset")->data.string_val, "0");
+          check_equal(find_child(qty, "offset")->data.string_val, "1");
         }
 
         then("should calculate field sizes") {
           Node *side = fields->data.list.items[0];
           Node *qty = fields->data.list.items[1];
-          check_str_eq(find_child(side, "field_size_bytes")->data.string_val, "1");
-          check_str_eq(find_child(qty, "field_size_bytes")->data.string_val, "4");
+          check_equal(find_child(side, "field_size_bytes")->data.string_val, "1");
+          check_equal(find_child(qty, "field_size_bytes")->data.string_val, "4");
         }
       }
 
@@ -304,7 +304,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Groups and Cursors") {
+  group("Groups and Cursors") {
     given("a message with repeating groups") {
       const char *schema =
         "group Level { uint64 price; uint32 qty; } "
@@ -317,11 +317,11 @@ suite("TBE Schema Parser") {
         Node *level = groups->data.list.items[0];
 
         then("should calculate group block size") {
-          check_str_eq(find_child(level, "fixed_block_size")->data.string_val, "12");
+          check_equal(find_child(level, "fixed_block_size")->data.string_val, "12");
         }
 
         then("should support group cursor") {
-          check_str_eq(find_child(level, "supports_group_cursor")->data.string_val, "1");
+          check_equal(find_child(level, "supports_group_cursor")->data.string_val, "1");
         }
       }
 
@@ -329,7 +329,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Error Handling") {
+  group("Error Handling") {
     given("invalid schema syntax") {
       const char *schema = "message Bad { int32 missing_semi }";
       Node *root = create_node_map("root");
@@ -339,11 +339,11 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
 
         then("should fail") {
-          check_int_eq(rc, -1);
+          check_equal(rc, -1);
         }
 
         then("should provide error information") {
-          check_int_ne(err.code, TBE_OK);
+          check_not_equal(err.code, TBE_OK);
         }
       }
 
@@ -357,11 +357,11 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(NULL, 0, NULL, &err);
 
         then("should return error") {
-          check_int_eq(rc, -1);
+          check_equal(rc, -1);
         }
 
         then("should set error code") {
-          check_int_eq(err.code, TBE_ERR_INVALID_ARGUMENT);
+          check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
         }
       }
     }
@@ -374,7 +374,7 @@ suite("TBE Schema Parser") {
         int rc = parse_schema(schema, 0, root, NULL);
 
         then("should succeed") {
-          check_int_eq(rc, 0);
+          check_equal(rc, 0);
         }
       }
 
@@ -382,7 +382,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Schema Replacement") {
+  group("Schema Replacement") {
     given("a root node with existing schema") {
       Node *root = create_node_map("root");
       map_add(root, create_node_string("marker", "keep"));
@@ -390,7 +390,7 @@ suite("TBE Schema Parser") {
       when("parsing first schema") {
         parse_schema("composite First { int32 x; }", strlen("composite First { int32 x; }"), root, NULL);
 
-        and_when("parsing second schema") {
+        when("parsing second schema") {
           parse_schema("enum State { Idle = 1; } message Second { int32 y; }",
                       strlen("enum State { Idle = 1; } message Second { int32 y; }"), root, NULL);
 
@@ -400,17 +400,17 @@ suite("TBE Schema Parser") {
 
           then("should replace composites") {
             Node *composites = find_child(root, "composites");
-            check_uint_eq(composites->data.list.count, 0);
+            check_equal(composites->data.list.count, 0);
           }
 
           then("should have new messages") {
             Node *messages = find_child(root, "messages");
-            check_uint_eq(messages->data.list.count, 1);
+            check_equal(messages->data.list.count, 1);
           }
 
           then("should have new enums") {
             Node *enums = find_child(root, "enums");
-            check_uint_eq(enums->data.list.count, 1);
+            check_equal(enums->data.list.count, 1);
           }
         }
       }
@@ -419,7 +419,7 @@ suite("TBE Schema Parser") {
     }
   }
 
-  section("Memory Safety") {
+  group("Memory Safety") {
     given("NULL value in create_node_string") {
       when("creating node with NULL value") {
         Node *n = create_node_string("test", NULL);
@@ -451,7 +451,7 @@ suite("TBE Schema Parser") {
           map_add(root, list);
         }
 
-        and_when("freeing root") {
+        when("freeing root") {
           node_free(root);
 
           then("should free everything without leak") {

@@ -29,7 +29,7 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *user = messages->data.list.items[0];
@@ -54,7 +54,7 @@ suite("optional_fields_and_defaults") {
             tbe_error_t err;
             int rc = parse_schema(schema, strlen(schema), root, &err);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *user = messages->data.list.items[0];
@@ -68,7 +68,7 @@ suite("optional_fields_and_defaults") {
 
             // email是optional，应该有is_optional标记
             check_not_null(find_child(email_field, "is_optional"));
-            check_str_eq(find_child(email_field, "is_optional")->data.string_val, "1");
+            check_equal(find_child(email_field, "is_optional")->data.string_val, "1");
 
             node_free(root);
         }
@@ -84,13 +84,13 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *user = messages->data.list.items[0];
             Node *fields = find_child(user, "fields");
 
-            check_uint_eq(fields->data.list.count, 5);
+            check_equal(fields->data.list.count, 5);
 
             // 检查固定字段（id - required, age - optional）
             check_null(find_child(fields->data.list.items[0], "is_optional"));      // id
@@ -119,7 +119,7 @@ suite("optional_fields_and_defaults") {
                 printf("Parse error: %s\n", err.message);
             }
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *config = messages->data.list.items[0];
@@ -133,8 +133,8 @@ suite("optional_fields_and_defaults") {
             check_not_null(find_child(retries_field, "has_default"));
 
             // 检查default_value
-            check_str_eq(find_child(timeout_field, "default_value")->data.string_val, "3000");
-            check_str_eq(find_child(retries_field, "default_value")->data.string_val, "3");
+            check_equal(find_child(timeout_field, "default_value")->data.string_val, "3000");
+            check_equal(find_child(retries_field, "default_value")->data.string_val, "3");
 
             node_free(root);
         }
@@ -146,7 +146,7 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *config = messages->data.list.items[0];
@@ -154,7 +154,7 @@ suite("optional_fields_and_defaults") {
             Node *endpoint = fields->data.list.items[0];
 
             check_not_null(find_child(endpoint, "has_default"));
-            check_str_eq(find_child(endpoint, "default_value")->data.string_val, "localhost");
+            check_equal(find_child(endpoint, "default_value")->data.string_val, "localhost");
 
             node_free(root);
         }
@@ -167,14 +167,14 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *config = messages->data.list.items[0];
             Node *fields = find_child(config, "fields");
 
-            check_str_eq(find_child(fields->data.list.items[0], "default_value")->data.string_val, "true");
-            check_str_eq(find_child(fields->data.list.items[1], "default_value")->data.string_val, "false");
+            check_equal(find_child(fields->data.list.items[0], "default_value")->data.string_val, "true");
+            check_equal(find_child(fields->data.list.items[1], "default_value")->data.string_val, "false");
 
             node_free(root);
         }
@@ -188,7 +188,7 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *messages = find_child(root, "messages");
             Node *user = messages->data.list.items[0];
@@ -200,12 +200,12 @@ suite("optional_fields_and_defaults") {
             // age是optional且有default
             check_not_null(find_child(age, "is_optional"));
             check_not_null(find_child(age, "has_default"));
-            check_str_eq(find_child(age, "default_value")->data.string_val, "18");
+            check_equal(find_child(age, "default_value")->data.string_val, "18");
 
             // role是optional且有default
             check_not_null(find_child(role, "is_optional"));
             check_not_null(find_child(role, "has_default"));
-            check_str_eq(find_child(role, "default_value")->data.string_val, "user");
+            check_equal(find_child(role, "default_value")->data.string_val, "user");
 
             node_free(root);
         }
@@ -221,25 +221,25 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *enums = find_child(root, "enums");
             check_not_null(enums);
-            check_uint_eq(enums->data.list.count, 1);
+            check_equal(enums->data.list.count, 1);
 
             Node *status_enum = enums->data.list.items[0];
             Node *items = find_child(status_enum, "items");
 
-            check_uint_eq(items->data.list.count, 3);
+            check_equal(items->data.list.count, 3);
 
             // 验证枚举项
             Node *idle = items->data.list.items[0];
-            check_str_eq(find_child(idle, "name")->data.string_val, "Idle");
-            check_str_eq(find_child(idle, "value")->data.string_val, "0");
+            check_equal(find_child(idle, "name")->data.string_val, "Idle");
+            check_equal(find_child(idle, "value")->data.string_val, "0");
 
             Node *active = items->data.list.items[1];
-            check_str_eq(find_child(active, "name")->data.string_val, "Active");
-            check_str_eq(find_child(active, "value")->data.string_val, "1");
+            check_equal(find_child(active, "name")->data.string_val, "Active");
+            check_equal(find_child(active, "value")->data.string_val, "1");
 
             node_free(root);
         }
@@ -251,11 +251,11 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             int rc = parse_schema(schema, strlen(schema), root, NULL);
 
-            check_int_eq(rc, 0);
+            check_equal(rc, 0);
 
             Node *schema_node = find_child(root, "schema");
             check_not_null(schema_node);
-            check_str_eq(find_child(schema_node, "schema_name")->data.string_val, "MySchema");
+            check_equal(find_child(schema_node, "schema_name")->data.string_val, "MySchema");
 
             Node *attrs = find_child(schema_node, "attributes");
             check_not_null(attrs);
@@ -263,7 +263,7 @@ suite("optional_fields_and_defaults") {
             // 检查version属性
             Node *version_attr = find_child(attrs, "version");
             check_not_null(version_attr);
-            check_str_eq(find_child(version_attr, "value")->data.string_val, "100");
+            check_equal(find_child(version_attr, "value")->data.string_val, "100");
 
             node_free(root);
         }

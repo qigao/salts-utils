@@ -10,26 +10,26 @@ spec("modbus_parser") {
 
       size_t written = modbus_tcp_build(1, 0x11, 0x03, pdu_data, sizeof(pdu_data),
                                         buf, sizeof(buf));
-      check_size_eq(written, 12);
-      check_int_eq(buf[0], 0x00);
-      check_int_eq(buf[1], 0x01);
-      check_int_eq(buf[2], 0x00);
-      check_int_eq(buf[3], 0x00);
-      check_int_eq(buf[4], 0x00);
-      check_int_eq(buf[5], 0x06);
+      check_equal(written, 12);
+      check_equal(buf[0], 0x00);
+      check_equal(buf[1], 0x01);
+      check_equal(buf[2], 0x00);
+      check_equal(buf[3], 0x00);
+      check_equal(buf[4], 0x00);
+      check_equal(buf[5], 0x06);
 
       modbus_tcp_adu_t adu;
       ModbusParseResult result = modbus_tcp_parse(buf, written, &adu);
 
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.transaction_id, 1);
-      check_int_eq(adu.protocol_id, 0);
-      check_int_eq(adu.length, 6);
-      check_int_eq(adu.unit_id, 0x11);
-      check_int_eq(adu.pdu.function_code, 0x03);
-      check_size_eq(adu.pdu.data_size, sizeof(pdu_data));
-      check_mem_eq(adu.pdu.data, pdu_data, sizeof(pdu_data));
-      check_size_eq(adu.consumed, written);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.transaction_id, 1);
+      check_equal(adu.protocol_id, 0);
+      check_equal(adu.length, 6);
+      check_equal(adu.unit_id, 0x11);
+      check_equal(adu.pdu.function_code, 0x03);
+      check_equal(adu.pdu.data_size, sizeof(pdu_data));
+      check_equal(adu.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(adu.consumed, written);
     }
 
     it("should peek TCP ADU size") {
@@ -41,8 +41,8 @@ spec("modbus_parser") {
 
       ModbusParseResult result = modbus_tcp_peek_size(buf, sizeof(buf), &size);
 
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_size_eq(size, sizeof(buf));
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(size, sizeof(buf));
     }
 
     it("should signal need more for partial TCP header") {
@@ -51,7 +51,7 @@ spec("modbus_parser") {
 
       ModbusParseResult result = modbus_tcp_peek_size(buf, sizeof(buf), &size);
 
-      check_int_eq(result, MODBUS_PARSE_NEED_MORE);
+      check_equal(result, MODBUS_PARSE_NEED_MORE);
     }
 
     it("should reject non-zero protocol id") {
@@ -63,7 +63,7 @@ spec("modbus_parser") {
 
       ModbusParseResult result = modbus_tcp_parse(buf, sizeof(buf), &adu);
 
-      check_int_eq(result, MODBUS_PARSE_INVALID_PROTOCOL);
+      check_equal(result, MODBUS_PARSE_INVALID_PROTOCOL);
     }
 
     it("should write a TCP struct to binary") {
@@ -82,18 +82,18 @@ spec("modbus_parser") {
 
       size_t written = modbus_tcp_write(&adu, buf, sizeof(buf));
 
-      check_size_eq(written, 12);
-      check_int_eq(buf[0], 0x12);
-      check_int_eq(buf[1], 0x34);
-      check_int_eq(buf[4], 0x00);
-      check_int_eq(buf[5], 0x06);
+      check_equal(written, 12);
+      check_equal(buf[0], 0x12);
+      check_equal(buf[1], 0x34);
+      check_equal(buf[4], 0x00);
+      check_equal(buf[5], 0x06);
 
       modbus_tcp_adu_t parsed;
       ModbusParseResult result = modbus_tcp_read(buf, written, &parsed);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(parsed.transaction_id, 0x1234);
-      check_int_eq(parsed.unit_id, 0x11);
-      check_mem_eq(parsed.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(parsed.transaction_id, 0x1234);
+      check_equal(parsed.unit_id, 0x11);
+      check_equal(parsed.pdu.data, pdu_data, sizeof(pdu_data));
     }
 
     it("should reject writing a TCP struct with invalid protocol id") {
@@ -107,7 +107,7 @@ spec("modbus_parser") {
 
       size_t written = modbus_tcp_write(&adu, buf, sizeof(buf));
 
-      check_size_eq(written, 0);
+      check_equal(written, 0);
     }
   }
 
@@ -117,7 +117,7 @@ spec("modbus_parser") {
 
       uint16_t crc = modbus_rtu_crc16(request, sizeof(request));
 
-      check_int_eq(crc, 0xCDC5);
+      check_equal(crc, 0xCDC5);
     }
 
     it("should build and parse an RTU request") {
@@ -126,20 +126,20 @@ spec("modbus_parser") {
 
       size_t written = modbus_rtu_build(0x01, 0x03, pdu_data, sizeof(pdu_data),
                                         buf, sizeof(buf));
-      check_size_eq(written, 8);
-      check_int_eq(buf[6], 0xC5);
-      check_int_eq(buf[7], 0xCD);
+      check_equal(written, 8);
+      check_equal(buf[6], 0xC5);
+      check_equal(buf[7], 0xCD);
 
       modbus_rtu_adu_t adu;
       ModbusParseResult result = modbus_rtu_parse(buf, written, &adu);
 
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.address, 0x01);
-      check_int_eq(adu.pdu.function_code, 0x03);
-      check_size_eq(adu.pdu.data_size, sizeof(pdu_data));
-      check_mem_eq(adu.pdu.data, pdu_data, sizeof(pdu_data));
-      check_int_eq(adu.crc, 0xCDC5);
-      check_size_eq(adu.consumed, written);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.address, 0x01);
+      check_equal(adu.pdu.function_code, 0x03);
+      check_equal(adu.pdu.data_size, sizeof(pdu_data));
+      check_equal(adu.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(adu.crc, 0xCDC5);
+      check_equal(adu.consumed, written);
     }
 
     it("should reject corrupted RTU CRC") {
@@ -152,7 +152,7 @@ spec("modbus_parser") {
       modbus_rtu_adu_t adu;
       ModbusParseResult result = modbus_rtu_parse(buf, written, &adu);
 
-      check_int_eq(result, MODBUS_PARSE_CRC_MISMATCH);
+      check_equal(result, MODBUS_PARSE_CRC_MISMATCH);
     }
 
     it("should write an RTU struct to binary") {
@@ -169,15 +169,15 @@ spec("modbus_parser") {
 
       size_t written = modbus_rtu_write(&adu, buf, sizeof(buf));
 
-      check_size_eq(written, 8);
-      check_int_eq(buf[6], 0xC5);
-      check_int_eq(buf[7], 0xCD);
+      check_equal(written, 8);
+      check_equal(buf[6], 0xC5);
+      check_equal(buf[7], 0xCD);
 
       modbus_rtu_adu_t parsed;
       ModbusParseResult result = modbus_rtu_read(buf, written, &parsed);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(parsed.address, 0x01);
-      check_mem_eq(parsed.pdu.data, pdu_data, sizeof(pdu_data));
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(parsed.address, 0x01);
+      check_equal(parsed.pdu.data, pdu_data, sizeof(pdu_data));
     }
   }
 
@@ -190,14 +190,14 @@ spec("modbus_parser") {
 
       modbus_adu_t adu;
       ModbusParseResult result = modbus_read(MODBUS_TRANSPORT_TCP, buf, written, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.transport, MODBUS_TRANSPORT_TCP);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.transport, MODBUS_TRANSPORT_TCP);
 
       uint8_t out[MODBUS_TCP_MAX_ADU_SIZE];
       size_t out_len = modbus_write(&adu, out, sizeof(out));
 
-      check_size_eq(out_len, written);
-      check_mem_eq(out, buf, written);
+      check_equal(out_len, written);
+      check_equal(out, buf, written);
     }
 
     it("should read and write a generic RTU ADU") {
@@ -208,14 +208,14 @@ spec("modbus_parser") {
 
       modbus_adu_t adu;
       ModbusParseResult result = modbus_read(MODBUS_TRANSPORT_RTU, buf, written, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.transport, MODBUS_TRANSPORT_RTU);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.transport, MODBUS_TRANSPORT_RTU);
 
       uint8_t out[MODBUS_RTU_MAX_ADU_SIZE];
       size_t out_len = modbus_write(&adu, out, sizeof(out));
 
-      check_size_eq(out_len, written);
-      check_mem_eq(out, buf, written);
+      check_equal(out_len, written);
+      check_equal(out, buf, written);
     }
   }
 
@@ -230,13 +230,13 @@ spec("modbus_parser") {
 
       modbus_adu_t adu;
       ModbusParseResult result = modbus_stream_feed(stream, buf, 5, &adu);
-      check_int_eq(result, MODBUS_PARSE_NEED_MORE);
+      check_equal(result, MODBUS_PARSE_NEED_MORE);
 
       result = modbus_stream_feed(stream, buf + 5, written - 5, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.transport, MODBUS_TRANSPORT_TCP);
-      check_int_eq(adu.frame.tcp.transaction_id, 7);
-      check_int_eq(adu.frame.tcp.pdu.function_code, 0x03);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.transport, MODBUS_TRANSPORT_TCP);
+      check_equal(adu.frame.tcp.transaction_id, 7);
+      check_equal(adu.frame.tcp.pdu.function_code, 0x03);
 
       modbus_stream_destroy(stream);
     }
@@ -258,12 +258,12 @@ spec("modbus_parser") {
 
       modbus_adu_t adu;
       ModbusParseResult result = modbus_stream_feed(stream, combined, len1 + len2, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.frame.tcp.transaction_id, 1);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.frame.tcp.transaction_id, 1);
 
       result = modbus_stream_feed(stream, NULL, 0, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.frame.tcp.transaction_id, 2);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.frame.tcp.transaction_id, 2);
 
       modbus_stream_destroy(stream);
     }
@@ -278,16 +278,16 @@ spec("modbus_parser") {
 
       modbus_adu_t adu;
       ModbusParseResult result = modbus_stream_feed(stream, buf, 4, &adu);
-      check_int_eq(result, MODBUS_PARSE_NEED_MORE);
+      check_equal(result, MODBUS_PARSE_NEED_MORE);
 
       result = modbus_stream_feed(stream, buf + 4, written - 4, &adu);
-      check_int_eq(result, MODBUS_PARSE_NEED_MORE);
+      check_equal(result, MODBUS_PARSE_NEED_MORE);
 
       result = modbus_stream_feed(stream, NULL, 0, &adu);
-      check_int_eq(result, MODBUS_PARSE_OK);
-      check_int_eq(adu.transport, MODBUS_TRANSPORT_RTU);
-      check_int_eq(adu.frame.rtu.address, 0x01);
-      check_int_eq(adu.frame.rtu.pdu.function_code, 0x03);
+      check_equal(result, MODBUS_PARSE_OK);
+      check_equal(adu.transport, MODBUS_TRANSPORT_RTU);
+      check_equal(adu.frame.rtu.address, 0x01);
+      check_equal(adu.frame.rtu.pdu.function_code, 0x03);
 
       modbus_stream_destroy(stream);
     }

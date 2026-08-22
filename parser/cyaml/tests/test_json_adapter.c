@@ -12,7 +12,7 @@ suite("cyaml json adapter") {
         check_not_null(doc);
         check_true(cyaml_is_map(cyaml_root(doc)));
         char* name = cyaml_scalar_str(doc, cyaml_path(doc, "/name"));
-        check_str_eq(name, "Ada");
+        check_equal(name, "Ada");
         free(name);
 
         bool active = false;
@@ -22,11 +22,11 @@ suite("cyaml json adapter") {
 
         double number = 0.0;
         check_true(cyaml_as_float(doc, cyaml_path(doc, "/items[1]"), &number));
-        check_double_within_abs(number, 2.5, 0.0);
+        check_within(number, 2.5, 0.0);
 
         int64_t integer = 0;
         check_true(cyaml_as_int(doc, cyaml_path(doc, "/items[2]/n"), &integer));
-        check_long_eq(integer, 3);
+        check_equal(integer, 3);
         cyaml_free(doc);
     }
 
@@ -38,8 +38,8 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(roundtrip);
-        check_str_eq(roundtrip, json);
-        check_size_eq(json_len, strlen(json));
+        check_equal(roundtrip, json);
+        check_equal(json_len, strlen(json));
         free(roundtrip);
         cyaml_free(doc);
     }
@@ -52,8 +52,8 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(roundtrip);
-        check_str_eq(roundtrip, json);
-        check_size_eq(json_len, strlen(json));
+        check_equal(roundtrip, json);
+        check_equal(json_len, strlen(json));
         free(roundtrip);
         cyaml_free(doc);
     }
@@ -66,25 +66,25 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(pair);
-        check_uint_eq(cyaml_len(pair->key), 6);
-        check_mem_eq(cyaml_str(doc, pair->key), "a\\x00b", 6);
-        check_uint_eq(cyaml_len(pair->val), 6);
-        check_mem_eq(cyaml_str(doc, pair->val), "x\\x00y", 6);
+        check_equal(cyaml_len(pair->key), 6);
+        check_equal(cyaml_str(doc, pair->key), "a\\x00b", 6);
+        check_equal(cyaml_len(pair->val), 6);
+        check_equal(cyaml_str(doc, pair->val), "x\\x00y", 6);
 
         char* decoded_key = cyaml_scalar_str(doc, pair->key);
         char* decoded_value = cyaml_scalar_str(doc, pair->val);
         check_not_null(decoded_key);
         check_not_null(decoded_value);
-        check_mem_eq(decoded_key, "a\0b", 3);
-        check_mem_eq(decoded_value, "x\0y", 3);
+        check_equal(decoded_key, "a\0b", 3);
+        check_equal(decoded_value, "x\0y", 3);
         free(decoded_key);
         free(decoded_value);
 
         size_t json_len = 0;
         char* roundtrip = cyaml_json(doc, 0, &json_len);
         check_not_null(roundtrip);
-        check_str_eq(roundtrip, json);
-        check_size_eq(json_len, strlen(json));
+        check_equal(roundtrip, json);
+        check_equal(json_len, strlen(json));
         free(roundtrip);
         cyaml_free(doc);
     }
@@ -97,8 +97,8 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(roundtrip);
-        check_str_eq(roundtrip, json);
-        check_size_eq(json_len, strlen(json));
+        check_equal(roundtrip, json);
+        check_equal(json_len, strlen(json));
         free(roundtrip);
         cyaml_free(doc);
     }
@@ -110,7 +110,7 @@ suite("cyaml json adapter") {
 
         char* name = cyaml_scalar_str(doc, cyaml_path(doc, "/name"));
         check_not_null(doc);
-        check_str_eq(name, "Ada");
+        check_equal(name, "Ada");
         free(name);
         cyaml_free(doc);
     }
@@ -122,7 +122,7 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_true(cyaml_as_float(doc, cyaml_root(doc), &value));
-        check_double_within_abs(value, 9007199254740992.0, 0.0);
+        check_within(value, 9007199254740992.0, 0.0);
         cyaml_free(doc);
     }
 
@@ -133,7 +133,7 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_true(cyaml_as_float(doc, cyaml_root(doc), &value));
-        check_double_within_abs(value, 1.2345678901234567, 0.0);
+        check_within(value, 1.2345678901234567, 0.0);
         cyaml_free(doc);
     }
 
@@ -154,16 +154,16 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(value);
-        check_int_eq(json_type(value), JSON_OBJECT);
-        check_str_eq(json_get_string(value, "name"), "Ada");
+        check_equal(json_type(value), JSON_OBJECT);
+        check_equal(json_get_string(value, "name"), "Ada");
         check_true(json_get_bool(value, "active", false));
 
         json_value_t* items = json_object_get(value, "items");
-        check_size_eq(json_array_size(items), 3);
+        check_equal(json_array_size(items), 3);
         check_true(json_is_null(json_array_get(items, 0)));
-        check_double_within_abs(json_number(json_array_get(items, 1)), 2.5, 0.0);
-        check_int_eq(json_type(json_array_get(items, 2)), JSON_STRING);
-        check_str_eq(json_string(json_array_get(items, 2)), "42");
+        check_within(json_number(json_array_get(items, 1)), 2.5, 0.0);
+        check_equal(json_type(json_array_get(items, 2)), JSON_STRING);
+        check_equal(json_string(json_array_get(items, 2)), "42");
         json_free(value);
         cyaml_free(doc);
     }
@@ -178,8 +178,8 @@ suite("cyaml json adapter") {
         check_not_null(doc);
         check_not_null(value);
         check_not_null(roundtrip);
-        check_str_eq(roundtrip, json);
-        check_size_eq(len, strlen(json));
+        check_equal(roundtrip, json);
+        check_equal(len, strlen(json));
         json_serialize_free(roundtrip);
         json_free(value);
         cyaml_free(doc);
@@ -195,12 +195,12 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(value);
-        check_size_eq(json_object_key_len(value, 0), 3);
-        check_mem_eq(json_object_key(value, 0), "a\0b", 3);
-        check_size_eq(json_string_len(json_object_value(value, 0)), 3);
-        check_mem_eq(json_string(json_object_value(value, 0)), "x\0y", 3);
-        check_int_eq(json_type(json_object_get(value, "typed")), JSON_STRING);
-        check_str_eq(json_string(json_object_get(value, "typed")), "true");
+        check_equal(json_object_key_len(value, 0), 3);
+        check_equal(json_object_key(value, 0), "a\0b", 3);
+        check_equal(json_string_len(json_object_value(value, 0)), 3);
+        check_equal(json_string(json_object_value(value, 0)), "x\0y", 3);
+        check_equal(json_type(json_object_get(value, "typed")), JSON_STRING);
+        check_equal(json_string(json_object_get(value, "typed")), "true");
         json_free(value);
         cyaml_free(doc);
     }
@@ -213,9 +213,9 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(value);
-        check_size_eq(json_array_size(json_object_get(value, "value")), 2);
-        check_size_eq(json_array_size(json_object_get(value, "copy")), 2);
-        check_ptr_ne(json_object_get(value, "value"), json_object_get(value, "copy"));
+        check_equal(json_array_size(json_object_get(value, "value")), 2);
+        check_equal(json_array_size(json_object_get(value, "copy")), 2);
+        check_true(json_object_get(value, "value") != json_object_get(value, "copy"));
         json_free(value);
         cyaml_free(doc);
     }
@@ -263,15 +263,15 @@ suite("cyaml json adapter") {
 
         check_not_null(doc);
         check_not_null(value);
-        check_str_eq(json_number_text(json_array_get(value, 0), &len),
+        check_equal(json_number_text(json_array_get(value, 0), &len),
             "9223372036854775807");
-        check_size_eq(len, 19);
-        check_str_eq(json_number_text(json_array_get(value, 1), &len),
+        check_equal(len, 19);
+        check_equal(json_number_text(json_array_get(value, 1), &len),
             "-9223372036854775808");
-        check_size_eq(len, 20);
-        check_str_eq(json_number_text(json_array_get(value, 2), &len),
+        check_equal(len, 20);
+        check_equal(json_number_text(json_array_get(value, 2), &len),
             "18446744073709551615");
-        check_size_eq(len, 20);
+        check_equal(len, 20);
         json_free(value);
         cyaml_free(doc);
     }

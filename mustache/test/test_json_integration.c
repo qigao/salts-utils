@@ -26,14 +26,14 @@ spec("mustache json integration") {
                 
                 if (template) {
                     MUSTACHE_STRING_RENDERER renderer;
-                    check_int_eq(mustache_string_renderer_init(&renderer), 0);
+                    check_equal(mustache_string_renderer_init(&renderer), 0);
                     
-                    check_int_eq(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
+                    check_equal(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
                     
                     char *result = mustache_string_renderer_get(&renderer);
                     check_not_null(result);
                     if (result) {
-                        check_str_eq(result, "Hello World!");
+                        check_equal(result, "Hello World!");
                         free(result);
                     }
                     
@@ -59,14 +59,14 @@ spec("mustache json integration") {
                 
                 if (template) {
                     MUSTACHE_STRING_RENDERER renderer;
-                    check_int_eq(mustache_string_renderer_init(&renderer), 0);
+                    check_equal(mustache_string_renderer_init(&renderer), 0);
                     
-                    check_int_eq(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
+                    check_equal(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
                     
                     char *result = mustache_string_renderer_get(&renderer);
                     check_not_null(result);
                     if (result) {
-                        check_str_eq(result, "A B ");
+                        check_equal(result, "A B ");
                         free(result);
                     }
                     
@@ -90,14 +90,14 @@ spec("mustache json integration") {
                 
                 if (template) {
                     MUSTACHE_STRING_RENDERER renderer;
-                    check_int_eq(mustache_string_renderer_init(&renderer), 0);
+                    check_equal(mustache_string_renderer_init(&renderer), 0);
                     
-                    check_int_eq(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
+                    check_equal(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
                     
                     char *result = mustache_string_renderer_get(&renderer);
                     check_not_null(result);
                     if (result) {
-                        check_str_eq(result, "Not found");
+                        check_equal(result, "Not found");
                         free(result);
                     }
                     
@@ -123,16 +123,16 @@ spec("mustache json integration") {
                 
                 if (template) {
                     MUSTACHE_STRING_RENDERER renderer;
-                    check_int_eq(mustache_string_renderer_init(&renderer), 0);
+                    check_equal(mustache_string_renderer_init(&renderer), 0);
                     
-                    check_int_eq(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
+                    check_equal(mustache_render_json(template, json_data, &renderer.base, &renderer, NULL, NULL), 0);
                     
                     char *result = mustache_string_renderer_get(&renderer);
                     check_not_null(result);
                     if (result) {
                         /* Should contain escaped and unescaped versions */
-                        check_str_contains(result, "&lt;script&gt;");
-                        check_str_contains(result, "<script>alert('xss')</script>");
+                        check_contains(result, "&lt;script&gt;");
+                        check_contains(result, "<script>alert('xss')</script>");
                         free(result);
                     }
                     

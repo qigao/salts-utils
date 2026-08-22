@@ -192,8 +192,8 @@ suite("cpp lua bind") {
     cpp_lua_reflection::from_lua(L, -1, loaded);
     lua_pop(L, 1);
 
-    check_float_eq(loaded.x, 10.0f, 0.001f);
-    check_float_eq(loaded.y, 20.0f, 0.001f);
+    check_within(loaded.x, 10.0f, 0.001f);
+    check_within(loaded.y, 20.0f, 0.001f);
   }
 
   it("binds all reflected fields as Lua properties") {

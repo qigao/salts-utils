@@ -5,7 +5,7 @@
 
 #include "tinytest.h"
 #include "mustache.h"
-#include "turbo_str_view.h"
+#include "turbo_vstr.h"
 #include "turbo_str.h"
 #include <stdint.h>
 #include <string.h>
@@ -33,11 +33,11 @@ NOINLINE static size_t call_with_ptr(const char *s, size_t len) {
   return len + (s ? s[0] : 0);
 }
 
-NOINLINE static size_t call_with_view(tstr_v v) {
+NOINLINE static size_t call_with_view(vstr v) {
   return v.len + (v.data ? v.data[0] : 0);
 }
 
-NOINLINE static size_t call_with_tstr(tstr_t s) {
+NOINLINE static size_t call_with_tstr(tstr s) {
   return tstr_len(s) + (s ? s[0] : 0);
 }
 
@@ -170,14 +170,14 @@ typedef struct BENCH_NODE {
   size_t count;
 } BENCH_NODE;
 
-static const tstr_v KEY_NAME = {"name", 4};
-static const tstr_v KEY_CITY = {"city", 4};
-static const tstr_v KEY_TITLE = {"title", 5};
-static const tstr_v KEY_USER = {"user", 4};
-static const tstr_v KEY_TAGS = {"tags", 4};
-static const tstr_v KEY_A = {"a", 1};
-static const tstr_v KEY_B = {"b", 1};
-static const tstr_v KEY_C = {"c", 1};
+static const vstr KEY_NAME = {"name", 4};
+static const vstr KEY_CITY = {"city", 4};
+static const vstr KEY_TITLE = {"title", 5};
+static const vstr KEY_USER = {"user", 4};
+static const vstr KEY_TAGS = {"tags", 4};
+static const vstr KEY_A = {"a", 1};
+static const vstr KEY_B = {"b", 1};
+static const vstr KEY_C = {"c", 1};
 
 static void *get_root_rich(void *provider_data) { return provider_data; }
 
@@ -188,18 +188,18 @@ static void *get_child_by_name_rich(void *node, const char *name, size_t size,
   if (!n)
     return NULL;
 
-  tstr_v key = tstr_v_from_buf(name, size);
+  vstr key = vstr_from_buf(name, size);
   if (n->kind == NODE_ROOT) {
-    if (tstr_v_eq(key, KEY_NAME))
+    if (vstr_eq(key, KEY_NAME))
       return (void *)((BENCH_NODE *)n + 1);
-    if (tstr_v_eq(key, KEY_CITY))
+    if (vstr_eq(key, KEY_CITY))
       return (void *)((BENCH_NODE *)n + 2);
-    if (tstr_v_eq(key, KEY_TITLE))
+    if (vstr_eq(key, KEY_TITLE))
       return (void *)((BENCH_NODE *)n + 3);
-    if (tstr_v_eq(key, KEY_USER) || tstr_v_eq(key, KEY_A) || tstr_v_eq(key, KEY_B) ||
-        tstr_v_eq(key, KEY_C))
+    if (vstr_eq(key, KEY_USER) || vstr_eq(key, KEY_A) || vstr_eq(key, KEY_B) ||
+        vstr_eq(key, KEY_C))
       return node;
-    if (tstr_v_eq(key, KEY_TAGS))
+    if (vstr_eq(key, KEY_TAGS))
       return (void *)((BENCH_NODE *)n + 4);
   }
   return NULL;
@@ -299,18 +299,18 @@ static const char DASHBOARD_TEMPLATE[] =
     "</body>\n"
     "</html>\n";
 
-static const tstr_v KEY_TEST_SUITE_NAME = {"test_suite_name", 15};
-static const tstr_v KEY_TIMESTAMP = {"timestamp", 9};
-static const tstr_v KEY_PASS_PERCENTAGE = {"pass_percentage", 15};
-static const tstr_v KEY_TOTAL_TESTS = {"total_tests", 11};
-static const tstr_v KEY_PASSED_TESTS = {"passed_tests", 12};
-static const tstr_v KEY_FAILED_TESTS = {"failed_tests", 12};
-static const tstr_v KEY_TESTCASE = {"testcase", 8};
-static const tstr_v KEY_STATUS = {"status", 6};
-static const tstr_v KEY_CLASSNAME = {"classname", 9};
-static const tstr_v KEY_TIME = {"time", 4};
-static const tstr_v KEY_FAILURE = {"failure", 7};
-static const tstr_v KEY_MESSAGE = {"message", 7};
+static const vstr KEY_TEST_SUITE_NAME = {"test_suite_name", 15};
+static const vstr KEY_TIMESTAMP = {"timestamp", 9};
+static const vstr KEY_PASS_PERCENTAGE = {"pass_percentage", 15};
+static const vstr KEY_TOTAL_TESTS = {"total_tests", 11};
+static const vstr KEY_PASSED_TESTS = {"passed_tests", 12};
+static const vstr KEY_FAILED_TESTS = {"failed_tests", 12};
+static const vstr KEY_TESTCASE = {"testcase", 8};
+static const vstr KEY_STATUS = {"status", 6};
+static const vstr KEY_CLASSNAME = {"classname", 9};
+static const vstr KEY_TIME = {"time", 4};
+static const vstr KEY_FAILURE = {"failure", 7};
+static const vstr KEY_MESSAGE = {"message", 7};
 
 typedef enum {
   DASH_ROOT = 0,
@@ -341,41 +341,41 @@ static void *get_child_by_name_dash(void *node, const char *name, size_t size,
   if (!n)
     return NULL;
 
-  tstr_v key = tstr_v_from_buf(name, size);
+  vstr key = vstr_from_buf(name, size);
 
   if (n->kind == DASH_ROOT) {
     DASH_NODE *root = n;
-    if (tstr_v_eq(key, KEY_TEST_SUITE_NAME) || tstr_v_eq(key, KEY_NAME))
+    if (vstr_eq(key, KEY_TEST_SUITE_NAME) || vstr_eq(key, KEY_NAME))
       return (void *)(root + 1);
-    if (tstr_v_eq(key, KEY_TIMESTAMP))
+    if (vstr_eq(key, KEY_TIMESTAMP))
       return (void *)(root + 2);
-    if (tstr_v_eq(key, KEY_PASS_PERCENTAGE))
+    if (vstr_eq(key, KEY_PASS_PERCENTAGE))
       return (void *)(root + 3);
-    if (tstr_v_eq(key, KEY_TOTAL_TESTS))
+    if (vstr_eq(key, KEY_TOTAL_TESTS))
       return (void *)(root + 4);
-    if (tstr_v_eq(key, KEY_PASSED_TESTS))
+    if (vstr_eq(key, KEY_PASSED_TESTS))
       return (void *)(root + 5);
-    if (tstr_v_eq(key, KEY_FAILED_TESTS))
+    if (vstr_eq(key, KEY_FAILED_TESTS))
       return (void *)(root + 6);
-    if (tstr_v_eq(key, KEY_TESTCASE))
+    if (vstr_eq(key, KEY_TESTCASE))
       return (void *)(root + 7);
   }
 
   if (n->kind == DASH_TESTCASE) {
-    if (tstr_v_eq(key, KEY_NAME))
+    if (vstr_eq(key, KEY_NAME))
       return (void *)n->str;
-    if (tstr_v_eq(key, KEY_STATUS))
+    if (vstr_eq(key, KEY_STATUS))
       return (void *)n->status;
-    if (tstr_v_eq(key, KEY_CLASSNAME))
+    if (vstr_eq(key, KEY_CLASSNAME))
       return (void *)n->classname;
-    if (tstr_v_eq(key, KEY_TIME))
+    if (vstr_eq(key, KEY_TIME))
       return (void *)n->time;
-    if (tstr_v_eq(key, KEY_FAILURE) && n->failure_msg)
+    if (vstr_eq(key, KEY_FAILURE) && n->failure_msg)
       return (void *)n;
   }
 
   if (n->kind == DASH_FAILURE) {
-    if (tstr_v_eq(key, KEY_MESSAGE))
+    if (vstr_eq(key, KEY_MESSAGE))
       return (void *)n->failure_msg;
   }
 
@@ -465,7 +465,7 @@ spec("mustache bench") {
     }
 
     benchmark("compile_v", BENCH_ITERS_COMPILE, 1) {
-      tstr_v v = tstr_v_from_buf(templ, templ_len);
+      vstr v = vstr_from_buf(templ, templ_len);
       MUSTACHE_TEMPLATE *t = mustache_compile_v(v, NULL, NULL, 0);
       if (t)
         mustache_release(t);
@@ -620,8 +620,8 @@ spec("mustache bench") {
       benchmark_titles("benchmark", "input", "iters", "avg(us)", NULL, "min(us)", "max(us)", "ops/s", NULL, NULL);
     const char *test_str = "hello world test string";
     size_t test_len = 23;
-    tstr_v test_view = tstr_v_from_buf(test_str, test_len);
-    tstr_t test_tstr = tstr_from_v(test_view);
+    vstr test_view = vstr_from_buf(test_str, test_len);
+    tstr test_tstr = tstr_from_v(test_view);
 
     benchmark("call(ptr,len)", BENCH_ITERS_VIEW_VS_PTR, 1) {
       sink_size += call_with_ptr(test_str, test_len);

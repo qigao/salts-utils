@@ -12,7 +12,7 @@ spec("ini_parser") {
     it("should parse an empty string correctly") {
         ini_t* ini = ini_parse("", 0);
         check_not_null(ini);
-        check_int_eq(ini_section_count(ini), 0);
+        check_equal(ini_section_count(ini), 0);
         ini_free(ini);
     }
 
@@ -21,7 +21,7 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
         check_null(ini_get(ini, "section1", "key2"));
         check_null(ini_get(ini, "section2", "key1"));
 
@@ -41,10 +41,10 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
-        check_str_eq(ini_get(ini, "section1", "key2"), "value2");
-        check_str_eq(ini_get(ini, "section2", "key3"), "value3");
-        check_str_eq(ini_get(ini, "section2", "key4"), "value4");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key2"), "value2");
+        check_equal(ini_get(ini, "section2", "key3"), "value3");
+        check_equal(ini_get(ini, "section2", "key4"), "value4");
         check_null(ini_get(ini, "section1", "key3"));
 
         ini_free(ini);
@@ -63,8 +63,8 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
-        check_str_eq(ini_get(ini, "section1", "key2"), "value2");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key2"), "value2");
 
         ini_free(ini);
     }
@@ -78,8 +78,8 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
-        check_str_eq(ini_get(ini, "section1", "key2"), "value2");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key2"), "value2");
 
         ini_free(ini);
     }
@@ -92,7 +92,7 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value with spaces");
+        check_equal(ini_get(ini, "section1", "key1"), "value with spaces");
 
         ini_free(ini);
     }
@@ -106,8 +106,8 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
-        check_str_eq(ini_get(ini, "section1", "key2"), "value2");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key2"), "value2");
 
         ini_free(ini);
     }
@@ -123,7 +123,7 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value2");
+        check_equal(ini_get(ini, "section1", "key1"), "value2");
 
         ini_free(ini);
     }
@@ -140,9 +140,9 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
-        check_str_eq(ini_get(ini, "section1", "key3"), "value3");
-        check_str_eq(ini_get(ini, "section2", "key2"), "value2");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "section1", "key3"), "value3");
+        check_equal(ini_get(ini, "section2", "key2"), "value2");
 
         ini_free(ini);
     }
@@ -158,9 +158,9 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_str_eq(ini_get(ini, "", "global_key"), "global_value");
-        check_str_eq(ini_get(ini, NULL, "global_key"), "global_value");
-        check_str_eq(ini_get(ini, "section1", "key1"), "value1");
+        check_equal(ini_get(ini, "", "global_key"), "global_value");
+        check_equal(ini_get(ini, NULL, "global_key"), "global_value");
+        check_equal(ini_get(ini, "section1", "key1"), "value1");
 
         ini_free(ini);
     }
@@ -177,10 +177,10 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_int_eq(ini_get_int(ini, "section1", "port", 0), 8080);
-        check_int_eq(ini_get_int(ini, "section1", "hex", 0), 255);
-        check_int_eq(ini_get_int(ini, "section1", "invalid", 42), 42);
-        check_int_eq(ini_get_int(ini, "section1", "missing", 99), 99);
+        check_equal(ini_get_int(ini, "section1", "port", 0), 8080);
+        check_equal(ini_get_int(ini, "section1", "hex", 0), 255);
+        check_equal(ini_get_int(ini, "section1", "invalid", 42), 42);
+        check_equal(ini_get_int(ini, "section1", "missing", 99), 99);
 
         ini_free(ini);
     }
@@ -225,9 +225,9 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_float_eq(ini_get_double(ini, "section1", "pi", 0.0), 3.14159, 0.0001);
-        check_float_eq(ini_get_double(ini, "section1", "negative", 0.0), -1.5, 0.0001);
-        check_float_eq(ini_get_double(ini, "section1", "invalid", 1.0), 1.0, 0.0001);
+        check_within(ini_get_double(ini, "section1", "pi", 0.0), 3.14159, 0.0001);
+        check_within(ini_get_double(ini, "section1", "negative", 0.0), -1.5, 0.0001);
+        check_within(ini_get_double(ini, "section1", "invalid", 1.0), 1.0, 0.0001);
 
         ini_free(ini);
     }
@@ -244,7 +244,7 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_int_eq(ini_section_count(ini), 2);
+        check_equal(ini_section_count(ini), 2);
 
         ini_free(ini);
     }
@@ -259,7 +259,7 @@ spec("ini_parser") {
         ini_t* ini = ini_parse(content, strlen(content));
 
         check_not_null(ini);
-        check_int_eq(ini_key_count(ini, "section1"), 3);
+        check_equal(ini_key_count(ini, "section1"), 3);
         check_not_null(ini_key_name(ini, "section1", 0));
         check_not_null(ini_key_name(ini, "section1", 1));
         check_not_null(ini_key_name(ini, "section1", 2));
@@ -285,8 +285,8 @@ spec("ini_parser") {
 
     ini_t* ini = ini_parse(content, offset + sizeof(suffix) - 1);
     check_not_null(ini);
-    check_size_eq(strlen(ini_get(ini, "simd", "value")), VALUE_BYTES);
-    check_mem_eq(ini_get(ini, "simd", "value"), content + sizeof(prefix) - 1, VALUE_BYTES);
+    check_equal(strlen(ini_get(ini, "simd", "value")), VALUE_BYTES);
+    check_equal(ini_get(ini, "simd", "value"), content + sizeof(prefix) - 1, VALUE_BYTES);
 
     ini_free(ini);
     free(content);

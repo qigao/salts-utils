@@ -144,7 +144,7 @@ symbol visibility。静态库不定义这两个宏。
 
 typedef struct Order {
   uint64_t order_id;
-  tstr_t symbol;
+  tstr symbol;
 } Order;
 
 TBE_TYPED_DEFINE_STRUCT(

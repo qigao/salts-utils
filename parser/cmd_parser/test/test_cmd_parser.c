@@ -53,7 +53,7 @@ spec("cmd_parser") {
             cmd_arger_parse(optional_args, 2, NULL, 0, argc, argv, "test_app v1.0", cmd_arger_false);
 
             check(verbose == cmd_arger_true);
-            check_str_eq(output, "result.txt");
+            check_equal(output, "result.txt");
         }
     }
 
@@ -74,8 +74,8 @@ spec("cmd_parser") {
 
             cmd_arger_parse(optional_args, 1, required_args, 1, argc, argv, "test_app v1.0", cmd_arger_false);
 
-            check_str_eq(mode, "fast");
-            check_str_eq(name, "myname");
+            check_equal(mode, "fast");
+            check_equal(name, "myname");
         }
 
         it("should parse variadic positional arguments") {
@@ -91,10 +91,10 @@ spec("cmd_parser") {
             
             cmd_arger_parse(NULL, 0, required_args, 1, argc, argv, "app", cmd_arger_false);
             
-            check_int_eq(files_count, 3);
-            check_str_eq(files[0], "file1.txt");
-            check_str_eq(files[1], "file2.txt");
-            check_str_eq(files[2], "file3.txt");
+            check_equal(files_count, 3);
+            check_equal(files[0], "file1.txt");
+            check_equal(files[1], "file2.txt");
+            check_equal(files[2], "file3.txt");
         }
     }
 
@@ -127,8 +127,8 @@ spec("cmd_parser") {
             cmd_arger_parse_subcommand(global_opts, 1, subcommands, 1, &selected, argc, argv, "app v1", cmd_arger_false);
 
             check(verbose == cmd_arger_true);
-            check_int_eq(selected, 0);
-            check_str_eq(msg, "hello");
+            check_equal(selected, 0);
+            check_equal(msg, "hello");
         }
     }
 
@@ -158,8 +158,8 @@ spec("cmd_parser") {
             cmd_arger_parse(opts, 3, NULL, 0, 1, argv, "app", cmd_arger_false);
 
             check(debug == cmd_arger_true);
-            check_str_eq(api_key, "secret");
-            check_long_eq(retries, 5);
+            check_equal(api_key, "secret");
+            check_equal(retries, 5);
 
             // Test override by CLI
             #ifdef _WIN32
@@ -188,7 +188,7 @@ spec("cmd_parser") {
             char* argv[] = {"app"};
             cmd_arger_parse(opts, 1, NULL, 0, 1, argv, "app", cmd_arger_false);
 
-            check_str_eq(api_url, "https://api.example.com");
+            check_equal(api_url, "https://api.example.com");
 
             remove(".env");
         }
@@ -211,7 +211,7 @@ spec("cmd_parser") {
             char* argv[] = {"app", "@args.txt"};
             cmd_arger_parse(opts, 1, NULL, 0, 2, argv, "app", cmd_arger_false);
             
-            check_str_eq(mode, "fast");
+            check_equal(mode, "fast");
             
             remove(filename);
         }
@@ -224,7 +224,7 @@ spec("cmd_parser") {
             
             char* argv[] = {"app", "--port", "8080"};
             cmd_arger_parse(opts, 1, NULL, 0, 3, argv, "app", cmd_arger_false);
-            check_long_eq(port, 8080);
+            check_equal(port, 8080);
         }
 
         it("should support option grouping") {
@@ -239,7 +239,7 @@ spec("cmd_parser") {
             
             char* argv[] = {"app", "--input", "in.txt"};
             cmd_arger_parse(opts, 3, NULL, 0, 3, argv, "app", cmd_arger_false);
-            check_str_eq(input, "in.txt");
+            check_equal(input, "in.txt");
         }
 
         it("should support string choices") {
@@ -252,7 +252,7 @@ spec("cmd_parser") {
             
             char* argv[] = {"app", "--method", "POST"};
             cmd_arger_parse(opts, 1, NULL, 0, 3, argv, "app", cmd_arger_false);
-            check_str_eq(method, "POST");
+            check_equal(method, "POST");
         }
     }
 }

@@ -94,12 +94,12 @@ suite("regex and contains benchmarks") {
     const re_limits_t limits = big_limits();
     benchmark_bytes("re ~ [a-z]lpha scalar-loop 64KiB", 200, SCAN_BYTES) {
       re_match_result_t match = {0};
-      check_int_eq(re_match_n("[a-z]lpha", 8, buf, SCAN_BYTES, &limits, &match),
+      check_equal(re_match_n("[a-z]lpha", 8, buf, SCAN_BYTES, &limits, &match),
                    RE_STATUS_NO_MATCH);
     }
     benchmark_bytes("re ~ alpha prefix-skip 64KiB", 200, SCAN_BYTES) {
       re_match_result_t match = {0};
-      check_int_eq(re_match_n("alpha", 5, buf, SCAN_BYTES, &limits, &match),
+      check_equal(re_match_n("alpha", 5, buf, SCAN_BYTES, &limits, &match),
                    RE_STATUS_NO_MATCH);
     }
   }
@@ -109,7 +109,7 @@ suite("regex and contains benchmarks") {
       check_null(strstr(buf, absent));
     }
     benchmark_bytes("contains SIMDe 64KiB", 200, SCAN_BYTES) {
-      check_int_eq(jsonpath_contains_simde(buf, SCAN_BYTES, absent, sizeof(absent) - 1), 0);
+      check_equal(jsonpath_contains_simde(buf, SCAN_BYTES, absent, sizeof(absent) - 1), 0);
     }
   }
 
@@ -117,13 +117,13 @@ suite("regex and contains benchmarks") {
     benchmark_ops("items[~ 'alpha'] no-match", 200, 2000) {
       json_path_result_t *result = json_path_query_compiled(root, regex_program);
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
       json_path_result_free(result);
     }
     benchmark_ops("items[contains 'alpha'] no-match", 200, 2000) {
       json_path_result_t *result = json_path_query_compiled(root, contains_program);
       check_not_null(result);
-      check_size_eq(json_path_result_size(result), 0);
+      check_equal(json_path_result_size(result), 0);
       json_path_result_free(result);
     }
   }

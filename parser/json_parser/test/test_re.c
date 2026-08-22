@@ -19,8 +19,8 @@ suite("jsonpath helpers") {
         size_t hlen = strlen(h);
         size_t nlen = strlen(n);
         int expected = strstr(h, n) != NULL;
-        check_int_eq(jsonpath_contains_scalar(h, hlen, n, nlen), expected);
-        check_int_eq(jsonpath_contains_simde(h, hlen, n, nlen), expected);
+        check_equal(jsonpath_contains_scalar(h, hlen, n, nlen), expected);
+        check_equal(jsonpath_contains_simde(h, hlen, n, nlen), expected);
       }
     }
 
@@ -34,10 +34,10 @@ suite("jsonpath helpers") {
       for (i = 0; i < sizeof(alphabet) - 1; ++i) {
         char needle[3] = {alphabet[i], alphabet[(i * 7 + 3) % (sizeof(alphabet) - 1)], '\0'};
         int expected = strstr(buf, needle) != NULL;
-        check_int_eq(jsonpath_contains_simde(buf, BUF_LEN, needle, 2), expected);
+        check_equal(jsonpath_contains_simde(buf, BUF_LEN, needle, 2), expected);
       }
-      check_int_eq(jsonpath_contains_simde(buf, BUF_LEN, "zzzz", 4), 0);
-      check_int_eq(jsonpath_contains_simde(buf, BUF_LEN, "a", 1), 1);
+      check_equal(jsonpath_contains_simde(buf, BUF_LEN, "zzzz", 4), 0);
+      check_equal(jsonpath_contains_simde(buf, BUF_LEN, "a", 1), 1);
     }
   }
 
@@ -52,7 +52,7 @@ suite("jsonpath helpers") {
         for (size_t len = 0; len <= mixed_len - start; ++len) {
           int scalar = (int)jsonpath_utf8_length_scalar((const char *)mixed + start, len);
           int simde = (int)jsonpath_utf8_length_simde((const char *)mixed + start, len);
-          check_int_eq(scalar, simde);
+          check_equal(scalar, simde);
         }
       }
 
@@ -62,18 +62,18 @@ suite("jsonpath helpers") {
       for (size_t start = 0; start < sizeof(wide); ++start) {
         int scalar = (int)jsonpath_utf8_length_scalar((const char *)wide + start, sizeof(wide) - start);
         int simde = (int)jsonpath_utf8_length_simde((const char *)wide + start, sizeof(wide) - start);
-        check_int_eq(scalar, simde);
+        check_equal(scalar, simde);
         {
           int expected = 0;
           for (size_t k = start; k < sizeof(wide); ++k)
             if (k % 4U == 0U) ++expected;
-          check_int_eq(scalar, expected);
+          check_equal(scalar, expected);
         }
       }
 
-      check_int_eq((int)jsonpath_utf8_length_scalar("", 0), 0);
-      check_int_eq((int)jsonpath_utf8_length_simde("", 0), 0);
-      check_int_eq((int)jsonpath_utf8_length_simde("\xe4\xb8\xad\xe6\x96\x87", 6), 2);
+      check_equal((int)jsonpath_utf8_length_scalar("", 0), 0);
+      check_equal((int)jsonpath_utf8_length_simde("", 0), 0);
+      check_equal((int)jsonpath_utf8_length_simde("\xe4\xb8\xad\xe6\x96\x87", 6), 2);
     }
   }
 }

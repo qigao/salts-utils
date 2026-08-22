@@ -6,29 +6,43 @@
 #include <stdlib.h>
 #include <string.h>
 #include <turbo_buffer.h>
-#include <turbo_set.h>
-#include <turbo_str_view.h>
+#include <turbo_vstr.h>
+#include <turbostl/hash_set.h>
 
 #define TOON_JSON_ARENA_INITIAL_SIZE (32U * 1024U)
 #define TOON_JSON_MAX_EXACT_INTEGER_TEXT "9007199254740992"
 
 typedef struct {
-    turbo_set_t seen;
+    turbo_hash_set_t seen;
 } toon_json_to_context_t;
+
+static int toon_json_stl_error(turbo_stl_status status)
+{
+    switch (status) {
+    case TURBO_STL_OK:
+        return TURBO_OK;
+    case TURBO_STL_OUT_OF_MEMORY:
+        return TURBO_ENOMEM;
+    case TURBO_STL_CAPACITY_EXCEEDED:
+        return TURBO_ERANGE;
+    default:
+        return TURBO_EINVAL;
+    }
+}
 
 static int toon_json_mark_seen(toon_json_to_context_t *ctx,
     const toonObject *node)
 {
-    if (turbo_set_contains(&ctx->seen, &node))
+    if (turbo_hash_set_contains(&ctx->seen, &node))
         return TURBO_EPROTO;
-    return turbo_set_add(&ctx->seen, &node);
+    return toon_json_stl_error(turbo_hash_set_add(&ctx->seen, &node));
 }
 
 static int toon_json_validate_text(const char *text, size_t len)
 {
     if (!text || len == SIZE_MAX)
         return TURBO_EPROTO;
-    return tstr_v_utf8_valid(tstr_v_from_buf(text, len))
+    return vstr_utf8_valid(vstr_from_buf(text, len))
         ? TURBO_OK
         : TURBO_ECHARSET;
 }
@@ -159,7 +173,7 @@ static int toon_json_to_node(toon_json_to_context_t *ctx,
 
 int toon_json_to_value(const toonObject *root, json_value_t **out_value)
 {
-    toon_json_to_context_t ctx;
+    toon_json_to_context_t ctx = {0};
     int rc;
 
     if (!out_value)
@@ -170,12 +184,13 @@ int toon_json_to_value(const toonObject *root, json_value_t **out_value)
     if (root->key || root->next)
         return TURBO_EPROTO;
 
-    rc = turbo_set_init(&ctx.seen, sizeof(const toonObject *), NULL, NULL,
-        NULL);
+    rc = toon_json_stl_error(turbo_hash_set_init_bytes(
+        &ctx.seen, sizeof(const toonObject *), _Alignof(const toonObject *),
+        SIZE_MAX, turbo_hash_bytes, turbo_hash_key_equal, NULL));
     if (rc != TURBO_OK)
         return rc;
     rc = toon_json_to_node(&ctx, root, 0U, out_value);
-    turbo_set_destroy(&ctx.seen);
+    turbo_hash_set_destroy(&ctx.seen);
     return rc;
 }
 

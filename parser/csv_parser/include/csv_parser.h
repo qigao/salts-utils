@@ -8,7 +8,7 @@
  * - Streaming (SAX-like) API using O(largest field) memory
  * - Batch API for convenient access
  * - Arena-based memory management
- * - tstr_v (string view) support for zero-copy field access
+ * - vstr (string view) support for zero-copy field access
  */
 
 #ifndef CSV_PARSER_H
@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <turbo_str_view.h>
+#include <turbo_vstr.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,25 +63,25 @@ int          csv_cursor_rewind(csv_cursor_t *cursor, size_t first_row);
 int          csv_cursor_next(csv_cursor_t *cursor);
 int          csv_cursor_error(const csv_cursor_t *cursor);
 size_t       csv_cursor_row_index(const csv_cursor_t *cursor);
-const tstr_v *csv_cursor_fields(const csv_cursor_t *cursor, size_t *field_count);
-tstr_v       csv_cursor_field_v(const csv_cursor_t *cursor, size_t col);
+const vstr *csv_cursor_fields(const csv_cursor_t *cursor, size_t *field_count);
+vstr       csv_cursor_field_v(const csv_cursor_t *cursor, size_t col);
 
 const char *csv_get(const csv_doc_t *doc, size_t row, size_t col);
 size_t      csv_get_len(const csv_doc_t *doc, size_t row, size_t col);
-tstr_v      csv_get_v(const csv_doc_t *doc, size_t row, size_t col);
+vstr      csv_get_v(const csv_doc_t *doc, size_t row, size_t col);
 
 const char *csv_header_get(const csv_doc_t *doc, size_t col);
 size_t      csv_header_get_len(const csv_doc_t *doc, size_t col);
-tstr_v      csv_header_get_v(const csv_doc_t *doc, size_t col);
+vstr      csv_header_get_v(const csv_doc_t *doc, size_t col);
 
 int         csv_get_int(const csv_doc_t *doc, size_t row, size_t col, int def);
 double      csv_get_double(const csv_doc_t *doc, size_t row, size_t col, double def);
 bool        csv_get_bool(const csv_doc_t *doc, size_t row, size_t col, bool def);
 
 size_t      csv_find_column(const csv_doc_t *doc, const char *header_name);
-size_t      csv_find_column_v(const csv_doc_t *doc, tstr_v header_name);
+size_t      csv_find_column_v(const csv_doc_t *doc, vstr header_name);
 const char *csv_get_by_name(const csv_doc_t *doc, size_t row, const char *col_name);
-tstr_v      csv_get_by_name_v(const csv_doc_t *doc, size_t row, tstr_v col_name);
+vstr      csv_get_by_name_v(const csv_doc_t *doc, size_t row, vstr col_name);
 
 const char *csv_get_error(void);
 
@@ -160,7 +160,7 @@ typedef struct {
     csv_scan_op_t         op;
     int64_t               integer;
     double                number;
-    tstr_v                text;
+    vstr                text;
 } csv_scan_predicate_t;
 
 /** A projected column. Values are emitted in this order for every match. */
@@ -174,7 +174,7 @@ typedef struct {
     union {
         int64_t integer;
         double  number;
-        tstr_v  text;
+        vstr  text;
     } value;
 } csv_scan_value_t;
 
@@ -218,7 +218,7 @@ bool        csv_iter_next(csv_iter_t *iter);
 size_t      csv_iter_field_count(const csv_iter_t *iter);
 const char *csv_iter_field(const csv_iter_t *iter, size_t col);
 size_t      csv_iter_field_len(const csv_iter_t *iter, size_t col);
-tstr_v      csv_iter_field_v(const csv_iter_t *iter, size_t col);
+vstr      csv_iter_field_v(const csv_iter_t *iter, size_t col);
 size_t      csv_iter_row_index(const csv_iter_t *iter);
 
 #ifdef __cplusplus

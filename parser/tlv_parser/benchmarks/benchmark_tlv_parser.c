@@ -93,7 +93,7 @@ suite("benchmark") {
     benchmark("TLV Parser: build frame (4 bytes payload)", 100000, 1) {
       uint8_t buf[256];
       size_t len = build_frame(buf, 12345, payload, payload_len);
-      check_size_gt(len, 0);
+      check_greater(len, 0);
     }
 
     benchmark("TLV Parser: round-trip frame", 50000, 1) {

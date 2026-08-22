@@ -27,17 +27,17 @@ static void expect_local_parts(time_t value,
 #else
   localtime_r(&value, &tm_value);
 #endif
-  check_int_eq(tm_value.tm_year + 1900, year);
-  check_int_eq(tm_value.tm_mon + 1, month);
-  check_int_eq(tm_value.tm_mday, day);
-  check_int_eq(tm_value.tm_hour, hour);
-  check_int_eq(tm_value.tm_min, minute);
+  check_equal(tm_value.tm_year + 1900, year);
+  check_equal(tm_value.tm_mon + 1, month);
+  check_equal(tm_value.tm_mday, day);
+  check_equal(tm_value.tm_hour, hour);
+  check_equal(tm_value.tm_min, minute);
 }
 
 static void write_text_file(const char *path, const char *text) {
   FILE *fp = fopen(path, "wb");
   check(fp != NULL);
-  check_int_eq(fwrite(text, 1, strlen(text), fp), (int)strlen(text));
+  check_equal(fwrite(text, 1, strlen(text), fp), (int)strlen(text));
   fclose(fp);
 }
 
@@ -61,7 +61,7 @@ suite("turbo_cron") {
     turbo_cron_expr_t expr;
     int rc = turbo_cron_parse("*/15 9-17 * jan,mar mon-fri", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     check((expr.minute_bits & (1ULL << 0)) != 0);
     check((expr.minute_bits & (1ULL << 15)) != 0);
     check((expr.hour_bits & (1ULL << 9)) != 0);
@@ -76,7 +76,7 @@ suite("turbo_cron") {
     turbo_cron_expr_t expr;
     int rc = turbo_cron_parse("@daily", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     check((expr.minute_bits & (1ULL << 0)) != 0);
     check((expr.hour_bits & (1ULL << 0)) != 0);
     check(expr.day_of_month_any == 1);
@@ -88,7 +88,7 @@ suite("turbo_cron") {
     char error_buf[128];
     int rc = turbo_cron_parse_ex("*/0 * * * *", &expr, error_buf, sizeof(error_buf));
 
-    check_int_eq(rc, TURBO_CRON_EPARSE);
+    check_equal(rc, TURBO_CRON_EPARSE);
     check(strstr(error_buf, "step") != NULL);
   }
 
@@ -98,9 +98,9 @@ suite("turbo_cron") {
     time_t next_fire = 0;
     int rc = turbo_cron_parse("30 14 * * 1-5", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next(&expr, after, &next_fire);
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     expect_local_parts(next_fire, 2024, 1, 1, 14, 30);
   }
 
@@ -110,9 +110,9 @@ suite("turbo_cron") {
     time_t next_fire = 0;
     int rc = turbo_cron_parse("0 0 13 * 5", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next(&expr, after, &next_fire);
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     expect_local_parts(next_fire, 2024, 1, 12, 0, 0);
   }
 
@@ -121,8 +121,8 @@ suite("turbo_cron") {
     time_t sunday = make_local_time(2024, 1, 7, 8, 0, 0);
     int rc = turbo_cron_parse("0 8 * * 7", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
-    check_int_eq(turbo_cron_matches(&expr, sunday), 1);
+    check_equal(rc, TURBO_CRON_OK);
+    check_equal(turbo_cron_matches(&expr, sunday), 1);
   }
 
   it("reports impossible schedules") {
@@ -130,9 +130,9 @@ suite("turbo_cron") {
     time_t next_fire = 0;
     int rc = turbo_cron_parse("0 0 31 2 *", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next(&expr, make_local_time(2024, 1, 1, 0, 0, 0), &next_fire);
-    check_int_eq(rc, TURBO_CRON_ENEXT);
+    check_equal(rc, TURBO_CRON_ENEXT);
   }
 
   it("computes multiple future fire times") {
@@ -140,9 +140,9 @@ suite("turbo_cron") {
     time_t times[3];
     int rc = turbo_cron_parse("*/20 9-10 * * *", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next_n(&expr, make_local_time(2024, 1, 1, 9, 5, 0), times, 3);
-    check_int_eq(rc, 3);
+    check_equal(rc, 3);
     expect_local_parts(times[0], 2024, 1, 1, 9, 20);
     expect_local_parts(times[1], 2024, 1, 1, 9, 40);
     expect_local_parts(times[2], 2024, 1, 1, 10, 0);
@@ -153,9 +153,9 @@ suite("turbo_cron") {
     time_t times[2];
     int rc = turbo_cron_parse("0 23 * * *", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next_n(&expr, make_local_time(2024, 1, 1, 23, 0, 1), times, 2);
-    check_int_eq(rc, 2);
+    check_equal(rc, 2);
     expect_local_parts(times[0], 2024, 1, 2, 23, 0);
     expect_local_parts(times[1], 2024, 1, 3, 23, 0);
   }
@@ -165,9 +165,9 @@ suite("turbo_cron") {
     time_t times[2];
     int rc = turbo_cron_parse("0 0 31 2 *", &expr);
 
-    check_int_eq(rc, TURBO_CRON_OK);
+    check_equal(rc, TURBO_CRON_OK);
     rc = turbo_cron_next_n(&expr, make_local_time(2024, 1, 1, 0, 0, 0), times, 2);
-    check_int_eq(rc, TURBO_CRON_ENEXT);
+    check_equal(rc, TURBO_CRON_ENEXT);
   }
 
   it("formats time using default layout") {
@@ -176,7 +176,7 @@ suite("turbo_cron") {
                                     buf, sizeof(buf), NULL);
 
     check(rc > 0);
-    check_str_eq(buf, "2024-01-02 03:04");
+    check_equal(buf, "2024-01-02 03:04");
   }
 
   it("formats time using caller layout") {
@@ -185,7 +185,7 @@ suite("turbo_cron") {
                                     buf, sizeof(buf), "%H:%M");
 
     check(rc > 0);
-    check_str_eq(buf, "03:04");
+    check_equal(buf, "03:04");
   }
 
   it("loads crontab-like entries from text") {
@@ -199,10 +199,10 @@ suite("turbo_cron") {
 
     turbo_cron_table_init(&table);
     rc = turbo_cron_table_load_string(text, &table, NULL, 0);
-    check_int_eq(rc, TURBO_CRON_OK);
-    check_int_eq((int)table.count, 2);
-    check_str_eq(table.entries[0].payload, "send-report");
-    check_str_eq(table.entries[1].payload, "rotate-logs --force");
+    check_equal(rc, TURBO_CRON_OK);
+    check_equal((int)table.count, 2);
+    check_equal(table.entries[0].payload, "send-report");
+    check_equal(table.entries[1].payload, "rotate-logs --force");
     turbo_cron_table_free(&table);
   }
 
@@ -217,10 +217,10 @@ suite("turbo_cron") {
     write_text_file(path, text);
     turbo_cron_table_init(&table);
     rc = turbo_cron_table_load_file(path, &table, NULL, 0);
-    check_int_eq(rc, TURBO_CRON_OK);
-    check_int_eq((int)table.count, 2);
-    check_str_eq(table.entries[0].payload, "sync-cache");
-    check_str_eq(table.entries[1].payload, "weekly-job");
+    check_equal(rc, TURBO_CRON_OK);
+    check_equal((int)table.count, 2);
+    check_equal(table.entries[0].payload, "sync-cache");
+    check_equal(table.entries[1].payload, "weekly-job");
     turbo_cron_table_free(&table);
     remove(path);
   }
@@ -232,7 +232,7 @@ suite("turbo_cron") {
 
     turbo_cron_table_init(&table);
     rc = turbo_cron_table_load_string("0 0 * * *\n", &table, error_buf, sizeof(error_buf));
-    check_int_eq(rc, TURBO_CRON_EPARSE);
+    check_equal(rc, TURBO_CRON_EPARSE);
     check(strstr(error_buf, "payload") != NULL);
     turbo_cron_table_free(&table);
   }
@@ -245,8 +245,8 @@ suite("turbo_cron") {
 
     check(runner != NULL);
     fired = turbo_cron_runner_advance(runner, make_local_time(2024, 1, 1, 10, 0, 5));
-    check_int_eq(fired, 1);
-    check_int_eq(capture.count, 1);
+    check_equal(fired, 1);
+    check_equal(capture.count, 1);
     expect_local_parts(capture.fired[0], 2024, 1, 1, 10, 0);
     turbo_cron_runner_destroy(runner);
   }
@@ -259,11 +259,11 @@ suite("turbo_cron") {
 
     check(runner != NULL);
     fired = turbo_cron_runner_advance(runner, make_local_time(2024, 1, 1, 10, 0, 1));
-    check_int_eq(fired, 1);
+    check_equal(fired, 1);
 
     fired = turbo_cron_runner_advance(runner, make_local_time(2024, 1, 1, 10, 3, 59));
-    check_int_eq(fired, 3);
-    check_int_eq(capture.count, 4);
+    check_equal(fired, 3);
+    check_equal(capture.count, 4);
     expect_local_parts(capture.fired[1], 2024, 1, 1, 10, 1);
     expect_local_parts(capture.fired[2], 2024, 1, 1, 10, 2);
     expect_local_parts(capture.fired[3], 2024, 1, 1, 10, 3);
@@ -278,11 +278,11 @@ suite("turbo_cron") {
 
     check(runner != NULL);
     fired = turbo_cron_runner_advance(runner, make_local_time(2024, 1, 1, 10, 0, 10));
-    check_int_eq(fired, 1);
+    check_equal(fired, 1);
 
     fired = turbo_cron_runner_advance(runner, make_local_time(2024, 1, 1, 10, 0, 50));
-    check_int_eq(fired, 0);
-    check_int_eq(capture.count, 1);
+    check_equal(fired, 0);
+    check_equal(capture.count, 1);
     turbo_cron_runner_destroy(runner);
   }
 }

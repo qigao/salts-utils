@@ -141,7 +141,7 @@ Number interpolation uses `json_number_text()`, so integer values such as
 `9007199254740993` and `18446744073709551615` are not converted through
 `double` and remain exact.
 
-JSON object lookup uses length-delimited `tstr_v` keys. A Mustache tag name
+JSON object lookup uses length-delimited `vstr` keys. A Mustache tag name
 does not need to be copied or NUL-terminated before lookup.
 
 ### XML
