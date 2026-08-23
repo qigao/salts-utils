@@ -38,6 +38,60 @@ TBE schema 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI �
 依赖 CSV parser 的 SQLite VDBE benchmark 随 CSV 模块维护，避免 TurboUtils 测试目标
 携带 parser 链接项。
 
+## 规划中的 CBind 边界
+
+CBind 的设计归属已经固定在 TurboParser，但它不是 `TurboParser::Parser`、DataBind 或 TBE 的子模块。
+实现完成后，它将作为 top-level `cbind/` 和独立 public target `TurboParser::CBind` 导出；应用可直接：
+
+```cmake
+find_package(TurboParser CONFIG REQUIRED)
+target_link_libraries(app PRIVATE TurboParser::CBind)
+```
+
+并显式包含：
+
+```c
+#include <cbind/cbind.h>
+```
+
+`turbo_parser.h` 不 re-export CBind，DataBind headers 也不 re-export CBind。
+
+CBind kernel 的 production dependency 固定为：
+
+```text
+TurboParser::CBind
+    -> TurboUtils::CMeta
+    -> TurboUtils::CSerde
+```
+
+它不依赖具体 parser、DataBind、TBE、TurboSTL、Core 或 CFlow。repo ownership 不等于 link dependency；
+这个边界允许 CBind 作为 TurboParser 的 binding product，同时保持 format-neutral kernel。
+
+具体 JSON/YAML/XML/CSV parser 可以在后续 adapter 层把 native SAX/event 投影成 CSerde canonical token，
+再驱动 CBind。依赖方向必须是 adapter 依赖 CBind + concrete parser，而不是 CBind core 反向 include parser。
+
+CFlow integration 也属于后续独立 composition layer。其边界固定为完整 semantic/native value：
+
+```text
+parser source
+    -> canonical semantic value
+    -> CBind
+    -> native object T
+    -> CFlow Stream<T>
+```
+
+raw `cserde_token` 是结构化 transport，不作为允许任意 `filter/map` 的业务 `Stream<T>` 暴露。这样避免
+业务 operator 删除 `MAP_END`、field key 或破坏 key/value pairing。
+
+详细设计见：
+
+```text
+docs/superpowers/specs/2026-08-23-cbind-parser-cflow-design.md
+```
+
+首个 CBind D2 阶段只建立 scalar + struct decode kernel，不同时修改现有 DataBind/TbeTyped；二者的
+semantic metadata 收敛和 native path delegation 在后续独立 migration 阶段完成。
+
 ## 候选方案
 
 1. 继续把解析器留在 TurboUtils：无需迁移，但基础工具包必须携带全部格式解析器，
