@@ -42,14 +42,12 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/json.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_json.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_yaml.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_parser_xml.hpp
-        DESTINATION include)
+install(
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING
+    PATTERN "*.h"
+    PATTERN "*.hpp")
 
 # Tests
 cmake_add_test(test_turbo_parser

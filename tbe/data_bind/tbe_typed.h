@@ -20,57 +20,56 @@
  * allocation and mutation to TurboSTL's bounded raw vector implementation. */
 #define TBE_TYPED_VEC_DEFINE(NAME, TYPE)                                                   \
   typedef struct NAME {                                                                   \
-    turbo_vec_t raw;                                                                      \
+    vec_t raw;                                                                            \
   } NAME;                                                                                 \
-  static inline turbo_stl_status NAME##_init(NAME *vec, size_t limit) {                   \
-    return vec ? turbo_vec_init_bytes(&vec->raw, sizeof(TYPE), TBE_TYPED_ALIGNOF(TYPE),   \
-                                      limit)                                               \
-               : TURBO_STL_INVALID_ARGUMENT;                                              \
+  static inline stl_status NAME##_init(NAME *vec, size_t limit) {                         \
+    return vec ? vec_init_bytes(&vec->raw, sizeof(TYPE), TBE_TYPED_ALIGNOF(TYPE), limit)  \
+               : STL_INVALID_ARGUMENT;                                                    \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_from(NAME *vec, const TYPE *elements,             \
-                                               size_t count, size_t limit) {               \
-    return vec ? turbo_vec_from_array_bytes(&vec->raw, elements, count, sizeof(TYPE),     \
-                                             TBE_TYPED_ALIGNOF(TYPE), limit)               \
-               : TURBO_STL_INVALID_ARGUMENT;                                              \
+  static inline stl_status NAME##_from(NAME *vec, const TYPE *elements,                   \
+                                       size_t count, size_t limit) {                       \
+    return vec ? vec_from_array_bytes(&vec->raw, elements, count, sizeof(TYPE),           \
+                                      TBE_TYPED_ALIGNOF(TYPE), limit)                     \
+               : STL_INVALID_ARGUMENT;                                                    \
   }                                                                                       \
   static inline void NAME##_destroy(NAME *vec) {                                          \
-    if (vec) turbo_vec_destroy(&vec->raw);                                                 \
+    if (vec) vec_destroy(&vec->raw);                                                       \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_clear(NAME *vec) {                                \
-    return vec ? turbo_vec_clear(&vec->raw) : TURBO_STL_INVALID_ARGUMENT;                 \
+  static inline stl_status NAME##_clear(NAME *vec) {                                      \
+    return vec ? vec_clear(&vec->raw) : STL_INVALID_ARGUMENT;                             \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_reserve(NAME *vec, size_t capacity) {              \
-    return vec ? turbo_vec_reserve(&vec->raw, capacity) : TURBO_STL_INVALID_ARGUMENT;     \
+  static inline stl_status NAME##_reserve(NAME *vec, size_t capacity) {                   \
+    return vec ? vec_reserve(&vec->raw, capacity) : STL_INVALID_ARGUMENT;                 \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_resize(NAME *vec, size_t size) {                  \
-    return vec ? turbo_vec_resize(&vec->raw, size) : TURBO_STL_INVALID_ARGUMENT;          \
+  static inline stl_status NAME##_resize(NAME *vec, size_t size) {                        \
+    return vec ? vec_resize(&vec->raw, size) : STL_INVALID_ARGUMENT;                      \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_push(NAME *vec, TYPE value) {                     \
-    return vec ? turbo_vec_push(&vec->raw, &value) : TURBO_STL_INVALID_ARGUMENT;          \
+  static inline stl_status NAME##_push(NAME *vec, TYPE value) {                           \
+    return vec ? vec_push(&vec->raw, &value) : STL_INVALID_ARGUMENT;                      \
   }                                                                                       \
-  static inline turbo_stl_status NAME##_pop(NAME *vec, TYPE *out_value) {                 \
-    return vec ? turbo_vec_pop(&vec->raw, out_value) : TURBO_STL_INVALID_ARGUMENT;        \
+  static inline stl_status NAME##_pop(NAME *vec, TYPE *out_value) {                       \
+    return vec ? vec_pop(&vec->raw, out_value) : STL_INVALID_ARGUMENT;                    \
   }                                                                                       \
   static inline TYPE *NAME##_at(NAME *vec, size_t index) {                                \
-    return vec ? (TYPE *)turbo_vec_at(&vec->raw, index) : NULL;                           \
+    return vec ? (TYPE *)vec_at(&vec->raw, index) : NULL;                                 \
   }                                                                                       \
   static inline const TYPE *NAME##_at_const(const NAME *vec, size_t index) {              \
-    return vec ? (const TYPE *)turbo_vec_at_const(&vec->raw, index) : NULL;               \
+    return vec ? (const TYPE *)vec_at_const(&vec->raw, index) : NULL;                     \
   }                                                                                       \
   static inline TYPE *NAME##_data(NAME *vec) {                                            \
-    return vec ? (TYPE *)turbo_vec_data(&vec->raw) : NULL;                               \
+    return vec ? (TYPE *)vec_data(&vec->raw) : NULL;                                      \
   }                                                                                       \
   static inline const TYPE *NAME##_data_const(const NAME *vec) {                          \
-    return vec ? (const TYPE *)turbo_vec_data_const(&vec->raw) : NULL;                   \
+    return vec ? (const TYPE *)vec_data_const(&vec->raw) : NULL;                         \
   }                                                                                       \
   static inline size_t NAME##_size(const NAME *vec) {                                     \
-    return vec ? turbo_vec_size(&vec->raw) : 0u;                                          \
+    return vec ? vec_size(&vec->raw) : 0u;                                                \
   }                                                                                       \
   static inline size_t NAME##_capacity(const NAME *vec) {                                 \
-    return vec ? turbo_vec_capacity(&vec->raw) : 0u;                                      \
+    return vec ? vec_capacity(&vec->raw) : 0u;                                            \
   }                                                                                       \
   static inline bool NAME##_empty(const NAME *vec) {                                      \
-    return !vec || turbo_vec_empty(&vec->raw);                                             \
+    return !vec || vec_empty(&vec->raw);                                                   \
   }
 
 #ifdef __cplusplus

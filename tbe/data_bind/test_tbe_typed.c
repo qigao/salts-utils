@@ -466,7 +466,7 @@ spec("typed DataBind binary") {
     json_value_t *json;
 
     check_equal(tbe_typed_init(&TEST_BYTES_TYPE, &bytes, &error), DATA_BIND_OK);
-    check_equal(turbo_vec_resize((turbo_vec_t *)&bytes.value, 2), TURBO_STL_OK);
+    check_equal(vec_resize((vec_t *)&bytes.value, 2), STL_OK);
     if (tbe_bytes_t_data(&bytes.value) != NULL) {
       tbe_bytes_t_data(&bytes.value)[0] = UINT8_C(0xc3);
       tbe_bytes_t_data(&bytes.value)[1] = UINT8_C(0x28);
