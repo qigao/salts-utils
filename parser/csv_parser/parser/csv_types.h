@@ -48,7 +48,7 @@ struct csv_doc_s {
     csv_row_node_t *header;
     csv_row_node_t *rows;
     csv_row_node_t *rows_tail;
-    turbo_vec_t     row_index;
+    vec_t           row_index;
     size_t          row_count;
     size_t          column_count;
 };

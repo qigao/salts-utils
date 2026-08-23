@@ -197,7 +197,7 @@ static int dsv_index_entry_compare(const void *left_ptr, const void *right_ptr) 
     return left->row_offset < right->row_offset ? -1 : 1;
 }
 
-static int dsv_index_finish_row(dsv_index_t *index, turbo_vec_t *entries,
+static int dsv_index_finish_row(dsv_index_t *index, vec_t *entries,
                                 dsv_index_row_builder_t *row, const char *content,
                                 const char *row_start, const char *row_end,
                                 const dsv_index_config_t *config, int *skip_header) {
@@ -209,7 +209,7 @@ static int dsv_index_finish_row(dsv_index_t *index, turbo_vec_t *entries,
     if (!row->has_text || !row->has_number ||
         (config->covering_int64_column != DSV_INDEX_NO_COLUMN && !row->has_cover))
         return dsv_index_fail(index, "indexed row is missing a configured column");
-    if (turbo_vec_size(entries) >=
+    if (vec_size(entries) >=
         (config->max_entries ? config->max_entries : DSV_INDEX_DEFAULT_MAX_ENTRIES))
         return dsv_index_fail(index, "DSV index entry capacity exceeded");
     if (row_start < content || row_end < row_start) return dsv_index_fail(index, "invalid row bounds");
@@ -220,7 +220,7 @@ static int dsv_index_finish_row(dsv_index_t *index, turbo_vec_t *entries,
     row->entry.row_length = (uint32_t)row_length;
     if (config->covering_int64_column != DSV_INDEX_NO_COLUMN)
         row->entry.flags |= DSV_INDEX_FLAG_HAS_COVER;
-    if (turbo_vec_push(entries, &row->entry) != TURBO_STL_OK)
+    if (vec_push(entries, &row->entry) != STL_OK)
         return dsv_index_fail(index, "out of memory growing DSV index");
     return 0;
 }
@@ -229,7 +229,7 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
                                     const char *content, size_t len,
                                     const dsv_index_config_t *config,
                                     uint64_t source_mtime) {
-    turbo_vec_t entries = {0};
+    vec_t entries = {0};
     csv_lexer_t lexer;
     csv_token_t token;
     dsv_index_row_builder_t row;
@@ -254,10 +254,10 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     if (turbo_mmap_is_open(&index->index_mapping) ||
         turbo_mmap_is_open(&index->source_mapping))
         return dsv_index_fail(index, "close the DSV index before rebuilding it");
-    if (turbo_vec_init_bytes(
+    if (vec_init_bytes(
             &entries, sizeof(dsv_index_file_entry_t), _Alignof(dsv_index_file_entry_t),
             config->max_entries ? config->max_entries : DSV_INDEX_DEFAULT_MAX_ENTRIES) !=
-        TURBO_STL_OK)
+        STL_OK)
         return dsv_index_fail(index, "out of memory creating DSV index");
 
     memset(&row, 0, sizeof(row));
@@ -310,11 +310,11 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
                                           content + len, config, &skip_header) != 0)
         goto cleanup;
 
-    if (turbo_vec_size(&entries) > 1) {
-        qsort(turbo_vec_data(&entries), turbo_vec_size(&entries),
+    if (vec_size(&entries) > 1) {
+        qsort(vec_data(&entries), vec_size(&entries),
               sizeof(dsv_index_file_entry_t), dsv_index_entry_compare);
     }
-    if (!dsv_index_checked_size((uint64_t)turbo_vec_size(&entries), &file_size)) {
+    if (!dsv_index_checked_size((uint64_t)vec_size(&entries), &file_size)) {
         dsv_index_fail(index, "DSV index file size overflow");
         goto cleanup;
     }
@@ -331,8 +331,8 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     header.entry_size = (uint32_t)sizeof(dsv_index_file_entry_t);
     header.source_size = (uint64_t)len;
     header.source_mtime = source_mtime;
-    header.source_hash = (uint64_t)turbo_hash_bytes(content, len, NULL);
-    header.entry_count = (uint64_t)turbo_vec_size(&entries);
+    header.source_hash = (uint64_t)hash_bytes(content, len, NULL);
+    header.entry_count = (uint64_t)vec_size(&entries);
     header.text_column = (uint32_t)config->text_column;
     header.number_column = (uint32_t)config->number_column;
     header.covering_column = config->covering_int64_column == DSV_INDEX_NO_COLUMN
@@ -341,9 +341,9 @@ static int dsv_index_build_internal(dsv_index_t *index, const char *index_path,
     if (config->covering_int64_column != DSV_INDEX_NO_COLUMN)
         header.flags |= DSV_INDEX_FLAG_HAS_COVER;
     memcpy(file_data, &header, sizeof(header));
-    if (turbo_vec_size(&entries) > 0) {
-        memcpy(file_data + sizeof(header), turbo_vec_data(&entries),
-               turbo_vec_size(&entries) * sizeof(dsv_index_file_entry_t));
+    if (vec_size(&entries) > 0) {
+        memcpy(file_data + sizeof(header), vec_data(&entries),
+               vec_size(&entries) * sizeof(dsv_index_file_entry_t));
     }
     file_buffer.base = file_data;
     file_buffer.len = file_size;
@@ -372,7 +372,7 @@ cleanup:
     if (rc != 0 && temporary_path) (void)turbo_fs_unlink(temporary_path);
     tstr_free(temporary_path);
     free(file_data);
-    turbo_vec_destroy(&entries);
+    vec_destroy(&entries);
     return rc;
 }
 
@@ -468,7 +468,7 @@ static int dsv_index_open_internal(dsv_index_t *index, const char *index_path,
     if (expected_mtime != 0) {
         if (header->source_mtime != expected_mtime)
             return dsv_index_fail(index, "DSV index source mtime mismatch");
-    } else if (header->source_hash != (uint64_t)turbo_hash_bytes(content, len, NULL)) {
+    } else if (header->source_hash != (uint64_t)hash_bytes(content, len, NULL)) {
         return dsv_index_fail(index, "DSV index source hash mismatch");
     }
 

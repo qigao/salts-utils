@@ -352,7 +352,7 @@ bool json_array_append_arena(json_arena_t *arena, json_value_t *arr, json_value_
 }
 
 size_t json_object_key_hash(const char *key, size_t key_len) {
-  size_t hash = turbo_hash_bytes(key, key_len, NULL);
+  size_t hash = hash_bytes(key, key_len, NULL);
   return hash == 0 ? 1U : hash;
 }
 

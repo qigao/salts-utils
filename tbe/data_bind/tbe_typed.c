@@ -107,8 +107,8 @@ static DataBindStatus typed_init_value(TbeTypedKind kind, const TbeTypedType *ob
       ((tstr *)ptr)[i] = NULL;
   } else if (kind == TBE_TYPED_BYTES) {
     for (i = 0; i < count; ++i) {
-      if (turbo_vec_init_bytes(&((turbo_vec_t *)ptr)[i], sizeof(uint8_t), _Alignof(uint8_t),
-                               SIZE_MAX) != TURBO_STL_OK)
+      if (vec_init_bytes(&((vec_t *)ptr)[i], sizeof(uint8_t), _Alignof(uint8_t),
+                               SIZE_MAX) != STL_OK)
         return typed_error(error, DATA_BIND_ERR_RUNTIME, NULL, "Failed to initialize vector");
     }
   } else if (kind == TBE_TYPED_OBJECT) {
@@ -138,11 +138,11 @@ DataBindStatus tbe_typed_init(const TbeTypedType *type, void *object, DataBindEr
           typed_init_value(field->element_kind, field->object_type, ptr, field->fixed_count, error);
     } else if (field->kind == TBE_TYPED_BYTES || field->kind == TBE_TYPED_LIST ||
                field->kind == TBE_TYPED_SET || field->kind == TBE_TYPED_MAP) {
-      status = turbo_vec_init_bytes((turbo_vec_t *)ptr,
+      status = vec_init_bytes((vec_t *)ptr,
                                     field->kind == TBE_TYPED_BYTES ? sizeof(uint8_t)
                                                                    : field->element_size,
                                     _Alignof(uint8_t),
-                                    SIZE_MAX) == TURBO_STL_OK
+                                    SIZE_MAX) == STL_OK
                    ? DATA_BIND_OK
                    : typed_error(error, DATA_BIND_ERR_RUNTIME, field->name,
                                  "Failed to initialize typed vector");
@@ -165,7 +165,7 @@ static void typed_clear_value(TbeTypedKind kind, const TbeTypedType *object_type
       tstr_free(((tstr *)ptr)[i]);
   } else if (kind == TBE_TYPED_BYTES) {
     for (i = 0; i < count; ++i)
-      turbo_vec_destroy(&((turbo_vec_t *)ptr)[i]);
+      vec_destroy(&((vec_t *)ptr)[i]);
   } else if (kind == TBE_TYPED_OBJECT && object_type != NULL) {
     for (i = 0; i < count; ++i)
       tbe_typed_clear(object_type, (uint8_t *)ptr + i * object_type->size);
@@ -182,11 +182,11 @@ void tbe_typed_clear(const TbeTypedType *type, void *object) {
     if (field->kind == TBE_TYPED_FIXED_ARRAY) {
       typed_clear_value(field->element_kind, field->object_type, ptr, field->fixed_count);
     } else if (field->kind == TBE_TYPED_LIST || field->kind == TBE_TYPED_SET) {
-      turbo_vec_t *vec = (turbo_vec_t *)ptr;
+      vec_t *vec = (vec_t *)ptr;
       typed_clear_value(field->element_kind, field->object_type, vec->data, vec->size);
-      turbo_vec_destroy(vec);
+      vec_destroy(vec);
     } else if (field->kind == TBE_TYPED_MAP) {
-      turbo_vec_t *vec = (turbo_vec_t *)ptr;
+      vec_t *vec = (vec_t *)ptr;
       size_t j;
       for (j = 0; j < vec->size; ++j) {
         uint8_t *entry = (uint8_t *)vec->data + j * field->map_entry_size;
@@ -194,9 +194,9 @@ void tbe_typed_clear(const TbeTypedType *type, void *object) {
         typed_clear_value(field->map_value_kind, field->map_value_type,
                           entry + field->map_value_offset, 1);
       }
-      turbo_vec_destroy(vec);
+      vec_destroy(vec);
     } else if (field->kind == TBE_TYPED_BYTES) {
-      turbo_vec_destroy((turbo_vec_t *)ptr);
+      vec_destroy((vec_t *)ptr);
     } else {
       typed_clear_value(field->kind, field->object_type, ptr, 1);
     }
@@ -295,10 +295,10 @@ static DataBindStatus typed_from_one(TbeTypedKind kind, TbeTypedKind wire_kind,
   if (kind == TBE_TYPED_BYTES) {
     const uint8_t *bytes;
     size_t len;
-    turbo_vec_t *vec = (turbo_vec_t *)out;
+    vec_t *vec = (vec_t *)out;
     if (data_bind_value_get_bytes(value, &bytes, &len) != DATA_BIND_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path, "Expected bytes value");
-    if (turbo_vec_resize(vec, len) != TURBO_STL_OK)
+    if (vec_resize(vec, len) != STL_OK)
       return typed_error(error, DATA_BIND_ERR_OOM, path, "Out of memory copying bytes");
     if (len != 0) memcpy(vec->data, bytes, len);
     return DATA_BIND_OK;
@@ -368,8 +368,8 @@ static DataBindStatus typed_from_value_at(const TbeTypedType *type, const DataBi
                              "Fixed bytes length does not match schema");
         memcpy(out, bytes, len);
       } else {
-        turbo_vec_t *vec = (turbo_vec_t *)out;
-        if (turbo_vec_resize(vec, len) != TURBO_STL_OK)
+        vec_t *vec = (vec_t *)out;
+        if (vec_resize(vec, len) != STL_OK)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name, "Out of memory copying bytes");
         if (len != 0) memcpy(vec->data, bytes, len);
       }
@@ -385,9 +385,9 @@ static DataBindStatus typed_from_value_at(const TbeTypedType *type, const DataBi
         if (status != DATA_BIND_OK) return status;
       }
     } else if (field->kind == TBE_TYPED_LIST || field->kind == TBE_TYPED_SET) {
-      turbo_vec_t *vec = (turbo_vec_t *)out;
+      vec_t *vec = (vec_t *)out;
       size_t count = data_bind_value_count(child);
-      if (turbo_vec_resize(vec, count) != TURBO_STL_OK)
+      if (vec_resize(vec, count) != STL_OK)
         return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                            "Out of memory resizing typed vector");
       memset(vec->data, 0, count * field->element_size);
@@ -402,9 +402,9 @@ static DataBindStatus typed_from_value_at(const TbeTypedType *type, const DataBi
         if (status != DATA_BIND_OK) return status;
       }
     } else if (field->kind == TBE_TYPED_MAP) {
-      turbo_vec_t *vec = (turbo_vec_t *)out;
+      vec_t *vec = (vec_t *)out;
       size_t count = data_bind_value_count(child);
-      if (turbo_vec_resize(vec, count) != TURBO_STL_OK)
+      if (vec_resize(vec, count) != STL_OK)
         return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                            "Out of memory resizing typed map");
       memset(vec->data, 0, count * field->map_entry_size);
@@ -539,7 +539,7 @@ static json_value_t *typed_one_json(TbeTypedKind kind, TbeTypedKind wire_kind,
                                     const char *path, DataBindError *error) {
   if (kind == TBE_TYPED_OBJECT) return tbe_typed_to_json(object_type, ptr, error);
   if (kind == TBE_TYPED_BYTES) {
-    const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+    const vec_t *vec = (const vec_t *)ptr;
     return typed_bytes_json((const uint8_t *)vec->data, vec->size, path, error);
   }
   return typed_scalar_json(kind, wire_kind, ptr, path, error);
@@ -569,7 +569,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
       const uint8_t *data;
       size_t len;
       if (field->kind == TBE_TYPED_BYTES) {
-        const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+        const vec_t *vec = (const vec_t *)ptr;
         data = (const uint8_t *)vec->data;
         len = vec->size;
       } else {
@@ -586,7 +586,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
         data = (const uint8_t *)ptr;
         count = field->fixed_count;
       } else {
-        const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+        const vec_t *vec = (const vec_t *)ptr;
         data = (const uint8_t *)vec->data;
         count = vec->size;
       }
@@ -600,7 +600,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
         }
       }
     } else if (field->kind == TBE_TYPED_MAP) {
-      const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+      const vec_t *vec = (const vec_t *)ptr;
       child = turbo_json_create_object();
       for (j = 0; child != NULL && j < vec->size; ++j) {
         const uint8_t *entry = (const uint8_t *)vec->data + j * field->map_entry_size;
@@ -730,7 +730,7 @@ static int typed_field_host_extent(const TbeTypedField *field, size_t *extent) {
   case TBE_TYPED_LIST:
   case TBE_TYPED_SET:
   case TBE_TYPED_MAP:
-    *extent = sizeof(turbo_vec_t);
+    *extent = sizeof(vec_t);
     return 1;
   case TBE_TYPED_FIXED_BYTES:
     *extent = field->fixed_count;
@@ -755,7 +755,7 @@ static int typed_value_host_extent(TbeTypedKind kind, TbeTypedKind wire_kind,
                                    const TbeTypedType *object_type, size_t *extent) {
   if (extent == NULL) return 0;
   if (kind == TBE_TYPED_STRING) *extent = sizeof(tstr);
-  else if (kind == TBE_TYPED_BYTES) *extent = sizeof(turbo_vec_t);
+  else if (kind == TBE_TYPED_BYTES) *extent = sizeof(vec_t);
   else if (kind == TBE_TYPED_OBJECT && object_type != NULL) *extent = object_type->size;
   else if (kind == TBE_TYPED_ENUM)
     *extent = typed_kind_size(typed_enum_storage_kind(wire_kind));
@@ -1132,7 +1132,7 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
     uint8_t *output = (uint8_t *)object + field->offset;
     int present = typed_optional_present(type, object, field);
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
-      turbo_vec_t *vec = (turbo_vec_t *)output;
+      vec_t *vec = (vec_t *)output;
       uint16_t block_length;
       uint16_t count;
       size_t payload_size;
@@ -1153,7 +1153,7 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
         if (!typed_multiply_fits(count, field->element_size, &host_payload_size))
           return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                              "Typed group size exceeds the host address space");
-        if (turbo_vec_resize(vec, count) != TURBO_STL_OK)
+        if (vec_resize(vec, count) != STL_OK)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                              "Out of memory resizing typed group");
         memset(vec->data, 0, host_payload_size);
@@ -1183,8 +1183,8 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                              "Out of memory copying typed string");
       } else if (present) {
-        turbo_vec_t *vec = (turbo_vec_t *)output;
-        if (turbo_vec_resize(vec, value_size) != TURBO_STL_OK)
+        vec_t *vec = (vec_t *)output;
+        if (vec_resize(vec, value_size) != STL_OK)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                              "Out of memory copying typed bytes");
         if (value_size != 0) memcpy(vec->data, data + cursor, value_size);
@@ -1366,7 +1366,7 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     const TbeTypedField *field = &type->fields[i];
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
-      const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+      const vec_t *vec = (const vec_t *)ptr;
       size_t payload_size;
       size_t field_size;
       if (field->object_type == NULL || field->object_type->fixed_block_size > UINT16_MAX ||
@@ -1383,10 +1383,10 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       size_t len = field->kind == TBE_TYPED_STRING
                        ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
-                       : ((const turbo_vec_t *)ptr)->size;
+                       : ((const vec_t *)ptr)->size;
       size_t field_size;
       if ((field->kind == TBE_TYPED_BYTES && len != 0 &&
-           ((const turbo_vec_t *)ptr)->data == NULL) ||
+           ((const vec_t *)ptr)->data == NULL) ||
           len > UINT32_MAX || !typed_add_fits(sizeof(uint32_t), len, &field_size) ||
           !typed_add_fits(total, field_size, &total)) {
         *supported = 0;
@@ -1525,7 +1525,7 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     const TbeTypedField *field = &type->fields[i];
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
-      const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+      const vec_t *vec = (const vec_t *)ptr;
       size_t j;
       tbe_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
@@ -1548,7 +1548,7 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
         bytes = text ? text : "";
         len = text ? tstr_len(text) : 0;
       } else {
-        const turbo_vec_t *vec = (const turbo_vec_t *)ptr;
+        const vec_t *vec = (const vec_t *)ptr;
         bytes = vec->data;
         len = vec->size;
       }

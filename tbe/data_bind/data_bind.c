@@ -9716,7 +9716,7 @@ static DataBindStatus data_bind_csv_add_scalar(data_bind_csv_cell_vec_t *cells,
     tstr_free(cell.path);
     return status;
   }
-  if (data_bind_csv_cell_vec_t_push(cells, cell) != TURBO_STL_OK) {
+  if (data_bind_csv_cell_vec_t_push(cells, cell) != STL_OK) {
     tstr_free(cell.path);
     tstr_free(cell.text);
     return DATA_BIND_ERR_OOM;
@@ -9819,7 +9819,7 @@ static DataBindStatus data_bind_object_serialize_csv_canonical(
       object->value->kind == DATA_BIND_VALUE_SET || object->value->kind == DATA_BIND_VALUE_MAP)
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, "csv", -1, -1,
                         "A CSV object must contain one record or scalar value");
-  if (data_bind_csv_cell_vec_t_init(&cells, SIZE_MAX) != TURBO_STL_OK)
+  if (data_bind_csv_cell_vec_t_init(&cells, SIZE_MAX) != STL_OK)
     return db_error_set(error, DATA_BIND_ERR_OOM, "csv", -1, -1,
                         "Out of memory creating CSV columns");
   status = data_bind_csv_flatten_value(&cells, object->value, NULL, 0);
