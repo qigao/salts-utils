@@ -15,6 +15,7 @@ typedef struct tbe_compiler_options_s {
   const char *template_path;
   const char *output_path;
   const char *source_output_path;
+  const char *cbind_output_path;
   const char *lua_output_path;
   const char *guest_output_path;
   const char *dsl_output_path;

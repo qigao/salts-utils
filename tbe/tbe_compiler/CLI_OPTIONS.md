@@ -42,6 +42,15 @@ tbe_compiler <schema_file> [options]
   - The generated header exposes strong record types plus binary/JSON/YAML/CSV/XML APIs
   - Example: `--output order.h --source-output order.c`
 
+- `--cbind-output <file>`
+  - With the built-in C generator, reserves the CBind semantic sidecar `.c` file
+  - Requires both `--output` and `--source-output`; custom templates and non-C languages are rejected
+  - Its path must differ from the header, typed source, guest, Lua, and DSL outputs
+  - The sidecar schema accepts only `int32`, `int64`, `uint64`, `float`, `double`, owning
+    `string`, and nested composite/group/message records; aliases, optional fields, and other
+    storage forms fail before any output file is written
+  - Example: `--output order.h --source-output order.c --cbind-output order_cbind.c`
+
 - `--guest-output <file>` or `-g <file>`
   - With the built-in C generator, emits a Wasm-friendly guest adapter `.c` file
   - Requires `--output`; custom templates and non-C languages are rejected
@@ -330,6 +339,8 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
   this companion source. Generated `*_to_bin_into` and schema-codec `text_to_binary_into`
   functions never allocate their output buffer; insufficient capacity is reported with the
   required size in `out_len`.
+- `--cbind-output` is an opt-in semantic sidecar. It does not change generated headers or
+  `TbeTypedType`; only consumers that request the sidecar need the CBind dependency.
 - `--guest-output` adds allocation-free adapters over the zero-copy wire views. It does not
   embed JSON/YAML/CSV/XML parsers into Wasm and does not require `--source-output`.
 - C++, Go, Rust, Python, and TypeScript outputs currently generate schema type definitions, not complete wire codecs.

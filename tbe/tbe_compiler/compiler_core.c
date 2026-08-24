@@ -873,6 +873,103 @@ static int tbe_compiler_typed_schema_supported(Node *root) {
          tbe_compiler_typed_list_supported(root, "messages");
 }
 
+static int tbe_compiler_cbind_reject_field(Node *field, const char *reason) {
+  const char *owner = tbe_compiler_string_value(field, "owner_name");
+  const char *name = tbe_compiler_string_value(field, "name");
+  fprintf(stderr, "CBind sidecar field %s.%s: %s\n", owner ? owner : "(unknown)",
+          name ? name : "(unknown)", reason);
+  return 0;
+}
+
+static int tbe_compiler_cbind_scalar_supported(const char *type) {
+  static const char *const supported[] = {
+      "int32", "int32_t", "int64", "int64_t", "uint64", "uint64_t",
+      "float", "double", "string"};
+  size_t i;
+
+  if (!type) return 0;
+  for (i = 0; i < sizeof(supported) / sizeof(supported[0]); ++i)
+    if (strcmp(type, supported[i]) == 0) return 1;
+  return 0;
+}
+
+static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  const char *reason = NULL;
+
+  if (tbe_compiler_attribute_count(field, "alias") != 0u)
+    return tbe_compiler_cbind_reject_field(field, "aliases are unsupported");
+  if (tbe_compiler_has_child(field, "is_optional"))
+    return tbe_compiler_cbind_reject_field(field, "optional fields are unsupported");
+  if (tbe_compiler_has_child(field, "is_group_field"))
+    return tbe_compiler_cbind_reject_field(field, "group collections are unsupported");
+  if (tbe_compiler_has_child(field, "is_collection"))
+    return tbe_compiler_cbind_reject_field(field, "collections are unsupported");
+  if (tbe_compiler_has_child(field, "is_bytes"))
+    return tbe_compiler_cbind_reject_field(field, "bytes storage is unsupported");
+  if (tbe_compiler_cbind_scalar_supported(type)) return 1;
+  if (type && strcmp(type, "bool") == 0)
+    reason = "bool storage is unsupported";
+  else if (type && strcmp(type, "uuid") == 0)
+    reason = "uuid storage is unsupported";
+  else if (tbe_compiler_find_record(root, "enums", type))
+    reason = "enum storage is unsupported";
+  else if (tbe_compiler_find_record(root, "unions", type))
+    reason = "union storage is unsupported";
+  else if (tbe_compiler_find_record(root, "composites", type) ||
+           tbe_compiler_find_record(root, "groups", type) ||
+           tbe_compiler_find_record(root, "messages", type))
+    return 1;
+  else
+    reason = "type is unsupported";
+  return tbe_compiler_cbind_reject_field(field, reason);
+}
+
+static int tbe_compiler_cbind_list_supported(Node *root, const char *list_name) {
+  Node *list = tbe_compiler_find_child(root, list_name);
+  size_t i;
+
+  if (!list || list->type != NODE_LIST) return 1;
+  for (i = 0; i < list->data.list.count; ++i) {
+    Node *fields = tbe_compiler_find_child(list->data.list.items[i], "fields");
+    size_t j;
+    if (!fields || fields->type != NODE_LIST) continue;
+    for (j = 0; j < fields->data.list.count; ++j)
+      if (!tbe_compiler_cbind_field_supported(root, fields->data.list.items[j])) return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_cbind_schema_supported(Node *root) {
+  Node *unions = tbe_compiler_find_child(root, "unions");
+
+  if (unions && unions->type == NODE_LIST && unions->data.list.count != 0) {
+    Node *fields = tbe_compiler_find_child(unions->data.list.items[0], "fields");
+    if (fields && fields->type == NODE_LIST && fields->data.list.count != 0)
+      return tbe_compiler_cbind_reject_field(
+          fields->data.list.items[0], "union declarations are unsupported");
+    fprintf(stderr, "CBind sidecar field (union).(declaration): union declarations are unsupported\n");
+    return 0;
+  }
+  return tbe_compiler_cbind_list_supported(root, "composites") &&
+         tbe_compiler_cbind_list_supported(root, "groups") &&
+         tbe_compiler_cbind_list_supported(root, "messages");
+}
+
+static int tbe_compiler_render_empty_cbind_sidecar(const char *output_path) {
+  FILE *out_file = fopen(output_path, "wb");
+
+  if (!out_file) {
+    fprintf(stderr, "Failed to open CBind sidecar output file: %s\n", output_path);
+    return 1;
+  }
+  if (fclose(out_file) != 0) {
+    fprintf(stderr, "Failed to close CBind sidecar output file: %s\n", output_path);
+    return 1;
+  }
+  return 0;
+}
+
 static Node *tbe_compiler_find_typed_record(Node *root, const char *name) {
   Node *record = tbe_compiler_find_record(root, "composites", name);
   if (!record) record = tbe_compiler_find_record(root, "groups", name);
@@ -1196,6 +1293,49 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     free(schema_literal);
   }
 
+  if (options->cbind_output_path) {
+    if (options->cbind_output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires a non-empty file path\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->output_path == NULL || options->output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires --output for the generated header\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->source_output_path == NULL || options->source_output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires --source-output for typed records\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (strcmp(options->output_path, options->cbind_output_path) == 0 ||
+        strcmp(options->source_output_path, options->cbind_output_path) == 0 ||
+        (options->guest_output_path != NULL &&
+         strcmp(options->guest_output_path, options->cbind_output_path) == 0) ||
+        (options->lua_output_path != NULL &&
+         strcmp(options->lua_output_path, options->cbind_output_path) == 0) ||
+        (options->dsl_output_path != NULL &&
+         strcmp(options->dsl_output_path, options->cbind_output_path) == 0)) {
+      fprintf(stderr, "--cbind-output must name a distinct file\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->lang_enum != TBE_COMPILER_LANG_C || options->template_path != NULL) {
+      fprintf(stderr, "--cbind-output is supported only for the built-in C generator\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (!tbe_compiler_cbind_schema_supported(root)) {
+      status = 1;
+      goto cleanup;
+    }
+    if (tbe_compiler_set_string(root, "cbind_sidecar_enabled", "1") != 0) {
+      status = 1;
+      goto cleanup;
+    }
+  }
+
   if (options->source_output_path) {
     if (options->output_path == NULL || options->output_path[0] == '\0') {
       fprintf(stderr, "--source-output requires --output for the generated header\n");
@@ -1309,6 +1449,10 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     status = resolved_template != NULL
                  ? tbe_compiler_render_file(root, resolved_template, options->source_output_path)
                  : 1;
+  }
+
+  if (status == 0 && options->cbind_output_path) {
+    status = tbe_compiler_render_empty_cbind_sidecar(options->cbind_output_path);
   }
 
   if (status == 0 && options->guest_output_path) {
