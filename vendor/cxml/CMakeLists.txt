@@ -137,7 +137,7 @@ target_compile_definitions(cxml PUBLIC ${CXML_BUILD_OPTIONS})
 set_target_properties(cxml PROPERTIES FOLDER vendor/cxml)
 
 if(LIBM_EXISTS)
-  target_link_libraries(cxml m)
+  target_link_libraries(cxml PRIVATE m)
 endif()
 
 # ===============================================

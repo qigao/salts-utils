@@ -15,9 +15,6 @@ cmake_config_target(mustache
   EXPORT_NAME Mustache)
 
 target_compile_definitions(mustache PRIVATE MUSTACHE_BUILD_DLL)
-if(WIN32)
-  target_compile_definitions(mustache INTERFACE MUSTACHE_USE_DLL)
-endif()
 
 target_include_directories(
   mustache

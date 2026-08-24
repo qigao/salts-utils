@@ -12,14 +12,8 @@
 #include <time.h>
 
 #ifndef TURBO_CRON_API
-  #if defined(_WIN32)
-    #if defined(TURBO_CRON_BUILD_DLL)
-      #define TURBO_CRON_API __declspec(dllexport)
-    #elif defined(TURBO_CRON_USE_DLL)
-      #define TURBO_CRON_API __declspec(dllimport)
-    #else
-      #define TURBO_CRON_API
-    #endif
+  #if defined(_WIN32) && defined(TURBO_CRON_BUILD_DLL)
+    #define TURBO_CRON_API __declspec(dllexport)
   #elif defined(__GNUC__) && __GNUC__ >= 4
     #define TURBO_CRON_API __attribute__((visibility("default")))
   #else

@@ -10,10 +10,6 @@ add_library(${TARGET_NAME} SHARED data_bind.c data_bind.h data_bind_internal.h d
 
 
 target_compile_definitions(${TARGET_NAME} PRIVATE DATA_BIND_BUILD_DLL)
-if(WIN32)
-  target_compile_definitions(${TARGET_NAME}
-    INTERFACE DATA_BIND_USE_DLL)
-endif()
 
 target_include_directories(${TARGET_NAME}
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>

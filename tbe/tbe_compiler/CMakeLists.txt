@@ -30,10 +30,7 @@ function(tbe_copy_turbonet_runtime_deps target_name)
     if(ARGC GREATER 1 AND ARGV1 STREQUAL "WITH_DATABIND")
       list(APPEND runtime_deps $<TARGET_FILE:TurboParser::DataBind>)
     endif()
-    if(TARGET aklomp::base64)
-      list(APPEND runtime_deps $<TARGET_FILE:aklomp::base64>)
-    endif()
-
+ 
     add_custom_command(
       TARGET ${target_name}
       POST_BUILD

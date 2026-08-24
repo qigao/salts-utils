@@ -35,15 +35,9 @@
 extern "C" {
 #endif
 
-/* DLL export/import macros */
-#ifdef _WIN32
-  #ifdef DATA_BIND_BUILD_DLL
-    #define DATA_BIND_API __declspec(dllexport)
-  #elif defined(DATA_BIND_USE_DLL)
-    #define DATA_BIND_API __declspec(dllimport)
-  #else
-    #define DATA_BIND_API
-  #endif
+/* Shared-library export macro. */
+#if defined(_WIN32) && defined(DATA_BIND_BUILD_DLL)
+  #define DATA_BIND_API __declspec(dllexport)
 #else
   #define DATA_BIND_API
 #endif

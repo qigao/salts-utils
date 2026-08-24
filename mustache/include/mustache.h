@@ -6,14 +6,8 @@
 #include "turbo_vstr.h"
 
 #ifndef MUSTACHE_API
-  #if defined(_WIN32)
-    #if defined(MUSTACHE_BUILD_DLL)
-      #define MUSTACHE_API __declspec(dllexport)
-    #elif defined(MUSTACHE_USE_DLL)
-      #define MUSTACHE_API __declspec(dllimport)
-    #else
-      #define MUSTACHE_API
-    #endif
+  #if defined(_WIN32) && defined(MUSTACHE_BUILD_DLL)
+    #define MUSTACHE_API __declspec(dllexport)
   #elif defined(__GNUC__) && __GNUC__ >= 4
     #define MUSTACHE_API __attribute__((visibility("default")))
   #else
