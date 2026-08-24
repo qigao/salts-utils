@@ -31,6 +31,16 @@ static void tbe_cbind_test_replaced_uuid_restore_zero(void *object) {
   (void)object;
 }
 
+static bool tbe_cbind_test_enum_never_zero(const void *object) {
+  (void)object;
+  return false;
+}
+
+static void tbe_cbind_test_enum_bad_restore_zero(void *object) {
+  const tbe_cbind_test_state nonzero = TBE_CBIND_TEST_STATE_IDLE;
+  if (object != NULL) memcpy(object, &nonzero, sizeof(nonzero));
+}
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -149,6 +159,30 @@ static void check_scalar_slot_rejected(const char *schema,
   check_null(plan);
   check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
   check_equal(error.path, "One.value");
+  check_equal(error.target_status, expected_target);
+  tbe_cbind_plan_destroy(plan);
+}
+
+static void check_state_enum_rejected(const cmeta_data_desc *enum_value,
+                                      tbe_cbind_status expected_status,
+                                      cmeta_status expected_target) {
+  cmeta_data_field_desc fields[2];
+  cmeta_data_struct_shape shape = tbe_cbind_test_enum_detail_shape;
+  cmeta_data_desc data = tbe_cbind_test_enum_detail_data;
+  tbe_cbind_plan_error error;
+  tbe_cbind_plan *plan = NULL;
+
+  memcpy(fields, tbe_cbind_test_enum_detail_data_fields, sizeof(fields));
+  fields[1].value = enum_value;
+  shape.fields = fields;
+  data.shape = &shape;
+  tbe_cbind_plan_error_init(&error);
+  check_equal(create_plan(tbe_cbind_test_state_record_schema, "EnumDetail",
+                          &data, &plan, &error),
+              expected_status);
+  check_null(plan);
+  check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+  check_equal(error.path, "EnumDetail.state");
   check_equal(error.target_status, expected_target);
   tbe_cbind_plan_destroy(plan);
 }
@@ -813,6 +847,109 @@ spec("TbeCBind native plan overlay") {
                                CMETA_TYPE_MISMATCH);
   }
 
+  it("borrows the validated native enum descriptor and ops in the ready overlay") {
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+    const cmeta_data_desc *overlay;
+    const cmeta_data_struct_shape *shape;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(tbe_cbind_test_state_record_schema, "EnumDetail",
+                            &tbe_cbind_test_enum_detail_data, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    overlay = tbe_cbind_plan_shape(plan);
+    check_not_null(overlay);
+    shape = overlay != NULL
+                ? (const cmeta_data_struct_shape *)overlay->shape
+                : NULL;
+    check_not_null(shape);
+    if (shape != NULL) {
+      check_equal(shape->field_count, (size_t)2u);
+      check_true(shape->fields[1].value == &tbe_cbind_test_state_data);
+      check_true(shape->fields[1].value->enum_ops ==
+                 &tbe_cbind_test_state_ops);
+    }
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rejects missing incomplete and unversioned enum ops before publication") {
+    size_t variant;
+
+    for (variant = 0u; variant < 4u; ++variant) {
+      cmeta_data_desc data = tbe_cbind_test_state_data;
+      cmeta_data_enum_ops ops = tbe_cbind_test_state_ops;
+      if (variant == 0u) {
+        data.enum_ops = NULL;
+      } else {
+        data.enum_ops = &ops;
+        if (variant == 1u)
+          ops.struct_size = offsetof(cmeta_data_enum_ops, restore_zero);
+        if (variant == 2u)
+          ops.abi_version = CMETA_DATA_ENUM_OPS_ABI_VERSION + 1u;
+        if (variant == 3u) ops.read = NULL;
+      }
+      check_state_enum_rejected(&data, TBE_CBIND_NATIVE_SHAPE_ERROR,
+                                CMETA_INVALID_ARGUMENT);
+    }
+  }
+
+  it("rejects enum underlying width and signedness mismatches") {
+    cmeta_data_desc wrong_width = tbe_cbind_test_state_data;
+    cmeta_data_enum_ops width_ops = tbe_cbind_test_state_ops;
+    cmeta_data_desc wrong_signedness = tbe_cbind_test_state_data;
+    cmeta_data_enum_ops signedness_ops = tbe_cbind_test_state_ops;
+
+    wrong_width.storage_type = &turbo_int32_cmeta_type;
+    width_ops.storage_type = &turbo_int32_cmeta_type;
+    wrong_width.enum_ops = &width_ops;
+    check_state_enum_rejected(&wrong_width, TBE_CBIND_TYPE_MISMATCH,
+                              CMETA_TYPE_MISMATCH);
+
+    wrong_signedness.storage_type = &turbo_uint16_cmeta_type;
+    signedness_ops.storage_type = &turbo_uint16_cmeta_type;
+    wrong_signedness.enum_ops = &signedness_ops;
+    check_state_enum_rejected(&wrong_signedness, TBE_CBIND_TYPE_MISMATCH,
+                              CMETA_TYPE_MISMATCH);
+  }
+
+  it("rejects enum name count symbol text and value metadata mismatches") {
+    size_t variant;
+
+    for (variant = 0u; variant < 5u; ++variant) {
+      cmeta_enum_item_desc items[3];
+      cmeta_enum_desc meta = tbe_cbind_test_state_meta;
+      cmeta_data_enum_shape enum_shape = tbe_cbind_test_state_shape;
+      cmeta_data_desc data = tbe_cbind_test_state_data;
+      memcpy(items, tbe_cbind_test_state_items, sizeof(items));
+      meta.items = items;
+      enum_shape.meta = &meta;
+      data.shape = &enum_shape;
+      if (variant == 0u) meta.name = "Other";
+      if (variant == 1u) meta.count = 2u;
+      if (variant == 2u) items[1].symbol = "State_Wrong";
+      if (variant == 3u) items[1].text = "Wrong";
+      if (variant == 4u) items[1].value = 3;
+      check_state_enum_rejected(&data, TBE_CBIND_TYPE_MISMATCH,
+                                CMETA_TYPE_MISMATCH);
+    }
+  }
+
+  it("rejects enum callbacks that violate the semantic-zero contract") {
+    cmeta_data_desc data = tbe_cbind_test_state_data;
+    cmeta_data_enum_ops ops = tbe_cbind_test_state_ops;
+
+    data.enum_ops = &ops;
+    ops.is_zero = tbe_cbind_test_enum_never_zero;
+    check_state_enum_rejected(&data, TBE_CBIND_NATIVE_SHAPE_ERROR,
+                              CMETA_CALLBACK_ERROR);
+
+    ops = tbe_cbind_test_state_ops;
+    ops.restore_zero = tbe_cbind_test_enum_bad_restore_zero;
+    check_state_enum_rejected(&data, TBE_CBIND_NATIVE_SHAPE_ERROR,
+                              CMETA_CALLBACK_ERROR);
+  }
+
   it("rejects a replaced UUID is_zero callback before plan publication") {
     cmeta_data_desc mutated_data = turbo_uuid_cmeta_data;
     cmeta_data_buffer_ops mutated_ops = turbo_uuid_cmeta_buffer_ops;
@@ -1256,6 +1393,39 @@ spec("TbeCBind native plan overlay") {
       status = tbe_cbind_plan_create_from_text_with_allocator(
           schema, sizeof(schema) - 1u, "One", 3u,
           &tbe_cbind_test_one_data, &options, &plan, &error, &allocator);
+      if (status == TBE_CBIND_OK) {
+        check_not_null(plan);
+        tbe_cbind_plan_destroy(plan);
+        check_equal(state.live_count, (size_t)0);
+        reached_success = 1;
+        break;
+      }
+      check_equal(status, TBE_CBIND_OUT_OF_MEMORY);
+      check_null(plan);
+      check_equal(state.live_count, (size_t)0);
+    }
+    check_true(reached_success);
+  }
+
+  it("cleans owned enum metadata and native preflight scratch under deterministic OOM") {
+    tbe_cbind_plan_options options;
+    size_t fail_at;
+    int reached_success = 0;
+    tbe_cbind_plan_options_init(&options);
+    for (fail_at = 1u; fail_at < 256u; ++fail_at) {
+      fail_allocator_state state = {0u, fail_at, 0u};
+      tbe_cbind_allocator allocator = {
+          &state, fail_allocator_calloc, fail_allocator_free};
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = (tbe_cbind_plan *)(uintptr_t)1u;
+      tbe_cbind_status status;
+      tbe_cbind_plan_error_init(&error);
+      status = tbe_cbind_plan_create_from_text_with_allocator(
+          tbe_cbind_test_state_record_schema,
+          sizeof(tbe_cbind_test_state_record_schema) - 1u,
+          "EnumDetail", sizeof("EnumDetail") - 1u,
+          &tbe_cbind_test_enum_detail_data, &options, &plan, &error,
+          &allocator);
       if (status == TBE_CBIND_OK) {
         check_not_null(plan);
         tbe_cbind_plan_destroy(plan);

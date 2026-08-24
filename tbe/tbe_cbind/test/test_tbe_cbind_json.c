@@ -288,6 +288,46 @@ spec("TbeCBind JSON integration") {
     tbe_cbind_plan_destroy(plan);
   }
 
+  it("decodes nested enum symbols and texts from JSON") {
+    static const char *const documents[] = {
+        "{\"detail\":{\"prefix\":11,\"state\":\"State_Ready\"},\"suffix\":9}",
+        "{\"detail\":{\"prefix\":12,\"state\":\"Paused\"},\"suffix\":10}"};
+    static const tbe_cbind_test_state expected_states[] = {
+        TBE_CBIND_TEST_STATE_READY, TBE_CBIND_TEST_STATE_PAUSED};
+    unsigned char scratch[32] = {0};
+    cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
+        scratch, sizeof(scratch), 2u, 0u, 0u);
+    tbe_cbind_plan *plan = json_make_plan(
+        tbe_cbind_test_state_envelope_schema,
+        strlen(tbe_cbind_test_state_envelope_schema), "EnumEnvelope",
+        sizeof("EnumEnvelope") - 1u,
+        &tbe_cbind_test_enum_envelope_data);
+    size_t index;
+
+    for (index = 0u; index < sizeof(documents) / sizeof(documents[0]); ++index) {
+      turbo_json_doc_t *document = NULL;
+      cserde_reader *reader = NULL;
+      tbe_cbind_test_enum_envelope out = {0};
+      cbind_error error = CBIND_ERROR_INIT;
+
+      check_equal(turbo_parse_json((const uint8_t *)documents[index],
+                                   strlen(documents[index]), &document),
+                  0);
+      reader = turbo_json_cserde_reader_create(document, 2u);
+      check_not_null(reader);
+      if (reader != NULL)
+        check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
+                    CBIND_OK);
+      check_equal(out.detail.prefix, (int32_t)(index + 11u));
+      check_equal(out.detail.state, expected_states[index]);
+      check_equal(out.suffix, (int32_t)(index + 9u));
+
+      turbo_json_cserde_reader_destroy(reader);
+      turbo_free_json(&document);
+    }
+    tbe_cbind_plan_destroy(plan);
+  }
+
   it("rolls back JSON scalars when the final UUID is invalid") {
     static const char json[] =
         "{\"payload\":{\"enabled\":true,\"min8\":1,\"max8\":2,"

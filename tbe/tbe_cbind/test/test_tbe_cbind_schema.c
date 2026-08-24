@@ -63,6 +63,17 @@ static tbe_cbind_status create_scalar_slot(const char *spelling,
       &options, out, error);
 }
 
+static tbe_cbind_status create_enum_plan(
+    const char *schema, const char *type_name,
+    const cmeta_data_desc *native_shape, tbe_cbind_plan **out,
+    tbe_cbind_plan_error *error) {
+  tbe_cbind_plan_options options;
+  tbe_cbind_plan_options_init(&options);
+  return tbe_cbind_plan_create_from_text(
+      schema, strlen(schema), type_name, strlen(type_name), native_shape,
+      &options, out, error);
+}
+
 spec("TbeCBind schema semantic model") {
   it("reports parser syntax errors with source coordinates") {
     tbe_cbind_plan_error error;
@@ -119,8 +130,6 @@ spec("TbeCBind schema semantic model") {
 
   it("rejects unsupported declarations attributes and field types") {
     static const char *const schemas[] = {
-        "enum State { Ready; } message One { int32 value; }",
-        "flags StateFlags { Ready; } message One { int32 value; }",
         "union Choice { int32 value; } message One { int32 value; }",
         "message One { [alias(old)] int32 value; }",
         "message One { [id(1)] int32 value; }",
@@ -139,6 +148,71 @@ spec("TbeCBind schema semantic model") {
                   TBE_CBIND_UNSUPPORTED);
       check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
     }
+  }
+
+  it("accepts default canonical and aliased enum underlying types with exact implicit values") {
+    static const char canonical_state_schema[] =
+        "enum State <int16> { Idle = 0x1; Ready; Paused = 7; } "
+        "message EnumDetail { int32 prefix; State state; }";
+    struct enum_acceptance_case {
+      const char *schema;
+      const char *type_name;
+      const cmeta_data_desc *native_shape;
+    } cases[] = {
+        {tbe_cbind_test_mode_schema, "ModeRecord",
+         &tbe_cbind_test_mode_record_data},
+        {canonical_state_schema, "EnumDetail",
+         &tbe_cbind_test_enum_detail_data},
+        {tbe_cbind_test_state_record_schema, "EnumDetail",
+         &tbe_cbind_test_enum_detail_data}};
+    size_t index;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = NULL;
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_enum_plan(cases[index].schema, cases[index].type_name,
+                                   cases[index].native_shape, &plan, &error),
+                  TBE_CBIND_OK);
+      check_not_null(plan);
+      tbe_cbind_plan_destroy(plan);
+    }
+  }
+
+  it("rejects duplicate enum symbols values range overflow and type collisions") {
+    static const char *const schemas[] = {
+        "enum State <int16> { Ready = 1; Ready = 2; } "
+        "message One { int32 value; }",
+        "enum State <int16> { Ready = 1; Paused = 1; } "
+        "message One { int32 value; }",
+        "enum State <uint8> { TooLarge = 256; } "
+        "message One { int32 value; }",
+        "enum State <uint64> { TooLarge = 9223372036854775808; } "
+        "message One { int32 value; }",
+        "enum One { Ready = 1; } message One { int32 value; }",
+        "enum int32 { Ready = 1; } message One { int32 value; }"};
+    size_t index;
+
+    for (index = 0u; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_one(schemas[index], "One", &error),
+                  TBE_CBIND_SCHEMA_ERROR);
+      check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+      check_not_equal(error.path, "");
+    }
+  }
+
+  it("rejects flags explicitly at the declaration path") {
+    static const char schema[] =
+        "flags StateFlags <uint16> { Ready; Paused; } "
+        "message One { StateFlags state; }";
+    tbe_cbind_plan_error error;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one(schema, "One", &error), TBE_CBIND_UNSUPPORTED);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+    check_equal(error.path, "StateFlags.(declaration)");
   }
 
   it("accepts every canonical scalar spelling and exact alias") {
@@ -222,12 +296,32 @@ spec("TbeCBind schema semantic model") {
                 TBE_CBIND_LIMIT_EXCEEDED);
 
     tbe_cbind_plan_options_init(&options);
+    options.max_types = 1u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(
+                    tbe_cbind_test_mode_schema,
+                    sizeof(tbe_cbind_test_mode_schema) - 1u,
+                    "ModeRecord", sizeof("ModeRecord") - 1u,
+                    &options, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+
+    tbe_cbind_plan_options_init(&options);
     options.max_fields = 1u;
     tbe_cbind_plan_error_init(&error);
     check_equal(create_one_with_options(
                     "message One { int32 first; int32 second; }",
                     sizeof("message One { int32 first; int32 second; }") - 1u,
                     "One", 3u, &options, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_fields = 3u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(
+                    tbe_cbind_test_mode_schema,
+                    sizeof(tbe_cbind_test_mode_schema) - 1u,
+                    "ModeRecord", sizeof("ModeRecord") - 1u,
+                    &options, &error),
                 TBE_CBIND_LIMIT_EXCEEDED);
 
     tbe_cbind_plan_options_init(&options);

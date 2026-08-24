@@ -24,10 +24,12 @@ typedef struct tbe_cbind_build_context {
 
 typedef enum tbe_cbind_semantic_kind {
   TBE_CBIND_SEMANTIC_SCALAR,
+  TBE_CBIND_SEMANTIC_ENUM,
   TBE_CBIND_SEMANTIC_RECORD
 } tbe_cbind_semantic_kind;
 
 struct tbe_cbind_semantic_type;
+struct tbe_cbind_semantic_enum;
 struct tbe_cbind_capability;
 
 typedef struct tbe_cbind_semantic_field {
@@ -37,8 +39,22 @@ typedef struct tbe_cbind_semantic_field {
   char *type_name;
   tbe_cbind_semantic_kind kind;
   const struct tbe_cbind_capability *capability;
+  const struct tbe_cbind_semantic_enum *enum_type;
   struct tbe_cbind_semantic_type *record_type;
 } tbe_cbind_semantic_field;
+
+typedef struct tbe_cbind_semantic_enum_item {
+  char *symbol;
+  char *text;
+  int64_t value;
+} tbe_cbind_semantic_enum_item;
+
+typedef struct tbe_cbind_semantic_enum {
+  char *name;
+  const struct tbe_cbind_capability *underlying;
+  tbe_cbind_semantic_enum_item *items;
+  size_t item_count;
+} tbe_cbind_semantic_enum;
 
 typedef struct tbe_cbind_semantic_type {
   char *name;
@@ -54,6 +70,10 @@ typedef struct tbe_cbind_schema_model {
   size_t type_count;
   tbe_cbind_semantic_type **type_slots;
   size_t type_slot_count;
+  tbe_cbind_semantic_enum *enums;
+  size_t enum_count;
+  tbe_cbind_semantic_enum **enum_slots;
+  size_t enum_slot_count;
   tbe_cbind_semantic_type *root;
 } tbe_cbind_schema_model;
 

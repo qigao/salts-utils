@@ -147,6 +147,157 @@ static tbe_cbind_status tbe_cbind_native_scalar_shape_error(
       CMETA_INVALID_ARGUMENT, path, message);
 }
 
+static const cmeta_type_desc *tbe_cbind_native_enum_storage_type(
+    const tbe_cbind_capability *underlying) {
+  if (underlying == NULL || underlying->kind != TBE_CBIND_SCALAR_INTEGER)
+    return NULL;
+  switch (underlying->bits) {
+    case 8u:
+      return underlying->is_signed ? &turbo_int8_cmeta_type
+                                   : &turbo_uint8_cmeta_type;
+    case 16u:
+      return underlying->is_signed ? &turbo_int16_cmeta_type
+                                   : &turbo_uint16_cmeta_type;
+    case 32u:
+      return underlying->is_signed ? &turbo_int32_cmeta_type
+                                   : &turbo_uint32_cmeta_type;
+    case 64u:
+      return underlying->is_signed ? &turbo_int64_cmeta_type
+                                   : &turbo_uint64_cmeta_type;
+    default:
+      return NULL;
+  }
+}
+
+static tbe_cbind_status tbe_cbind_native_enum_callback_error(
+    tbe_cbind_build_context *context, size_t field_index, const char *path,
+    const char *message) {
+  return tbe_cbind_native_error(
+      context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
+      CMETA_CALLBACK_ERROR, path, message);
+}
+
+static tbe_cbind_status tbe_cbind_native_enum_callbacks_match(
+    tbe_cbind_build_context *context,
+    const tbe_cbind_semantic_enum *semantic,
+    const cmeta_data_desc *value, size_t field_index, const char *path) {
+  const cmeta_data_enum_ops *ops = value->enum_ops;
+  void *scratch = tbe_cbind_alloc_array(
+      context, 1u, value->storage_type->size);
+  tbe_cbind_status result = TBE_CBIND_OK;
+  bool is_zero = false;
+  size_t index;
+  if (scratch == NULL) {
+    return tbe_cbind_native_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, field_index, CMETA_OUT_OF_MEMORY,
+        path, "native enum preflight scratch allocation failed");
+  }
+  if (cmeta_data_enum_is_zero(value, scratch, &is_zero) != CMETA_OK ||
+      !is_zero) {
+    result = tbe_cbind_native_enum_callback_error(
+        context, field_index, path,
+        "native enum zero-initialized storage is not semantic zero");
+    goto cleanup;
+  }
+  if (cmeta_data_enum_restore_zero(value, scratch) != CMETA_OK ||
+      cmeta_data_enum_restore_zero(value, scratch) != CMETA_OK) {
+    result = tbe_cbind_native_enum_callback_error(
+        context, field_index, path,
+        "native enum restore_zero is not idempotent semantic zero");
+    goto cleanup;
+  }
+  for (index = 0u; index < semantic->item_count; ++index) {
+    int64_t observed = 0;
+    if (cmeta_data_enum_assign(value, scratch,
+                               semantic->items[index].value) != CMETA_OK ||
+        cmeta_data_enum_read(value, scratch, &observed) != CMETA_OK ||
+        observed != semantic->items[index].value ||
+        cmeta_data_enum_restore_zero(value, scratch) != CMETA_OK) {
+      result = tbe_cbind_native_enum_callback_error(
+          context, field_index, path,
+          "native enum callbacks violate assign/read/restore semantics");
+      goto cleanup;
+    }
+  }
+cleanup:
+  ops->restore_zero(scratch);
+  tbe_cbind_free(context, scratch);
+  return result;
+}
+
+static tbe_cbind_status tbe_cbind_native_enum_matches(
+    tbe_cbind_build_context *context,
+    const tbe_cbind_semantic_enum *semantic,
+    const cmeta_data_desc *value, size_t field_index, const char *path) {
+  const cmeta_type_desc *expected_type =
+      tbe_cbind_native_enum_storage_type(semantic->underlying);
+  const cmeta_data_enum_shape *shape;
+  const cmeta_enum_desc *meta;
+  const cmeta_data_enum_ops *ops;
+  size_t index;
+  if (value->kind != CMETA_DATA_ENUM) {
+    return tbe_cbind_native_scalar_type_mismatch(
+        context, field_index, path,
+        "schema enum field does not use native enum storage");
+  }
+  if (expected_type == NULL || CHAR_BIT != 8 ||
+      !tbe_cbind_native_type_matches(value->storage_type, expected_type)) {
+    return tbe_cbind_native_scalar_type_mismatch(
+        context, field_index, path,
+        "native enum underlying signedness width size or alignment mismatches schema");
+  }
+  if (value->struct_size < TBE_CBIND_FIELD_END(cmeta_data_desc, enum_ops) ||
+      value->shape == NULL || value->enum_ops == NULL) {
+    return tbe_cbind_native_scalar_shape_error(
+        context, field_index, path,
+        "native enum descriptor does not expose shape and enum ops");
+  }
+  shape = (const cmeta_data_enum_shape *)value->shape;
+  meta = shape->meta;
+  ops = value->enum_ops;
+  if (meta == NULL || !tbe_cbind_native_nonempty(meta->name) ||
+      (meta->count != 0u && meta->items == NULL)) {
+    return tbe_cbind_native_scalar_shape_error(
+        context, field_index, path, "native enum reflection is malformed");
+  }
+  if (ops->struct_size < TBE_CBIND_FIELD_END(cmeta_data_enum_ops,
+                                             restore_zero) ||
+      ops->abi_version != CMETA_DATA_ENUM_OPS_ABI_VERSION ||
+      ops->storage_type == NULL || ops->is_zero == NULL ||
+      ops->read == NULL || ops->assign == NULL || ops->restore_zero == NULL ||
+      !tbe_cbind_native_type_matches(ops->storage_type, expected_type) ||
+      cmeta_data_enum_ops_of(value) == NULL || !cmeta_data_desc_valid(value)) {
+    return tbe_cbind_native_scalar_shape_error(
+        context, field_index, path,
+        "native enum requires complete versioned storage-matching ops");
+  }
+  if (strcmp(meta->name, semantic->name) != 0 ||
+      meta->count != semantic->item_count) {
+    return tbe_cbind_native_scalar_type_mismatch(
+        context, field_index, path,
+        "native enum name or item count does not match schema");
+  }
+  for (index = 0u; index < semantic->item_count; ++index) {
+    const cmeta_enum_item_desc *native_item = &meta->items[index];
+    const tbe_cbind_semantic_enum_item *item = &semantic->items[index];
+    if (!tbe_cbind_native_nonempty(native_item->symbol) ||
+        !tbe_cbind_native_nonempty(native_item->text)) {
+      return tbe_cbind_native_scalar_shape_error(
+          context, field_index, path,
+          "native enum item reflection is malformed");
+    }
+    if (native_item->value != item->value ||
+        strcmp(native_item->symbol, item->symbol) != 0 ||
+        strcmp(native_item->text, item->text) != 0) {
+      return tbe_cbind_native_scalar_type_mismatch(
+          context, field_index, path,
+          "native enum item symbol text or value does not match schema");
+    }
+  }
+  return tbe_cbind_native_enum_callbacks_match(
+      context, semantic, value, field_index, path);
+}
+
 static tbe_cbind_status tbe_cbind_native_value_matches(
     tbe_cbind_build_context *context, const tbe_cbind_semantic_field *field,
     const cmeta_data_desc *value, size_t field_index, const char *path) {
@@ -170,6 +321,14 @@ static tbe_cbind_status tbe_cbind_native_value_matches(
             "nested native struct descriptor is malformed");
     }
     return TBE_CBIND_OK;
+  }
+  if (field->kind == TBE_CBIND_SEMANTIC_ENUM) {
+    if (field->enum_type == NULL)
+      return tbe_cbind_native_scalar_shape_error(
+          context, field_index, path,
+          "semantic enum metadata is missing");
+    return tbe_cbind_native_enum_matches(
+        context, field->enum_type, value, field_index, path);
   }
   if (field->kind != TBE_CBIND_SEMANTIC_SCALAR || capability == NULL)
     return tbe_cbind_native_scalar_shape_error(

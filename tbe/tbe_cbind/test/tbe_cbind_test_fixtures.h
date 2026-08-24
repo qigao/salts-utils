@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 typedef struct tbe_cbind_test_one {
   int value;
@@ -325,5 +326,261 @@ static const cmeta_data_desc tbe_cbind_test_strings_data = {
     "test.tbe-cbind.strings.data", "tbe_cbind_test_strings",
     CMETA_DATA_STRUCT, &tbe_cbind_test_strings_type,
     &tbe_cbind_test_strings_shape, NULL};
+
+typedef int16_t tbe_cbind_test_state;
+
+enum {
+  TBE_CBIND_TEST_STATE_IDLE = 1,
+  TBE_CBIND_TEST_STATE_READY = 2,
+  TBE_CBIND_TEST_STATE_PAUSED = 7
+};
+
+static bool tbe_cbind_test_state_is_zero(const void *object) {
+  tbe_cbind_test_state value;
+  if (object == NULL) return false;
+  memcpy(&value, object, sizeof(value));
+  return value == 0;
+}
+
+static cmeta_status tbe_cbind_test_state_read(const void *object,
+                                              int64_t *out) {
+  tbe_cbind_test_state value;
+  if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
+  memcpy(&value, object, sizeof(value));
+  *out = (int64_t)value;
+  return CMETA_OK;
+}
+
+static cmeta_status tbe_cbind_test_state_assign(void *object, int64_t value) {
+  tbe_cbind_test_state native;
+  if (object == NULL || value < INT16_MIN || value > INT16_MAX)
+    return CMETA_INVALID_ARGUMENT;
+  native = (tbe_cbind_test_state)value;
+  memcpy(object, &native, sizeof(native));
+  return CMETA_OK;
+}
+
+static void tbe_cbind_test_state_restore_zero(void *object) {
+  const tbe_cbind_test_state zero = 0;
+  if (object != NULL) memcpy(object, &zero, sizeof(zero));
+}
+
+static const cmeta_enum_item_desc tbe_cbind_test_state_items[] = {
+    {TBE_CBIND_TEST_STATE_IDLE, "State_Idle", "Idle"},
+    {TBE_CBIND_TEST_STATE_READY, "State_Ready", "Ready"},
+    {TBE_CBIND_TEST_STATE_PAUSED, "State_Paused", "Paused"}};
+static const cmeta_enum_desc tbe_cbind_test_state_meta = {
+    "State", tbe_cbind_test_state_items,
+    sizeof(tbe_cbind_test_state_items) /
+        sizeof(tbe_cbind_test_state_items[0])};
+static const cmeta_data_enum_shape tbe_cbind_test_state_shape = {
+    &tbe_cbind_test_state_meta};
+static const cmeta_data_enum_ops tbe_cbind_test_state_ops = {
+    sizeof(cmeta_data_enum_ops), CMETA_DATA_ENUM_OPS_ABI_VERSION,
+    &turbo_int16_cmeta_type, tbe_cbind_test_state_is_zero,
+    tbe_cbind_test_state_read, tbe_cbind_test_state_assign,
+    tbe_cbind_test_state_restore_zero};
+static const cmeta_data_desc tbe_cbind_test_state_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.State.data",
+    .display_name = "State",
+    .kind = CMETA_DATA_ENUM,
+    .storage_type = &turbo_int16_cmeta_type,
+    .shape = &tbe_cbind_test_state_shape,
+    .enum_ops = &tbe_cbind_test_state_ops};
+
+typedef struct tbe_cbind_test_enum_detail {
+  int32_t prefix;
+  tbe_cbind_test_state state;
+} tbe_cbind_test_enum_detail;
+
+static const cmeta_type_identity tbe_cbind_test_enum_detail_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.enum-detail");
+static const cmeta_type_desc tbe_cbind_test_enum_detail_type = {
+    "tbe_cbind_test_enum_detail", sizeof(tbe_cbind_test_enum_detail),
+    _Alignof(tbe_cbind_test_enum_detail), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_enum_detail_identity};
+static const cmeta_field_desc tbe_cbind_test_enum_detail_layout_fields[] = {
+    {"prefix", "int32_t", offsetof(tbe_cbind_test_enum_detail, prefix),
+     sizeof(int32_t), _Alignof(int32_t), &turbo_int32_cmeta_type, NULL},
+    {"state", "tbe_cbind_test_state",
+     offsetof(tbe_cbind_test_enum_detail, state), sizeof(tbe_cbind_test_state),
+     _Alignof(tbe_cbind_test_state), &turbo_int16_cmeta_type, NULL}};
+static const cmeta_struct_desc tbe_cbind_test_enum_detail_layout = {
+    "tbe_cbind_test_enum_detail", sizeof(tbe_cbind_test_enum_detail),
+    _Alignof(tbe_cbind_test_enum_detail),
+    tbe_cbind_test_enum_detail_layout_fields, 2u};
+static const cmeta_data_field_desc
+    tbe_cbind_test_enum_detail_data_fields[] = {
+        {"test.tbe-cbind.enum-detail.prefix", "prefix",
+         offsetof(tbe_cbind_test_enum_detail, prefix),
+         &turbo_int32_cmeta_data},
+        {"test.tbe-cbind.enum-detail.state", "state",
+         offsetof(tbe_cbind_test_enum_detail, state),
+         &tbe_cbind_test_state_data}};
+static const cmeta_data_struct_shape tbe_cbind_test_enum_detail_shape = {
+    &tbe_cbind_test_enum_detail_layout,
+    tbe_cbind_test_enum_detail_data_fields, 2u};
+static const cmeta_data_desc tbe_cbind_test_enum_detail_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.enum-detail.data",
+    .display_name = "tbe_cbind_test_enum_detail",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &tbe_cbind_test_enum_detail_type,
+    .shape = &tbe_cbind_test_enum_detail_shape};
+
+typedef struct tbe_cbind_test_enum_envelope {
+  tbe_cbind_test_enum_detail detail;
+  int32_t suffix;
+} tbe_cbind_test_enum_envelope;
+
+static const cmeta_type_identity tbe_cbind_test_enum_envelope_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.enum-envelope");
+static const cmeta_type_desc tbe_cbind_test_enum_envelope_type = {
+    "tbe_cbind_test_enum_envelope", sizeof(tbe_cbind_test_enum_envelope),
+    _Alignof(tbe_cbind_test_enum_envelope), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_enum_envelope_identity};
+static const cmeta_field_desc tbe_cbind_test_enum_envelope_layout_fields[] = {
+    {"detail", "tbe_cbind_test_enum_detail",
+     offsetof(tbe_cbind_test_enum_envelope, detail),
+     sizeof(tbe_cbind_test_enum_detail), _Alignof(tbe_cbind_test_enum_detail),
+     &tbe_cbind_test_enum_detail_type, NULL},
+    {"suffix", "int32_t", offsetof(tbe_cbind_test_enum_envelope, suffix),
+     sizeof(int32_t), _Alignof(int32_t), &turbo_int32_cmeta_type, NULL}};
+static const cmeta_struct_desc tbe_cbind_test_enum_envelope_layout = {
+    "tbe_cbind_test_enum_envelope", sizeof(tbe_cbind_test_enum_envelope),
+    _Alignof(tbe_cbind_test_enum_envelope),
+    tbe_cbind_test_enum_envelope_layout_fields, 2u};
+static const cmeta_data_field_desc
+    tbe_cbind_test_enum_envelope_data_fields[] = {
+        {"test.tbe-cbind.enum-envelope.detail", "detail",
+         offsetof(tbe_cbind_test_enum_envelope, detail),
+         &tbe_cbind_test_enum_detail_data},
+        {"test.tbe-cbind.enum-envelope.suffix", "suffix",
+         offsetof(tbe_cbind_test_enum_envelope, suffix),
+         &turbo_int32_cmeta_data}};
+static const cmeta_data_struct_shape tbe_cbind_test_enum_envelope_shape = {
+    &tbe_cbind_test_enum_envelope_layout,
+    tbe_cbind_test_enum_envelope_data_fields, 2u};
+static const cmeta_data_desc tbe_cbind_test_enum_envelope_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.enum-envelope.data",
+    .display_name = "tbe_cbind_test_enum_envelope",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &tbe_cbind_test_enum_envelope_type,
+    .shape = &tbe_cbind_test_enum_envelope_shape};
+
+static const char tbe_cbind_test_state_record_schema[] =
+    "enum State <i16> { Idle = 1; Ready; Paused = 7; } "
+    "message EnumDetail { int32 prefix; State state; }";
+static const char tbe_cbind_test_state_envelope_schema[] =
+    "enum State <int16> { Idle = 1; Ready; Paused = 7; } "
+    "composite EnumDetail { int32 prefix; State state; } "
+    "message EnumEnvelope { EnumDetail detail; int32 suffix; }";
+
+typedef int32_t tbe_cbind_test_mode;
+
+enum {
+  TBE_CBIND_TEST_MODE_UNKNOWN = 0,
+  TBE_CBIND_TEST_MODE_BUSY = 4,
+  TBE_CBIND_TEST_MODE_DONE = 5
+};
+
+static bool tbe_cbind_test_mode_is_zero(const void *object) {
+  tbe_cbind_test_mode value;
+  if (object == NULL) return false;
+  memcpy(&value, object, sizeof(value));
+  return value == 0;
+}
+
+static cmeta_status tbe_cbind_test_mode_read(const void *object,
+                                             int64_t *out) {
+  tbe_cbind_test_mode value;
+  if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
+  memcpy(&value, object, sizeof(value));
+  *out = (int64_t)value;
+  return CMETA_OK;
+}
+
+static cmeta_status tbe_cbind_test_mode_assign(void *object, int64_t value) {
+  tbe_cbind_test_mode native;
+  if (object == NULL || value < INT32_MIN || value > INT32_MAX)
+    return CMETA_INVALID_ARGUMENT;
+  native = (tbe_cbind_test_mode)value;
+  memcpy(object, &native, sizeof(native));
+  return CMETA_OK;
+}
+
+static void tbe_cbind_test_mode_restore_zero(void *object) {
+  const tbe_cbind_test_mode zero = 0;
+  if (object != NULL) memcpy(object, &zero, sizeof(zero));
+}
+
+static const cmeta_enum_item_desc tbe_cbind_test_mode_items[] = {
+    {TBE_CBIND_TEST_MODE_UNKNOWN, "Mode_Unknown", "Unknown"},
+    {TBE_CBIND_TEST_MODE_BUSY, "Mode_Busy", "Busy"},
+    {TBE_CBIND_TEST_MODE_DONE, "Mode_Done", "Done"}};
+static const cmeta_enum_desc tbe_cbind_test_mode_meta = {
+    "Mode", tbe_cbind_test_mode_items,
+    sizeof(tbe_cbind_test_mode_items) /
+        sizeof(tbe_cbind_test_mode_items[0])};
+static const cmeta_data_enum_shape tbe_cbind_test_mode_shape = {
+    &tbe_cbind_test_mode_meta};
+static const cmeta_data_enum_ops tbe_cbind_test_mode_ops = {
+    sizeof(cmeta_data_enum_ops), CMETA_DATA_ENUM_OPS_ABI_VERSION,
+    &turbo_int32_cmeta_type, tbe_cbind_test_mode_is_zero,
+    tbe_cbind_test_mode_read, tbe_cbind_test_mode_assign,
+    tbe_cbind_test_mode_restore_zero};
+static const cmeta_data_desc tbe_cbind_test_mode_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.Mode.data",
+    .display_name = "Mode",
+    .kind = CMETA_DATA_ENUM,
+    .storage_type = &turbo_int32_cmeta_type,
+    .shape = &tbe_cbind_test_mode_shape,
+    .enum_ops = &tbe_cbind_test_mode_ops};
+
+typedef struct tbe_cbind_test_mode_record {
+  tbe_cbind_test_mode mode;
+} tbe_cbind_test_mode_record;
+
+static const cmeta_type_identity tbe_cbind_test_mode_record_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.mode-record");
+static const cmeta_type_desc tbe_cbind_test_mode_record_type = {
+    "tbe_cbind_test_mode_record", sizeof(tbe_cbind_test_mode_record),
+    _Alignof(tbe_cbind_test_mode_record), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_mode_record_identity};
+static const cmeta_field_desc tbe_cbind_test_mode_record_layout_fields[] = {{
+    "mode", "tbe_cbind_test_mode",
+    offsetof(tbe_cbind_test_mode_record, mode), sizeof(tbe_cbind_test_mode),
+    _Alignof(tbe_cbind_test_mode), &turbo_int32_cmeta_type, NULL}};
+static const cmeta_struct_desc tbe_cbind_test_mode_record_layout = {
+    "tbe_cbind_test_mode_record", sizeof(tbe_cbind_test_mode_record),
+    _Alignof(tbe_cbind_test_mode_record),
+    tbe_cbind_test_mode_record_layout_fields, 1u};
+static const cmeta_data_field_desc
+    tbe_cbind_test_mode_record_data_fields[] = {{
+        "test.tbe-cbind.mode-record.mode", "mode",
+        offsetof(tbe_cbind_test_mode_record, mode),
+        &tbe_cbind_test_mode_data}};
+static const cmeta_data_struct_shape tbe_cbind_test_mode_record_shape = {
+    &tbe_cbind_test_mode_record_layout,
+    tbe_cbind_test_mode_record_data_fields, 1u};
+static const cmeta_data_desc tbe_cbind_test_mode_record_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.mode-record.data",
+    .display_name = "tbe_cbind_test_mode_record",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &tbe_cbind_test_mode_record_type,
+    .shape = &tbe_cbind_test_mode_record_shape};
+
+static const char tbe_cbind_test_mode_schema[] =
+    "enum Mode { Unknown; Busy = 4; Done; } "
+    "message ModeRecord { Mode mode; }";
 
 #endif /* TBE_CBIND_TEST_FIXTURES_H */

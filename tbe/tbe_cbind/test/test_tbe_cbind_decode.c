@@ -255,6 +255,93 @@ spec("TbeCBind transactional decode facade") {
     tbe_cbind_plan_destroy(plan);
   }
 
+  it("decodes enum symbols texts and exact signed or unsigned numbers") {
+    static const cserde_token symbol_tokens[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("prefix"), TOKEN_SINT(10),
+        TOKEN_KEY("state"),
+        TOKEN_SLICE(CSERDE_STRING, "State_Ready", CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const cserde_token text_tokens[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("prefix"), TOKEN_SINT(11),
+        TOKEN_KEY("state"),
+        TOKEN_SLICE(CSERDE_STRING, "Paused", CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const cserde_token signed_tokens[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("prefix"), TOKEN_SINT(12),
+        TOKEN_KEY("state"), TOKEN_SINT(TBE_CBIND_TEST_STATE_IDLE),
+        TOKEN_MAP_END};
+    static const cserde_token unsigned_tokens[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("prefix"), TOKEN_SINT(13),
+        TOKEN_KEY("state"), TOKEN_UINT(TBE_CBIND_TEST_STATE_READY),
+        TOKEN_MAP_END};
+    static const cserde_token *const documents[] = {
+        symbol_tokens, text_tokens, signed_tokens, unsigned_tokens};
+    static const size_t counts[] = {
+        sizeof(symbol_tokens) / sizeof(symbol_tokens[0]),
+        sizeof(text_tokens) / sizeof(text_tokens[0]),
+        sizeof(signed_tokens) / sizeof(signed_tokens[0]),
+        sizeof(unsigned_tokens) / sizeof(unsigned_tokens[0])};
+    static const int32_t expected_prefixes[] = {10, 11, 12, 13};
+    static const tbe_cbind_test_state expected_states[] = {
+        TBE_CBIND_TEST_STATE_READY, TBE_CBIND_TEST_STATE_PAUSED,
+        TBE_CBIND_TEST_STATE_IDLE, TBE_CBIND_TEST_STATE_READY};
+    unsigned char scratch[2] = {0};
+    tbe_cbind_plan *plan = make_plan(
+        tbe_cbind_test_state_record_schema, "EnumDetail",
+        &tbe_cbind_test_enum_detail_data);
+    size_t index;
+
+    for (index = 0u; index < sizeof(documents) / sizeof(documents[0]); ++index) {
+      tbe_cbind_test_enum_detail out = {0};
+      cbind_error error = CBIND_ERROR_INIT;
+      check_equal(decode_tokens(plan, documents[index], counts[index], SIZE_MAX,
+                                &out, 1u, 0u, scratch, sizeof(scratch),
+                                &error, NULL),
+                  CBIND_OK);
+      check_equal(out.prefix, expected_prefixes[index]);
+      check_equal(out.state, expected_states[index]);
+    }
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rejects unknown enum text and number with complete nested rollback") {
+    static const cserde_token unknown_text[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("detail"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("prefix"), TOKEN_SINT(11), TOKEN_KEY("state"),
+        TOKEN_SLICE(CSERDE_STRING, "Missing", CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END, TOKEN_KEY("suffix"), TOKEN_SINT(9), TOKEN_MAP_END};
+    static const cserde_token unknown_number[] = {
+        TOKEN_MAP_BEGIN, TOKEN_KEY("detail"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("prefix"), TOKEN_SINT(11), TOKEN_KEY("state"),
+        TOKEN_SINT(3), TOKEN_MAP_END, TOKEN_KEY("suffix"), TOKEN_SINT(9),
+        TOKEN_MAP_END};
+    static const cserde_token *const documents[] = {unknown_text,
+                                                    unknown_number};
+    static const size_t counts[] = {
+        sizeof(unknown_text) / sizeof(unknown_text[0]),
+        sizeof(unknown_number) / sizeof(unknown_number[0])};
+    static const tbe_cbind_test_enum_envelope zero = {0};
+    unsigned char scratch[2] = {0};
+    tbe_cbind_plan *plan = make_plan(
+        tbe_cbind_test_state_envelope_schema, "EnumEnvelope",
+        &tbe_cbind_test_enum_envelope_data);
+    size_t index;
+
+    for (index = 0u; index < sizeof(documents) / sizeof(documents[0]); ++index) {
+      tbe_cbind_test_enum_envelope out = {0};
+      cbind_error error = CBIND_ERROR_INIT;
+      check_equal(decode_tokens(plan, documents[index], counts[index], SIZE_MAX,
+                                &out, 2u, 0u, scratch, sizeof(scratch),
+                                &error, NULL),
+                  CBIND_VALUE_OUT_OF_RANGE);
+      check_equal(&out, &zero, sizeof(out));
+      check_equal(error.status, CBIND_VALUE_OUT_OF_RANGE);
+      check_not_null(error.field);
+      if (error.field != NULL) check_equal(error.field->name, "state");
+    }
+    tbe_cbind_plan_destroy(plan);
+  }
+
   it("executes external-TU UUID callbacks and rolls back invalid input") {
     static const char schema[] =
         "message ExternalUuid { int32 prefix; uuid uuid; }";

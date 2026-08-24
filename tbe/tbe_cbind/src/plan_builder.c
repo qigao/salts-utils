@@ -236,6 +236,8 @@ static tbe_cbind_status tbe_cbind_plan_build_node(
   node->data.storage_type = native_shape->storage_type;
   node->data.shape = &node->shape;
   node->data.buffer_ops = NULL;
+  node->data.enum_ops = NULL;
+  node->data.variant_ops = NULL;
   node->build_state = 2u;
   *out_node = node;
   status = TBE_CBIND_OK;
