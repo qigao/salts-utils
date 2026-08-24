@@ -1,4 +1,4 @@
-# TurboUtils DataBind 2.5
+# TurboParser DataBind 2.5
 
 DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
@@ -19,7 +19,7 @@ DataBind 不属于 CBind，也不是 CBind/TbeCBind 的 adapter 或 fallback。�
 | --- | --- | --- |
 | `TurboUtils::CBind` | 已有最终 CMeta semantic descriptor 与 CSerde reader | 直接填充已有 C struct |
 | `TurboParser::TbeCBind` | TBE schema 运行时到达，且调用方已有 native CMeta descriptor | immutable overlay plan，再直接调用 CBind |
-| `TurboParser::DataBind` | 需要动态值树、跨格式对象或 `TBE_TYPED_*` conversion | DataBind-owned dynamic/typed result |
+| `TurboParser::DataBind` | 需要动态值树、跨格式对象或 `TBE_TYPED_*` conversion | DataBind-owned dynamic object 或 caller-owned typed struct |
 | build-time sidecar | schema 在构建期已知 | 生成 immutable descriptor，direct CBind |
 
 TbeCBind 不调用或链接 DataBind；DataBind 也不是缺少 native shape 时的后备路径。TBE
@@ -46,6 +46,12 @@ DataBind 2.5 只定义两条强类型路线：
   `DataBindValue`，数值读取优先使用返回 `DataBindStatus` 的 `get_*`。
 - 大批量输入：使用 `DataBindStreamConfig` + `data_bind_stream_create()`。
 - schema 工具：使用 reflection API；普通业务代码不依赖 reflection 数据结构。
+
+这里的所有权不可混用：`DataBindObject` / `DataBindValue` / `DataBindRecord` 的 owning
+dynamic object 由 DataBind 创建，并用对应 DataBind release API 释放；existing/generated
+typed struct 的 storage 始终由调用方拥有。typed destination 必须先按 descriptor 协议
+（生成代码即 `Type_init()`）初始化至 semantic zero，并在成功或失败后的统一 cleanup 中按
+同一 descriptor 协议（生成代码即 `Type_clear()`）清理。
 
 字符串格式参数、格式专用 stream 构造器、`DataBindRecord` facade 和 `as_*`
 便捷读取函数作为源码兼容入口保留。新代码使用 `DataBindFormat`、配置式 stream 和

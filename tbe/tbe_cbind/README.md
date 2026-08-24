@@ -227,7 +227,25 @@ native member 的 offset、size、alignment、type 与 buffer adapter。CBind �
 Plan compilation 只表示 schema AST 到 descriptor graph。TbeCBind 没有 MIR/BMIR、JIT、
 运行时机器码生成、可执行内存或运行时 C/C++ 编译器。性能结论必须来自显式的
 `benchmark_tbe_cbind` target；benchmark 分开报告 runtime plan creation 与 repeated decode，
-并以 build-time sidecar 生成的 direct CBind 调用作为 decode baseline。
-它只比较 generated sidecar direct CBind 与 TbeCBind plan façade；两条路径最终调用同一个
-`cbind_decode()`。该 benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 与
-DataBind 的性能是否相当。
+并以 build-time sidecar 生成的 direct CBind 调用作为 decode baseline。两条 decode 路径
+读取同一个 scalar/nested schema 文件、同一个 generated C struct、同一 token sequence，
+使用相同 context limits，并在各自测量前执行相同次数的 warm-up、重置 reader/scratch，且
+每个 destination 都从 semantic zero 开始并在测量后恢复 semantic zero。
+
+该 target 的 generated sidecar library 只编译 struct header 与 CBind sidecar source，不编译
+generated typed source、不链接 DataBind，也不定义 `WITH_DATABIND`。它只比较 generated
+sidecar direct CBind 与 TbeCBind plan façade；两条路径最终调用同一个 `cbind_decode()`。
+benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 与 DataBind 的性能是否
+相当；同一台机器上的微小数值差异也不支持路径间的原因归纳。
+
+2026-08-24 在 Windows 11 `10.0.26200`、AMD Ryzen 9 7940HX、MSVC `19.44.35217`、
+`win-release-user` Release 上单次运行的可复验事实如下：
+
+| Case | Samples | avg/op | min/sample | max/sample | ops/s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| runtime TBE schema plan creation | 100 | 23.145 us | 21.000 us | 36.400 us | 43,206 |
+| generated sidecar direct CBind decode | 10,000 | 0.374 us | 0.300 us | 3.700 us | 2,676,372 |
+| runtime TbeCBind plan decode | 10,000 | 0.379 us | 0.300 us | 3.600 us | 2,639,916 |
+
+这是一次本机 microbenchmark，没有统计置信区间；表中两个 decode 数字的微小差异不作
+性能归因，也不能外推到其他输入、机器或 DataBind。

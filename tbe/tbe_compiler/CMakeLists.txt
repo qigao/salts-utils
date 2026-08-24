@@ -203,11 +203,82 @@ set_target_properties(test_tbe_cbind_sidecar_cpp PROPERTIES
   CXX_STANDARD_REQUIRED ON)
 tbe_copy_turbonet_runtime_deps(test_tbe_cbind_sidecar_cpp WITH_DATABIND)
 
+set(TBE_CBIND_BENCHMARK_SCHEMA
+    "${CMAKE_SOURCE_DIR}/tbe/tbe_cbind/test/benchmark_tbe_cbind.schema")
+set(TBE_CBIND_BENCHMARK_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_tbe_cbind_benchmark")
+set(TBE_CBIND_BENCHMARK_HEADER
+    "${TBE_CBIND_BENCHMARK_GENERATED_DIR}/tbe_cbind_benchmark.h")
+set(TBE_CBIND_BENCHMARK_UNUSED_TYPED_SOURCE
+    "${TBE_CBIND_BENCHMARK_GENERATED_DIR}/tbe_cbind_benchmark_typed.c")
+set(TBE_CBIND_BENCHMARK_SIDECAR_SOURCE
+    "${TBE_CBIND_BENCHMARK_GENERATED_DIR}/tbe_cbind_benchmark_cbind.c")
+
+add_custom_command(
+  OUTPUT
+    "${TBE_CBIND_BENCHMARK_HEADER}"
+    "${TBE_CBIND_BENCHMARK_UNUSED_TYPED_SOURCE}"
+    "${TBE_CBIND_BENCHMARK_SIDECAR_SOURCE}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CBIND_BENCHMARK_GENERATED_DIR}"
+  COMMAND
+    $<TARGET_FILE:tbe_compiler>
+    "${TBE_CBIND_BENCHMARK_SCHEMA}"
+    --lang c
+    --output "${TBE_CBIND_BENCHMARK_HEADER}"
+    --source-output "${TBE_CBIND_BENCHMARK_UNUSED_TYPED_SOURCE}"
+    --cbind-output "${TBE_CBIND_BENCHMARK_SIDECAR_SOURCE}"
+  DEPENDS
+    tbe_compiler
+    "${TBE_CBIND_BENCHMARK_SCHEMA}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_cbind_source.mustache"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "Generating CBind-only runtime benchmark records"
+  VERBATIM)
+
+# The compiler currently emits a typed companion as a required side effect of
+# --cbind-output. It is deliberately not a source of this library: the measured
+# build-time path consists only of the generated struct header and CBind sidecar.
+add_library(benchmark_tbe_cbind_sidecar STATIC
+  "${TBE_CBIND_BENCHMARK_HEADER}"
+  "${TBE_CBIND_BENCHMARK_SIDECAR_SOURCE}")
+target_include_directories(benchmark_tbe_cbind_sidecar
+  PUBLIC
+    "${TBE_CBIND_BENCHMARK_GENERATED_DIR}"
+    "${CMAKE_SOURCE_DIR}/tbe/data_bind"
+    "${CMAKE_SOURCE_DIR}/tbe/schema/include"
+    "${CMAKE_SOURCE_DIR}/turbo_parser/include")
+target_link_libraries(benchmark_tbe_cbind_sidecar PUBLIC TurboUtils::CBind)
+set_target_properties(benchmark_tbe_cbind_sidecar PROPERTIES
+  FOLDER "tbe/tbe_cbind/benchmarks")
+
 cmake_add_benchmark(benchmark_tbe_cbind
   SOURCES ${CMAKE_SOURCE_DIR}/tbe/tbe_cbind/test/benchmark_tbe_cbind.c
-  LIBS TurboParser::TbeCBind test_tbe_cbind_sidecar_static TurboUtils::TinyTest
+  LIBS TurboParser::TbeCBind benchmark_tbe_cbind_sidecar TurboUtils::TinyTest
+  DEFS TBE_CBIND_BENCHMARK_SCHEMA_PATH="${TBE_CBIND_BENCHMARK_SCHEMA}"
   FOLDER "tbe/tbe_cbind/benchmarks")
-tbe_copy_turbonet_runtime_deps(benchmark_tbe_cbind WITH_DATABIND)
+tbe_copy_turbonet_runtime_deps(benchmark_tbe_cbind)
+
+# Keep the benchmark dependency contract narrow. This complements the actual
+# link-command inspection used by the benchmark verification procedure.
+get_target_property(TBE_CBIND_BENCHMARK_SIDECAR_LINKS
+                    benchmark_tbe_cbind_sidecar LINK_LIBRARIES)
+get_target_property(TBE_CBIND_BENCHMARK_SIDECAR_INTERFACE
+                    benchmark_tbe_cbind_sidecar INTERFACE_LINK_LIBRARIES)
+get_target_property(TBE_CBIND_BENCHMARK_LINKS benchmark_tbe_cbind LINK_LIBRARIES)
+if(NOT TBE_CBIND_BENCHMARK_SIDECAR_LINKS STREQUAL "TurboUtils::CBind" OR
+   NOT TBE_CBIND_BENCHMARK_SIDECAR_INTERFACE STREQUAL "TurboUtils::CBind" OR
+   NOT TBE_CBIND_BENCHMARK_LINKS STREQUAL
+       "TurboParser::TbeCBind;benchmark_tbe_cbind_sidecar;TurboUtils::TinyTest")
+  message(FATAL_ERROR "benchmark_tbe_cbind dependency contract changed")
+endif()
+string(TOLOWER
+       "${TBE_CBIND_BENCHMARK_SIDECAR_LINKS};${TBE_CBIND_BENCHMARK_SIDECAR_INTERFACE};${TBE_CBIND_BENCHMARK_LINKS}"
+       TBE_CBIND_BENCHMARK_LINKS_LOWER)
+if(TBE_CBIND_BENCHMARK_LINKS_LOWER MATCHES "databind|data_bind|tbe_typed")
+  message(FATAL_ERROR "benchmark_tbe_cbind must remain CBind-only")
+endif()
 
 find_program(TBE_WASM_GUEST_CLANG NAMES clang clang.exe)
 if(TBE_WASM_GUEST_CLANG)

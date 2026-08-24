@@ -72,7 +72,11 @@ void tbe_cbind_plan_error_init(tbe_cbind_plan_error *error);
 
 /** Compile a borrowed schema byte slice and borrowed immutable native storage
  * graph into an immutable plan. Input slices need not be NUL terminated and
- * are not retained. On every failure, a non-NULL @p out is set to NULL.
+ * are not retained. @p options is required and must first be initialized with
+ * tbe_cbind_plan_options_init(); callers may then lower its non-zero limits. A
+ * non-NULL @p error must first be initialized with
+ * tbe_cbind_plan_error_init(). On every failure, a non-NULL @p out is set to
+ * NULL.
  *
  * The native descriptor graph and its callbacks remain borrowed and must stay
  * immutable, reentrant, and alive until the plan is destroyed. Factory calls
@@ -92,9 +96,19 @@ const cmeta_data_desc *tbe_cbind_plan_shape(const tbe_cbind_plan *plan);
 
 /** Delegate decode to CBind with the plan-owned overlay.
  *
+ * @p plan must remain alive for the whole call. @p out must point to native
+ * storage in semantic zero according to the descriptor supplied at plan
+ * creation. On success, the caller must clear/reset that storage through the
+ * native descriptor's protocol. On failure, CBind restores the complete
+ * destination graph to semantic zero, so the same cleanup path remains safe.
+ * A non-NULL @p error must first be initialized with CBIND_ERROR_INIT.
+ *
  * The plan may be shared across threads only when each call has independent
  * context/scratch, reader, destination, and error state. cbind_error shape and
- * field pointers may refer into the plan and become invalid at plan destroy.
+ * field pointers may refer into the plan and become invalid at plan destroy;
+ * consume those pointers before destroying the plan. The native descriptor
+ * graph borrowed at creation must also remain alive and immutable until plan
+ * destroy, which is valid only after all decode calls have joined.
  * Borrowed STRING values additionally require CSERDE_VIEW_STABLE backing whose
  * owner remains alive until the native destination is cleared. */
 cbind_status tbe_cbind_plan_decode(
