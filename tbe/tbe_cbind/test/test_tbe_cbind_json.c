@@ -1,5 +1,6 @@
 #include <tbe_cbind/tbe_cbind.h>
 
+#include "tbe_cbind_test_fixtures.h"
 #include "tinytest.h"
 #include "turbo_cmeta_data.h"
 #include "turbo_parser_json.h"
@@ -27,6 +28,22 @@ typedef struct json_rollback_native {
   tstr owned;
   vstr borrowed;
 } json_rollback_native;
+
+static const char json_scalar_envelope_schema[] =
+    "composite ScalarSet { "
+    "[name(enabled), c(boolean)] bool flag; "
+    "[name(min8), c(sint8)] int8 s8; "
+    "[name(max8), c(uint8)] uint8 u8; "
+    "[name(min16), c(sint16)] int16 s16; "
+    "[name(max16), c(uint16)] uint16 u16; "
+    "[name(min32), c(sint32)] int32 s32; "
+    "[name(max32), c(uint32)] uint32 u32; "
+    "[name(min64), c(sint64)] int64 s64; "
+    "[name(max64), c(uint64)] uint64 u64; "
+    "[name(single), c(real32)] float f32; "
+    "[name(decimal), c(real64)] double f64; "
+    "[name(identifier), c(uuid)] uuid id; } "
+    "message Envelope { [name(payload), c(values)] ScalarSet body; }";
 
 static const cmeta_data_buffer_shape json_owned_string_shape = {
     CMETA_DATA_BUFFER_OWNED};
@@ -209,6 +226,90 @@ static const cserde_reader_ops transient_reader_ops = {
     transient_reader_next};
 
 spec("TbeCBind JSON integration") {
+  it("decodes nested renamed fixed scalars and lowercase UUID from JSON") {
+    static const char json[] =
+        "{\"payload\":{\"enabled\":true,\"min8\":-128,\"max8\":255,"
+        "\"min16\":-32768,\"max16\":65535,"
+        "\"min32\":-2147483648,\"max32\":4294967295,"
+        "\"min64\":-9223372036854775808,\"max64\":18446744073709551615,"
+        "\"single\":1.5,\"decimal\":2.5,"
+        "\"identifier\":\"00112233-4455-6677-8899-aabbccddeeff\"}}";
+    static const uint8_t expected_uuid[TURBO_UUID_SIZE] = {
+        0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+        0x88u, 0x99u, 0xaau, 0xbbu, 0xccu, 0xddu, 0xeeu, 0xffu};
+    turbo_json_doc_t *document = NULL;
+    cserde_reader *reader = NULL;
+    tbe_cbind_test_scalar_envelope out = {0};
+    unsigned char scratch[32] = {0};
+    cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
+        scratch, sizeof(scratch), 2u, 0u, 64u);
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = json_make_plan(
+        json_scalar_envelope_schema, sizeof(json_scalar_envelope_schema) - 1u,
+        "Envelope", sizeof("Envelope") - 1u,
+        &tbe_cbind_test_scalar_envelope_data);
+
+    check_equal(turbo_parse_json((const uint8_t *)json, sizeof(json) - 1u,
+                                 &document),
+                0);
+    reader = turbo_json_cserde_reader_create(document, 2u);
+    check_not_null(reader);
+    if (reader != NULL)
+      check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
+                  CBIND_OK);
+    check_true(out.values.boolean);
+    check_equal(out.values.sint8, INT8_MIN);
+    check_equal(out.values.uint8, UINT8_MAX);
+    check_equal(out.values.sint16, INT16_MIN);
+    check_equal(out.values.uint16, UINT16_MAX);
+    check_equal(out.values.sint32, INT32_MIN);
+    check_equal(out.values.uint32, UINT32_MAX);
+    check_equal(out.values.sint64, INT64_MIN);
+    check_equal(out.values.uint64, UINT64_MAX);
+    check(out.values.real32 == 1.5f);
+    check(out.values.real64 == 2.5);
+    check_equal(out.values.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+
+    turbo_json_cserde_reader_destroy(reader);
+    turbo_free_json(&document);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rolls back JSON scalars when the final UUID is invalid") {
+    static const char json[] =
+        "{\"payload\":{\"enabled\":true,\"min8\":1,\"max8\":2,"
+        "\"min16\":3,\"max16\":4,\"min32\":5,\"max32\":6,"
+        "\"min64\":7,\"max64\":8,\"single\":1.5,\"decimal\":2.5,"
+        "\"identifier\":\"00112233-4455-6677-8899-aabbccddeefX\"}}";
+    static const tbe_cbind_test_scalar_envelope zero = {0};
+    turbo_json_doc_t *document = NULL;
+    cserde_reader *reader = NULL;
+    tbe_cbind_test_scalar_envelope out = {0};
+    unsigned char scratch[32] = {0};
+    cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
+        scratch, sizeof(scratch), 2u, 0u, 64u);
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = json_make_plan(
+        json_scalar_envelope_schema, sizeof(json_scalar_envelope_schema) - 1u,
+        "Envelope", sizeof("Envelope") - 1u,
+        &tbe_cbind_test_scalar_envelope_data);
+
+    check_equal(turbo_parse_json((const uint8_t *)json, sizeof(json) - 1u,
+                                 &document),
+                0);
+    reader = turbo_json_cserde_reader_create(document, 2u);
+    check_not_null(reader);
+    if (reader != NULL)
+      check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
+                  CBIND_TARGET_ERROR);
+    check_equal(&out, &zero, sizeof(out));
+    check_equal(error.target_status, CMETA_INVALID_ARGUMENT);
+
+    turbo_json_cserde_reader_destroy(reader);
+    turbo_free_json(&document);
+    tbe_cbind_plan_destroy(plan);
+  }
+
   it("decodes nested renamed JSON after schema and type buffers are released") {
     static const char schema_text[] =
         "composite Detail { [c(quantity), name(amount)] int32 count; } "

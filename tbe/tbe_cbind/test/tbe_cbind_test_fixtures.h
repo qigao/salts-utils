@@ -6,7 +6,9 @@
 #include "turbo_str.h"
 #include "turbo_vstr.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct tbe_cbind_test_one {
   int value;
@@ -65,6 +67,140 @@ static const cmeta_data_desc tbe_cbind_test_pair_data = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "test.tbe-cbind.pair.data", "tbe_cbind_test_pair", CMETA_DATA_STRUCT,
     &tbe_cbind_test_pair_type, &tbe_cbind_test_pair_shape, NULL};
+
+typedef union tbe_cbind_test_scalar_slot {
+  bool boolean;
+  int8_t sint8;
+  uint8_t uint8;
+  int16_t sint16;
+  uint16_t uint16;
+  int32_t sint32;
+  uint32_t uint32;
+  int64_t sint64;
+  uint64_t uint64;
+  float real32;
+  double real64;
+  tstr string;
+  turbo_uuid_t uuid;
+} tbe_cbind_test_scalar_slot;
+
+static const cmeta_type_identity tbe_cbind_test_scalar_slot_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.scalar-slot");
+static const cmeta_type_desc tbe_cbind_test_scalar_slot_type = {
+    "tbe_cbind_test_scalar_slot", sizeof(tbe_cbind_test_scalar_slot),
+    _Alignof(tbe_cbind_test_scalar_slot), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_scalar_slot_identity};
+
+typedef struct tbe_cbind_test_scalars {
+  bool boolean;
+  int8_t sint8;
+  uint8_t uint8;
+  int16_t sint16;
+  uint16_t uint16;
+  int32_t sint32;
+  uint32_t uint32;
+  int64_t sint64;
+  uint64_t uint64;
+  float real32;
+  double real64;
+  turbo_uuid_t uuid;
+} tbe_cbind_test_scalars;
+
+static const cmeta_type_identity tbe_cbind_test_scalars_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.scalars");
+static const cmeta_type_desc tbe_cbind_test_scalars_type = {
+    "tbe_cbind_test_scalars", sizeof(tbe_cbind_test_scalars),
+    _Alignof(tbe_cbind_test_scalars), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_scalars_identity};
+
+#define TBE_CBIND_TEST_SCALAR_LAYOUT(member_, c_type_, type_desc_)          \
+  {#member_, #c_type_, offsetof(tbe_cbind_test_scalars, member_),           \
+   sizeof(c_type_), _Alignof(c_type_), (type_desc_), NULL}
+
+static const cmeta_field_desc tbe_cbind_test_scalars_layout_fields[] = {
+    TBE_CBIND_TEST_SCALAR_LAYOUT(boolean, bool, &cmeta_type_bool),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(sint8, int8_t, &turbo_int8_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uint8, uint8_t, &turbo_uint8_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(sint16, int16_t, &turbo_int16_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uint16, uint16_t, &turbo_uint16_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(sint32, int32_t, &turbo_int32_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uint32, uint32_t, &turbo_uint32_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(sint64, int64_t, &turbo_int64_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uint64, uint64_t, &turbo_uint64_cmeta_type),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(real32, float, &cmeta_type_float),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(real64, double, &cmeta_type_double),
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uuid, turbo_uuid_t, &turbo_uuid_cmeta_type)};
+
+#undef TBE_CBIND_TEST_SCALAR_LAYOUT
+
+static const cmeta_struct_desc tbe_cbind_test_scalars_layout = {
+    "tbe_cbind_test_scalars", sizeof(tbe_cbind_test_scalars),
+    _Alignof(tbe_cbind_test_scalars), tbe_cbind_test_scalars_layout_fields,
+    sizeof(tbe_cbind_test_scalars_layout_fields) /
+        sizeof(tbe_cbind_test_scalars_layout_fields[0])};
+
+#define TBE_CBIND_TEST_SCALAR_DATA(member_, data_desc_)                    \
+  {"test.tbe-cbind.scalars." #member_, #member_,                          \
+   offsetof(tbe_cbind_test_scalars, member_), (data_desc_)}
+
+static const cmeta_data_field_desc tbe_cbind_test_scalars_data_fields[] = {
+    TBE_CBIND_TEST_SCALAR_DATA(boolean, &cmeta_data_bool),
+    TBE_CBIND_TEST_SCALAR_DATA(sint8, &turbo_int8_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(uint8, &turbo_uint8_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(sint16, &turbo_int16_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(uint16, &turbo_uint16_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(sint32, &turbo_int32_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(uint32, &turbo_uint32_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(sint64, &turbo_int64_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(uint64, &turbo_uint64_cmeta_data),
+    TBE_CBIND_TEST_SCALAR_DATA(real32, &cmeta_data_float),
+    TBE_CBIND_TEST_SCALAR_DATA(real64, &cmeta_data_double),
+    TBE_CBIND_TEST_SCALAR_DATA(uuid, &turbo_uuid_cmeta_data)};
+
+#undef TBE_CBIND_TEST_SCALAR_DATA
+
+static const cmeta_data_struct_shape tbe_cbind_test_scalars_shape = {
+    &tbe_cbind_test_scalars_layout, tbe_cbind_test_scalars_data_fields,
+    sizeof(tbe_cbind_test_scalars_data_fields) /
+        sizeof(tbe_cbind_test_scalars_data_fields[0])};
+static const cmeta_data_desc tbe_cbind_test_scalars_data = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "test.tbe-cbind.scalars.data", "tbe_cbind_test_scalars",
+    CMETA_DATA_STRUCT, &tbe_cbind_test_scalars_type,
+    &tbe_cbind_test_scalars_shape, NULL};
+
+typedef struct tbe_cbind_test_scalar_envelope {
+  tbe_cbind_test_scalars values;
+} tbe_cbind_test_scalar_envelope;
+
+static const cmeta_type_identity tbe_cbind_test_scalar_envelope_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.scalar-envelope");
+static const cmeta_type_desc tbe_cbind_test_scalar_envelope_type = {
+    "tbe_cbind_test_scalar_envelope", sizeof(tbe_cbind_test_scalar_envelope),
+    _Alignof(tbe_cbind_test_scalar_envelope), CMETA_T_OBJECT, NULL, NULL,
+    &tbe_cbind_test_scalar_envelope_identity};
+static const cmeta_field_desc tbe_cbind_test_scalar_envelope_layout_fields[] = {{
+    "values", "tbe_cbind_test_scalars",
+    offsetof(tbe_cbind_test_scalar_envelope, values),
+    sizeof(tbe_cbind_test_scalars), _Alignof(tbe_cbind_test_scalars),
+    &tbe_cbind_test_scalars_type, NULL}};
+static const cmeta_struct_desc tbe_cbind_test_scalar_envelope_layout = {
+    "tbe_cbind_test_scalar_envelope", sizeof(tbe_cbind_test_scalar_envelope),
+    _Alignof(tbe_cbind_test_scalar_envelope),
+    tbe_cbind_test_scalar_envelope_layout_fields, 1u};
+static const cmeta_data_field_desc
+    tbe_cbind_test_scalar_envelope_data_fields[] = {{
+        "test.tbe-cbind.scalar-envelope.values", "values",
+        offsetof(tbe_cbind_test_scalar_envelope, values),
+        &tbe_cbind_test_scalars_data}};
+static const cmeta_data_struct_shape tbe_cbind_test_scalar_envelope_shape = {
+    &tbe_cbind_test_scalar_envelope_layout,
+    tbe_cbind_test_scalar_envelope_data_fields, 1u};
+static const cmeta_data_desc tbe_cbind_test_scalar_envelope_data = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "test.tbe-cbind.scalar-envelope.data", "tbe_cbind_test_scalar_envelope",
+    CMETA_DATA_STRUCT, &tbe_cbind_test_scalar_envelope_type,
+    &tbe_cbind_test_scalar_envelope_shape, NULL};
 
 typedef struct tbe_cbind_test_inner {
   int quantity;

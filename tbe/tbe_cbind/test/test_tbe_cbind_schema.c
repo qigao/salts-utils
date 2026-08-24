@@ -28,6 +28,41 @@ static tbe_cbind_status create_one(const char *schema, const char *type_name,
                                  strlen(type_name), &options, error);
 }
 
+typedef struct scalar_acceptance_case {
+  const char *spelling;
+  const cmeta_data_desc *value;
+} scalar_acceptance_case;
+
+static tbe_cbind_status create_scalar_slot(const char *spelling,
+                                           const cmeta_data_desc *value,
+                                           tbe_cbind_plan **out,
+                                           tbe_cbind_plan_error *error) {
+  char schema[96];
+  int schema_size = snprintf(schema, sizeof(schema),
+                             "message One { %s value; }", spelling);
+  cmeta_field_desc layout_field = {
+      "value", value->storage_type->name, 0u, value->storage_type->size,
+      value->storage_type->align, value->storage_type, NULL};
+  cmeta_struct_desc layout = {
+      "tbe_cbind_test_scalar_slot", sizeof(tbe_cbind_test_scalar_slot),
+      _Alignof(tbe_cbind_test_scalar_slot), &layout_field, 1u};
+  cmeta_data_field_desc data_field = {
+      "test.tbe-cbind.scalar-slot.value", "value", 0u, value};
+  cmeta_data_struct_shape shape = {&layout, &data_field, 1u};
+  cmeta_data_desc data = {
+      sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+      "test.tbe-cbind.scalar-slot.data", "tbe_cbind_test_scalar_slot",
+      CMETA_DATA_STRUCT, &tbe_cbind_test_scalar_slot_type, &shape, NULL};
+  tbe_cbind_plan_options options;
+
+  check_greater(schema_size, 0);
+  check_less((size_t)schema_size, sizeof(schema));
+  tbe_cbind_plan_options_init(&options);
+  return tbe_cbind_plan_create_from_text(
+      schema, (size_t)schema_size, "One", sizeof("One") - 1u, &data,
+      &options, out, error);
+}
+
 spec("TbeCBind schema semantic model") {
   it("reports parser syntax errors with source coordinates") {
     tbe_cbind_plan_error error;
@@ -85,14 +120,16 @@ spec("TbeCBind schema semantic model") {
   it("rejects unsupported declarations attributes and field types") {
     static const char *const schemas[] = {
         "enum State { Ready; } message One { int32 value; }",
+        "flags StateFlags { Ready; } message One { int32 value; }",
         "union Choice { int32 value; } message One { int32 value; }",
         "message One { [alias(old)] int32 value; }",
         "message One { [id(1)] int32 value; }",
         "message One { optional int32 value; }",
         "message One { int32 value default 7; }",
-        "message One { bool value; }",
-        "message One { uint32 value; }",
-        "message One { list<int32> value; }"};
+        "message One { bytes value; }",
+        "message One { list<int32> value; }",
+        "group Entry { int32 value; } "
+        "message One { group<Entry> entries; }"};
     size_t index;
 
     for (index = 0u; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
@@ -101,6 +138,53 @@ spec("TbeCBind schema semantic model") {
       check_equal(create_one(schemas[index], "One", &error),
                   TBE_CBIND_UNSUPPORTED);
       check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+    }
+  }
+
+  it("accepts every canonical scalar spelling and exact alias") {
+    static const scalar_acceptance_case cases[] = {
+        {"bool", &cmeta_data_bool},
+        {"int8", &turbo_int8_cmeta_data},
+        {"int8_t", &turbo_int8_cmeta_data},
+        {"i8", &turbo_int8_cmeta_data},
+        {"uint8", &turbo_uint8_cmeta_data},
+        {"uint8_t", &turbo_uint8_cmeta_data},
+        {"u8", &turbo_uint8_cmeta_data},
+        {"byte", &turbo_uint8_cmeta_data},
+        {"int16", &turbo_int16_cmeta_data},
+        {"int16_t", &turbo_int16_cmeta_data},
+        {"i16", &turbo_int16_cmeta_data},
+        {"uint16", &turbo_uint16_cmeta_data},
+        {"uint16_t", &turbo_uint16_cmeta_data},
+        {"u16", &turbo_uint16_cmeta_data},
+        {"int32", &turbo_int32_cmeta_data},
+        {"int32_t", &turbo_int32_cmeta_data},
+        {"i32", &turbo_int32_cmeta_data},
+        {"uint32", &turbo_uint32_cmeta_data},
+        {"uint32_t", &turbo_uint32_cmeta_data},
+        {"u32", &turbo_uint32_cmeta_data},
+        {"int64", &turbo_int64_cmeta_data},
+        {"int64_t", &turbo_int64_cmeta_data},
+        {"i64", &turbo_int64_cmeta_data},
+        {"uint64", &turbo_uint64_cmeta_data},
+        {"uint64_t", &turbo_uint64_cmeta_data},
+        {"u64", &turbo_uint64_cmeta_data},
+        {"float", &cmeta_data_float},
+        {"double", &cmeta_data_double},
+        {"string", &tbe_cbind_test_owned_string_data},
+        {"uuid", &turbo_uuid_cmeta_data}};
+    size_t index;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = NULL;
+      info("spelling: %s", cases[index].spelling);
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_scalar_slot(cases[index].spelling,
+                                     cases[index].value, &plan, &error),
+                  TBE_CBIND_OK);
+      check_not_null(plan);
+      tbe_cbind_plan_destroy(plan);
     }
   }
 

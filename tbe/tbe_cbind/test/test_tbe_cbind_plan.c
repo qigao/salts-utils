@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+const cmeta_data_desc *tbe_cbind_multitu_external_uuid_data(void);
+const struct tbe_cbind_capability *tbe_cbind_capability_find(
+    const char *type_name);
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -93,6 +97,41 @@ static tbe_cbind_status create_plan(const char *schema, const char *type_name,
   return create_plan_with_options(schema, strlen(schema), type_name,
                                   strlen(type_name), native_shape, &options,
                                   out, error);
+}
+
+static tbe_cbind_status create_scalar_slot_plan(
+    const char *schema, const cmeta_data_desc *value, tbe_cbind_plan **out,
+    tbe_cbind_plan_error *error) {
+  cmeta_field_desc layout_field = {
+      "value", value->storage_type->name, 0u, value->storage_type->size,
+      value->storage_type->align, value->storage_type, NULL};
+  cmeta_struct_desc layout = {
+      "tbe_cbind_test_scalar_slot", sizeof(tbe_cbind_test_scalar_slot),
+      _Alignof(tbe_cbind_test_scalar_slot), &layout_field, 1u};
+  cmeta_data_field_desc data_field = {
+      "test.tbe-cbind.scalar-slot.value", "value", 0u, value};
+  cmeta_data_struct_shape shape = {&layout, &data_field, 1u};
+  cmeta_data_desc data = {
+      sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+      "test.tbe-cbind.scalar-slot.data", "tbe_cbind_test_scalar_slot",
+      CMETA_DATA_STRUCT, &tbe_cbind_test_scalar_slot_type, &shape, NULL};
+  return create_plan(schema, "One", &data, out, error);
+}
+
+static void check_scalar_slot_rejected(const char *schema,
+                                       const cmeta_data_desc *value,
+                                       tbe_cbind_status expected_status,
+                                       cmeta_status expected_target) {
+  tbe_cbind_plan_error error;
+  tbe_cbind_plan *plan = NULL;
+
+  tbe_cbind_plan_error_init(&error);
+  check_equal(create_scalar_slot_plan(schema, value, &plan, &error),
+              expected_status);
+  check_null(plan);
+  check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+  check_equal(error.path, "One.value");
+  check_equal(error.target_status, expected_target);
 }
 
 typedef struct fail_allocator_state {
@@ -533,12 +572,14 @@ spec("TbeCBind native plan overlay") {
   it("defensively rejects a semantic model deeper than max_depth") {
     tbe_cbind_semantic_field child_fields[] = {
         {"quantity", "quantity", "quantity", "int32",
-         TBE_CBIND_SEMANTIC_INT32, NULL}};
+         TBE_CBIND_SEMANTIC_SCALAR, tbe_cbind_capability_find("int32"),
+         NULL}};
     tbe_cbind_semantic_field root_fields[] = {
         {"detail", "detail", "detail", "Detail",
-         TBE_CBIND_SEMANTIC_RECORD, NULL},
+         TBE_CBIND_SEMANTIC_RECORD, NULL, NULL},
         {"score", "score", "score", "double",
-         TBE_CBIND_SEMANTIC_DOUBLE, NULL}};
+         TBE_CBIND_SEMANTIC_SCALAR, tbe_cbind_capability_find("double"),
+         NULL}};
     tbe_cbind_semantic_type types[] = {
         {"Detail", child_fields, 1u, 1u, 2u},
         {"Root", root_fields, 2u, 2u, 2u}};
@@ -645,18 +686,19 @@ spec("TbeCBind native plan overlay") {
         "test.tbe-cbind.depth-root.data", "tbe_cbind_depth_root",
         CMETA_DATA_STRUCT, &root_type, &root_shape, NULL};
     tbe_cbind_semantic_field leaf_fields[] = {{
-        "value", "value", "value", "int32", TBE_CBIND_SEMANTIC_INT32,
-        NULL}};
+        "value", "value", "value", "int32", TBE_CBIND_SEMANTIC_SCALAR,
+        tbe_cbind_capability_find("int32"), NULL}};
     tbe_cbind_semantic_field shared_fields[] = {{
-        "leaf", "leaf", "leaf", "Leaf", TBE_CBIND_SEMANTIC_RECORD, NULL}};
+        "leaf", "leaf", "leaf", "Leaf", TBE_CBIND_SEMANTIC_RECORD, NULL,
+        NULL}};
     tbe_cbind_semantic_field wrapper_fields[] = {{
         "shared", "shared", "shared", "Shared",
-        TBE_CBIND_SEMANTIC_RECORD, NULL}};
+        TBE_CBIND_SEMANTIC_RECORD, NULL, NULL}};
     tbe_cbind_semantic_field root_fields[] = {
         {"shallow", "shallow", "shallow", "Shared",
-         TBE_CBIND_SEMANTIC_RECORD, NULL},
+         TBE_CBIND_SEMANTIC_RECORD, NULL, NULL},
         {"deep", "deep", "deep", "Wrapper", TBE_CBIND_SEMANTIC_RECORD,
-         NULL}};
+         NULL, NULL}};
     tbe_cbind_semantic_type types[] = {
         {"Leaf", leaf_fields, 1u, 1u, 2u},
         {"Shared", shared_fields, 1u, 2u, 2u},
@@ -716,6 +758,68 @@ spec("TbeCBind native plan overlay") {
     check_equal(create_plan(schema, "One", &data, &plan, &error),
                 TBE_CBIND_NATIVE_SHAPE_ERROR);
     check_null(plan);
+  }
+
+  it("rejects scalar kind signedness bits size and alignment mismatches before publication") {
+    cmeta_data_desc wrong_bits = turbo_int8_cmeta_data;
+    cmeta_data_integer_shape bits16 = {16u};
+    cmeta_data_desc wrong_size = turbo_int8_cmeta_data;
+    cmeta_type_desc size2_type = turbo_int8_cmeta_type;
+    cmeta_data_desc wrong_align = turbo_int16_cmeta_data;
+    cmeta_type_desc align1_type = turbo_int16_cmeta_type;
+
+    check_scalar_slot_rejected("message One { int8 value; }",
+                               &cmeta_data_bool, TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+    check_scalar_slot_rejected("message One { int8 value; }",
+                               &turbo_uint8_cmeta_data,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+
+    wrong_bits.shape = &bits16;
+    check_scalar_slot_rejected("message One { int8 value; }", &wrong_bits,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+
+    size2_type.size = sizeof(int16_t);
+    wrong_size.storage_type = &size2_type;
+    check_scalar_slot_rejected("message One { int8 value; }", &wrong_size,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+
+    align1_type.align = _Alignof(int8_t);
+    wrong_align.storage_type = &align1_type;
+    check_scalar_slot_rejected("message One { int16 value; }", &wrong_align,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+  }
+
+  it("distinguishes UUID from ordinary string storage and requires complete UUID ops") {
+    cmeta_data_desc missing_ops = turbo_uuid_cmeta_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_scalar_slot_rejected("message One { uuid value; }",
+                               &tbe_cbind_test_owned_string_data,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+    check_scalar_slot_rejected("message One { string value; }",
+                               &turbo_uuid_cmeta_data,
+                               TBE_CBIND_TYPE_MISMATCH,
+                               CMETA_TYPE_MISMATCH);
+
+    missing_ops.buffer_ops = NULL;
+    check_scalar_slot_rejected("message One { uuid value; }", &missing_ops,
+                               TBE_CBIND_NATIVE_SHAPE_ERROR,
+                               CMETA_INVALID_ARGUMENT);
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_scalar_slot_plan(
+                    "message One { uuid value; }",
+                    tbe_cbind_multitu_external_uuid_data(), &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
   }
 
   it("returns a native-shape error for null reflected names and arrays") {

@@ -23,16 +23,12 @@ typedef struct tbe_cbind_build_context {
 } tbe_cbind_build_context;
 
 typedef enum tbe_cbind_semantic_kind {
-  TBE_CBIND_SEMANTIC_INT32,
-  TBE_CBIND_SEMANTIC_INT64,
-  TBE_CBIND_SEMANTIC_UINT64,
-  TBE_CBIND_SEMANTIC_FLOAT,
-  TBE_CBIND_SEMANTIC_DOUBLE,
-  TBE_CBIND_SEMANTIC_STRING,
+  TBE_CBIND_SEMANTIC_SCALAR,
   TBE_CBIND_SEMANTIC_RECORD
 } tbe_cbind_semantic_kind;
 
 struct tbe_cbind_semantic_type;
+struct tbe_cbind_capability;
 
 typedef struct tbe_cbind_semantic_field {
   char *name;
@@ -40,6 +36,7 @@ typedef struct tbe_cbind_semantic_field {
   char *native_name;
   char *type_name;
   tbe_cbind_semantic_kind kind;
+  const struct tbe_cbind_capability *capability;
   struct tbe_cbind_semantic_type *record_type;
 } tbe_cbind_semantic_field;
 

@@ -12,13 +12,20 @@
 
 #define TOKEN_MAP_BEGIN { .kind = CSERDE_MAP_BEGIN }
 #define TOKEN_MAP_END { .kind = CSERDE_MAP_END }
+#define TOKEN_BOOL(value_) { .kind = CSERDE_BOOL, .value.boolean = (value_) }
 #define TOKEN_SINT(value_) { .kind = CSERDE_SINT, .value.sint = (value_) }
+#define TOKEN_UINT(value_) { .kind = CSERDE_UINT, .value.uint = (value_) }
 #define TOKEN_FLOAT(value_) { .kind = CSERDE_FLOAT, .value.floating = (value_) }
 #define TOKEN_SLICE(kind_, text_, lifetime_)                              \
   { .kind = (kind_),                                                     \
     .value.slice = {(const unsigned char *)(text_), sizeof(text_) - 1u,  \
                     (lifetime_)} }
 #define TOKEN_KEY(text_) TOKEN_SLICE(CSERDE_STRING, text_, CSERDE_VIEW_STABLE)
+
+static const char tbe_cbind_test_scalar_schema[] =
+    "message Scalars { bool boolean; int8 sint8; uint8 uint8; "
+    "int16 sint16; uint16 uint16; int32 sint32; uint32 uint32; "
+    "int64 sint64; uint64 uint64; float real32; double real64; uuid uuid; }";
 
 typedef struct token_reader_context {
   const cserde_token *tokens;
@@ -148,6 +155,151 @@ spec("TbeCBind transactional decode facade") {
                 CBIND_OK);
     check_equal(out.detail.quantity, 11);
     check(out.score == 2.5);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("decodes every fixed scalar minimum and maximum plus canonical UUID case variants") {
+    static const cserde_token minimum_tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("boolean"), TOKEN_BOOL(false),
+        TOKEN_KEY("sint8"), TOKEN_SINT(INT8_MIN),
+        TOKEN_KEY("uint8"), TOKEN_UINT(0u),
+        TOKEN_KEY("sint16"), TOKEN_SINT(INT16_MIN),
+        TOKEN_KEY("uint16"), TOKEN_UINT(0u),
+        TOKEN_KEY("sint32"), TOKEN_SINT(INT32_MIN),
+        TOKEN_KEY("uint32"), TOKEN_UINT(0u),
+        TOKEN_KEY("sint64"), TOKEN_SINT(INT64_MIN),
+        TOKEN_KEY("uint64"), TOKEN_UINT(0u),
+        TOKEN_KEY("real32"), TOKEN_FLOAT(-1.5),
+        TOKEN_KEY("real64"), TOKEN_FLOAT(-2.5),
+        TOKEN_KEY("uuid"),
+        TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-aabbccddeeff",
+                    CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const cserde_token maximum_tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("boolean"), TOKEN_BOOL(true),
+        TOKEN_KEY("sint8"), TOKEN_SINT(INT8_MAX),
+        TOKEN_KEY("uint8"), TOKEN_UINT(UINT8_MAX),
+        TOKEN_KEY("sint16"), TOKEN_SINT(INT16_MAX),
+        TOKEN_KEY("uint16"), TOKEN_UINT(UINT16_MAX),
+        TOKEN_KEY("sint32"), TOKEN_SINT(INT32_MAX),
+        TOKEN_KEY("uint32"), TOKEN_UINT(UINT32_MAX),
+        TOKEN_KEY("sint64"), TOKEN_SINT(INT64_MAX),
+        TOKEN_KEY("uint64"), TOKEN_UINT(UINT64_MAX),
+        TOKEN_KEY("real32"), TOKEN_FLOAT(1.5),
+        TOKEN_KEY("real64"), TOKEN_FLOAT(2.5),
+        TOKEN_KEY("uuid"),
+        TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-AABBCCDDEEFF",
+                    CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const uint8_t expected_uuid[TURBO_UUID_SIZE] = {
+        0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+        0x88u, 0x99u, 0xaau, 0xbbu, 0xccu, 0xddu, 0xeeu, 0xffu};
+    unsigned char scratch[16] = {0};
+    tbe_cbind_test_scalars out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = make_plan(
+        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+
+    check_equal(decode_tokens(
+                    plan, minimum_tokens,
+                    sizeof(minimum_tokens) / sizeof(minimum_tokens[0]),
+                    SIZE_MAX, &out, 1u, 64u, scratch, sizeof(scratch),
+                    &error, NULL),
+                CBIND_OK);
+    check_false(out.boolean);
+    check_equal(out.sint8, INT8_MIN);
+    check_equal(out.uint8, (uint8_t)0u);
+    check_equal(out.sint16, INT16_MIN);
+    check_equal(out.uint16, (uint16_t)0u);
+    check_equal(out.sint32, INT32_MIN);
+    check_equal(out.uint32, UINT32_C(0));
+    check_equal(out.sint64, INT64_MIN);
+    check_equal(out.uint64, UINT64_C(0));
+    check(out.real32 == -1.5f);
+    check(out.real64 == -2.5);
+    check_equal(out.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+
+    memset(&out, 0, sizeof(out));
+    error = (cbind_error)CBIND_ERROR_INIT;
+    check_equal(decode_tokens(
+                    plan, maximum_tokens,
+                    sizeof(maximum_tokens) / sizeof(maximum_tokens[0]),
+                    SIZE_MAX, &out, 1u, 64u, scratch, sizeof(scratch),
+                    &error, NULL),
+                CBIND_OK);
+    check_true(out.boolean);
+    check_equal(out.sint8, INT8_MAX);
+    check_equal(out.uint8, UINT8_MAX);
+    check_equal(out.sint16, INT16_MAX);
+    check_equal(out.uint16, UINT16_MAX);
+    check_equal(out.sint32, INT32_MAX);
+    check_equal(out.uint32, UINT32_MAX);
+    check_equal(out.sint64, INT64_MAX);
+    check_equal(out.uint64, UINT64_MAX);
+    check(out.real32 == 1.5f);
+    check(out.real64 == 2.5);
+    check_equal(out.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rolls back earlier scalar fields when a narrow integer is out of range") {
+    static const cserde_token tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("boolean"), TOKEN_BOOL(true),
+        TOKEN_KEY("sint8"), TOKEN_SINT(INT8_MAX + 1),
+        TOKEN_MAP_END};
+    unsigned char scratch[16] = {0};
+    tbe_cbind_test_scalars out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = make_plan(
+        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+
+    check_equal(decode_tokens(plan, tokens,
+                              sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
+                              &out, 1u, 64u, scratch, sizeof(scratch), &error,
+                              NULL),
+                CBIND_VALUE_OUT_OF_RANGE);
+    check_false(out.boolean);
+    check_equal(out.sint8, (int8_t)0);
+    check_equal(error.status, CBIND_VALUE_OUT_OF_RANGE);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rolls back the complete scalar record when UUID parsing fails") {
+    static const cserde_token tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("boolean"), TOKEN_BOOL(true),
+        TOKEN_KEY("sint8"), TOKEN_SINT(1),
+        TOKEN_KEY("uint8"), TOKEN_UINT(2u),
+        TOKEN_KEY("sint16"), TOKEN_SINT(3),
+        TOKEN_KEY("uint16"), TOKEN_UINT(4u),
+        TOKEN_KEY("sint32"), TOKEN_SINT(5),
+        TOKEN_KEY("uint32"), TOKEN_UINT(6u),
+        TOKEN_KEY("sint64"), TOKEN_SINT(7),
+        TOKEN_KEY("uint64"), TOKEN_UINT(8u),
+        TOKEN_KEY("real32"), TOKEN_FLOAT(1.5),
+        TOKEN_KEY("real64"), TOKEN_FLOAT(2.5),
+        TOKEN_KEY("uuid"),
+        TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-aabbccddeefX",
+                    CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const tbe_cbind_test_scalars zero = {0};
+    unsigned char scratch[16] = {0};
+    tbe_cbind_test_scalars out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = make_plan(
+        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+
+    check_equal(decode_tokens(plan, tokens,
+                              sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
+                              &out, 1u, 64u, scratch, sizeof(scratch), &error,
+                              NULL),
+                CBIND_TARGET_ERROR);
+    check_equal(&out, &zero, sizeof(out));
+    check_equal(error.status, CBIND_TARGET_ERROR);
+    check_equal(error.target_status, CMETA_INVALID_ARGUMENT);
     tbe_cbind_plan_destroy(plan);
   }
 

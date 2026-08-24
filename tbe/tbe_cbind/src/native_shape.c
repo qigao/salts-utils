@@ -1,4 +1,6 @@
 #include "tbe_cbind_internal.h"
+#include "tbe_cbind_capability.h"
+#include "turbo_cmeta_data.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -113,54 +115,147 @@ static int tbe_cbind_native_type_matches(const cmeta_type_desc *left,
          left->align == right->align;
 }
 
+static size_t tbe_cbind_native_integer_alignment(
+    const tbe_cbind_capability *capability) {
+  switch (capability->bits) {
+    case 8u:
+      return capability->is_signed ? _Alignof(int8_t) : _Alignof(uint8_t);
+    case 16u:
+      return capability->is_signed ? _Alignof(int16_t) : _Alignof(uint16_t);
+    case 32u:
+      return capability->is_signed ? _Alignof(int32_t) : _Alignof(uint32_t);
+    case 64u:
+      return capability->is_signed ? _Alignof(int64_t) : _Alignof(uint64_t);
+    default:
+      return 0u;
+  }
+}
+
+static tbe_cbind_status tbe_cbind_native_scalar_type_mismatch(
+    tbe_cbind_build_context *context, size_t field_index, const char *path,
+    const char *message) {
+  return tbe_cbind_native_error(
+      context, TBE_CBIND_TYPE_MISMATCH, field_index, CMETA_TYPE_MISMATCH,
+      path, message);
+}
+
+static tbe_cbind_status tbe_cbind_native_scalar_shape_error(
+    tbe_cbind_build_context *context, size_t field_index, const char *path,
+    const char *message) {
+  return tbe_cbind_native_error(
+      context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
+      CMETA_INVALID_ARGUMENT, path, message);
+}
+
 static tbe_cbind_status tbe_cbind_native_value_matches(
     tbe_cbind_build_context *context, const tbe_cbind_semantic_field *field,
     const cmeta_data_desc *value, size_t field_index, const char *path) {
-  const cmeta_data_integer_shape *integer_shape;
-  const cmeta_data_float_shape *float_shape;
-  const cmeta_type_desc *canonical_type = NULL;
-  cmeta_data_kind canonical_kind = CMETA_DATA_CUSTOM;
-  unsigned int canonical_bits = 0u;
+  const tbe_cbind_capability *capability = field->capability;
   if (!tbe_cbind_native_data_prefix_safe(value))
-    return tbe_cbind_native_error(
-        context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
-        CMETA_INVALID_ARGUMENT, path, "native field data descriptor is invalid");
-  switch (field->kind) {
-    case TBE_CBIND_SEMANTIC_INT32:
-      canonical_kind = CMETA_DATA_SINT;
-      canonical_type = &cmeta_type_int;
-      canonical_bits = 32u;
-      break;
-    case TBE_CBIND_SEMANTIC_INT64:
-      canonical_kind = CMETA_DATA_SINT;
-      canonical_type = &cmeta_type_long;
-      canonical_bits = 64u;
-      break;
-    case TBE_CBIND_SEMANTIC_UINT64:
-      canonical_kind = CMETA_DATA_UINT;
-      canonical_type = &cmeta_type_size;
-      canonical_bits = 64u;
-      break;
-    case TBE_CBIND_SEMANTIC_FLOAT:
-      canonical_kind = CMETA_DATA_FLOAT;
-      canonical_type = &cmeta_type_float;
-      canonical_bits = 32u;
-      break;
-    case TBE_CBIND_SEMANTIC_DOUBLE:
-      canonical_kind = CMETA_DATA_FLOAT;
-      canonical_type = &cmeta_type_double;
-      canonical_bits = 64u;
-      break;
-    case TBE_CBIND_SEMANTIC_STRING:
-      if (value->kind != CMETA_DATA_STRING)
-        return tbe_cbind_native_error(
-            context, TBE_CBIND_TYPE_MISMATCH, field_index,
-            CMETA_TYPE_MISMATCH, path,
-            "schema string field does not use native string storage");
+    return tbe_cbind_native_scalar_shape_error(
+        context, field_index, path, "native field data descriptor is invalid");
+  if (field->kind == TBE_CBIND_SEMANTIC_RECORD) {
+    if (value->kind != CMETA_DATA_STRUCT)
+      return tbe_cbind_native_scalar_type_mismatch(
+          context, field_index, path,
+          "schema record field does not use native struct storage");
+    {
+      const cmeta_data_struct_shape *shape;
+      const cmeta_struct_desc *layout;
+      if (!tbe_cbind_native_struct_prefix_safe(
+              field->record_type, value, &shape, &layout) ||
+          !cmeta_data_desc_valid(value))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "nested native struct descriptor is malformed");
+    }
+    return TBE_CBIND_OK;
+  }
+  if (field->kind != TBE_CBIND_SEMANTIC_SCALAR || capability == NULL)
+    return tbe_cbind_native_scalar_shape_error(
+        context, field_index, path,
+        "semantic scalar capability metadata is missing");
+
+  switch (capability->kind) {
+    case TBE_CBIND_SCALAR_BOOL:
+      if (value->kind != CMETA_DATA_BOOL ||
+          !tbe_cbind_native_type_matches(value->storage_type,
+                                         &cmeta_type_bool))
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "schema bool field does not use native bool storage");
       if (!cmeta_data_desc_valid(value))
-        return tbe_cbind_native_error(
-            context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
-            CMETA_INVALID_ARGUMENT, path,
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "native bool data descriptor is invalid");
+      return TBE_CBIND_OK;
+
+    case TBE_CBIND_SCALAR_INTEGER: {
+      const cmeta_data_integer_shape *shape =
+          (const cmeta_data_integer_shape *)value->shape;
+      cmeta_data_kind expected_kind = capability->is_signed
+                                          ? CMETA_DATA_SINT
+                                          : CMETA_DATA_UINT;
+      size_t expected_align =
+          tbe_cbind_native_integer_alignment(capability);
+      if (value->kind != expected_kind)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "native integer signedness does not match schema");
+      if (shape == NULL || shape->bits != capability->bits)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "native integer width does not match schema");
+      if (CHAR_BIT != 8 || expected_align == 0u ||
+          capability->bits % CHAR_BIT != 0u ||
+          value->storage_type->kind != CMETA_T_INTEGER ||
+          value->storage_type->size != capability->bits / CHAR_BIT ||
+          value->storage_type->align != expected_align)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "native integer size or alignment does not match schema");
+      if (!cmeta_data_desc_valid(value) ||
+          !cmeta_type_desc_valid(value->storage_type))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "native integer data descriptor is invalid");
+      return TBE_CBIND_OK;
+    }
+
+    case TBE_CBIND_SCALAR_FLOAT: {
+      const cmeta_data_float_shape *shape =
+          (const cmeta_data_float_shape *)value->shape;
+      const cmeta_type_desc *expected_type =
+          capability->bits == 32u ? &cmeta_type_float
+                                  : capability->bits == 64u
+                                        ? &cmeta_type_double
+                                        : NULL;
+      if (value->kind != CMETA_DATA_FLOAT || shape == NULL ||
+          shape->bits != capability->bits || expected_type == NULL ||
+          !tbe_cbind_native_type_matches(value->storage_type, expected_type))
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "native floating-point storage does not match schema");
+      if (!cmeta_data_desc_valid(value))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "native floating-point data descriptor is invalid");
+      return TBE_CBIND_OK;
+    }
+
+    case TBE_CBIND_SCALAR_STRING:
+      if (value->kind != CMETA_DATA_STRING)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "schema string field does not use native string storage");
+      if (tbe_cbind_native_type_matches(value->storage_type,
+                                        &turbo_uuid_cmeta_type))
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "schema string field cannot use UUID storage");
+      if (!cmeta_data_desc_valid(value))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
             "native field data descriptor is invalid");
       if (((const cmeta_data_buffer_shape *)value->shape)->ownership ==
           CMETA_DATA_BUFFER_CUSTOM) {
@@ -169,63 +264,43 @@ static tbe_cbind_status tbe_cbind_native_value_matches(
             "CUSTOM string ownership is unsupported by CBind v1");
       }
       if (cmeta_data_buffer_ops_of(value) == NULL) {
-        return tbe_cbind_native_error(
-            context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
-            CMETA_INVALID_ARGUMENT, path,
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
             "native string requires a complete matching public buffer adapter");
       }
       return TBE_CBIND_OK;
-    case TBE_CBIND_SEMANTIC_RECORD:
-      if (value->kind != CMETA_DATA_STRUCT)
-        return tbe_cbind_native_error(
-            context, TBE_CBIND_TYPE_MISMATCH, field_index,
-            CMETA_TYPE_MISMATCH, path,
-            "schema record field does not use native struct storage");
-      {
-        const cmeta_data_struct_shape *shape;
-        const cmeta_struct_desc *layout;
-        if (!tbe_cbind_native_struct_prefix_safe(
-                field->record_type, value, &shape, &layout) ||
-            !cmeta_data_desc_valid(value))
-          return tbe_cbind_native_error(
-              context, TBE_CBIND_NATIVE_SHAPE_ERROR, field_index,
-              CMETA_INVALID_ARGUMENT, path,
-              "nested native struct descriptor is malformed");
-      }
+
+    case TBE_CBIND_SCALAR_UUID: {
+      const cmeta_data_buffer_shape *shape =
+          (const cmeta_data_buffer_shape *)value->shape;
+      const cmeta_data_buffer_ops *ops;
+      if (value->kind != CMETA_DATA_STRING ||
+          !tbe_cbind_native_type_matches(value->storage_type,
+                                         &turbo_uuid_cmeta_type) ||
+          value->storage_type->size != TURBO_UUID_SIZE)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "schema UUID field does not use turbo_uuid_t storage");
+      if (shape == NULL || shape->ownership != CMETA_DATA_BUFFER_OWNED)
+        return tbe_cbind_native_scalar_type_mismatch(
+            context, field_index, path,
+            "native UUID adapter must own fixed UUID storage");
+      if (!cmeta_data_desc_valid(value))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "native UUID data descriptor is invalid");
+      ops = cmeta_data_buffer_ops_of(value);
+      if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED ||
+          !tbe_cbind_native_type_matches(ops->storage_type,
+                                         &turbo_uuid_cmeta_type))
+        return tbe_cbind_native_scalar_shape_error(
+            context, field_index, path,
+            "native UUID requires complete matching public buffer ops");
       return TBE_CBIND_OK;
+    }
   }
-  if (value->kind != canonical_kind || !cmeta_data_desc_valid(value))
-    return tbe_cbind_native_error(
-        context, value->kind == canonical_kind
-                     ? TBE_CBIND_NATIVE_SHAPE_ERROR
-                     : TBE_CBIND_TYPE_MISMATCH,
-        field_index,
-        value->kind == canonical_kind ? CMETA_INVALID_ARGUMENT
-                                      : CMETA_TYPE_MISMATCH,
-        path, value->kind == canonical_kind
-                  ? "native field data descriptor is invalid"
-                  : "native scalar storage does not match the v1 canonical type");
-  if (canonical_type == NULL || canonical_bits % CHAR_BIT != 0u ||
-      canonical_type->size != canonical_bits / CHAR_BIT ||
-      !tbe_cbind_native_type_matches(value->storage_type, canonical_type)) {
-    return tbe_cbind_native_error(
-        context, TBE_CBIND_TYPE_MISMATCH, field_index, CMETA_TYPE_MISMATCH,
-        path, "native scalar storage does not match the v1 canonical type");
-  }
-  if (canonical_kind == CMETA_DATA_FLOAT) {
-    float_shape = (const cmeta_data_float_shape *)value->shape;
-    if (float_shape == NULL || float_shape->bits != canonical_bits)
-      return tbe_cbind_native_error(
-          context, TBE_CBIND_TYPE_MISMATCH, field_index, CMETA_TYPE_MISMATCH,
-          path, "native floating-point width does not match schema");
-  } else {
-    integer_shape = (const cmeta_data_integer_shape *)value->shape;
-    if (integer_shape == NULL || integer_shape->bits != canonical_bits)
-      return tbe_cbind_native_error(
-          context, TBE_CBIND_TYPE_MISMATCH, field_index, CMETA_TYPE_MISMATCH,
-          path, "native integer width does not match schema");
-  }
-  return TBE_CBIND_OK;
+  return tbe_cbind_native_scalar_shape_error(
+      context, field_index, path, "scalar capability kind is invalid");
 }
 
 tbe_cbind_status tbe_cbind_native_bind_record(

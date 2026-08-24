@@ -187,30 +187,6 @@ static tbe_cbind_status tbe_cbind_reject_global_unsupported(
   return TBE_CBIND_OK;
 }
 
-static tbe_cbind_semantic_kind tbe_cbind_v1_scalar_kind(
-    const tbe_cbind_capability *capability, int *supported) {
-  *supported = 1;
-  if (capability == NULL) {
-    *supported = 0;
-    return TBE_CBIND_SEMANTIC_RECORD;
-  }
-  if (capability->kind == TBE_CBIND_SCALAR_INTEGER) {
-    if (capability->is_signed && capability->bits == 32u)
-      return TBE_CBIND_SEMANTIC_INT32;
-    if (capability->is_signed && capability->bits == 64u)
-      return TBE_CBIND_SEMANTIC_INT64;
-    if (!capability->is_signed && capability->bits == 64u)
-      return TBE_CBIND_SEMANTIC_UINT64;
-  } else if (capability->kind == TBE_CBIND_SCALAR_FLOAT) {
-    if (capability->bits == 32u) return TBE_CBIND_SEMANTIC_FLOAT;
-    if (capability->bits == 64u) return TBE_CBIND_SEMANTIC_DOUBLE;
-  } else if (capability->kind == TBE_CBIND_SCALAR_STRING) {
-    return TBE_CBIND_SEMANTIC_STRING;
-  }
-  *supported = 0;
-  return TBE_CBIND_SEMANTIC_RECORD;
-}
-
 static tbe_cbind_status tbe_cbind_insert_type(
     tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
     tbe_cbind_semantic_type *type) {
@@ -307,7 +283,6 @@ static tbe_cbind_status tbe_cbind_extract_field(
   const char *semantic_name = name;
   const char *native_name = name;
   char path[256];
-  int scalar_supported;
   tbe_cbind_status status;
   (void)snprintf(path, sizeof(path), "%s.%s", owner->name != NULL ? owner->name : "?",
                  name != NULL ? name : "?");
@@ -353,11 +328,9 @@ static tbe_cbind_status tbe_cbind_extract_field(
         CMETA_OUT_OF_MEMORY, path, "field model allocation failed");
   }
   capability = tbe_cbind_capability_find(type_name);
-  if (capability != NULL &&
-      strcmp(type_name, capability->canonical_name) != 0)
-    capability = NULL;
-  field->kind = tbe_cbind_v1_scalar_kind(capability, &scalar_supported);
-  if (!scalar_supported) field->kind = TBE_CBIND_SEMANTIC_RECORD;
+  field->capability = capability;
+  field->kind = capability != NULL ? TBE_CBIND_SEMANTIC_SCALAR
+                                   : TBE_CBIND_SEMANTIC_RECORD;
   return TBE_CBIND_OK;
 }
 
