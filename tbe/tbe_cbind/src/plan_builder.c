@@ -31,12 +31,18 @@ static char *tbe_cbind_plan_strdup(tbe_cbind_build_context *context,
 static tbe_cbind_status tbe_cbind_plan_build_node(
     tbe_cbind_build_context *context, const tbe_cbind_schema_model *model,
     tbe_cbind_plan *plan, const tbe_cbind_semantic_type *semantic,
-    const cmeta_data_desc *native_shape, tbe_cbind_plan_node **out_node) {
+    const cmeta_data_desc *native_shape, size_t depth,
+    tbe_cbind_plan_node **out_node) {
   size_t node_index = (size_t)(semantic - model->types);
   tbe_cbind_plan_node *node;
   tbe_cbind_native_binding *bindings = NULL;
   size_t field_index;
   tbe_cbind_status status;
+  if (depth == 0u || depth > context->options->max_depth)
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_PLAN, 0u,
+        CMETA_CAPACITY_EXCEEDED, semantic->name,
+        "plan nesting exceeds max_depth");
   if (node_index >= plan->node_count)
     return tbe_cbind_set_error(
         context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_PLAN, 0u,
@@ -49,11 +55,9 @@ static tbe_cbind_status tbe_cbind_plan_build_node(
         CMETA_INVALID_ARGUMENT, semantic->name,
         "recursive native struct graph is unsupported");
   if (node->build_state == 2u) {
-    if (node->native_shape != native_shape)
-      return tbe_cbind_set_error(
-          context, TBE_CBIND_TYPE_MISMATCH, TBE_CBIND_PHASE_PLAN, 0u,
-          CMETA_TYPE_MISMATCH, semantic->name,
-          "one schema type maps to inconsistent native descriptor graphs");
+    status = tbe_cbind_native_record_equivalent(
+        context, semantic, node->native_shape, native_shape, depth);
+    if (status != TBE_CBIND_OK) return status;
     *out_node = node;
     return TBE_CBIND_OK;
   }
@@ -112,18 +116,29 @@ static tbe_cbind_status tbe_cbind_plan_build_node(
     node->data_fields[field_index] = *bindings[field_index].data_field;
     node->data_fields[field_index].name = semantic_name;
     if (field->kind == TBE_CBIND_SEMANTIC_RECORD) {
+      size_t child_depth;
       (void)snprintf(path, sizeof(path), "%s.%s", semantic->name,
                      field->name);
+      if (!tbe_cbind_size_add(depth, 1u, &child_depth)) {
+        status = tbe_cbind_set_error(
+            context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_PLAN,
+            field_index, CMETA_CAPACITY_EXCEEDED, path,
+            "plan nesting depth overflow");
+        goto cleanup;
+      }
       status = tbe_cbind_plan_build_node(
           context, model, plan, field->record_type,
-          bindings[field_index].data_field->value, &child);
+          bindings[field_index].data_field->value, child_depth, &child);
       if (status != TBE_CBIND_OK) goto cleanup;
       node->data_fields[field_index].value = &child->data;
     }
   }
-  node->data = *native_shape;
   node->data.struct_size = sizeof(node->data);
+  node->data.abi_version = native_shape->abi_version;
+  node->data.stable_id = native_shape->stable_id;
   node->data.display_name = node->layout.name;
+  node->data.kind = native_shape->kind;
+  node->data.storage_type = native_shape->storage_type;
   node->data.shape = &node->shape;
   node->data.buffer_ops = NULL;
   node->build_state = 2u;
@@ -157,7 +172,7 @@ tbe_cbind_status tbe_cbind_plan_build(
     }
   }
   status = tbe_cbind_plan_build_node(context, model, plan, model->root,
-                                     native_shape, &root_node);
+                                     native_shape, 1u, &root_node);
   if (status != TBE_CBIND_OK) goto fail;
   plan->shape = &root_node->data;
   plan->state = TBE_CBIND_PLAN_READY;

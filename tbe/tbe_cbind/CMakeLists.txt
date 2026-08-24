@@ -71,7 +71,7 @@ cmake_add_test(test_tbe_cbind_schema
   FOLDER "tbe/tbe_cbind/tests")
 
 cmake_add_test(test_tbe_cbind_plan
-  SOURCES test/test_tbe_cbind_plan.c
+  SOURCES test/test_tbe_cbind_plan.c test/tbe_cbind_multitu_fixture.c
   LIBS TurboParser::TbeCBind TurboUtils::TinyTest
   INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/src
   FOLDER "tbe/tbe_cbind/tests")

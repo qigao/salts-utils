@@ -1,5 +1,6 @@
 #include <tbe_cbind/tbe_cbind.h>
 
+#include "tbe_cbind_multitu_fixture.h"
 #include "tbe_cbind_test_fixtures.h"
 #include "tinytest.h"
 
@@ -165,9 +166,76 @@ spec("TbeCBind schema semantic model") {
                 TBE_CBIND_LIMIT_EXCEEDED);
   }
 
+  it("rejects an inverse-declaration chain one level beyond max_depth") {
+    static const char schema[] =
+        "composite Leaf { int32 value; } "
+        "composite Mid { Leaf leaf; } "
+        "message Root { Mid mid; }";
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_depth = 2u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(schema, sizeof(schema) - 1u,
+                                        "Root", 4u, &options, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+  }
+
+  it("accepts a nested record whose height equals max_depth") {
+    static const char schema[] =
+        "composite Detail { int32 quantity; } "
+        "message Root { Detail detail; double score; }";
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_depth = 2u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(tbe_cbind_plan_create_from_text(
+                    schema, sizeof(schema) - 1u, "Root", 4u,
+                    &tbe_cbind_test_nested_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("computes shared-DAG height once without shortening either parent path") {
+    static const char schema[] =
+        "composite Text { int32 value; } "
+        "message Pair { Text left; Text right; }";
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_depth = 2u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(tbe_cbind_plan_create_from_text(
+                    schema, sizeof(schema) - 1u, "Pair", 4u,
+                    &tbe_cbind_multitu_pair_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rejects a recursive record graph while computing subtree height") {
+    static const char schema[] =
+        "composite First { Second second; } "
+        "message Second { First first; }";
+    tbe_cbind_plan_error error;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one(schema, "Second", &error), TBE_CBIND_UNSUPPORTED);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+  }
+
   it("rejects embedded NULs and checked slice size overflow") {
     const char schema_with_nul[] =
         {'m','e','s','s','a','g','e',' ','O','n','e',' ','{','\0','}'};
+    const char type_name_with_nul[] = {'O', 'n', '\0', 'e'};
     tbe_cbind_plan_options options;
     tbe_cbind_plan_error error;
     tbe_cbind_plan_options_init(&options);
@@ -176,6 +244,21 @@ spec("TbeCBind schema semantic model") {
     check_equal(create_one_with_options(
                     schema_with_nul, sizeof(schema_with_nul), "One", 3u,
                     &options, &error),
+                TBE_CBIND_INVALID_ARGUMENT);
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(
+                    "message One { int32 value; }",
+                    sizeof("message One { int32 value; }") - 1u, "", 0u,
+                    &options, &error),
+                TBE_CBIND_INVALID_ARGUMENT);
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(
+                    "message One { int32 value; }",
+                    sizeof("message One { int32 value; }") - 1u,
+                    type_name_with_nul, sizeof(type_name_with_nul), &options,
+                    &error),
                 TBE_CBIND_INVALID_ARGUMENT);
 
     options.max_schema_bytes = SIZE_MAX;

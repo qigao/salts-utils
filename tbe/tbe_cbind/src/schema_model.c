@@ -436,13 +436,8 @@ static tbe_cbind_status tbe_cbind_extract_types(
 
 static tbe_cbind_status tbe_cbind_resolve_type(
     tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
-    tbe_cbind_semantic_type *type, size_t depth) {
+    tbe_cbind_semantic_type *type) {
   size_t index;
-  if (depth > context->options->max_depth) {
-    return tbe_cbind_set_error(
-        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
-        CMETA_OK, type->name, "schema nesting exceeds max_depth");
-  }
   if (type->visit_state == 2u) return TBE_CBIND_OK;
   if (type->visit_state == 1u) {
     return tbe_cbind_set_error(
@@ -450,10 +445,12 @@ static tbe_cbind_status tbe_cbind_resolve_type(
         CMETA_OK, type->name, "recursive by-value record graph is unsupported");
   }
   type->visit_state = 1u;
+  type->height = 1u;
   for (index = 0u; index < type->field_count; ++index) {
     tbe_cbind_semantic_field *field = &type->fields[index];
     if (field->kind == TBE_CBIND_SEMANTIC_RECORD) {
       char path[256];
+      size_t candidate_height;
       tbe_cbind_status status;
       field->record_type = tbe_cbind_find_type(model, field->type_name);
       (void)snprintf(path, sizeof(path), "%s.%s", type->name, field->name);
@@ -462,10 +459,22 @@ static tbe_cbind_status tbe_cbind_resolve_type(
             context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, index,
             CMETA_OK, path, "field type is not in the v1 support matrix");
       }
-      status = tbe_cbind_resolve_type(context, model, field->record_type,
-                                      depth + 1u);
+      status = tbe_cbind_resolve_type(context, model, field->record_type);
       if (status != TBE_CBIND_OK) return status;
+      if (!tbe_cbind_size_add(field->record_type->height, 1u,
+                              &candidate_height)) {
+        return tbe_cbind_set_error(
+            context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, index,
+            CMETA_CAPACITY_EXCEEDED, path, "schema nesting height overflow");
+      }
+      if (candidate_height > type->height) type->height = candidate_height;
     }
+  }
+  if (type->height > context->options->max_depth) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_CAPACITY_EXCEEDED, type->name,
+        "schema nesting exceeds max_depth");
   }
   type->visit_state = 2u;
   return TBE_CBIND_OK;
@@ -540,7 +549,7 @@ tbe_cbind_status tbe_cbind_schema_model_build(
   status = tbe_cbind_extract_types(context, root, model);
   if (status != TBE_CBIND_OK) goto cleanup;
   for (index = 0u; index < model->type_count; ++index) {
-    status = tbe_cbind_resolve_type(context, model, &model->types[index], 1u);
+    status = tbe_cbind_resolve_type(context, model, &model->types[index]);
     if (status != TBE_CBIND_OK) goto cleanup;
   }
   model->root = tbe_cbind_find_type(model, type_name);

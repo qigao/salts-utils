@@ -6,6 +6,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define TOKEN_MAP_BEGIN { .kind = CSERDE_MAP_BEGIN }
@@ -165,6 +166,44 @@ spec("TbeCBind transactional decode facade") {
                 CMETA_OK);
     check_equal(cmeta_data_buffer_restore_zero(
                     &tbe_cbind_test_borrowed_string_data, &out.borrowed),
+                CMETA_OK);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("keeps a borrowed view valid until the caller releases its backing owner") {
+    static const char schema[] =
+        "message Text { string owned; string borrowed; }";
+    cserde_token tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("owned"), TOKEN_SLICE(CSERDE_STRING, "copy", CSERDE_VIEW_TRANSIENT),
+        TOKEN_KEY("borrowed"), TOKEN_SLICE(CSERDE_STRING, "view", CSERDE_VIEW_STABLE),
+        TOKEN_MAP_END};
+    unsigned char scratch[1] = {0};
+    char *backing = (char *)malloc(5u);
+    tbe_cbind_test_strings out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan =
+        make_plan(schema, "Text", &tbe_cbind_test_strings_data);
+
+    check_not_null(backing);
+    if (backing != NULL) {
+      memcpy(backing, "view", 5u);
+      tokens[4].value.slice.data = (const unsigned char *)backing;
+      check_equal(decode_tokens(plan, tokens,
+                                sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
+                                &out, 1u, 16u, scratch, sizeof(scratch),
+                                &error, NULL),
+                  CBIND_OK);
+      check_true(out.borrowed.data == backing);
+      check_equal(out.borrowed.len, (size_t)4);
+      check_equal(memcmp(out.borrowed.data, "view", 4u), 0);
+      check_equal(cmeta_data_buffer_restore_zero(
+                      &tbe_cbind_test_borrowed_string_data, &out.borrowed),
+                  CMETA_OK);
+      free(backing);
+    }
+    check_equal(cmeta_data_buffer_restore_zero(
+                    &tbe_cbind_test_owned_string_data, &out.owned),
                 CMETA_OK);
     tbe_cbind_plan_destroy(plan);
   }

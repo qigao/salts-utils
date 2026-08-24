@@ -47,6 +47,7 @@ typedef struct tbe_cbind_semantic_type {
   char *name;
   tbe_cbind_semantic_field *fields;
   size_t field_count;
+  size_t height;
   unsigned char visit_state;
 } tbe_cbind_semantic_type;
 
@@ -107,6 +108,9 @@ int tbe_cbind_c_identifier_valid(const char *name);
 tbe_cbind_status tbe_cbind_native_bind_record(
     tbe_cbind_build_context *context, const tbe_cbind_semantic_type *semantic,
     const cmeta_data_desc *native_shape, tbe_cbind_native_binding *bindings);
+tbe_cbind_status tbe_cbind_native_record_equivalent(
+    tbe_cbind_build_context *context, const tbe_cbind_semantic_type *semantic,
+    const cmeta_data_desc *left, const cmeta_data_desc *right, size_t depth);
 tbe_cbind_status tbe_cbind_plan_build(
     tbe_cbind_build_context *context, const tbe_cbind_schema_model *model,
     const cmeta_data_desc *native_shape, tbe_cbind_plan **out);
