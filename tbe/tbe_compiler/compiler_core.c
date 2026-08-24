@@ -893,10 +893,55 @@ static int tbe_compiler_cbind_scalar_supported(const char *type) {
   return 0;
 }
 
+static int tbe_compiler_cbind_semantic_name_portable(const char *name) {
+  size_t i;
+
+  if (!name ||
+      !((name[0] >= 'A' && name[0] <= 'Z') ||
+        (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    return 0;
+  for (i = 1; name[i] != '\0'; ++i)
+    if (!((name[i] >= 'A' && name[i] <= 'Z') ||
+          (name[i] >= 'a' && name[i] <= 'z') ||
+          (name[i] >= '0' && name[i] <= '9') || name[i] == '_' ||
+          name[i] == '-'))
+      return 0;
+  return 1;
+}
+
+static const char *tbe_compiler_cbind_semantic_name(Node *field) {
+  const char *mapped = tbe_compiler_attribute_value(field, "name");
+  return mapped ? mapped : tbe_compiler_string_value(field, "name");
+}
+
+static int tbe_compiler_cbind_semantic_name_supported(Node *field) {
+  size_t mapping_count = tbe_compiler_attribute_count(field, "name");
+  const char *mapped;
+
+  if (mapping_count > 1u)
+    return tbe_compiler_cbind_reject_field(
+        field, "multiple name mappings are unsupported");
+  if (mapping_count == 0u) return 1;
+
+  mapped = tbe_compiler_attribute_value(field, "name");
+  if (!tbe_compiler_cbind_semantic_name_portable(mapped)) {
+    const char *owner = tbe_compiler_string_value(field, "owner_name");
+    const char *field_name = tbe_compiler_string_value(field, "name");
+    fprintf(stderr,
+            "CBind sidecar field %s.%s: name mapping '%s' is not a portable "
+            "semantic key (expected [A-Za-z_][A-Za-z0-9_-]*)\n",
+            owner ? owner : "(unknown)", field_name ? field_name : "(unknown)",
+            mapped ? mapped : "");
+    return 0;
+  }
+  return 1;
+}
+
 static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
   const char *type = tbe_compiler_string_value(field, "type");
   const char *reason = NULL;
 
+  if (!tbe_compiler_cbind_semantic_name_supported(field)) return 0;
   if (tbe_compiler_attribute_count(field, "alias") != 0u)
     return tbe_compiler_cbind_reject_field(field, "aliases are unsupported");
   if (tbe_compiler_has_child(field, "is_optional"))
@@ -925,18 +970,49 @@ static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
   return tbe_compiler_cbind_reject_field(field, reason);
 }
 
+static int tbe_compiler_cbind_record_supported(Node *root, Node *record) {
+  Node *fields = tbe_compiler_find_child(record, "fields");
+  const char *record_name = tbe_compiler_string_value(record, "name");
+  size_t i;
+
+  if (!fields || fields->type != NODE_LIST) return 1;
+  for (i = 0; i < fields->data.list.count; ++i)
+    if (!tbe_compiler_cbind_field_supported(root, fields->data.list.items[i]))
+      return 0;
+
+  /* n is one parsed record's field count: O(n^2) time, O(1) extra storage. */
+  for (i = 0; i < fields->data.list.count; ++i) {
+    Node *left = fields->data.list.items[i];
+    const char *left_name = tbe_compiler_cbind_semantic_name(left);
+    const char *left_field_name = tbe_compiler_string_value(left, "name");
+    size_t j;
+    for (j = i + 1u; j < fields->data.list.count; ++j) {
+      Node *right = fields->data.list.items[j];
+      const char *right_name = tbe_compiler_cbind_semantic_name(right);
+      const char *right_field_name = tbe_compiler_string_value(right, "name");
+      if (left_name && right_name && strcmp(left_name, right_name) == 0) {
+        fprintf(stderr,
+                "CBind sidecar fields %s.%s and %s.%s share effective "
+                "semantic name '%s'\n",
+                record_name ? record_name : "(unknown)",
+                left_field_name ? left_field_name : "(unknown)",
+                record_name ? record_name : "(unknown)",
+                right_field_name ? right_field_name : "(unknown)", left_name);
+        return 0;
+      }
+    }
+  }
+  return 1;
+}
+
 static int tbe_compiler_cbind_list_supported(Node *root, const char *list_name) {
   Node *list = tbe_compiler_find_child(root, list_name);
   size_t i;
 
   if (!list || list->type != NODE_LIST) return 1;
-  for (i = 0; i < list->data.list.count; ++i) {
-    Node *fields = tbe_compiler_find_child(list->data.list.items[i], "fields");
-    size_t j;
-    if (!fields || fields->type != NODE_LIST) continue;
-    for (j = 0; j < fields->data.list.count; ++j)
-      if (!tbe_compiler_cbind_field_supported(root, fields->data.list.items[j])) return 0;
-  }
+  for (i = 0; i < list->data.list.count; ++i)
+    if (!tbe_compiler_cbind_record_supported(root, list->data.list.items[i]))
+      return 0;
   return 1;
 }
 
@@ -975,7 +1051,7 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
                                              const char *record_name) {
   const char *type = tbe_compiler_string_value(field, "type");
   const char *field_name = tbe_compiler_string_value(field, "name");
-  const char *semantic_name = tbe_compiler_attribute_value(field, "name");
+  const char *semantic_name = tbe_compiler_cbind_semantic_name(field);
   const char *type_name = NULL;
   const char *type_desc = NULL;
   const char *data_desc = NULL;
@@ -986,7 +1062,6 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
   char *escaped_name;
   int stable_length;
 
-  if (!semantic_name || !semantic_name[0]) semantic_name = field_name;
   if (!schema_name || !record_name || !field_name || !semantic_name || !type) return 0;
 
   if (strcmp(type, "int32") == 0 || strcmp(type, "int32_t") == 0) {

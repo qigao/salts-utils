@@ -127,6 +127,52 @@ static void cleanup_test_file(const char *path) {
   }
 }
 
+typedef struct cbind_rejection_result_s {
+  int write_status;
+  int compiler_status;
+  int header_exists;
+  int source_exists;
+  int cbind_exists;
+} cbind_rejection_result_t;
+
+static int test_file_exists(const char *path) {
+  FILE *file = fopen(path, "rb");
+  if (!file) return 0;
+  fclose(file);
+  return 1;
+}
+
+static cbind_rejection_result_t run_rejected_cbind_schema(const char *schema) {
+  const char *schema_path = "test_tbe_compiler_cbind_semantic_name.tbe";
+  const char *header_path = "test_tbe_compiler_cbind_semantic_name.h";
+  const char *source_path = "test_tbe_compiler_cbind_semantic_name.c";
+  const char *cbind_path = "test_tbe_compiler_cbind_semantic_name_cbind.c";
+  tbe_compiler_options_t options = {
+      .schema_path = schema_path,
+      .output_path = header_path,
+      .source_output_path = source_path,
+      .cbind_output_path = cbind_path,
+      .lang_enum = TBE_COMPILER_LANG_C,
+  };
+  cbind_rejection_result_t result;
+
+  cleanup_test_file(schema_path);
+  cleanup_test_file(header_path);
+  cleanup_test_file(source_path);
+  cleanup_test_file(cbind_path);
+  result.write_status = write_test_file(schema_path, schema);
+  result.compiler_status =
+      result.write_status == 0 ? tbe_compiler_run(&options) : -1;
+  result.header_exists = test_file_exists(header_path);
+  result.source_exists = test_file_exists(source_path);
+  result.cbind_exists = test_file_exists(cbind_path);
+  cleanup_test_file(schema_path);
+  cleanup_test_file(header_path);
+  cleanup_test_file(source_path);
+  cleanup_test_file(cbind_path);
+  return result;
+}
+
 static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   int saved_stdout = -1;
   int saved_stderr = -1;
@@ -1103,7 +1149,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
-    it("should generate immutable CBind descriptors for supported records") {
+    it("should generate immutable CBind descriptors with a hyphenated semantic name") {
       const char *schema_path = "test_tbe_compiler_cbind_supported.tbe";
       const char *header_path = "test_tbe_compiler_cbind_supported.h";
       const char *source_path = "test_tbe_compiler_cbind_supported.c";
@@ -1211,6 +1257,62 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(cbind_path);
+    }
+
+    it("should reject duplicate mapped CBind semantic names before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(shared)] int32 first; "
+          "[name(shared)] int32 second; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject mapped and canonical CBind semantic name collisions before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(second)] int32 first; int32 second; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject multiple CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(primary), name(secondary)] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject empty CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(\"\")] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject non-portable CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(\"nested.value\")] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
     }
 
     it("should require the CBind sidecar output contract") {
