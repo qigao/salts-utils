@@ -23,6 +23,11 @@ typedef struct json_view_native {
   vstr text;
 } json_view_native;
 
+typedef struct json_rollback_native {
+  tstr owned;
+  vstr borrowed;
+} json_rollback_native;
+
 static const cmeta_data_buffer_shape json_owned_string_shape = {
     CMETA_DATA_BUFFER_OWNED};
 static const cmeta_data_desc json_owned_string_data = {
@@ -135,6 +140,38 @@ static const cmeta_data_desc json_view_data = {
     .kind = CMETA_DATA_STRUCT,
     .storage_type = &json_view_type,
     .shape = &json_view_shape};
+
+static const cmeta_type_identity json_rollback_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.json.rollback");
+static const cmeta_type_desc json_rollback_type = {
+    .name = "json_rollback_native",
+    .size = sizeof(json_rollback_native),
+    .align = _Alignof(json_rollback_native),
+    .kind = CMETA_T_OBJECT,
+    .identity = &json_rollback_identity};
+static const cmeta_field_desc json_rollback_layout_fields[] = {
+    {"owned", "tstr", offsetof(json_rollback_native, owned), sizeof(tstr),
+     _Alignof(tstr), &turbo_tstr_cmeta_type, NULL},
+    {"borrowed", "vstr", offsetof(json_rollback_native, borrowed),
+     sizeof(vstr), _Alignof(vstr), &turbo_vstr_cmeta_type, NULL}};
+static const cmeta_struct_desc json_rollback_layout = {
+    "json_rollback_native", sizeof(json_rollback_native),
+    _Alignof(json_rollback_native), json_rollback_layout_fields, 2u};
+static const cmeta_data_field_desc json_rollback_data_fields[] = {
+    {"test.tbe-cbind.json.rollback.owned", "owned",
+     offsetof(json_rollback_native, owned), &json_owned_string_data},
+    {"test.tbe-cbind.json.rollback.borrowed", "borrowed",
+     offsetof(json_rollback_native, borrowed), &json_borrowed_string_data}};
+static const cmeta_data_struct_shape json_rollback_shape = {
+    &json_rollback_layout, json_rollback_data_fields, 2u};
+static const cmeta_data_desc json_rollback_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.tbe-cbind.json.rollback.data",
+    .display_name = "JSON rollback native",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &json_rollback_type,
+    .shape = &json_rollback_shape};
 
 static tbe_cbind_plan *json_make_plan(const char *schema, size_t schema_size,
                                       const char *type_name,
@@ -276,13 +313,19 @@ spec("TbeCBind JSON integration") {
     tbe_cbind_plan_destroy(plan);
   }
 
-  it("rejects a transient slice from a controlled CSerde reader") {
+  it("rolls back an owning string when a later borrowed slice is transient") {
     static const char schema[] =
-        "message View { [c(text), name(label)] string value; }";
+        "message Rollback { string owned; string borrowed; }";
     static const cserde_token tokens[] = {
         {.kind = CSERDE_MAP_BEGIN},
         {.kind = CSERDE_STRING,
-         .value.slice = {(const unsigned char *)"label", 5u,
+         .value.slice = {(const unsigned char *)"owned", 5u,
+                         CSERDE_VIEW_STABLE}},
+        {.kind = CSERDE_STRING,
+         .value.slice = {(const unsigned char *)"allocated", 9u,
+                         CSERDE_VIEW_TRANSIENT}},
+        {.kind = CSERDE_STRING,
+         .value.slice = {(const unsigned char *)"borrowed", 8u,
                          CSERDE_VIEW_STABLE}},
         {.kind = CSERDE_STRING,
          .value.slice = {(const unsigned char *)"ephemeral", 9u,
@@ -292,9 +335,9 @@ spec("TbeCBind JSON integration") {
         tokens, sizeof(tokens) / sizeof(tokens[0]), 0u};
     cserde_reader reader = {0};
     tbe_cbind_plan *plan =
-        json_make_plan(schema, sizeof(schema) - 1u, "View", 4u,
-                       &json_view_data);
-    json_view_native out = {0};
+        json_make_plan(schema, sizeof(schema) - 1u, "Rollback", 8u,
+                       &json_rollback_data);
+    json_rollback_native out = {0};
     unsigned char scratch[1] = {0};
     cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
         scratch, sizeof(scratch), 1u, 0u, 32u);
@@ -305,8 +348,9 @@ spec("TbeCBind JSON integration") {
                 CSERDE_OK);
     check_equal(tbe_cbind_plan_decode(plan, &context, &reader, &out, &error),
                 CBIND_UNSUPPORTED);
-    check_null(out.text.data);
-    check_equal(out.text.len, (size_t)0u);
+    check_null(out.owned);
+    check_null(out.borrowed.data);
+    check_equal(out.borrowed.len, (size_t)0u);
     tbe_cbind_plan_destroy(plan);
   }
 }

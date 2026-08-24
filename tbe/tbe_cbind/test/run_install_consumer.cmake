@@ -1,25 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 
 foreach(required_variable IN ITEMS
-    TP_MAIN_BINARY_DIR TP_TEST_ROOT TP_CONSUMER_SOURCE_DIR
-    TP_TURBOUTILS_DIR TP_INSTALL_CMAKEDIR TP_GENERATOR TP_CONFIG)
+    TP_MAIN_BINARY_DIR TP_CONSUMER_SOURCE_DIR
+    TP_TURBOUTILS_DIR TP_TURBOUTILS_RUNTIME_DIR
+    TP_INSTALL_CMAKEDIR TP_INSTALL_LIBDIR
+    TP_GENERATOR TP_CONFIG)
   if(NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
     message(FATAL_ERROR "Missing required variable: ${required_variable}")
   endif()
 endforeach()
-
-file(TO_CMAKE_PATH "${TP_MAIN_BINARY_DIR}" main_binary_dir)
-file(TO_CMAKE_PATH "${TP_TEST_ROOT}" test_root)
-string(TOLOWER "${main_binary_dir}/" main_binary_prefix_lower)
-string(TOLOWER "${test_root}/" test_root_lower)
-string(FIND "${test_root_lower}" "${main_binary_prefix_lower}" root_position)
-if(NOT root_position EQUAL 0 OR test_root STREQUAL main_binary_dir)
+if(NOT IS_DIRECTORY "${TP_TURBOUTILS_RUNTIME_DIR}")
   message(FATAL_ERROR
-    "Refusing to reset install-consumer paths outside the main build tree: ${test_root}")
+    "TurboUtils runtime directory does not exist: ${TP_TURBOUTILS_RUNTIME_DIR}")
 endif()
 
-file(REMOVE_RECURSE "${test_root}")
-file(MAKE_DIRECTORY "${test_root}")
+if(DEFINED TP_TEST_ROOT)
+  message(FATAL_ERROR
+    "Refusing unsafe install-consumer sandbox: TP_TEST_ROOT cannot override the fixed directory")
+endif()
+
+file(REAL_PATH "${TP_MAIN_BINARY_DIR}" main_binary_dir)
+set(test_root "${main_binary_dir}/tbe/tbe_cbind/install_consumer")
+include("${CMAKE_CURRENT_LIST_DIR}/install_consumer_path_guard.cmake")
+tbe_cbind_reset_install_consumer_sandbox(
+  "${main_binary_dir}" "${test_root}" FALSE)
 set(install_prefix "${test_root}/prefix")
 set(consumer_binary_dir "${test_root}/build")
 
@@ -70,6 +74,23 @@ if(NOT configure_result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    -DTP_EVIDENCE_DIR=${consumer_binary_dir}/tbe-cbind-dependency-evidence
+    -DTP_CONFIG=${TP_CONFIG}
+    -DTP_OUTPUT_FILE=${consumer_binary_dir}/tbe-cbind-link-closure.txt
+    -P "${CMAKE_CURRENT_LIST_DIR}/verify_install_consumer_dependencies.cmake"
+  RESULT_VARIABLE dependency_result
+  OUTPUT_VARIABLE dependency_output
+  ERROR_VARIABLE dependency_error)
+file(WRITE "${test_root}/dependency-evidence.log"
+  "${dependency_output}\n${dependency_error}")
+if(NOT dependency_result EQUAL 0)
+  message(FATAL_ERROR
+    "Installed consumer dependency evidence failed:\n"
+    "${dependency_output}\n${dependency_error}")
+endif()
+
+execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${consumer_binary_dir}"
           --config "${TP_CONFIG}" --verbose
   RESULT_VARIABLE consumer_build_result
@@ -81,10 +102,20 @@ if(NOT consumer_build_result EQUAL 0)
   message(FATAL_ERROR
     "Installed consumer build failed:\n${consumer_link_log}")
 endif()
-string(TOLOWER "${consumer_link_log}" consumer_link_log_lower)
-if(consumer_link_log_lower MATCHES "databind|data_bind")
+execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    -DTP_BUILD_DIR=${consumer_binary_dir}
+    -DTP_LINK_LOG=${test_root}/consumer-build.log
+    -DTP_LINK_TARGET=tbe_cbind_install_consumer
+    -DTP_OUTPUT_FILE=${test_root}/expanded-link-evidence.txt
+    -P "${CMAKE_CURRENT_LIST_DIR}/verify_install_consumer_link.cmake"
+  RESULT_VARIABLE link_evidence_result
+  OUTPUT_VARIABLE link_evidence_output
+  ERROR_VARIABLE link_evidence_error)
+if(NOT link_evidence_result EQUAL 0)
   message(FATAL_ERROR
-    "Installed consumer link command contains a forbidden DataBind dependency")
+    "Installed consumer link evidence failed:\n"
+    "${link_evidence_output}\n${link_evidence_error}")
 endif()
 
 set(consumer_executable "${consumer_binary_dir}/tbe_cbind_install_consumer")
@@ -103,13 +134,58 @@ if(NOT EXISTS "${consumer_executable}")
     "Installed consumer executable was not produced: ${consumer_executable}")
 endif()
 
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E env
-          "PATH=${install_prefix}/bin;$ENV{PATH}"
-          "${consumer_executable}"
-  RESULT_VARIABLE consumer_run_result
-  OUTPUT_VARIABLE consumer_run_output
-  ERROR_VARIABLE consumer_run_error)
+if(WIN32)
+  set(runtime_path
+    "${install_prefix}/bin;${TP_TURBOUTILS_RUNTIME_DIR}")
+  if(DEFINED ENV{PATH} AND NOT "$ENV{PATH}" STREQUAL "")
+    string(APPEND runtime_path ";$ENV{PATH}")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=${runtime_path}"
+      "${consumer_executable}"
+    RESULT_VARIABLE consumer_run_result
+    OUTPUT_VARIABLE consumer_run_output
+    ERROR_VARIABLE consumer_run_error)
+elseif(APPLE)
+  set(runtime_path "${install_prefix}/bin")
+  if(DEFINED ENV{PATH} AND NOT "$ENV{PATH}" STREQUAL "")
+    string(APPEND runtime_path ":$ENV{PATH}")
+  endif()
+  set(runtime_library_path
+    "${install_prefix}/${TP_INSTALL_LIBDIR}:${TP_TURBOUTILS_RUNTIME_DIR}")
+  if(DEFINED ENV{DYLD_LIBRARY_PATH} AND
+     NOT "$ENV{DYLD_LIBRARY_PATH}" STREQUAL "")
+    string(APPEND runtime_library_path ":$ENV{DYLD_LIBRARY_PATH}")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=${runtime_path}"
+      "DYLD_LIBRARY_PATH=${runtime_library_path}"
+      "${consumer_executable}"
+    RESULT_VARIABLE consumer_run_result
+    OUTPUT_VARIABLE consumer_run_output
+    ERROR_VARIABLE consumer_run_error)
+else()
+  set(runtime_path "${install_prefix}/bin")
+  if(DEFINED ENV{PATH} AND NOT "$ENV{PATH}" STREQUAL "")
+    string(APPEND runtime_path ":$ENV{PATH}")
+  endif()
+  set(runtime_library_path
+    "${install_prefix}/${TP_INSTALL_LIBDIR}:${TP_TURBOUTILS_RUNTIME_DIR}")
+  if(DEFINED ENV{LD_LIBRARY_PATH} AND
+     NOT "$ENV{LD_LIBRARY_PATH}" STREQUAL "")
+    string(APPEND runtime_library_path ":$ENV{LD_LIBRARY_PATH}")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=${runtime_path}"
+      "LD_LIBRARY_PATH=${runtime_library_path}"
+      "${consumer_executable}"
+    RESULT_VARIABLE consumer_run_result
+    OUTPUT_VARIABLE consumer_run_output
+    ERROR_VARIABLE consumer_run_error)
+endif()
 file(WRITE "${test_root}/consumer-run.log"
   "${consumer_run_output}\n${consumer_run_error}")
 if(NOT consumer_run_result EQUAL 0)

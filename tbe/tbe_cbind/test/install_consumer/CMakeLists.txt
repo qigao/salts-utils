@@ -6,51 +6,14 @@ find_package(TurboParser CONFIG REQUIRED
   PATHS "${TurboParser_DIR}"
   NO_DEFAULT_PATH)
 
-function(assert_no_databind_dependency target_name)
-  get_property(visited GLOBAL PROPERTY TBE_CBIND_CONSUMER_VISITED)
-  if(";${visited};" MATCHES ";${target_name};")
-    return()
-  endif()
-  set_property(GLOBAL APPEND PROPERTY TBE_CBIND_CONSUMER_VISITED
-    "${target_name}")
-  set_property(GLOBAL APPEND PROPERTY TBE_CBIND_CONSUMER_CLOSURE
-    "${target_name}")
-
-  get_target_property(link_dependencies "${target_name}"
-    INTERFACE_LINK_LIBRARIES)
-  if(NOT link_dependencies OR
-     link_dependencies STREQUAL "link_dependencies-NOTFOUND")
-    return()
-  endif()
-
-  foreach(dependency IN LISTS link_dependencies)
-    string(TOLOWER "${dependency}" dependency_lower)
-    if(dependency_lower MATCHES "databind|data_bind")
-      message(FATAL_ERROR
-        "${target_name} has a forbidden DataBind dependency: ${dependency}")
-    endif()
-    string(REGEX REPLACE "^\\$<LINK_ONLY:([^>]+)>$" "\\1"
-      dependency_target "${dependency}")
-    string(REGEX REPLACE "^\\$<BUILD_INTERFACE:([^>]+)>$" "\\1"
-      dependency_target "${dependency_target}")
-    string(REGEX REPLACE "^\\$<INSTALL_INTERFACE:([^>]+)>$" "\\1"
-      dependency_target "${dependency_target}")
-    if(TARGET "${dependency_target}")
-      assert_no_databind_dependency("${dependency_target}")
-    endif()
-  endforeach()
-endfunction()
-
-set_property(GLOBAL PROPERTY TBE_CBIND_CONSUMER_VISITED "")
-set_property(GLOBAL PROPERTY TBE_CBIND_CONSUMER_CLOSURE "")
-assert_no_databind_dependency(TurboParser::TbeCBind)
-assert_no_databind_dependency(TurboParser::Parser)
-get_property(tbe_cbind_consumer_closure GLOBAL PROPERTY
-  TBE_CBIND_CONSUMER_CLOSURE)
-file(WRITE "${CMAKE_BINARY_DIR}/tbe-cbind-link-closure.txt"
-  "${tbe_cbind_consumer_closure}\n")
-message(STATUS
-  "TbeCBind consumer dependency closure: ${tbe_cbind_consumer_closure}")
+if(TBE_CBIND_TEST_INJECT_CONDITIONAL_DATABIND)
+  add_library(DataBindProbe STATIC data_bind_probe.c)
+  add_library(WrapperTarget INTERFACE)
+  target_link_libraries(WrapperTarget INTERFACE DataBindProbe)
+  set_property(TARGET TurboParser::TbeCBind APPEND PROPERTY
+    INTERFACE_LINK_LIBRARIES
+    "$<$<CONFIG:Release>:WrapperTarget>")
+endif()
 
 add_executable(tbe_cbind_install_consumer main.c)
 target_link_libraries(tbe_cbind_install_consumer PRIVATE
@@ -59,3 +22,22 @@ target_link_libraries(tbe_cbind_install_consumer PRIVATE
 set_target_properties(tbe_cbind_install_consumer PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON)
+
+set(tbe_cbind_evidence_dir
+  "${CMAKE_BINARY_DIR}/tbe-cbind-dependency-evidence")
+file(MAKE_DIRECTORY "${tbe_cbind_evidence_dir}")
+get_property(tbe_cbind_imported_targets DIRECTORY PROPERTY IMPORTED_TARGETS)
+get_property(tbe_cbind_local_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+set(tbe_cbind_evidence_targets
+  ${tbe_cbind_imported_targets} ${tbe_cbind_local_targets})
+list(REMOVE_DUPLICATES tbe_cbind_evidence_targets)
+file(WRITE "${tbe_cbind_evidence_dir}/manifest.txt" "")
+foreach(evidence_target IN LISTS tbe_cbind_evidence_targets)
+  string(MD5 evidence_key "${evidence_target}")
+  file(APPEND "${tbe_cbind_evidence_dir}/manifest.txt"
+    "${evidence_target}|${evidence_key}\n")
+  file(GENERATE
+    OUTPUT "${tbe_cbind_evidence_dir}/${evidence_key}-$<CONFIG>.txt"
+    CONTENT
+      "$<TARGET_GENEX_EVAL:${evidence_target},$<TARGET_PROPERTY:${evidence_target},INTERFACE_LINK_LIBRARIES>>")
+endforeach()

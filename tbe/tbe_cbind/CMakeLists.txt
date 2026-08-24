@@ -87,14 +87,47 @@ cmake_add_test(test_tbe_cbind_json
   FOLDER "tbe/tbe_cbind/tests")
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME test_tbe_cbind_install_consumer_path_safety
+    COMMAND ${CMAKE_COMMAND}
+      -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
+      -DTP_RUNNER_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/test/run_install_consumer.cmake
+      -DTP_GUARD_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer_path_guard.cmake
+      -DTP_GUARD_PROBE_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/test/path_guard_probe.cmake
+      -DTP_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer
+      -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
+      -DTP_TURBOUTILS_RUNTIME_DIR=$<TARGET_FILE_DIR:TurboUtils::Core>
+      -DTP_INSTALL_CMAKEDIR=${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser
+      -DTP_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
+      -DTP_GENERATOR=${CMAKE_GENERATOR}
+      -DTP_CONFIG=$<CONFIG>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/test_install_consumer_path_safety.cmake)
+  set_tests_properties(test_tbe_cbind_install_consumer_path_safety PROPERTIES
+    LABELS "tbe_cbind;install-consumer;security"
+    RUN_SERIAL TRUE)
+
+  add_test(NAME test_tbe_cbind_install_consumer_dependency_negative
+    COMMAND ${CMAKE_COMMAND}
+      -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
+      -DTP_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer
+      -DTP_DEPENDENCY_VERIFIER=${CMAKE_CURRENT_SOURCE_DIR}/test/verify_install_consumer_dependencies.cmake
+      -DTP_LINK_VERIFIER=${CMAKE_CURRENT_SOURCE_DIR}/test/verify_install_consumer_link.cmake
+      -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
+      -DTP_GENERATOR=${CMAKE_GENERATOR}
+      -DTP_CONFIG=$<CONFIG>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/test_install_consumer_dependency_negative.cmake)
+  set_tests_properties(test_tbe_cbind_install_consumer_dependency_negative PROPERTIES
+    LABELS "tbe_cbind;install-consumer;dependency-negative"
+    RUN_SERIAL TRUE)
+
   add_test(NAME test_tbe_cbind_install_consumer
     COMMAND ${CMAKE_COMMAND}
       -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
-      -DTP_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/install_consumer
       -DTP_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer
       -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
+      -DTP_TURBOUTILS_RUNTIME_DIR=$<TARGET_FILE_DIR:TurboUtils::Core>
       -DTP_PREFIX_PATH=${CMAKE_PREFIX_PATH}
       -DTP_INSTALL_CMAKEDIR=${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser
+      -DTP_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
       -DTP_GENERATOR=${CMAKE_GENERATOR}
       -DTP_CONFIG=$<CONFIG>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/run_install_consumer.cmake)
