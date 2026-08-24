@@ -53,6 +53,26 @@ tbe_compiler <schema_file> [options]
     storage forms fail before any output file is written
   - Example: `--output order.h --source-output order.c --cbind-output order_cbind.c`
 
+  典型的完整调用如下；三个路径必须不同，未请求该选项时生成 header 与 typed source
+  不会引入 CBind：
+
+  ```powershell
+  tbe_compiler order.schema --lang c `
+    --output generated/order.h `
+    --source-output generated/order.c `
+    --cbind-output generated/order_cbind.c
+  ```
+
+  sidecar 中的 `Type_cbind_data()` 返回 immutable CMeta semantic descriptor，
+  `Type_from_cserde(context, reader, object, error)` 将 format-neutral CSerde token
+  decode 到已由 `Type_init()` 初始化的 owning object；成功或失败后都由调用方调用
+  `Type_clear()`。该 descriptor 不含 `TbeTypedType` 的 TBE wire/layout metadata。
+  `[name]` 选择 CSerde map key，`[c]` 只选择 C member offset。CBind v1 仅接受
+  int32/int64/uint64、float、double、owning string 与嵌套 record；alias、optional、bool、
+  其他整数、enum、uuid、bytes、containers 与 unions 在写 output 前 fail fast。生成的
+  int64 mapping 断言 `int64_t` 与 `long` 的大小和对齐一致，因此 LLP64 Windows 上会编译
+  失败；以目标 ABI 编译 generated sidecar（例如 MSVC Release CI）验证这一防线。
+
 - `--guest-output <file>` or `-g <file>`
   - With the built-in C generator, emits a Wasm-friendly guest adapter `.c` file
   - Requires `--output`; custom templates and non-C languages are rejected
