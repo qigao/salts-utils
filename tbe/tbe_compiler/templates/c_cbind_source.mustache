@@ -20,6 +20,11 @@ _Static_assert(sizeof(uint64_t) == sizeof(size_t), "CBind uint64 storage require
 _Static_assert(_Alignof(uint64_t) == _Alignof(size_t), "CBind uint64 storage requires uint64_t and size_t to have equal alignment");
 {{/cbind_needs_uint64_abi}}
 
+#if defined(_MSC_VER)
+/* MSVC warns on the legal C tentative definitions needed for descriptor references. */
+#pragma warning(push)
+#pragma warning(disable : 4132)
+#endif
 {{#composites}}
 static const cmeta_type_desc {{name}}_cbind_type;
 static const cmeta_data_desc {{name}}_cbind_descriptor;
@@ -32,6 +37,9 @@ static const cmeta_data_desc {{name}}_cbind_descriptor;
 static const cmeta_type_desc {{name}}_cbind_type;
 static const cmeta_data_desc {{name}}_cbind_descriptor;
 {{/messages}}
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 {{#cbind_has_string}}
 static const cmeta_data_buffer_shape {{schema.schema_name}}_cbind_tstr_shape = {

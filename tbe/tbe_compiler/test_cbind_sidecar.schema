@@ -1,0 +1,12 @@
+schema CBindSidecar [id(73), version(1), byte_order(little)];
+
+composite CBindHeader {
+    int32 sequence;
+}
+
+message CBindEnvelope {
+    CBindHeader header;
+    [name(eventId), c(event_id)] int32 id;
+    string note;
+    double score;
+}
