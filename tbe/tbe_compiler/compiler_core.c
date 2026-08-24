@@ -963,18 +963,141 @@ static int tbe_compiler_cbind_schema_supported(Node *root) {
          tbe_compiler_cbind_list_supported(root, "messages");
 }
 
-static int tbe_compiler_render_empty_cbind_sidecar(const char *output_path) {
-  FILE *out_file = fopen(output_path, "wb");
+static int tbe_compiler_format_cbind_symbol(char *out, size_t out_size,
+                                            const char *format,
+                                            const char *name) {
+  int length = snprintf(out, out_size, format, name);
+  return length >= 0 && (size_t)length < out_size;
+}
 
-  if (!out_file) {
-    fprintf(stderr, "Failed to open CBind sidecar output file: %s\n", output_path);
-    return 1;
+static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
+                                             const char *schema_name,
+                                             const char *record_name) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  const char *field_name = tbe_compiler_string_value(field, "name");
+  const char *semantic_name = tbe_compiler_attribute_value(field, "name");
+  const char *type_name = NULL;
+  const char *type_desc = NULL;
+  const char *data_desc = NULL;
+  char type_name_buf[256];
+  char type_desc_buf[256];
+  char data_desc_buf[256];
+  char stable_id[768];
+  char *escaped_name;
+  int stable_length;
+
+  if (!semantic_name || !semantic_name[0]) semantic_name = field_name;
+  if (!schema_name || !record_name || !field_name || !semantic_name || !type) return 0;
+
+  if (strcmp(type, "int32") == 0 || strcmp(type, "int32_t") == 0) {
+    type_name = "int";
+    type_desc = "&cmeta_type_int";
+    data_desc = "&cmeta_data_int";
+    if (tbe_compiler_set_string(root, "cbind_needs_int32_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "int64") == 0 || strcmp(type, "int64_t") == 0) {
+    type_name = "long";
+    type_desc = "&cmeta_type_long";
+    data_desc = "&cmeta_data_long";
+    if (tbe_compiler_set_string(root, "cbind_needs_int64_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "uint64") == 0 || strcmp(type, "uint64_t") == 0) {
+    type_name = "size_t";
+    type_desc = "&cmeta_type_size";
+    data_desc = "&cmeta_data_size";
+    if (tbe_compiler_set_string(root, "cbind_needs_uint64_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "float") == 0) {
+    type_name = "float";
+    type_desc = "&cmeta_type_float";
+    data_desc = "&cmeta_data_float";
+  } else if (strcmp(type, "double") == 0) {
+    type_name = "double";
+    type_desc = "&cmeta_type_double";
+    data_desc = "&cmeta_data_double";
+  } else if (strcmp(type, "string") == 0) {
+    type_name = "tstr";
+    type_desc = "&turbo_tstr_cmeta_type";
+    if (!tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s_cbind_tstr_data", schema_name))
+      return 0;
+    data_desc = data_desc_buf;
+    if (tbe_compiler_set_string(root, "cbind_has_string", "1") != 0) return 0;
+  } else {
+    if (!tbe_compiler_format_cbind_symbol(type_name_buf, sizeof(type_name_buf), "%s_t",
+                                          type) ||
+        !tbe_compiler_format_cbind_symbol(type_desc_buf, sizeof(type_desc_buf),
+                                          "&%s_cbind_type", type) ||
+        !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s_cbind_descriptor", type))
+      return 0;
+    type_name = type_name_buf;
+    type_desc = type_desc_buf;
+    data_desc = data_desc_buf;
   }
-  if (fclose(out_file) != 0) {
-    fprintf(stderr, "Failed to close CBind sidecar output file: %s\n", output_path);
-    return 1;
+
+  escaped_name = tbe_compiler_escape_c_string(semantic_name);
+  if (!escaped_name) return 0;
+  stable_length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s.%s", schema_name,
+                           record_name, field_name);
+  if (stable_length < 0 || (size_t)stable_length >= sizeof(stable_id) ||
+      tbe_compiler_set_string(field, "cbind_semantic_name", escaped_name) != 0 ||
+      tbe_compiler_set_string(field, "cbind_stable_id", stable_id) != 0 ||
+      tbe_compiler_set_string(field, "cbind_type_name", type_name) != 0 ||
+      tbe_compiler_set_string(field, "cbind_type_desc", type_desc) != 0 ||
+      tbe_compiler_set_string(field, "cbind_data_desc", data_desc) != 0) {
+    free(escaped_name);
+    return 0;
   }
-  return 0;
+  free(escaped_name);
+  return 1;
+}
+
+static int tbe_compiler_annotate_cbind_records(Node *root, const char *list_name,
+                                               const char *schema_name) {
+  Node *list = tbe_compiler_find_child(root, list_name);
+  size_t i;
+
+  if (!list || list->type != NODE_LIST) return 1;
+  for (i = 0; i < list->data.list.count; ++i) {
+    Node *record = list->data.list.items[i];
+    Node *fields = tbe_compiler_find_child(record, "fields");
+    const char *record_name = tbe_compiler_string_value(record, "name");
+    char stable_id[512];
+    char data_stable_id[520];
+    char field_count[32];
+    int length;
+    size_t j;
+
+    if (!record_name || !fields || fields->type != NODE_LIST) return 0;
+    length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s", schema_name,
+                      record_name);
+    if (length < 0 || (size_t)length >= sizeof(stable_id)) return 0;
+    length = snprintf(data_stable_id, sizeof(data_stable_id), "%s.data", stable_id);
+    if (length < 0 || (size_t)length >= sizeof(data_stable_id)) return 0;
+    length = snprintf(field_count, sizeof(field_count), "%zu", fields->data.list.count);
+    if (length < 0 || (size_t)length >= sizeof(field_count) ||
+        tbe_compiler_set_string(record, "cbind_stable_id", stable_id) != 0 ||
+        tbe_compiler_set_string(record, "cbind_data_stable_id", data_stable_id) != 0 ||
+        tbe_compiler_set_string(record, "cbind_field_count", field_count) != 0)
+      return 0;
+    if (fields->data.list.count != 0u &&
+        tbe_compiler_set_string(record, "cbind_has_fields", "1") != 0)
+      return 0;
+
+    for (j = 0; j < fields->data.list.count; ++j)
+      if (!tbe_compiler_annotate_cbind_field(root, fields->data.list.items[j],
+                                             schema_name, record_name))
+        return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_prepare_cbind_annotations(Node *root) {
+  Node *schema = tbe_compiler_find_child(root, "schema");
+  const char *schema_name = tbe_compiler_string_value(schema, "schema_name");
+
+  if (!schema_name || !schema_name[0]) return 0;
+  return tbe_compiler_annotate_cbind_records(root, "composites", schema_name) &&
+         tbe_compiler_annotate_cbind_records(root, "groups", schema_name) &&
+         tbe_compiler_annotate_cbind_records(root, "messages", schema_name);
 }
 
 static Node *tbe_compiler_find_typed_record(Node *root, const char *name) {
@@ -1337,6 +1460,11 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
+    if (!tbe_compiler_prepare_cbind_annotations(root)) {
+      fprintf(stderr, "Failed to annotate CBind sidecar descriptors\n");
+      status = 1;
+      goto cleanup;
+    }
     if (tbe_compiler_set_string(root, "cbind_sidecar_enabled", "1") != 0) {
       status = 1;
       goto cleanup;
@@ -1459,7 +1587,12 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
 
   if (status == 0 && options->cbind_output_path) {
-    status = tbe_compiler_render_empty_cbind_sidecar(options->cbind_output_path);
+    resolved_template = tbe_compiler_resolve_resource(
+        options, "templates/c_cbind_source.mustache", template_path, sizeof(template_path));
+    status = resolved_template != NULL
+                 ? tbe_compiler_render_file(root, resolved_template,
+                                            options->cbind_output_path)
+                 : 1;
   }
 
   if (status == 0 && options->guest_output_path) {

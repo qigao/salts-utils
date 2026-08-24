@@ -1,0 +1,195 @@
+#include "{{generated_header}}"
+
+#include <cmeta/data.h>
+#include <cmeta/struct.h>
+#include <turbo_cmeta_data.h>
+
+#include <stddef.h>
+#include <stdint.h>
+
+{{#cbind_needs_int32_abi}}
+_Static_assert(sizeof(int32_t) == sizeof(int), "CBind int32 storage requires int32_t and int to have equal size");
+_Static_assert(_Alignof(int32_t) == _Alignof(int), "CBind int32 storage requires int32_t and int to have equal alignment");
+{{/cbind_needs_int32_abi}}
+{{#cbind_needs_int64_abi}}
+_Static_assert(sizeof(int64_t) == sizeof(long), "CBind int64 storage requires int64_t and long to have equal size");
+_Static_assert(_Alignof(int64_t) == _Alignof(long), "CBind int64 storage requires int64_t and long to have equal alignment");
+{{/cbind_needs_int64_abi}}
+{{#cbind_needs_uint64_abi}}
+_Static_assert(sizeof(uint64_t) == sizeof(size_t), "CBind uint64 storage requires uint64_t and size_t to have equal size");
+_Static_assert(_Alignof(uint64_t) == _Alignof(size_t), "CBind uint64 storage requires uint64_t and size_t to have equal alignment");
+{{/cbind_needs_uint64_abi}}
+
+{{#composites}}
+static const cmeta_type_desc {{name}}_cbind_type;
+static const cmeta_data_desc {{name}}_cbind_descriptor;
+{{/composites}}
+{{#groups}}
+static const cmeta_type_desc {{name}}_cbind_type;
+static const cmeta_data_desc {{name}}_cbind_descriptor;
+{{/groups}}
+{{#messages}}
+static const cmeta_type_desc {{name}}_cbind_type;
+static const cmeta_data_desc {{name}}_cbind_descriptor;
+{{/messages}}
+
+{{#cbind_has_string}}
+static const cmeta_data_buffer_shape {{schema.schema_name}}_cbind_tstr_shape = {
+    CMETA_DATA_BUFFER_OWNED
+};
+
+static const cmeta_data_desc {{schema.schema_name}}_cbind_tstr_data = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "tbe.{{schema.schema_name}}.string.data", "string", CMETA_DATA_STRING,
+    &turbo_tstr_cmeta_type, &{{schema.schema_name}}_cbind_tstr_shape,
+    &turbo_tstr_cmeta_buffer_ops
+};
+{{/cbind_has_string}}
+
+{{#composites}}
+static const cmeta_type_identity {{name}}_cbind_identity =
+    CMETA_TYPE_ID_ATOM_INIT("{{cbind_stable_id}}");
+
+static const cmeta_type_desc {{name}}_cbind_type = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t), CMETA_T_OBJECT,
+    NULL, NULL, &{{name}}_cbind_identity
+};
+
+{{#cbind_has_fields}}
+static const cmeta_field_desc {{name}}_cbind_fields[] = {
+{{#fields}}
+    {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
+{{/fields}}
+};
+
+static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+{{#fields}}
+    {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
+{{/fields}}
+};
+{{/cbind_has_fields}}
+
+static const cmeta_struct_desc {{name}}_cbind_layout = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
+    {{#cbind_has_fields}}{{name}}_cbind_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_struct_shape {{name}}_cbind_shape = {
+    &{{name}}_cbind_layout,
+    {{#cbind_has_fields}}{{name}}_cbind_data_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_desc {{name}}_cbind_descriptor = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "{{cbind_data_stable_id}}", "{{name}}", CMETA_DATA_STRUCT,
+    &{{name}}_cbind_type, &{{name}}_cbind_shape, NULL
+};
+
+const cmeta_data_desc *{{name}}_cbind_data(void) {
+    return &{{name}}_cbind_descriptor;
+}
+
+cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
+                                  {{name}}_t *object, cbind_error *error) {
+    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+}
+
+{{/composites}}
+{{#groups}}
+static const cmeta_type_identity {{name}}_cbind_identity =
+    CMETA_TYPE_ID_ATOM_INIT("{{cbind_stable_id}}");
+
+static const cmeta_type_desc {{name}}_cbind_type = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t), CMETA_T_OBJECT,
+    NULL, NULL, &{{name}}_cbind_identity
+};
+
+{{#cbind_has_fields}}
+static const cmeta_field_desc {{name}}_cbind_fields[] = {
+{{#fields}}
+    {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
+{{/fields}}
+};
+
+static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+{{#fields}}
+    {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
+{{/fields}}
+};
+{{/cbind_has_fields}}
+
+static const cmeta_struct_desc {{name}}_cbind_layout = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
+    {{#cbind_has_fields}}{{name}}_cbind_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_struct_shape {{name}}_cbind_shape = {
+    &{{name}}_cbind_layout,
+    {{#cbind_has_fields}}{{name}}_cbind_data_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_desc {{name}}_cbind_descriptor = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "{{cbind_data_stable_id}}", "{{name}}", CMETA_DATA_STRUCT,
+    &{{name}}_cbind_type, &{{name}}_cbind_shape, NULL
+};
+
+const cmeta_data_desc *{{name}}_cbind_data(void) {
+    return &{{name}}_cbind_descriptor;
+}
+
+cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
+                                  {{name}}_t *object, cbind_error *error) {
+    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+}
+
+{{/groups}}
+{{#messages}}
+static const cmeta_type_identity {{name}}_cbind_identity =
+    CMETA_TYPE_ID_ATOM_INIT("{{cbind_stable_id}}");
+
+static const cmeta_type_desc {{name}}_cbind_type = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t), CMETA_T_OBJECT,
+    NULL, NULL, &{{name}}_cbind_identity
+};
+
+{{#cbind_has_fields}}
+static const cmeta_field_desc {{name}}_cbind_fields[] = {
+{{#fields}}
+    {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
+{{/fields}}
+};
+
+static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+{{#fields}}
+    {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
+{{/fields}}
+};
+{{/cbind_has_fields}}
+
+static const cmeta_struct_desc {{name}}_cbind_layout = {
+    "{{name}}_t", sizeof({{name}}_t), _Alignof({{name}}_t),
+    {{#cbind_has_fields}}{{name}}_cbind_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_struct_shape {{name}}_cbind_shape = {
+    &{{name}}_cbind_layout,
+    {{#cbind_has_fields}}{{name}}_cbind_data_fields{{/cbind_has_fields}}{{^cbind_has_fields}}NULL{{/cbind_has_fields}}, {{cbind_field_count}}u
+};
+
+static const cmeta_data_desc {{name}}_cbind_descriptor = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "{{cbind_data_stable_id}}", "{{name}}", CMETA_DATA_STRUCT,
+    &{{name}}_cbind_type, &{{name}}_cbind_shape, NULL
+};
+
+const cmeta_data_desc *{{name}}_cbind_data(void) {
+    return &{{name}}_cbind_descriptor;
+}
+
+cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
+                                  {{name}}_t *object, cbind_error *error) {
+    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+}
+
+{{/messages}}

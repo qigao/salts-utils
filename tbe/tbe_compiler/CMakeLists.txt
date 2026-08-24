@@ -3,6 +3,7 @@
 # =============================================================================
 
 set(TBE_COMPILER_TEMPLATE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_cbind_source.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"

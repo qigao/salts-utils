@@ -1103,7 +1103,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
-    it("should accept a CBind sidecar for supported named C fields") {
+    it("should generate immutable CBind descriptors for supported records") {
       const char *schema_path = "test_tbe_compiler_cbind_supported.tbe";
       const char *header_path = "test_tbe_compiler_cbind_supported.h";
       const char *source_path = "test_tbe_compiler_cbind_supported.c";
@@ -1111,6 +1111,7 @@ spec("tbe_compiler") {
       const char *schema =
           "schema Orders;"
           "composite Price { int64 amount; }"
+          "group Adjustment { double factor; }"
           "message Order { [name(\"order-id\"), c(order_id)] int32 id; "
           "uint64 quantity; float ratio; double total; string symbol; Price price; }";
       tbe_compiler_options_t options = {
@@ -1120,7 +1121,10 @@ spec("tbe_compiler") {
           .cbind_output_path = cbind_path,
           .lang_enum = TBE_COMPILER_LANG_C,
       };
-      FILE *cbind_file = NULL;
+      char *header = NULL;
+      char *cbind_source = NULL;
+      size_t header_size = 0;
+      size_t cbind_size = 0;
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
@@ -1128,13 +1132,81 @@ spec("tbe_compiler") {
       cleanup_test_file(cbind_path);
       check_equal(write_test_file(schema_path, schema), 0);
       check_equal(tbe_compiler_run(&options), 0);
-      cbind_file = fopen(cbind_path, "rb");
-      check_not_null(cbind_file);
-      if (cbind_file) {
-        check_equal(fseek(cbind_file, 0, SEEK_END), 0);
-        check_equal(ftell(cbind_file), 0L);
-        fclose(cbind_file);
-      }
+      header = tt_read_file(header_path, &header_size);
+      cbind_source = tt_read_file(cbind_path, &cbind_size);
+      check_not_null(header);
+      check_not_null(cbind_source);
+      check(header_size != 0u);
+      check(cbind_size != 0u);
+
+      check_not_null(strstr(header, "#include <cbind/cbind.h>"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Price_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API cbind_status Price_from_cserde(cbind_context *context, cserde_reader *reader, Price_t *object, cbind_error *error);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Adjustment_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Order_cbind_data(void);"));
+
+      check_not_null(strstr(cbind_source, "#include \"test_tbe_compiler_cbind_supported.h\""));
+      check_not_null(strstr(cbind_source, "#include <cmeta/data.h>"));
+      check_not_null(strstr(cbind_source, "#include <cmeta/struct.h>"));
+      check_not_null(strstr(cbind_source, "#include <turbo_cmeta_data.h>"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(int32_t) == sizeof(int)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(int32_t) == _Alignof(int)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(int64_t) == sizeof(long)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(int64_t) == _Alignof(long)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(uint64_t) == sizeof(size_t)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(uint64_t) == _Alignof(size_t)"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_type_desc Price_cbind_type;"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_desc Price_cbind_descriptor;"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_type_identity Price_cbind_identity"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_field_desc Price_cbind_fields[]"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_struct_desc Price_cbind_layout"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_field_desc Price_cbind_data_fields[]"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_struct_shape Price_cbind_shape"));
+      check_not_null(strstr(cbind_source,
+          "{\"order-id\", \"int\", offsetof(Order_t, order_id), sizeof(int), _Alignof(int), &cmeta_type_int, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"tbe.Orders.Order.id\", \"order-id\", offsetof(Order_t, order_id), &cmeta_data_int}"));
+      check_not_null(strstr(cbind_source,
+          "{\"quantity\", \"size_t\", offsetof(Order_t, quantity), sizeof(size_t), _Alignof(size_t), &cmeta_type_size, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"ratio\", \"float\", offsetof(Order_t, ratio), sizeof(float), _Alignof(float), &cmeta_type_float, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"total\", \"double\", offsetof(Order_t, total), sizeof(double), _Alignof(double), &cmeta_type_double, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"symbol\", \"tstr\", offsetof(Order_t, symbol), sizeof(tstr), _Alignof(tstr), &turbo_tstr_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "CMETA_DATA_BUFFER_OWNED"));
+      check_not_null(strstr(cbind_source,
+          "&turbo_tstr_cmeta_buffer_ops"));
+      check_not_null(strstr(cbind_source,
+          "{\"price\", \"Price_t\", offsetof(Order_t, price), sizeof(Price_t), _Alignof(Price_t), &Price_cbind_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"tbe.Orders.Order.price\", \"price\", offsetof(Order_t, price), &Price_cbind_descriptor}"));
+      check_not_null(strstr(cbind_source,
+          "const cmeta_data_desc *Order_cbind_data(void)"));
+      check_not_null(strstr(cbind_source,
+          "return &Order_cbind_descriptor;"));
+      check_not_null(strstr(cbind_source,
+          "return cbind_decode(context, &Order_cbind_descriptor, reader, object, error);"));
+      free(header);
+      free(cbind_source);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
