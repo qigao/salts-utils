@@ -99,15 +99,35 @@ typedef struct fail_allocator_state {
   size_t call_count;
   size_t fail_at;
   size_t live_count;
+  size_t slot_16_attempts;
+  size_t slot_16_successes;
+  size_t slot_32_attempts;
+  size_t slot_32_successes;
+  int plan_build_seen;
 } fail_allocator_state;
 
 static void *fail_allocator_calloc(void *opaque, size_t count, size_t size) {
   fail_allocator_state *state = (fail_allocator_state *)opaque;
   void *pointer;
+  const int plan_allocation =
+      count == 1u && size == sizeof(tbe_cbind_plan);
+  const int slot_16 = state->plan_build_seen &&
+                      count == 16u &&
+                      size == sizeof(tbe_cbind_plan_node *);
+  const int slot_32 = state->plan_build_seen &&
+                      count == 32u &&
+                      size == sizeof(tbe_cbind_plan_node *);
   ++state->call_count;
+  if (slot_16) ++state->slot_16_attempts;
+  if (slot_32) ++state->slot_32_attempts;
   if (state->call_count == state->fail_at) return NULL;
   pointer = calloc(count, size);
-  if (pointer != NULL) ++state->live_count;
+  if (pointer != NULL) {
+    ++state->live_count;
+    if (plan_allocation) state->plan_build_seen = 1;
+    if (slot_16) ++state->slot_16_successes;
+    if (slot_32) ++state->slot_32_successes;
+  }
   return pointer;
 }
 
@@ -132,6 +152,77 @@ typedef struct tbe_cbind_depth_root {
   tbe_cbind_depth_shared shallow;
   tbe_cbind_depth_wrapper deep;
 } tbe_cbind_depth_root;
+
+enum { TBE_CBIND_REHASH_CHILD_COUNT = 9u };
+
+static const char *const tbe_cbind_rehash_child_stable_ids[
+    TBE_CBIND_REHASH_CHILD_COUNT - 1u] = {
+    "test.tbe-cbind.rehash-child.0", "test.tbe-cbind.rehash-child.1",
+    "test.tbe-cbind.rehash-child.2", "test.tbe-cbind.rehash-child.3",
+    "test.tbe-cbind.rehash-child.4", "test.tbe-cbind.rehash-child.5",
+    "test.tbe-cbind.rehash-child.6", "test.tbe-cbind.rehash-child.7"};
+
+typedef struct tbe_cbind_rehash_root {
+  tbe_cbind_test_one children[TBE_CBIND_REHASH_CHILD_COUNT];
+} tbe_cbind_rehash_root;
+
+typedef struct tbe_cbind_rehash_fixture {
+  cmeta_type_desc root_type;
+  cmeta_field_desc layout_fields[TBE_CBIND_REHASH_CHILD_COUNT];
+  cmeta_struct_desc layout;
+  cmeta_data_desc child_data[TBE_CBIND_REHASH_CHILD_COUNT - 1u];
+  cmeta_data_field_desc data_fields[TBE_CBIND_REHASH_CHILD_COUNT];
+  cmeta_data_struct_shape shape;
+  cmeta_data_desc data;
+} tbe_cbind_rehash_fixture;
+
+static void tbe_cbind_rehash_fixture_init(
+    tbe_cbind_rehash_fixture *fixture) {
+  static const char *const field_names[TBE_CBIND_REHASH_CHILD_COUNT] = {
+      "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"};
+  static const char *const stable_ids[TBE_CBIND_REHASH_CHILD_COUNT] = {
+      "test.tbe-cbind.rehash.f0", "test.tbe-cbind.rehash.f1",
+      "test.tbe-cbind.rehash.f2", "test.tbe-cbind.rehash.f3",
+      "test.tbe-cbind.rehash.f4", "test.tbe-cbind.rehash.f5",
+      "test.tbe-cbind.rehash.f6", "test.tbe-cbind.rehash.f7",
+      "test.tbe-cbind.rehash.f8"};
+  size_t index;
+  memset(fixture, 0, sizeof(*fixture));
+  fixture->root_type = (cmeta_type_desc){
+      "tbe_cbind_rehash_root", sizeof(tbe_cbind_rehash_root),
+      _Alignof(tbe_cbind_rehash_root), CMETA_T_OBJECT, NULL, NULL, NULL};
+  for (index = 0u; index < TBE_CBIND_REHASH_CHILD_COUNT; ++index) {
+    fixture->layout_fields[index] = (cmeta_field_desc){
+        field_names[index], "tbe_cbind_test_one",
+        offsetof(tbe_cbind_rehash_root, children) +
+            index * sizeof(tbe_cbind_test_one),
+        sizeof(tbe_cbind_test_one), _Alignof(tbe_cbind_test_one),
+        &tbe_cbind_test_one_type, NULL};
+    fixture->data_fields[index] = (cmeta_data_field_desc){
+        stable_ids[index], field_names[index],
+        offsetof(tbe_cbind_rehash_root, children) +
+            index * sizeof(tbe_cbind_test_one),
+        NULL};
+    if (index + 1u < TBE_CBIND_REHASH_CHILD_COUNT) {
+      fixture->child_data[index] = tbe_cbind_test_one_data;
+      fixture->child_data[index].stable_id =
+          tbe_cbind_rehash_child_stable_ids[index];
+      fixture->data_fields[index].value = &fixture->child_data[index];
+    } else {
+      fixture->data_fields[index].value = &fixture->child_data[0];
+    }
+  }
+  fixture->layout = (cmeta_struct_desc){
+      "tbe_cbind_rehash_root", sizeof(tbe_cbind_rehash_root),
+      _Alignof(tbe_cbind_rehash_root), fixture->layout_fields,
+      TBE_CBIND_REHASH_CHILD_COUNT};
+  fixture->shape = (cmeta_data_struct_shape){
+      &fixture->layout, fixture->data_fields, TBE_CBIND_REHASH_CHILD_COUNT};
+  fixture->data = (cmeta_data_desc){
+      sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+      "test.tbe-cbind.rehash-root.data", "tbe_cbind_rehash_root",
+      CMETA_DATA_STRUCT, &fixture->root_type, &fixture->shape, NULL};
+}
 
 spec("TbeCBind native plan overlay") {
   it("builds both overlays with semantic names and native storage metadata") {
@@ -311,6 +402,100 @@ spec("TbeCBind native plan overlay") {
                 TBE_CBIND_LIMIT_EXCEEDED);
     check_null(plan);
     check_equal(error.phase, TBE_CBIND_PHASE_PLAN);
+  }
+
+  it("rehashes nine unique native pairs and preserves pair identity") {
+    static const char schema[] =
+        "message Text { int32 value; } "
+        "message Wide { Text f0; Text f1; Text f2; Text f3; Text f4; "
+        "Text f5; Text f6; Text f7; Text f8; }";
+    tbe_cbind_rehash_fixture fixture;
+    fail_allocator_state state = {0u, SIZE_MAX, 0u};
+    tbe_cbind_allocator allocator = {
+        &state, fail_allocator_calloc, fail_allocator_free};
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+    const cmeta_data_struct_shape *root_shape;
+    size_t left;
+    size_t right;
+
+    tbe_cbind_rehash_fixture_init(&fixture);
+    tbe_cbind_plan_options_init(&options);
+    tbe_cbind_plan_error_init(&error);
+    check_equal(tbe_cbind_plan_create_from_text_with_allocator(
+                    schema, sizeof(schema) - 1u, "Wide", 4u,
+                    &fixture.data, &options, &plan, &error, &allocator),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    check_equal(state.slot_16_attempts, (size_t)1u);
+    check_equal(state.slot_16_successes, (size_t)1u);
+    check_equal(state.slot_32_attempts, (size_t)1u);
+    check_equal(state.slot_32_successes, (size_t)1u);
+    check_equal(plan->node_count, (size_t)9u);
+    check_null(plan->node_slots);
+    root_shape =
+        (const cmeta_data_struct_shape *)tbe_cbind_plan_shape(plan)->shape;
+    for (left = 0u; left + 1u < TBE_CBIND_REHASH_CHILD_COUNT; ++left)
+      check_equal(root_shape->fields[left].value->stable_id,
+                  tbe_cbind_rehash_child_stable_ids[left]);
+    for (left = 0u; left + 1u < TBE_CBIND_REHASH_CHILD_COUNT; ++left)
+      for (right = left + 1u;
+           right + 1u < TBE_CBIND_REHASH_CHILD_COUNT; ++right)
+        check_true(root_shape->fields[left].value !=
+                   root_shape->fields[right].value);
+    check_true(root_shape->fields[8].value == root_shape->fields[0].value);
+    tbe_cbind_plan_destroy(plan);
+    check_equal(state.live_count, (size_t)0u);
+  }
+
+  it("cleans a failed second pair-index allocation") {
+    static const char schema[] =
+        "message Text { int32 value; } "
+        "message Wide { Text f0; Text f1; Text f2; Text f3; Text f4; "
+        "Text f5; Text f6; Text f7; Text f8; }";
+    tbe_cbind_rehash_fixture fixture;
+    tbe_cbind_plan_options options;
+    size_t fail_at;
+    int saw_second_slot_failure = 0;
+    int reached_success = 0;
+
+    tbe_cbind_rehash_fixture_init(&fixture);
+    tbe_cbind_plan_options_init(&options);
+    for (fail_at = 1u; fail_at < 512u; ++fail_at) {
+      fail_allocator_state state = {0u, fail_at, 0u};
+      tbe_cbind_allocator allocator = {
+          &state, fail_allocator_calloc, fail_allocator_free};
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = (tbe_cbind_plan *)(uintptr_t)1u;
+      tbe_cbind_status status;
+
+      tbe_cbind_plan_error_init(&error);
+      status = tbe_cbind_plan_create_from_text_with_allocator(
+          schema, sizeof(schema) - 1u, "Wide", 4u, &fixture.data,
+          &options, &plan, &error, &allocator);
+      if (status == TBE_CBIND_OK) {
+        check_not_null(plan);
+        check_equal(state.slot_16_attempts, (size_t)1u);
+        check_equal(state.slot_16_successes, (size_t)1u);
+        check_equal(state.slot_32_attempts, (size_t)1u);
+        check_equal(state.slot_32_successes, (size_t)1u);
+        tbe_cbind_plan_destroy(plan);
+        check_equal(state.live_count, (size_t)0u);
+        reached_success = 1;
+        break;
+      }
+      check_equal(status, TBE_CBIND_OUT_OF_MEMORY);
+      check_null(plan);
+      if (state.slot_32_attempts == 1u &&
+          state.slot_32_successes == 0u) {
+        check_equal(state.call_count, fail_at);
+        saw_second_slot_failure = 1;
+      }
+      check_equal(state.live_count, (size_t)0u);
+    }
+    check_true(saw_second_slot_failure);
+    check_true(reached_success);
   }
 
   it("accepts repeated standard string adapters emitted in another TU") {
@@ -657,6 +842,64 @@ spec("TbeCBind native plan overlay") {
     inner_layout.fields = guarded_layout;
     inner_layout.field_count = 2u;
     inner_shape.layout = &inner_layout;
+    inner_data.shape = &inner_shape;
+    memcpy(root_fields, tbe_cbind_test_nested_data_fields,
+           sizeof(root_fields));
+    root_fields[0].value = &inner_data;
+    root_shape.fields = root_fields;
+    root_data.shape = &root_shape;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "Root", &root_data, &plan, &error),
+                TBE_CBIND_NATIVE_SHAPE_ERROR);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+    tbe_cbind_test_guarded_prefix_destroy(allocation);
+  }
+
+  it("rejects a root data count mismatch before crossing its guarded array") {
+    static const char schema[] = "message One { int32 value; }";
+    cmeta_data_field_desc data_value = tbe_cbind_test_one_data_fields[0];
+    void *allocation = NULL;
+    const cmeta_data_field_desc *guarded_data =
+        (const cmeta_data_field_desc *)tbe_cbind_test_guarded_copy_create(
+            &data_value, sizeof(data_value), &allocation);
+    cmeta_data_struct_shape shape = tbe_cbind_test_one_shape;
+    cmeta_data_desc data = tbe_cbind_test_one_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_not_null(guarded_data);
+    shape.fields = guarded_data;
+    shape.field_count = 2u;
+    data.shape = &shape;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "One", &data, &plan, &error),
+                TBE_CBIND_NATIVE_SHAPE_ERROR);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+    tbe_cbind_test_guarded_prefix_destroy(allocation);
+  }
+
+  it("rejects a nested data count mismatch before crossing its guarded array") {
+    static const char schema[] =
+        "composite Detail { int32 quantity; } "
+        "message Root { Detail detail; double score; }";
+    cmeta_data_field_desc data_value = tbe_cbind_test_inner_data_fields[0];
+    void *allocation = NULL;
+    const cmeta_data_field_desc *guarded_data =
+        (const cmeta_data_field_desc *)tbe_cbind_test_guarded_copy_create(
+            &data_value, sizeof(data_value), &allocation);
+    cmeta_data_struct_shape inner_shape = tbe_cbind_test_inner_shape;
+    cmeta_data_desc inner_data = tbe_cbind_test_inner_data;
+    cmeta_data_field_desc root_fields[2];
+    cmeta_data_struct_shape root_shape = tbe_cbind_test_nested_shape;
+    cmeta_data_desc root_data = tbe_cbind_test_nested_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_not_null(guarded_data);
+    inner_shape.fields = guarded_data;
+    inner_shape.field_count = 2u;
     inner_data.shape = &inner_shape;
     memcpy(root_fields, tbe_cbind_test_nested_data_fields,
            sizeof(root_fields));
