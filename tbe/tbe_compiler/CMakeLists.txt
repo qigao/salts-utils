@@ -276,6 +276,17 @@ set_target_properties(test_tbe_cbind_standalone_cpp PROPERTIES
   FOLDER "tbe/tbe_compiler")
 tbe_copy_turboutils_core_runtime_dep(test_tbe_cbind_standalone_cpp)
 
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME test_tbe_cbind_standalone_c
+    COMMAND $<TARGET_FILE:test_tbe_cbind_standalone_c>)
+  add_test(NAME test_tbe_cbind_standalone_cpp
+    COMMAND $<TARGET_FILE:test_tbe_cbind_standalone_cpp>)
+  set_tests_properties(
+    test_tbe_cbind_standalone_c
+    test_tbe_cbind_standalone_cpp
+    PROPERTIES LABELS "tbe_cbind;integration")
+endif()
+
 get_target_property(TBE_CBIND_STANDALONE_LINKS
                     test_tbe_cbind_standalone_static LINK_LIBRARIES)
 get_target_property(TBE_CBIND_STANDALONE_INTERFACE
