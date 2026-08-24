@@ -1,6 +1,6 @@
 # TurboUtils DataBind 2.5
 
-DataBind 是 schema 驱动的纯 C 运行时。它解析 schema、构造动态值、校验字段，
+DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
 运行时也不要求 C/C++ 编译器。
 
@@ -11,6 +11,21 @@ DataBind 是 schema 驱动的纯 C 运行时。它解析 schema、构造动态�
   bind/serialization 引擎。
 
 ## 设计边界
+
+DataBind 不属于 CBind，也不是 CBind/TbeCBind 的 adapter 或 fallback。四条路线按输入与
+目标选择：
+
+| 路线 | 使用条件 | 运行时结果 |
+| --- | --- | --- |
+| `TurboUtils::CBind` | 已有最终 CMeta semantic descriptor 与 CSerde reader | 直接填充已有 C struct |
+| `TurboParser::TbeCBind` | TBE schema 运行时到达，且调用方已有 native CMeta descriptor | immutable overlay plan，再直接调用 CBind |
+| `TurboParser::DataBind` | 需要动态值树、跨格式对象或 `TBE_TYPED_*` conversion | DataBind-owned dynamic/typed result |
+| build-time sidecar | schema 在构建期已知 | 生成 immutable descriptor，direct CBind |
+
+TbeCBind 不调用或链接 DataBind；DataBind 也不是缺少 native shape 时的后备路径。TBE
+schema 本身没有目标 ABI 的 size/alignment/offset 与 buffer ownership callbacks，因而
+schema-only 不能推出任意 C struct。TbeCBind 的完整选择矩阵、CMake 用法和可编译示例见
+[`../tbe_cbind/README.md`](../tbe_cbind/README.md)。
 
 DataBind 2.5 只定义两条强类型路线：
 
@@ -143,6 +158,11 @@ symbol visibility。静态库不定义这两个宏。
 另一套 TBE codec：`CSerde` 是 format-neutral 的 token contract，`CBind` 是把该 token
 contract 解到 CMeta-described native storage 的 format-neutral kernel，而 JSON 的具体
 语法、DOM 与 token 投影仍由 TurboParser JSON adapter 负责。
+
+该 sidecar 是 build-time direct CBind 路线，不经过 TbeCBind plan，也不把 DataBind
+变成 CBind 的组成部分。示例 schema library 同时编译 typed source 与 sidecar 时会分别
+链接 `TurboParser::DataBind` 和 `TurboUtils::CBind`，这是两个并列产物的依赖并集；仅使用
+sidecar descriptor/decode 的执行链仍是 direct CBind。
 
 同一份 TBE schema 是 generated owning struct、`TbeTypedType` 与 CBind semantic
 sidecar 的唯一事实源。不过二者的 metadata 保持独立：`TbeTypedType` 独占 TBE 的

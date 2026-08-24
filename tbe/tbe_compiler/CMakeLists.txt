@@ -203,6 +203,12 @@ set_target_properties(test_tbe_cbind_sidecar_cpp PROPERTIES
   CXX_STANDARD_REQUIRED ON)
 tbe_copy_turbonet_runtime_deps(test_tbe_cbind_sidecar_cpp WITH_DATABIND)
 
+cmake_add_benchmark(benchmark_tbe_cbind
+  SOURCES ${CMAKE_SOURCE_DIR}/tbe/tbe_cbind/test/benchmark_tbe_cbind.c
+  LIBS TurboParser::TbeCBind test_tbe_cbind_sidecar_static TurboUtils::TinyTest
+  FOLDER "tbe/tbe_cbind/benchmarks")
+tbe_copy_turbonet_runtime_deps(benchmark_tbe_cbind WITH_DATABIND)
+
 find_program(TBE_WASM_GUEST_CLANG NAMES clang clang.exe)
 if(TBE_WASM_GUEST_CLANG)
   set(TBE_WASM_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_wasm")
