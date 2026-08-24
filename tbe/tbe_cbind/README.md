@@ -281,3 +281,30 @@ benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 
 
 这是一次本机 microbenchmark，没有统计置信区间；表中两个 decode 数字的微小差异不作
 性能归因，也不能外推到其他输入、机器或 DataBind。
+
+`benchmark_cbind_vs_data_bind` 是单独的公平性比较 target，也是该目录中唯一有意链接
+`TurboParser::DataBind` 的 TbeCBind benchmark。两条路径共享同一份 schema、同一段 52-byte
+JSON 和同一个 generated `TbeCBindBenchEnvelope_t` destination，并分别报告：
+
+- setup：CBind 的 schema plan creation；DataBind 的 codec creation 加 typed descriptor
+  schema validation。
+- end-to-end decode：CBind 的 JSON DOM parse、CSerde reader creation 和 plan decode；
+  DataBind 的 JSON parse 和 typed struct materialization。
+
+输出初始化、warm-up、字段正确性校验，以及持久 plan/codec 和输出数组等 benchmark-owned
+资源的清理位于计时区外。每次调用产生的 JSON DOM、CSerde reader、DataBind temporary/value
+及其 teardown 均属于对应的 end-to-end 计时。由于 DataBind 当前没有公开的 typed
+CSerde-reader API，该 target 不把 CBind 的预生成 token kernel 与 DataBind 的完整 JSON 路径
+混称为等价比较；若只需观察 CBind binding kernel，应继续运行 `benchmark_tbe_cbind`。
+
+同一环境连续五次运行的 `avg/op` 中位数与范围如下；每次运行内部仍使用表中的 samples：
+
+| Case | Samples/run | median avg/op | avg/op range | median ops/s |
+| --- | ---: | ---: | ---: | ---: |
+| CBind: TBE plan creation | 100 | 23.045 us | 22.559–23.700 us | 43,393 |
+| DataBind: codec creation + typed schema validation | 100 | 35.663 us | 34.390–42.561 us | 28,040 |
+| CBind: JSON DOM + CSerde + plan decode | 10,000 | 6.156 us | 1.853–6.626 us | 162,448 |
+| DataBind: JSON parse + typed struct materialization | 10,000 | 7.078 us | 4.317–8.837 us | 141,285 |
+
+这些数字只说明该机器、该标量/嵌套输入下两条完整路径处于相近量级；运行间抖动明显，
+不足以证明普遍等价，也不能把差异归因到 binding、JSON parser 或 allocator 中某一层。

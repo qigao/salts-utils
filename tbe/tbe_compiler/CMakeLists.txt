@@ -381,6 +381,13 @@ cmake_add_benchmark(benchmark_tbe_cbind
   FOLDER "tbe/tbe_cbind/benchmarks")
 tbe_copy_turbonet_runtime_deps(benchmark_tbe_cbind)
 
+cmake_add_benchmark(benchmark_cbind_vs_data_bind
+  SOURCES ${CMAKE_SOURCE_DIR}/tbe/tbe_cbind/test/benchmark_cbind_vs_data_bind.c
+  LIBS TurboParser::TbeCBind TurboParser::DataBind benchmark_tbe_cbind_sidecar TurboUtils::TinyTest
+  DEFS TBE_CBIND_BENCHMARK_SCHEMA_PATH="${TBE_CBIND_BENCHMARK_SCHEMA}"
+  FOLDER "tbe/tbe_cbind/benchmarks")
+tbe_copy_turbonet_runtime_deps(benchmark_cbind_vs_data_bind WITH_DATABIND)
+
 # Keep the benchmark dependency contract narrow. This complements the actual
 # link-command inspection used by the benchmark verification procedure.
 get_target_property(TBE_CBIND_BENCHMARK_SIDECAR_LINKS
@@ -413,6 +420,19 @@ string(TOLOWER
        TBE_CBIND_BENCHMARK_CLOSURE_LOWER)
 if(TBE_CBIND_BENCHMARK_CLOSURE_LOWER MATCHES "databind|data_bind|tbe_typed")
   message(FATAL_ERROR "benchmark_tbe_cbind must remain CBind-only")
+endif()
+
+# The comparison target is intentionally the only TbeCBind benchmark that
+# links DataBind. Exact ordering keeps the measured dependency boundary auditable.
+get_target_property(TBE_CBIND_DATABIND_BENCHMARK_LINKS
+                    benchmark_cbind_vs_data_bind LINK_LIBRARIES)
+get_target_property(TBE_CBIND_DATABIND_BENCHMARK_SOURCES
+                    benchmark_cbind_vs_data_bind SOURCES)
+if(NOT TBE_CBIND_DATABIND_BENCHMARK_LINKS STREQUAL
+       "TurboParser::TbeCBind;TurboParser::DataBind;benchmark_tbe_cbind_sidecar;TurboUtils::TinyTest" OR
+   NOT TBE_CBIND_DATABIND_BENCHMARK_SOURCES STREQUAL
+       "${CMAKE_SOURCE_DIR}/tbe/tbe_cbind/test/benchmark_cbind_vs_data_bind.c")
+  message(FATAL_ERROR "benchmark_cbind_vs_data_bind dependency contract changed")
 endif()
 
 find_program(TBE_WASM_GUEST_CLANG NAMES clang clang.exe)
