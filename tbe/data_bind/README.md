@@ -165,8 +165,9 @@ tbe_compiler order.schema --lang c `
 
 把 typed source 和 sidecar 编译进同一个 schema library。typed source 需要
 `TurboParser::DataBind`，sidecar/decode 需要 `TurboUtils::CBind`；JSON 输入还要链接
-直接 adapter 的 `TurboParser::JsonParser`，或使用公开 JSON facade 时链接
-`TurboParser::Parser`。两种 JSON 入口二选一，不需要把 `tbe_compiler` 部署到运行时。
+安装态 consumer 使用公开 JSON facade `TurboParser::Parser`。在本仓库/build-tree 内部，
+若直接使用 JSON DOM adapter，则链接实际 build target `json_parser`；它不是安装态的
+imported target。两种 JSON 入口二选一，不需要把 `tbe_compiler` 部署到运行时。
 
 ```cmake
 add_library(order_schema STATIC
@@ -176,10 +177,14 @@ target_include_directories(order_schema PUBLIC generated)
 target_link_libraries(order_schema
   PUBLIC TurboParser::DataBind TurboUtils::CBind)
 
-# Direct JSON DOM adapter:
-target_link_libraries(my_app PRIVATE order_schema TurboParser::JsonParser)
-# Or the public TurboParser JSON facade:
-# target_link_libraries(my_app PRIVATE order_schema TurboParser::Parser)
+# Installed consumer: public TurboParser JSON facade.
+target_link_libraries(my_app PRIVATE order_schema TurboParser::Parser)
+```
+
+仓内/build-tree 的 direct adapter 路径改为：
+
+```cmake
+target_link_libraries(my_app PRIVATE order_schema json_parser)
 ```
 
 ### 生成的 API、所有权与限制
