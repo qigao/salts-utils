@@ -226,52 +226,65 @@ static const cserde_reader_ops transient_reader_ops = {
     transient_reader_next};
 
 spec("TbeCBind JSON integration") {
-  it("decodes nested renamed fixed scalars and lowercase UUID from JSON") {
-    static const char json[] =
+  it("decodes nested renamed fixed scalars and UUID case variants from JSON") {
+    static const char lowercase_json[] =
         "{\"payload\":{\"enabled\":true,\"min8\":-128,\"max8\":255,"
         "\"min16\":-32768,\"max16\":65535,"
         "\"min32\":-2147483648,\"max32\":4294967295,"
         "\"min64\":-9223372036854775808,\"max64\":18446744073709551615,"
         "\"single\":1.5,\"decimal\":2.5,"
         "\"identifier\":\"00112233-4455-6677-8899-aabbccddeeff\"}}";
+    static const char uppercase_json[] =
+        "{\"payload\":{\"enabled\":true,\"min8\":-128,\"max8\":255,"
+        "\"min16\":-32768,\"max16\":65535,"
+        "\"min32\":-2147483648,\"max32\":4294967295,"
+        "\"min64\":-9223372036854775808,\"max64\":18446744073709551615,"
+        "\"single\":1.5,\"decimal\":2.5,"
+        "\"identifier\":\"00112233-4455-6677-8899-AABBCCDDEEFF\"}}";
+    static const char *const documents[] = {lowercase_json, uppercase_json};
     static const uint8_t expected_uuid[TURBO_UUID_SIZE] = {
         0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
         0x88u, 0x99u, 0xaau, 0xbbu, 0xccu, 0xddu, 0xeeu, 0xffu};
-    turbo_json_doc_t *document = NULL;
-    cserde_reader *reader = NULL;
-    tbe_cbind_test_scalar_envelope out = {0};
     unsigned char scratch[32] = {0};
     cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
         scratch, sizeof(scratch), 2u, 0u, 64u);
-    cbind_error error = CBIND_ERROR_INIT;
     tbe_cbind_plan *plan = json_make_plan(
         json_scalar_envelope_schema, sizeof(json_scalar_envelope_schema) - 1u,
         "Envelope", sizeof("Envelope") - 1u,
-        &tbe_cbind_test_scalar_envelope_data);
+        tbe_cbind_test_scalar_envelope_data_get());
+    size_t index;
 
-    check_equal(turbo_parse_json((const uint8_t *)json, sizeof(json) - 1u,
-                                 &document),
-                0);
-    reader = turbo_json_cserde_reader_create(document, 2u);
-    check_not_null(reader);
-    if (reader != NULL)
-      check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
-                  CBIND_OK);
-    check_true(out.values.boolean);
-    check_equal(out.values.sint8, INT8_MIN);
-    check_equal(out.values.uint8, UINT8_MAX);
-    check_equal(out.values.sint16, INT16_MIN);
-    check_equal(out.values.uint16, UINT16_MAX);
-    check_equal(out.values.sint32, INT32_MIN);
-    check_equal(out.values.uint32, UINT32_MAX);
-    check_equal(out.values.sint64, INT64_MIN);
-    check_equal(out.values.uint64, UINT64_MAX);
-    check(out.values.real32 == 1.5f);
-    check(out.values.real64 == 2.5);
-    check_equal(out.values.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+    for (index = 0u; index < sizeof(documents) / sizeof(documents[0]); ++index) {
+      turbo_json_doc_t *document = NULL;
+      cserde_reader *reader = NULL;
+      tbe_cbind_test_scalar_envelope out = {0};
+      cbind_error error = CBIND_ERROR_INIT;
 
-    turbo_json_cserde_reader_destroy(reader);
-    turbo_free_json(&document);
+      check_equal(turbo_parse_json((const uint8_t *)documents[index],
+                                   strlen(documents[index]), &document),
+                  0);
+      reader = turbo_json_cserde_reader_create(document, 2u);
+      check_not_null(reader);
+      if (reader != NULL)
+        check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
+                    CBIND_OK);
+      check_true(out.values.boolean);
+      check_equal(out.values.sint8, INT8_MIN);
+      check_equal(out.values.uint8, UINT8_MAX);
+      check_equal(out.values.sint16, INT16_MIN);
+      check_equal(out.values.uint16, UINT16_MAX);
+      check_equal(out.values.sint32, INT32_MIN);
+      check_equal(out.values.uint32, UINT32_MAX);
+      check_equal(out.values.sint64, INT64_MIN);
+      check_equal(out.values.uint64, UINT64_MAX);
+      check(out.values.real32 == 1.5f);
+      check(out.values.real64 == 2.5);
+      check_equal(out.values.uuid.bytes, expected_uuid,
+                  sizeof(expected_uuid));
+
+      turbo_json_cserde_reader_destroy(reader);
+      turbo_free_json(&document);
+    }
     tbe_cbind_plan_destroy(plan);
   }
 
@@ -292,7 +305,7 @@ spec("TbeCBind JSON integration") {
     tbe_cbind_plan *plan = json_make_plan(
         json_scalar_envelope_schema, sizeof(json_scalar_envelope_schema) - 1u,
         "Envelope", sizeof("Envelope") - 1u,
-        &tbe_cbind_test_scalar_envelope_data);
+        tbe_cbind_test_scalar_envelope_data_get());
 
     check_equal(turbo_parse_json((const uint8_t *)json, sizeof(json) - 1u,
                                  &document),
@@ -307,6 +320,43 @@ spec("TbeCBind JSON integration") {
 
     turbo_json_cserde_reader_destroy(reader);
     turbo_free_json(&document);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("rolls back the complete JSON record for narrow signed and unsigned overflow") {
+    static const char *const documents[] = {
+        "{\"payload\":{\"enabled\":true,\"min8\":-129}}",
+        "{\"payload\":{\"enabled\":true,\"min8\":1,\"max8\":256}}"};
+    static const tbe_cbind_test_scalar_envelope zero = {0};
+    unsigned char scratch[32] = {0};
+    cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
+        scratch, sizeof(scratch), 2u, 0u, 64u);
+    tbe_cbind_plan *plan = json_make_plan(
+        json_scalar_envelope_schema, sizeof(json_scalar_envelope_schema) - 1u,
+        "Envelope", sizeof("Envelope") - 1u,
+        tbe_cbind_test_scalar_envelope_data_get());
+    size_t index;
+
+    for (index = 0u; index < sizeof(documents) / sizeof(documents[0]); ++index) {
+      turbo_json_doc_t *document = NULL;
+      cserde_reader *reader = NULL;
+      tbe_cbind_test_scalar_envelope out = {0};
+      cbind_error error = CBIND_ERROR_INIT;
+
+      check_equal(turbo_parse_json((const uint8_t *)documents[index],
+                                   strlen(documents[index]), &document),
+                  0);
+      reader = turbo_json_cserde_reader_create(document, 2u);
+      check_not_null(reader);
+      if (reader != NULL)
+        check_equal(tbe_cbind_plan_decode(plan, &context, reader, &out, &error),
+                    CBIND_VALUE_OUT_OF_RANGE);
+      check_equal(&out, &zero, sizeof(out));
+      check_equal(error.status, CBIND_VALUE_OUT_OF_RANGE);
+
+      turbo_json_cserde_reader_destroy(reader);
+      turbo_free_json(&document);
+    }
     tbe_cbind_plan_destroy(plan);
   }
 

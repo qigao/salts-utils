@@ -142,7 +142,7 @@ spec("TbeCBind schema semantic model") {
   }
 
   it("accepts every canonical scalar spelling and exact alias") {
-    static const scalar_acceptance_case cases[] = {
+    const scalar_acceptance_case cases[] = {
         {"bool", &cmeta_data_bool},
         {"int8", &turbo_int8_cmeta_data},
         {"int8_t", &turbo_int8_cmeta_data},

@@ -117,7 +117,9 @@ static const cmeta_type_desc tbe_cbind_test_scalars_type = {
   {#member_, #c_type_, offsetof(tbe_cbind_test_scalars, member_),           \
    sizeof(c_type_), _Alignof(c_type_), (type_desc_), NULL}
 
-static const cmeta_field_desc tbe_cbind_test_scalars_layout_fields[] = {
+enum { TBE_CBIND_TEST_SCALAR_UUID_INDEX = 11u };
+
+static cmeta_field_desc tbe_cbind_test_scalars_layout_fields[] = {
     TBE_CBIND_TEST_SCALAR_LAYOUT(boolean, bool, &cmeta_type_bool),
     TBE_CBIND_TEST_SCALAR_LAYOUT(sint8, int8_t, &turbo_int8_cmeta_type),
     TBE_CBIND_TEST_SCALAR_LAYOUT(uint8, uint8_t, &turbo_uint8_cmeta_type),
@@ -129,7 +131,7 @@ static const cmeta_field_desc tbe_cbind_test_scalars_layout_fields[] = {
     TBE_CBIND_TEST_SCALAR_LAYOUT(uint64, uint64_t, &turbo_uint64_cmeta_type),
     TBE_CBIND_TEST_SCALAR_LAYOUT(real32, float, &cmeta_type_float),
     TBE_CBIND_TEST_SCALAR_LAYOUT(real64, double, &cmeta_type_double),
-    TBE_CBIND_TEST_SCALAR_LAYOUT(uuid, turbo_uuid_t, &turbo_uuid_cmeta_type)};
+    TBE_CBIND_TEST_SCALAR_LAYOUT(uuid, turbo_uuid_t, NULL)};
 
 #undef TBE_CBIND_TEST_SCALAR_LAYOUT
 
@@ -143,7 +145,7 @@ static const cmeta_struct_desc tbe_cbind_test_scalars_layout = {
   {"test.tbe-cbind.scalars." #member_, #member_,                          \
    offsetof(tbe_cbind_test_scalars, member_), (data_desc_)}
 
-static const cmeta_data_field_desc tbe_cbind_test_scalars_data_fields[] = {
+static cmeta_data_field_desc tbe_cbind_test_scalars_data_fields[] = {
     TBE_CBIND_TEST_SCALAR_DATA(boolean, &cmeta_data_bool),
     TBE_CBIND_TEST_SCALAR_DATA(sint8, &turbo_int8_cmeta_data),
     TBE_CBIND_TEST_SCALAR_DATA(uint8, &turbo_uint8_cmeta_data),
@@ -155,7 +157,7 @@ static const cmeta_data_field_desc tbe_cbind_test_scalars_data_fields[] = {
     TBE_CBIND_TEST_SCALAR_DATA(uint64, &turbo_uint64_cmeta_data),
     TBE_CBIND_TEST_SCALAR_DATA(real32, &cmeta_data_float),
     TBE_CBIND_TEST_SCALAR_DATA(real64, &cmeta_data_double),
-    TBE_CBIND_TEST_SCALAR_DATA(uuid, &turbo_uuid_cmeta_data)};
+    TBE_CBIND_TEST_SCALAR_DATA(uuid, NULL)};
 
 #undef TBE_CBIND_TEST_SCALAR_DATA
 
@@ -168,6 +170,16 @@ static const cmeta_data_desc tbe_cbind_test_scalars_data = {
     "test.tbe-cbind.scalars.data", "tbe_cbind_test_scalars",
     CMETA_DATA_STRUCT, &tbe_cbind_test_scalars_type,
     &tbe_cbind_test_scalars_shape, NULL};
+
+static inline const cmeta_data_desc *tbe_cbind_test_scalars_data_get(void) {
+  /* Core UUID objects are dllimport symbols on MSVC, so their addresses are
+   * bound at test setup instead of used as C static initializer constants. */
+  tbe_cbind_test_scalars_layout_fields[TBE_CBIND_TEST_SCALAR_UUID_INDEX].type =
+      &turbo_uuid_cmeta_type;
+  tbe_cbind_test_scalars_data_fields[TBE_CBIND_TEST_SCALAR_UUID_INDEX].value =
+      &turbo_uuid_cmeta_data;
+  return &tbe_cbind_test_scalars_data;
+}
 
 typedef struct tbe_cbind_test_scalar_envelope {
   tbe_cbind_test_scalars values;
@@ -201,6 +213,12 @@ static const cmeta_data_desc tbe_cbind_test_scalar_envelope_data = {
     "test.tbe-cbind.scalar-envelope.data", "tbe_cbind_test_scalar_envelope",
     CMETA_DATA_STRUCT, &tbe_cbind_test_scalar_envelope_type,
     &tbe_cbind_test_scalar_envelope_shape, NULL};
+
+static inline const cmeta_data_desc *
+tbe_cbind_test_scalar_envelope_data_get(void) {
+  (void)tbe_cbind_test_scalars_data_get();
+  return &tbe_cbind_test_scalar_envelope_data;
+}
 
 typedef struct tbe_cbind_test_inner {
   int quantity;

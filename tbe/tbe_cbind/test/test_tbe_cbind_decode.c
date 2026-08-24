@@ -5,10 +5,13 @@
 #include "tinytest.h"
 #include "turbo_thread.h"
 
+#include <float.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+const cmeta_data_desc *tbe_cbind_multitu_external_uuid_data(void);
 
 #define TOKEN_MAP_BEGIN { .kind = CSERDE_MAP_BEGIN }
 #define TOKEN_MAP_END { .kind = CSERDE_MAP_END }
@@ -46,6 +49,11 @@ typedef struct tbe_cbind_mixed_string_pair {
   tbe_cbind_mixed_owned_text left;
   tbe_cbind_mixed_borrowed_text right;
 } tbe_cbind_mixed_string_pair;
+
+typedef struct tbe_cbind_external_uuid_record {
+  int32_t prefix;
+  turbo_uuid_t uuid;
+} tbe_cbind_external_uuid_record;
 
 static cserde_status token_reader_next(void *opaque, cserde_token *out) {
   token_reader_context *source = (token_reader_context *)opaque;
@@ -158,7 +166,9 @@ spec("TbeCBind transactional decode facade") {
     tbe_cbind_plan_destroy(plan);
   }
 
-  it("decodes every fixed scalar minimum and maximum plus canonical UUID case variants") {
+  it("decodes every fixed scalar finite boundary plus canonical UUID case variants") {
+    /* CSerde floating tokens carry double: binary32 extrema are exactly
+     * representable there, while binary64 extrema exercise the token limit. */
     static const cserde_token minimum_tokens[] = {
         TOKEN_MAP_BEGIN,
         TOKEN_KEY("boolean"), TOKEN_BOOL(false),
@@ -170,8 +180,8 @@ spec("TbeCBind transactional decode facade") {
         TOKEN_KEY("uint32"), TOKEN_UINT(0u),
         TOKEN_KEY("sint64"), TOKEN_SINT(INT64_MIN),
         TOKEN_KEY("uint64"), TOKEN_UINT(0u),
-        TOKEN_KEY("real32"), TOKEN_FLOAT(-1.5),
-        TOKEN_KEY("real64"), TOKEN_FLOAT(-2.5),
+        TOKEN_KEY("real32"), TOKEN_FLOAT(-FLT_MAX),
+        TOKEN_KEY("real64"), TOKEN_FLOAT(-DBL_MAX),
         TOKEN_KEY("uuid"),
         TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-aabbccddeeff",
                     CSERDE_VIEW_TRANSIENT),
@@ -187,8 +197,8 @@ spec("TbeCBind transactional decode facade") {
         TOKEN_KEY("uint32"), TOKEN_UINT(UINT32_MAX),
         TOKEN_KEY("sint64"), TOKEN_SINT(INT64_MAX),
         TOKEN_KEY("uint64"), TOKEN_UINT(UINT64_MAX),
-        TOKEN_KEY("real32"), TOKEN_FLOAT(1.5),
-        TOKEN_KEY("real64"), TOKEN_FLOAT(2.5),
+        TOKEN_KEY("real32"), TOKEN_FLOAT(FLT_MAX),
+        TOKEN_KEY("real64"), TOKEN_FLOAT(DBL_MAX),
         TOKEN_KEY("uuid"),
         TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-AABBCCDDEEFF",
                     CSERDE_VIEW_TRANSIENT),
@@ -200,7 +210,8 @@ spec("TbeCBind transactional decode facade") {
     tbe_cbind_test_scalars out = {0};
     cbind_error error = CBIND_ERROR_INIT;
     tbe_cbind_plan *plan = make_plan(
-        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+        tbe_cbind_test_scalar_schema, "Scalars",
+        tbe_cbind_test_scalars_data_get());
 
     check_equal(decode_tokens(
                     plan, minimum_tokens,
@@ -217,8 +228,8 @@ spec("TbeCBind transactional decode facade") {
     check_equal(out.uint32, UINT32_C(0));
     check_equal(out.sint64, INT64_MIN);
     check_equal(out.uint64, UINT64_C(0));
-    check(out.real32 == -1.5f);
-    check(out.real64 == -2.5);
+    check(out.real32 == -FLT_MAX);
+    check(out.real64 == -DBL_MAX);
     check_equal(out.uuid.bytes, expected_uuid, sizeof(expected_uuid));
 
     memset(&out, 0, sizeof(out));
@@ -238,9 +249,91 @@ spec("TbeCBind transactional decode facade") {
     check_equal(out.uint32, UINT32_MAX);
     check_equal(out.sint64, INT64_MAX);
     check_equal(out.uint64, UINT64_MAX);
-    check(out.real32 == 1.5f);
-    check(out.real64 == 2.5);
+    check(out.real32 == FLT_MAX);
+    check(out.real64 == DBL_MAX);
     check_equal(out.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("executes external-TU UUID callbacks and rolls back invalid input") {
+    static const char schema[] =
+        "message ExternalUuid { int32 prefix; uuid uuid; }";
+    static const cserde_token valid_tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("prefix"), TOKEN_SINT(7),
+        TOKEN_KEY("uuid"),
+        TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-aabbccddeeff",
+                    CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const cserde_token invalid_tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("prefix"), TOKEN_SINT(9),
+        TOKEN_KEY("uuid"),
+        TOKEN_SLICE(CSERDE_STRING, "00112233-4455-6677-8899-aabbccddeefX",
+                    CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END};
+    static const uint8_t expected_uuid[TURBO_UUID_SIZE] = {
+        0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+        0x88u, 0x99u, 0xaau, 0xbbu, 0xccu, 0xddu, 0xeeu, 0xffu};
+    static const tbe_cbind_external_uuid_record zero = {0};
+    const cmeta_data_desc *external_uuid =
+        tbe_cbind_multitu_external_uuid_data();
+    cmeta_type_desc record_type = {
+        "tbe_cbind_external_uuid_record",
+        sizeof(tbe_cbind_external_uuid_record),
+        _Alignof(tbe_cbind_external_uuid_record),
+        CMETA_T_OBJECT, NULL, NULL, NULL};
+    cmeta_field_desc layout_fields[] = {
+        {"prefix", "int32_t", offsetof(tbe_cbind_external_uuid_record, prefix),
+         sizeof(int32_t), _Alignof(int32_t), &turbo_int32_cmeta_type, NULL},
+        {"uuid", "turbo_uuid_t",
+         offsetof(tbe_cbind_external_uuid_record, uuid), sizeof(turbo_uuid_t),
+         _Alignof(turbo_uuid_t), &turbo_uuid_cmeta_type, NULL}};
+    cmeta_struct_desc layout = {
+        "tbe_cbind_external_uuid_record",
+        sizeof(tbe_cbind_external_uuid_record),
+        _Alignof(tbe_cbind_external_uuid_record), layout_fields, 2u};
+    cmeta_data_field_desc data_fields[] = {
+        {"test.tbe-cbind.external-uuid.prefix", "prefix",
+         offsetof(tbe_cbind_external_uuid_record, prefix),
+         &turbo_int32_cmeta_data},
+        {"test.tbe-cbind.external-uuid.uuid", "uuid",
+         offsetof(tbe_cbind_external_uuid_record, uuid), external_uuid}};
+    cmeta_data_struct_shape shape = {&layout, data_fields, 2u};
+    cmeta_data_desc data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.external-uuid.data",
+        "tbe_cbind_external_uuid_record", CMETA_DATA_STRUCT,
+        &record_type, &shape, NULL};
+    unsigned char scratch[2] = {0};
+    tbe_cbind_external_uuid_record out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan;
+
+    check_not_null(external_uuid);
+    if (external_uuid == NULL) return;
+    plan = make_plan(schema, "ExternalUuid", &data);
+    check_equal(decode_tokens(plan, valid_tokens,
+                              sizeof(valid_tokens) / sizeof(valid_tokens[0]),
+                              SIZE_MAX, &out, 1u, 64u, scratch,
+                              sizeof(scratch), &error, NULL),
+                CBIND_OK);
+    check_equal(out.prefix, INT32_C(7));
+    check_equal(out.uuid.bytes, expected_uuid, sizeof(expected_uuid));
+
+    check_equal(cmeta_data_buffer_restore_zero(external_uuid, &out.uuid),
+                CMETA_OK);
+    out.prefix = 0;
+    error = (cbind_error)CBIND_ERROR_INIT;
+    check_equal(decode_tokens(
+                    plan, invalid_tokens,
+                    sizeof(invalid_tokens) / sizeof(invalid_tokens[0]),
+                    SIZE_MAX, &out, 1u, 64u, scratch, sizeof(scratch),
+                    &error, NULL),
+                CBIND_TARGET_ERROR);
+    check_equal(&out, &zero, sizeof(out));
+    check_equal(error.status, CBIND_TARGET_ERROR);
+    check_equal(error.target_status, CMETA_INVALID_ARGUMENT);
     tbe_cbind_plan_destroy(plan);
   }
 
@@ -254,7 +347,8 @@ spec("TbeCBind transactional decode facade") {
     tbe_cbind_test_scalars out = {0};
     cbind_error error = CBIND_ERROR_INIT;
     tbe_cbind_plan *plan = make_plan(
-        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+        tbe_cbind_test_scalar_schema, "Scalars",
+        tbe_cbind_test_scalars_data_get());
 
     check_equal(decode_tokens(plan, tokens,
                               sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
@@ -290,7 +384,8 @@ spec("TbeCBind transactional decode facade") {
     tbe_cbind_test_scalars out = {0};
     cbind_error error = CBIND_ERROR_INIT;
     tbe_cbind_plan *plan = make_plan(
-        tbe_cbind_test_scalar_schema, "Scalars", &tbe_cbind_test_scalars_data);
+        tbe_cbind_test_scalar_schema, "Scalars",
+        tbe_cbind_test_scalars_data_get());
 
     check_equal(decode_tokens(plan, tokens,
                               sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,

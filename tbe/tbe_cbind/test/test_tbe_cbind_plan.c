@@ -13,6 +13,24 @@ const cmeta_data_desc *tbe_cbind_multitu_external_uuid_data(void);
 const struct tbe_cbind_capability *tbe_cbind_capability_find(
     const char *type_name);
 
+static bool tbe_cbind_test_replaced_uuid_is_zero(const void *object) {
+  (void)object;
+  return true;
+}
+
+static cmeta_status tbe_cbind_test_replaced_uuid_assign(
+    void *object, const unsigned char *data, size_t size, size_t max_bytes) {
+  (void)object;
+  (void)data;
+  (void)size;
+  (void)max_bytes;
+  return CMETA_OK;
+}
+
+static void tbe_cbind_test_replaced_uuid_restore_zero(void *object) {
+  (void)object;
+}
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -132,6 +150,7 @@ static void check_scalar_slot_rejected(const char *schema,
   check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
   check_equal(error.path, "One.value");
   check_equal(error.target_status, expected_target);
+  tbe_cbind_plan_destroy(plan);
 }
 
 typedef struct fail_allocator_state {
@@ -792,6 +811,39 @@ spec("TbeCBind native plan overlay") {
     check_scalar_slot_rejected("message One { int16 value; }", &wrong_align,
                                TBE_CBIND_TYPE_MISMATCH,
                                CMETA_TYPE_MISMATCH);
+  }
+
+  it("rejects a replaced UUID is_zero callback before plan publication") {
+    cmeta_data_desc mutated_data = turbo_uuid_cmeta_data;
+    cmeta_data_buffer_ops mutated_ops = turbo_uuid_cmeta_buffer_ops;
+
+    mutated_data.buffer_ops = &mutated_ops;
+    mutated_ops.is_zero = tbe_cbind_test_replaced_uuid_is_zero;
+    check_scalar_slot_rejected("message One { uuid value; }", &mutated_data,
+                               TBE_CBIND_NATIVE_SHAPE_ERROR,
+                               CMETA_INVALID_ARGUMENT);
+  }
+
+  it("rejects a replaced UUID assign callback before plan publication") {
+    cmeta_data_desc mutated_data = turbo_uuid_cmeta_data;
+    cmeta_data_buffer_ops mutated_ops = turbo_uuid_cmeta_buffer_ops;
+
+    mutated_data.buffer_ops = &mutated_ops;
+    mutated_ops.assign = tbe_cbind_test_replaced_uuid_assign;
+    check_scalar_slot_rejected("message One { uuid value; }", &mutated_data,
+                               TBE_CBIND_NATIVE_SHAPE_ERROR,
+                               CMETA_INVALID_ARGUMENT);
+  }
+
+  it("rejects a replaced UUID restore callback before plan publication") {
+    cmeta_data_desc mutated_data = turbo_uuid_cmeta_data;
+    cmeta_data_buffer_ops mutated_ops = turbo_uuid_cmeta_buffer_ops;
+
+    mutated_data.buffer_ops = &mutated_ops;
+    mutated_ops.restore_zero = tbe_cbind_test_replaced_uuid_restore_zero;
+    check_scalar_slot_rejected("message One { uuid value; }", &mutated_data,
+                               TBE_CBIND_NATIVE_SHAPE_ERROR,
+                               CMETA_INVALID_ARGUMENT);
   }
 
   it("distinguishes UUID from ordinary string storage and requires complete UUID ops") {

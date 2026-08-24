@@ -273,7 +273,6 @@ static tbe_cbind_status tbe_cbind_native_value_matches(
     case TBE_CBIND_SCALAR_UUID: {
       const cmeta_data_buffer_shape *shape =
           (const cmeta_data_buffer_shape *)value->shape;
-      const cmeta_data_buffer_ops *ops;
       if (value->kind != CMETA_DATA_STRING ||
           !tbe_cbind_native_type_matches(value->storage_type,
                                          &turbo_uuid_cmeta_type) ||
@@ -289,13 +288,10 @@ static tbe_cbind_status tbe_cbind_native_value_matches(
         return tbe_cbind_native_scalar_shape_error(
             context, field_index, path,
             "native UUID data descriptor is invalid");
-      ops = cmeta_data_buffer_ops_of(value);
-      if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED ||
-          !tbe_cbind_native_type_matches(ops->storage_type,
-                                         &turbo_uuid_cmeta_type))
+      if (!turbo_uuid_cmeta_data_valid(value))
         return tbe_cbind_native_scalar_shape_error(
             context, field_index, path,
-            "native UUID requires complete matching public buffer ops");
+            "native UUID requires canonical public buffer ops");
       return TBE_CBIND_OK;
     }
   }

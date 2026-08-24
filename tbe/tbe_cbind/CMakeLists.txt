@@ -63,12 +63,12 @@ set_target_properties(test_tbe_cbind_public_api_cpp PROPERTIES
 
 cmake_add_test(test_tbe_cbind_schema
   SOURCES test/test_tbe_cbind_schema.c
-  LIBS TurboParser::TbeCBind TurboUtils::TinyTest
+  LIBS TurboParser::TbeCBind TurboUtils::Core TurboUtils::TinyTest
   FOLDER "tbe/tbe_cbind/tests")
 
 cmake_add_test(test_tbe_cbind_plan
   SOURCES test/test_tbe_cbind_plan.c test/tbe_cbind_multitu_fixture.c
-  LIBS TurboParser::TbeCBind TurboUtils::TinyTest
+  LIBS TurboParser::TbeCBind TurboUtils::Core TurboUtils::TinyTest
   INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/src
   FOLDER "tbe/tbe_cbind/tests")
 
