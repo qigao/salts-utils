@@ -873,6 +873,308 @@ static int tbe_compiler_typed_schema_supported(Node *root) {
          tbe_compiler_typed_list_supported(root, "messages");
 }
 
+static int tbe_compiler_cbind_reject_field(Node *field, const char *reason) {
+  const char *owner = tbe_compiler_string_value(field, "owner_name");
+  const char *name = tbe_compiler_string_value(field, "name");
+  fprintf(stderr, "CBind sidecar field %s.%s: %s\n", owner ? owner : "(unknown)",
+          name ? name : "(unknown)", reason);
+  return 0;
+}
+
+static int tbe_compiler_cbind_scalar_supported(const char *type) {
+  static const char *const supported[] = {
+      "int32", "int32_t", "int64", "int64_t", "uint64", "uint64_t",
+      "float", "double", "string"};
+  size_t i;
+
+  if (!type) return 0;
+  for (i = 0; i < sizeof(supported) / sizeof(supported[0]); ++i)
+    if (strcmp(type, supported[i]) == 0) return 1;
+  return 0;
+}
+
+static int tbe_compiler_cbind_semantic_name_portable(const char *name) {
+  size_t i;
+
+  if (!name ||
+      !((name[0] >= 'A' && name[0] <= 'Z') ||
+        (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    return 0;
+  for (i = 1; name[i] != '\0'; ++i)
+    if (!((name[i] >= 'A' && name[i] <= 'Z') ||
+          (name[i] >= 'a' && name[i] <= 'z') ||
+          (name[i] >= '0' && name[i] <= '9') || name[i] == '_' ||
+          name[i] == '-'))
+      return 0;
+  return 1;
+}
+
+static const char *tbe_compiler_cbind_semantic_name(Node *field) {
+  const char *mapped = tbe_compiler_attribute_value(field, "name");
+  return mapped ? mapped : tbe_compiler_string_value(field, "name");
+}
+
+static int tbe_compiler_cbind_semantic_name_supported(Node *field) {
+  size_t mapping_count = tbe_compiler_attribute_count(field, "name");
+  const char *mapped;
+
+  if (mapping_count > 1u)
+    return tbe_compiler_cbind_reject_field(
+        field, "multiple name mappings are unsupported");
+  if (mapping_count == 0u) return 1;
+
+  mapped = tbe_compiler_attribute_value(field, "name");
+  if (!tbe_compiler_cbind_semantic_name_portable(mapped)) {
+    const char *owner = tbe_compiler_string_value(field, "owner_name");
+    const char *field_name = tbe_compiler_string_value(field, "name");
+    fprintf(stderr,
+            "CBind sidecar field %s.%s: name mapping '%s' is not a portable "
+            "semantic key (expected [A-Za-z_][A-Za-z0-9_-]*)\n",
+            owner ? owner : "(unknown)", field_name ? field_name : "(unknown)",
+            mapped ? mapped : "");
+    return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  const char *reason = NULL;
+
+  if (!tbe_compiler_cbind_semantic_name_supported(field)) return 0;
+  if (tbe_compiler_attribute_count(field, "alias") != 0u)
+    return tbe_compiler_cbind_reject_field(field, "aliases are unsupported");
+  if (tbe_compiler_has_child(field, "is_optional"))
+    return tbe_compiler_cbind_reject_field(field, "optional fields are unsupported");
+  if (tbe_compiler_has_child(field, "is_group_field"))
+    return tbe_compiler_cbind_reject_field(field, "group collections are unsupported");
+  if (tbe_compiler_has_child(field, "is_collection"))
+    return tbe_compiler_cbind_reject_field(field, "collections are unsupported");
+  if (tbe_compiler_has_child(field, "is_bytes"))
+    return tbe_compiler_cbind_reject_field(field, "bytes storage is unsupported");
+  if (tbe_compiler_cbind_scalar_supported(type)) return 1;
+  if (type && strcmp(type, "bool") == 0)
+    reason = "bool storage is unsupported";
+  else if (type && strcmp(type, "uuid") == 0)
+    reason = "uuid storage is unsupported";
+  else if (tbe_compiler_find_record(root, "enums", type))
+    reason = "enum storage is unsupported";
+  else if (tbe_compiler_find_record(root, "unions", type))
+    reason = "union storage is unsupported";
+  else if (tbe_compiler_find_record(root, "composites", type) ||
+           tbe_compiler_find_record(root, "groups", type) ||
+           tbe_compiler_find_record(root, "messages", type))
+    return 1;
+  else
+    reason = "type is unsupported";
+  return tbe_compiler_cbind_reject_field(field, reason);
+}
+
+static int tbe_compiler_cbind_record_supported(Node *root, Node *record) {
+  Node *fields = tbe_compiler_find_child(record, "fields");
+  const char *record_name = tbe_compiler_string_value(record, "name");
+  size_t i;
+
+  if (!fields || fields->type != NODE_LIST) return 1;
+  for (i = 0; i < fields->data.list.count; ++i)
+    if (!tbe_compiler_cbind_field_supported(root, fields->data.list.items[i]))
+      return 0;
+
+  /* n is one parsed record's field count: O(n^2) time, O(1) extra storage. */
+  for (i = 0; i < fields->data.list.count; ++i) {
+    Node *left = fields->data.list.items[i];
+    const char *left_name = tbe_compiler_cbind_semantic_name(left);
+    const char *left_field_name = tbe_compiler_string_value(left, "name");
+    size_t j;
+    for (j = i + 1u; j < fields->data.list.count; ++j) {
+      Node *right = fields->data.list.items[j];
+      const char *right_name = tbe_compiler_cbind_semantic_name(right);
+      const char *right_field_name = tbe_compiler_string_value(right, "name");
+      if (left_name && right_name && strcmp(left_name, right_name) == 0) {
+        fprintf(stderr,
+                "CBind sidecar fields %s.%s and %s.%s share effective "
+                "semantic name '%s'\n",
+                record_name ? record_name : "(unknown)",
+                left_field_name ? left_field_name : "(unknown)",
+                record_name ? record_name : "(unknown)",
+                right_field_name ? right_field_name : "(unknown)", left_name);
+        return 0;
+      }
+    }
+  }
+  return 1;
+}
+
+static int tbe_compiler_cbind_list_supported(Node *root, const char *list_name) {
+  Node *list = tbe_compiler_find_child(root, list_name);
+  size_t i;
+
+  if (!list || list->type != NODE_LIST) return 1;
+  for (i = 0; i < list->data.list.count; ++i)
+    if (!tbe_compiler_cbind_record_supported(root, list->data.list.items[i]))
+      return 0;
+  return 1;
+}
+
+static int tbe_compiler_cbind_schema_supported(Node *root) {
+  Node *enums = tbe_compiler_find_child(root, "enums");
+  Node *unions = tbe_compiler_find_child(root, "unions");
+
+  if (enums && enums->type == NODE_LIST && enums->data.list.count != 0) {
+    const char *name = tbe_compiler_string_value(enums->data.list.items[0], "name");
+    fprintf(stderr, "CBind sidecar field %s.(declaration): enum declarations are unsupported\n",
+            name ? name : "(enum)");
+    return 0;
+  }
+  if (unions && unions->type == NODE_LIST && unions->data.list.count != 0) {
+    Node *fields = tbe_compiler_find_child(unions->data.list.items[0], "fields");
+    if (fields && fields->type == NODE_LIST && fields->data.list.count != 0)
+      return tbe_compiler_cbind_reject_field(
+          fields->data.list.items[0], "union declarations are unsupported");
+    fprintf(stderr, "CBind sidecar field (union).(declaration): union declarations are unsupported\n");
+    return 0;
+  }
+  return tbe_compiler_cbind_list_supported(root, "composites") &&
+         tbe_compiler_cbind_list_supported(root, "groups") &&
+         tbe_compiler_cbind_list_supported(root, "messages");
+}
+
+static int tbe_compiler_format_cbind_symbol(char *out, size_t out_size,
+                                            const char *format,
+                                            const char *name) {
+  int length = snprintf(out, out_size, format, name);
+  return length >= 0 && (size_t)length < out_size;
+}
+
+static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
+                                             const char *schema_name,
+                                             const char *record_name) {
+  const char *type = tbe_compiler_string_value(field, "type");
+  const char *field_name = tbe_compiler_string_value(field, "name");
+  const char *semantic_name = tbe_compiler_cbind_semantic_name(field);
+  const char *type_name = NULL;
+  const char *type_desc = NULL;
+  const char *data_desc = NULL;
+  char type_name_buf[256];
+  char type_desc_buf[256];
+  char data_desc_buf[256];
+  char stable_id[768];
+  char *escaped_name;
+  int stable_length;
+
+  if (!schema_name || !record_name || !field_name || !semantic_name || !type) return 0;
+
+  if (strcmp(type, "int32") == 0 || strcmp(type, "int32_t") == 0) {
+    type_name = "int";
+    type_desc = "&cmeta_type_int";
+    data_desc = "&cmeta_data_int";
+    if (tbe_compiler_set_string(root, "cbind_needs_int32_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "int64") == 0 || strcmp(type, "int64_t") == 0) {
+    type_name = "long";
+    type_desc = "&cmeta_type_long";
+    data_desc = "&cmeta_data_long";
+    if (tbe_compiler_set_string(root, "cbind_needs_int64_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "uint64") == 0 || strcmp(type, "uint64_t") == 0) {
+    type_name = "size_t";
+    type_desc = "&cmeta_type_size";
+    data_desc = "&cmeta_data_size";
+    if (tbe_compiler_set_string(root, "cbind_needs_uint64_abi", "1") != 0) return 0;
+  } else if (strcmp(type, "float") == 0) {
+    type_name = "float";
+    type_desc = "&cmeta_type_float";
+    data_desc = "&cmeta_data_float";
+  } else if (strcmp(type, "double") == 0) {
+    type_name = "double";
+    type_desc = "&cmeta_type_double";
+    data_desc = "&cmeta_data_double";
+  } else if (strcmp(type, "string") == 0) {
+    type_name = "tstr";
+    type_desc = "&turbo_tstr_cmeta_type";
+    if (!tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s_cbind_tstr_data", schema_name))
+      return 0;
+    data_desc = data_desc_buf;
+    if (tbe_compiler_set_string(root, "cbind_has_string", "1") != 0) return 0;
+  } else {
+    if (!tbe_compiler_format_cbind_symbol(type_name_buf, sizeof(type_name_buf), "%s_t",
+                                          type) ||
+        !tbe_compiler_format_cbind_symbol(type_desc_buf, sizeof(type_desc_buf),
+                                          "&%s_cbind_type", type) ||
+        !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s_cbind_descriptor", type))
+      return 0;
+    type_name = type_name_buf;
+    type_desc = type_desc_buf;
+    data_desc = data_desc_buf;
+  }
+
+  escaped_name = tbe_compiler_escape_c_string(semantic_name);
+  if (!escaped_name) return 0;
+  stable_length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s.%s", schema_name,
+                           record_name, field_name);
+  if (stable_length < 0 || (size_t)stable_length >= sizeof(stable_id) ||
+      tbe_compiler_set_string(field, "cbind_semantic_name", escaped_name) != 0 ||
+      tbe_compiler_set_string(field, "cbind_stable_id", stable_id) != 0 ||
+      tbe_compiler_set_string(field, "cbind_type_name", type_name) != 0 ||
+      tbe_compiler_set_string(field, "cbind_type_desc", type_desc) != 0 ||
+      tbe_compiler_set_string(field, "cbind_data_desc", data_desc) != 0) {
+    free(escaped_name);
+    return 0;
+  }
+  free(escaped_name);
+  return 1;
+}
+
+static int tbe_compiler_annotate_cbind_records(Node *root, const char *list_name,
+                                               const char *schema_name) {
+  Node *list = tbe_compiler_find_child(root, list_name);
+  size_t i;
+
+  if (!list || list->type != NODE_LIST) return 1;
+  for (i = 0; i < list->data.list.count; ++i) {
+    Node *record = list->data.list.items[i];
+    Node *fields = tbe_compiler_find_child(record, "fields");
+    const char *record_name = tbe_compiler_string_value(record, "name");
+    char stable_id[512];
+    char data_stable_id[520];
+    char field_count[32];
+    int length;
+    size_t j;
+
+    if (!record_name || !fields || fields->type != NODE_LIST) return 0;
+    length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s", schema_name,
+                      record_name);
+    if (length < 0 || (size_t)length >= sizeof(stable_id)) return 0;
+    length = snprintf(data_stable_id, sizeof(data_stable_id), "%s.data", stable_id);
+    if (length < 0 || (size_t)length >= sizeof(data_stable_id)) return 0;
+    length = snprintf(field_count, sizeof(field_count), "%zu", fields->data.list.count);
+    if (length < 0 || (size_t)length >= sizeof(field_count) ||
+        tbe_compiler_set_string(record, "cbind_stable_id", stable_id) != 0 ||
+        tbe_compiler_set_string(record, "cbind_data_stable_id", data_stable_id) != 0 ||
+        tbe_compiler_set_string(record, "cbind_field_count", field_count) != 0)
+      return 0;
+    if (fields->data.list.count != 0u &&
+        tbe_compiler_set_string(record, "cbind_has_fields", "1") != 0)
+      return 0;
+
+    for (j = 0; j < fields->data.list.count; ++j)
+      if (!tbe_compiler_annotate_cbind_field(root, fields->data.list.items[j],
+                                             schema_name, record_name))
+        return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_prepare_cbind_annotations(Node *root) {
+  Node *schema = tbe_compiler_find_child(root, "schema");
+  const char *schema_name = tbe_compiler_string_value(schema, "schema_name");
+
+  if (!schema_name || !schema_name[0]) return 0;
+  return tbe_compiler_annotate_cbind_records(root, "composites", schema_name) &&
+         tbe_compiler_annotate_cbind_records(root, "groups", schema_name) &&
+         tbe_compiler_annotate_cbind_records(root, "messages", schema_name);
+}
+
 static Node *tbe_compiler_find_typed_record(Node *root, const char *name) {
   Node *record = tbe_compiler_find_record(root, "composites", name);
   if (!record) record = tbe_compiler_find_record(root, "groups", name);
@@ -1196,6 +1498,54 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     free(schema_literal);
   }
 
+  if (options->cbind_output_path) {
+    if (options->cbind_output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires a non-empty file path\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->output_path == NULL || options->output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires --output for the generated header\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->source_output_path == NULL || options->source_output_path[0] == '\0') {
+      fprintf(stderr, "--cbind-output requires --source-output for typed records\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (strcmp(options->output_path, options->cbind_output_path) == 0 ||
+        strcmp(options->source_output_path, options->cbind_output_path) == 0 ||
+        (options->guest_output_path != NULL &&
+         strcmp(options->guest_output_path, options->cbind_output_path) == 0) ||
+        (options->lua_output_path != NULL &&
+         strcmp(options->lua_output_path, options->cbind_output_path) == 0) ||
+        (options->dsl_output_path != NULL &&
+         strcmp(options->dsl_output_path, options->cbind_output_path) == 0)) {
+      fprintf(stderr, "--cbind-output must name a distinct file\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (options->lang_enum != TBE_COMPILER_LANG_C || options->template_path != NULL) {
+      fprintf(stderr, "--cbind-output is supported only for the built-in C generator\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (!tbe_compiler_cbind_schema_supported(root)) {
+      status = 1;
+      goto cleanup;
+    }
+    if (!tbe_compiler_prepare_cbind_annotations(root)) {
+      fprintf(stderr, "Failed to annotate CBind sidecar descriptors\n");
+      status = 1;
+      goto cleanup;
+    }
+    if (tbe_compiler_set_string(root, "cbind_sidecar_enabled", "1") != 0) {
+      status = 1;
+      goto cleanup;
+    }
+  }
+
   if (options->source_output_path) {
     if (options->output_path == NULL || options->output_path[0] == '\0') {
       fprintf(stderr, "--source-output requires --output for the generated header\n");
@@ -1308,6 +1658,15 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
         options, "templates/c_typed_source.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
                  ? tbe_compiler_render_file(root, resolved_template, options->source_output_path)
+                 : 1;
+  }
+
+  if (status == 0 && options->cbind_output_path) {
+    resolved_template = tbe_compiler_resolve_resource(
+        options, "templates/c_cbind_source.mustache", template_path, sizeof(template_path));
+    status = resolved_template != NULL
+                 ? tbe_compiler_render_file(root, resolved_template,
+                                            options->cbind_output_path)
                  : 1;
   }
 

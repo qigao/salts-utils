@@ -8,7 +8,8 @@
  *
  * CLI (via cmd_arger):
  *   tbe_compiler <file> [--template <file>] [--lang c|cpp|go|rust|python|py|ts]
- *              [--output <file>] [--source-output <file>] [--lua-output <file>]
+ *              [--output <file>] [--source-output <file>] [--cbind-output <file>]
+ *              [--lua-output <file>]
  *              [--dsl-output <file>]
  */
 
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
     char    *template_path = NULL;
     char    *output_path   = NULL;
     char    *source_output_path = NULL;
+    char    *cbind_output_path = NULL;
     char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
@@ -106,6 +108,9 @@ int main(int argc, char **argv) {
     turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",
                                  "Generate the C typed serde companion source");
 
+    turbo_cmd_add_string(parser, &cbind_output_path, "cbind-output", NULL,
+                                 "Generate the CBind semantic sidecar source");
+
     turbo_cmd_add_string(parser, &lua_output_path, "lua-output", NULL,
                                  "Generate C adapters from typed records to Lua tables");
 
@@ -122,6 +127,7 @@ int main(int argc, char **argv) {
         .template_path = template_path,
         .output_path = output_path,
         .source_output_path = source_output_path,
+        .cbind_output_path = cbind_output_path,
         .lua_output_path = lua_output_path,
         .guest_output_path = guest_output_path,
         .dsl_output_path = dsl_output_path,

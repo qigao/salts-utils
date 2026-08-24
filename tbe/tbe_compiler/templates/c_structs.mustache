@@ -59,6 +59,9 @@ typedef struct turbo_uuid_s {
 #define TBE_GENERATED_STRLEN strlen
 #endif
 
+{{#cbind_sidecar_enabled}}
+#include <cbind/cbind.h>
+{{/cbind_sidecar_enabled}}
 {{#typed_source_enabled}}
 #include "tbe_typed.h"
 
@@ -2185,6 +2188,22 @@ static inline uint8_t *{{name}}_payload_mut(uint8_t *buf, size_t size, size_t *p
 }
 
 {{/unions}}
+
+{{#cbind_sidecar_enabled}}
+/* Immutable semantic descriptors and CSerde decode façades. */
+{{#composites}}
+TBE_GENERATED_API const cmeta_data_desc *{{name}}_cbind_data(void);
+TBE_GENERATED_API cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader, {{name}}_t *object, cbind_error *error);
+{{/composites}}
+{{#groups}}
+TBE_GENERATED_API const cmeta_data_desc *{{name}}_cbind_data(void);
+TBE_GENERATED_API cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader, {{name}}_t *object, cbind_error *error);
+{{/groups}}
+{{#messages}}
+TBE_GENERATED_API const cmeta_data_desc *{{name}}_cbind_data(void);
+TBE_GENERATED_API cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader, {{name}}_t *object, cbind_error *error);
+{{/messages}}
+{{/cbind_sidecar_enabled}}
 
 #ifdef __cplusplus
 } /* extern "C" */

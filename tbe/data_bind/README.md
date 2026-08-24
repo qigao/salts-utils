@@ -137,6 +137,152 @@ target_link_libraries(my_app PRIVATE order_schema)
 Linux/macOS shared library 构建也定义 `TBE_GENERATED_BUILD_SHARED`，生成头会设置默认
 symbol visibility。静态库不定义这两个宏。
 
+## 可选 CBind semantic sidecar
+
+`--cbind-output` 是生成 owning C record 的额外、显式 opt-in 路径。它生成的不是
+另一套 TBE codec：`CSerde` 是 format-neutral 的 token contract，`CBind` 是把该 token
+contract 解到 CMeta-described native storage 的 format-neutral kernel，而 JSON 的具体
+语法、DOM 与 token 投影仍由 TurboParser JSON adapter 负责。
+
+同一份 TBE schema 是 generated owning struct、`TbeTypedType` 与 CBind semantic
+sidecar 的唯一事实源。不过二者的 metadata 保持独立：`TbeTypedType` 独占 TBE 的
+wire/layout（offset、endianness、presence bitmap、fixed block 等），sidecar 单独生成
+不可变 CMeta semantic descriptor；不可把任一 descriptor 当作另一者的替代品。
+
+```powershell
+tbe_compiler order.schema --lang c `
+  --output generated/order.h `
+  --source-output generated/order.c `
+  --cbind-output generated/order_cbind.c
+```
+
+`--cbind-output` 只支持内置 C generator，且必须同时指定不同路径的 `--output` 与
+`--source-output`。它与 header、typed source、guest、Lua、DSL output 的路径均不得
+相同；任一约束或 schema 支持检查失败时，编译器 fail fast，不写出部分 sidecar。
+未传此选项时，默认生成内容、`TbeTypedType` ABI 与 production DataBind 依赖方向都不变。
+
+### Consumer 链接
+
+把 typed source 和 sidecar 编译进同一个 schema library。typed source 需要
+`TurboParser::DataBind`，sidecar/decode 需要 `TurboUtils::CBind`；JSON 输入还要链接
+安装态 consumer 使用公开 JSON facade `TurboParser::Parser`。在本仓库/build-tree 内部，
+若直接使用 JSON DOM adapter，则链接实际 build target `json_parser`；它不是安装态的
+imported target。两种 JSON 入口二选一，不需要把 `tbe_compiler` 部署到运行时。
+
+```cmake
+add_library(order_schema STATIC
+  generated/order.c
+  generated/order_cbind.c)
+target_include_directories(order_schema PUBLIC generated)
+target_link_libraries(order_schema
+  PUBLIC TurboParser::DataBind TurboUtils::CBind)
+
+# Installed consumer: public TurboParser JSON facade.
+target_link_libraries(my_app PRIVATE order_schema TurboParser::Parser)
+```
+
+仓内/build-tree 的 direct adapter 路径改为：
+
+```cmake
+target_link_libraries(my_app PRIVATE order_schema json_parser)
+```
+
+### 生成的 API、所有权与限制
+
+对每个 composite、group 与 message，header 会声明：
+
+```c
+const cmeta_data_desc *Type_cbind_data(void);
+cbind_status Type_from_cserde(cbind_context *context,
+                              cserde_reader *reader,
+                              Type_t *object,
+                              cbind_error *error);
+```
+
+`Type_cbind_data()` 返回 process-lifetime 的 immutable descriptor，调用方不释放它。
+`Type_from_cserde()` 只转发给 `cbind_decode()`：不拥有 `context`、`reader` 或 `object`，
+也不倒回 reader。`object` 在调用前必须已经由 `Type_init()` 初始化至 semantic zero；
+成功后调用方通过 `Type_clear()` 释放 owning field，失败时 CBind 已将完整对象图恢复至
+semantic zero，调用方仍必须调用一次 `Type_clear()` 以形成统一 cleanup 路径。
+
+返回 `CBIND_OK` 表示成功；unknown/duplicate/missing field、token mismatch、range、
+depth、container、buffer limit、source 与 target 错误会原样以相应 `cbind_status`
+返回，详情写入 `cbind_error`。含 `string` 的记录必须使用
+`CBIND_CONTEXT_WITH_BUFFERS_INIT`：其 scratch、`max_depth`、`max_container_items` 与
+`max_buffer_bytes` 都是调用方提供的有界上下文；后者限制每个 decoded buffer。
+
+`[name(...)]` 是 sidecar 接受的 CSerde map key；`[c(...)]` 只选择 generated C struct
+member，因此只影响 descriptor offset，不改变外部 key。v1 精确支持 `int32`/`int32_t`、
+`int64`/`int64_t`、`uint64`/`uint64_t`、`float`、`double`、owning `string`，以及由这些
+字段递归组成的 composite/group/message。`[alias(...)]`、optional、`bool`、其他整数、
+enum、uuid、bytes、fixed array、list/set/map、group collection 与 union 都在生成期
+fail fast；不得据此省略字段或降级为其他 storage。
+
+`int64` 的 CMeta storage 是 `long`。因此生成的 sidecar 对 `sizeof` 与 `_Alignof`
+发出 C11 静态断言；在 Windows LLP64，`int64_t != long`，使用 `int64`/`int64_t` 的
+sidecar 会明确编译失败。这是兼容性防线而不是可恢复错误：在目标 ABI 上编译生成的
+`*_cbind.c`（以及 CI 的 MSVC Release build）验证该断言；需要 Windows 可编译的 v1
+schema 时，避免该字段类型，不能用隐式转换替代。
+
+### JSON DOM → CSerde → generated façade
+
+以下 schema 只使用 v1 支持的 storage，并展示 `[name]` 与 `[c]` 分工：
+
+```text
+schema OrderSchema;
+
+composite Header { int32 sequence; }
+message Order {
+  Header header;
+  [name(eventId), c(event_id)] uint64 id;
+  string note;
+  double score;
+}
+```
+
+以下示例使用公开 facade；DOM 被 reader 借用，故在 reader 销毁前一直保持 DOM 存活且
+不修改它。scratch 的两个字节分别覆盖 `Header` 的一个 field 与 `Order` 的四个 field
+所需的 presence workspace（数组比最小值大是允许的）。所有成功和失败路径均清理：
+
+```c
+#include "order.h"
+#include <turbo_parser_json.h>
+
+#include <cbind/cbind.h>
+#include <stdint.h>
+
+int decode_order(const char *json, size_t json_size) {
+  static const size_t kMaxDepth = 2u;
+  static const size_t kMaxBufferBytes = 64u;
+  unsigned char scratch[2] = {0};
+  cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
+      scratch, sizeof(scratch), kMaxDepth, 0u, kMaxBufferBytes);
+  cbind_error error = CBIND_ERROR_INIT;
+  turbo_json_doc_t *dom = NULL;
+  cserde_reader *reader = NULL;
+  Order_t order;
+  int result = 1;
+
+  Order_init(&order); /* Required semantic-zero precondition. */
+  if (turbo_parse_json((const uint8_t *)json, json_size, &dom) != 0)
+    goto cleanup;
+  reader = turbo_json_cserde_reader_create(dom, kMaxDepth);
+  if (reader == NULL)
+    goto cleanup;
+  if (Order_from_cserde(&context, reader, &order, &error) != CBIND_OK)
+    goto cleanup; /* order has already been restored to semantic zero. */
+
+  /* Safely consume order.header.sequence, order.event_id, order.note, order.score. */
+  result = 0;
+
+cleanup:
+  turbo_json_cserde_reader_destroy(reader);
+  turbo_free_json(&dom);       /* Frees the DOM only after the reader. */
+  Order_clear(&order);         /* Required after both success and failure. */
+  return result;
+}
+```
+
 ## 路线二：映射现有 C struct
 
 ```c

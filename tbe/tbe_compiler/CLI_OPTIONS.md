@@ -42,6 +42,37 @@ tbe_compiler <schema_file> [options]
   - The generated header exposes strong record types plus binary/JSON/YAML/CSV/XML APIs
   - Example: `--output order.h --source-output order.c`
 
+- `--cbind-output <file>`
+  - With the built-in C generator, emits an immutable CMeta/CBind semantic sidecar `.c` file
+  - Requires both `--output` and `--source-output`; custom templates and non-C languages are rejected
+  - Its path must differ from the header, typed source, guest, Lua, and DSL outputs
+  - The generated header declares each record's semantic descriptor accessor and CSerde decode façade
+  - The generated source contains static descriptors only; the caller owns initialized decoded records
+  - The sidecar schema accepts only `int32`, `int64`, `uint64`, `float`, `double`, owning
+    `string`, and nested composite/group/message records; aliases, optional fields, and other
+    storage forms fail before any output file is written
+  - Example: `--output order.h --source-output order.c --cbind-output order_cbind.c`
+
+  典型的完整调用如下；三个路径必须不同，未请求该选项时生成 header 与 typed source
+  不会引入 CBind：
+
+  ```powershell
+  tbe_compiler order.schema --lang c `
+    --output generated/order.h `
+    --source-output generated/order.c `
+    --cbind-output generated/order_cbind.c
+  ```
+
+  sidecar 中的 `Type_cbind_data()` 返回 immutable CMeta semantic descriptor，
+  `Type_from_cserde(context, reader, object, error)` 将 format-neutral CSerde token
+  decode 到已由 `Type_init()` 初始化的 owning object；成功或失败后都由调用方调用
+  `Type_clear()`。该 descriptor 不含 `TbeTypedType` 的 TBE wire/layout metadata。
+  `[name]` 选择 CSerde map key，`[c]` 只选择 C member offset。CBind v1 仅接受
+  int32/int64/uint64、float、double、owning string 与嵌套 record；alias、optional、bool、
+  其他整数、enum、uuid、bytes、containers 与 unions 在写 output 前 fail fast。生成的
+  int64 mapping 断言 `int64_t` 与 `long` 的大小和对齐一致，因此 LLP64 Windows 上会编译
+  失败；以目标 ABI 编译 generated sidecar（例如 MSVC Release CI）验证这一防线。
+
 - `--guest-output <file>` or `-g <file>`
   - With the built-in C generator, emits a Wasm-friendly guest adapter `.c` file
   - Requires `--output`; custom templates and non-C languages are rejected
@@ -330,6 +361,8 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
   this companion source. Generated `*_to_bin_into` and schema-codec `text_to_binary_into`
   functions never allocate their output buffer; insufficient capacity is reported with the
   required size in `out_len`.
+- `--cbind-output` is an opt-in semantic sidecar. When requested, it adds CBind declarations to
+  the generated header without changing `TbeTypedType`; default generation remains CBind-free.
 - `--guest-output` adds allocation-free adapters over the zero-copy wire views. It does not
   embed JSON/YAML/CSV/XML parsers into Wasm and does not require `--source-output`.
 - C++, Go, Rust, Python, and TypeScript outputs currently generate schema type definitions, not complete wire codecs.
