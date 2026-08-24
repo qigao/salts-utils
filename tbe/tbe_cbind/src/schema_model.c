@@ -1,0 +1,587 @@
+#include "tbe_cbind_internal.h"
+
+#include "node_tree.h"
+#include "schema_parser_dsl.h"
+#include "tbe_error.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct tbe_cbind_schema_counts {
+  size_t type_count;
+  size_t field_count;
+} tbe_cbind_schema_counts;
+
+static Node *tbe_cbind_node_child(const Node *parent, const char *name) {
+  Node *const *items;
+  size_t count;
+  size_t index;
+
+  if (parent == NULL || name == NULL) return NULL;
+  if (parent->type == NODE_MAP) {
+    items = parent->data.map.items;
+    count = parent->data.map.count;
+  } else if (parent->type == NODE_LIST) {
+    items = parent->data.list.items;
+    count = parent->data.list.count;
+  } else {
+    return NULL;
+  }
+  for (index = 0u; index < count; ++index) {
+    Node *child = items[index];
+    if (child != NULL && child->name != NULL &&
+        strcmp(child->name, name) == 0)
+      return child;
+  }
+  return NULL;
+}
+
+static const char *tbe_cbind_node_string(const Node *parent,
+                                         const char *name) {
+  Node *child = tbe_cbind_node_child(parent, name);
+  return child != NULL && child->type == NODE_STRING
+             ? child->data.string_val
+             : NULL;
+}
+
+static int tbe_cbind_node_has(const Node *parent, const char *name) {
+  return tbe_cbind_node_child(parent, name) != NULL;
+}
+
+static uint64_t tbe_cbind_name_hash(const char *text) {
+  uint64_t hash = UINT64_C(1469598103934665603);
+  while (*text != '\0') {
+    hash ^= (unsigned char)*text++;
+    hash *= UINT64_C(1099511628211);
+  }
+  return hash;
+}
+
+static int tbe_cbind_hash_capacity(size_t item_count, size_t *out) {
+  size_t requested;
+  size_t capacity = 8u;
+  if (!tbe_cbind_size_mul(item_count, 2u, &requested)) return 0;
+  if (requested < capacity) requested = capacity;
+  while (capacity < requested) {
+    if (capacity > SIZE_MAX / 2u) return 0;
+    capacity *= 2u;
+  }
+  *out = capacity;
+  return 1;
+}
+
+static int tbe_cbind_portable_semantic_name(const char *name) {
+  size_t index;
+  if (name == NULL ||
+      !((name[0] >= 'A' && name[0] <= 'Z') ||
+        (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    return 0;
+  for (index = 1u; name[index] != '\0'; ++index) {
+    const char ch = name[index];
+    if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+          (ch >= '0' && ch <= '9') || ch == '_' || ch == '-'))
+      return 0;
+  }
+  return 1;
+}
+
+int tbe_cbind_c_identifier_valid(const char *name) {
+  static const char *const keywords[] = {
+      "auto", "break", "case", "char", "const", "continue", "default",
+      "do", "double", "else", "enum", "extern", "float", "for",
+      "goto", "if", "inline", "int", "long", "register", "restrict",
+      "return", "short", "signed", "sizeof", "static", "struct",
+      "switch", "typedef", "union", "unsigned", "void", "volatile",
+      "while", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex",
+      "_Generic", "_Imaginary", "_Noreturn", "_Static_assert",
+      "_Thread_local"};
+  size_t index;
+  if (name == NULL ||
+      !((name[0] >= 'A' && name[0] <= 'Z') ||
+        (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    return 0;
+  for (index = 1u; name[index] != '\0'; ++index) {
+    const char ch = name[index];
+    if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+          (ch >= '0' && ch <= '9') || ch == '_'))
+      return 0;
+  }
+  for (index = 0u; index < sizeof(keywords) / sizeof(keywords[0]); ++index)
+    if (strcmp(name, keywords[index]) == 0) return 0;
+  return 1;
+}
+
+static tbe_cbind_status tbe_cbind_name_limit(
+    tbe_cbind_build_context *context, const char *name, const char *path) {
+  if (name == NULL || strlen(name) > context->options->max_name_bytes) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "schema name exceeds max_name_bytes");
+  }
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_count_schema(
+    tbe_cbind_build_context *context, const Node *root,
+    tbe_cbind_schema_counts *counts) {
+  static const char *const record_lists[] = {"composites", "groups", "messages"};
+  size_t list_index;
+  *counts = (tbe_cbind_schema_counts){0};
+  for (list_index = 0u;
+       list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+       ++list_index) {
+    Node *records = tbe_cbind_node_child(root, record_lists[list_index]);
+    size_t record_index;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    if (!tbe_cbind_size_add(counts->type_count, records->data.list.count,
+                            &counts->type_count) ||
+        counts->type_count > context->options->max_types) {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+          CMETA_OK, record_lists[list_index], "schema exceeds max_types");
+    }
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index) {
+      Node *fields = tbe_cbind_node_child(records->data.list.items[record_index],
+                                          "fields");
+      size_t count = fields != NULL && fields->type == NODE_LIST
+                         ? fields->data.list.count
+                         : 0u;
+      if (!tbe_cbind_size_add(counts->field_count, count,
+                              &counts->field_count) ||
+          counts->field_count > context->options->max_fields) {
+        return tbe_cbind_set_error(
+            context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA,
+            record_index, CMETA_OK, record_lists[list_index],
+            "schema exceeds max_fields");
+      }
+    }
+  }
+  return TBE_CBIND_OK;
+}
+
+static int tbe_cbind_list_nonempty(const Node *root, const char *name) {
+  Node *list = tbe_cbind_node_child(root, name);
+  return list != NULL && list->type == NODE_LIST && list->data.list.count != 0u;
+}
+
+static tbe_cbind_status tbe_cbind_reject_global_unsupported(
+    tbe_cbind_build_context *context, const Node *root) {
+  Node *schema = tbe_cbind_node_child(root, "schema");
+  Node *attributes = tbe_cbind_node_child(schema, "attributes");
+  if (tbe_cbind_list_nonempty(root, "enums") ||
+      tbe_cbind_list_nonempty(root, "unions")) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+        "(declaration)", "enum, flags, and union declarations are unsupported");
+  }
+  if (attributes != NULL && attributes->type == NODE_LIST &&
+      attributes->data.list.count != 0u) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+        "schema", "schema attributes are unsupported in v1");
+  }
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_semantic_kind tbe_cbind_scalar_kind(const char *type,
+                                                      int *supported) {
+  *supported = 1;
+  if (strcmp(type, "int32") == 0) return TBE_CBIND_SEMANTIC_INT32;
+  if (strcmp(type, "int64") == 0) return TBE_CBIND_SEMANTIC_INT64;
+  if (strcmp(type, "uint64") == 0) return TBE_CBIND_SEMANTIC_UINT64;
+  if (strcmp(type, "float") == 0) return TBE_CBIND_SEMANTIC_FLOAT;
+  if (strcmp(type, "double") == 0) return TBE_CBIND_SEMANTIC_DOUBLE;
+  if (strcmp(type, "string") == 0) return TBE_CBIND_SEMANTIC_STRING;
+  *supported = 0;
+  return TBE_CBIND_SEMANTIC_RECORD;
+}
+
+static tbe_cbind_status tbe_cbind_insert_type(
+    tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
+    tbe_cbind_semantic_type *type) {
+  size_t slot = (size_t)tbe_cbind_name_hash(type->name) &
+                (model->type_slot_count - 1u);
+  while (model->type_slots[slot] != NULL) {
+    if (strcmp(model->type_slots[slot]->name, type->name) == 0) {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+          CMETA_OK, type->name, "duplicate schema type name");
+    }
+    slot = (slot + 1u) & (model->type_slot_count - 1u);
+  }
+  model->type_slots[slot] = type;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_semantic_type *tbe_cbind_find_type(
+    const tbe_cbind_schema_model *model, const char *name) {
+  size_t slot;
+  if (model == NULL || name == NULL || model->type_slot_count == 0u) return NULL;
+  slot = (size_t)tbe_cbind_name_hash(name) & (model->type_slot_count - 1u);
+  while (model->type_slots[slot] != NULL) {
+    if (strcmp(model->type_slots[slot]->name, name) == 0)
+      return model->type_slots[slot];
+    slot = (slot + 1u) & (model->type_slot_count - 1u);
+  }
+  return NULL;
+}
+
+static tbe_cbind_status tbe_cbind_extract_attributes(
+    tbe_cbind_build_context *context, const Node *field,
+    const char **semantic_name, const char **native_name, const char *path) {
+  Node *attributes = tbe_cbind_node_child(field, "attributes");
+  size_t semantic_count = 0u;
+  size_t native_count = 0u;
+  size_t index;
+  if (attributes == NULL || attributes->type != NODE_LIST) return TBE_CBIND_OK;
+  for (index = 0u; index < attributes->data.list.count; ++index) {
+    Node *attribute = attributes->data.list.items[index];
+    const char *name = tbe_cbind_node_string(attribute, "name");
+    const char *value = tbe_cbind_node_string(attribute, "value");
+    if (name != NULL && strcmp(name, "name") == 0) {
+      ++semantic_count;
+      *semantic_name = value;
+    } else if (name != NULL && strcmp(name, "c") == 0) {
+      ++native_count;
+      *native_name = value;
+    } else {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, index,
+          CMETA_OK, path, "field attribute is unsupported in v1");
+    }
+  }
+  if (semantic_count > 1u || !tbe_cbind_portable_semantic_name(*semantic_name)) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path,
+        "name must occur once and match [A-Za-z_][A-Za-z0-9_-]*");
+  }
+  if (native_count > 1u || !tbe_cbind_c_identifier_valid(*native_name)) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "c must occur once and name a valid C identifier");
+  }
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_insert_field_name(
+    tbe_cbind_build_context *context, const char **slots, size_t slot_count,
+    const char *name, const char *path, const char *message) {
+  size_t slot = (size_t)tbe_cbind_name_hash(name) & (slot_count - 1u);
+  while (slots[slot] != NULL) {
+    if (strcmp(slots[slot], name) == 0) {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+          CMETA_OK, path, message);
+    }
+    slot = (slot + 1u) & (slot_count - 1u);
+  }
+  slots[slot] = name;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_extract_field(
+    tbe_cbind_build_context *context, const Node *field_node,
+    tbe_cbind_semantic_type *owner, size_t field_index,
+    const char **semantic_slots, const char **native_slots,
+    size_t slot_count) {
+  tbe_cbind_semantic_field *field = &owner->fields[field_index];
+  const char *name = tbe_cbind_node_string(field_node, "name");
+  const char *type_name = tbe_cbind_node_string(field_node, "type");
+  const char *semantic_name = name;
+  const char *native_name = name;
+  char path[256];
+  int scalar_supported;
+  tbe_cbind_status status;
+  (void)snprintf(path, sizeof(path), "%s.%s", owner->name != NULL ? owner->name : "?",
+                 name != NULL ? name : "?");
+  if (name == NULL || type_name == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, field_index,
+        CMETA_OK, path, "field metadata is incomplete");
+  }
+  if (tbe_cbind_node_has(field_node, "is_optional") ||
+      tbe_cbind_node_has(field_node, "has_default") ||
+      tbe_cbind_node_has(field_node, "is_group_field") ||
+      tbe_cbind_node_has(field_node, "is_collection") ||
+      tbe_cbind_node_has(field_node, "is_bytes")) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, field_index,
+        CMETA_OK, path,
+        "optional, default, bytes, group collection, and container fields are unsupported");
+  }
+  status = tbe_cbind_extract_attributes(context, field_node, &semantic_name,
+                                        &native_name, path);
+  if (status != TBE_CBIND_OK) return status;
+  if ((status = tbe_cbind_name_limit(context, name, path)) != TBE_CBIND_OK ||
+      (status = tbe_cbind_name_limit(context, type_name, path)) != TBE_CBIND_OK ||
+      (status = tbe_cbind_name_limit(context, semantic_name, path)) != TBE_CBIND_OK ||
+      (status = tbe_cbind_name_limit(context, native_name, path)) != TBE_CBIND_OK)
+    return status;
+  status = tbe_cbind_insert_field_name(
+      context, semantic_slots, slot_count, semantic_name, path,
+      "effective semantic field names collide");
+  if (status != TBE_CBIND_OK) return status;
+  status = tbe_cbind_insert_field_name(
+      context, native_slots, slot_count, native_name, path,
+      "effective native member names collide");
+  if (status != TBE_CBIND_OK) return status;
+  field->name = tbe_cbind_strdup(context, name);
+  field->semantic_name = tbe_cbind_strdup(context, semantic_name);
+  field->native_name = tbe_cbind_strdup(context, native_name);
+  field->type_name = tbe_cbind_strdup(context, type_name);
+  if (field->name == NULL || field->semantic_name == NULL ||
+      field->native_name == NULL || field->type_name == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, field_index,
+        CMETA_OUT_OF_MEMORY, path, "field model allocation failed");
+  }
+  field->kind = tbe_cbind_scalar_kind(type_name, &scalar_supported);
+  if (!scalar_supported) field->kind = TBE_CBIND_SEMANTIC_RECORD;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_extract_record(
+    tbe_cbind_build_context *context, const Node *record_node,
+    tbe_cbind_semantic_type *type) {
+  Node *fields = tbe_cbind_node_child(record_node, "fields");
+  Node *attributes = tbe_cbind_node_child(record_node, "attributes");
+  const char **semantic_slots = NULL;
+  const char **native_slots = NULL;
+  size_t slot_count = 0u;
+  size_t index;
+  tbe_cbind_status status = TBE_CBIND_OK;
+  if (attributes != NULL && attributes->type == NODE_LIST &&
+      attributes->data.list.count != 0u) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+        type->name, "record attributes are unsupported in v1");
+  }
+  type->field_count = fields != NULL && fields->type == NODE_LIST
+                          ? fields->data.list.count
+                          : 0u;
+  if (type->field_count == 0u) return TBE_CBIND_OK;
+  type->fields = tbe_cbind_alloc_array(context, type->field_count,
+                                       sizeof(*type->fields));
+  if (type->fields == NULL)
+    return tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                               TBE_CBIND_PHASE_SCHEMA, 0u,
+                               CMETA_OUT_OF_MEMORY, type->name,
+                               "field model allocation failed");
+  if (!tbe_cbind_hash_capacity(type->field_count, &slot_count))
+    return tbe_cbind_set_error(context, TBE_CBIND_LIMIT_EXCEEDED,
+                               TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+                               type->name, "field index size overflow");
+  semantic_slots = tbe_cbind_alloc_array(context, slot_count,
+                                         sizeof(*semantic_slots));
+  native_slots = tbe_cbind_alloc_array(context, slot_count,
+                                       sizeof(*native_slots));
+  if (semantic_slots == NULL || native_slots == NULL) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u,
+                                 CMETA_OUT_OF_MEMORY, type->name,
+                                 "field index allocation failed");
+    goto cleanup;
+  }
+  for (index = 0u; index < type->field_count; ++index) {
+    status = tbe_cbind_extract_field(context, fields->data.list.items[index],
+                                     type, index, semantic_slots, native_slots,
+                                     slot_count);
+    if (status != TBE_CBIND_OK) goto cleanup;
+  }
+cleanup:
+  tbe_cbind_free(context, native_slots);
+  tbe_cbind_free(context, semantic_slots);
+  return status;
+}
+
+static tbe_cbind_status tbe_cbind_extract_types(
+    tbe_cbind_build_context *context, const Node *root,
+    tbe_cbind_schema_model *model) {
+  static const char *const record_lists[] = {"composites", "groups", "messages"};
+  size_t output_index = 0u;
+  size_t list_index;
+  for (list_index = 0u;
+       list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+       ++list_index) {
+    Node *records = tbe_cbind_node_child(root, record_lists[list_index]);
+    size_t record_index;
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index, ++output_index) {
+      tbe_cbind_semantic_type *type = &model->types[output_index];
+      const char *name = tbe_cbind_node_string(records->data.list.items[record_index],
+                                               "name");
+      tbe_cbind_status status = tbe_cbind_name_limit(context, name, name);
+      if (status != TBE_CBIND_OK) return status;
+      type->name = tbe_cbind_strdup(context, name);
+      if (type->name == NULL)
+        return tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                                   TBE_CBIND_PHASE_SCHEMA, 0u,
+                                   CMETA_OUT_OF_MEMORY, name,
+                                   "type name allocation failed");
+      status = tbe_cbind_insert_type(context, model, type);
+      if (status != TBE_CBIND_OK) return status;
+      status = tbe_cbind_extract_record(context,
+                                        records->data.list.items[record_index],
+                                        type);
+      if (status != TBE_CBIND_OK) return status;
+    }
+  }
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_resolve_type(
+    tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
+    tbe_cbind_semantic_type *type, size_t depth) {
+  size_t index;
+  if (depth > context->options->max_depth) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, type->name, "schema nesting exceeds max_depth");
+  }
+  if (type->visit_state == 2u) return TBE_CBIND_OK;
+  if (type->visit_state == 1u) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, type->name, "recursive by-value record graph is unsupported");
+  }
+  type->visit_state = 1u;
+  for (index = 0u; index < type->field_count; ++index) {
+    tbe_cbind_semantic_field *field = &type->fields[index];
+    if (field->kind == TBE_CBIND_SEMANTIC_RECORD) {
+      char path[256];
+      tbe_cbind_status status;
+      field->record_type = tbe_cbind_find_type(model, field->type_name);
+      (void)snprintf(path, sizeof(path), "%s.%s", type->name, field->name);
+      if (field->record_type == NULL) {
+        return tbe_cbind_set_error(
+            context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, index,
+            CMETA_OK, path, "field type is not in the v1 support matrix");
+      }
+      status = tbe_cbind_resolve_type(context, model, field->record_type,
+                                      depth + 1u);
+      if (status != TBE_CBIND_OK) return status;
+    }
+  }
+  type->visit_state = 2u;
+  return TBE_CBIND_OK;
+}
+
+tbe_cbind_status tbe_cbind_schema_model_build(
+    tbe_cbind_build_context *context, const char *schema_text,
+    size_t schema_size, const char *type_name,
+    tbe_cbind_schema_model **out_model) {
+  tbe_cbind_schema_model *model = NULL;
+  tbe_cbind_schema_counts counts;
+  tbe_error_t parse_error;
+  Node *root = NULL;
+  size_t index;
+  tbe_cbind_status status;
+  *out_model = NULL;
+  root = create_node_map("root");
+  if (root == NULL)
+    return tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                               TBE_CBIND_PHASE_PARSE, 0u,
+                               CMETA_OUT_OF_MEMORY, NULL,
+                               "schema root allocation failed");
+  tbe_error_init(&parse_error);
+  if (parse_schema(schema_text, schema_size, root, &parse_error) != 0) {
+    status = tbe_cbind_set_error(
+        context,
+        parse_error.code == TBE_ERR_OUT_OF_MEMORY ? TBE_CBIND_OUT_OF_MEMORY
+                                                  : TBE_CBIND_SCHEMA_ERROR,
+        TBE_CBIND_PHASE_PARSE, 0u,
+        parse_error.code == TBE_ERR_OUT_OF_MEMORY ? CMETA_OUT_OF_MEMORY
+                                                  : CMETA_OK,
+        NULL, parse_error.message);
+    if (context->error != NULL) {
+      context->error->line = parse_error.line;
+      context->error->column = parse_error.column;
+    }
+    node_free(root);
+    return status;
+  }
+  status = tbe_cbind_reject_global_unsupported(context, root);
+  if (status != TBE_CBIND_OK) goto cleanup;
+  status = tbe_cbind_count_schema(context, root, &counts);
+  if (status != TBE_CBIND_OK) goto cleanup;
+  model = tbe_cbind_alloc_array(context, 1u, sizeof(*model));
+  if (model == NULL) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u,
+                                 CMETA_OUT_OF_MEMORY, NULL,
+                                 "schema model allocation failed");
+    goto cleanup;
+  }
+  model->allocator = context->allocator;
+  model->type_count = counts.type_count;
+  if (!tbe_cbind_hash_capacity(model->type_count, &model->type_slot_count)) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_LIMIT_EXCEEDED,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+                                 NULL, "type index size overflow");
+    goto cleanup;
+  }
+  model->types = tbe_cbind_alloc_array(context, model->type_count,
+                                       sizeof(*model->types));
+  model->type_slots = tbe_cbind_alloc_array(context, model->type_slot_count,
+                                            sizeof(*model->type_slots));
+  if ((model->type_count != 0u && model->types == NULL) ||
+      model->type_slots == NULL) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u,
+                                 CMETA_OUT_OF_MEMORY, NULL,
+                                 "type model allocation failed");
+    goto cleanup;
+  }
+  status = tbe_cbind_extract_types(context, root, model);
+  if (status != TBE_CBIND_OK) goto cleanup;
+  for (index = 0u; index < model->type_count; ++index) {
+    status = tbe_cbind_resolve_type(context, model, &model->types[index], 1u);
+    if (status != TBE_CBIND_OK) goto cleanup;
+  }
+  model->root = tbe_cbind_find_type(model, type_name);
+  if (model->root == NULL) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_TYPE_NOT_FOUND,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+                                 type_name, "requested schema type was not found");
+    goto cleanup;
+  }
+  *out_model = model;
+  model = NULL;
+  status = TBE_CBIND_OK;
+cleanup:
+  node_free(root);
+  if (model != NULL) tbe_cbind_schema_model_destroy(model);
+  return status;
+}
+
+void tbe_cbind_schema_model_destroy(tbe_cbind_schema_model *model) {
+  size_t type_index;
+  tbe_cbind_allocator allocator;
+  if (model == NULL) return;
+  allocator = model->allocator;
+  if (model->types != NULL) {
+    for (type_index = 0u; type_index < model->type_count; ++type_index) {
+      tbe_cbind_semantic_type *type = &model->types[type_index];
+      size_t field_index;
+      if (type->fields != NULL) {
+        for (field_index = 0u; field_index < type->field_count; ++field_index) {
+          tbe_cbind_semantic_field *field = &type->fields[field_index];
+          allocator.free_fn(allocator.context, field->type_name);
+          allocator.free_fn(allocator.context, field->native_name);
+          allocator.free_fn(allocator.context, field->semantic_name);
+          allocator.free_fn(allocator.context, field->name);
+        }
+      }
+      allocator.free_fn(allocator.context, type->fields);
+      allocator.free_fn(allocator.context, type->name);
+    }
+  }
+  allocator.free_fn(allocator.context, model->type_slots);
+  allocator.free_fn(allocator.context, model->types);
+  allocator.free_fn(allocator.context, model);
+}
