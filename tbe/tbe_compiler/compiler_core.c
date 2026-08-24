@@ -941,8 +941,15 @@ static int tbe_compiler_cbind_list_supported(Node *root, const char *list_name) 
 }
 
 static int tbe_compiler_cbind_schema_supported(Node *root) {
+  Node *enums = tbe_compiler_find_child(root, "enums");
   Node *unions = tbe_compiler_find_child(root, "unions");
 
+  if (enums && enums->type == NODE_LIST && enums->data.list.count != 0) {
+    const char *name = tbe_compiler_string_value(enums->data.list.items[0], "name");
+    fprintf(stderr, "CBind sidecar field %s.(declaration): enum declarations are unsupported\n",
+            name ? name : "(enum)");
+    return 0;
+  }
   if (unions && unions->type == NODE_LIST && unions->data.list.count != 0) {
     Node *fields = tbe_compiler_find_child(unions->data.list.items[0], "fields");
     if (fields && fields->type == NODE_LIST && fields->data.list.count != 0)

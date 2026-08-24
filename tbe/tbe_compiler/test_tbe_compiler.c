@@ -1273,6 +1273,36 @@ spec("tbe_compiler") {
       cleanup_test_file(cbind_path);
     }
 
+    it("should reject an unused CBind enum declaration before rendering outputs") {
+      const char *schema_path = "test_tbe_compiler_cbind_unused_enum.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_unused_enum.h";
+      const char *source_path = "test_tbe_compiler_cbind_unused_enum.c";
+      const char *cbind_path = "test_tbe_compiler_cbind_unused_enum_cbind.c";
+      const char *schema =
+          "enum Status { Ready = 1; } message Order { int32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check(tbe_compiler_run(&options) != 0);
+      check_null(fopen(header_path, "rb"));
+      check_null(fopen(source_path, "rb"));
+      check_null(fopen(cbind_path, "rb"));
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+    }
+
     it("should reject guest adapter output outside the built-in C generator") {
       const char *output_path = "test_tbe_compiler_guest_invalid.out";
       tbe_compiler_options_t options = {
