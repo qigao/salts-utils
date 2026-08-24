@@ -30,6 +30,9 @@ dynamic-value fallback。
 TurboParser::TbeCBind -> TurboParser::TbeSchema
                       -> TurboUtils::CBind
 TurboParser::TbeCBind -X-> TurboParser::DataBind
+generated CBind sidecar -> TurboUtils::Core
+                        -> TurboUtils::CBind
+generated CBind sidecar -X-> TurboParser::DataBind
 ```
 
 安装态 JSON consumer 的 CMake 如下：
@@ -66,14 +69,17 @@ add_library(order_cbind STATIC generated/order_cbind.c)
 target_include_directories(order_cbind PUBLIC
   generated
   "$<TARGET_PROPERTY:TurboParser::TbeSchema,INTERFACE_INCLUDE_DIRECTORIES>")
-target_link_libraries(order_cbind PUBLIC TurboUtils::CBind)
+target_link_libraries(order_cbind
+  PUBLIC TurboUtils::Core TurboUtils::CBind)
 ```
 
 这里从 `TurboParser::TbeSchema` target 只读取生成头所需的公开 `tbe_wire.h` include
-interface，并不链接该 library；sidecar source 的 decode 路径直接调用 CBind。独立模式不生成/编译 typed source，生成头不 include
-`tbe_typed.h`，target 也不需要 DataBind include、compile definition、link library 或运行时
-DLL。若显式再传 `--source-output generated/order.c`，则保留既有 combined 生成行为；typed
-source 与 sidecar 是并列产物，前者才需要 DataBind。
+interface，并不链接该 library；sidecar source 的 decode 路径直接调用 CBind。Core 提供
+generated owning-string adapter 使用的 `tstr_*` symbols，因此必须与 CBind 一起作为公开
+依赖声明，并在 Windows 部署其 runtime DLL。独立模式不生成/编译 typed source，生成头
+不 include `tbe_typed.h`，target 也不需要 DataBind include、compile definition、link
+library 或运行时 DLL。若显式再传 `--source-output generated/order.c`，则保留既有 combined
+生成行为；typed source 与 sidecar 是并列产物，前者才需要 DataBind。
 
 ## 完整 desired usage
 
@@ -259,7 +265,7 @@ Plan compilation 只表示 schema AST 到 descriptor graph。TbeCBind 没有 MIR
 
 该 target 以独立 `--output + --cbind-output` 模式只生成并编译 struct header 与 CBind
 sidecar source；不会生成 typed source，生成头和 include interface 不含 DataBind，target
-也不链接 DataBind 或定义 `WITH_DATABIND`。它只比较 generated
+按顺序只声明 `TurboUtils::Core` 与 `TurboUtils::CBind`，也不定义 `WITH_DATABIND`。它只比较 generated
 sidecar direct CBind 与 TbeCBind plan façade；两条路径最终调用同一个 `cbind_decode()`。
 benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 与 DataBind 的性能是否
 相当；同一台机器上的微小数值差异也不支持路径间的原因归纳。

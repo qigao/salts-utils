@@ -1,0 +1,11 @@
+schema CBindStandalone [id(74), version(1), byte_order(little)];
+
+composite CBindStandaloneDetails {
+    int32 sequence;
+}
+
+message CBindStandaloneEnvelope {
+    CBindStandaloneDetails details;
+    [name(eventId), c(event_id)] int32 id;
+    string label;
+}

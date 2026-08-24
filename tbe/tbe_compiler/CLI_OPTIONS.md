@@ -382,7 +382,8 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
   embed JSON/YAML/CSV/XML parsers into Wasm and does not require `--source-output`.
 - C++, Go, Rust, Python, and TypeScript outputs currently generate schema type definitions, not complete wire codecs.
 - The compiler is a build-time tool. A typed `--source-output` links DataBind; an independent
-  `--cbind-output` sidecar links `TurboUtils::CBind` and has no DataBind build or runtime dependency.
+  `--cbind-output` sidecar declares `TurboUtils::Core` followed by `TurboUtils::CBind`. Core owns
+  the generated owning-string adapter symbols; neither dependency introduces DataBind.
   A deployed process does not need the compiler.
 - Dynamic schema hosts may skip code generation and use `DataBindObject`. Existing
   C structs use `TBE_TYPED_*` macro descriptors and also do not invoke the compiler.

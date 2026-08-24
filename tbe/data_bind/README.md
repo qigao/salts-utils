@@ -202,15 +202,18 @@ tbe_compiler order.schema --lang c `
 ### Consumer 链接
 
 独立 sidecar library 只编译 CBind source。`TurboParser::TbeSchema` 提供生成头引用的公开
-`tbe_wire.h` interface；decode 路径只调用 `TurboUtils::CBind`，不 include 或链接
-DataBind。JSON 输入的安装态 consumer 另行链接公开 JSON façade `TurboParser::Parser`。
+`tbe_wire.h` interface；decode 路径调用 `TurboUtils::CBind`，generated owning-string adapter
+的 `tstr_*` symbols 由 `TurboUtils::Core` 提供。两者按 Core、CBind 的顺序公开声明，不
+include 或链接 DataBind。Windows 部署必须复制 Core runtime DLL。JSON 输入的安装态
+consumer 另行链接公开 JSON façade `TurboParser::Parser`。
 
 ```cmake
 add_library(order_cbind STATIC generated/order_cbind.c)
 target_include_directories(order_cbind PUBLIC
   generated
   "$<TARGET_PROPERTY:TurboParser::TbeSchema,INTERFACE_INCLUDE_DIRECTORIES>")
-target_link_libraries(order_cbind PUBLIC TurboUtils::CBind)
+target_link_libraries(order_cbind
+  PUBLIC TurboUtils::Core TurboUtils::CBind)
 
 # Installed consumer: public TurboParser JSON facade.
 target_link_libraries(my_app PRIVATE order_cbind TurboParser::Parser)

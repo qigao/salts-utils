@@ -51,7 +51,8 @@ application -> TurboParser::DataBind -> TurboParser::Parser
                                     -> TurboParser::TbeSchema
 
 build-time sidecar route:
-schema -> tbe_compiler -> immutable CMeta descriptor -> TurboUtils::CBind
+schema -> tbe_compiler -> generated sidecar -> TurboUtils::Core (owning buffers)
+                                        \----> TurboUtils::CBind
 ```
 
 `TurboUtils::CBind` 是格式无关的执行 kernel：它只消费 CMeta descriptor 与任意
@@ -60,7 +61,9 @@ native CMeta storage descriptor 编译成 immutable 双 overlay plan，再直接
 它不链接、调用或 fallback 到 DataBind。`TurboParser::DataBind` 是另一条独立路线，拥有
 动态值树、格式转换与 `TBE_TYPED_*` typed conversion，不是 CBind 的子层、adapter 或
 fallback。构建期 sidecar 则在 schema 已知时生成最终 descriptor，运行时直接调用 CBind，
-不创建 TbeCBind plan。
+不创建 TbeCBind plan。Standalone sidecar 公开声明 `TurboUtils::Core` 与
+`TurboUtils::CBind`：前者提供 generated owning-string adapter 的 `tstr_*` symbols，后者
+提供 format-neutral decode kernel；两者都不引入 DataBind。
 
 TBE schema 只描述语义和 wire 信息，不能推断目标进程的 `sizeof`、`_Alignof`、
 `offsetof`、字符串所有权或 buffer callbacks。因此 TbeCBind 必须同时取得 caller-native
