@@ -2,6 +2,7 @@
 
 #include "node_tree.h"
 #include "schema_parser_dsl.h"
+#include "tbe_cbind_capability.h"
 #include "tbe_error.h"
 
 #include <stdint.h>
@@ -186,15 +187,26 @@ static tbe_cbind_status tbe_cbind_reject_global_unsupported(
   return TBE_CBIND_OK;
 }
 
-static tbe_cbind_semantic_kind tbe_cbind_scalar_kind(const char *type,
-                                                      int *supported) {
+static tbe_cbind_semantic_kind tbe_cbind_v1_scalar_kind(
+    const tbe_cbind_capability *capability, int *supported) {
   *supported = 1;
-  if (strcmp(type, "int32") == 0) return TBE_CBIND_SEMANTIC_INT32;
-  if (strcmp(type, "int64") == 0) return TBE_CBIND_SEMANTIC_INT64;
-  if (strcmp(type, "uint64") == 0) return TBE_CBIND_SEMANTIC_UINT64;
-  if (strcmp(type, "float") == 0) return TBE_CBIND_SEMANTIC_FLOAT;
-  if (strcmp(type, "double") == 0) return TBE_CBIND_SEMANTIC_DOUBLE;
-  if (strcmp(type, "string") == 0) return TBE_CBIND_SEMANTIC_STRING;
+  if (capability == NULL) {
+    *supported = 0;
+    return TBE_CBIND_SEMANTIC_RECORD;
+  }
+  if (capability->kind == TBE_CBIND_SCALAR_INTEGER) {
+    if (capability->is_signed && capability->bits == 32u)
+      return TBE_CBIND_SEMANTIC_INT32;
+    if (capability->is_signed && capability->bits == 64u)
+      return TBE_CBIND_SEMANTIC_INT64;
+    if (!capability->is_signed && capability->bits == 64u)
+      return TBE_CBIND_SEMANTIC_UINT64;
+  } else if (capability->kind == TBE_CBIND_SCALAR_FLOAT) {
+    if (capability->bits == 32u) return TBE_CBIND_SEMANTIC_FLOAT;
+    if (capability->bits == 64u) return TBE_CBIND_SEMANTIC_DOUBLE;
+  } else if (capability->kind == TBE_CBIND_SCALAR_STRING) {
+    return TBE_CBIND_SEMANTIC_STRING;
+  }
   *supported = 0;
   return TBE_CBIND_SEMANTIC_RECORD;
 }
@@ -291,6 +303,7 @@ static tbe_cbind_status tbe_cbind_extract_field(
   tbe_cbind_semantic_field *field = &owner->fields[field_index];
   const char *name = tbe_cbind_node_string(field_node, "name");
   const char *type_name = tbe_cbind_node_string(field_node, "type");
+  const tbe_cbind_capability *capability;
   const char *semantic_name = name;
   const char *native_name = name;
   char path[256];
@@ -339,7 +352,11 @@ static tbe_cbind_status tbe_cbind_extract_field(
         context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, field_index,
         CMETA_OUT_OF_MEMORY, path, "field model allocation failed");
   }
-  field->kind = tbe_cbind_scalar_kind(type_name, &scalar_supported);
+  capability = tbe_cbind_capability_find(type_name);
+  if (capability != NULL &&
+      strcmp(type_name, capability->canonical_name) != 0)
+    capability = NULL;
+  field->kind = tbe_cbind_v1_scalar_kind(capability, &scalar_supported);
   if (!scalar_supported) field->kind = TBE_CBIND_SEMANTIC_RECORD;
   return TBE_CBIND_OK;
 }

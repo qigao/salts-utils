@@ -8,7 +8,8 @@ add_library(${TARGET_NAME} STATIC ${TBE_CBIND_SOURCES})
 target_include_directories(${TARGET_NAME}
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 target_link_libraries(${TARGET_NAME}
   PRIVATE TurboParser::TbeSchema
   PUBLIC TurboUtils::CBind)

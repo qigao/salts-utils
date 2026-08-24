@@ -3,6 +3,7 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
+#include "tbe_cbind_capability.h"
 #include "tbe_error.h"
 #include "turbo_fs.h"
 
@@ -882,14 +883,21 @@ static int tbe_compiler_cbind_reject_field(Node *field, const char *reason) {
 }
 
 static int tbe_compiler_cbind_scalar_supported(const char *type) {
-  static const char *const supported[] = {
-      "int32", "int32_t", "int64", "int64_t", "uint64", "uint64_t",
-      "float", "double", "string"};
-  size_t i;
-
-  if (!type) return 0;
-  for (i = 0; i < sizeof(supported) / sizeof(supported[0]); ++i)
-    if (strcmp(type, supported[i]) == 0) return 1;
+  const tbe_cbind_capability *capability =
+      tbe_cbind_capability_find(type);
+  if (capability == NULL) return 0;
+  if (capability->kind == TBE_CBIND_SCALAR_INTEGER) {
+    int v1_width =
+        (capability->is_signed && capability->bits == 32u) ||
+        capability->bits == 64u;
+    int v1_spelling = strcmp(type, capability->canonical_name) == 0 ||
+                      strcmp(type, capability->c_storage) == 0;
+    return v1_width && v1_spelling;
+  }
+  if (strcmp(type, capability->canonical_name) != 0) return 0;
+  if (capability->kind == TBE_CBIND_SCALAR_FLOAT)
+    return capability->bits == 32u || capability->bits == 64u;
+  if (capability->kind == TBE_CBIND_SCALAR_STRING) return 1;
   return 0;
 }
 

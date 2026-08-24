@@ -19,6 +19,8 @@ cmake_add_executable(tbe_compiler
   SOURCES main.c compiler_core.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache
   FOLDER "tbe/tbe_compiler")
+target_include_directories(tbe_compiler
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 set_property(TARGET tbe_compiler APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
@@ -97,6 +99,8 @@ cmake_add_test(test_tbe_compiler
     TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
+target_include_directories(test_tbe_compiler
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 tbe_copy_turbonet_runtime_deps(test_tbe_compiler)
 
 set(TBE_TYPED_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
