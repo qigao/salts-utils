@@ -127,6 +127,52 @@ static void cleanup_test_file(const char *path) {
   }
 }
 
+typedef struct cbind_rejection_result_s {
+  int write_status;
+  int compiler_status;
+  int header_exists;
+  int source_exists;
+  int cbind_exists;
+} cbind_rejection_result_t;
+
+static int test_file_exists(const char *path) {
+  FILE *file = fopen(path, "rb");
+  if (!file) return 0;
+  fclose(file);
+  return 1;
+}
+
+static cbind_rejection_result_t run_rejected_cbind_schema(const char *schema) {
+  const char *schema_path = "test_tbe_compiler_cbind_semantic_name.tbe";
+  const char *header_path = "test_tbe_compiler_cbind_semantic_name.h";
+  const char *source_path = "test_tbe_compiler_cbind_semantic_name.c";
+  const char *cbind_path = "test_tbe_compiler_cbind_semantic_name_cbind.c";
+  tbe_compiler_options_t options = {
+      .schema_path = schema_path,
+      .output_path = header_path,
+      .source_output_path = source_path,
+      .cbind_output_path = cbind_path,
+      .lang_enum = TBE_COMPILER_LANG_C,
+  };
+  cbind_rejection_result_t result;
+
+  cleanup_test_file(schema_path);
+  cleanup_test_file(header_path);
+  cleanup_test_file(source_path);
+  cleanup_test_file(cbind_path);
+  result.write_status = write_test_file(schema_path, schema);
+  result.compiler_status =
+      result.write_status == 0 ? tbe_compiler_run(&options) : -1;
+  result.header_exists = test_file_exists(header_path);
+  result.source_exists = test_file_exists(source_path);
+  result.cbind_exists = test_file_exists(cbind_path);
+  cleanup_test_file(schema_path);
+  cleanup_test_file(header_path);
+  cleanup_test_file(source_path);
+  cleanup_test_file(cbind_path);
+  return result;
+}
+
 static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   int saved_stdout = -1;
   int saved_stderr = -1;
@@ -1101,6 +1147,334 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
+    }
+
+    it("should generate immutable CBind descriptors with a hyphenated semantic name") {
+      const char *schema_path = "test_tbe_compiler_cbind_supported.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_supported.h";
+      const char *source_path = "test_tbe_compiler_cbind_supported.c";
+      const char *cbind_path = "test_tbe_compiler_cbind_supported_cbind.c";
+      const char *schema =
+          "schema Orders;"
+          "composite Price { int64 amount; }"
+          "group Adjustment { double factor; }"
+          "message Order { [name(\"order-id\"), c(order_id)] int32 id; "
+          "uint64 quantity; float ratio; double total; string symbol; Price price; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      char *header = NULL;
+      char *cbind_source = NULL;
+      size_t header_size = 0;
+      size_t cbind_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      cbind_source = tt_read_file(cbind_path, &cbind_size);
+      check_not_null(header);
+      check_not_null(cbind_source);
+      check(header_size != 0u);
+      check(cbind_size != 0u);
+
+      check_not_null(strstr(header, "#include <cbind/cbind.h>"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Price_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API cbind_status Price_from_cserde(cbind_context *context, cserde_reader *reader, Price_t *object, cbind_error *error);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Adjustment_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *Order_cbind_data(void);"));
+
+      check_not_null(strstr(cbind_source, "#include \"test_tbe_compiler_cbind_supported.h\""));
+      check_not_null(strstr(cbind_source, "#include <cmeta/data.h>"));
+      check_not_null(strstr(cbind_source, "#include <cmeta/struct.h>"));
+      check_not_null(strstr(cbind_source, "#include <turbo_cmeta_data.h>"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(int32_t) == sizeof(int)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(int32_t) == _Alignof(int)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(int64_t) == sizeof(long)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(int64_t) == _Alignof(long)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(sizeof(uint64_t) == sizeof(size_t)"));
+      check_not_null(strstr(cbind_source,
+          "_Static_assert(_Alignof(uint64_t) == _Alignof(size_t)"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_type_desc Price_cbind_type;"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_desc Price_cbind_descriptor;"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_type_identity Price_cbind_identity"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_field_desc Price_cbind_fields[]"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_struct_desc Price_cbind_layout"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_field_desc Price_cbind_data_fields[]"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_struct_shape Price_cbind_shape"));
+      check_not_null(strstr(cbind_source,
+          "{\"order-id\", \"int\", offsetof(Order_t, order_id), sizeof(int), _Alignof(int), &cmeta_type_int, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"tbe.Orders.Order.id\", \"order-id\", offsetof(Order_t, order_id), &cmeta_data_int}"));
+      check_not_null(strstr(cbind_source,
+          "{\"quantity\", \"size_t\", offsetof(Order_t, quantity), sizeof(size_t), _Alignof(size_t), &cmeta_type_size, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"ratio\", \"float\", offsetof(Order_t, ratio), sizeof(float), _Alignof(float), &cmeta_type_float, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"total\", \"double\", offsetof(Order_t, total), sizeof(double), _Alignof(double), &cmeta_type_double, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"symbol\", \"tstr\", offsetof(Order_t, symbol), sizeof(tstr), _Alignof(tstr), &turbo_tstr_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "CMETA_DATA_BUFFER_OWNED"));
+      check_not_null(strstr(cbind_source,
+          "&turbo_tstr_cmeta_buffer_ops"));
+      check_not_null(strstr(cbind_source,
+          "{\"price\", \"Price_t\", offsetof(Order_t, price), sizeof(Price_t), _Alignof(Price_t), &Price_cbind_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"tbe.Orders.Order.price\", \"price\", offsetof(Order_t, price), &Price_cbind_descriptor}"));
+      check_not_null(strstr(cbind_source,
+          "const cmeta_data_desc *Order_cbind_data(void)"));
+      check_not_null(strstr(cbind_source,
+          "return &Order_cbind_descriptor;"));
+      check_not_null(strstr(cbind_source,
+          "return cbind_decode(context, &Order_cbind_descriptor, reader, object, error);"));
+      free(header);
+      free(cbind_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should reject duplicate mapped CBind semantic names before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(shared)] int32 first; "
+          "[name(shared)] int32 second; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject mapped and canonical CBind semantic name collisions before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(second)] int32 first; int32 second; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject multiple CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(primary), name(secondary)] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject empty CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(\"\")] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should reject non-portable CBind name mappings before rendering outputs") {
+      cbind_rejection_result_t result = run_rejected_cbind_schema(
+          "message Order { [name(\"nested.value\")] int32 first; }");
+
+      check_equal(result.write_status, 0);
+      check_not_equal(result.compiler_status, 0);
+      check_false(result.header_exists);
+      check_false(result.source_exists);
+      check_false(result.cbind_exists);
+    }
+
+    it("should require the CBind sidecar output contract") {
+      const char *schema_path = "test_tbe_compiler_cbind_contract.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_contract.h";
+      const char *source_path = "test_tbe_compiler_cbind_contract.c";
+      const char *guest_path = "test_tbe_compiler_cbind_contract_guest.c";
+      const char *lua_path = "test_tbe_compiler_cbind_contract_lua.c";
+      const char *dsl_path = "test_tbe_compiler_cbind_contract.rfl";
+      const char *cbind_path = "test_tbe_compiler_cbind_contract_cbind.c";
+      const char *schema = "message Order { int32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .guest_output_path = guest_path,
+          .lua_output_path = lua_path,
+          .dsl_output_path = dsl_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      const char *collisions[] = {header_path, source_path, guest_path, lua_path, dsl_path};
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(guest_path);
+      cleanup_test_file(lua_path);
+      cleanup_test_file(dsl_path);
+      cleanup_test_file(cbind_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+
+      options.output_path = NULL;
+      check(tbe_compiler_run(&options) != 0);
+      options.output_path = header_path;
+      options.source_output_path = NULL;
+      check(tbe_compiler_run(&options) != 0);
+      options.source_output_path = source_path;
+      options.lang_enum = TBE_COMPILER_LANG_CPP;
+      check(tbe_compiler_run(&options) != 0);
+      options.lang_enum = TBE_COMPILER_LANG_C;
+      options.template_path = C_STRUCT_TEMPLATE_FILE;
+      check(tbe_compiler_run(&options) != 0);
+      options.template_path = NULL;
+      for (size_t i = 0; i < sizeof(collisions) / sizeof(collisions[0]); ++i) {
+        options.cbind_output_path = collisions[i];
+        check(tbe_compiler_run(&options) != 0);
+      }
+      options.cbind_output_path = cbind_path;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(guest_path);
+      cleanup_test_file(lua_path);
+      cleanup_test_file(dsl_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should reject CBind aliases and optional fields before rendering outputs") {
+      const char *schema_path = "test_tbe_compiler_cbind_alias_optional.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_alias_optional.h";
+      const char *source_path = "test_tbe_compiler_cbind_alias_optional.c";
+      const char *cbind_path = "test_tbe_compiler_cbind_alias_optional_cbind.c";
+      const char *schemas[] = {
+          "message Order { [alias(legacy_id)] int32 id; }",
+          "message Order { optional int32 id; }",
+      };
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      for (size_t i = 0; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(source_path);
+        cleanup_test_file(cbind_path);
+        check_equal(write_test_file(schema_path, schemas[i]), 0);
+        check(tbe_compiler_run(&options) != 0);
+        check_null(fopen(header_path, "rb"));
+        check_null(fopen(source_path, "rb"));
+        check_null(fopen(cbind_path, "rb"));
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should reject unsupported CBind storage before rendering outputs") {
+      const char *schema_path = "test_tbe_compiler_cbind_unsupported.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_unsupported.h";
+      const char *source_path = "test_tbe_compiler_cbind_unsupported.c";
+      const char *cbind_path = "test_tbe_compiler_cbind_unsupported_cbind.c";
+      const char *schemas[] = {
+          "message Order { bool enabled; }",
+          "message Order { int8 value; }",
+          "message Order { uint32 count; }",
+          "enum Status { Ready = 1; } message Order { Status status; }",
+          "message Order { uuid id; }",
+          "message Order { bytes payload; }",
+          "message Order { list<int32> ids; }",
+          "group Level { int32 price; } message Order { group<Level> levels; }",
+          "union Choice { int32 number; } message Order { Choice choice; }",
+      };
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      for (size_t i = 0; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(source_path);
+        cleanup_test_file(cbind_path);
+        check_equal(write_test_file(schema_path, schemas[i]), 0);
+        check(tbe_compiler_run(&options) != 0);
+        check_null(fopen(header_path, "rb"));
+        check_null(fopen(source_path, "rb"));
+        check_null(fopen(cbind_path, "rb"));
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should reject an unused CBind enum declaration before rendering outputs") {
+      const char *schema_path = "test_tbe_compiler_cbind_unused_enum.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_unused_enum.h";
+      const char *source_path = "test_tbe_compiler_cbind_unused_enum.c";
+      const char *cbind_path = "test_tbe_compiler_cbind_unused_enum_cbind.c";
+      const char *schema =
+          "enum Status { Ready = 1; } message Order { int32 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check(tbe_compiler_run(&options) != 0);
+      check_null(fopen(header_path, "rb"));
+      check_null(fopen(source_path, "rb"));
+      check_null(fopen(cbind_path, "rb"));
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
     }
 
     it("should reject guest adapter output outside the built-in C generator") {

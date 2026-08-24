@@ -3,6 +3,7 @@
 # =============================================================================
 
 set(TBE_COMPILER_TEMPLATE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_cbind_source.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -146,6 +147,61 @@ set_target_properties(test_tbe_typed_order_cpp PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON)
 tbe_copy_turbonet_runtime_deps(test_tbe_typed_order_cpp WITH_DATABIND)
+
+set(TBE_CBIND_SIDECAR_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_cbind_sidecar")
+set(TBE_CBIND_SIDECAR_HEADER "${TBE_CBIND_SIDECAR_GENERATED_DIR}/cbind_sidecar.h")
+set(TBE_CBIND_SIDECAR_TYPED_SOURCE "${TBE_CBIND_SIDECAR_GENERATED_DIR}/cbind_sidecar.c")
+set(TBE_CBIND_SIDECAR_SOURCE "${TBE_CBIND_SIDECAR_GENERATED_DIR}/cbind_sidecar_cbind.c")
+
+add_custom_command(
+  OUTPUT
+    "${TBE_CBIND_SIDECAR_HEADER}"
+    "${TBE_CBIND_SIDECAR_TYPED_SOURCE}"
+    "${TBE_CBIND_SIDECAR_SOURCE}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CBIND_SIDECAR_GENERATED_DIR}"
+  COMMAND
+    $<TARGET_FILE:tbe_compiler>
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_cbind_sidecar.schema"
+    --lang c
+    --output "${TBE_CBIND_SIDECAR_HEADER}"
+    --source-output "${TBE_CBIND_SIDECAR_TYPED_SOURCE}"
+    --cbind-output "${TBE_CBIND_SIDECAR_SOURCE}"
+  DEPENDS
+    tbe_compiler
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_cbind_sidecar.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_cbind_source.mustache"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "Generating typed CBind sidecar test records"
+  VERBATIM)
+
+add_library(test_tbe_cbind_sidecar_static STATIC
+  "${TBE_CBIND_SIDECAR_HEADER}"
+  "${TBE_CBIND_SIDECAR_TYPED_SOURCE}"
+  "${TBE_CBIND_SIDECAR_SOURCE}")
+target_include_directories(test_tbe_cbind_sidecar_static
+  PUBLIC "${TBE_CBIND_SIDECAR_GENERATED_DIR}")
+target_link_libraries(test_tbe_cbind_sidecar_static
+  PUBLIC TurboParser::DataBind TurboUtils::CBind)
+set_target_properties(test_tbe_cbind_sidecar_static PROPERTIES FOLDER "tbe/tbe_compiler")
+
+cmake_add_test(test_tbe_cbind_sidecar
+  SOURCES test_cbind_sidecar.c
+  LIBS test_tbe_cbind_sidecar_static json_parser TurboUtils::TinyTest
+  INCLUDES "${TBE_CBIND_SIDECAR_GENERATED_DIR}"
+  FOLDER "tbe/tbe_compiler")
+tbe_copy_turbonet_runtime_deps(test_tbe_cbind_sidecar WITH_DATABIND)
+
+cmake_add_test(test_tbe_cbind_sidecar_cpp
+  SOURCES test_cbind_sidecar_cpp.cpp
+  LIBS test_tbe_cbind_sidecar_static TurboUtils::TinyTest
+  INCLUDES "${TBE_CBIND_SIDECAR_GENERATED_DIR}"
+  FOLDER "tbe/tbe_compiler")
+set_target_properties(test_tbe_cbind_sidecar_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON)
+tbe_copy_turbonet_runtime_deps(test_tbe_cbind_sidecar_cpp WITH_DATABIND)
 
 find_program(TBE_WASM_GUEST_CLANG NAMES clang clang.exe)
 if(TBE_WASM_GUEST_CLANG)
