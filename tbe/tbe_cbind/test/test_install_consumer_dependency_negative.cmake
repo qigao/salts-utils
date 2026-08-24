@@ -75,6 +75,7 @@ execute_process(
     -DTP_LINK_TARGET=tbe_cbind_install_consumer
     -DTP_EXPECT_FORBIDDEN=ON
     -DTP_OUTPUT_FILE=${negative_binary_dir}/expanded-link-evidence.txt
+    -DTP_DEPENDENCY_OUTPUT_FILE=${negative_binary_dir}/dependency-link-tokens.txt
     -P "${TP_LINK_VERIFIER}"
   RESULT_VARIABLE link_verifier_result
   OUTPUT_VARIABLE link_verifier_output
@@ -85,4 +86,11 @@ if(NOT link_verifier_result EQUAL 0 OR
   message(FATAL_ERROR
     "Conditional wrapper did not reach expanded link arguments:\n"
     "${link_verifier_log}")
+endif()
+file(READ "${negative_binary_dir}/dependency-link-tokens.txt"
+  dependency_token_evidence)
+if(NOT dependency_token_evidence MATCHES "DataBindProbe[.]lib")
+  message(FATAL_ERROR
+    "Response-file dependency token evidence omitted DataBindProbe.lib: "
+    "${dependency_token_evidence}")
 endif()

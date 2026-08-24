@@ -10,32 +10,80 @@ foreach(required_variable IN ITEMS
   endif()
 endforeach()
 
-file(REAL_PATH "${TP_MAIN_BINARY_DIR}" main_binary_dir)
-if(NOT IS_DIRECTORY "${main_binary_dir}")
-  message(FATAL_ERROR "Main build directory does not exist: ${main_binary_dir}")
-endif()
+function(path_is_explicit_reparse_point input_path output_variable)
+  if(IS_SYMLINK "${input_path}")
+    set(${output_variable} TRUE PARENT_SCOPE)
+    return()
+  endif()
+  if(WIN32 AND EXISTS "${input_path}")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env "TP_TEST_PATH=${input_path}"
+        powershell.exe -NoProfile -NonInteractive -Command
+        "$item = Get-Item -LiteralPath $env:TP_TEST_PATH -Force; if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { 'REPARSE' } else { 'PLAIN' }"
+      RESULT_VARIABLE attribute_result
+      OUTPUT_VARIABLE attribute_output
+      ERROR_VARIABLE attribute_error
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT attribute_result EQUAL 0 OR
+       NOT attribute_output MATCHES "^(REPARSE|PLAIN)$")
+      message(FATAL_ERROR
+        "Could not prove path reparse attributes: ${input_path}\n"
+        "${attribute_output}\n${attribute_error}")
+    endif()
+    if(attribute_output STREQUAL "REPARSE")
+      set(${output_variable} TRUE PARENT_SCOPE)
+      return()
+    endif()
+  endif()
+  set(${output_variable} FALSE PARENT_SCOPE)
+endfunction()
 
-set(safety_root "${main_binary_dir}/tbe/tbe_cbind/path_safety_sandbox")
-cmake_path(NORMAL_PATH safety_root)
-set(containment_main "${main_binary_dir}")
-set(containment_root "${safety_root}")
-if(WIN32)
-  string(TOLOWER "${containment_main}" containment_main)
-  string(TOLOWER "${containment_root}" containment_root)
-endif()
-cmake_path(IS_PREFIX containment_main "${containment_root}" NORMALIZE
-  safety_root_contained)
-if(NOT safety_root_contained)
-  message(FATAL_ERROR "Path-safety sandbox escaped the main build tree")
-endif()
-if(IS_SYMLINK "${safety_root}")
-  message(FATAL_ERROR "Path-safety sandbox must not be a symlink")
-endif()
+function(assert_trusted_existing_directory directory main_directory)
+  if(NOT EXISTS "${directory}" AND NOT IS_SYMLINK "${directory}")
+    return()
+  endif()
+  path_is_explicit_reparse_point("${directory}" is_reparse)
+  if(is_reparse)
+    message(FATAL_ERROR
+      "Path-safety sandbox has an untrusted ancestor: ${directory}")
+  endif()
+  if(NOT IS_DIRECTORY "${directory}")
+    message(FATAL_ERROR
+      "Path-safety sandbox component is not a directory: ${directory}")
+  endif()
+  file(REAL_PATH "${directory}" directory_real)
+  set(directory_compare "${directory}")
+  set(directory_real_compare "${directory_real}")
+  set(main_compare "${main_directory}")
+  cmake_path(NORMAL_PATH directory_compare)
+  cmake_path(NORMAL_PATH directory_real_compare)
+  cmake_path(NORMAL_PATH main_compare)
+  if(WIN32)
+    string(TOLOWER "${directory_compare}" directory_compare)
+    string(TOLOWER "${directory_real_compare}" directory_real_compare)
+    string(TOLOWER "${main_compare}" main_compare)
+  endif()
+  if(NOT directory_compare STREQUAL directory_real_compare)
+    message(FATAL_ERROR
+      "Path-safety sandbox has an untrusted ancestor: ${directory}")
+  endif()
+  cmake_path(IS_PREFIX main_compare "${directory_real_compare}" NORMALIZE
+    directory_contained)
+  if(NOT directory_contained)
+    message(FATAL_ERROR
+      "Path-safety sandbox component escaped the main build: ${directory}")
+  endif()
+endfunction()
 
 function(remove_test_link link_path sentinel_path)
+  path_is_explicit_reparse_point("${link_path}" is_reparse)
+  if(NOT is_reparse)
+    message(FATAL_ERROR
+      "Refusing link-only removal of a non-reparse leaf: ${link_path}")
+  endif()
   if(IS_SYMLINK "${link_path}")
     file(REMOVE "${link_path}")
-  elseif(WIN32 AND EXISTS "${link_path}")
+  elseif(WIN32)
     execute_process(
       COMMAND "${CMAKE_COMMAND}" -E env
         "TP_TEST_LINK=${link_path}"
@@ -50,7 +98,7 @@ function(remove_test_link link_path sentinel_path)
         "${remove_output}\n${remove_error}")
     endif()
   else()
-    message(FATAL_ERROR "Expected a test link at: ${link_path}")
+    message(FATAL_ERROR "Unsupported reparse-point removal: ${link_path}")
   endif()
   if(EXISTS "${link_path}" OR IS_SYMLINK "${link_path}")
     message(FATAL_ERROR "Test link still exists after link-only removal")
@@ -61,31 +109,60 @@ function(remove_test_link link_path sentinel_path)
   endif()
 endfunction()
 
+if(NOT IS_DIRECTORY "${TP_MAIN_BINARY_DIR}")
+  message(FATAL_ERROR
+    "Main build directory does not exist: ${TP_MAIN_BINARY_DIR}")
+endif()
+set(main_input "${TP_MAIN_BINARY_DIR}")
+cmake_path(ABSOLUTE_PATH main_input NORMALIZE)
+path_is_explicit_reparse_point("${main_input}" main_is_reparse)
+if(main_is_reparse)
+  message(FATAL_ERROR
+    "Path-safety sandbox has an untrusted ancestor: ${main_input}")
+endif()
+file(REAL_PATH "${main_input}" main_binary_dir)
+set(main_input_compare "${main_input}")
+set(main_real_compare "${main_binary_dir}")
+if(WIN32)
+  string(TOLOWER "${main_input_compare}" main_input_compare)
+  string(TOLOWER "${main_real_compare}" main_real_compare)
+endif()
+if(NOT main_input_compare STREQUAL main_real_compare)
+  message(FATAL_ERROR
+    "Path-safety sandbox has an untrusted ancestor: ${main_input}")
+endif()
+assert_trusted_existing_directory("${main_binary_dir}" "${main_binary_dir}")
+
+set(safety_root "${main_binary_dir}/tbe/tbe_cbind/path_safety_sandbox")
+cmake_path(NORMAL_PATH safety_root)
+cmake_path(IS_PREFIX main_binary_dir "${safety_root}" NORMALIZE
+  safety_root_contained)
+if(NOT safety_root_contained)
+  message(FATAL_ERROR "Path-safety sandbox escaped the main build tree")
+endif()
+foreach(trusted_component IN ITEMS
+    "${main_binary_dir}/tbe"
+    "${main_binary_dir}/tbe/tbe_cbind"
+    "${safety_root}")
+  assert_trusted_existing_directory(
+    "${trusted_component}" "${main_binary_dir}")
+endforeach()
+
 if(EXISTS "${safety_root}")
+  foreach(trusted_child_parent IN ITEMS
+      "${safety_root}/main"
+      "${safety_root}/main/tbe"
+      "${safety_root}/main/tbe/tbe_cbind")
+    assert_trusted_existing_directory(
+      "${trusted_child_parent}" "${main_binary_dir}")
+  endforeach()
   set(previous_link
     "${safety_root}/main/tbe/tbe_cbind/install_consumer")
   if(EXISTS "${previous_link}" OR IS_SYMLINK "${previous_link}")
-    file(REAL_PATH "${previous_link}" previous_link_real)
-    set(previous_link_compare "${previous_link}")
-    set(previous_link_real_compare "${previous_link_real}")
-    if(WIN32)
-      string(TOLOWER "${previous_link_compare}" previous_link_compare)
-      string(TOLOWER "${previous_link_real_compare}" previous_link_real_compare)
-    endif()
-    if(IS_SYMLINK "${previous_link}" OR
-       NOT previous_link_compare STREQUAL previous_link_real_compare)
+    path_is_explicit_reparse_point("${previous_link}" previous_is_reparse)
+    if(previous_is_reparse)
       remove_test_link("${previous_link}" "")
     endif()
-  endif()
-  file(REAL_PATH "${safety_root}" existing_safety_root)
-  set(existing_compare "${existing_safety_root}")
-  set(expected_compare "${safety_root}")
-  if(WIN32)
-    string(TOLOWER "${existing_compare}" existing_compare)
-    string(TOLOWER "${expected_compare}" expected_compare)
-  endif()
-  if(NOT existing_compare STREQUAL expected_compare)
-    message(FATAL_ERROR "Path-safety sandbox resolves through a link")
   endif()
   file(REMOVE_RECURSE "${safety_root}")
 endif()
@@ -173,6 +250,7 @@ execute_process(
           "${link_outside}" "${link_candidate}"
   RESULT_VARIABLE link_result
   OUTPUT_QUIET ERROR_QUIET)
+set(link_kind "symbolic link")
 if(NOT link_result EQUAL 0 AND WIN32)
   execute_process(
     COMMAND "${CMAKE_COMMAND}" -E env
@@ -182,8 +260,12 @@ if(NOT link_result EQUAL 0 AND WIN32)
       "$null = New-Item -ItemType Junction -Path $env:TP_TEST_LINK -Target $env:TP_TEST_TARGET"
     RESULT_VARIABLE link_result
     OUTPUT_QUIET ERROR_QUIET)
+  if(link_result EQUAL 0)
+    set(link_kind "Windows junction")
+  endif()
 endif()
 if(link_result EQUAL 0)
+  message(STATUS "Path-safety escape case uses ${link_kind}")
   expect_guard_rejection("symlink or junction escape" "${link_candidate}"
     FALSE "${link_outside}/sentinel.txt")
   remove_test_link("${link_candidate}" "${link_outside}/sentinel.txt")

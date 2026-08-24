@@ -22,6 +22,21 @@ target_link_libraries(tbe_cbind_install_consumer PRIVATE
 set_target_properties(tbe_cbind_install_consumer PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON)
+if(TBE_CBIND_TEST_DATABIND_PATH_ONLY)
+  set(databind_path_only_output
+    "${CMAKE_BINARY_DIR}/DataBindCheckoutBuildOutput")
+  set_target_properties(tbe_cbind_install_consumer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${databind_path_only_output}")
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" databind_path_only_config)
+  if(NOT "${databind_path_only_config}" STREQUAL "")
+    set_target_properties(tbe_cbind_install_consumer PROPERTIES
+      "RUNTIME_OUTPUT_DIRECTORY_${databind_path_only_config}"
+      "${databind_path_only_output}")
+  endif()
+endif()
+file(GENERATE
+  OUTPUT "${CMAKE_BINARY_DIR}/tbe-cbind-consumer-location-$<CONFIG>.txt"
+  CONTENT "$<TARGET_FILE:tbe_cbind_install_consumer>")
 
 set(tbe_cbind_evidence_dir
   "${CMAKE_BINARY_DIR}/tbe-cbind-dependency-evidence")

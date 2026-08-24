@@ -58,6 +58,9 @@ set(configure_command
   "-DTurboParser_DIR=${install_prefix}/${TP_INSTALL_CMAKEDIR}"
   "-DTurboUtils_DIR=${TP_TURBOUTILS_DIR}"
   "-DCMAKE_BUILD_TYPE=${TP_CONFIG}")
+if(DEFINED TP_DATABIND_PATH_ONLY AND TP_DATABIND_PATH_ONLY)
+  list(APPEND configure_command -DTBE_CBIND_TEST_DATABIND_PATH_ONLY=ON)
+endif()
 if(DEFINED TP_PREFIX_PATH AND NOT "${TP_PREFIX_PATH}" STREQUAL "")
   list(APPEND configure_command "-DCMAKE_PREFIX_PATH=${TP_PREFIX_PATH}")
 endif()
@@ -108,6 +111,7 @@ execute_process(
     -DTP_LINK_LOG=${test_root}/consumer-build.log
     -DTP_LINK_TARGET=tbe_cbind_install_consumer
     -DTP_OUTPUT_FILE=${test_root}/expanded-link-evidence.txt
+    -DTP_DEPENDENCY_OUTPUT_FILE=${test_root}/dependency-link-tokens.txt
     -P "${CMAKE_CURRENT_LIST_DIR}/verify_install_consumer_link.cmake"
   RESULT_VARIABLE link_evidence_result
   OUTPUT_VARIABLE link_evidence_output
@@ -117,18 +121,31 @@ if(NOT link_evidence_result EQUAL 0)
     "Installed consumer link evidence failed:\n"
     "${link_evidence_output}\n${link_evidence_error}")
 endif()
-
-set(consumer_executable "${consumer_binary_dir}/tbe_cbind_install_consumer")
-if(WIN32)
-  string(APPEND consumer_executable ".exe")
-endif()
-if(NOT EXISTS "${consumer_executable}")
-  set(consumer_executable
-    "${consumer_binary_dir}/${TP_CONFIG}/tbe_cbind_install_consumer")
-  if(WIN32)
-    string(APPEND consumer_executable ".exe")
+if(DEFINED TP_DATABIND_PATH_ONLY AND TP_DATABIND_PATH_ONLY)
+  file(READ "${test_root}/expanded-link-evidence.txt" raw_link_evidence)
+  file(READ "${test_root}/dependency-link-tokens.txt" dependency_tokens)
+  if(NOT raw_link_evidence MATCHES "DataBindCheckoutBuildOutput")
+    message(FATAL_ERROR
+      "The path-only DataBind control did not reach the actual link command")
+  endif()
+  string(TOLOWER "${dependency_tokens}" dependency_tokens_lower)
+  if("${dependency_tokens}" STREQUAL "" OR
+     dependency_tokens_lower MATCHES "databind|data_bind")
+    message(FATAL_ERROR
+      "Path-only control contaminated parsed dependency tokens: "
+      "${dependency_tokens}")
   endif()
 endif()
+
+set(consumer_location_file
+  "${consumer_binary_dir}/tbe-cbind-consumer-location-${TP_CONFIG}.txt")
+if(NOT EXISTS "${consumer_location_file}")
+  message(FATAL_ERROR
+    "Installed consumer target location evidence was not produced: "
+    "${consumer_location_file}")
+endif()
+file(READ "${consumer_location_file}" consumer_executable)
+string(STRIP "${consumer_executable}" consumer_executable)
 if(NOT EXISTS "${consumer_executable}")
   message(FATAL_ERROR
     "Installed consumer executable was not produced: ${consumer_executable}")
