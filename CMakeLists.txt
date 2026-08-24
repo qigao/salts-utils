@@ -45,8 +45,20 @@ include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
 
+if(NOT DEFINED ENV{TURBOUTILS_ROOT}
+   OR "$ENV{TURBOUTILS_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "Required dependency root is not defined: TURBOUTILS_ROOT")
+endif()
+if(NOT IS_DIRECTORY "$ENV{TURBOUTILS_ROOT}")
+  message(FATAL_ERROR
+          "TURBOUTILS_ROOT is not a directory: $ENV{TURBOUTILS_ROOT}")
+endif()
+
 find_package(Threads REQUIRED)
-find_package(TurboUtils CONFIG REQUIRED)
+find_package(
+  TurboUtils CONFIG REQUIRED
+  PATHS "$ENV{TURBOUTILS_ROOT}"
+  NO_DEFAULT_PATH)
 
 if(NOT TARGET TurboUtils::Core)
   message(FATAL_ERROR "TurboUtils::Core is required by TurboParser")
