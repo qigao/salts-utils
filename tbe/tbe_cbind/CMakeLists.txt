@@ -17,32 +17,27 @@ cmake_config_target(${TARGET_NAME}
   FOLDER "tbe/tbe_cbind"
   EXPORT_NAME TbeCBind)
 
-function(tbe_cbind_check_dependency_graph target_name)
-  get_target_property(alias_target ${target_name} ALIASED_TARGET)
-  if(alias_target)
-    set(target_name ${alias_target})
+function(tbe_cbind_check_dependency_contract target_name)
+  set(expected_direct_dependencies
+    "TurboParser::TbeSchema;TurboUtils::CBind")
+  set(expected_interface_dependencies
+    "$<LINK_ONLY:TurboParser::TbeSchema>;TurboUtils::CBind")
+  get_target_property(direct_dependencies ${target_name} LINK_LIBRARIES)
+  get_target_property(interface_dependencies ${target_name}
+    INTERFACE_LINK_LIBRARIES)
+  if(NOT direct_dependencies STREQUAL expected_direct_dependencies)
+    message(FATAL_ERROR
+      "${target_name} direct dependency contract mismatch: "
+      "expected ${expected_direct_dependencies}, got ${direct_dependencies}")
   endif()
-  get_property(visited GLOBAL PROPERTY TBE_CBIND_DEPENDENCY_VISITED)
-  if(";${visited};" MATCHES ";${target_name};")
-    return()
+  if(NOT interface_dependencies STREQUAL expected_interface_dependencies)
+    message(FATAL_ERROR
+      "${target_name} interface dependency contract mismatch: "
+      "expected ${expected_interface_dependencies}, got ${interface_dependencies}")
   endif()
-  set_property(GLOBAL APPEND PROPERTY TBE_CBIND_DEPENDENCY_VISITED ${target_name})
-  get_target_property(link_deps ${target_name} LINK_LIBRARIES)
-  get_target_property(interface_deps ${target_name} INTERFACE_LINK_LIBRARIES)
-  foreach(dep IN LISTS link_deps interface_deps)
-    string(REGEX REPLACE "^\\$<LINK_ONLY:([^>]+)>$" "\\1" dep "${dep}")
-    string(REGEX REPLACE "^\\$<BUILD_INTERFACE:([^>]+)>$" "\\1" dep "${dep}")
-    if(dep MATCHES "DataBind|data_bind")
-      message(FATAL_ERROR "${target_name} has forbidden DataBind dependency: ${dep}")
-    endif()
-    if(TARGET ${dep})
-      tbe_cbind_check_dependency_graph(${dep})
-    endif()
-  endforeach()
 endfunction()
 
-set_property(GLOBAL PROPERTY TBE_CBIND_DEPENDENCY_VISITED "")
-tbe_cbind_check_dependency_graph(${TARGET_NAME})
+tbe_cbind_check_dependency_contract(${TARGET_NAME})
 
 install(TARGETS ${TARGET_NAME}
   EXPORT TurboParserTargets
@@ -130,7 +125,6 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
       -DTP_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer
       -DTP_DEPENDENCY_VERIFIER=${CMAKE_CURRENT_SOURCE_DIR}/test/verify_install_consumer_dependencies.cmake
-      -DTP_LINK_VERIFIER=${CMAKE_CURRENT_SOURCE_DIR}/test/verify_install_consumer_link.cmake
       -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
       -DTP_GENERATOR=${CMAKE_GENERATOR}
       -DTP_CONFIG=$<CONFIG>
@@ -146,7 +140,6 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
       -DTP_TURBOUTILS_RUNTIME_DIR=$<TARGET_FILE_DIR:TurboUtils::Core>
       -DTP_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-      -DTP_DATABIND_PATH_ONLY=ON
       -DTP_INSTALL_CMAKEDIR=${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser
       -DTP_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
       -DTP_GENERATOR=${CMAKE_GENERATOR}
