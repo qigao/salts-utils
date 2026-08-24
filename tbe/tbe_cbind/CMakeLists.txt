@@ -81,6 +81,28 @@ cmake_add_test(test_tbe_cbind_decode
   LIBS TurboParser::TbeCBind TurboUtils::Core TurboUtils::TinyTest
   FOLDER "tbe/tbe_cbind/tests")
 
+cmake_add_test(test_tbe_cbind_json
+  SOURCES test/test_tbe_cbind_json.c
+  LIBS TurboParser::TbeCBind TurboParser::Parser TurboUtils::TinyTest
+  FOLDER "tbe/tbe_cbind/tests")
+
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME test_tbe_cbind_install_consumer
+    COMMAND ${CMAKE_COMMAND}
+      -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
+      -DTP_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/install_consumer
+      -DTP_CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/install_consumer
+      -DTP_TURBOUTILS_DIR=${TurboUtils_DIR}
+      -DTP_PREFIX_PATH=${CMAKE_PREFIX_PATH}
+      -DTP_INSTALL_CMAKEDIR=${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser
+      -DTP_GENERATOR=${CMAKE_GENERATOR}
+      -DTP_CONFIG=$<CONFIG>
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/run_install_consumer.cmake)
+  set_tests_properties(test_tbe_cbind_install_consumer PROPERTIES
+    LABELS "tbe_cbind;install-consumer"
+    RUN_SERIAL TRUE)
+endif()
+
 if(MSVC)
   target_link_options(test_tbe_cbind_plan PRIVATE /OPT:NOICF)
   target_link_options(test_tbe_cbind_decode PRIVATE /OPT:NOICF)
