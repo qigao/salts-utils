@@ -1,5 +1,6 @@
 #include <tbe_cbind/tbe_cbind.h>
 
+#include "tbe_cbind_multitu_fixture.h"
 #include "tbe_cbind_test_fixtures.h"
 #include "tinytest.h"
 #include "turbo_thread.h"
@@ -25,6 +26,19 @@ typedef struct token_reader_context {
   size_t index;
   size_t fail_at;
 } token_reader_context;
+
+typedef struct tbe_cbind_mixed_owned_text {
+  tstr value;
+} tbe_cbind_mixed_owned_text;
+
+typedef struct tbe_cbind_mixed_borrowed_text {
+  vstr value;
+} tbe_cbind_mixed_borrowed_text;
+
+typedef struct tbe_cbind_mixed_string_pair {
+  tbe_cbind_mixed_owned_text left;
+  tbe_cbind_mixed_borrowed_text right;
+} tbe_cbind_mixed_string_pair;
 
 static cserde_status token_reader_next(void *opaque, cserde_token *out) {
   token_reader_context *source = (token_reader_context *)opaque;
@@ -204,6 +218,154 @@ spec("TbeCBind transactional decode facade") {
     }
     check_equal(cmeta_data_buffer_restore_zero(
                     &tbe_cbind_test_owned_string_data, &out.owned),
+                CMETA_OK);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("decodes each multi-TU standard string occurrence with its own adapter") {
+    static const char schema[] =
+        "message Text { string value; } "
+        "message Pair { Text left; Text right; }";
+    const cserde_token tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("left"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("value"), TOKEN_SLICE(CSERDE_STRING, "alpha", CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END,
+        TOKEN_KEY("right"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("value"), TOKEN_SLICE(CSERDE_STRING, "beta", CSERDE_VIEW_TRANSIENT),
+        TOKEN_MAP_END,
+        TOKEN_MAP_END};
+    cmeta_data_field_desc fields[2];
+    cmeta_data_struct_shape shape = tbe_cbind_multitu_string_pair_shape;
+    cmeta_data_desc data = tbe_cbind_multitu_string_pair_data;
+    const cmeta_data_desc *external =
+        tbe_cbind_multitu_external_string_text_data();
+    const cmeta_data_desc *external_string =
+        ((const cmeta_data_struct_shape *)external->shape)->fields[0].value;
+    unsigned char scratch[2] = {0};
+    tbe_cbind_multitu_string_pair out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan;
+
+    fields[0] = tbe_cbind_multitu_string_pair_data_fields[0];
+    fields[1] = tbe_cbind_multitu_string_pair_data_fields[1];
+    fields[1].value = external;
+    shape.fields = fields;
+    data.shape = &shape;
+    plan = make_plan(schema, "Pair", &data);
+    check_equal(decode_tokens(plan, tokens,
+                              sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
+                              &out, 2u, 16u, scratch, sizeof(scratch),
+                              &error, NULL),
+                CBIND_OK);
+    check_equal(out.left.value, "alpha");
+    check_equal(out.right.value, "beta");
+    check_equal(cmeta_data_buffer_restore_zero(
+                    &tbe_cbind_multitu_owned_string_data, &out.left.value),
+                CMETA_OK);
+    check_equal(cmeta_data_buffer_restore_zero(external_string,
+                                               &out.right.value),
+                CMETA_OK);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("decodes distinct owned and borrowed adapters for one semantic type") {
+    static const char schema[] =
+        "message Text { string value; } "
+        "message Pair { Text left; Text right; }";
+    const cserde_token tokens[] = {
+        TOKEN_MAP_BEGIN,
+        TOKEN_KEY("left"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("value"), TOKEN_SLICE(CSERDE_STRING, "copy", CSERDE_VIEW_STABLE),
+        TOKEN_MAP_END,
+        TOKEN_KEY("right"), TOKEN_MAP_BEGIN,
+        TOKEN_KEY("value"), TOKEN_SLICE(CSERDE_STRING, "view", CSERDE_VIEW_STABLE),
+        TOKEN_MAP_END,
+        TOKEN_MAP_END};
+    cmeta_type_desc owned_type = {
+        "tbe_cbind_mixed_owned_text", sizeof(tbe_cbind_mixed_owned_text),
+        _Alignof(tbe_cbind_mixed_owned_text), CMETA_T_OBJECT, NULL, NULL, NULL};
+    cmeta_type_desc borrowed_type = {
+        "tbe_cbind_mixed_borrowed_text", sizeof(tbe_cbind_mixed_borrowed_text),
+        _Alignof(tbe_cbind_mixed_borrowed_text), CMETA_T_OBJECT, NULL, NULL,
+        NULL};
+    cmeta_type_desc pair_type = {
+        "tbe_cbind_mixed_string_pair", sizeof(tbe_cbind_mixed_string_pair),
+        _Alignof(tbe_cbind_mixed_string_pair), CMETA_T_OBJECT, NULL, NULL, NULL};
+    cmeta_field_desc owned_layout_field = {
+        "value", "tstr", offsetof(tbe_cbind_mixed_owned_text, value),
+        sizeof(tstr), _Alignof(tstr), &turbo_tstr_cmeta_type, NULL};
+    cmeta_field_desc borrowed_layout_field = {
+        "value", "vstr", offsetof(tbe_cbind_mixed_borrowed_text, value),
+        sizeof(vstr), _Alignof(vstr), &turbo_vstr_cmeta_type, NULL};
+    cmeta_struct_desc owned_layout = {
+        "tbe_cbind_mixed_owned_text", sizeof(tbe_cbind_mixed_owned_text),
+        _Alignof(tbe_cbind_mixed_owned_text), &owned_layout_field, 1u};
+    cmeta_struct_desc borrowed_layout = {
+        "tbe_cbind_mixed_borrowed_text", sizeof(tbe_cbind_mixed_borrowed_text),
+        _Alignof(tbe_cbind_mixed_borrowed_text), &borrowed_layout_field, 1u};
+    cmeta_data_field_desc owned_data_field = {
+        "test.tbe-cbind.mixed-owned.value", "value",
+        offsetof(tbe_cbind_mixed_owned_text, value),
+        &tbe_cbind_test_owned_string_data};
+    cmeta_data_field_desc borrowed_data_field = {
+        "test.tbe-cbind.mixed-borrowed.value", "value",
+        offsetof(tbe_cbind_mixed_borrowed_text, value),
+        &tbe_cbind_test_borrowed_string_data};
+    cmeta_data_struct_shape owned_shape = {
+        &owned_layout, &owned_data_field, 1u};
+    cmeta_data_struct_shape borrowed_shape = {
+        &borrowed_layout, &borrowed_data_field, 1u};
+    cmeta_data_desc owned_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.mixed-owned.data", "tbe_cbind_mixed_owned_text",
+        CMETA_DATA_STRUCT, &owned_type, &owned_shape, NULL};
+    cmeta_data_desc borrowed_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.mixed-borrowed.data", "tbe_cbind_mixed_borrowed_text",
+        CMETA_DATA_STRUCT, &borrowed_type, &borrowed_shape, NULL};
+    cmeta_field_desc pair_layout_fields[] = {
+        {"left", "tbe_cbind_mixed_owned_text",
+         offsetof(tbe_cbind_mixed_string_pair, left),
+         sizeof(tbe_cbind_mixed_owned_text), _Alignof(tbe_cbind_mixed_owned_text),
+         &owned_type, NULL},
+        {"right", "tbe_cbind_mixed_borrowed_text",
+         offsetof(tbe_cbind_mixed_string_pair, right),
+         sizeof(tbe_cbind_mixed_borrowed_text),
+         _Alignof(tbe_cbind_mixed_borrowed_text), &borrowed_type, NULL}};
+    cmeta_struct_desc pair_layout = {
+        "tbe_cbind_mixed_string_pair", sizeof(tbe_cbind_mixed_string_pair),
+        _Alignof(tbe_cbind_mixed_string_pair), pair_layout_fields, 2u};
+    cmeta_data_field_desc pair_data_fields[] = {
+        {"test.tbe-cbind.mixed-pair.left", "left",
+         offsetof(tbe_cbind_mixed_string_pair, left), &owned_data},
+        {"test.tbe-cbind.mixed-pair.right", "right",
+         offsetof(tbe_cbind_mixed_string_pair, right), &borrowed_data}};
+    cmeta_data_struct_shape pair_shape = {
+        &pair_layout, pair_data_fields, 2u};
+    cmeta_data_desc pair_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.mixed-pair.data", "tbe_cbind_mixed_string_pair",
+        CMETA_DATA_STRUCT, &pair_type, &pair_shape, NULL};
+    unsigned char scratch[2] = {0};
+    tbe_cbind_mixed_string_pair out = {0};
+    cbind_error error = CBIND_ERROR_INIT;
+    tbe_cbind_plan *plan = make_plan(schema, "Pair", &pair_data);
+
+    check_equal(decode_tokens(plan, tokens,
+                              sizeof(tokens) / sizeof(tokens[0]), SIZE_MAX,
+                              &out, 2u, 16u, scratch, sizeof(scratch),
+                              &error, NULL),
+                CBIND_OK);
+    check_equal(out.left.value, "copy");
+    check_true(out.right.value.data ==
+               (const char *)tokens[9].value.slice.data);
+    check_equal(out.right.value.len, (size_t)4u);
+    check_equal(cmeta_data_buffer_restore_zero(
+                    &tbe_cbind_test_owned_string_data, &out.left.value),
+                CMETA_OK);
+    check_equal(cmeta_data_buffer_restore_zero(
+                    &tbe_cbind_test_borrowed_string_data, &out.right.value),
                 CMETA_OK);
     tbe_cbind_plan_destroy(plan);
   }

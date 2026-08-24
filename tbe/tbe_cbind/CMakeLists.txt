@@ -77,6 +77,11 @@ cmake_add_test(test_tbe_cbind_plan
   FOLDER "tbe/tbe_cbind/tests")
 
 cmake_add_test(test_tbe_cbind_decode
-  SOURCES test/test_tbe_cbind_decode.c
+  SOURCES test/test_tbe_cbind_decode.c test/tbe_cbind_multitu_fixture.c
   LIBS TurboParser::TbeCBind TurboUtils::Core TurboUtils::TinyTest
   FOLDER "tbe/tbe_cbind/tests")
+
+if(MSVC)
+  target_link_options(test_tbe_cbind_plan PRIVATE /OPT:NOICF)
+  target_link_options(test_tbe_cbind_decode PRIVATE /OPT:NOICF)
+endif()

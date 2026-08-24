@@ -67,6 +67,8 @@ typedef struct tbe_cbind_native_binding {
 
 typedef struct tbe_cbind_plan_node {
   const cmeta_data_desc *native_shape;
+  struct tbe_cbind_plan_node *next;
+  size_t semantic_index;
   cmeta_field_desc *layout_fields;
   cmeta_data_field_desc *data_fields;
   cmeta_struct_desc layout;
@@ -78,7 +80,10 @@ typedef struct tbe_cbind_plan_node {
 struct tbe_cbind_plan {
   tbe_cbind_allocator allocator;
   tbe_cbind_plan_node *nodes;
+  tbe_cbind_plan_node **node_slots;
+  size_t node_slot_count;
   size_t node_count;
+  size_t node_limit;
   const cmeta_data_desc *shape;
   uint32_t state;
 };
@@ -108,9 +113,6 @@ int tbe_cbind_c_identifier_valid(const char *name);
 tbe_cbind_status tbe_cbind_native_bind_record(
     tbe_cbind_build_context *context, const tbe_cbind_semantic_type *semantic,
     const cmeta_data_desc *native_shape, tbe_cbind_native_binding *bindings);
-tbe_cbind_status tbe_cbind_native_record_equivalent(
-    tbe_cbind_build_context *context, const tbe_cbind_semantic_type *semantic,
-    const cmeta_data_desc *left, const cmeta_data_desc *right, size_t depth);
 tbe_cbind_status tbe_cbind_plan_build(
     tbe_cbind_build_context *context, const tbe_cbind_schema_model *model,
     const cmeta_data_desc *native_shape, tbe_cbind_plan **out);

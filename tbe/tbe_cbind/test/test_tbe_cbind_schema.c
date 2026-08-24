@@ -5,6 +5,7 @@
 #include "tinytest.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 static tbe_cbind_status create_one_with_options(
@@ -179,6 +180,35 @@ spec("TbeCBind schema semantic model") {
     tbe_cbind_plan_error_init(&error);
     check_equal(create_one_with_options(schema, sizeof(schema) - 1u,
                                         "Root", 4u, &options, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+  }
+
+  it("stops a root-first chain at max_depth before inspecting its distant tail") {
+    enum { CHAIN_LENGTH = 64, SCHEMA_CAPACITY = 8192 };
+    char schema[SCHEMA_CAPACITY];
+    size_t used = 0u;
+    size_t index;
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+
+    used += (size_t)snprintf(schema + used, sizeof(schema) - used,
+                             "message Root { Node0 child; } ");
+    for (index = 0u; index + 1u < CHAIN_LENGTH; ++index)
+      used += (size_t)snprintf(schema + used, sizeof(schema) - used,
+                               "message Node%zu { Node%zu child; } ",
+                               index, index + 1u);
+    used += (size_t)snprintf(schema + used, sizeof(schema) - used,
+                             "message Node%zu { Missing child; }",
+                             (size_t)CHAIN_LENGTH - 1u);
+    check_less(used, sizeof(schema));
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_depth = 2u;
+    options.max_types = CHAIN_LENGTH + 1u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one_with_options(schema, used, "Root", 4u,
+                                        &options, &error),
                 TBE_CBIND_LIMIT_EXCEEDED);
     check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
   }

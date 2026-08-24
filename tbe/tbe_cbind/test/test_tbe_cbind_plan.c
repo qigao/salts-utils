@@ -27,8 +27,8 @@ _Static_assert(sizeof(tbe_cbind_test_data_prefix) ==
                    offsetof(cmeta_data_desc, buffer_ops),
                "CMeta data prefix fixture must end before buffer_ops");
 
-static tbe_cbind_test_data_prefix *tbe_cbind_test_guarded_prefix_create(
-    const tbe_cbind_test_data_prefix *value, void **allocation) {
+static void *tbe_cbind_test_guarded_copy_create(
+    const void *value, size_t value_size, void **allocation) {
 #if defined(_WIN32)
   SYSTEM_INFO system_info;
   unsigned char *region;
@@ -44,17 +44,25 @@ static tbe_cbind_test_data_prefix *tbe_cbind_test_guarded_prefix_create(
     return NULL;
   }
   *allocation = region;
-  memcpy(page + system_info.dwPageSize - sizeof(*value), value,
-         sizeof(*value));
-  return (tbe_cbind_test_data_prefix *)(
-      page + system_info.dwPageSize - sizeof(*value));
+  if (value_size > system_info.dwPageSize) {
+    (void)VirtualFree(region, 0u, MEM_RELEASE);
+    *allocation = NULL;
+    return NULL;
+  }
+  memcpy(page + system_info.dwPageSize - value_size, value, value_size);
+  return page + system_info.dwPageSize - value_size;
 #else
-  tbe_cbind_test_data_prefix *copy =
-      (tbe_cbind_test_data_prefix *)malloc(sizeof(*copy));
-  if (copy != NULL) *copy = *value;
+  void *copy = malloc(value_size);
+  if (copy != NULL) memcpy(copy, value, value_size);
   *allocation = copy;
   return copy;
 #endif
+}
+
+static tbe_cbind_test_data_prefix *tbe_cbind_test_guarded_prefix_create(
+    const tbe_cbind_test_data_prefix *value, void **allocation) {
+  return (tbe_cbind_test_data_prefix *)tbe_cbind_test_guarded_copy_create(
+      value, sizeof(*value), allocation);
 }
 
 static void tbe_cbind_test_guarded_prefix_destroy(void *allocation) {
@@ -112,10 +120,18 @@ static void fail_allocator_free(void *opaque, void *pointer) {
   }
 }
 
-static bool tbe_cbind_test_alternate_string_is_zero(const void *object) {
-  (void)object;
-  return false;
-}
+typedef struct tbe_cbind_depth_shared {
+  tbe_cbind_test_one leaf;
+} tbe_cbind_depth_shared;
+
+typedef struct tbe_cbind_depth_wrapper {
+  tbe_cbind_depth_shared shared;
+} tbe_cbind_depth_wrapper;
+
+typedef struct tbe_cbind_depth_root {
+  tbe_cbind_depth_shared shallow;
+  tbe_cbind_depth_wrapper deep;
+} tbe_cbind_depth_root;
 
 spec("TbeCBind native plan overlay") {
   it("builds both overlays with semantic names and native storage metadata") {
@@ -203,7 +219,27 @@ spec("TbeCBind native plan overlay") {
     tbe_cbind_plan_destroy(plan);
   }
 
-  it("reuses a repeated nested type described equivalently in another TU") {
+  it("reuses the same semantic and native descriptor pointer pair") {
+    static const char schema[] =
+        "composite Text { int32 value; } "
+        "message Pair { Text left; Text right; }";
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+    const cmeta_data_struct_shape *root_shape;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "Pair", &tbe_cbind_multitu_pair_data,
+                            &plan, &error),
+                TBE_CBIND_OK);
+    root_shape =
+        (const cmeta_data_struct_shape *)tbe_cbind_plan_shape(plan)->shape;
+    check_true(root_shape->fields[0].value == root_shape->fields[1].value);
+    check_equal(plan->node_count, (size_t)2u);
+    check_null(plan->node_slots);
+    tbe_cbind_plan_destroy(plan);
+  }
+
+  it("keeps equivalent descriptors from another TU as separate occurrences") {
     static const char schema[] =
         "composite Text { int32 value; } "
         "message Pair { Text left; Text right; }";
@@ -226,48 +262,87 @@ spec("TbeCBind native plan overlay") {
     status = create_plan(schema, "Pair", &data, &plan, &error);
     check_equal(status, TBE_CBIND_OK);
     check_not_null(plan);
+    {
+      const cmeta_data_struct_shape *root_shape =
+          (const cmeta_data_struct_shape *)tbe_cbind_plan_shape(plan)->shape;
+      check_true(root_shape->fields[0].value != root_shape->fields[1].value);
+      check_equal(plan->node_count, (size_t)3u);
+      check_null(plan->node_slots);
+    }
     tbe_cbind_plan_destroy(plan);
   }
 
-  it("rejects equivalent records whose string adapter callbacks differ") {
-    tbe_cbind_semantic_field fields[] = {
-        {"owned", "owned", "owned", "string",
-         TBE_CBIND_SEMANTIC_STRING, NULL},
-        {"borrowed", "borrowed", "borrowed", "string",
-         TBE_CBIND_SEMANTIC_STRING, NULL}};
-    tbe_cbind_semantic_type semantic = {
-        "Text", fields, 2u, 1u, 2u};
-    cmeta_data_buffer_ops alternate_ops = turbo_tstr_cmeta_buffer_ops;
-    cmeta_data_desc alternate_string = tbe_cbind_test_owned_string_data;
-    cmeta_data_field_desc alternate_fields[2];
-    cmeta_data_struct_shape alternate_shape = tbe_cbind_test_strings_shape;
-    cmeta_data_desc alternate_data = tbe_cbind_test_strings_data;
+  it("charges distinct native occurrences to max_plan_bytes") {
+    static const char schema[] =
+        "composite Text { int32 value; } "
+        "message Pair { Text left; Text right; }";
+    const size_t shared_pair_plan_bytes =
+        sizeof(tbe_cbind_plan) + 2u * sizeof(tbe_cbind_plan_node) +
+        3u * sizeof(cmeta_field_desc) +
+        3u * sizeof(cmeta_data_field_desc) +
+        sizeof("Pair") + sizeof("left") + sizeof("right") +
+        sizeof("Text") + sizeof("value");
+    cmeta_data_field_desc fields[2];
+    cmeta_data_struct_shape shape = tbe_cbind_multitu_pair_shape;
+    cmeta_data_desc data = tbe_cbind_multitu_pair_data;
     tbe_cbind_plan_options options;
     tbe_cbind_plan_error error;
-    fail_allocator_state allocator_state = {0u, SIZE_MAX, 0u};
-    tbe_cbind_allocator allocator = {
-        &allocator_state, fail_allocator_calloc, fail_allocator_free};
-    tbe_cbind_build_context context = {0};
+    tbe_cbind_plan *plan = NULL;
 
-    alternate_ops.is_zero = tbe_cbind_test_alternate_string_is_zero;
-    alternate_string.buffer_ops = &alternate_ops;
-    alternate_fields[0] = tbe_cbind_test_strings_data_fields[0];
-    alternate_fields[0].value = &alternate_string;
-    alternate_fields[1] = tbe_cbind_test_strings_data_fields[1];
-    alternate_shape.fields = alternate_fields;
-    alternate_data.shape = &alternate_shape;
     tbe_cbind_plan_options_init(&options);
+    options.max_plan_bytes = shared_pair_plan_bytes;
     tbe_cbind_plan_error_init(&error);
-    context.options = &options;
-    context.error = &error;
-    context.allocator = allocator;
+    check_equal(create_plan_with_options(
+                    schema, sizeof(schema) - 1u, "Pair", 4u,
+                    &tbe_cbind_multitu_pair_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    tbe_cbind_plan_destroy(plan);
 
-    check_equal(tbe_cbind_native_record_equivalent(
-                    &context, &semantic, &tbe_cbind_test_strings_data,
-                    &alternate_data, 1u),
-                TBE_CBIND_TYPE_MISMATCH);
+    fields[0] = tbe_cbind_multitu_pair_data_fields[0];
+    fields[1] = tbe_cbind_multitu_pair_data_fields[1];
+    fields[1].value = tbe_cbind_multitu_external_text_data();
+    shape.fields = fields;
+    data.shape = &shape;
+    plan = NULL;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan_with_options(
+                    schema, sizeof(schema) - 1u, "Pair", 4u,
+                    &data, &options, &plan, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_null(plan);
     check_equal(error.phase, TBE_CBIND_PHASE_PLAN);
-    check_equal(allocator_state.live_count, (size_t)0u);
+  }
+
+  it("accepts repeated standard string adapters emitted in another TU") {
+    static const char schema[] =
+        "message Text { string value; } "
+        "message Pair { Text left; Text right; }";
+    cmeta_data_field_desc fields[2];
+    cmeta_data_struct_shape shape = tbe_cbind_multitu_string_pair_shape;
+    cmeta_data_desc data = tbe_cbind_multitu_string_pair_data;
+    const cmeta_data_desc *external =
+        tbe_cbind_multitu_external_string_text_data();
+    const cmeta_data_buffer_ops *local_ops = cmeta_data_buffer_ops_of(
+        tbe_cbind_multitu_string_text_data_fields[0].value);
+    const cmeta_data_buffer_ops *external_ops = cmeta_data_buffer_ops_of(
+        ((const cmeta_data_struct_shape *)external->shape)->fields[0].value);
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_not_null(local_ops);
+    check_not_null(external_ops);
+    check_true(local_ops != external_ops);
+    check_true(local_ops->assign != external_ops->assign);
+    fields[0] = tbe_cbind_multitu_string_pair_data_fields[0];
+    fields[1] = tbe_cbind_multitu_string_pair_data_fields[1];
+    fields[1].value = external;
+    shape.fields = fields;
+    data.shape = &shape;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "Pair", &data, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
   }
 
   it("defensively rejects a semantic model deeper than max_depth") {
@@ -308,6 +383,129 @@ spec("TbeCBind native plan overlay") {
     check_null(plan);
     check_equal(allocator_state.live_count, (size_t)0u);
     tbe_cbind_plan_destroy(plan);
+  }
+
+  it("checks remaining height before reusing a shallow-path ready node") {
+    cmeta_type_identity shared_identity =
+        CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.depth-shared");
+    cmeta_type_identity wrapper_identity =
+        CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.depth-wrapper");
+    cmeta_type_identity root_identity =
+        CMETA_TYPE_ID_ATOM_INIT("test.tbe-cbind.depth-root");
+    cmeta_type_desc shared_type = {
+        "tbe_cbind_depth_shared", sizeof(tbe_cbind_depth_shared),
+        _Alignof(tbe_cbind_depth_shared), CMETA_T_OBJECT, NULL, NULL,
+        &shared_identity};
+    cmeta_type_desc wrapper_type = {
+        "tbe_cbind_depth_wrapper", sizeof(tbe_cbind_depth_wrapper),
+        _Alignof(tbe_cbind_depth_wrapper), CMETA_T_OBJECT, NULL, NULL,
+        &wrapper_identity};
+    cmeta_type_desc root_type = {
+        "tbe_cbind_depth_root", sizeof(tbe_cbind_depth_root),
+        _Alignof(tbe_cbind_depth_root), CMETA_T_OBJECT, NULL, NULL,
+        &root_identity};
+    cmeta_field_desc shared_layout_fields[] = {{
+        "leaf", "tbe_cbind_test_one", offsetof(tbe_cbind_depth_shared, leaf),
+        sizeof(tbe_cbind_test_one), _Alignof(tbe_cbind_test_one),
+        &tbe_cbind_test_one_type, NULL}};
+    cmeta_struct_desc shared_layout = {
+        "tbe_cbind_depth_shared", sizeof(tbe_cbind_depth_shared),
+        _Alignof(tbe_cbind_depth_shared), shared_layout_fields, 1u};
+    cmeta_data_field_desc shared_data_fields[] = {{
+        "test.tbe-cbind.depth-shared.leaf", "leaf",
+        offsetof(tbe_cbind_depth_shared, leaf), &tbe_cbind_test_one_data}};
+    cmeta_data_struct_shape shared_shape = {
+        &shared_layout, shared_data_fields, 1u};
+    cmeta_data_desc shared_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.depth-shared.data", "tbe_cbind_depth_shared",
+        CMETA_DATA_STRUCT, &shared_type, &shared_shape, NULL};
+    cmeta_field_desc wrapper_layout_fields[] = {{
+        "shared", "tbe_cbind_depth_shared",
+        offsetof(tbe_cbind_depth_wrapper, shared),
+        sizeof(tbe_cbind_depth_shared), _Alignof(tbe_cbind_depth_shared),
+        &shared_type, NULL}};
+    cmeta_struct_desc wrapper_layout = {
+        "tbe_cbind_depth_wrapper", sizeof(tbe_cbind_depth_wrapper),
+        _Alignof(tbe_cbind_depth_wrapper), wrapper_layout_fields, 1u};
+    cmeta_data_field_desc wrapper_data_fields[] = {{
+        "test.tbe-cbind.depth-wrapper.shared", "shared",
+        offsetof(tbe_cbind_depth_wrapper, shared), &shared_data}};
+    cmeta_data_struct_shape wrapper_shape = {
+        &wrapper_layout, wrapper_data_fields, 1u};
+    cmeta_data_desc wrapper_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.depth-wrapper.data", "tbe_cbind_depth_wrapper",
+        CMETA_DATA_STRUCT, &wrapper_type, &wrapper_shape, NULL};
+    cmeta_field_desc root_layout_fields[] = {
+        {"shallow", "tbe_cbind_depth_shared",
+         offsetof(tbe_cbind_depth_root, shallow),
+         sizeof(tbe_cbind_depth_shared), _Alignof(tbe_cbind_depth_shared),
+         &shared_type, NULL},
+        {"deep", "tbe_cbind_depth_wrapper",
+         offsetof(tbe_cbind_depth_root, deep), sizeof(tbe_cbind_depth_wrapper),
+         _Alignof(tbe_cbind_depth_wrapper), &wrapper_type, NULL}};
+    cmeta_struct_desc root_layout = {
+        "tbe_cbind_depth_root", sizeof(tbe_cbind_depth_root),
+        _Alignof(tbe_cbind_depth_root), root_layout_fields, 2u};
+    cmeta_data_field_desc root_data_fields[] = {
+        {"test.tbe-cbind.depth-root.shallow", "shallow",
+         offsetof(tbe_cbind_depth_root, shallow), &shared_data},
+        {"test.tbe-cbind.depth-root.deep", "deep",
+         offsetof(tbe_cbind_depth_root, deep), &wrapper_data}};
+    cmeta_data_struct_shape root_shape = {
+        &root_layout, root_data_fields, 2u};
+    cmeta_data_desc root_data = {
+        sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+        "test.tbe-cbind.depth-root.data", "tbe_cbind_depth_root",
+        CMETA_DATA_STRUCT, &root_type, &root_shape, NULL};
+    tbe_cbind_semantic_field leaf_fields[] = {{
+        "value", "value", "value", "int32", TBE_CBIND_SEMANTIC_INT32,
+        NULL}};
+    tbe_cbind_semantic_field shared_fields[] = {{
+        "leaf", "leaf", "leaf", "Leaf", TBE_CBIND_SEMANTIC_RECORD, NULL}};
+    tbe_cbind_semantic_field wrapper_fields[] = {{
+        "shared", "shared", "shared", "Shared",
+        TBE_CBIND_SEMANTIC_RECORD, NULL}};
+    tbe_cbind_semantic_field root_fields[] = {
+        {"shallow", "shallow", "shallow", "Shared",
+         TBE_CBIND_SEMANTIC_RECORD, NULL},
+        {"deep", "deep", "deep", "Wrapper", TBE_CBIND_SEMANTIC_RECORD,
+         NULL}};
+    tbe_cbind_semantic_type types[] = {
+        {"Leaf", leaf_fields, 1u, 1u, 2u},
+        {"Shared", shared_fields, 1u, 2u, 2u},
+        {"Wrapper", wrapper_fields, 1u, 1u, 2u},
+        {"Root", root_fields, 2u, 1u, 2u}};
+    tbe_cbind_schema_model model = {0};
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+    fail_allocator_state allocator_state = {0u, SIZE_MAX, 0u};
+    tbe_cbind_allocator allocator = {
+        &allocator_state, fail_allocator_calloc, fail_allocator_free};
+    tbe_cbind_build_context context = {0};
+    tbe_cbind_plan *plan = NULL;
+
+    shared_fields[0].record_type = &types[0];
+    wrapper_fields[0].record_type = &types[1];
+    root_fields[0].record_type = &types[1];
+    root_fields[1].record_type = &types[2];
+    model.types = types;
+    model.type_count = 4u;
+    model.root = &types[3];
+    tbe_cbind_plan_options_init(&options);
+    options.max_depth = 3u;
+    tbe_cbind_plan_error_init(&error);
+    context.options = &options;
+    context.error = &error;
+    context.allocator = allocator;
+
+    check_equal(tbe_cbind_plan_build(&context, &model, &root_data, &plan),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_PLAN);
+    check_equal(error.path, "Shared");
+    check_equal(allocator_state.live_count, (size_t)0u);
   }
 
   it("rejects a non-struct root and malformed native layout") {
@@ -377,6 +575,100 @@ spec("TbeCBind native plan overlay") {
                 TBE_CBIND_NATIVE_SHAPE_ERROR);
     check_null(plan);
     check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+  }
+
+  it("returns a native-shape error for a nested null reflected field name") {
+    static const char schema[] =
+        "composite Detail { int32 quantity; } "
+        "message Root { Detail detail; double score; }";
+    cmeta_field_desc inner_layout_field =
+        tbe_cbind_test_inner_layout_fields[0];
+    cmeta_struct_desc inner_layout = tbe_cbind_test_inner_layout;
+    cmeta_data_struct_shape inner_shape = tbe_cbind_test_inner_shape;
+    cmeta_data_desc inner_data = tbe_cbind_test_inner_data;
+    cmeta_data_field_desc root_fields[2];
+    cmeta_data_struct_shape root_shape = tbe_cbind_test_nested_shape;
+    cmeta_data_desc root_data = tbe_cbind_test_nested_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    inner_layout_field.name = NULL;
+    inner_layout.fields = &inner_layout_field;
+    inner_shape.layout = &inner_layout;
+    inner_data.shape = &inner_shape;
+    memcpy(root_fields, tbe_cbind_test_nested_data_fields,
+           sizeof(root_fields));
+    root_fields[0].value = &inner_data;
+    root_shape.fields = root_fields;
+    root_data.shape = &root_shape;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "Root", &root_data, &plan, &error),
+                TBE_CBIND_NATIVE_SHAPE_ERROR);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+  }
+
+  it("rejects a root count mismatch before crossing a guarded field array") {
+    static const char schema[] = "message One { int32 value; }";
+    cmeta_field_desc layout_value = tbe_cbind_test_one_layout_fields[0];
+    void *allocation = NULL;
+    const cmeta_field_desc *guarded_layout =
+        (const cmeta_field_desc *)tbe_cbind_test_guarded_copy_create(
+            &layout_value, sizeof(layout_value), &allocation);
+    cmeta_struct_desc layout = tbe_cbind_test_one_layout;
+    cmeta_data_struct_shape shape = tbe_cbind_test_one_shape;
+    cmeta_data_desc data = tbe_cbind_test_one_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_not_null(guarded_layout);
+    layout.fields = guarded_layout;
+    layout.field_count = 2u;
+    shape.layout = &layout;
+    data.shape = &shape;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "One", &data, &plan, &error),
+                TBE_CBIND_NATIVE_SHAPE_ERROR);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+    tbe_cbind_test_guarded_prefix_destroy(allocation);
+  }
+
+  it("rejects a nested count mismatch before crossing a guarded field array") {
+    static const char schema[] =
+        "composite Detail { int32 quantity; } "
+        "message Root { Detail detail; double score; }";
+    cmeta_field_desc layout_value = tbe_cbind_test_inner_layout_fields[0];
+    void *allocation = NULL;
+    const cmeta_field_desc *guarded_layout =
+        (const cmeta_field_desc *)tbe_cbind_test_guarded_copy_create(
+            &layout_value, sizeof(layout_value), &allocation);
+    cmeta_struct_desc inner_layout = tbe_cbind_test_inner_layout;
+    cmeta_data_struct_shape inner_shape = tbe_cbind_test_inner_shape;
+    cmeta_data_desc inner_data = tbe_cbind_test_inner_data;
+    cmeta_data_field_desc root_fields[2];
+    cmeta_data_struct_shape root_shape = tbe_cbind_test_nested_shape;
+    cmeta_data_desc root_data = tbe_cbind_test_nested_data;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    check_not_null(guarded_layout);
+    inner_layout.fields = guarded_layout;
+    inner_layout.field_count = 2u;
+    inner_shape.layout = &inner_layout;
+    inner_data.shape = &inner_shape;
+    memcpy(root_fields, tbe_cbind_test_nested_data_fields,
+           sizeof(root_fields));
+    root_fields[0].value = &inner_data;
+    root_shape.fields = root_fields;
+    root_data.shape = &root_shape;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_plan(schema, "Root", &root_data, &plan, &error),
+                TBE_CBIND_NATIVE_SHAPE_ERROR);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_NATIVE_SHAPE);
+    tbe_cbind_test_guarded_prefix_destroy(allocation);
   }
 
   it("rejects malformed field size alignment and reflected type") {
@@ -579,7 +871,7 @@ spec("TbeCBind native plan overlay") {
     check_true(reached_success);
   }
 
-  it("cleans deep multi-TU comparison allocations under deterministic OOM") {
+  it("cleans multi-occurrence pair-index allocations under deterministic OOM") {
     static const char schema[] =
         "composite Text { int32 value; } "
         "message Pair { Text left; Text right; }";
