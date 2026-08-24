@@ -24,19 +24,52 @@ TurboParser 拥有并导出：
 - `TurboParser::Cron`
 - `TurboParser::Mustache`
 - `TurboParser::TbeSchema`（兼容别名 `TurboParser::SchemaBE`）
+- `TurboParser::TbeCBind`
 - `TurboParser::DataBind`
 
 其他格式解析器当前作为 `TurboParser::Parser`、Mustache 或 DataBind 的私有静态组成部分。它们可以在
 构建树中通过 `TurboParser::*Parser` alias 单独测试，但不构成已安装的公共组件。
 第三方 cxml 与 Monocypher 由 TurboParser 私有持有，不向使用者暴露其 target 或生命周期。
 
-TBE schema 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
-不会被 DataBind 在运行时调用。DataBind 的公共头文件包含 `turbo_parser.h`，因此
+TBE schema、TbeCBind 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
+不会被 DataBind 或 TbeCBind 在运行时调用。DataBind 的公共头文件包含 `turbo_parser.h`，因此
 `TurboParser::Parser` 是其 PUBLIC 依赖；schema 与 Mustache 仅为实现或编译器依赖。
 依赖 CmdParser、cxml 与 Mustache 的 `junit_to_html` 也归 TurboParser 所有；它是构建树
 工具，不构成 TurboUtils 或 TurboParser 的安装时库依赖。
 依赖 CSV parser 的 SQLite VDBE benchmark 随 CSV 模块维护，避免 TurboUtils 测试目标
 携带 parser 链接项。
+
+### TBE、CBind 与 DataBind 的独立边界
+
+```text
+runtime schema route:
+application -> TurboParser::TbeCBind -> TurboParser::TbeSchema
+                                     -> TurboUtils::CBind
+
+dynamic/typed conversion route:
+application -> TurboParser::DataBind -> TurboParser::Parser
+                                    -> TurboParser::TbeSchema
+
+build-time sidecar route:
+schema -> tbe_compiler -> generated sidecar -> TurboUtils::Core (owning buffers)
+                                        \----> TurboUtils::CBind
+```
+
+`TurboUtils::CBind` 是格式无关的执行 kernel：它只消费 CMeta descriptor 与任意
+`cserde_reader`，不理解 TBE。`TurboParser::TbeCBind` 把运行时 TBE schema 和调用方的
+native CMeta storage descriptor 编译成 immutable 双 overlay plan，再直接调用 CBind；
+它不链接、调用或 fallback 到 DataBind。`TurboParser::DataBind` 是另一条独立路线，拥有
+动态值树、格式转换与 `TBE_TYPED_*` typed conversion，不是 CBind 的子层、adapter 或
+fallback。构建期 sidecar 则在 schema 已知时生成最终 descriptor，运行时直接调用 CBind，
+不创建 TbeCBind plan。Standalone sidecar 公开声明 `TurboUtils::Core` 与
+`TurboUtils::CBind`：前者提供 generated owning-string adapter 的 `tstr_*` symbols，后者
+提供 format-neutral decode kernel；两者都不引入 DataBind。
+
+TBE schema 只描述语义和 wire 信息，不能推断目标进程的 `sizeof`、`_Alignof`、
+`offsetof`、字符串所有权或 buffer callbacks。因此 TbeCBind 必须同时取得 caller-native
+CMeta descriptor；schema-only 请求不能安全推出 C ABI，也不会转为 DataBind 动态对象。
+模块选择、v1 矩阵、生命周期和完整消费者示例见
+[`tbe/tbe_cbind/README.md`](tbe/tbe_cbind/README.md)。
 
 ## 候选方案
 

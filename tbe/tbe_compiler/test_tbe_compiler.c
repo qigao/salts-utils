@@ -1186,6 +1186,9 @@ spec("tbe_compiler") {
       check(cbind_size != 0u);
 
       check_not_null(strstr(header, "#include <cbind/cbind.h>"));
+      check_not_null(strstr(header, "#include \"tbe_typed.h\""));
+      check_not_null(strstr(header, "TBE_GENERATED_API void Order_init(Order_t *object);"));
+      check_not_null(strstr(header, "DataBindStatus Order_from_json("));
       check_not_null(strstr(header,
           "TBE_GENERATED_API const cmeta_data_desc *Price_cbind_data(void);"));
       check_not_null(strstr(header,
@@ -1256,6 +1259,67 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should generate independent CBind records without typed or DataBind APIs") {
+      const char *schema_path = "test_tbe_compiler_cbind_only.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_only.h";
+      const char *cbind_path = "test_tbe_compiler_cbind_only_cbind.c";
+      const char *schema =
+          "schema CBindOnly;"
+          "composite Header { int32 sequence; }"
+          "message Envelope { Header header; [name(eventId), c(event_id)] int32 id; "
+          "string symbol; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      char *header = NULL;
+      char *cbind_source = NULL;
+      size_t header_size = 0;
+      size_t cbind_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(cbind_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      cbind_source = tt_read_file(cbind_path, &cbind_size);
+      check_not_null(header);
+      check_not_null(cbind_source);
+      check_greater(header_size, (size_t)0u);
+      check_greater(cbind_size, (size_t)0u);
+
+      check_not_null(strstr(header, "#include <cbind/cbind.h>"));
+      check_not_null(strstr(header, "#include <turbo_str.h>"));
+      check_not_null(strstr(header, "typedef struct Header_s"));
+      check_not_null(strstr(header, "int32_t sequence;"));
+      check_not_null(strstr(header, "typedef struct Envelope_s"));
+      check_not_null(strstr(header, "Header_t header;"));
+      check_not_null(strstr(header, "int32_t event_id;"));
+      check_not_null(strstr(header, "tstr symbol;"));
+      check_not_null(strstr(header, "Envelope_cbind_data(void);"));
+      check_not_null(strstr(header, "Envelope_from_cserde("));
+      check_null(strstr(header, "tbe_typed.h"));
+      check_null(strstr(header, "DataBind"));
+      check_null(strstr(header, "TBE_TYPED"));
+      check_null(strstr(header, "Envelope_init("));
+      check_null(strstr(header, "Envelope_clear("));
+
+      check_not_null(strstr(cbind_source,
+                            "#include \"test_tbe_compiler_cbind_only.h\""));
+      check_not_null(strstr(cbind_source,
+                            "offsetof(Envelope_t, event_id)"));
+      check_not_null(strstr(cbind_source, "CMETA_DATA_BUFFER_OWNED"));
+
+      free(header);
+      free(cbind_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
       cleanup_test_file(cbind_path);
     }
 
@@ -1348,9 +1412,6 @@ spec("tbe_compiler") {
       options.output_path = NULL;
       check(tbe_compiler_run(&options) != 0);
       options.output_path = header_path;
-      options.source_output_path = NULL;
-      check(tbe_compiler_run(&options) != 0);
-      options.source_output_path = source_path;
       options.lang_enum = TBE_COMPILER_LANG_CPP;
       check(tbe_compiler_run(&options) != 0);
       options.lang_enum = TBE_COMPILER_LANG_C;

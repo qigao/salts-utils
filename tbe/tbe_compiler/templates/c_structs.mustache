@@ -61,6 +61,9 @@ typedef struct turbo_uuid_s {
 
 {{#cbind_sidecar_enabled}}
 #include <cbind/cbind.h>
+{{#cbind_has_string}}
+#include <turbo_str.h>
+{{/cbind_has_string}}
 {{/cbind_sidecar_enabled}}
 {{#typed_source_enabled}}
 #include "tbe_typed.h"
@@ -348,10 +351,10 @@ typedef struct {{name}}_s {
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
-{{#typed_source_enabled}}
+{{#native_record_enabled}}
     {{typed_declaration}}
-{{/typed_source_enabled}}
-{{^typed_source_enabled}}
+{{/native_record_enabled}}
+{{^native_record_enabled}}
     {{#is_group_field}}
     list<{{group_type}}> {{name}};
     {{/is_group_field}}
@@ -376,7 +379,7 @@ typedef struct {{name}}_s {
     {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
-{{/typed_source_enabled}}
+{{/native_record_enabled}}
 {{/fields}}
 } {{name}}_t;
 
@@ -702,10 +705,10 @@ typedef struct {{name}}_s {
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
-{{#typed_source_enabled}}
+{{#native_record_enabled}}
     {{typed_declaration}}
-{{/typed_source_enabled}}
-{{^typed_source_enabled}}
+{{/native_record_enabled}}
+{{^native_record_enabled}}
     {{#is_group_field}}
     list<{{group_type}}> {{name}};
     {{/is_group_field}}
@@ -730,7 +733,7 @@ typedef struct {{name}}_s {
     {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
-{{/typed_source_enabled}}
+{{/native_record_enabled}}
 {{/fields}}
 } {{name}}_t;
 
@@ -1299,10 +1302,10 @@ typedef struct {{name}}_s {
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
-{{#typed_source_enabled}}
+{{#native_record_enabled}}
     {{typed_declaration}}
-{{/typed_source_enabled}}
-{{^typed_source_enabled}}
+{{/native_record_enabled}}
+{{^native_record_enabled}}
     {{#is_group_field}}
     list<{{group_type}}> {{name}};
     {{/is_group_field}}
@@ -1327,7 +1330,7 @@ typedef struct {{name}}_s {
     {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
-{{/typed_source_enabled}}
+{{/native_record_enabled}}
 {{/fields}}
 } {{name}}_t;
 

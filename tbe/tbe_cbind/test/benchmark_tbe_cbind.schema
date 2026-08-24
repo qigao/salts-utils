@@ -1,0 +1,11 @@
+schema TbeCBindBenchmark;
+
+composite TbeCBindBenchHeader {
+    int32 sequence;
+}
+
+message TbeCBindBenchEnvelope {
+    TbeCBindBenchHeader header;
+    [name(eventId), c(event_id)] int32 id;
+    double score;
+}

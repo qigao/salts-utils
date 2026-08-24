@@ -111,10 +111,16 @@ Avoid TBE for:
 Recommended boundaries:
 
 - Use TBE C generation for native high-performance codecs.
-- Use DataBind dynamic objects where runtime schema binding is needed.
-- Use `TBE_TYPED_*` descriptors to map a schema onto existing C structs.
+- Use DataBind dynamic objects where runtime schema binding needs an owning dynamic value tree.
+- Use `TBE_TYPED_*` descriptors for DataBind's independent existing-struct conversion route.
+- Use `TurboParser::TbeCBind` when a runtime TBE schema and caller-native CMeta shape must
+  directly drive a CSerde reader into an existing C struct; it does not use DataBind.
+- Use a build-time CBind sidecar when the schema is already known and direct CBind is sufficient.
 - Use C++/Go/Rust/Python/TypeScript type outputs for adapters and typed client surfaces.
 - Use RulesForge output when a TBE schema should describe data consumed by rules.
+
+A schema alone cannot infer the target C ABI (`sizeof`, alignment, offsets, or buffer ownership).
+TbeCBind therefore requires a separate native CMeta descriptor and rejects schema-only binding.
 
 ## Conclusion
 
