@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
                                  "Generate the C typed serde companion source");
 
     turbo_cmd_add_string(parser, &cbind_output_path, "cbind-output", NULL,
-                                 "Generate the CBind semantic sidecar source");
+                                 "Generate an independent CBind semantic sidecar source");
 
     turbo_cmd_add_string(parser, &lua_output_path, "lua-output", NULL,
                                  "Generate C adapters from typed records to Lua tables");

@@ -1509,13 +1509,9 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
-    if (options->source_output_path == NULL || options->source_output_path[0] == '\0') {
-      fprintf(stderr, "--cbind-output requires --source-output for typed records\n");
-      status = 1;
-      goto cleanup;
-    }
     if (strcmp(options->output_path, options->cbind_output_path) == 0 ||
-        strcmp(options->source_output_path, options->cbind_output_path) == 0 ||
+        (options->source_output_path != NULL &&
+         strcmp(options->source_output_path, options->cbind_output_path) == 0) ||
         (options->guest_output_path != NULL &&
          strcmp(options->guest_output_path, options->cbind_output_path) == 0) ||
         (options->lua_output_path != NULL &&
@@ -1540,7 +1536,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
-    if (tbe_compiler_set_string(root, "cbind_sidecar_enabled", "1") != 0) {
+    if (tbe_compiler_set_string(root, "cbind_sidecar_enabled", "1") != 0 ||
+        tbe_compiler_set_string(root, "native_record_enabled", "1") != 0) {
       status = 1;
       goto cleanup;
     }
@@ -1566,7 +1563,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       status = 1;
       goto cleanup;
     }
-    if (tbe_compiler_set_string(root, "typed_source_enabled", "1") != 0) {
+    if (tbe_compiler_set_string(root, "typed_source_enabled", "1") != 0 ||
+        tbe_compiler_set_string(root, "native_record_enabled", "1") != 0) {
       status = 1;
       goto cleanup;
     }

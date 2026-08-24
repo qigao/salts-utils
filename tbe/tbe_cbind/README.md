@@ -50,6 +50,31 @@ target_link_libraries(tbe_cbind_example PRIVATE
 `TurboParser::TbeCBind` 是独立安装 target。示例链接 `TurboParser::Parser` 仅为取得 JSON
 provider；可以换成 YAML、XML、CSV 或自定义 CSerde provider。
 
+Schema 在构建期已知时，可让 `tbe_compiler` 独立生成 native record header 与 direct CBind
+sidecar，不需要 typed source：
+
+```powershell
+tbe_compiler order.schema --lang c `
+  --output generated/order.h `
+  --cbind-output generated/order_cbind.c
+```
+
+```cmake
+find_package(TurboParser CONFIG REQUIRED)
+
+add_library(order_cbind STATIC generated/order_cbind.c)
+target_include_directories(order_cbind PUBLIC
+  generated
+  "$<TARGET_PROPERTY:TurboParser::TbeSchema,INTERFACE_INCLUDE_DIRECTORIES>")
+target_link_libraries(order_cbind PUBLIC TurboUtils::CBind)
+```
+
+这里从 `TurboParser::TbeSchema` target 只读取生成头所需的公开 `tbe_wire.h` include
+interface，并不链接该 library；sidecar source 的 decode 路径直接调用 CBind。独立模式不生成/编译 typed source，生成头不 include
+`tbe_typed.h`，target 也不需要 DataBind include、compile definition、link library 或运行时
+DLL。若显式再传 `--source-output generated/order.c`，则保留既有 combined 生成行为；typed
+source 与 sidecar 是并列产物，前者才需要 DataBind。
+
 ## 完整 desired usage
 
 以下 `main.c` 只使用 TbeCBind 与 JSON CSerde 路线。Native descriptor 使用真实 C member
@@ -232,8 +257,9 @@ Plan compilation 只表示 schema AST 到 descriptor graph。TbeCBind 没有 MIR
 使用相同 context limits，并在各自测量前执行相同次数的 warm-up、重置 reader/scratch，且
 每个 destination 都从 semantic zero 开始并在测量后恢复 semantic zero。
 
-该 target 的 generated sidecar library 只编译 struct header 与 CBind sidecar source，不编译
-generated typed source、不链接 DataBind，也不定义 `WITH_DATABIND`。它只比较 generated
+该 target 以独立 `--output + --cbind-output` 模式只生成并编译 struct header 与 CBind
+sidecar source；不会生成 typed source，生成头和 include interface 不含 DataBind，target
+也不链接 DataBind 或定义 `WITH_DATABIND`。它只比较 generated
 sidecar direct CBind 与 TbeCBind plan façade；两条路径最终调用同一个 `cbind_decode()`。
 benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 与 DataBind 的性能是否
 相当；同一台机器上的微小数值差异也不支持路径间的原因归纳。
@@ -243,9 +269,9 @@ benchmark 不执行、测量或比较 DataBind，结果不能用于判断 CBind 
 
 | Case | Samples | avg/op | min/sample | max/sample | ops/s |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| runtime TBE schema plan creation | 100 | 23.145 us | 21.000 us | 36.400 us | 43,206 |
-| generated sidecar direct CBind decode | 10,000 | 0.374 us | 0.300 us | 3.700 us | 2,676,372 |
-| runtime TbeCBind plan decode | 10,000 | 0.379 us | 0.300 us | 3.600 us | 2,639,916 |
+| runtime TBE schema plan creation | 100 | 21.889 us | 19.800 us | 46.100 us | 45,685 |
+| generated sidecar direct CBind decode | 10,000 | 0.373 us | 0.300 us | 6.900 us | 2,681,612 |
+| runtime TbeCBind plan decode | 10,000 | 0.362 us | 0.300 us | 2.900 us | 2,763,882 |
 
 这是一次本机 microbenchmark，没有统计置信区间；表中两个 decode 数字的微小差异不作
 性能归因，也不能外推到其他输入、机器或 DataBind。

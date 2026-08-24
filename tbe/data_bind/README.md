@@ -166,9 +166,9 @@ contract 解到 CMeta-described native storage 的 format-neutral kernel，而 J
 语法、DOM 与 token 投影仍由 TurboParser JSON adapter 负责。
 
 该 sidecar 是 build-time direct CBind 路线，不经过 TbeCBind plan，也不把 DataBind
-变成 CBind 的组成部分。示例 schema library 同时编译 typed source 与 sidecar 时会分别
-链接 `TurboParser::DataBind` 和 `TurboUtils::CBind`，这是两个并列产物的依赖并集；仅使用
-sidecar descriptor/decode 的执行链仍是 direct CBind。
+变成 CBind 的组成部分。独立模式不生成 typed source，生成头不声明 DataBind API，构建
+和运行时都不需要 DataBind。Combined 模式同时生成 typed source 与 sidecar 时才分别链接
+`TurboParser::DataBind` 和 `TurboUtils::CBind`；这是两个并列产物的依赖并集。
 
 同一份 TBE schema 是 generated owning struct、`TbeTypedType` 与 CBind semantic
 sidecar 的唯一事实源。不过二者的 metadata 保持独立：`TbeTypedType` 独占 TBE 的
@@ -178,39 +178,58 @@ wire/layout（offset、endianness、presence bitmap、fixed block 等），sidec
 ```powershell
 tbe_compiler order.schema --lang c `
   --output generated/order.h `
+  --cbind-output generated/order_cbind.c
+```
+
+`--cbind-output` 只支持内置 C generator，必须指定不同路径的 `--output`，但不要求
+`--source-output`。它与所有实际提供的其他 output 路径均不得相同；任一约束或 schema
+支持检查失败时，编译器 fail fast，不写出部分 sidecar。独立模式生成 native owning
+records、CBind descriptor accessor 与 decode façade，但不 include `tbe_typed.h`，也不声明
+`TbeTypedType` 或 DataBind API。
+
+需要保留 typed conversion 时可使用兼容的 combined 调用：
+
+```powershell
+tbe_compiler order.schema --lang c `
+  --output generated/order.h `
   --source-output generated/order.c `
   --cbind-output generated/order_cbind.c
 ```
 
-`--cbind-output` 只支持内置 C generator，且必须同时指定不同路径的 `--output` 与
-`--source-output`。它与 header、typed source、guest、Lua、DSL output 的路径均不得
-相同；任一约束或 schema 支持检查失败时，编译器 fail fast，不写出部分 sidecar。
-未传此选项时，默认生成内容、`TbeTypedType` ABI 与 production DataBind 依赖方向都不变。
+未传 `--cbind-output` 时，默认生成内容、`TbeTypedType` ABI 与 production DataBind 依赖
+方向都不变。
 
 ### Consumer 链接
 
-把 typed source 和 sidecar 编译进同一个 schema library。typed source 需要
-`TurboParser::DataBind`，sidecar/decode 需要 `TurboUtils::CBind`；JSON 输入还要链接
-安装态 consumer 使用公开 JSON facade `TurboParser::Parser`。在本仓库/build-tree 内部，
-若直接使用 JSON DOM adapter，则链接实际 build target `json_parser`；它不是安装态的
-imported target。两种 JSON 入口二选一，不需要把 `tbe_compiler` 部署到运行时。
+独立 sidecar library 只编译 CBind source。`TurboParser::TbeSchema` 提供生成头引用的公开
+`tbe_wire.h` interface；decode 路径只调用 `TurboUtils::CBind`，不 include 或链接
+DataBind。JSON 输入的安装态 consumer 另行链接公开 JSON façade `TurboParser::Parser`。
 
 ```cmake
-add_library(order_schema STATIC
-  generated/order.c
-  generated/order_cbind.c)
+add_library(order_cbind STATIC generated/order_cbind.c)
+target_include_directories(order_cbind PUBLIC
+  generated
+  "$<TARGET_PROPERTY:TurboParser::TbeSchema,INTERFACE_INCLUDE_DIRECTORIES>")
+target_link_libraries(order_cbind PUBLIC TurboUtils::CBind)
+
+# Installed consumer: public TurboParser JSON facade.
+target_link_libraries(my_app PRIVATE order_cbind TurboParser::Parser)
+```
+
+Combined 模式可把两个 source 编译进同一 library，其依赖是两个独立路线的并集：
+
+```cmake
+add_library(order_schema STATIC generated/order.c generated/order_cbind.c)
 target_include_directories(order_schema PUBLIC generated)
 target_link_libraries(order_schema
   PUBLIC TurboParser::DataBind TurboUtils::CBind)
-
-# Installed consumer: public TurboParser JSON facade.
-target_link_libraries(my_app PRIVATE order_schema TurboParser::Parser)
 ```
 
-仓内/build-tree 的 direct adapter 路径改为：
+仓内/build-tree 若直接使用 JSON DOM adapter，则把安装态 `TurboParser::Parser` 换成实际
+build target `json_parser`；两种 JSON 入口二选一，不需要把 `tbe_compiler` 部署到运行时：
 
 ```cmake
-target_link_libraries(my_app PRIVATE order_schema json_parser)
+target_link_libraries(my_app PRIVATE order_cbind json_parser)
 ```
 
 ### 生成的 API、所有权与限制
@@ -227,9 +246,10 @@ cbind_status Type_from_cserde(cbind_context *context,
 
 `Type_cbind_data()` 返回 process-lifetime 的 immutable descriptor，调用方不释放它。
 `Type_from_cserde()` 只转发给 `cbind_decode()`：不拥有 `context`、`reader` 或 `object`，
-也不倒回 reader。`object` 在调用前必须已经由 `Type_init()` 初始化至 semantic zero；
-成功后调用方通过 `Type_clear()` 释放 owning field，失败时 CBind 已将完整对象图恢复至
-semantic zero，调用方仍必须调用一次 `Type_clear()` 以形成统一 cleanup 路径。
+也不倒回 reader。独立模式的 `object` 以 `{0}` 建立 semantic zero；成功后调用方释放每个
+owning native field（generated `string` member 使用 `tstr_freep()`）并恢复整个对象为 zero，
+失败时 CBind 已回滚为 zero。Combined 模式可用 typed source 的 `Type_init()` /
+`Type_clear()` 执行相同生命周期协议；这些函数不是独立 CBind header 的 API。
 
 返回 `CBIND_OK` 表示成功；unknown/duplicate/missing field、token mismatch、range、
 depth、container、buffer limit、source 与 target 错误会原样以相应 `cbind_status`
