@@ -32,7 +32,7 @@ find_path(SIMDE_INCLUDE_DIRS NAMES simde/x86/sse2.h REQUIRED)
 target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 target_link_libraries(${TARGET_NAME}
   PRIVATE TurboUtils::STL
-  PUBLIC TurboUtils::Core TurboParser::QueryVM)
+  PUBLIC TurboUtils::Core TurboUtils::CSerde TurboParser::QueryVM)
 
 add_subdirectory(test)
 if(BUILD_BENCHMARKS)
