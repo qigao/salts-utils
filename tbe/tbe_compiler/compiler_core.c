@@ -883,22 +883,7 @@ static int tbe_compiler_cbind_reject_field(Node *field, const char *reason) {
 }
 
 static int tbe_compiler_cbind_scalar_supported(const char *type) {
-  const tbe_cbind_capability *capability =
-      tbe_cbind_capability_find(type);
-  if (capability == NULL) return 0;
-  if (capability->kind == TBE_CBIND_SCALAR_INTEGER) {
-    int v1_width =
-        (capability->is_signed && capability->bits == 32u) ||
-        capability->bits == 64u;
-    int v1_spelling = strcmp(type, capability->canonical_name) == 0 ||
-                      strcmp(type, capability->c_storage) == 0;
-    return v1_width && v1_spelling;
-  }
-  if (strcmp(type, capability->canonical_name) != 0) return 0;
-  if (capability->kind == TBE_CBIND_SCALAR_FLOAT)
-    return capability->bits == 32u || capability->bits == 64u;
-  if (capability->kind == TBE_CBIND_SCALAR_STRING) return 1;
-  return 0;
+  return tbe_cbind_capability_find(type) != NULL;
 }
 
 static int tbe_compiler_cbind_semantic_name_portable(const char *name) {
@@ -954,6 +939,8 @@ static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
     return tbe_compiler_cbind_reject_field(field, "aliases are unsupported");
   if (tbe_compiler_has_child(field, "is_optional"))
     return tbe_compiler_cbind_reject_field(field, "optional fields are unsupported");
+  if (tbe_compiler_has_child(field, "has_default"))
+    return tbe_compiler_cbind_reject_field(field, "default values are unsupported");
   if (tbe_compiler_has_child(field, "is_group_field"))
     return tbe_compiler_cbind_reject_field(field, "group collections are unsupported");
   if (tbe_compiler_has_child(field, "is_collection"))
@@ -961,13 +948,8 @@ static int tbe_compiler_cbind_field_supported(Node *root, Node *field) {
   if (tbe_compiler_has_child(field, "is_bytes"))
     return tbe_compiler_cbind_reject_field(field, "bytes storage is unsupported");
   if (tbe_compiler_cbind_scalar_supported(type)) return 1;
-  if (type && strcmp(type, "bool") == 0)
-    reason = "bool storage is unsupported";
-  else if (type && strcmp(type, "uuid") == 0)
-    reason = "uuid storage is unsupported";
-  else if (tbe_compiler_find_record(root, "enums", type))
-    reason = "enum storage is unsupported";
-  else if (tbe_compiler_find_record(root, "unions", type))
+  if (tbe_compiler_find_record(root, "enums", type)) return 1;
+  if (tbe_compiler_find_record(root, "unions", type))
     reason = "union storage is unsupported";
   else if (tbe_compiler_find_record(root, "composites", type) ||
            tbe_compiler_find_record(root, "groups", type) ||
@@ -1024,16 +1006,110 @@ static int tbe_compiler_cbind_list_supported(Node *root, const char *list_name) 
   return 1;
 }
 
-static int tbe_compiler_cbind_schema_supported(Node *root) {
+static int tbe_compiler_cbind_enum_value(const char *text,
+                                         const tbe_cbind_capability *underlying,
+                                         int64_t *out) {
+  unsigned long long parsed;
+  unsigned long long maximum;
+  char *end = NULL;
+
+  if (!text || !out || !underlying ||
+      underlying->kind != TBE_CBIND_SCALAR_INTEGER || underlying->bits == 0u ||
+      underlying->bits > 64u)
+    return 0;
+  errno = 0;
+  parsed = strtoull(text, &end, 0);
+  if (errno == ERANGE || end == text || !end || *end != '\0' ||
+      parsed > (unsigned long long)INT64_MAX)
+    return 0;
+  if (underlying->is_signed) {
+    maximum = underlying->bits == 64u
+                  ? (unsigned long long)INT64_MAX
+                  : (UINT64_C(1) << (underlying->bits - 1u)) - 1u;
+  } else {
+    maximum = underlying->bits == 64u
+                  ? (unsigned long long)INT64_MAX
+                  : (UINT64_C(1) << underlying->bits) - 1u;
+  }
+  if (parsed > maximum) return 0;
+  *out = (int64_t)parsed;
+  return 1;
+}
+
+static int tbe_compiler_cbind_enums_supported(Node *root) {
   Node *enums = tbe_compiler_find_child(root, "enums");
+  size_t enum_index;
+
+  if (!enums || enums->type != NODE_LIST) return 1;
+  for (enum_index = 0u; enum_index < enums->data.list.count; ++enum_index) {
+    Node *enum_node = enums->data.list.items[enum_index];
+    Node *attributes = tbe_compiler_find_child(enum_node, "attributes");
+    Node *items = tbe_compiler_find_child(enum_node, "items");
+    const char *name = tbe_compiler_string_value(enum_node, "enum_name");
+    const char *underlying_name =
+        tbe_compiler_string_value(enum_node, "underlying_type");
+    const tbe_cbind_capability *underlying;
+    size_t item_index;
+
+    if (!name) name = tbe_compiler_string_value(enum_node, "name");
+    if (tbe_compiler_has_child(enum_node, "is_flags")) {
+      fprintf(stderr,
+              "CBind sidecar field %s.(declaration): flags declarations are unsupported\n",
+              name ? name : "(enum)");
+      return 0;
+    }
+    if (attributes && attributes->type == NODE_LIST &&
+        attributes->data.list.count != 0u) {
+      fprintf(stderr,
+              "CBind sidecar field %s.(declaration): enum attributes are unsupported\n",
+              name ? name : "(enum)");
+      return 0;
+    }
+    underlying = tbe_cbind_capability_find(
+        underlying_name && underlying_name[0] ? underlying_name : "int32");
+    if (!underlying || underlying->kind != TBE_CBIND_SCALAR_INTEGER) {
+      fprintf(stderr,
+              "CBind sidecar field %s.(declaration): enum underlying type must be a supported fixed integer\n",
+              name ? name : "(enum)");
+      return 0;
+    }
+    if (!items || items->type != NODE_LIST) continue;
+    for (item_index = 0u; item_index < items->data.list.count; ++item_index) {
+      Node *item = items->data.list.items[item_index];
+      const char *item_name = tbe_compiler_string_value(item, "name");
+      const char *value_text = tbe_compiler_string_value(item, "value");
+      int64_t value;
+      size_t previous;
+
+      if (!item_name || !tbe_compiler_cbind_enum_value(value_text, underlying, &value)) {
+        fprintf(stderr,
+                "CBind sidecar field %s.%s: enum value does not fit its underlying integer type or int64 domain\n",
+                name ? name : "(enum)", item_name ? item_name : "(item)");
+        return 0;
+      }
+      for (previous = 0u; previous < item_index; ++previous) {
+        Node *other = items->data.list.items[previous];
+        const char *other_name = tbe_compiler_string_value(other, "name");
+        const char *other_value_text = tbe_compiler_string_value(other, "value");
+        int64_t other_value;
+        if ((other_name && strcmp(other_name, item_name) == 0) ||
+            (tbe_compiler_cbind_enum_value(other_value_text, underlying, &other_value) &&
+             other_value == value)) {
+          fprintf(stderr,
+                  "CBind sidecar field %s.%s: enum item names and values must be unique\n",
+                  name ? name : "(enum)", item_name);
+          return 0;
+        }
+      }
+    }
+  }
+  return 1;
+}
+
+static int tbe_compiler_cbind_schema_supported(Node *root) {
   Node *unions = tbe_compiler_find_child(root, "unions");
 
-  if (enums && enums->type == NODE_LIST && enums->data.list.count != 0) {
-    const char *name = tbe_compiler_string_value(enums->data.list.items[0], "name");
-    fprintf(stderr, "CBind sidecar field %s.(declaration): enum declarations are unsupported\n",
-            name ? name : "(enum)");
-    return 0;
-  }
+  if (!tbe_compiler_cbind_enums_supported(root)) return 0;
   if (unions && unions->type == NODE_LIST && unions->data.list.count != 0) {
     Node *fields = tbe_compiler_find_child(unions->data.list.items[0], "fields");
     if (fields && fields->type == NODE_LIST && fields->data.list.count != 0)
@@ -1054,12 +1130,15 @@ static int tbe_compiler_format_cbind_symbol(char *out, size_t out_size,
   return length >= 0 && (size_t)length < out_size;
 }
 
-static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
+static int tbe_compiler_annotate_cbind_field(Node *root, Node *record, Node *field,
+                                             size_t field_index,
                                              const char *schema_name,
                                              const char *record_name) {
   const char *type = tbe_compiler_string_value(field, "type");
   const char *field_name = tbe_compiler_string_value(field, "name");
   const char *semantic_name = tbe_compiler_cbind_semantic_name(field);
+  const tbe_cbind_capability *capability = tbe_cbind_capability_find(type);
+  Node *enum_node = tbe_compiler_find_record(root, "enums", type);
   const char *type_name = NULL;
   const char *type_desc = NULL;
   const char *data_desc = NULL;
@@ -1067,42 +1146,57 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
   char type_desc_buf[256];
   char data_desc_buf[256];
   char stable_id[768];
+  char index_text[32];
   char *escaped_name;
   int stable_length;
 
   if (!schema_name || !record_name || !field_name || !semantic_name || !type) return 0;
 
-  if (strcmp(type, "int32") == 0 || strcmp(type, "int32_t") == 0) {
-    type_name = "int";
-    type_desc = "&cmeta_type_int";
-    data_desc = "&cmeta_data_int";
-    if (tbe_compiler_set_string(root, "cbind_needs_int32_abi", "1") != 0) return 0;
-  } else if (strcmp(type, "int64") == 0 || strcmp(type, "int64_t") == 0) {
-    type_name = "long";
-    type_desc = "&cmeta_type_long";
-    data_desc = "&cmeta_data_long";
-    if (tbe_compiler_set_string(root, "cbind_needs_int64_abi", "1") != 0) return 0;
-  } else if (strcmp(type, "uint64") == 0 || strcmp(type, "uint64_t") == 0) {
-    type_name = "size_t";
-    type_desc = "&cmeta_type_size";
-    data_desc = "&cmeta_data_size";
-    if (tbe_compiler_set_string(root, "cbind_needs_uint64_abi", "1") != 0) return 0;
-  } else if (strcmp(type, "float") == 0) {
-    type_name = "float";
-    type_desc = "&cmeta_type_float";
-    data_desc = "&cmeta_data_float";
-  } else if (strcmp(type, "double") == 0) {
-    type_name = "double";
-    type_desc = "&cmeta_type_double";
-    data_desc = "&cmeta_data_double";
-  } else if (strcmp(type, "string") == 0) {
-    type_name = "tstr";
-    type_desc = "&turbo_tstr_cmeta_type";
+  if (capability && capability->kind == TBE_CBIND_SCALAR_STRING) {
+    type_name = capability->c_storage;
+    if (!tbe_compiler_format_cbind_symbol(type_desc_buf, sizeof(type_desc_buf),
+                                          "&%s", capability->cmeta_type_symbol))
+      return 0;
+    type_desc = type_desc_buf;
     if (!tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
                                           "&%s_cbind_tstr_data", schema_name))
       return 0;
     data_desc = data_desc_buf;
     if (tbe_compiler_set_string(root, "cbind_has_string", "1") != 0) return 0;
+  } else if (capability && capability->kind == TBE_CBIND_SCALAR_UUID) {
+    type_name = capability->c_storage;
+    type_desc = "NULL";
+    data_desc = "NULL";
+    if (!tbe_compiler_format_cbind_symbol(type_desc_buf, sizeof(type_desc_buf),
+                                          "&%s", capability->cmeta_type_symbol) ||
+        !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s", capability->cmeta_data_symbol) ||
+        tbe_compiler_set_string(field, "cbind_runtime_bind", "1") != 0 ||
+        tbe_compiler_set_string(field, "cbind_runtime_type_desc", type_desc_buf) != 0 ||
+        tbe_compiler_set_string(field, "cbind_runtime_data_desc", data_desc_buf) != 0 ||
+        tbe_compiler_set_string(record, "cbind_runtime_fields", "1") != 0 ||
+        tbe_compiler_set_string(root, "cbind_needs_runtime_init", "1") != 0)
+      return 0;
+  } else if (capability) {
+    type_name = capability->c_storage;
+    if (!tbe_compiler_format_cbind_symbol(type_desc_buf, sizeof(type_desc_buf),
+                                          "&%s", capability->cmeta_type_symbol) ||
+        !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s", capability->cmeta_data_symbol))
+      return 0;
+    type_desc = type_desc_buf;
+    data_desc = data_desc_buf;
+  } else if (enum_node) {
+    const char *enum_storage = tbe_compiler_string_value(enum_node, "cbind_storage_type");
+    const char *enum_type_desc =
+        tbe_compiler_string_value(enum_node, "cbind_storage_type_desc");
+    if (!enum_storage || !enum_type_desc ||
+        !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
+                                          "&%s_cbind_descriptor", type))
+      return 0;
+    type_name = enum_storage;
+    type_desc = enum_type_desc;
+    data_desc = data_desc_buf;
   } else {
     if (!tbe_compiler_format_cbind_symbol(type_name_buf, sizeof(type_name_buf), "%s_t",
                                           type) ||
@@ -1118,11 +1212,17 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *field,
 
   escaped_name = tbe_compiler_escape_c_string(semantic_name);
   if (!escaped_name) return 0;
+  stable_length = snprintf(index_text, sizeof(index_text), "%zu", field_index);
+  if (stable_length < 0 || (size_t)stable_length >= sizeof(index_text)) {
+    free(escaped_name);
+    return 0;
+  }
   stable_length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s.%s", schema_name,
                            record_name, field_name);
   if (stable_length < 0 || (size_t)stable_length >= sizeof(stable_id) ||
       tbe_compiler_set_string(field, "cbind_semantic_name", escaped_name) != 0 ||
       tbe_compiler_set_string(field, "cbind_stable_id", stable_id) != 0 ||
+      tbe_compiler_set_string(field, "cbind_field_index", index_text) != 0 ||
       tbe_compiler_set_string(field, "cbind_type_name", type_name) != 0 ||
       tbe_compiler_set_string(field, "cbind_type_desc", type_desc) != 0 ||
       tbe_compiler_set_string(field, "cbind_data_desc", data_desc) != 0) {
@@ -1166,9 +1266,48 @@ static int tbe_compiler_annotate_cbind_records(Node *root, const char *list_name
       return 0;
 
     for (j = 0; j < fields->data.list.count; ++j)
-      if (!tbe_compiler_annotate_cbind_field(root, fields->data.list.items[j],
+      if (!tbe_compiler_annotate_cbind_field(root, record, fields->data.list.items[j], j,
                                              schema_name, record_name))
         return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_annotate_cbind_enums(Node *root, const char *schema_name) {
+  Node *enums = tbe_compiler_find_child(root, "enums");
+  size_t index;
+
+  if (!enums || enums->type != NODE_LIST) return 1;
+  for (index = 0u; index < enums->data.list.count; ++index) {
+    Node *enum_node = enums->data.list.items[index];
+    Node *items = tbe_compiler_find_child(enum_node, "items");
+    const char *name = tbe_compiler_string_value(enum_node, "enum_name");
+    const char *underlying_name =
+        tbe_compiler_string_value(enum_node, "underlying_type");
+    const tbe_cbind_capability *underlying = tbe_cbind_capability_find(
+        underlying_name && underlying_name[0] ? underlying_name : "int32");
+    char storage_type_desc[256];
+    char stable_id[512];
+    int length;
+
+    if (!name) name = tbe_compiler_string_value(enum_node, "name");
+    if (!name || !underlying || underlying->kind != TBE_CBIND_SCALAR_INTEGER ||
+        !tbe_compiler_format_cbind_symbol(storage_type_desc,
+                                          sizeof(storage_type_desc), "&%s",
+                                          underlying->cmeta_type_symbol))
+      return 0;
+    length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s.data", schema_name,
+                      name);
+    if (length < 0 || (size_t)length >= sizeof(stable_id) ||
+        tbe_compiler_set_string(enum_node, "cbind_storage_type",
+                                underlying->c_storage) != 0 ||
+        tbe_compiler_set_string(enum_node, "cbind_storage_type_desc",
+                                storage_type_desc) != 0 ||
+        tbe_compiler_set_string(enum_node, "cbind_data_stable_id", stable_id) != 0)
+      return 0;
+    if (items && items->type == NODE_LIST && items->data.list.count != 0u &&
+        tbe_compiler_set_string(enum_node, "cbind_has_items", "1") != 0)
+      return 0;
   }
   return 1;
 }
@@ -1178,7 +1317,8 @@ static int tbe_compiler_prepare_cbind_annotations(Node *root) {
   const char *schema_name = tbe_compiler_string_value(schema, "schema_name");
 
   if (!schema_name || !schema_name[0]) return 0;
-  return tbe_compiler_annotate_cbind_records(root, "composites", schema_name) &&
+  return tbe_compiler_annotate_cbind_enums(root, schema_name) &&
+         tbe_compiler_annotate_cbind_records(root, "composites", schema_name) &&
          tbe_compiler_annotate_cbind_records(root, "groups", schema_name) &&
          tbe_compiler_annotate_cbind_records(root, "messages", schema_name);
 }

@@ -1,6 +1,8 @@
 #ifndef TBE_CBIND_CAPABILITY_H
 #define TBE_CBIND_CAPABILITY_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +31,10 @@ typedef struct tbe_cbind_capability {
 
 /* Returns process-lifetime immutable metadata, or NULL for a non-scalar spelling. */
 const tbe_cbind_capability *tbe_cbind_capability_find(const char *type_name);
+
+/* Canonical entries expose the one scalar matrix to runtime and generator tests. */
+size_t tbe_cbind_capability_count(void);
+const tbe_cbind_capability *tbe_cbind_capability_at(size_t index);
 
 #ifdef __cplusplus
 }

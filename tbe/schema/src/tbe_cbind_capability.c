@@ -80,3 +80,11 @@ const tbe_cbind_capability *tbe_cbind_capability_find(const char *type_name) {
   }
   return NULL;
 }
+
+size_t tbe_cbind_capability_count(void) {
+  return sizeof(TBE_CBIND_CAPABILITIES) / sizeof(TBE_CBIND_CAPABILITIES[0]);
+}
+
+const tbe_cbind_capability *tbe_cbind_capability_at(size_t index) {
+  return index < tbe_cbind_capability_count() ? &TBE_CBIND_CAPABILITIES[index] : NULL;
+}

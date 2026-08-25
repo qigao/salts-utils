@@ -2194,6 +2194,11 @@ static inline uint8_t *{{name}}_payload_mut(uint8_t *buf, size_t size, size_t *p
 
 {{#cbind_sidecar_enabled}}
 /* Immutable semantic descriptors and CSerde decode façades. */
+{{#enums}}
+{{^is_flags}}
+TBE_GENERATED_API const cmeta_data_desc *{{enum_name}}_cbind_data(void);
+{{/is_flags}}
+{{/enums}}
 {{#composites}}
 TBE_GENERATED_API const cmeta_data_desc *{{name}}_cbind_data(void);
 TBE_GENERATED_API cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader, {{name}}_t *object, cbind_error *error);
