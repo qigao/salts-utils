@@ -116,6 +116,51 @@ static int tbe_compiler_set_string(Node *map, const char *name, const char *valu
   return 0;
 }
 
+static int tbe_compiler_set_derived_symbol(Node *node, const char *property,
+                                           const char *prefix,
+                                           const char *suffix) {
+  char symbol[512];
+  int length;
+
+  if (!node || !property || !prefix || !suffix) return -1;
+  length = snprintf(symbol, sizeof(symbol), "%s_%s", prefix, suffix);
+  if (length < 0 || (size_t)length >= sizeof(symbol)) return -1;
+  return tbe_compiler_set_string(node, property, symbol);
+}
+
+typedef struct tbe_compiler_derived_symbol_spec {
+  const char *property;
+  const char *suffix;
+  int ordinary_enum;
+  int flags_enum;
+} tbe_compiler_derived_symbol_spec;
+
+static const tbe_compiler_derived_symbol_spec TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS[] = {
+    {"c_to_string_symbol", "to_string", 1, 0},
+    {"c_from_string_symbol", "from_string", 1, 0},
+    {"c_is_valid_symbol", "is_valid", 1, 0},
+    {"c_count_symbol", "count", 1, 0},
+    {"c_min_symbol", "min", 1, 0},
+    {"c_max_symbol", "max", 1, 0},
+    {"cbind_data_symbol", "cbind_data", 1, 0},
+    {"c_has_symbol", "has", 0, 1},
+    {"c_set_symbol", "set", 0, 1},
+    {"c_clear_symbol", "clear", 0, 1},
+    {"c_toggle_symbol", "toggle", 0, 1},
+};
+
+static const tbe_compiler_derived_symbol_spec TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[] = {
+    {"cbind_items_symbol", "items", 1, 0},
+    {"cbind_meta_symbol", "meta", 1, 0},
+    {"cbind_shape_symbol", "shape", 1, 0},
+    {"cbind_is_zero_symbol", "is_zero", 1, 0},
+    {"cbind_read_symbol", "read", 1, 0},
+    {"cbind_assign_symbol", "assign", 1, 0},
+    {"cbind_restore_zero_symbol", "restore_zero", 1, 0},
+    {"cbind_ops_symbol", "ops", 1, 0},
+    {"cbind_descriptor_symbol", "descriptor", 1, 0},
+};
+
 static void tbe_compiler_pascal_identifier(const char *input, char *out, size_t out_size) {
   int capitalize = 1;
   size_t pos = 0;
@@ -662,6 +707,36 @@ static const char *tbe_compiler_c_enum_underlying_type(const char *type, int is_
   return fallback;
 }
 
+static int tbe_compiler_annotate_c_enum_symbols(Node *enum_node) {
+  Node *items = tbe_compiler_find_child(enum_node, "items");
+  const char *name = tbe_compiler_string_value(enum_node, "enum_name");
+  const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
+  size_t index;
+
+  if (!name) name = tbe_compiler_string_value(enum_node, "name");
+  if (!name) return 0;
+  for (index = 0u;
+       index < sizeof(TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS) /
+                   sizeof(TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS[0]);
+       ++index) {
+    const tbe_compiler_derived_symbol_spec *spec =
+        &TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS[index];
+    if ((is_flags ? spec->flags_enum : spec->ordinary_enum) &&
+        tbe_compiler_set_derived_symbol(enum_node, spec->property, name,
+                                        spec->suffix) != 0)
+      return 0;
+  }
+  if (!items || items->type != NODE_LIST) return 1;
+  for (index = 0u; index < items->data.list.count; ++index) {
+    Node *item = items->data.list.items[index];
+    const char *item_name = tbe_compiler_string_value(item, "name");
+    if (!item_name ||
+        tbe_compiler_set_derived_symbol(item, "c_symbol", name, item_name) != 0)
+      return 0;
+  }
+  return 1;
+}
+
 static void tbe_compiler_annotate_enum_types(Node *root) {
   Node *enums = tbe_compiler_find_child(root, "enums");
   if (!enums || enums->type != NODE_LIST) return;
@@ -670,6 +745,8 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     Node *enum_node = enums->data.list.items[i];
     const char *underlying = tbe_compiler_string_value(enum_node, "underlying_type");
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
+
+    (void)tbe_compiler_annotate_c_enum_symbols(enum_node);
 
     tbe_compiler_set_string(enum_node, "cpp_underlying_type",
                             tbe_compiler_cpp_enum_underlying_type(underlying));
@@ -1136,6 +1213,7 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *record, Node *fie
                                              const char *record_name) {
   const char *type = tbe_compiler_string_value(field, "type");
   const char *field_name = tbe_compiler_string_value(field, "name");
+  const char *c_name = tbe_compiler_string_value(field, "c_name");
   const char *semantic_name = tbe_compiler_cbind_semantic_name(field);
   const tbe_cbind_capability *capability = tbe_cbind_capability_find(type);
   Node *enum_node = tbe_compiler_find_record(root, "enums", type);
@@ -1147,10 +1225,20 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *record, Node *fie
   char data_desc_buf[256];
   char stable_id[768];
   char index_text[32];
+  char typed_declaration[512];
   char *escaped_name;
   int stable_length;
 
-  if (!schema_name || !record_name || !field_name || !semantic_name || !type) return 0;
+  if (!schema_name || !record_name || !field_name || !c_name || !semantic_name || !type)
+    return 0;
+
+  if (capability) {
+    stable_length = snprintf(typed_declaration, sizeof(typed_declaration), "%s %s;",
+                             capability->c_storage, c_name);
+    if (stable_length < 0 || (size_t)stable_length >= sizeof(typed_declaration) ||
+        tbe_compiler_set_string(field, "typed_declaration", typed_declaration) != 0)
+      return 0;
+  }
 
   if (capability && capability->kind == TBE_CBIND_SCALAR_STRING) {
     type_name = capability->c_storage;
@@ -1190,9 +1278,11 @@ static int tbe_compiler_annotate_cbind_field(Node *root, Node *record, Node *fie
     const char *enum_storage = tbe_compiler_string_value(enum_node, "cbind_storage_type");
     const char *enum_type_desc =
         tbe_compiler_string_value(enum_node, "cbind_storage_type_desc");
-    if (!enum_storage || !enum_type_desc ||
+    const char *enum_data_desc =
+        tbe_compiler_string_value(enum_node, "cbind_descriptor_symbol");
+    if (!enum_storage || !enum_type_desc || !enum_data_desc ||
         !tbe_compiler_format_cbind_symbol(data_desc_buf, sizeof(data_desc_buf),
-                                          "&%s_cbind_descriptor", type))
+                                          "&%s", enum_data_desc))
       return 0;
     type_name = enum_storage;
     type_desc = enum_type_desc;
@@ -1288,7 +1378,9 @@ static int tbe_compiler_annotate_cbind_enums(Node *root, const char *schema_name
         underlying_name && underlying_name[0] ? underlying_name : "int32");
     char storage_type_desc[256];
     char stable_id[512];
+    char private_prefix[512];
     int length;
+    size_t symbol_index;
 
     if (!name) name = tbe_compiler_string_value(enum_node, "name");
     if (!name || !underlying || underlying->kind != TBE_CBIND_SCALAR_INTEGER ||
@@ -1298,16 +1390,87 @@ static int tbe_compiler_annotate_cbind_enums(Node *root, const char *schema_name
       return 0;
     length = snprintf(stable_id, sizeof(stable_id), "tbe.%s.%s.data", schema_name,
                       name);
-    if (length < 0 || (size_t)length >= sizeof(stable_id) ||
+    if (length < 0 || (size_t)length >= sizeof(stable_id)) return 0;
+    length = snprintf(private_prefix, sizeof(private_prefix), "%s_cbind_%s",
+                      schema_name, name);
+    if (length < 0 || (size_t)length >= sizeof(private_prefix) ||
         tbe_compiler_set_string(enum_node, "cbind_storage_type",
                                 underlying->c_storage) != 0 ||
         tbe_compiler_set_string(enum_node, "cbind_storage_type_desc",
                                 storage_type_desc) != 0 ||
-        tbe_compiler_set_string(enum_node, "cbind_data_stable_id", stable_id) != 0)
+        tbe_compiler_set_string(enum_node, "cbind_data_stable_id", stable_id) != 0 ||
+        tbe_compiler_set_string(enum_node, "c_underlying_type",
+                                underlying->c_storage) != 0)
       return 0;
+    for (symbol_index = 0u;
+         symbol_index < sizeof(TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS) /
+                            sizeof(TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[0]);
+         ++symbol_index)
+      if (tbe_compiler_set_derived_symbol(
+              enum_node, TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[symbol_index].property,
+              private_prefix,
+              TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[symbol_index].suffix) != 0)
+        return 0;
     if (items && items->type == NODE_LIST && items->data.list.count != 0u &&
         tbe_compiler_set_string(enum_node, "cbind_has_items", "1") != 0)
       return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_cbind_enum_symbols_supported(Node *root) {
+  Node *enums = tbe_compiler_find_child(root, "enums");
+  size_t enum_index;
+
+  if (!enums || enums->type != NODE_LIST) return 1;
+  for (enum_index = 0u; enum_index < enums->data.list.count; ++enum_index) {
+    Node *enum_node = enums->data.list.items[enum_index];
+    Node *items = tbe_compiler_find_child(enum_node, "items");
+    const char *enum_name = tbe_compiler_string_value(enum_node, "enum_name");
+    size_t item_index;
+
+    if (!enum_name) enum_name = tbe_compiler_string_value(enum_node, "name");
+    if (!items || items->type != NODE_LIST) continue;
+    for (item_index = 0u; item_index < items->data.list.count; ++item_index) {
+      Node *item = items->data.list.items[item_index];
+      const char *item_name = tbe_compiler_string_value(item, "name");
+      const char *item_symbol = tbe_compiler_string_value(item, "c_symbol");
+      size_t target_index;
+
+      if (!item_symbol) return 0;
+      for (target_index = 0u; target_index < enums->data.list.count; ++target_index) {
+        Node *target = enums->data.list.items[target_index];
+        size_t property_index;
+        for (property_index = 0u;
+             property_index < sizeof(TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS) /
+                                  sizeof(TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS[0]);
+             ++property_index) {
+          const char *helper = tbe_compiler_string_value(
+              target, TBE_COMPILER_C_ENUM_PUBLIC_SYMBOLS[property_index].property);
+          if (helper && strcmp(item_symbol, helper) == 0) {
+            fprintf(stderr,
+                    "C generator enum %s.%s derives symbol '%s' already used by a public enum API\n",
+                    enum_name ? enum_name : "(enum)",
+                    item_name ? item_name : "(item)", item_symbol);
+            return 0;
+          }
+        }
+        for (property_index = 0u;
+             property_index < sizeof(TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS) /
+                                  sizeof(TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[0]);
+             ++property_index) {
+          const char *helper = tbe_compiler_string_value(
+              target, TBE_COMPILER_C_ENUM_PRIVATE_SYMBOLS[property_index].property);
+          if (helper && strcmp(item_symbol, helper) == 0) {
+            fprintf(stderr,
+                    "C generator enum %s.%s derives symbol '%s' already used by generated sidecar metadata\n",
+                    enum_name ? enum_name : "(enum)",
+                    item_name ? item_name : "(item)", item_symbol);
+            return 0;
+          }
+        }
+      }
+    }
   }
   return 1;
 }
@@ -1318,6 +1481,7 @@ static int tbe_compiler_prepare_cbind_annotations(Node *root) {
 
   if (!schema_name || !schema_name[0]) return 0;
   return tbe_compiler_annotate_cbind_enums(root, schema_name) &&
+         tbe_compiler_cbind_enum_symbols_supported(root) &&
          tbe_compiler_annotate_cbind_records(root, "composites", schema_name) &&
          tbe_compiler_annotate_cbind_records(root, "groups", schema_name) &&
          tbe_compiler_annotate_cbind_records(root, "messages", schema_name);

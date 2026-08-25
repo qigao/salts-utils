@@ -197,16 +197,16 @@ TBE_GENERATED_API const tbe_schema_codec_v1_t *{{schema.schema_name}}_schema_cod
 typedef {{#c_underlying_type}}{{c_underlying_type}}{{/c_underlying_type}}{{^c_underlying_type}}int32_t{{/c_underlying_type}} {{enum_name}}_t;
 
 {{#items}}
-#define {{enum_name}}_{{name}} (({{enum_name}}_t)UINT64_C({{value}}))
+#define {{c_symbol}} (({{enum_name}}_t)UINT64_C({{value}}))
 {{/items}}
 
 /**
  * @brief Convert {{enum_name}} to string
  */
-static inline const char* {{enum_name}}_to_string({{enum_name}}_t value) {
+static inline const char* {{c_to_string_symbol}}({{enum_name}}_t value) {
     switch (value) {
 {{#items}}
-        case {{enum_name}}_{{name}}: return "{{name}}";
+        case {{c_symbol}}: return "{{name}}";
 {{/items}}
         default: return NULL;
     }
@@ -215,11 +215,11 @@ static inline const char* {{enum_name}}_to_string({{enum_name}}_t value) {
 /**
  * @brief Convert string to {{enum_name}}
  */
-static inline bool {{enum_name}}_from_string(const char* str, {{enum_name}}_t* out) {
+static inline bool {{c_from_string_symbol}}(const char* str, {{enum_name}}_t* out) {
     if (!str || !out) return false;
     
 {{#items}}
-    if (TBE_GENERATED_STRCMP(str, "{{name}}") == 0) { *out = {{enum_name}}_{{name}}; return true; }
+    if (TBE_GENERATED_STRCMP(str, "{{name}}") == 0) { *out = {{c_symbol}}; return true; }
 {{/items}}
     return false;
 }
@@ -227,10 +227,10 @@ static inline bool {{enum_name}}_from_string(const char* str, {{enum_name}}_t* o
 /**
  * @brief Check if {{enum_name}} value is valid
  */
-static inline bool {{enum_name}}_is_valid({{enum_name}}_t value) {
+static inline bool {{c_is_valid_symbol}}({{enum_name}}_t value) {
     switch (value) {
 {{#items}}
-        case {{enum_name}}_{{name}}:
+        case {{c_symbol}}:
 {{/items}}
             return true;
         default:
@@ -241,21 +241,21 @@ static inline bool {{enum_name}}_is_valid({{enum_name}}_t value) {
 /**
  * @brief Get number of {{enum_name}} values
  */
-static inline size_t {{enum_name}}_count(void) {
+static inline size_t {{c_count_symbol}}(void) {
     return {{items_count}};
 }
 
 /**
  * @brief Get minimum {{enum_name}} value
  */
-static inline {{enum_name}}_t {{enum_name}}_min(void) {
+static inline {{enum_name}}_t {{c_min_symbol}}(void) {
     return {{min_value}};
 }
 
 /**
  * @brief Get maximum {{enum_name}} value  
  */
-static inline {{enum_name}}_t {{enum_name}}_max(void) {
+static inline {{enum_name}}_t {{c_max_symbol}}(void) {
     return {{max_value}};
 }
 
@@ -268,34 +268,34 @@ static inline {{enum_name}}_t {{enum_name}}_max(void) {
 typedef {{#c_underlying_type}}{{c_underlying_type}}{{/c_underlying_type}}{{^c_underlying_type}}uint32_t{{/c_underlying_type}} {{enum_name}}_t;
 
 {{#items}}
-#define {{enum_name}}_{{name}} (({{enum_name}}_t)UINT64_C({{value}}))
+#define {{c_symbol}} (({{enum_name}}_t)UINT64_C({{value}}))
 {{/items}}
 
 /**
  * @brief Check if flag is set
  */
-static inline bool {{enum_name}}_has({{enum_name}}_t flags, {{enum_name}}_t flag) {
+static inline bool {{c_has_symbol}}({{enum_name}}_t flags, {{enum_name}}_t flag) {
     return (flags & flag) != 0;
 }
 
 /**
  * @brief Set flag
  */
-static inline {{enum_name}}_t {{enum_name}}_set({{enum_name}}_t flags, {{enum_name}}_t flag) {
+static inline {{enum_name}}_t {{c_set_symbol}}({{enum_name}}_t flags, {{enum_name}}_t flag) {
     return flags | flag;
 }
 
 /**
  * @brief Clear flag
  */
-static inline {{enum_name}}_t {{enum_name}}_clear({{enum_name}}_t flags, {{enum_name}}_t flag) {
+static inline {{enum_name}}_t {{c_clear_symbol}}({{enum_name}}_t flags, {{enum_name}}_t flag) {
     return flags & ~flag;
 }
 
 /**
  * @brief Toggle flag
  */
-static inline {{enum_name}}_t {{enum_name}}_toggle({{enum_name}}_t flags, {{enum_name}}_t flag) {
+static inline {{enum_name}}_t {{c_toggle_symbol}}({{enum_name}}_t flags, {{enum_name}}_t flag) {
     return flags ^ flag;
 }
 
@@ -2196,7 +2196,7 @@ static inline uint8_t *{{name}}_payload_mut(uint8_t *buf, size_t size, size_t *p
 /* Immutable semantic descriptors and CSerde decode façades. */
 {{#enums}}
 {{^is_flags}}
-TBE_GENERATED_API const cmeta_data_desc *{{enum_name}}_cbind_data(void);
+TBE_GENERATED_API const cmeta_data_desc *{{cbind_data_symbol}}(void);
 {{/is_flags}}
 {{/enums}}
 {{#composites}}

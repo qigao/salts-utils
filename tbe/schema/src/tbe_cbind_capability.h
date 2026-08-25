@@ -36,6 +36,10 @@ const tbe_cbind_capability *tbe_cbind_capability_find(const char *type_name);
 size_t tbe_cbind_capability_count(void);
 const tbe_cbind_capability *tbe_cbind_capability_at(size_t index);
 
+/* Accepted spellings are enumerated from the same alias table used by find(). */
+size_t tbe_cbind_capability_spelling_count(void);
+const char *tbe_cbind_capability_spelling_at(size_t index);
+
 #ifdef __cplusplus
 }
 #endif

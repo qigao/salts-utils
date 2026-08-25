@@ -1280,7 +1280,7 @@ spec("tbe_compiler") {
       check_not_null(strstr(cbind_source,
           "{\"tbe.Orders.Order.price\", \"price\", offsetof(Order_t, price), &Price_cbind_descriptor}"));
       check_not_null(strstr(cbind_source,
-          "static const cmeta_enum_item_desc State_cbind_items[]"));
+          "static const cmeta_enum_item_desc Orders_cbind_State_items[]"));
       check_not_null(strstr(cbind_source,
           "{ 0, \"State_Unknown\", \"Unknown\" }"));
       check_not_null(strstr(cbind_source,
@@ -1288,11 +1288,11 @@ spec("tbe_compiler") {
       check_not_null(strstr(cbind_source,
           "{ 9, \"State_Done\", \"Done\" }"));
       check_not_null(strstr(cbind_source,
-          "static const cmeta_data_enum_ops State_cbind_ops"));
+          "static const cmeta_data_enum_ops Orders_cbind_State_ops"));
       check_not_null(strstr(cbind_source,
           ".storage_type = &turbo_uint16_cmeta_type"));
       check_not_null(strstr(cbind_source,
-          "static const cmeta_data_desc State_cbind_descriptor"));
+          "static const cmeta_data_desc Orders_cbind_State_descriptor"));
       check_not_null(strstr(cbind_source,
           "\"tbe.Orders.State.data\""));
       check_not_null(strstr(cbind_source,
@@ -1372,7 +1372,7 @@ spec("tbe_compiler") {
       cleanup_test_file(cbind_path);
     }
 
-    it("should mechanically accept and annotate every shared CBind scalar capability") {
+    it("should mechanically accept and annotate every shared CBind scalar spelling") {
       const char *schema_path = "test_tbe_compiler_cbind_capability.tbe";
       const char *header_path = "test_tbe_compiler_cbind_capability.h";
       const char *cbind_path = "test_tbe_compiler_cbind_capability_cbind.c";
@@ -1382,32 +1382,45 @@ spec("tbe_compiler") {
           .cbind_output_path = cbind_path,
           .lang_enum = TBE_COMPILER_LANG_C,
       };
-      size_t capability_count = tbe_cbind_capability_count();
+      size_t spelling_count = tbe_cbind_capability_spelling_count();
 
-      check_greater(capability_count, (size_t)0u);
-      check_null(tbe_cbind_capability_at(capability_count));
-      for (size_t index = 0u; index < capability_count; ++index) {
-        const tbe_cbind_capability *capability = tbe_cbind_capability_at(index);
+      check_greater(spelling_count, tbe_cbind_capability_count());
+      check_null(tbe_cbind_capability_spelling_at(spelling_count));
+      for (size_t index = 0u; index < spelling_count; ++index) {
+        const char *spelling = tbe_cbind_capability_spelling_at(index);
+        const tbe_cbind_capability *capability = tbe_cbind_capability_find(spelling);
         char schema[256];
+        char declaration[256];
         char layout_fragment[512];
         char type_symbol[256];
         char data_symbol[256];
+        char *header;
         char *cbind_source;
+        size_t header_size = 0u;
         size_t cbind_size = 0u;
 
+        check_not_null(spelling);
         check_not_null(capability);
-        if (capability == NULL) continue;
-        check_true(tbe_cbind_capability_find(capability->canonical_name) == capability);
+        if (spelling == NULL || capability == NULL) continue;
         check_true(snprintf(schema, sizeof(schema),
                             "schema Capability; message Value { %s value; }",
-                            capability->canonical_name) > 0);
+                            spelling) > 0);
         cleanup_test_file(schema_path);
         cleanup_test_file(header_path);
         cleanup_test_file(cbind_path);
         check_equal(write_test_file(schema_path, schema), 0);
         check_equal(tbe_compiler_run(&options), 0);
+        header = tt_read_file(header_path, &header_size);
         cbind_source = tt_read_file(cbind_path, &cbind_size);
+        check_not_null(header);
         check_not_null(cbind_source);
+        if (header != NULL) {
+          check_greater(header_size, (size_t)0u);
+          check_true(snprintf(declaration, sizeof(declaration), "%s value;",
+                              capability->c_storage) > 0);
+          check_not_null(strstr(header, declaration));
+          free(header);
+        }
         if (cbind_source != NULL) {
           check_greater(cbind_size, (size_t)0u);
           check_true(snprintf(layout_fragment, sizeof(layout_fragment),
@@ -1651,6 +1664,30 @@ spec("tbe_compiler") {
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(cbind_path);
+    }
+
+    it("should reject enum items whose derived C macro collides with a public enum API") {
+      static const char *const public_helper_items[] = {
+          "to_string", "from_string", "is_valid", "count",
+          "min",       "max",         "cbind_data",
+      };
+
+      for (size_t i = 0u;
+           i < sizeof(public_helper_items) / sizeof(public_helper_items[0]); ++i) {
+        char schema[256];
+        cbind_rejection_result_t result;
+
+        info("public helper collision item: %s", public_helper_items[i]);
+        check_true(snprintf(schema, sizeof(schema),
+                            "enum State { %s = 1; } message Order { State state; }",
+                            public_helper_items[i]) > 0);
+        result = run_rejected_cbind_schema(schema);
+        check_equal(result.write_status, 0);
+        check_not_equal(result.compiler_status, 0);
+        check_false(result.header_exists);
+        check_false(result.source_exists);
+        check_false(result.cbind_exists);
+      }
     }
 
     it("should reject guest adapter output outside the built-in C generator") {

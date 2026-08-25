@@ -9,6 +9,8 @@ enum CBindState <uint16> {
     Unknown = 0;
     Ready = 7;
     Done = 9;
+    cbind_read = 10;
+    cbind_descriptor = 11;
 }
 
 composite CBindHeader {

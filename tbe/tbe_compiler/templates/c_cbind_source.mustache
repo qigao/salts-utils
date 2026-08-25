@@ -28,7 +28,7 @@ static void {{schema.schema_name}}_cbind_ensure_initialized(void) {
 #endif
 {{#enums}}
 {{^is_flags}}
-static const cmeta_data_desc {{enum_name}}_cbind_descriptor;
+static const cmeta_data_desc {{cbind_descriptor_symbol}};
 {{/is_flags}}
 {{/enums}}
 {{#composites}}
@@ -64,31 +64,31 @@ static const cmeta_data_desc {{schema.schema_name}}_cbind_tstr_data = {
 {{#enums}}
 {{^is_flags}}
 {{#cbind_has_items}}
-static const cmeta_enum_item_desc {{enum_name}}_cbind_items[] = {
+static const cmeta_enum_item_desc {{cbind_items_symbol}}[] = {
 {{#items}}
-    { {{value}}, "{{enum_name}}_{{name}}", "{{name}}" }{{^last}},{{/last}}
+    { {{value}}, "{{c_symbol}}", "{{name}}" }{{^last}},{{/last}}
 {{/items}}
 };
 {{/cbind_has_items}}
 
-static const cmeta_enum_desc {{enum_name}}_cbind_meta = {
+static const cmeta_enum_desc {{cbind_meta_symbol}} = {
     "{{enum_name}}",
-    {{#cbind_has_items}}{{enum_name}}_cbind_items{{/cbind_has_items}}{{^cbind_has_items}}NULL{{/cbind_has_items}},
+    {{#cbind_has_items}}{{cbind_items_symbol}}{{/cbind_has_items}}{{^cbind_has_items}}NULL{{/cbind_has_items}},
     {{items_count}}u
 };
 
-static const cmeta_data_enum_shape {{enum_name}}_cbind_shape = {
-    &{{enum_name}}_cbind_meta
+static const cmeta_data_enum_shape {{cbind_shape_symbol}} = {
+    &{{cbind_meta_symbol}}
 };
 
-static bool {{enum_name}}_cbind_is_zero(const void *object) {
+static bool {{cbind_is_zero_symbol}}(const void *object) {
     {{enum_name}}_t value;
     if (object == NULL) return false;
     memcpy(&value, object, sizeof(value));
     return value == ({{enum_name}}_t)0;
 }
 
-static cmeta_status {{enum_name}}_cbind_read(const void *object, int64_t *out) {
+static cmeta_status {{cbind_read_symbol}}(const void *object, int64_t *out) {
     {{enum_name}}_t value;
     if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
     memcpy(&value, object, sizeof(value));
@@ -96,7 +96,7 @@ static cmeta_status {{enum_name}}_cbind_read(const void *object, int64_t *out) {
     return CMETA_OK;
 }
 
-static cmeta_status {{enum_name}}_cbind_assign(void *object, int64_t value) {
+static cmeta_status {{cbind_assign_symbol}}(void *object, int64_t value) {
     {{enum_name}}_t native;
     if (object == NULL) return CMETA_INVALID_ARGUMENT;
     native = ({{enum_name}}_t)value;
@@ -105,36 +105,36 @@ static cmeta_status {{enum_name}}_cbind_assign(void *object, int64_t value) {
     return CMETA_OK;
 }
 
-static void {{enum_name}}_cbind_restore_zero(void *object) {
+static void {{cbind_restore_zero_symbol}}(void *object) {
     {{enum_name}}_t value = ({{enum_name}}_t)0;
     if (object != NULL) memcpy(object, &value, sizeof(value));
 }
 
-static const cmeta_data_enum_ops {{enum_name}}_cbind_ops = {
+static const cmeta_data_enum_ops {{cbind_ops_symbol}} = {
     .struct_size = sizeof(cmeta_data_enum_ops),
     .abi_version = CMETA_DATA_ENUM_OPS_ABI_VERSION,
     .storage_type = {{cbind_storage_type_desc}},
-    .is_zero = {{enum_name}}_cbind_is_zero,
-    .read = {{enum_name}}_cbind_read,
-    .assign = {{enum_name}}_cbind_assign,
-    .restore_zero = {{enum_name}}_cbind_restore_zero
+    .is_zero = {{cbind_is_zero_symbol}},
+    .read = {{cbind_read_symbol}},
+    .assign = {{cbind_assign_symbol}},
+    .restore_zero = {{cbind_restore_zero_symbol}}
 };
 
-static const cmeta_data_desc {{enum_name}}_cbind_descriptor = {
+static const cmeta_data_desc {{cbind_descriptor_symbol}} = {
     .struct_size = sizeof(cmeta_data_desc),
     .abi_version = CMETA_DATA_DESC_ABI_VERSION,
     .stable_id = "{{cbind_data_stable_id}}",
     .display_name = "{{enum_name}}",
     .kind = CMETA_DATA_ENUM,
     .storage_type = {{cbind_storage_type_desc}},
-    .shape = &{{enum_name}}_cbind_shape,
+    .shape = &{{cbind_shape_symbol}},
     .buffer_ops = NULL,
-    .enum_ops = &{{enum_name}}_cbind_ops,
+    .enum_ops = &{{cbind_ops_symbol}},
     .variant_ops = NULL
 };
 
-const cmeta_data_desc *{{enum_name}}_cbind_data(void) {
-    return &{{enum_name}}_cbind_descriptor;
+const cmeta_data_desc *{{cbind_data_symbol}}(void) {
+    return &{{cbind_descriptor_symbol}};
 }
 
 {{/is_flags}}

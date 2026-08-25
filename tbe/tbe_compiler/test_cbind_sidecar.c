@@ -202,7 +202,7 @@ spec("generated CBind sidecar") {
     state_shape = (const cmeta_data_enum_shape *)state_descriptor->shape;
     check_not_null(state_shape);
     check_equal(state_shape->meta->name, "CBindState");
-    check_equal(state_shape->meta->count, 3u);
+    check_equal(state_shape->meta->count, 5u);
     check_equal(state_shape->meta->items[0].value, 0);
     check_equal(state_shape->meta->items[0].symbol, "CBindState_Unknown");
     check_equal(state_shape->meta->items[0].text, "Unknown");
@@ -210,6 +210,15 @@ spec("generated CBind sidecar") {
     check_equal(state_shape->meta->items[1].symbol, "CBindState_Ready");
     check_equal(state_shape->meta->items[1].text, "Ready");
     check_equal(state_shape->meta->items[2].value, 9);
+    check_equal(state_shape->meta->items[3].value, 10);
+    check_equal(state_shape->meta->items[3].symbol, "CBindState_cbind_read");
+    check_equal(state_shape->meta->items[3].text, "cbind_read");
+    check_equal(state_shape->meta->items[4].value, 11);
+    check_equal(state_shape->meta->items[4].symbol, "CBindState_cbind_descriptor");
+    check_equal(state_shape->meta->items[4].text, "cbind_descriptor");
+    check_equal(CBindState_cbind_read, (CBindState_t)10);
+    check_equal(CBindState_cbind_descriptor, (CBindState_t)11);
+    check_true(CBindState_cbind_data() == state_descriptor);
   }
 
   it("decodes every scalar width lowercase UUID and enum symbol") {

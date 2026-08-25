@@ -8,6 +8,7 @@
 
 #define TEST_STANDALONE_LABEL "owned"
 #define TEST_STANDALONE_UUID "00112233-4455-6677-8899-aabbccddeeff"
+#define TEST_STANDALONE_NESTED_UUID "FEDCBA98-7654-3210-FEDC-BA9876543210"
 
 enum {
   TEST_STANDALONE_SCRATCH_BYTES = 2,
@@ -29,7 +30,8 @@ enum {
 
 static const cserde_token test_tokens[] = {
     TEST_MAP_BEGIN, TEST_KEY("details"), TEST_MAP_BEGIN, TEST_KEY("sequence"), TEST_SINT(-17),
-    TEST_MAP_END, TEST_KEY("eventId"), TEST_SINT(42), TEST_KEY("enabled"), TEST_BOOL(true),
+    TEST_KEY("nested_request_id"), TEST_KEY(TEST_STANDALONE_NESTED_UUID), TEST_MAP_END,
+    TEST_KEY("eventId"), TEST_SINT(42), TEST_KEY("enabled"), TEST_BOOL(true),
     TEST_KEY("min_value"), TEST_SINT(INT64_MIN), TEST_KEY("max_value"), TEST_UINT(UINT64_MAX),
     TEST_KEY("label"), TEST_KEY(TEST_STANDALONE_LABEL), TEST_KEY("request_id"),
     TEST_KEY(TEST_STANDALONE_UUID), TEST_KEY("state"),
@@ -51,6 +53,19 @@ static cserde_status test_reader_next(void *opaque, cserde_token *out) {
 static const cserde_reader_ops test_reader_ops = {
     sizeof(cserde_reader_ops), CSERDE_READER_OPS_ABI_VERSION, test_reader_next};
 
+static int test_uuid_slot_is_canonical(const cmeta_data_desc *descriptor,
+                                       size_t field_index) {
+  const cmeta_data_struct_shape *shape;
+
+  if (!cmeta_data_desc_valid(descriptor) || descriptor->kind != CMETA_DATA_STRUCT)
+    return 0;
+  shape = (const cmeta_data_struct_shape *)descriptor->shape;
+  return shape != NULL && shape->layout != NULL && field_index < shape->field_count &&
+         field_index < shape->layout->field_count &&
+         shape->layout->fields[field_index].type == &turbo_uuid_cmeta_type &&
+         shape->fields[field_index].value == &turbo_uuid_cmeta_data;
+}
+
 int main(void) {
   unsigned char scratch[TEST_STANDALONE_SCRATCH_BYTES] = {0};
   cbind_context context = CBIND_CONTEXT_WITH_BUFFERS_INIT(
@@ -61,24 +76,32 @@ int main(void) {
   cserde_reader reader = {0};
   CBindStandaloneEnvelope_t envelope = {0};
   turbo_uuid_t expected_uuid = {{0}};
+  turbo_uuid_t expected_nested_uuid = {{0}};
   int result = 0;
 
-  if (!cmeta_data_desc_valid(CBindStandaloneEnvelope_cbind_data())) {
-    fprintf(stderr, "standalone CBind descriptor is invalid\n");
+  if (turbo_uuid_parse(TEST_STANDALONE_UUID, &expected_uuid) != 0 ||
+      turbo_uuid_parse(TEST_STANDALONE_NESTED_UUID, &expected_nested_uuid) != 0)
     return 1;
-  }
-  if (!cmeta_data_desc_valid(CBindStandaloneState_cbind_data())) {
-    fprintf(stderr, "standalone CBind enum descriptor is invalid\n");
-    return 2;
-  }
-  if (turbo_uuid_parse(TEST_STANDALONE_UUID, &expected_uuid) != 0) return 2;
   if (cserde_reader_init(&reader, &test_reader_ops, &state) != CSERDE_OK) {
     fprintf(stderr, "standalone CSerde reader initialization failed\n");
-    return 3;
+    return 2;
   }
+  /* Exercise the schema-wide once callback through decode before any accessor. */
   if (CBindStandaloneEnvelope_from_cserde(&context, &reader, &envelope, &error) != CBIND_OK) {
     fprintf(stderr, "standalone CBind decode failed: status=%d field=%s\n", (int)error.status,
             error.field != NULL ? error.field->name : "(none)");
+    result = 3;
+    goto cleanup;
+  }
+  if (!cmeta_data_desc_valid(CBindStandaloneEnvelope_cbind_data()) ||
+      !cmeta_data_desc_valid(CBindStandaloneDetails_cbind_data()) ||
+      !cmeta_data_desc_valid(CBindStandaloneState_cbind_data()) ||
+      !test_uuid_slot_is_canonical(CBindStandaloneEnvelope_cbind_data(), 6u) ||
+      !test_uuid_slot_is_canonical(CBindStandaloneDetails_cbind_data(), 1u) ||
+      turbo_uuid_cmeta_data.storage_type != &turbo_uuid_cmeta_type ||
+      turbo_uuid_cmeta_data.shape != &turbo_uuid_cmeta_shape ||
+      turbo_uuid_cmeta_data.buffer_ops != &turbo_uuid_cmeta_buffer_ops) {
+    fprintf(stderr, "standalone UUID metadata did not publish canonical Core objects\n");
     result = 4;
     goto cleanup;
   }
@@ -88,6 +111,7 @@ int main(void) {
       tstr_len(envelope.label) != sizeof(TEST_STANDALONE_LABEL) - 1u ||
       memcmp(envelope.label, TEST_STANDALONE_LABEL,
              sizeof(TEST_STANDALONE_LABEL) - 1u) != 0 ||
+      !turbo_uuid_equal(&envelope.details.nested_request_id, &expected_nested_uuid) ||
       !turbo_uuid_equal(&envelope.request_id, &expected_uuid) ||
       envelope.state != CBindStandaloneState_Ready) {
     fprintf(stderr, "standalone CBind decode result mismatch\n");
@@ -113,4 +137,5 @@ cleanup:
 #undef TEST_MAP_END
 #undef TEST_MAP_BEGIN
 #undef TEST_STANDALONE_LABEL
+#undef TEST_STANDALONE_NESTED_UUID
 #undef TEST_STANDALONE_UUID

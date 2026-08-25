@@ -88,3 +88,12 @@ size_t tbe_cbind_capability_count(void) {
 const tbe_cbind_capability *tbe_cbind_capability_at(size_t index) {
   return index < tbe_cbind_capability_count() ? &TBE_CBIND_CAPABILITIES[index] : NULL;
 }
+
+size_t tbe_cbind_capability_spelling_count(void) {
+  return sizeof(TBE_CBIND_CAPABILITY_ALIASES) / sizeof(TBE_CBIND_CAPABILITY_ALIASES[0]);
+}
+
+const char *tbe_cbind_capability_spelling_at(size_t index) {
+  return index < tbe_cbind_capability_spelling_count() ? TBE_CBIND_CAPABILITY_ALIASES[index].name
+                                                        : NULL;
+}

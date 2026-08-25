@@ -73,7 +73,9 @@ const cserde_reader_ops kReaderOps = {
 int main() {
   const cserde_token tokens[] = {
       structural(CSERDE_MAP_BEGIN), text("details"), structural(CSERDE_MAP_BEGIN),
-      text("sequence"), sint(-17), structural(CSERDE_MAP_END), text("eventId"), sint(42),
+      text("sequence"), sint(-17), text("nested_request_id"),
+      text("FEDCBA98-7654-3210-FEDC-BA9876543210"), structural(CSERDE_MAP_END),
+      text("eventId"), sint(42),
       text("enabled"), boolean(true), text("min_value"), sint(INT64_MIN), text("max_value"),
       uint(UINT64_MAX), text("label"), text("owned"), text("request_id"),
       text("00112233-4455-6677-8899-AABBCCDDEEFF"), text("state"), text("Ready"),
@@ -86,6 +88,7 @@ int main() {
   cserde_reader reader{};
   CBindStandaloneEnvelope_t envelope{};
   turbo_uuid_t expected_uuid{};
+  turbo_uuid_t expected_nested_uuid{};
   const cmeta_data_desc *descriptor = CBindStandaloneEnvelope_cbind_data();
 
   if (!cmeta_data_desc_valid(descriptor) ||
@@ -99,7 +102,9 @@ int main() {
       envelope.label == nullptr || envelope.state != CBindStandaloneState_Ready)
     return 4;
   if (turbo_uuid_parse("00112233-4455-6677-8899-AABBCCDDEEFF", &expected_uuid) != 0 ||
-      !turbo_uuid_equal(&envelope.request_id, &expected_uuid))
+      turbo_uuid_parse("FEDCBA98-7654-3210-FEDC-BA9876543210", &expected_nested_uuid) != 0 ||
+      !turbo_uuid_equal(&envelope.request_id, &expected_uuid) ||
+      !turbo_uuid_equal(&envelope.details.nested_request_id, &expected_nested_uuid))
     return 5;
   tstr_freep(&envelope.label);
   return 0;

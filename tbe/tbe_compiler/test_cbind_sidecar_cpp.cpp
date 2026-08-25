@@ -11,6 +11,10 @@ static_assert(std::is_same<decltype(CBindEnvelope_t::sint64), std::int64_t>::val
               "generated int64 fields must stay fixed-width on LLP64");
 static_assert(std::is_same<decltype(CBindEnvelope_t::uint64_value), std::uint64_t>::value,
               "generated uint64 fields must stay fixed-width on LLP64");
+static_assert(CBindState_cbind_read == static_cast<CBindState_t>(10),
+              "legal enum items must not collide with private sidecar helpers");
+static_assert(CBindState_cbind_descriptor == static_cast<CBindState_t>(11),
+              "legal enum items must not collide with private sidecar descriptors");
 #if defined(_WIN32)
 static_assert(sizeof(long) == 4u, "this consumer must exercise the Windows LLP64 ABI");
 #endif
@@ -95,6 +99,8 @@ spec("generated CBind sidecar C++ linkage") {
     check_true(cmeta_data_desc_valid(enum_descriptor));
     check_equal(enum_descriptor->kind, CMETA_DATA_ENUM);
     check_equal(enum_descriptor->storage_type->size, sizeof(std::uint16_t));
+    check_equal(CBindState_cbind_read, static_cast<CBindState_t>(10));
+    check_equal(CBindState_cbind_descriptor, static_cast<CBindState_t>(11));
   }
 
   it("decodes fixed-width scalars uppercase UUID and enum text through from_cserde") {
