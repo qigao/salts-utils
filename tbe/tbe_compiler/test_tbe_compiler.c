@@ -3,6 +3,7 @@
 #include "compiler_core.h"
 #include "node_tree.h"
 #include "tbe_wire.h"
+#include "tbe_cbind_capability.h"
 #include "schema_parser_dsl.h"
 #include "tinytest.h"
 #ifdef _WIN32
@@ -1156,10 +1157,15 @@ spec("tbe_compiler") {
       const char *cbind_path = "test_tbe_compiler_cbind_supported_cbind.c";
       const char *schema =
           "schema Orders;"
-          "composite Price { int64 amount; }"
+          "enum DefaultState { Idle = 0; Active = 3; }"
+          "enum State <uint16> { Unknown = 0; Ready = 7; Done = 9; }"
+          "composite Price { int64 amount; uuid request_id; }"
           "group Adjustment { double factor; }"
           "message Order { [name(\"order-id\"), c(order_id)] int32 id; "
-          "uint64 quantity; float ratio; double total; string symbol; Price price; }";
+          "bool enabled; int8 i8; uint8 u8; int16 i16; uint16 u16; "
+          "uint32 u32; int64 i64; uint64 u64; float ratio; double total; "
+          "string symbol; uuid request_id; State state; DefaultState default_state; "
+          "Price price; }";
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
@@ -1197,23 +1203,28 @@ spec("tbe_compiler") {
           "TBE_GENERATED_API const cmeta_data_desc *Adjustment_cbind_data(void);"));
       check_not_null(strstr(header,
           "TBE_GENERATED_API const cmeta_data_desc *Order_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *State_cbind_data(void);"));
+      check_not_null(strstr(header,
+          "TBE_GENERATED_API const cmeta_data_desc *DefaultState_cbind_data(void);"));
 
       check_not_null(strstr(cbind_source, "#include \"test_tbe_compiler_cbind_supported.h\""));
       check_not_null(strstr(cbind_source, "#include <cmeta/data.h>"));
       check_not_null(strstr(cbind_source, "#include <cmeta/struct.h>"));
       check_not_null(strstr(cbind_source, "#include <turbo_cmeta_data.h>"));
+      check_not_null(strstr(cbind_source, "#include <turbo/thread.h>"));
+      check_null(strstr(cbind_source, "sizeof(long)"));
+      check_null(strstr(cbind_source, "_Alignof(long)"));
+      check_null(strstr(cbind_source, "sizeof(size_t)"));
+      check_null(strstr(cbind_source, "_Alignof(size_t)"));
       check_not_null(strstr(cbind_source,
-          "_Static_assert(sizeof(int32_t) == sizeof(int)"));
+          "static turbo_once_t Orders_cbind_once = TURBO_ONCE_INIT;"));
       check_not_null(strstr(cbind_source,
-          "_Static_assert(_Alignof(int32_t) == _Alignof(int)"));
+          "turbo_once(&Orders_cbind_once, Orders_cbind_initialize);"));
       check_not_null(strstr(cbind_source,
-          "_Static_assert(sizeof(int64_t) == sizeof(long)"));
+          "Price_cbind_fields[1].type = &turbo_uuid_cmeta_type;"));
       check_not_null(strstr(cbind_source,
-          "_Static_assert(_Alignof(int64_t) == _Alignof(long)"));
-      check_not_null(strstr(cbind_source,
-          "_Static_assert(sizeof(uint64_t) == sizeof(size_t)"));
-      check_not_null(strstr(cbind_source,
-          "_Static_assert(_Alignof(uint64_t) == _Alignof(size_t)"));
+          "Price_cbind_data_fields[1].value = &turbo_uuid_cmeta_data;"));
       check_not_null(strstr(cbind_source,
           "static const cmeta_type_desc Price_cbind_type;"));
       check_not_null(strstr(cbind_source,
@@ -1221,25 +1232,45 @@ spec("tbe_compiler") {
       check_not_null(strstr(cbind_source,
           "static const cmeta_type_identity Price_cbind_identity"));
       check_not_null(strstr(cbind_source,
-          "static const cmeta_field_desc Price_cbind_fields[]"));
+          "static cmeta_field_desc Price_cbind_fields[]"));
       check_not_null(strstr(cbind_source,
           "static const cmeta_struct_desc Price_cbind_layout"));
       check_not_null(strstr(cbind_source,
-          "static const cmeta_data_field_desc Price_cbind_data_fields[]"));
+          "static cmeta_data_field_desc Price_cbind_data_fields[]"));
       check_not_null(strstr(cbind_source,
           "static const cmeta_data_struct_shape Price_cbind_shape"));
       check_not_null(strstr(cbind_source,
-          "{\"order-id\", \"int\", offsetof(Order_t, order_id), sizeof(int), _Alignof(int), &cmeta_type_int, NULL}"));
+          "{\"order-id\", \"int32_t\", offsetof(Order_t, order_id), sizeof(int32_t), _Alignof(int32_t), &turbo_int32_cmeta_type, NULL}"));
       check_not_null(strstr(cbind_source,
-          "{\"tbe.Orders.Order.id\", \"order-id\", offsetof(Order_t, order_id), &cmeta_data_int}"));
+          "{\"tbe.Orders.Order.id\", \"order-id\", offsetof(Order_t, order_id), &turbo_int32_cmeta_data}"));
       check_not_null(strstr(cbind_source,
-          "{\"quantity\", \"size_t\", offsetof(Order_t, quantity), sizeof(size_t), _Alignof(size_t), &cmeta_type_size, NULL}"));
+          "{\"enabled\", \"bool\", offsetof(Order_t, enabled), sizeof(bool), _Alignof(bool), &cmeta_type_bool, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"i8\", \"int8_t\", offsetof(Order_t, i8), sizeof(int8_t), _Alignof(int8_t), &turbo_int8_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"u8\", \"uint8_t\", offsetof(Order_t, u8), sizeof(uint8_t), _Alignof(uint8_t), &turbo_uint8_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"i16\", \"int16_t\", offsetof(Order_t, i16), sizeof(int16_t), _Alignof(int16_t), &turbo_int16_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"u16\", \"uint16_t\", offsetof(Order_t, u16), sizeof(uint16_t), _Alignof(uint16_t), &turbo_uint16_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"u32\", \"uint32_t\", offsetof(Order_t, u32), sizeof(uint32_t), _Alignof(uint32_t), &turbo_uint32_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"i64\", \"int64_t\", offsetof(Order_t, i64), sizeof(int64_t), _Alignof(int64_t), &turbo_int64_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"u64\", \"uint64_t\", offsetof(Order_t, u64), sizeof(uint64_t), _Alignof(uint64_t), &turbo_uint64_cmeta_type, NULL}"));
       check_not_null(strstr(cbind_source,
           "{\"ratio\", \"float\", offsetof(Order_t, ratio), sizeof(float), _Alignof(float), &cmeta_type_float, NULL}"));
       check_not_null(strstr(cbind_source,
           "{\"total\", \"double\", offsetof(Order_t, total), sizeof(double), _Alignof(double), &cmeta_type_double, NULL}"));
       check_not_null(strstr(cbind_source,
           "{\"symbol\", \"tstr\", offsetof(Order_t, symbol), sizeof(tstr), _Alignof(tstr), &turbo_tstr_cmeta_type, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "{\"request_id\", \"turbo_uuid_t\", offsetof(Order_t, request_id), sizeof(turbo_uuid_t), _Alignof(turbo_uuid_t), NULL, NULL}"));
+      check_not_null(strstr(cbind_source,
+          "Order_cbind_fields[12].type = &turbo_uuid_cmeta_type;"));
+      check_not_null(strstr(cbind_source,
+          "Order_cbind_data_fields[12].value = &turbo_uuid_cmeta_data;"));
       check_not_null(strstr(cbind_source,
           "CMETA_DATA_BUFFER_OWNED"));
       check_not_null(strstr(cbind_source,
@@ -1249,11 +1280,29 @@ spec("tbe_compiler") {
       check_not_null(strstr(cbind_source,
           "{\"tbe.Orders.Order.price\", \"price\", offsetof(Order_t, price), &Price_cbind_descriptor}"));
       check_not_null(strstr(cbind_source,
+          "static const cmeta_enum_item_desc Orders_cbind_State_items[]"));
+      check_not_null(strstr(cbind_source,
+          "{ 0, \"State_Unknown\", \"Unknown\" }"));
+      check_not_null(strstr(cbind_source,
+          "{ 7, \"State_Ready\", \"Ready\" }"));
+      check_not_null(strstr(cbind_source,
+          "{ 9, \"State_Done\", \"Done\" }"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_enum_ops Orders_cbind_State_ops"));
+      check_not_null(strstr(cbind_source,
+          ".storage_type = &turbo_uint16_cmeta_type"));
+      check_not_null(strstr(cbind_source,
+          "static const cmeta_data_desc Orders_cbind_State_descriptor"));
+      check_not_null(strstr(cbind_source,
+          "\"tbe.Orders.State.data\""));
+      check_not_null(strstr(cbind_source,
+          ".storage_type = &turbo_int32_cmeta_type"));
+      check_not_null(strstr(cbind_source,
           "const cmeta_data_desc *Order_cbind_data(void)"));
       check_not_null(strstr(cbind_source,
           "return &Order_cbind_descriptor;"));
       check_not_null(strstr(cbind_source,
-          "return cbind_decode(context, &Order_cbind_descriptor, reader, object, error);"));
+          "return cbind_decode(context, Order_cbind_data(), reader, object, error);"));
       free(header);
       free(cbind_source);
       cleanup_test_file(schema_path);
@@ -1318,6 +1367,80 @@ spec("tbe_compiler") {
 
       free(header);
       free(cbind_source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(cbind_path);
+    }
+
+    it("should mechanically accept and annotate every shared CBind scalar spelling") {
+      const char *schema_path = "test_tbe_compiler_cbind_capability.tbe";
+      const char *header_path = "test_tbe_compiler_cbind_capability.h";
+      const char *cbind_path = "test_tbe_compiler_cbind_capability_cbind.c";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .cbind_output_path = cbind_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+      size_t spelling_count = tbe_cbind_capability_spelling_count();
+
+      check_greater(spelling_count, tbe_cbind_capability_count());
+      check_null(tbe_cbind_capability_spelling_at(spelling_count));
+      for (size_t index = 0u; index < spelling_count; ++index) {
+        const char *spelling = tbe_cbind_capability_spelling_at(index);
+        const tbe_cbind_capability *capability = tbe_cbind_capability_find(spelling);
+        char schema[256];
+        char declaration[256];
+        char layout_fragment[512];
+        char type_symbol[256];
+        char data_symbol[256];
+        char *header;
+        char *cbind_source;
+        size_t header_size = 0u;
+        size_t cbind_size = 0u;
+
+        check_not_null(spelling);
+        check_not_null(capability);
+        if (spelling == NULL || capability == NULL) continue;
+        check_true(snprintf(schema, sizeof(schema),
+                            "schema Capability; message Value { %s value; }",
+                            spelling) > 0);
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(cbind_path);
+        check_equal(write_test_file(schema_path, schema), 0);
+        check_equal(tbe_compiler_run(&options), 0);
+        header = tt_read_file(header_path, &header_size);
+        cbind_source = tt_read_file(cbind_path, &cbind_size);
+        check_not_null(header);
+        check_not_null(cbind_source);
+        if (header != NULL) {
+          check_greater(header_size, (size_t)0u);
+          check_true(snprintf(declaration, sizeof(declaration), "%s value;",
+                              capability->c_storage) > 0);
+          check_not_null(strstr(header, declaration));
+          free(header);
+        }
+        if (cbind_source != NULL) {
+          check_greater(cbind_size, (size_t)0u);
+          check_true(snprintf(layout_fragment, sizeof(layout_fragment),
+                              "{\"value\", \"%s\", offsetof(Value_t, value), sizeof(%s), _Alignof(%s)",
+                              capability->c_storage, capability->c_storage,
+                              capability->c_storage) > 0);
+          check_not_null(strstr(cbind_source, layout_fragment));
+          check_true(snprintf(type_symbol, sizeof(type_symbol), "&%s",
+                              capability->cmeta_type_symbol) > 0);
+          check_not_null(strstr(cbind_source, type_symbol));
+          if (capability->cmeta_data_symbol != NULL) {
+            check_true(snprintf(data_symbol, sizeof(data_symbol), "&%s",
+                                capability->cmeta_data_symbol) > 0);
+            check_not_null(strstr(cbind_source, data_symbol));
+          } else {
+            check_not_null(strstr(cbind_source, "Capability_cbind_tstr_data"));
+          }
+          free(cbind_source);
+        }
+      }
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(cbind_path);
@@ -1433,7 +1556,7 @@ spec("tbe_compiler") {
       cleanup_test_file(cbind_path);
     }
 
-    it("should reject CBind aliases and optional fields before rendering outputs") {
+    it("should reject CBind aliases optional fields and defaults before rendering outputs") {
       const char *schema_path = "test_tbe_compiler_cbind_alias_optional.tbe";
       const char *header_path = "test_tbe_compiler_cbind_alias_optional.h";
       const char *source_path = "test_tbe_compiler_cbind_alias_optional.c";
@@ -1441,6 +1564,7 @@ spec("tbe_compiler") {
       const char *schemas[] = {
           "message Order { [alias(legacy_id)] int32 id; }",
           "message Order { optional int32 id; }",
+          "message Order { int32 id default 1; }",
       };
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
@@ -1473,15 +1597,11 @@ spec("tbe_compiler") {
       const char *source_path = "test_tbe_compiler_cbind_unsupported.c";
       const char *cbind_path = "test_tbe_compiler_cbind_unsupported_cbind.c";
       const char *schemas[] = {
-          "message Order { bool enabled; }",
-          "message Order { int8 value; }",
-          "message Order { uint32 count; }",
-          "enum Status { Ready = 1; } message Order { Status status; }",
-          "message Order { uuid id; }",
           "message Order { bytes payload; }",
           "message Order { list<int32> ids; }",
           "group Level { int32 price; } message Order { group<Level> levels; }",
           "union Choice { int32 number; } message Order { Choice choice; }",
+          "message Order { date placed_at; }",
       };
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
@@ -1508,13 +1628,19 @@ spec("tbe_compiler") {
       cleanup_test_file(cbind_path);
     }
 
-    it("should reject an unused CBind enum declaration before rendering outputs") {
+    it("should reject CBind flags and invalid enum declarations before rendering outputs") {
       const char *schema_path = "test_tbe_compiler_cbind_unused_enum.tbe";
       const char *header_path = "test_tbe_compiler_cbind_unused_enum.h";
       const char *source_path = "test_tbe_compiler_cbind_unused_enum.c";
       const char *cbind_path = "test_tbe_compiler_cbind_unused_enum_cbind.c";
-      const char *schema =
-          "enum Status { Ready = 1; } message Order { int32 id; }";
+      const char *schemas[] = {
+          "flags Status <uint16> { Ready = 1; } message Order { Status status; }",
+          "flags Unused <uint16> { Ready = 1; } message Order { int32 id; }",
+          "enum Status <float> { Ready = 1; } message Order { Status status; }",
+          "enum Status <uint8> { TooLarge = 256; } message Order { Status status; }",
+          "enum Status <uint64> { TooLarge = 9223372036854775808; } message Order { Status status; }",
+          "enum Status <uint16> { Ready = 1; Done = 1; } message Order { Status status; }",
+      };
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
@@ -1523,19 +1649,45 @@ spec("tbe_compiler") {
           .lang_enum = TBE_COMPILER_LANG_C,
       };
 
+      for (size_t i = 0; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(source_path);
+        cleanup_test_file(cbind_path);
+        check_equal(write_test_file(schema_path, schemas[i]), 0);
+        check(tbe_compiler_run(&options) != 0);
+        check_null(fopen(header_path, "rb"));
+        check_null(fopen(source_path, "rb"));
+        check_null(fopen(cbind_path, "rb"));
+      }
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(cbind_path);
-      check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
-      check_null(fopen(header_path, "rb"));
-      check_null(fopen(source_path, "rb"));
-      check_null(fopen(cbind_path, "rb"));
-      cleanup_test_file(schema_path);
-      cleanup_test_file(header_path);
-      cleanup_test_file(source_path);
-      cleanup_test_file(cbind_path);
+    }
+
+    it("should reject enum items whose derived C macro collides with a public enum API") {
+      static const char *const public_helper_items[] = {
+          "to_string", "from_string", "is_valid", "count",
+          "min",       "max",         "cbind_data",
+      };
+
+      for (size_t i = 0u;
+           i < sizeof(public_helper_items) / sizeof(public_helper_items[0]); ++i) {
+        char schema[256];
+        cbind_rejection_result_t result;
+
+        info("public helper collision item: %s", public_helper_items[i]);
+        check_true(snprintf(schema, sizeof(schema),
+                            "enum State { %s = 1; } message Order { State state; }",
+                            public_helper_items[i]) > 0);
+        result = run_rejected_cbind_schema(schema);
+        check_equal(result.write_status, 0);
+        check_not_equal(result.compiler_status, 0);
+        check_false(result.header_exists);
+        check_false(result.source_exists);
+        check_false(result.cbind_exists);
+      }
     }
 
     it("should reject guest adapter output outside the built-in C generator") {

@@ -1,30 +1,36 @@
 #include "{{generated_header}}"
 
 #include <cmeta/data.h>
+#include <cmeta/enum.h>
 #include <cmeta/struct.h>
 #include <turbo_cmeta_data.h>
+{{#cbind_needs_runtime_init}}
+#include <turbo/thread.h>
+{{/cbind_needs_runtime_init}}
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
-{{#cbind_needs_int32_abi}}
-_Static_assert(sizeof(int32_t) == sizeof(int), "CBind int32 storage requires int32_t and int to have equal size");
-_Static_assert(_Alignof(int32_t) == _Alignof(int), "CBind int32 storage requires int32_t and int to have equal alignment");
-{{/cbind_needs_int32_abi}}
-{{#cbind_needs_int64_abi}}
-_Static_assert(sizeof(int64_t) == sizeof(long), "CBind int64 storage requires int64_t and long to have equal size");
-_Static_assert(_Alignof(int64_t) == _Alignof(long), "CBind int64 storage requires int64_t and long to have equal alignment");
-{{/cbind_needs_int64_abi}}
-{{#cbind_needs_uint64_abi}}
-_Static_assert(sizeof(uint64_t) == sizeof(size_t), "CBind uint64 storage requires uint64_t and size_t to have equal size");
-_Static_assert(_Alignof(uint64_t) == _Alignof(size_t), "CBind uint64 storage requires uint64_t and size_t to have equal alignment");
-{{/cbind_needs_uint64_abi}}
+{{#cbind_needs_runtime_init}}
+static void {{schema.schema_name}}_cbind_initialize(void);
+static turbo_once_t {{schema.schema_name}}_cbind_once = TURBO_ONCE_INIT;
+
+static void {{schema.schema_name}}_cbind_ensure_initialized(void) {
+    turbo_once(&{{schema.schema_name}}_cbind_once, {{schema.schema_name}}_cbind_initialize);
+}
+{{/cbind_needs_runtime_init}}
 
 #if defined(_MSC_VER)
 /* MSVC warns on the legal C tentative definitions needed for descriptor references. */
 #pragma warning(push)
 #pragma warning(disable : 4132)
 #endif
+{{#enums}}
+{{^is_flags}}
+static const cmeta_data_desc {{cbind_descriptor_symbol}};
+{{/is_flags}}
+{{/enums}}
 {{#composites}}
 static const cmeta_type_desc {{name}}_cbind_type;
 static const cmeta_data_desc {{name}}_cbind_descriptor;
@@ -37,6 +43,7 @@ static const cmeta_data_desc {{name}}_cbind_descriptor;
 static const cmeta_type_desc {{name}}_cbind_type;
 static const cmeta_data_desc {{name}}_cbind_descriptor;
 {{/messages}}
+
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -54,6 +61,85 @@ static const cmeta_data_desc {{schema.schema_name}}_cbind_tstr_data = {
 };
 {{/cbind_has_string}}
 
+{{#enums}}
+{{^is_flags}}
+{{#cbind_has_items}}
+static const cmeta_enum_item_desc {{cbind_items_symbol}}[] = {
+{{#items}}
+    { {{value}}, "{{c_symbol}}", "{{name}}" }{{^last}},{{/last}}
+{{/items}}
+};
+{{/cbind_has_items}}
+
+static const cmeta_enum_desc {{cbind_meta_symbol}} = {
+    "{{enum_name}}",
+    {{#cbind_has_items}}{{cbind_items_symbol}}{{/cbind_has_items}}{{^cbind_has_items}}NULL{{/cbind_has_items}},
+    {{items_count}}u
+};
+
+static const cmeta_data_enum_shape {{cbind_shape_symbol}} = {
+    &{{cbind_meta_symbol}}
+};
+
+static bool {{cbind_is_zero_symbol}}(const void *object) {
+    {{enum_name}}_t value;
+    if (object == NULL) return false;
+    memcpy(&value, object, sizeof(value));
+    return value == ({{enum_name}}_t)0;
+}
+
+static cmeta_status {{cbind_read_symbol}}(const void *object, int64_t *out) {
+    {{enum_name}}_t value;
+    if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
+    memcpy(&value, object, sizeof(value));
+    *out = (int64_t)value;
+    return CMETA_OK;
+}
+
+static cmeta_status {{cbind_assign_symbol}}(void *object, int64_t value) {
+    {{enum_name}}_t native;
+    if (object == NULL) return CMETA_INVALID_ARGUMENT;
+    native = ({{enum_name}}_t)value;
+    if ((int64_t)native != value) return CMETA_TYPE_MISMATCH;
+    memcpy(object, &native, sizeof(native));
+    return CMETA_OK;
+}
+
+static void {{cbind_restore_zero_symbol}}(void *object) {
+    {{enum_name}}_t value = ({{enum_name}}_t)0;
+    if (object != NULL) memcpy(object, &value, sizeof(value));
+}
+
+static const cmeta_data_enum_ops {{cbind_ops_symbol}} = {
+    .struct_size = sizeof(cmeta_data_enum_ops),
+    .abi_version = CMETA_DATA_ENUM_OPS_ABI_VERSION,
+    .storage_type = {{cbind_storage_type_desc}},
+    .is_zero = {{cbind_is_zero_symbol}},
+    .read = {{cbind_read_symbol}},
+    .assign = {{cbind_assign_symbol}},
+    .restore_zero = {{cbind_restore_zero_symbol}}
+};
+
+static const cmeta_data_desc {{cbind_descriptor_symbol}} = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "{{cbind_data_stable_id}}",
+    .display_name = "{{enum_name}}",
+    .kind = CMETA_DATA_ENUM,
+    .storage_type = {{cbind_storage_type_desc}},
+    .shape = &{{cbind_shape_symbol}},
+    .buffer_ops = NULL,
+    .enum_ops = &{{cbind_ops_symbol}},
+    .variant_ops = NULL
+};
+
+const cmeta_data_desc *{{cbind_data_symbol}}(void) {
+    return &{{cbind_descriptor_symbol}};
+}
+
+{{/is_flags}}
+{{/enums}}
+
 {{#composites}}
 static const cmeta_type_identity {{name}}_cbind_identity =
     CMETA_TYPE_ID_ATOM_INIT("{{cbind_stable_id}}");
@@ -64,13 +150,13 @@ static const cmeta_type_desc {{name}}_cbind_type = {
 };
 
 {{#cbind_has_fields}}
-static const cmeta_field_desc {{name}}_cbind_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_field_desc {{name}}_cbind_fields[] = {
 {{#fields}}
     {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
 {{/fields}}
 };
 
-static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
 {{#fields}}
     {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
 {{/fields}}
@@ -94,12 +180,15 @@ static const cmeta_data_desc {{name}}_cbind_descriptor = {
 };
 
 const cmeta_data_desc *{{name}}_cbind_data(void) {
+{{#cbind_needs_runtime_init}}
+    {{schema.schema_name}}_cbind_ensure_initialized();
+{{/cbind_needs_runtime_init}}
     return &{{name}}_cbind_descriptor;
 }
 
 cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
                                   {{name}}_t *object, cbind_error *error) {
-    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+    return cbind_decode(context, {{name}}_cbind_data(), reader, object, error);
 }
 
 {{/composites}}
@@ -113,13 +202,13 @@ static const cmeta_type_desc {{name}}_cbind_type = {
 };
 
 {{#cbind_has_fields}}
-static const cmeta_field_desc {{name}}_cbind_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_field_desc {{name}}_cbind_fields[] = {
 {{#fields}}
     {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
 {{/fields}}
 };
 
-static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
 {{#fields}}
     {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
 {{/fields}}
@@ -143,12 +232,15 @@ static const cmeta_data_desc {{name}}_cbind_descriptor = {
 };
 
 const cmeta_data_desc *{{name}}_cbind_data(void) {
+{{#cbind_needs_runtime_init}}
+    {{schema.schema_name}}_cbind_ensure_initialized();
+{{/cbind_needs_runtime_init}}
     return &{{name}}_cbind_descriptor;
 }
 
 cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
                                   {{name}}_t *object, cbind_error *error) {
-    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+    return cbind_decode(context, {{name}}_cbind_data(), reader, object, error);
 }
 
 {{/groups}}
@@ -162,13 +254,13 @@ static const cmeta_type_desc {{name}}_cbind_type = {
 };
 
 {{#cbind_has_fields}}
-static const cmeta_field_desc {{name}}_cbind_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_field_desc {{name}}_cbind_fields[] = {
 {{#fields}}
     {"{{cbind_semantic_name}}", "{{cbind_type_name}}", offsetof({{owner_name}}_t, {{c_name}}), sizeof({{cbind_type_name}}), _Alignof({{cbind_type_name}}), {{cbind_type_desc}}, NULL}{{^last}},{{/last}}
 {{/fields}}
 };
 
-static const cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
+static {{^cbind_runtime_fields}}const {{/cbind_runtime_fields}}cmeta_data_field_desc {{name}}_cbind_data_fields[] = {
 {{#fields}}
     {"{{cbind_stable_id}}", "{{cbind_semantic_name}}", offsetof({{owner_name}}_t, {{c_name}}), {{cbind_data_desc}}}{{^last}},{{/last}}
 {{/fields}}
@@ -192,12 +284,44 @@ static const cmeta_data_desc {{name}}_cbind_descriptor = {
 };
 
 const cmeta_data_desc *{{name}}_cbind_data(void) {
+{{#cbind_needs_runtime_init}}
+    {{schema.schema_name}}_cbind_ensure_initialized();
+{{/cbind_needs_runtime_init}}
     return &{{name}}_cbind_descriptor;
 }
 
 cbind_status {{name}}_from_cserde(cbind_context *context, cserde_reader *reader,
                                   {{name}}_t *object, cbind_error *error) {
-    return cbind_decode(context, &{{name}}_cbind_descriptor, reader, object, error);
+    return cbind_decode(context, {{name}}_cbind_data(), reader, object, error);
 }
 
 {{/messages}}
+
+{{#cbind_needs_runtime_init}}
+static void {{schema.schema_name}}_cbind_initialize(void) {
+{{#composites}}
+{{#fields}}
+{{#cbind_runtime_bind}}
+    {{owner_name}}_cbind_fields[{{cbind_field_index}}].type = {{cbind_runtime_type_desc}};
+    {{owner_name}}_cbind_data_fields[{{cbind_field_index}}].value = {{cbind_runtime_data_desc}};
+{{/cbind_runtime_bind}}
+{{/fields}}
+{{/composites}}
+{{#groups}}
+{{#fields}}
+{{#cbind_runtime_bind}}
+    {{owner_name}}_cbind_fields[{{cbind_field_index}}].type = {{cbind_runtime_type_desc}};
+    {{owner_name}}_cbind_data_fields[{{cbind_field_index}}].value = {{cbind_runtime_data_desc}};
+{{/cbind_runtime_bind}}
+{{/fields}}
+{{/groups}}
+{{#messages}}
+{{#fields}}
+{{#cbind_runtime_bind}}
+    {{owner_name}}_cbind_fields[{{cbind_field_index}}].type = {{cbind_runtime_type_desc}};
+    {{owner_name}}_cbind_data_fields[{{cbind_field_index}}].value = {{cbind_runtime_data_desc}};
+{{/cbind_runtime_bind}}
+{{/fields}}
+{{/messages}}
+}
+{{/cbind_needs_runtime_init}}

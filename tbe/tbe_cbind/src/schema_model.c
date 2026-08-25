@@ -2,15 +2,19 @@
 
 #include "node_tree.h"
 #include "schema_parser_dsl.h"
+#include "tbe_cbind_capability.h"
 #include "tbe_error.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct tbe_cbind_schema_counts {
-  size_t type_count;
+  size_t record_count;
+  size_t enum_count;
   size_t field_count;
 } tbe_cbind_schema_counts;
 
@@ -135,9 +139,8 @@ static tbe_cbind_status tbe_cbind_count_schema(
     Node *records = tbe_cbind_node_child(root, record_lists[list_index]);
     size_t record_index;
     if (records == NULL || records->type != NODE_LIST) continue;
-    if (!tbe_cbind_size_add(counts->type_count, records->data.list.count,
-                            &counts->type_count) ||
-        counts->type_count > context->options->max_types) {
+    if (!tbe_cbind_size_add(counts->record_count, records->data.list.count,
+                            &counts->record_count)) {
       return tbe_cbind_set_error(
           context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
           CMETA_OK, record_lists[list_index], "schema exceeds max_types");
@@ -159,6 +162,37 @@ static tbe_cbind_status tbe_cbind_count_schema(
       }
     }
   }
+  {
+    Node *enums = tbe_cbind_node_child(root, "enums");
+    size_t enum_index;
+    if (enums != NULL && enums->type == NODE_LIST) {
+      counts->enum_count = enums->data.list.count;
+      for (enum_index = 0u; enum_index < counts->enum_count; ++enum_index) {
+        Node *items = tbe_cbind_node_child(enums->data.list.items[enum_index],
+                                          "items");
+        size_t count = items != NULL && items->type == NODE_LIST
+                           ? items->data.list.count
+                           : 0u;
+        if (!tbe_cbind_size_add(counts->field_count, count,
+                                &counts->field_count) ||
+            counts->field_count > context->options->max_fields) {
+          return tbe_cbind_set_error(
+              context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA,
+              enum_index, CMETA_OK, "enums", "schema exceeds max_fields");
+        }
+      }
+    }
+  }
+  {
+    size_t declaration_count;
+    if (!tbe_cbind_size_add(counts->record_count, counts->enum_count,
+                            &declaration_count) ||
+        declaration_count > context->options->max_types) {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+          CMETA_OK, "(declaration)", "schema exceeds max_types");
+    }
+  }
   return TBE_CBIND_OK;
 }
 
@@ -171,11 +205,10 @@ static tbe_cbind_status tbe_cbind_reject_global_unsupported(
     tbe_cbind_build_context *context, const Node *root) {
   Node *schema = tbe_cbind_node_child(root, "schema");
   Node *attributes = tbe_cbind_node_child(schema, "attributes");
-  if (tbe_cbind_list_nonempty(root, "enums") ||
-      tbe_cbind_list_nonempty(root, "unions")) {
+  if (tbe_cbind_list_nonempty(root, "unions")) {
     return tbe_cbind_set_error(
         context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
-        "(declaration)", "enum, flags, and union declarations are unsupported");
+        "(declaration)", "union declarations are unsupported");
   }
   if (attributes != NULL && attributes->type == NODE_LIST &&
       attributes->data.list.count != 0u) {
@@ -186,23 +219,31 @@ static tbe_cbind_status tbe_cbind_reject_global_unsupported(
   return TBE_CBIND_OK;
 }
 
-static tbe_cbind_semantic_kind tbe_cbind_scalar_kind(const char *type,
-                                                      int *supported) {
-  *supported = 1;
-  if (strcmp(type, "int32") == 0) return TBE_CBIND_SEMANTIC_INT32;
-  if (strcmp(type, "int64") == 0) return TBE_CBIND_SEMANTIC_INT64;
-  if (strcmp(type, "uint64") == 0) return TBE_CBIND_SEMANTIC_UINT64;
-  if (strcmp(type, "float") == 0) return TBE_CBIND_SEMANTIC_FLOAT;
-  if (strcmp(type, "double") == 0) return TBE_CBIND_SEMANTIC_DOUBLE;
-  if (strcmp(type, "string") == 0) return TBE_CBIND_SEMANTIC_STRING;
-  *supported = 0;
-  return TBE_CBIND_SEMANTIC_RECORD;
+static tbe_cbind_semantic_enum *tbe_cbind_find_enum(
+    const tbe_cbind_schema_model *model, const char *name) {
+  size_t slot;
+  if (model == NULL || name == NULL || model->enum_slot_count == 0u)
+    return NULL;
+  slot = (size_t)tbe_cbind_name_hash(name) & (model->enum_slot_count - 1u);
+  while (model->enum_slots[slot] != NULL) {
+    if (strcmp(model->enum_slots[slot]->name, name) == 0)
+      return model->enum_slots[slot];
+    slot = (slot + 1u) & (model->enum_slot_count - 1u);
+  }
+  return NULL;
 }
 
 static tbe_cbind_status tbe_cbind_insert_type(
     tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
     tbe_cbind_semantic_type *type) {
-  size_t slot = (size_t)tbe_cbind_name_hash(type->name) &
+  size_t slot;
+  if (tbe_cbind_capability_find(type->name) != NULL ||
+      tbe_cbind_find_enum(model, type->name) != NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, type->name, "schema type name collides with another type");
+  }
+  slot = (size_t)tbe_cbind_name_hash(type->name) &
                 (model->type_slot_count - 1u);
   while (model->type_slots[slot] != NULL) {
     if (strcmp(model->type_slots[slot]->name, type->name) == 0) {
@@ -227,6 +268,268 @@ static tbe_cbind_semantic_type *tbe_cbind_find_type(
     slot = (slot + 1u) & (model->type_slot_count - 1u);
   }
   return NULL;
+}
+
+static tbe_cbind_status tbe_cbind_insert_enum(
+    tbe_cbind_build_context *context, tbe_cbind_schema_model *model,
+    tbe_cbind_semantic_enum *enum_type) {
+  size_t slot;
+  if (tbe_cbind_capability_find(enum_type->name) != NULL ||
+      tbe_cbind_find_type(model, enum_type->name) != NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, enum_type->name,
+        "enum name collides with another schema type");
+  }
+  slot = (size_t)tbe_cbind_name_hash(enum_type->name) &
+         (model->enum_slot_count - 1u);
+  while (model->enum_slots[slot] != NULL) {
+    if (strcmp(model->enum_slots[slot]->name, enum_type->name) == 0) {
+      return tbe_cbind_set_error(
+          context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+          CMETA_OK, enum_type->name, "duplicate schema enum name");
+    }
+    slot = (slot + 1u) & (model->enum_slot_count - 1u);
+  }
+  model->enum_slots[slot] = enum_type;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_insert_field_name(
+    tbe_cbind_build_context *context, const char **slots, size_t slot_count,
+    const char *name, const char *path, const char *message);
+
+typedef struct tbe_cbind_enum_value_slot {
+  int64_t value;
+  int occupied;
+} tbe_cbind_enum_value_slot;
+
+static size_t tbe_cbind_enum_value_hash(int64_t value) {
+  uint64_t bits = (uint64_t)value;
+  bits ^= bits >> 33u;
+  bits *= UINT64_C(0xff51afd7ed558ccd);
+  bits ^= bits >> 33u;
+  return (size_t)bits;
+}
+
+static tbe_cbind_status tbe_cbind_enum_parse_value(
+    tbe_cbind_build_context *context, const char *text,
+    const tbe_cbind_capability *underlying, const char *path, int64_t *out) {
+  unsigned long long parsed;
+  unsigned long long maximum;
+  char *end = NULL;
+  if (text == NULL || underlying == NULL || out == NULL ||
+      underlying->kind != TBE_CBIND_SCALAR_INTEGER || underlying->bits == 0u ||
+      underlying->bits > 64u) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "enum value or underlying integer type is invalid");
+  }
+  errno = 0;
+  parsed = strtoull(text, &end, 0);
+  if (errno == ERANGE || end == text || end == NULL || *end != '\0' ||
+      parsed > (unsigned long long)INT64_MAX) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "enum value is outside the supported int64 domain");
+  }
+  if (underlying->is_signed) {
+    maximum = underlying->bits == 64u
+                  ? (unsigned long long)INT64_MAX
+                  : (UINT64_C(1) << (underlying->bits - 1u)) - 1u;
+  } else {
+    maximum = underlying->bits == 64u
+                  ? (unsigned long long)INT64_MAX
+                  : (UINT64_C(1) << underlying->bits) - 1u;
+  }
+  if (parsed > maximum) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "enum value does not fit its underlying integer type");
+  }
+  *out = (int64_t)parsed;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_enum_symbol_copy(
+    tbe_cbind_build_context *context, const char *enum_name,
+    const char *item_name, const char *path, char **out) {
+  size_t enum_size;
+  size_t item_size;
+  size_t symbol_chars;
+  size_t allocation_size;
+  char *symbol;
+  *out = NULL;
+  enum_size = strlen(enum_name);
+  item_size = strlen(item_name);
+  if (!tbe_cbind_size_add(enum_size, 1u, &symbol_chars) ||
+      !tbe_cbind_size_add(symbol_chars, item_size, &symbol_chars) ||
+      symbol_chars > context->options->max_name_bytes ||
+      !tbe_cbind_size_add(symbol_chars, 1u, &allocation_size)) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, path, "derived enum symbol exceeds max_name_bytes");
+  }
+  symbol = tbe_cbind_alloc_array(context, allocation_size, sizeof(*symbol));
+  if (symbol == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OUT_OF_MEMORY, path, "enum symbol allocation failed");
+  }
+  memcpy(symbol, enum_name, enum_size);
+  symbol[enum_size] = '_';
+  memcpy(symbol + enum_size + 1u, item_name, item_size + 1u);
+  *out = symbol;
+  return TBE_CBIND_OK;
+}
+
+static tbe_cbind_status tbe_cbind_extract_enum(
+    tbe_cbind_build_context *context, const Node *enum_node,
+    tbe_cbind_schema_model *model, tbe_cbind_semantic_enum *enum_type) {
+  const char *name = tbe_cbind_node_string(enum_node, "enum_name");
+  const char *underlying_name =
+      tbe_cbind_node_string(enum_node, "underlying_type");
+  Node *attributes = tbe_cbind_node_child(enum_node, "attributes");
+  Node *items = tbe_cbind_node_child(enum_node, "items");
+  const char **name_slots = NULL;
+  tbe_cbind_enum_value_slot *value_slots = NULL;
+  size_t slot_count = 0u;
+  size_t index;
+  char declaration_path[256];
+  tbe_cbind_status status;
+  (void)snprintf(declaration_path, sizeof(declaration_path), "%s.(declaration)",
+                 name != NULL ? name : "?");
+  if (name == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, declaration_path, "enum metadata is incomplete");
+  }
+  if (tbe_cbind_node_has(enum_node, "is_flags")) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, declaration_path, "flags declarations are unsupported");
+  }
+  if (attributes != NULL && attributes->type == NODE_LIST &&
+      attributes->data.list.count != 0u) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_UNSUPPORTED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, declaration_path, "enum attributes are unsupported");
+  }
+  status = tbe_cbind_name_limit(context, name, declaration_path);
+  if (status != TBE_CBIND_OK) return status;
+  if (underlying_name == NULL) underlying_name = "int32";
+  status = tbe_cbind_name_limit(context, underlying_name, declaration_path);
+  if (status != TBE_CBIND_OK) return status;
+  enum_type->underlying = tbe_cbind_capability_find(underlying_name);
+  if (enum_type->underlying == NULL ||
+      enum_type->underlying->kind != TBE_CBIND_SCALAR_INTEGER) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, declaration_path,
+        "enum underlying type must be a supported fixed integer");
+  }
+  enum_type->name = tbe_cbind_strdup(context, name);
+  if (enum_type->name == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OUT_OF_MEMORY, declaration_path, "enum name allocation failed");
+  }
+  status = tbe_cbind_insert_enum(context, model, enum_type);
+  if (status != TBE_CBIND_OK) return status;
+  enum_type->item_count = items != NULL && items->type == NODE_LIST
+                              ? items->data.list.count
+                              : 0u;
+  if (enum_type->item_count == 0u) return TBE_CBIND_OK;
+  enum_type->items = tbe_cbind_alloc_array(
+      context, enum_type->item_count, sizeof(*enum_type->items));
+  if (enum_type->items == NULL) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OUT_OF_MEMORY, declaration_path, "enum item allocation failed");
+  }
+  if (!tbe_cbind_hash_capacity(enum_type->item_count, &slot_count)) {
+    return tbe_cbind_set_error(
+        context, TBE_CBIND_LIMIT_EXCEEDED, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OK, declaration_path, "enum item index size overflow");
+  }
+  name_slots = tbe_cbind_alloc_array(context, slot_count,
+                                     sizeof(*name_slots));
+  value_slots = tbe_cbind_alloc_array(context, slot_count,
+                                      sizeof(*value_slots));
+  if (name_slots == NULL || value_slots == NULL) {
+    status = tbe_cbind_set_error(
+        context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, 0u,
+        CMETA_OUT_OF_MEMORY, declaration_path,
+        "enum item index allocation failed");
+    goto cleanup;
+  }
+  for (index = 0u; index < enum_type->item_count; ++index) {
+    const Node *item_node = items->data.list.items[index];
+    const char *item_name = tbe_cbind_node_string(item_node, "name");
+    const char *value_text = tbe_cbind_node_string(item_node, "value");
+    tbe_cbind_semantic_enum_item *item = &enum_type->items[index];
+    size_t value_slot;
+    char path[256];
+    (void)snprintf(path, sizeof(path), "%s.%s", name,
+                   item_name != NULL ? item_name : "?");
+    if (item_name == NULL || value_text == NULL) {
+      status = tbe_cbind_set_error(
+          context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, index,
+          CMETA_OK, path, "enum item metadata is incomplete");
+      goto cleanup;
+    }
+    status = tbe_cbind_name_limit(context, item_name, path);
+    if (status != TBE_CBIND_OK) goto cleanup;
+    status = tbe_cbind_insert_field_name(
+        context, name_slots, slot_count, item_name, path,
+        "enum item names are duplicated");
+    if (status != TBE_CBIND_OK) goto cleanup;
+    status = tbe_cbind_enum_parse_value(context, value_text,
+                                        enum_type->underlying, path,
+                                        &item->value);
+    if (status != TBE_CBIND_OK) goto cleanup;
+    value_slot = tbe_cbind_enum_value_hash(item->value) & (slot_count - 1u);
+    while (value_slots[value_slot].occupied) {
+      if (value_slots[value_slot].value == item->value) {
+        status = tbe_cbind_set_error(
+            context, TBE_CBIND_SCHEMA_ERROR, TBE_CBIND_PHASE_SCHEMA, index,
+            CMETA_OK, path, "enum item values are duplicated");
+        goto cleanup;
+      }
+      value_slot = (value_slot + 1u) & (slot_count - 1u);
+    }
+    value_slots[value_slot].occupied = 1;
+    value_slots[value_slot].value = item->value;
+    item->text = tbe_cbind_strdup(context, item_name);
+    if (item->text == NULL) {
+      status = tbe_cbind_set_error(
+          context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, index,
+          CMETA_OUT_OF_MEMORY, path, "enum item text allocation failed");
+      goto cleanup;
+    }
+    status = tbe_cbind_enum_symbol_copy(context, name, item_name, path,
+                                         &item->symbol);
+    if (status != TBE_CBIND_OK) goto cleanup;
+  }
+  status = TBE_CBIND_OK;
+cleanup:
+  tbe_cbind_free(context, value_slots);
+  tbe_cbind_free(context, name_slots);
+  return status;
+}
+
+static tbe_cbind_status tbe_cbind_extract_enums(
+    tbe_cbind_build_context *context, const Node *root,
+    tbe_cbind_schema_model *model) {
+  Node *enums = tbe_cbind_node_child(root, "enums");
+  size_t index;
+  if (enums == NULL || enums->type != NODE_LIST) return TBE_CBIND_OK;
+  for (index = 0u; index < enums->data.list.count; ++index) {
+    tbe_cbind_status status = tbe_cbind_extract_enum(
+        context, enums->data.list.items[index], model, &model->enums[index]);
+    if (status != TBE_CBIND_OK) return status;
+  }
+  return TBE_CBIND_OK;
 }
 
 static tbe_cbind_status tbe_cbind_extract_attributes(
@@ -285,16 +588,17 @@ static tbe_cbind_status tbe_cbind_insert_field_name(
 
 static tbe_cbind_status tbe_cbind_extract_field(
     tbe_cbind_build_context *context, const Node *field_node,
-    tbe_cbind_semantic_type *owner, size_t field_index,
+    tbe_cbind_schema_model *model, tbe_cbind_semantic_type *owner,
+    size_t field_index,
     const char **semantic_slots, const char **native_slots,
     size_t slot_count) {
   tbe_cbind_semantic_field *field = &owner->fields[field_index];
   const char *name = tbe_cbind_node_string(field_node, "name");
   const char *type_name = tbe_cbind_node_string(field_node, "type");
+  const tbe_cbind_capability *capability;
   const char *semantic_name = name;
   const char *native_name = name;
   char path[256];
-  int scalar_supported;
   tbe_cbind_status status;
   (void)snprintf(path, sizeof(path), "%s.%s", owner->name != NULL ? owner->name : "?",
                  name != NULL ? name : "?");
@@ -339,14 +643,20 @@ static tbe_cbind_status tbe_cbind_extract_field(
         context, TBE_CBIND_OUT_OF_MEMORY, TBE_CBIND_PHASE_SCHEMA, field_index,
         CMETA_OUT_OF_MEMORY, path, "field model allocation failed");
   }
-  field->kind = tbe_cbind_scalar_kind(type_name, &scalar_supported);
-  if (!scalar_supported) field->kind = TBE_CBIND_SEMANTIC_RECORD;
+  capability = tbe_cbind_capability_find(type_name);
+  field->capability = capability;
+  field->enum_type = capability == NULL ? tbe_cbind_find_enum(model, type_name)
+                                        : NULL;
+  field->kind = capability != NULL
+                    ? TBE_CBIND_SEMANTIC_SCALAR
+                    : field->enum_type != NULL ? TBE_CBIND_SEMANTIC_ENUM
+                                               : TBE_CBIND_SEMANTIC_RECORD;
   return TBE_CBIND_OK;
 }
 
 static tbe_cbind_status tbe_cbind_extract_record(
     tbe_cbind_build_context *context, const Node *record_node,
-    tbe_cbind_semantic_type *type) {
+    tbe_cbind_schema_model *model, tbe_cbind_semantic_type *type) {
   Node *fields = tbe_cbind_node_child(record_node, "fields");
   Node *attributes = tbe_cbind_node_child(record_node, "attributes");
   const char **semantic_slots = NULL;
@@ -387,9 +697,9 @@ static tbe_cbind_status tbe_cbind_extract_record(
     goto cleanup;
   }
   for (index = 0u; index < type->field_count; ++index) {
-    status = tbe_cbind_extract_field(context, fields->data.list.items[index],
-                                     type, index, semantic_slots, native_slots,
-                                     slot_count);
+    status = tbe_cbind_extract_field(
+        context, fields->data.list.items[index], model, type, index,
+        semantic_slots, native_slots, slot_count);
     if (status != TBE_CBIND_OK) goto cleanup;
   }
 cleanup:
@@ -427,7 +737,7 @@ static tbe_cbind_status tbe_cbind_extract_types(
       if (status != TBE_CBIND_OK) return status;
       status = tbe_cbind_extract_record(context,
                                         records->data.list.items[record_index],
-                                        type);
+                                        model, type);
       if (status != TBE_CBIND_OK) return status;
     }
   }
@@ -552,25 +862,40 @@ tbe_cbind_status tbe_cbind_schema_model_build(
     goto cleanup;
   }
   model->allocator = context->allocator;
-  model->type_count = counts.type_count;
+  model->type_count = counts.record_count;
+  model->enum_count = counts.enum_count;
   if (!tbe_cbind_hash_capacity(model->type_count, &model->type_slot_count)) {
     status = tbe_cbind_set_error(context, TBE_CBIND_LIMIT_EXCEEDED,
                                  TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
                                  NULL, "type index size overflow");
     goto cleanup;
   }
+  if (!tbe_cbind_hash_capacity(model->enum_count, &model->enum_slot_count)) {
+    status = tbe_cbind_set_error(context, TBE_CBIND_LIMIT_EXCEEDED,
+                                 TBE_CBIND_PHASE_SCHEMA, 0u, CMETA_OK,
+                                 NULL, "enum index size overflow");
+    goto cleanup;
+  }
   model->types = tbe_cbind_alloc_array(context, model->type_count,
                                        sizeof(*model->types));
   model->type_slots = tbe_cbind_alloc_array(context, model->type_slot_count,
                                             sizeof(*model->type_slots));
+  model->enums = tbe_cbind_alloc_array(context, model->enum_count,
+                                       sizeof(*model->enums));
+  model->enum_slots = tbe_cbind_alloc_array(context, model->enum_slot_count,
+                                            sizeof(*model->enum_slots));
   if ((model->type_count != 0u && model->types == NULL) ||
-      model->type_slots == NULL) {
+      model->type_slots == NULL ||
+      (model->enum_count != 0u && model->enums == NULL) ||
+      model->enum_slots == NULL) {
     status = tbe_cbind_set_error(context, TBE_CBIND_OUT_OF_MEMORY,
                                  TBE_CBIND_PHASE_SCHEMA, 0u,
                                  CMETA_OUT_OF_MEMORY, NULL,
                                  "type model allocation failed");
     goto cleanup;
   }
+  status = tbe_cbind_extract_enums(context, root, model);
+  if (status != TBE_CBIND_OK) goto cleanup;
   status = tbe_cbind_extract_types(context, root, model);
   if (status != TBE_CBIND_OK) goto cleanup;
   for (index = 0u; index < model->type_count; ++index) {
@@ -594,6 +919,7 @@ cleanup:
 }
 
 void tbe_cbind_schema_model_destroy(tbe_cbind_schema_model *model) {
+  size_t enum_index;
   size_t type_index;
   tbe_cbind_allocator allocator;
   if (model == NULL) return;
@@ -615,6 +941,25 @@ void tbe_cbind_schema_model_destroy(tbe_cbind_schema_model *model) {
       allocator.free_fn(allocator.context, type->name);
     }
   }
+  if (model->enums != NULL) {
+    for (enum_index = 0u; enum_index < model->enum_count; ++enum_index) {
+      tbe_cbind_semantic_enum *enum_type = &model->enums[enum_index];
+      size_t item_index;
+      if (enum_type->items != NULL) {
+        for (item_index = 0u; item_index < enum_type->item_count;
+             ++item_index) {
+          allocator.free_fn(allocator.context,
+                            enum_type->items[item_index].text);
+          allocator.free_fn(allocator.context,
+                            enum_type->items[item_index].symbol);
+        }
+      }
+      allocator.free_fn(allocator.context, enum_type->items);
+      allocator.free_fn(allocator.context, enum_type->name);
+    }
+  }
+  allocator.free_fn(allocator.context, model->enum_slots);
+  allocator.free_fn(allocator.context, model->enums);
   allocator.free_fn(allocator.context, model->type_slots);
   allocator.free_fn(allocator.context, model->types);
   allocator.free_fn(allocator.context, model);

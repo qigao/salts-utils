@@ -57,6 +57,7 @@ install(
 set(TBE_SCHEMA_TEST_LIBS TurboParser::TbeSchema TurboUtils::TinyTest)
 foreach(test_name
         test_tbe_parser
+        test_tbe_cbind_capability
         test_flags_bdd
         test_tbe_parser_bdd
         test_benchmark_schemas_bdd
@@ -68,6 +69,9 @@ foreach(test_name
     LIBS ${TBE_SCHEMA_TEST_LIBS}
     FOLDER "tbe/schema/tests")
 endforeach()
+
+target_include_directories(test_tbe_cbind_capability
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c

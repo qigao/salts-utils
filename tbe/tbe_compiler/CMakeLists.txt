@@ -19,6 +19,8 @@ cmake_add_executable(tbe_compiler
   SOURCES main.c compiler_core.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache
   FOLDER "tbe/tbe_compiler")
+target_include_directories(tbe_compiler
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 set_property(TARGET tbe_compiler APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
@@ -97,7 +99,111 @@ cmake_add_test(test_tbe_compiler
     TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
+target_include_directories(test_tbe_compiler
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 tbe_copy_turbonet_runtime_deps(test_tbe_compiler)
+
+add_executable(test_tbe_cbind_capability_codegen
+  test_cbind_capability_codegen.c)
+target_include_directories(test_tbe_cbind_capability_codegen
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+target_link_libraries(test_tbe_cbind_capability_codegen
+  PRIVATE TurboParser::TbeSchema)
+set_target_properties(test_tbe_cbind_capability_codegen PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  FOLDER "tbe/tbe_compiler/tests")
+
+set(TBE_CBIND_CAPABILITY_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_cbind_capability_matrix")
+set(TBE_CBIND_CAPABILITY_SCHEMA
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}/cbind_capability_matrix.schema")
+set(TBE_CBIND_CAPABILITY_HEADER
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}/cbind_capability_matrix.h")
+set(TBE_CBIND_CAPABILITY_SOURCE
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}/cbind_capability_matrix.c")
+set(TBE_CBIND_CAPABILITY_C_CONSUMER
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}/cbind_capability_matrix_consumer.c")
+set(TBE_CBIND_CAPABILITY_CPP_CONSUMER
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}/cbind_capability_matrix_consumer.cpp")
+
+add_custom_command(
+  OUTPUT
+    "${TBE_CBIND_CAPABILITY_SCHEMA}"
+    "${TBE_CBIND_CAPABILITY_C_CONSUMER}"
+    "${TBE_CBIND_CAPABILITY_CPP_CONSUMER}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CBIND_CAPABILITY_GENERATED_DIR}"
+  COMMAND
+    $<TARGET_FILE:test_tbe_cbind_capability_codegen>
+    "${TBE_CBIND_CAPABILITY_SCHEMA}"
+    "${TBE_CBIND_CAPABILITY_C_CONSUMER}"
+    "${TBE_CBIND_CAPABILITY_CPP_CONSUMER}"
+  DEPENDS test_tbe_cbind_capability_codegen
+  COMMENT "Enumerating the shared CBind capability spelling matrix"
+  VERBATIM)
+
+add_custom_command(
+  OUTPUT
+    "${TBE_CBIND_CAPABILITY_HEADER}"
+    "${TBE_CBIND_CAPABILITY_SOURCE}"
+  COMMAND
+    $<TARGET_FILE:tbe_compiler>
+    "${TBE_CBIND_CAPABILITY_SCHEMA}"
+    --lang c
+    --output "${TBE_CBIND_CAPABILITY_HEADER}"
+    --cbind-output "${TBE_CBIND_CAPABILITY_SOURCE}"
+  DEPENDS
+    tbe_compiler
+    "${TBE_CBIND_CAPABILITY_SCHEMA}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_cbind_source.mustache"
+  COMMENT "Generating the shared CBind capability spelling matrix"
+  VERBATIM)
+
+add_library(test_tbe_cbind_capability_matrix_static STATIC
+  "${TBE_CBIND_CAPABILITY_HEADER}"
+  "${TBE_CBIND_CAPABILITY_SOURCE}")
+target_include_directories(test_tbe_cbind_capability_matrix_static
+  PUBLIC
+    "${TBE_CBIND_CAPABILITY_GENERATED_DIR}"
+    "${CMAKE_SOURCE_DIR}/tbe/schema/include")
+target_link_libraries(test_tbe_cbind_capability_matrix_static
+  PUBLIC TurboUtils::Core TurboUtils::CBind)
+set_target_properties(test_tbe_cbind_capability_matrix_static PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  FOLDER "tbe/tbe_compiler/tests")
+
+add_executable(test_tbe_cbind_capability_matrix_c
+  "${TBE_CBIND_CAPABILITY_C_CONSUMER}")
+target_link_libraries(test_tbe_cbind_capability_matrix_c
+  PRIVATE test_tbe_cbind_capability_matrix_static)
+set_target_properties(test_tbe_cbind_capability_matrix_c PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  FOLDER "tbe/tbe_compiler/tests")
+tbe_copy_turboutils_core_runtime_dep(test_tbe_cbind_capability_matrix_c)
+
+add_executable(test_tbe_cbind_capability_matrix_cpp
+  "${TBE_CBIND_CAPABILITY_CPP_CONSUMER}")
+target_link_libraries(test_tbe_cbind_capability_matrix_cpp
+  PRIVATE test_tbe_cbind_capability_matrix_static)
+set_target_properties(test_tbe_cbind_capability_matrix_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+  FOLDER "tbe/tbe_compiler/tests")
+tbe_copy_turboutils_core_runtime_dep(test_tbe_cbind_capability_matrix_cpp)
+
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME test_tbe_cbind_capability_matrix_c
+    COMMAND $<TARGET_FILE:test_tbe_cbind_capability_matrix_c>)
+  add_test(NAME test_tbe_cbind_capability_matrix_cpp
+    COMMAND $<TARGET_FILE:test_tbe_cbind_capability_matrix_cpp>)
+  set_tests_properties(
+    test_tbe_cbind_capability_matrix_c
+    test_tbe_cbind_capability_matrix_cpp
+    PROPERTIES LABELS "tbe_cbind;integration")
+endif()
 
 set(TBE_TYPED_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(TBE_TYPED_ORDER_HEADER "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order.h")
@@ -276,14 +382,27 @@ set_target_properties(test_tbe_cbind_standalone_cpp PROPERTIES
   FOLDER "tbe/tbe_compiler")
 tbe_copy_turboutils_core_runtime_dep(test_tbe_cbind_standalone_cpp)
 
+add_executable(test_tbe_cbind_standalone_concurrent
+  test_cbind_standalone_concurrent.c)
+target_link_libraries(test_tbe_cbind_standalone_concurrent
+  PRIVATE test_tbe_cbind_standalone_static)
+set_target_properties(test_tbe_cbind_standalone_concurrent PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  FOLDER "tbe/tbe_compiler")
+tbe_copy_turboutils_core_runtime_dep(test_tbe_cbind_standalone_concurrent)
+
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_test(NAME test_tbe_cbind_standalone_c
     COMMAND $<TARGET_FILE:test_tbe_cbind_standalone_c>)
   add_test(NAME test_tbe_cbind_standalone_cpp
     COMMAND $<TARGET_FILE:test_tbe_cbind_standalone_cpp>)
+  add_test(NAME test_tbe_cbind_standalone_concurrent
+    COMMAND $<TARGET_FILE:test_tbe_cbind_standalone_concurrent>)
   set_tests_properties(
     test_tbe_cbind_standalone_c
     test_tbe_cbind_standalone_cpp
+    test_tbe_cbind_standalone_concurrent
     PROPERTIES LABELS "tbe_cbind;integration")
 endif()
 
@@ -305,6 +424,10 @@ get_target_property(TBE_CBIND_STANDALONE_CPP_LINKS
                     test_tbe_cbind_standalone_cpp LINK_LIBRARIES)
 get_target_property(TBE_CBIND_STANDALONE_CPP_SOURCES
                     test_tbe_cbind_standalone_cpp SOURCES)
+get_target_property(TBE_CBIND_STANDALONE_CONCURRENT_LINKS
+                    test_tbe_cbind_standalone_concurrent LINK_LIBRARIES)
+get_target_property(TBE_CBIND_STANDALONE_CONCURRENT_SOURCES
+                    test_tbe_cbind_standalone_concurrent SOURCES)
 if(NOT TBE_CBIND_STANDALONE_LINKS STREQUAL
        "TurboUtils::Core;TurboUtils::CBind" OR
    NOT TBE_CBIND_STANDALONE_INTERFACE STREQUAL
@@ -322,11 +445,15 @@ if(NOT TBE_CBIND_STANDALONE_LINKS STREQUAL
    NOT TBE_CBIND_STANDALONE_CPP_LINKS STREQUAL
        "test_tbe_cbind_standalone_static" OR
    NOT TBE_CBIND_STANDALONE_CPP_SOURCES STREQUAL
-       "test_cbind_standalone_cpp.cpp")
+       "test_cbind_standalone_cpp.cpp" OR
+   NOT TBE_CBIND_STANDALONE_CONCURRENT_LINKS STREQUAL
+       "test_tbe_cbind_standalone_static" OR
+   NOT TBE_CBIND_STANDALONE_CONCURRENT_SOURCES STREQUAL
+       "test_cbind_standalone_concurrent.c")
   message(FATAL_ERROR "standalone CBind generated consumer contract changed")
 endif()
 string(TOLOWER
-       "${TBE_CBIND_STANDALONE_LINKS};${TBE_CBIND_STANDALONE_INTERFACE};${TBE_CBIND_STANDALONE_SOURCES};${TBE_CBIND_STANDALONE_INCLUDES};${TBE_CBIND_STANDALONE_INTERFACE_INCLUDES};${TBE_CBIND_STANDALONE_C_LINKS};${TBE_CBIND_STANDALONE_C_SOURCES};${TBE_CBIND_STANDALONE_CPP_LINKS};${TBE_CBIND_STANDALONE_CPP_SOURCES}"
+       "${TBE_CBIND_STANDALONE_LINKS};${TBE_CBIND_STANDALONE_INTERFACE};${TBE_CBIND_STANDALONE_SOURCES};${TBE_CBIND_STANDALONE_INCLUDES};${TBE_CBIND_STANDALONE_INTERFACE_INCLUDES};${TBE_CBIND_STANDALONE_C_LINKS};${TBE_CBIND_STANDALONE_C_SOURCES};${TBE_CBIND_STANDALONE_CPP_LINKS};${TBE_CBIND_STANDALONE_CPP_SOURCES};${TBE_CBIND_STANDALONE_CONCURRENT_LINKS};${TBE_CBIND_STANDALONE_CONCURRENT_SOURCES}"
        TBE_CBIND_STANDALONE_CLOSURE_LOWER)
 if(TBE_CBIND_STANDALONE_CLOSURE_LOWER MATCHES
    "databind|data_bind|tbe_typed|with_databind")
