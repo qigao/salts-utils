@@ -35,6 +35,16 @@ generated CBind sidecar -> TurboUtils::Core
 generated CBind sidecar -X-> TurboParser::DataBind
 ```
 
+配置阶段会对所选 TurboUtils package 做 C11 compile/link feature probe，而不是只比较版本号。
+探针必须同时看到 8 组 fixed-width CMeta descriptor、完整 enum adapter ABI/facade、
+`TurboUtils::Core` 导出的 canonical UUID type/shape/ops/data/validator，以及
+`TurboUtils::CBind` 的 decode 入口；缺少任一项都会以可操作错误终止 configure。Fixed-width
+descriptor 是 header-local metadata；UUID metadata 是 Core 的 process-wide external objects，
+所以直接引用 UUID descriptor/validator 的 native provider 或 generated sidecar 必须链接
+`TurboUtils::Core`。这不改变 TbeCBind 的公开依赖图：
+`TurboParser::TbeCBind` 仍然只直接依赖 `TurboParser::TbeSchema` 与
+`TurboUtils::CBind`，且没有 DataBind edge。
+
 安装态 JSON consumer 的 CMake 如下：
 
 ```cmake
@@ -215,24 +225,53 @@ native member 的 offset、size、alignment、type 与 buffer adapter。CBind �
 `Type_cbind_data()` 等 semantic sidecar 已是 direct CBind descriptor；当 `[name]` 与
 `[c]` 不同时，不得把它反过来作为 caller-native shape。
 
-## v1 支持与拒绝矩阵
+## v2 接受与拒绝矩阵
 
-| Schema 特性 | v1 结果 | Native storage 要求 |
+Scalar spelling 只接受下表列出的精确集合；没有 `f32`、`f64` 或大小写变体。每组第一项是
+canonical spelling，后续项是等价输入 alias。
+
+| Schema spelling | Generated/native C storage | Native CMeta 要求 |
 | --- | --- | --- |
-| `int32` | 支持 | canonical 32-bit CMeta `int` |
-| `int64` | ABI 匹配时支持 | canonical 64-bit CMeta `long` |
-| `uint64` | ABI 匹配时支持 | canonical 64-bit CMeta `size_t` |
-| `float`、`double` | 支持 | canonical CMeta float descriptor 与宽度匹配 |
-| `string` | 支持 | 有效的 OWNED 或 BORROWED public buffer adapter |
-| composite/group/message | 递归支持 | 完整且匹配的 native struct graph |
-| `[name]`、`[c]` | 支持 | effective semantic/native name 各自唯一 |
-| alias、optional/default | decode 前拒绝 | 无 fallback |
-| bool、小整数、`uint32` | decode 前拒绝 | 无 coercion |
-| enum、uuid、bytes、fixed array | decode 前拒绝 | 无 partial plan |
-| list/set/map、group collection、union | decode 前拒绝 | 无 dynamic-value fallback |
+| `bool` | `bool` | `CMETA_DATA_BOOL` 与 canonical `cmeta_type_bool` |
+| `int8` / `int8_t` / `i8` | `int8_t` | `CMETA_DATA_SINT`，8 bits，精确 size/alignment |
+| `uint8` / `uint8_t` / `u8` / `byte` | `uint8_t` | `CMETA_DATA_UINT`，8 bits，精确 size/alignment |
+| `int16` / `int16_t` / `i16` | `int16_t` | `CMETA_DATA_SINT`，16 bits，精确 size/alignment |
+| `uint16` / `uint16_t` / `u16` | `uint16_t` | `CMETA_DATA_UINT`，16 bits，精确 size/alignment |
+| `int32` / `int32_t` / `i32` | `int32_t` | `CMETA_DATA_SINT`，32 bits，精确 size/alignment |
+| `uint32` / `uint32_t` / `u32` | `uint32_t` | `CMETA_DATA_UINT`，32 bits，精确 size/alignment |
+| `int64` / `int64_t` / `i64` | `int64_t` | `CMETA_DATA_SINT`，64 bits，精确 size/alignment |
+| `uint64` / `uint64_t` / `u64` | `uint64_t` | `CMETA_DATA_UINT`，64 bits，精确 size/alignment |
+| `float` | `float` | `CMETA_DATA_FLOAT`，32 bits，canonical float storage |
+| `double` | `double` | `CMETA_DATA_FLOAT`，64 bits，canonical double storage |
+| `string` | `tstr`（generated）或 caller storage | 完整且 matching 的 OWNED/BORROWED public buffer adapter；CUSTOM 不支持 |
+| `uuid` | `turbo_uuid_t` | canonical Core UUID identity、16-byte storage、OWNED shape 与 `turbo_uuid_cmeta_data_valid()` |
 
-在 LLP64 系统（尤其 64-bit Windows）上，C `long` 不是 64 bit，`int64` schema 因而无法
-满足 v1 canonical storage 规则。这是 ABI mismatch，不是 conversion request。
+`enum` 是 named type，不是 scalar alias。普通 enum 默认以 `int32` 为 underlying，也可显式使用
+上表 8 组 fixed-width integer 的任一 spelling。每个值必须落在 underlying width 和 CMeta
+`int64_t` value domain 内；symbol 与 value 必须唯一。Native descriptor 必须是
+`CMETA_DATA_ENUM`，具有完整 exact-version `cmeta_data_enum_ops`，storage kind/width/size/alignment
+与 underlying 完全一致，并按声明顺序逐项匹配 enum name、item symbol、text 和 value。输入接受
+声明 item 的 symbol、text，或精确等于已声明 value 的整数；未知 text/value 拒绝。
+
+`flags` 与 ordinary enum 不同：位组合可能不是单个声明值，本阶段没有定义其 CBind assignment
+和 rollback 语义，所以任何 flags declaration 都在 schema/generation 阶段返回 unsupported，
+不会把组合值当普通 enum，也不会 fallback 到 DataBind。
+
+`uuid` 的 CSerde 输入只接受恰好 36 bytes 的 canonical `8-4-4-4-12` 十六进制 string token；
+大小写 hex 均接受，compact、braced、URN、错误连字符或错误长度均拒绝。Adapter 不依赖 NUL、
+不分配、不保留 input slice；semantic zero 是 16 个零字节。
+
+| 其他 schema 特性 | v2 结果 |
+| --- | --- |
+| composite/group/message、`[name]`、`[c]` | 递归支持；完整 native graph，semantic/native 名各自唯一 |
+| alias attribute、optional/default | plan/generation 前拒绝；无 coercion/fallback |
+| bytes、fixed array、list/set/map、group collection | 拒绝；无 partial plan |
+| union/variant | 拒绝；无 dynamic-value fallback |
+
+Fixed-width storage 不再借用 `int`/`long`/`size_t` ABI，因此 Windows LLP64 上的
+`int64_t`/`uint64_t` 也使用精确 64-bit descriptor。Caller 的 reflected layout type 与 data
+storage type 仍必须用同一 semantic identity、size 与 alignment 描述实际成员；schema 不会推断
+任意 C ABI。
 
 ## 所有权、生命周期、线程、错误与 limits
 
@@ -254,6 +293,13 @@ native member 的 offset、size、alignment、type 与 buffer adapter。CBind �
   `max_depth`、`max_name_bytes` 与 `max_plan_bytes` 限制 TbeCBind-owned 工作。
   `max_plan_bytes` 只覆盖 READY plan，不代表 TbeSchema parser 临时 AST 的峰值；decode
   limits 仍由 `cbind_context` 提供。
+
+Bool、整数和浮点是 trivial values。UUID 是无堆所有权的 16-byte value；enum storage 的
+semantic-zero、assign/read 与 restore 由 native enum ops 独占。Generated string 使用 owning
+`tstr` adapter；caller-native string 按 descriptor 声明 copy 或 borrow。每次 decode 前整棵
+destination 必须处于 descriptor 定义的 semantic zero；任一 narrow range、unknown enum、
+malformed UUID、reader 或 callback 失败都会由 CBind 把此前已写入的 scalar/enum/UUID/owning
+string 一并回滚到 semantic zero。同一 cleanup path 在成功或失败后都必须安全。
 
 Plan compilation 只表示 schema AST 到 descriptor graph。TbeCBind 没有 MIR/BMIR、JIT、
 运行时机器码生成、可执行内存或运行时 C/C++ 编译器。性能结论必须来自显式的
@@ -296,6 +342,14 @@ JSON 和同一个 generated `TbeCBindBenchEnvelope_t` destination，并分别报
 及其 teardown 均属于对应的 end-to-end 计时。由于 DataBind 当前没有公开的 typed
 CSerde-reader API，该 target 不把 CBind 的预生成 token kernel 与 DataBind 的完整 JSON 路径
 混称为等价比较；若只需观察 CBind binding kernel，应继续运行 `benchmark_tbe_cbind`。
+
+本次 v2 没有把 scalar/enum/UUID 强塞进现有 benchmark。事实原因是
+`benchmark_tbe_cbind.schema` 和同一个 generated sidecar 同时被 CBind-only baseline 与
+`benchmark_cbind_vs_data_bind` 的 typed DataBind comparison 消费；修改该共享 struct/schema 会
+改变已记录的 CBind-vs-DataBind 输入、wire layout、JSON byte count 与 typed descriptor
+methodology。另建一套只为 smoke 的 benchmark fixture 又会超出当前 bounded baseline 结构。
+正确性与 bounded decode 已由 runtime/generated C/C++/JSON tests 覆盖；未来若新增独立且同方法
+的 v2 benchmark，应作为单独可比基线评审，而不是改写现有数字的含义。
 
 同一环境连续五次运行的 `avg/op` 中位数与范围如下；每次运行内部仍使用表中的 samples：
 
