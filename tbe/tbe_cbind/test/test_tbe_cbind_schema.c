@@ -74,6 +74,116 @@ static tbe_cbind_status create_enum_plan(
       &options, out, error);
 }
 
+static tbe_cbind_status create_enum_plan_with_options(
+    const char *schema, const char *type_name,
+    const cmeta_data_desc *native_shape,
+    const tbe_cbind_plan_options *options, tbe_cbind_plan **out,
+    tbe_cbind_plan_error *error) {
+  return tbe_cbind_plan_create_from_text(
+      schema, strlen(schema), type_name, strlen(type_name), native_shape,
+      options, out, error);
+}
+
+#define TBE_CBIND_TEST_DEFINE_ENUM_OPS(name_, type_, storage_, signed_)   \
+  static bool name_##_is_zero(const void *object) {                      \
+    type_ value;                                                         \
+    if (object == NULL) return false;                                    \
+    memcpy(&value, object, sizeof(value));                               \
+    return value == (type_)0;                                           \
+  }                                                                     \
+  static cmeta_status name_##_read(const void *object, int64_t *out) {   \
+    type_ value;                                                         \
+    if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;    \
+    memcpy(&value, object, sizeof(value));                               \
+    *out = (int64_t)value;                                               \
+    return CMETA_OK;                                                     \
+  }                                                                     \
+  static cmeta_status name_##_assign(void *object, int64_t value) {      \
+    type_ native;                                                        \
+    if (object == NULL || (!(signed_) && value < 0))                     \
+      return CMETA_INVALID_ARGUMENT;                                    \
+    native = (type_)value;                                               \
+    if ((int64_t)native != value) return CMETA_INVALID_ARGUMENT;         \
+    memcpy(object, &native, sizeof(native));                             \
+    return CMETA_OK;                                                     \
+  }                                                                     \
+  static void name_##_restore_zero(void *object) {                       \
+    const type_ zero = (type_)0;                                        \
+    if (object != NULL) memcpy(object, &zero, sizeof(zero));             \
+  }                                                                     \
+  static const cmeta_data_enum_ops name_##_ops = {                       \
+      sizeof(cmeta_data_enum_ops), CMETA_DATA_ENUM_OPS_ABI_VERSION,      \
+      &(storage_), name_##_is_zero, name_##_read, name_##_assign,        \
+      name_##_restore_zero}
+
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_i8, int8_t,
+                               turbo_int8_cmeta_type, 1);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_u8, uint8_t,
+                               turbo_uint8_cmeta_type, 0);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_i16, int16_t,
+                               turbo_int16_cmeta_type, 1);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_u16, uint16_t,
+                               turbo_uint16_cmeta_type, 0);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_i32, int32_t,
+                               turbo_int32_cmeta_type, 1);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_u32, uint32_t,
+                               turbo_uint32_cmeta_type, 0);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_i64, int64_t,
+                               turbo_int64_cmeta_type, 1);
+TBE_CBIND_TEST_DEFINE_ENUM_OPS(tbe_cbind_test_enum_u64, uint64_t,
+                               turbo_uint64_cmeta_type, 0);
+
+#undef TBE_CBIND_TEST_DEFINE_ENUM_OPS
+
+typedef struct enum_underlying_case {
+  const char *spelling;
+  const cmeta_type_desc *storage_type;
+  const cmeta_data_enum_ops *ops;
+} enum_underlying_case;
+
+static tbe_cbind_status create_integer_enum_plan(
+    const enum_underlying_case *test_case, const char *value_text,
+    int64_t expected_value, tbe_cbind_plan **out,
+    tbe_cbind_plan_error *error) {
+  char schema[256];
+  int schema_size = snprintf(
+      schema, sizeof(schema),
+      "enum Choice <%s> { Value = %s; } "
+      "message EnumRecord { Choice choice; }",
+      test_case->spelling, value_text);
+  cmeta_enum_item_desc item = {
+      expected_value, "Choice_Value", "Value"};
+  cmeta_enum_desc meta = {"Choice", &item, 1u};
+  cmeta_data_enum_shape enum_shape = {&meta};
+  cmeta_data_desc enum_data = {
+      .struct_size = sizeof(cmeta_data_desc),
+      .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+      .stable_id = "test.tbe-cbind.Choice.data",
+      .display_name = "Choice",
+      .kind = CMETA_DATA_ENUM,
+      .storage_type = test_case->storage_type,
+      .shape = &enum_shape,
+      .enum_ops = test_case->ops};
+  cmeta_field_desc layout_field = {
+      "choice", test_case->storage_type->name, 0u,
+      test_case->storage_type->size, test_case->storage_type->align,
+      test_case->storage_type, NULL};
+  cmeta_struct_desc layout = {
+      "tbe_cbind_test_scalar_slot", sizeof(tbe_cbind_test_scalar_slot),
+      _Alignof(tbe_cbind_test_scalar_slot), &layout_field, 1u};
+  cmeta_data_field_desc data_field = {
+      "test.tbe-cbind.enum-record.choice", "choice", 0u, &enum_data};
+  cmeta_data_struct_shape shape = {&layout, &data_field, 1u};
+  cmeta_data_desc data = {
+      sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+      "test.tbe-cbind.enum-record.data", "tbe_cbind_test_scalar_slot",
+      CMETA_DATA_STRUCT, &tbe_cbind_test_scalar_slot_type, &shape, NULL};
+
+  check_greater(schema_size, 0);
+  check_less((size_t)schema_size, sizeof(schema));
+  return create_enum_plan(schema, "EnumRecord", &data, out, error);
+}
+
 spec("TbeCBind schema semantic model") {
   it("reports parser syntax errors with source coordinates") {
     tbe_cbind_plan_error error;
@@ -177,6 +287,148 @@ spec("TbeCBind schema semantic model") {
       check_not_null(plan);
       tbe_cbind_plan_destroy(plan);
     }
+  }
+
+  it("normalizes every canonical and exact alias integer enum underlying") {
+    const enum_underlying_case cases[] = {
+        {"int8", &turbo_int8_cmeta_type, &tbe_cbind_test_enum_i8_ops},
+        {"int8_t", &turbo_int8_cmeta_type, &tbe_cbind_test_enum_i8_ops},
+        {"i8", &turbo_int8_cmeta_type, &tbe_cbind_test_enum_i8_ops},
+        {"uint8", &turbo_uint8_cmeta_type, &tbe_cbind_test_enum_u8_ops},
+        {"uint8_t", &turbo_uint8_cmeta_type, &tbe_cbind_test_enum_u8_ops},
+        {"u8", &turbo_uint8_cmeta_type, &tbe_cbind_test_enum_u8_ops},
+        {"byte", &turbo_uint8_cmeta_type, &tbe_cbind_test_enum_u8_ops},
+        {"int16", &turbo_int16_cmeta_type, &tbe_cbind_test_enum_i16_ops},
+        {"int16_t", &turbo_int16_cmeta_type, &tbe_cbind_test_enum_i16_ops},
+        {"i16", &turbo_int16_cmeta_type, &tbe_cbind_test_enum_i16_ops},
+        {"uint16", &turbo_uint16_cmeta_type, &tbe_cbind_test_enum_u16_ops},
+        {"uint16_t", &turbo_uint16_cmeta_type, &tbe_cbind_test_enum_u16_ops},
+        {"u16", &turbo_uint16_cmeta_type, &tbe_cbind_test_enum_u16_ops},
+        {"int32", &turbo_int32_cmeta_type, &tbe_cbind_test_enum_i32_ops},
+        {"int32_t", &turbo_int32_cmeta_type, &tbe_cbind_test_enum_i32_ops},
+        {"i32", &turbo_int32_cmeta_type, &tbe_cbind_test_enum_i32_ops},
+        {"uint32", &turbo_uint32_cmeta_type, &tbe_cbind_test_enum_u32_ops},
+        {"uint32_t", &turbo_uint32_cmeta_type, &tbe_cbind_test_enum_u32_ops},
+        {"u32", &turbo_uint32_cmeta_type, &tbe_cbind_test_enum_u32_ops},
+        {"int64", &turbo_int64_cmeta_type, &tbe_cbind_test_enum_i64_ops},
+        {"int64_t", &turbo_int64_cmeta_type, &tbe_cbind_test_enum_i64_ops},
+        {"i64", &turbo_int64_cmeta_type, &tbe_cbind_test_enum_i64_ops},
+        {"uint64", &turbo_uint64_cmeta_type, &tbe_cbind_test_enum_u64_ops},
+        {"uint64_t", &turbo_uint64_cmeta_type, &tbe_cbind_test_enum_u64_ops},
+        {"u64", &turbo_uint64_cmeta_type, &tbe_cbind_test_enum_u64_ops}};
+    size_t index;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = NULL;
+      info("enum underlying: %s", cases[index].spelling);
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_integer_enum_plan(&cases[index], "1", 1, &plan,
+                                           &error),
+                  TBE_CBIND_OK);
+      check_not_null(plan);
+      tbe_cbind_plan_destroy(plan);
+    }
+  }
+
+  it("rejects every non-integer enum underlying and duplicate enum declarations") {
+    struct invalid_underlying_case {
+      const char *schema;
+      const char *path;
+    } cases[] = {
+        {"enum Choice <bool> { Value = 1; } message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"enum Choice <float> { Value = 1; } message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"enum Choice <double> { Value = 1; } message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"enum Choice <string> { Value = 1; } message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"enum Choice <uuid> { Value = 1; } message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"composite Backing { int32 value; } "
+         "enum Choice <Backing> { Value = 1; } "
+         "message One { int32 value; }",
+         "Choice.(declaration)"},
+        {"enum Choice <int32> { First = 1; } "
+         "enum Choice <int32> { Second = 2; } "
+         "message One { int32 value; }",
+         "Choice"}};
+    size_t index;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+      tbe_cbind_plan_error error;
+      info("invalid enum case: %zu", index);
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_one(cases[index].schema, "One", &error),
+                  TBE_CBIND_SCHEMA_ERROR);
+      check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+      check_equal(error.path, cases[index].path);
+    }
+  }
+
+  it("accepts each integer enum maximum and rejects one past it") {
+    struct enum_boundary_case {
+      enum_underlying_case underlying;
+      const char *maximum_text;
+      const char *one_past_text;
+      int64_t maximum;
+    } cases[] = {
+        {{"int8", &turbo_int8_cmeta_type, &tbe_cbind_test_enum_i8_ops},
+         "127", "128", INT64_C(127)},
+        {{"uint8", &turbo_uint8_cmeta_type, &tbe_cbind_test_enum_u8_ops},
+         "255", "256", INT64_C(255)},
+        {{"int16", &turbo_int16_cmeta_type, &tbe_cbind_test_enum_i16_ops},
+         "32767", "32768", INT64_C(32767)},
+        {{"uint16", &turbo_uint16_cmeta_type, &tbe_cbind_test_enum_u16_ops},
+         "65535", "65536", INT64_C(65535)},
+        {{"int32", &turbo_int32_cmeta_type, &tbe_cbind_test_enum_i32_ops},
+         "2147483647", "2147483648", INT64_C(2147483647)},
+        {{"uint32", &turbo_uint32_cmeta_type, &tbe_cbind_test_enum_u32_ops},
+         "4294967295", "4294967296", INT64_C(4294967295)},
+        {{"int64", &turbo_int64_cmeta_type, &tbe_cbind_test_enum_i64_ops},
+         "9223372036854775807", "9223372036854775808", INT64_MAX},
+        {{"uint64", &turbo_uint64_cmeta_type, &tbe_cbind_test_enum_u64_ops},
+         "9223372036854775807", "9223372036854775808", INT64_MAX}};
+    size_t index;
+
+    for (index = 0u; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+      char schema[256];
+      int schema_size;
+      tbe_cbind_plan_error error;
+      tbe_cbind_plan *plan = NULL;
+      info("enum boundary: %s", cases[index].underlying.spelling);
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_integer_enum_plan(
+                      &cases[index].underlying, cases[index].maximum_text,
+                      cases[index].maximum, &plan, &error),
+                  TBE_CBIND_OK);
+      check_not_null(plan);
+      tbe_cbind_plan_destroy(plan);
+
+      schema_size = snprintf(
+          schema, sizeof(schema),
+          "enum Choice <%s> { Value = %s; } message One { int32 value; }",
+          cases[index].underlying.spelling, cases[index].one_past_text);
+      check_greater(schema_size, 0);
+      check_less((size_t)schema_size, sizeof(schema));
+      tbe_cbind_plan_error_init(&error);
+      check_equal(create_one(schema, "One", &error),
+                  TBE_CBIND_SCHEMA_ERROR);
+      check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+      check_equal(error.path, "Choice.Value");
+    }
+  }
+
+  it("rejects negative enum values in the parser grammar") {
+    static const char schema[] =
+        "enum Choice <int8> { Value = -1; } message One { int32 value; }";
+    tbe_cbind_plan_error error;
+
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_one(schema, "One", &error), TBE_CBIND_SCHEMA_ERROR);
+    check_equal(error.phase, TBE_CBIND_PHASE_PARSE);
+    check_equal(error.path, "");
   }
 
   it("rejects duplicate enum symbols values range overflow and type collisions") {
@@ -343,6 +595,78 @@ spec("TbeCBind schema semantic model") {
                     sizeof("message One { int32 value; }") - 1u,
                     "One", 3u, &options, &error),
                 TBE_CBIND_LIMIT_EXCEEDED);
+  }
+
+  it("bounds enum semantic ownership independently of ready plan bytes") {
+    tbe_cbind_plan_options options;
+    tbe_cbind_plan_error error;
+    tbe_cbind_plan *plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_types = 2u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
+    plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_types = 1u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+    check_equal(error.path, "(declaration)");
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_fields = 5u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
+    plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_fields = 4u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+    check_equal(error.path, "enums");
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_name_bytes = 12u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_OK);
+    check_not_null(plan);
+    tbe_cbind_plan_destroy(plan);
+    plan = NULL;
+
+    tbe_cbind_plan_options_init(&options);
+    options.max_name_bytes = 11u;
+    tbe_cbind_plan_error_init(&error);
+    check_equal(create_enum_plan_with_options(
+                    tbe_cbind_test_state_record_schema, "EnumDetail",
+                    &tbe_cbind_test_enum_detail_data, &options, &plan, &error),
+                TBE_CBIND_LIMIT_EXCEEDED);
+    check_null(plan);
+    check_equal(error.phase, TBE_CBIND_PHASE_SCHEMA);
+    check_equal(error.path, "State.Paused");
   }
 
   it("rejects an inverse-declaration chain one level beyond max_depth") {
