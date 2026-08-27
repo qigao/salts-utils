@@ -112,16 +112,22 @@ spec("uri_parser_production") {
 
     describe("memory_pool") {
         it("should allocate and reset pool") {
+            const size_t first_allocation_size = 100;
+            const size_t second_allocation_size = 200;
+            const size_t alignment = MEMORY_POOL_DEFAULT_ALIGNMENT;
             MemoryPool *pool = pool_create(1024);
             check_not_null(pool);
             
-            void *ptr1 = pool_alloc(pool, 100);
+            void *ptr1 = pool_alloc(pool, first_allocation_size);
             check_not_null(ptr1);
-            check_equal(pool_get_used(pool), 100);
+            check_equal(pool_get_used(pool), first_allocation_size);
             
-            void *ptr2 = pool_alloc(pool, 200);
+            void *ptr2 = pool_alloc(pool, second_allocation_size);
             check_not_null(ptr2);
-            check_equal(pool_get_used(pool), 304);
+            const size_t second_allocation_offset =
+                (first_allocation_size + alignment - 1) & ~(alignment - 1);
+            check_equal(pool_get_used(pool),
+                        second_allocation_offset + second_allocation_size);
             
             pool_reset(pool);
             check_equal(pool_get_used(pool), 0);
