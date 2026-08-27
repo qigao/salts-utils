@@ -54,7 +54,7 @@ cserde_token sint(std::int64_t value) {
   return token;
 }
 
-cserde_token uint(std::uint64_t value) {
+cserde_token uint_token(std::uint64_t value) {
   cserde_token token{};
   token.kind = CSERDE_UINT;
   token.value.uint = value;
@@ -109,13 +109,13 @@ spec("generated CBind sidecar C++ linkage") {
         structural(CSERDE_MAP_BEGIN), text(CSERDE_STRING, "sequence"), sint(-17),
         structural(CSERDE_MAP_END), text(CSERDE_STRING, "eventId"), sint(42),
         text(CSERDE_STRING, "enabled"), boolean(true), text(CSERDE_STRING, "sint8"),
-        sint(INT8_MIN), text(CSERDE_STRING, "uint8_value"), uint(UINT8_MAX),
+        sint(INT8_MIN), text(CSERDE_STRING, "uint8_value"), uint_token(UINT8_MAX),
         text(CSERDE_STRING, "sint16"), sint(INT16_MIN),
-        text(CSERDE_STRING, "uint16_value"), uint(UINT16_MAX),
+        text(CSERDE_STRING, "uint16_value"), uint_token(UINT16_MAX),
         text(CSERDE_STRING, "sint32"), sint(INT32_MIN),
-        text(CSERDE_STRING, "uint32_value"), uint(UINT32_MAX),
+        text(CSERDE_STRING, "uint32_value"), uint_token(UINT32_MAX),
         text(CSERDE_STRING, "sint64"), sint(INT64_MIN),
-        text(CSERDE_STRING, "uint64_value"), uint(UINT64_MAX),
+        text(CSERDE_STRING, "uint64_value"), uint_token(UINT64_MAX),
         text(CSERDE_STRING, "real32"), floating(1.25),
         text(CSERDE_STRING, "real64"), floating(3.5), text(CSERDE_STRING, "note"),
         text(CSERDE_STRING, "owned"), text(CSERDE_STRING, "request_id"),

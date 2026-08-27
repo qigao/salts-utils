@@ -44,7 +44,7 @@ cserde_token sint(std::int64_t value) {
   return token;
 }
 
-cserde_token uint(std::uint64_t value) {
+cserde_token uint_token(std::uint64_t value) {
   cserde_token token{};
   token.kind = CSERDE_UINT;
   token.value.uint = value;
@@ -77,7 +77,7 @@ int main() {
       text("FEDCBA98-7654-3210-FEDC-BA9876543210"), structural(CSERDE_MAP_END),
       text("eventId"), sint(42),
       text("enabled"), boolean(true), text("min_value"), sint(INT64_MIN), text("max_value"),
-      uint(UINT64_MAX), text("label"), text("owned"), text("request_id"),
+      uint_token(UINT64_MAX), text("label"), text("owned"), text("request_id"),
       text("00112233-4455-6677-8899-AABBCCDDEEFF"), text("state"), text("Ready"),
       structural(CSERDE_MAP_END)};
   std::array<unsigned char, 2u> scratch{};
