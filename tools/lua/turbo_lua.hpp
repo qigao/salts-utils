@@ -5,16 +5,6 @@
 #pragma once
 
 
-#define CPP_LUA_EXPAND(x) x
-#define CPP_LUA_CONCAT_INNER(a, b) a##b
-#define CPP_LUA_CONCAT(a, b) CPP_LUA_CONCAT_INNER(a, b)
-
-#define CPP_LUA_COUNT_ARGS(...)                                                                  \
-  CPP_LUA_EXPAND(                                                                               \
-      CPP_LUA_COUNT_ARGS_HELPER(__VA_ARGS__, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1))
-#define CPP_LUA_COUNT_ARGS_HELPER(                                                              \
-    _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, N, ...) N
-
 #include <lua.hpp>
 #include "turbo_lua.h"
 
@@ -1130,26 +1120,11 @@ void register_shared_class_ctors(lua_State *L, const char *name) {
 
 #define CPP_LUA_BIND_FUNCTION(L, name) ::cpp_lua_bind::bind_function<&(name)>(L, #name)
 
-#define CPP_LUA_BIND_FUNCTION_1(L, a) CPP_LUA_BIND_FUNCTION(L, a)
-#define CPP_LUA_BIND_FUNCTION_2(L, a, b) CPP_LUA_BIND_FUNCTION_1(L, a); CPP_LUA_BIND_FUNCTION(L, b)
-#define CPP_LUA_BIND_FUNCTION_3(L, a, b, c)                                                      \
-  CPP_LUA_BIND_FUNCTION_2(L, a, b); CPP_LUA_BIND_FUNCTION(L, c)
-#define CPP_LUA_BIND_FUNCTION_4(L, a, b, c, d)                                                   \
-  CPP_LUA_BIND_FUNCTION_3(L, a, b, c); CPP_LUA_BIND_FUNCTION(L, d)
-#define CPP_LUA_BIND_FUNCTION_5(L, a, b, c, d, e)                                                \
-  CPP_LUA_BIND_FUNCTION_4(L, a, b, c, d); CPP_LUA_BIND_FUNCTION(L, e)
-#define CPP_LUA_BIND_FUNCTION_6(L, a, b, c, d, e, f)                                             \
-  CPP_LUA_BIND_FUNCTION_5(L, a, b, c, d, e); CPP_LUA_BIND_FUNCTION(L, f)
-#define CPP_LUA_BIND_FUNCTION_7(L, a, b, c, d, e, f, g)                                          \
-  CPP_LUA_BIND_FUNCTION_6(L, a, b, c, d, e, f); CPP_LUA_BIND_FUNCTION(L, g)
-#define CPP_LUA_BIND_FUNCTION_8(L, a, b, c, d, e, f, g, h)                                       \
-  CPP_LUA_BIND_FUNCTION_7(L, a, b, c, d, e, f, g); CPP_LUA_BIND_FUNCTION(L, h)
-#define CPP_LUA_BIND_FUNCTION_9(L, a, b, c, d, e, f, g, h, i)                                    \
-  CPP_LUA_BIND_FUNCTION_8(L, a, b, c, d, e, f, g, h); CPP_LUA_BIND_FUNCTION(L, i)
+#define CPP_LUA_BIND_FUNCTION_EACH(name, state) \
+  CPP_LUA_BIND_FUNCTION(CMETA_PP_UNPAREN state, name);
 
 #define CPP_LUA_BIND_FUNCTIONS(L, ...)                                                          \
-  CPP_LUA_EXPAND(CPP_LUA_CONCAT(CPP_LUA_BIND_FUNCTION_, CPP_LUA_COUNT_ARGS(__VA_ARGS__))       \
-                     (L, __VA_ARGS__))
+  CMETA_PP_FOR_EACH(CPP_LUA_BIND_FUNCTION_EACH, (L), __VA_ARGS__)
 
 #define CPP_LUA_BIND_OVERLOAD(L, name, Signature)                                               \
   ::cpp_lua_bind::bind_function<static_cast<Signature>(&(name))>(L, #name)
@@ -1159,27 +1134,30 @@ void register_shared_class_ctors(lua_State *L, const char *name) {
 
 #define CPP_LUA_OVERLOAD_CAST(name, signature)                                                  \
   static_cast<::cpp_lua_bind::function_pointer_t<signature> >(&(name))
-#define CPP_LUA_OVERLOAD_CAST_1(name, a) CPP_LUA_OVERLOAD_CAST(name, a)
-#define CPP_LUA_OVERLOAD_CAST_2(name, a, b)                                                      \
-  CPP_LUA_OVERLOAD_CAST_1(name, a), CPP_LUA_OVERLOAD_CAST(name, b)
-#define CPP_LUA_OVERLOAD_CAST_3(name, a, b, c)                                                   \
-  CPP_LUA_OVERLOAD_CAST_2(name, a, b), CPP_LUA_OVERLOAD_CAST(name, c)
-#define CPP_LUA_OVERLOAD_CAST_4(name, a, b, c, d)                                                \
-  CPP_LUA_OVERLOAD_CAST_3(name, a, b, c), CPP_LUA_OVERLOAD_CAST(name, d)
-#define CPP_LUA_OVERLOAD_CAST_5(name, a, b, c, d, e)                                             \
-  CPP_LUA_OVERLOAD_CAST_4(name, a, b, c, d), CPP_LUA_OVERLOAD_CAST(name, e)
-#define CPP_LUA_OVERLOAD_CAST_6(name, a, b, c, d, e, f)                                          \
-  CPP_LUA_OVERLOAD_CAST_5(name, a, b, c, d, e), CPP_LUA_OVERLOAD_CAST(name, f)
-#define CPP_LUA_OVERLOAD_CAST_7(name, a, b, c, d, e, f, g)                                       \
-  CPP_LUA_OVERLOAD_CAST_6(name, a, b, c, d, e, f), CPP_LUA_OVERLOAD_CAST(name, g)
-#define CPP_LUA_OVERLOAD_CAST_8(name, a, b, c, d, e, f, g, h)                                    \
-  CPP_LUA_OVERLOAD_CAST_7(name, a, b, c, d, e, f, g), CPP_LUA_OVERLOAD_CAST(name, h)
-#define CPP_LUA_OVERLOAD_CAST_9(name, a, b, c, d, e, f, g, h, i)                                 \
-  CPP_LUA_OVERLOAD_CAST_8(name, a, b, c, d, e, f, g, h), CPP_LUA_OVERLOAD_CAST(name, i)
+
+#define CPP_LUA_COMMA_0
+#define CPP_LUA_COMMA_1 ,
+#define CPP_LUA_COMMA_2 ,
+#define CPP_LUA_COMMA_3 ,
+#define CPP_LUA_COMMA_4 ,
+#define CPP_LUA_COMMA_5 ,
+#define CPP_LUA_COMMA_6 ,
+#define CPP_LUA_COMMA_7 ,
+#define CPP_LUA_COMMA_8 ,
+#define CPP_LUA_COMMA_9 ,
+#define CPP_LUA_COMMA_10 ,
+#define CPP_LUA_COMMA_11 ,
+#define CPP_LUA_COMMA_12 ,
+#define CPP_LUA_COMMA_13 ,
+#define CPP_LUA_COMMA_14 ,
+#define CPP_LUA_COMMA_15 ,
+#define CPP_LUA_COMMA(index) CMETA_PP_CAT(CPP_LUA_COMMA_, index)
+
+#define CPP_LUA_OVERLOAD_CAST_EACH(index, signature, name) \
+  CPP_LUA_COMMA(index) CPP_LUA_OVERLOAD_CAST(name, signature)
 
 #define CPP_LUA_OVERLOAD_CASTS(name, ...)                                                        \
-  CPP_LUA_EXPAND(CPP_LUA_CONCAT(CPP_LUA_OVERLOAD_CAST_, CPP_LUA_COUNT_ARGS(__VA_ARGS__))         \
-                     (name, __VA_ARGS__))
+  CMETA_PP_FOR_EACH_I(CPP_LUA_OVERLOAD_CAST_EACH, name, __VA_ARGS__)
 
 #define CPP_LUA_BIND_OVERLOAD_SIGNATURES(L, name, ...)                                           \
   ::cpp_lua_bind::bind_function_overloads<CPP_LUA_OVERLOAD_CASTS(name, __VA_ARGS__)>(L, #name)
@@ -1190,26 +1168,13 @@ void register_shared_class_ctors(lua_State *L, const char *name) {
 #define CPP_LUA_BIND_METHOD(L, Class, method)                                                    \
   ::cpp_lua_bind::bind_member<Class, &Class::method>(L, #Class, #method)
 
-#define CPP_LUA_BIND_METHOD_1(L, Class, a) CPP_LUA_BIND_METHOD(L, Class, a)
-#define CPP_LUA_BIND_METHOD_2(L, Class, a, b) CPP_LUA_BIND_METHOD_1(L, Class, a); CPP_LUA_BIND_METHOD(L, Class, b)
-#define CPP_LUA_BIND_METHOD_3(L, Class, a, b, c)                                                 \
-  CPP_LUA_BIND_METHOD_2(L, Class, a, b); CPP_LUA_BIND_METHOD(L, Class, c)
-#define CPP_LUA_BIND_METHOD_4(L, Class, a, b, c, d)                                              \
-  CPP_LUA_BIND_METHOD_3(L, Class, a, b, c); CPP_LUA_BIND_METHOD(L, Class, d)
-#define CPP_LUA_BIND_METHOD_5(L, Class, a, b, c, d, e)                                           \
-  CPP_LUA_BIND_METHOD_4(L, Class, a, b, c, d); CPP_LUA_BIND_METHOD(L, Class, e)
-#define CPP_LUA_BIND_METHOD_6(L, Class, a, b, c, d, e, f)                                        \
-  CPP_LUA_BIND_METHOD_5(L, Class, a, b, c, d, e); CPP_LUA_BIND_METHOD(L, Class, f)
-#define CPP_LUA_BIND_METHOD_7(L, Class, a, b, c, d, e, f, g)                                     \
-  CPP_LUA_BIND_METHOD_6(L, Class, a, b, c, d, e, f); CPP_LUA_BIND_METHOD(L, Class, g)
-#define CPP_LUA_BIND_METHOD_8(L, Class, a, b, c, d, e, f, g, h)                                  \
-  CPP_LUA_BIND_METHOD_7(L, Class, a, b, c, d, e, f, g); CPP_LUA_BIND_METHOD(L, Class, h)
-#define CPP_LUA_BIND_METHOD_9(L, Class, a, b, c, d, e, f, g, h, i)                               \
-  CPP_LUA_BIND_METHOD_8(L, Class, a, b, c, d, e, f, g, h); CPP_LUA_BIND_METHOD(L, Class, i)
+#define CPP_LUA_BIND_METHOD_EACH(method, state) \
+  CPP_LUA_BIND_METHOD_EACH_EXPAND(method, CMETA_PP_UNPAREN state)
+#define CPP_LUA_BIND_METHOD_EACH_EXPAND(...) CPP_LUA_BIND_METHOD_EACH_I(__VA_ARGS__)
+#define CPP_LUA_BIND_METHOD_EACH_I(method, L, Class) CPP_LUA_BIND_METHOD(L, Class, method);
 
 #define CPP_LUA_BIND_METHODS(L, Class, ...)                                                     \
-  CPP_LUA_EXPAND(CPP_LUA_CONCAT(CPP_LUA_BIND_METHOD_, CPP_LUA_COUNT_ARGS(__VA_ARGS__))          \
-                     (L, Class, __VA_ARGS__))
+  CMETA_PP_FOR_EACH(CPP_LUA_BIND_METHOD_EACH, (L, Class), __VA_ARGS__)
 
 #define CPP_LUA_CTORS(...) ::cpp_lua_bind::constructors<__VA_ARGS__>
 
@@ -1434,48 +1399,15 @@ void bind_shared_reflected_class_ctors(lua_State *L) {
 
 } // namespace cpp_lua_reflection
 
-#define CPP_LUA_REFLECT_DETAIL_MEMBER(Type, field) &Type::field
-#define CPP_LUA_REFLECT_DETAIL_LIST_1(Type, a) CPP_LUA_REFLECT_DETAIL_MEMBER(Type, a)
-#define CPP_LUA_REFLECT_DETAIL_LIST_2(Type, a, b)                                              \
-  CPP_LUA_REFLECT_DETAIL_LIST_1(Type, a), CPP_LUA_REFLECT_DETAIL_MEMBER(Type, b)
-#define CPP_LUA_REFLECT_DETAIL_LIST_3(Type, a, b, c)                                           \
-  CPP_LUA_REFLECT_DETAIL_LIST_2(Type, a, b), CPP_LUA_REFLECT_DETAIL_MEMBER(Type, c)
-#define CPP_LUA_REFLECT_DETAIL_LIST_4(Type, a, b, c, d)                                        \
-  CPP_LUA_REFLECT_DETAIL_LIST_3(Type, a, b, c), CPP_LUA_REFLECT_DETAIL_MEMBER(Type, d)
-#define CPP_LUA_REFLECT_DETAIL_LIST_5(Type, a, b, c, d, e)                                     \
-  CPP_LUA_REFLECT_DETAIL_LIST_4(Type, a, b, c, d), CPP_LUA_REFLECT_DETAIL_MEMBER(Type, e)
-#define CPP_LUA_REFLECT_DETAIL_LIST_6(Type, a, b, c, d, e, f)                                  \
-  CPP_LUA_REFLECT_DETAIL_LIST_5(Type, a, b, c, d, e), CPP_LUA_REFLECT_DETAIL_MEMBER(Type, f)
-#define CPP_LUA_REFLECT_DETAIL_LIST_7(Type, a, b, c, d, e, f, g)                               \
-  CPP_LUA_REFLECT_DETAIL_LIST_6(Type, a, b, c, d, e, f),                                       \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, g)
-#define CPP_LUA_REFLECT_DETAIL_LIST_8(Type, a, b, c, d, e, f, g, h)                            \
-  CPP_LUA_REFLECT_DETAIL_LIST_7(Type, a, b, c, d, e, f, g),                                    \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, h)
-#define CPP_LUA_REFLECT_DETAIL_LIST_9(Type, a, b, c, d, e, f, g, h, i)                         \
-  CPP_LUA_REFLECT_DETAIL_LIST_8(Type, a, b, c, d, e, f, g, h),                                 \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, i)
-#define CPP_LUA_REFLECT_DETAIL_LIST_10(Type, a, b, c, d, e, f, g, h, i, j)                     \
-  CPP_LUA_REFLECT_DETAIL_LIST_9(Type, a, b, c, d, e, f, g, h, i),                              \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, j)
-#define CPP_LUA_REFLECT_DETAIL_LIST_11(Type, a, b, c, d, e, f, g, h, i, j, k)                  \
-  CPP_LUA_REFLECT_DETAIL_LIST_10(Type, a, b, c, d, e, f, g, h, i, j),                          \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, k)
-#define CPP_LUA_REFLECT_DETAIL_LIST_12(Type, a, b, c, d, e, f, g, h, i, j, k, l)               \
-  CPP_LUA_REFLECT_DETAIL_LIST_11(Type, a, b, c, d, e, f, g, h, i, j, k),                       \
-      CPP_LUA_REFLECT_DETAIL_MEMBER(Type, l)
-
+#define CPP_LUA_REFLECT_DETAIL_MEMBER(field, Type) &Type::field,
 #define CPP_LUA_REFLECT_DETAIL_MEMBER_LIST(Type, ...)                                          \
-  CPP_LUA_EXPAND(                                                                             \
-      CPP_LUA_CONCAT(CPP_LUA_REFLECT_DETAIL_LIST_,                                             \
-                     CPP_LUA_COUNT_ARGS(__VA_ARGS__))                                         \
-          (Type, __VA_ARGS__))
+  CMETA_PP_FOR_EACH(CPP_LUA_REFLECT_DETAIL_MEMBER, Type, __VA_ARGS__)
 
 #define CPP_LUA_REFLECT_WITH_NAME(Type, LuaName, ...)                                           \
   inline auto cpp_lua_reflect_members_adl(Type const &) {                                       \
     struct metadata {                                                                          \
       static constexpr auto members() {                                                        \
-        return std::make_tuple(CPP_LUA_REFLECT_DETAIL_MEMBER_LIST(Type, __VA_ARGS__));          \
+        return std::tuple{CPP_LUA_REFLECT_DETAIL_MEMBER_LIST(Type, __VA_ARGS__)};               \
       }                                                                                        \
       static constexpr std::string_view name() { return LuaName; }                              \
       static constexpr std::string_view fields() { return #__VA_ARGS__; }                      \

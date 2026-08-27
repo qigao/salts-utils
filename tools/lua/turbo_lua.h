@@ -39,6 +39,8 @@
 #include <float.h>
 #include <limits.h>
 
+#include <cmeta/pp.h>
+
 #include "turbo_error.h"
 #include "turbo_str.h"
 #include "turbo_vstr.h"
@@ -49,19 +51,13 @@
 extern "C" {
 #endif
 
-/* -------------------------------------------------------------------------
- * Preprocessor Metaprogramming Helpers
- * ------------------------------------------------------------------------- */
-#define C11_EXPAND(x) x
-#define C11_CONCAT(a, b) C11_CONCAT_INNER(a, b)
-#define C11_CONCAT_INNER(a, b) a##b
-#define C11_STRINGIFY(x) #x
-
-/* Count variadic macro arguments (up to 32). */
+/* The legacy flat typed-function declaration can contain 20 tokens, beyond
+ * CMeta's 16-item public iteration contract. Keep this compatibility-only
+ * counter until that public declaration form can be retired. */
 #define C11_COUNT_ARGS(...) \
-    C11_EXPAND(C11_COUNT_ARGS_HELPER(__VA_ARGS__, \
+    C11_COUNT_ARGS_HELPER(__VA_ARGS__, \
         32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, \
-        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0))
+        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 #define C11_COUNT_ARGS_HELPER( \
     _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, \
     _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, \
@@ -105,28 +101,51 @@ static inline void c11_lua_push_vstr(lua_State* L, vstr v) {
     lua_pushlstring(L, v.data ? v.data : "", v.len);
 }
 
+/* Lua conversion policy is declared once and replayed into the public
+ * _Generic entry points. Keep these schemas defined: those entry points
+ * expand lazily in the including translation unit. */
+#define C11_LUA_BOOLEAN_TYPE(M) \
+    Schema(M, \
+        (_Bool, _Bool*, c11_lua_push_bool, c11_lua_get_bool, c11_lua_get_checked_bool, c11_lua_get_arena_bool))
+
+#define C11_LUA_NUMERIC_TYPES(M) \
+    Schema(M, \
+        (char,               char*,               c11_lua_push_int,  c11_lua_get_char,   c11_lua_get_checked_char,   c11_lua_get_arena_char), \
+        (signed char,        signed char*,        c11_lua_push_int,  c11_lua_get_schar,  c11_lua_get_checked_schar,  c11_lua_get_arena_schar), \
+        (unsigned char,      unsigned char*,      c11_lua_push_int,  c11_lua_get_uchar,  c11_lua_get_checked_uchar,  c11_lua_get_arena_uchar), \
+        (short,              short*,              c11_lua_push_int,  c11_lua_get_short,  c11_lua_get_checked_short,  c11_lua_get_arena_short), \
+        (unsigned short,     unsigned short*,     c11_lua_push_int,  c11_lua_get_ushort, c11_lua_get_checked_ushort, c11_lua_get_arena_ushort), \
+        (int,                int*,                c11_lua_push_int,  c11_lua_get_int,    c11_lua_get_checked_int,    c11_lua_get_arena_int), \
+        (unsigned int,       unsigned int*,       c11_lua_push_int,  c11_lua_get_uint,   c11_lua_get_checked_uint,   c11_lua_get_arena_uint), \
+        (long,               long*,               c11_lua_push_int,  c11_lua_get_long,   c11_lua_get_checked_long,   c11_lua_get_arena_long), \
+        (unsigned long,      unsigned long*,      c11_lua_push_int,  c11_lua_get_ulong,  c11_lua_get_checked_ulong,  c11_lua_get_arena_ulong), \
+        (long long,          long long*,          c11_lua_push_int,  c11_lua_get_llong,  c11_lua_get_checked_llong,  c11_lua_get_arena_llong), \
+        (unsigned long long, unsigned long long*, c11_lua_push_int,  c11_lua_get_ullong, c11_lua_get_checked_ullong, c11_lua_get_arena_ullong), \
+        (float,              float*,              c11_lua_push_num,  c11_lua_get_float,  c11_lua_get_checked_float,  c11_lua_get_arena_float), \
+        (double,             double*,             c11_lua_push_num,  c11_lua_get_double, c11_lua_get_checked_double, c11_lua_get_arena_double))
+
+#define C11_LUA_STRING_TYPES(M) \
+    Schema(M, \
+        (tstr,        tstr*,        c11_lua_push_tstr, c11_lua_get_tstr, c11_lua_get_checked_tstr, c11_lua_get_arena_tstr_t), \
+        (vstr,        vstr*,        c11_lua_push_vstr, c11_lua_get_vstr, c11_lua_get_checked_vstr, c11_lua_get_arena_vstr), \
+        (const char*, const char**, c11_lua_push_str,  c11_lua_get_str,  c11_lua_get_checked_str,  c11_lua_get_arena_str))
+
+#define C11_LUA_POINTER_TYPES(M) \
+    Schema(M, \
+        (void*, void**, c11_lua_push_ptr, c11_lua_get_ptr, c11_lua_get_checked_ptr))
+
+#define C11_LUA_PUSH_FIRST_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) value_type: push_fn
+#define C11_LUA_PUSH_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) , value_type: push_fn
+#define C11_LUA_PUSH_POINTER_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn) , value_type: push_fn
+
 /**
  * @brief Pushes a typed C value onto the Lua stack using C11 _Generic selection.
  */
 #define c11_lua_push(L, val) _Generic((val), \
-    tstr:              c11_lua_push_tstr, \
-    vstr:              c11_lua_push_vstr, \
-    _Bool:               c11_lua_push_bool, \
-    char:                c11_lua_push_int, \
-    signed char:         c11_lua_push_int, \
-    unsigned char:       c11_lua_push_int, \
-    short:               c11_lua_push_int, \
-    unsigned short:      c11_lua_push_int, \
-    int:                 c11_lua_push_int, \
-    unsigned int:        c11_lua_push_int, \
-    long:                c11_lua_push_int, \
-    unsigned long:       c11_lua_push_int, \
-    long long:           c11_lua_push_int, \
-    unsigned long long:  c11_lua_push_int, \
-    float:               c11_lua_push_num, \
-    double:              c11_lua_push_num, \
-    const char*:         c11_lua_push_str, \
-    void*:               c11_lua_push_ptr  \
+    Replay(C11_LUA_BOOLEAN_TYPE, C11_LUA_PUSH_FIRST_ASSOC) \
+    Replay(C11_LUA_NUMERIC_TYPES, C11_LUA_PUSH_ASSOC) \
+    Replay(C11_LUA_STRING_TYPES, C11_LUA_PUSH_ASSOC) \
+    Replay(C11_LUA_POINTER_TYPES, C11_LUA_PUSH_POINTER_ASSOC) \
 )(L, val)
 
 /* -------------------------------------------------------------------------
@@ -228,28 +247,18 @@ static inline void c11_lua_get_ptr(lua_State* L, int idx, void** out) {
     if (out) *out = lua_touserdata(L, idx);
 }
 
+#define C11_LUA_GET_FIRST_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) output_type: get_fn
+#define C11_LUA_GET_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) , output_type: get_fn
+#define C11_LUA_GET_POINTER_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn) , output_type: get_fn
+
 /**
  * @brief Extracts a value from the Lua stack into a typed pointer using C11 _Generic selection.
  */
 #define c11_lua_get(L, idx, ptr) _Generic((ptr), \
-    tstr*:             c11_lua_get_tstr, \
-    vstr*:             c11_lua_get_vstr, \
-    _Bool*:              c11_lua_get_bool, \
-    char*:               c11_lua_get_char, \
-    signed char*:        c11_lua_get_schar, \
-    unsigned char*:      c11_lua_get_uchar, \
-    short*:              c11_lua_get_short, \
-    unsigned short*:     c11_lua_get_ushort, \
-    int*:                c11_lua_get_int, \
-    unsigned int*:       c11_lua_get_uint, \
-    long*:               c11_lua_get_long, \
-    unsigned long*:      c11_lua_get_ulong, \
-    long long*:          c11_lua_get_llong, \
-    unsigned long long*: c11_lua_get_ullong, \
-    float*:              c11_lua_get_float, \
-    double*:             c11_lua_get_double, \
-    const char**:        c11_lua_get_str, \
-    void**:              c11_lua_get_ptr \
+    Replay(C11_LUA_BOOLEAN_TYPE, C11_LUA_GET_FIRST_ASSOC) \
+    Replay(C11_LUA_NUMERIC_TYPES, C11_LUA_GET_ASSOC) \
+    Replay(C11_LUA_STRING_TYPES, C11_LUA_GET_ASSOC) \
+    Replay(C11_LUA_POINTER_TYPES, C11_LUA_GET_POINTER_ASSOC) \
 )(L, idx, ptr)
 
 /* -------------------------------------------------------------------------
@@ -393,6 +402,10 @@ static inline int c11_lua_get_checked_ptr(lua_State* L, int idx, void** out) {
     return TURBO_OK;
 }
 
+#define C11_LUA_CHECKED_FIRST_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) output_type: checked_fn
+#define C11_LUA_CHECKED_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) , output_type: checked_fn
+#define C11_LUA_CHECKED_POINTER_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn) , output_type: checked_fn
+
 /**
  * @brief Strictly extracts a Lua value selected by the output pointer type.
  * @param L Lua state.
@@ -411,24 +424,10 @@ static inline int c11_lua_get_checked_ptr(lua_State* L, int idx, void** out) {
  * @endcode
  */
 #define c11_lua_get_checked(L, idx, ptr) _Generic((ptr), \
-    tstr*:             c11_lua_get_checked_tstr, \
-    vstr*:             c11_lua_get_checked_vstr, \
-    _Bool*:              c11_lua_get_checked_bool, \
-    char*:               c11_lua_get_checked_char, \
-    signed char*:        c11_lua_get_checked_schar, \
-    unsigned char*:      c11_lua_get_checked_uchar, \
-    short*:              c11_lua_get_checked_short, \
-    unsigned short*:     c11_lua_get_checked_ushort, \
-    int*:                c11_lua_get_checked_int, \
-    unsigned int*:       c11_lua_get_checked_uint, \
-    long*:               c11_lua_get_checked_long, \
-    unsigned long*:      c11_lua_get_checked_ulong, \
-    long long*:          c11_lua_get_checked_llong, \
-    unsigned long long*: c11_lua_get_checked_ullong, \
-    float*:              c11_lua_get_checked_float, \
-    double*:             c11_lua_get_checked_double, \
-    const char**:        c11_lua_get_checked_str, \
-    void**:              c11_lua_get_checked_ptr \
+    Replay(C11_LUA_BOOLEAN_TYPE, C11_LUA_CHECKED_FIRST_ASSOC) \
+    Replay(C11_LUA_NUMERIC_TYPES, C11_LUA_CHECKED_ASSOC) \
+    Replay(C11_LUA_STRING_TYPES, C11_LUA_CHECKED_ASSOC) \
+    Replay(C11_LUA_POINTER_TYPES, C11_LUA_CHECKED_POINTER_ASSOC) \
 )(L, idx, ptr)
 
 
@@ -481,8 +480,8 @@ static inline int c11_lua_typed_argument_error(lua_State* L, int index, int rc) 
     } while (0)
 
 /** Defines a lua_CFunction adapter for a value-returning C function. */
-#define C11_LUA_FUNCTION_BINDER(function) C11_CONCAT(function, _lua_bind)
-#define C11_LUA_FUNCTION_TRAMPOLINE(function) C11_CONCAT(function, _lua_trampoline)
+#define C11_LUA_FUNCTION_BINDER(function) CMETA_PP_CAT(function, _lua_bind)
+#define C11_LUA_FUNCTION_TRAMPOLINE(function) CMETA_PP_CAT(function, _lua_trampoline)
 #define C11_LUA_BIND(L, function) C11_LUA_FUNCTION_BINDER(function)((L), #function)
 #define C11_LUA_BIND_AS(L, lua_name, function) \
     C11_LUA_FUNCTION_BINDER(function)((L), (lua_name))
@@ -642,8 +641,8 @@ static inline int c11_lua_typed_argument_error(lua_State* L, int index, int rc) 
 #define C11_LUA_FUNCTION_ARGS_18 C11_LUA_FUNCTION_IMPL_8
 #define C11_LUA_FUNCTION_ARGS_20 C11_LUA_FUNCTION_IMPL_9
 #define C11_LUA_FUNCTION(...) \
-    C11_EXPAND(C11_CONCAT(C11_LUA_FUNCTION_ARGS_, \
-                          C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__))
+    CMETA_PP_CAT(C11_LUA_FUNCTION_ARGS_, \
+                 C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
 
 /** Defines a lua_CFunction adapter for a void C function. */
 #define C11_LUA_VOID_FUNCTION_IMPL_0(function) \
@@ -760,8 +759,8 @@ static inline int c11_lua_typed_argument_error(lua_State* L, int index, int rc) 
 #define C11_LUA_VOID_FUNCTION_ARGS_17 C11_LUA_VOID_FUNCTION_IMPL_8
 #define C11_LUA_VOID_FUNCTION_ARGS_19 C11_LUA_VOID_FUNCTION_IMPL_9
 #define C11_LUA_VOID_FUNCTION(...) \
-    C11_EXPAND(C11_CONCAT(C11_LUA_VOID_FUNCTION_ARGS_, \
-                          C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__))
+    CMETA_PP_CAT(C11_LUA_VOID_FUNCTION_ARGS_, \
+                 C11_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
 
 /* -------------------------------------------------------------------------
  * Named Environments
@@ -1020,24 +1019,13 @@ static inline void c11_lua_get_arena_vstr(lua_State* L, int idx, vstr* out, Memo
     *out = vstr_from_buf(copy, copy ? len : 0);
 }
 
+#define C11_LUA_ARENA_FIRST_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) output_type: arena_fn
+#define C11_LUA_ARENA_ASSOC(value_type, output_type, push_fn, get_fn, checked_fn, arena_fn) , output_type: arena_fn
+
 #define c11_lua_get_arena(L, idx, ptr, arena) _Generic((ptr), \
-    tstr*:             c11_lua_get_arena_tstr_t, \
-    vstr*:             c11_lua_get_arena_vstr, \
-    _Bool*:              c11_lua_get_arena_bool, \
-    char*:               c11_lua_get_arena_char, \
-    signed char*:        c11_lua_get_arena_schar, \
-    unsigned char*:      c11_lua_get_arena_uchar, \
-    short*:              c11_lua_get_arena_short, \
-    unsigned short*:     c11_lua_get_arena_ushort, \
-    int*:                c11_lua_get_arena_int, \
-    unsigned int*:       c11_lua_get_arena_uint, \
-    long*:               c11_lua_get_arena_long, \
-    unsigned long*:      c11_lua_get_arena_ulong, \
-    long long*:          c11_lua_get_arena_llong, \
-    unsigned long long*: c11_lua_get_arena_ullong, \
-    float*:              c11_lua_get_arena_float, \
-    double*:             c11_lua_get_arena_double, \
-    const char**:        c11_lua_get_arena_str \
+    Replay(C11_LUA_BOOLEAN_TYPE, C11_LUA_ARENA_FIRST_ASSOC) \
+    Replay(C11_LUA_NUMERIC_TYPES, C11_LUA_ARENA_ASSOC) \
+    Replay(C11_LUA_STRING_TYPES, C11_LUA_ARENA_ASSOC) \
 )(L, idx, ptr, arena)
 
 /**
@@ -1112,53 +1100,15 @@ static inline void c11_lua_get_arena_vstr(lua_State* L, int idx, vstr* out, Memo
  *   C11_LUA_DEFINE_STRUCT_CLEANUP(Player, name, title, description)
  * @endcode
  */
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj_ptr, field) \
+#define C11_LUA_DEFINE_STRUCT_CLEANUP_FIELD(field, obj_ptr) \
     tstr_free((obj_ptr)->field); \
     (obj_ptr)->field = NULL;
 
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_1(S, f1) \
-    static inline void S##_cleanup(S* obj) { \
-        if (!obj) return; \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f1) \
-    }
-
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_2(S, f1, f2) \
-    static inline void S##_cleanup(S* obj) { \
-        if (!obj) return; \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f1) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f2) \
-    }
-
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_3(S, f1, f2, f3) \
-    static inline void S##_cleanup(S* obj) { \
-        if (!obj) return; \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f1) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f2) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f3) \
-    }
-
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_4(S, f1, f2, f3, f4) \
-    static inline void S##_cleanup(S* obj) { \
-        if (!obj) return; \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f1) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f2) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f3) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f4) \
-    }
-
-#define C11_LUA_DEFINE_STRUCT_CLEANUP_5(S, f1, f2, f3, f4, f5) \
-    static inline void S##_cleanup(S* obj) { \
-        if (!obj) return; \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f1) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f2) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f3) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f4) \
-        C11_LUA_DEFINE_STRUCT_CLEANUP_HELPER(obj, f5) \
-    }
-
-/* Dispatcher based on argument count */
 #define C11_LUA_DEFINE_STRUCT_CLEANUP(StructName, ...) \
-    C11_EXPAND(C11_CONCAT(C11_LUA_DEFINE_STRUCT_CLEANUP_, C11_COUNT_ARGS(__VA_ARGS__))(StructName, __VA_ARGS__))
+    static inline void StructName##_cleanup(StructName* obj) { \
+        if (!obj) return; \
+        CMETA_PP_FOR_EACH(C11_LUA_DEFINE_STRUCT_CLEANUP_FIELD, obj, __VA_ARGS__) \
+    }
 
 #ifdef __cplusplus
 }

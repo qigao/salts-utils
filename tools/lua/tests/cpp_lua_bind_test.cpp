@@ -19,6 +19,16 @@ static std::tuple<int, std::string> get_tuple_value() { return {7, "seven"}; }
 static std::pair<int, int> get_pair_value() { return {3, 4}; }
 static int overloaded_add(int a, int b) { return a + b; }
 static double overloaded_add(double a, double b) { return a + b; }
+static int bound_0() { return 0; }
+static int bound_1() { return 1; }
+static int bound_2() { return 2; }
+static int bound_3() { return 3; }
+static int bound_4() { return 4; }
+static int bound_5() { return 5; }
+static int bound_6() { return 6; }
+static int bound_7() { return 7; }
+static int bound_8() { return 8; }
+static int bound_9() { return 9; }
 
 struct counter {
   counter() = default;
@@ -57,6 +67,26 @@ struct reflected_vector {
 };
 
 CPP_LUA_REFLECT_WITH_NAME(reflected_vector, "vector", x, y)
+
+struct wide_reflected_record {
+  int field_0 = 0;
+  int field_1 = 1;
+  int field_2 = 2;
+  int field_3 = 3;
+  int field_4 = 4;
+  int field_5 = 5;
+  int field_6 = 6;
+  int field_7 = 7;
+  int field_8 = 8;
+  int field_9 = 9;
+  int field_10 = 10;
+  int field_11 = 11;
+  int field_12 = 12;
+};
+
+CPP_LUA_REFLECT(wide_reflected_record,
+                field_0, field_1, field_2, field_3, field_4, field_5, field_6,
+                field_7, field_8, field_9, field_10, field_11, field_12)
 
 struct reflected_base {
   int base_value = 5;
@@ -128,6 +158,19 @@ suite("cpp lua bind") {
     lua_pop(L, 1);
   }
 
+  it("binds ten functions through one declaration") {
+    CPP_LUA_BIND_FUNCTIONS(L,
+                           bound_0, bound_1, bound_2, bound_3, bound_4,
+                           bound_5, bound_6, bound_7, bound_8, bound_9);
+
+    check_equal(luaL_dostring(
+                    L,
+                    "assert(bound_0() + bound_1() + bound_2() + bound_3() + "
+                    "bound_4() + bound_5() + bound_6() + bound_7() + "
+                    "bound_8() + bound_9() == 45)"),
+                0);
+  }
+
   it("converts C++ exceptions into Lua errors") {
     CPP_LUA_BIND_FUNCTION(L, throwing);
 
@@ -194,6 +237,15 @@ suite("cpp lua bind") {
 
     check_within(loaded.x, 10.0f, 0.001f);
     check_within(loaded.y, 20.0f, 0.001f);
+  }
+
+  it("reflects more than twelve members") {
+    wide_reflected_record value;
+
+    cpp_lua_reflection::to_lua(L, value);
+    lua_setglobal(L, "wide");
+
+    check_equal(luaL_dostring(L, "assert(wide.field_12 == 12)"), 0);
   }
 
   it("binds all reflected fields as Lua properties") {

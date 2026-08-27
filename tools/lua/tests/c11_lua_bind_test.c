@@ -55,6 +55,18 @@ C11_LUA_VOID_FUNCTION(typed_capture9,
                       int, a6, int, a7, int, a8, int, a9)
 C11_LUA_COROUTINE(typed_fetch)
 
+typedef struct cleanup_record {
+    tstr first;
+    tstr second;
+    tstr third;
+    tstr fourth;
+    tstr fifth;
+    tstr sixth;
+} cleanup_record;
+
+C11_LUA_DEFINE_STRUCT_CLEANUP(cleanup_record,
+                              first, second, third, fourth, fifth, sixth)
+
 suite("c11 lua bind") {
     static lua_State* L;
 
@@ -149,6 +161,26 @@ suite("c11 lua bind") {
         check_equal(tstr_len(owned), sizeof(payload));
         check_equal(owned, payload, sizeof(payload));
         tstr_free(owned);
+    }
+
+    it("cleans every owned string field in a wide record") {
+        cleanup_record value = {
+            tstr_dup("first"),
+            tstr_dup("second"),
+            tstr_dup("third"),
+            tstr_dup("fourth"),
+            tstr_dup("fifth"),
+            tstr_dup("sixth")
+        };
+
+        cleanup_record_cleanup(&value);
+
+        check_null(value.first);
+        check_null(value.second);
+        check_null(value.third);
+        check_null(value.fourth);
+        check_null(value.fifth);
+        check_null(value.sixth);
     }
 
     it("adapts ordinary typed C functions to Lua") {
