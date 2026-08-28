@@ -308,7 +308,7 @@ set_target_properties(test_tbe_cbind_sidecar_static PROPERTIES FOLDER "tbe/tbe_c
 
 cmake_add_test(test_tbe_cbind_sidecar
   SOURCES test_cbind_sidecar.c
-  LIBS test_tbe_cbind_sidecar_static json_parser TurboUtils::TinyTest
+  LIBS test_tbe_cbind_sidecar_static TurboUtils::JsonParser TurboUtils::TinyTest
   INCLUDES "${TBE_CBIND_SIDECAR_GENERATED_DIR}"
   FOLDER "tbe/tbe_compiler")
 tbe_copy_turbonet_runtime_deps(test_tbe_cbind_sidecar WITH_DATABIND)

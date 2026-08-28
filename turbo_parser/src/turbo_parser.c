@@ -14,7 +14,6 @@
 #include "cyaml_json_adapter.h"
 #include "datetime_parser.h"
 #include "dotenv.h"
-#include "dotenv_environment_internal.h"
 #include "dsv_filter.h"
 #include "frame_parser.h" // for TLV
 #include "ini_parser.h"
@@ -2875,7 +2874,7 @@ static void turbo_cmd_sync_environment_node(turbo_cmd_node_t *node) {
   if (!node) return;
   for (index = 0; index < node->optional_count; ++index) {
     if (node->optional_args[index].env_var)
-      (void)dotenv_environment_sync_crt(node->optional_args[index].env_var);
+      (void)dotenv_sync_environment(node->optional_args[index].env_var);
   }
   for (index = 0; index < node->child_count; ++index)
     turbo_cmd_sync_environment_node(node->children[index]);

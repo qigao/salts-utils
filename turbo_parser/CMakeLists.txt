@@ -8,27 +8,26 @@ target_include_directories(
   turbo_parser
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
           $<INSTALL_INTERFACE:include>
-  PRIVATE ${PROJECT_SOURCE_DIR}/parser/dotenv_parser/src
   )
 
 
 target_link_libraries(
   turbo_parser
   PUBLIC TurboUtils::Core TurboUtils::CSerde
-   PRIVATE csv_parser
-          ini_parser
-          json_parser
-          uri_parser
-          tlv_parser
-          ltv_parser
-          modbus_parser
-          soa_parser
-          dotenv_parser
-          cmd_parser
-          toon
-          toml_parser
-          datetime_parser
-          cyaml_json_adapter
+   PRIVATE TurboUtils::CsvParser
+          TurboUtils::IniParser
+          TurboUtils::JsonParser
+          TurboUtils::UriParser
+          TurboUtils::TLVParser
+          TurboUtils::LtvParser
+          TurboUtils::ModbusParser
+          TurboUtils::SoaParser
+          TurboUtils::DotEnvParser
+          TurboUtils::CmdParser
+          TurboUtils::Toon
+          TurboUtils::TomlParser
+          TurboUtils::DateTimeParser
+          TurboUtils::CYamlJsonAdapter
           cxml)
 
 target_compile_definitions(turbo_parser PRIVATE TURBO_PARSER_BUILD_DLL)
