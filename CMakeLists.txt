@@ -8,7 +8,7 @@ endif()
 
 project(
   TurboParser
-  VERSION 1.0.0
+  VERSION 2.0.0
   DESCRIPTION "Parsing and query runtime library for C and C++"
   HOMEPAGE_URL "https://github.com/qigao/turbo-parser"
   LANGUAGES C CXX)
@@ -157,7 +157,7 @@ configure_package_config_file(
 write_basic_package_version_file(
   "${CMAKE_BINARY_DIR}/TurboParserConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
-  COMPATIBILITY AnyNewerVersion)
+  COMPATIBILITY SameMajorVersion)
 
 # Install the config files
 install(FILES "${CMAKE_BINARY_DIR}/TurboParserConfig.cmake"

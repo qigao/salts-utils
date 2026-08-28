@@ -66,6 +66,11 @@ JSONPath contains 扫描通过已安装的 `turbo_simd_scan.h` 调用
 
 ## 构建与发布
 
+本次删除跨包 reader、binding bridge、相关 target 与生成器选项属于公开 package API
+破坏性变更，因此 TurboParser 发布版本升为 2.0.0，package version compatibility 限制为
+同一 major version。major 升级必须安装到空 staging prefix，再以原子目录替换或由包管理器
+卸载旧版本；CMake 的增量 install 不会删除旧版本留下的头文件、库或模板。
+
 配置阶段执行 `find_package(TurboUtils CONFIG REQUIRED)`，缺少
 `TurboUtils::Core` 时立即失败。启用测试时还要求 `TurboUtils::TinyTest`。安装包通过
 `TurboParserConfig.cmake` 调用 `find_dependency(TurboUtils CONFIG)`，因此消费方只需把
