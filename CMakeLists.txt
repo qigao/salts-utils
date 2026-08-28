@@ -122,11 +122,50 @@ add_subdirectory(tools)
 include(FindTools)
 add_subdirectory(vendor)
 add_subdirectory(turbo_parser)
+if(TURBO_ENABLE_CAPTURE)
+  add_subdirectory(capture)
+endif()
+add_subdirectory(turbo_serial)
 add_subdirectory(cron)
 add_subdirectory(mustache)
 add_subdirectory(tools/junit_to_html)
 add_subdirectory(tbe)
 add_subdirectory(tools/lua)
+
+set(verify_installed_device_dependencies
+    turbo_parser
+    turbo_serial
+    turbo_cron
+    mustache
+    tbe_schema
+    tbe_cbind
+    data_bind
+    tbe_compiler)
+set(verify_capture_windows_runtime OFF)
+if(TURBO_ENABLE_CAPTURE)
+  list(APPEND verify_installed_device_dependencies turbo_capture)
+  if(WIN32)
+    set(verify_capture_windows_runtime ON)
+  endif()
+endif()
+
+add_custom_target(
+  verify_installed_device_components
+  COMMAND
+    ${CMAKE_COMMAND}
+    -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -DBUILD_DIR=${CMAKE_BINARY_DIR}
+    -DCMAKE_COMMAND_PATH=${CMAKE_COMMAND}
+    -DBUILD_CONFIG=$<CONFIG>
+    -DBUILD_GENERATOR=${CMAKE_GENERATOR}
+    -DTURBOUTILS_ROOT=$ENV{TURBOUTILS_ROOT}
+    -DEXPECT_CAPTURE=${TURBO_ENABLE_CAPTURE}
+    -DEXPECT_CAPTURE_WINDOWS_RUNTIME=${verify_capture_windows_runtime}
+    -P ${CMAKE_SOURCE_DIR}/cmake/VerifyInstalledDeviceComponents.cmake
+  DEPENDS ${verify_installed_device_dependencies}
+  VERBATIM)
+set_target_properties(verify_installed_device_components
+                      PROPERTIES FOLDER "cmake")
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
