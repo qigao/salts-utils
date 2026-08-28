@@ -42,49 +42,6 @@ tbe_compiler <schema_file> [options]
   - The generated header exposes strong record types plus binary/JSON/YAML/CSV/XML APIs
   - Example: `--output order.h --source-output order.c`
 
-- `--cbind-output <file>`
-  - With the built-in C generator, emits an immutable CMeta/CBind semantic sidecar `.c` file
-  - Requires `--output`; `--source-output` is optional, while custom templates and non-C languages are rejected
-  - Its path must differ from every other output path that is present
-  - The generated header declares each record's semantic descriptor accessor and CSerde decode façade
-  - The generated source contains static descriptors only; the caller owns initialized decoded records
-  - The sidecar schema accepts only `int32`, `int64`, `uint64`, `float`, `double`, owning
-    `string`, and nested composite/group/message records; aliases, optional fields, and other
-    storage forms fail before any output file is written
-  - Independent example: `--output order.h --cbind-output order_cbind.c`
-  - Combined compatibility example: `--output order.h --source-output order.c --cbind-output order_cbind.c`
-
-  独立的 build-time direct CBind 调用如下；它不会生成 typed source，生成头也不会 include
-  `tbe_typed.h` 或声明 DataBind API：
-
-  ```powershell
-  tbe_compiler order.schema --lang c `
-    --output generated/order.h `
-    --cbind-output generated/order_cbind.c
-  ```
-
-  若同一个构建还需要 DataBind typed conversion，可保留既有 combined 调用；三个路径必须
-  不同，typed source 与 CBind sidecar 是并列产物：
-
-  ```powershell
-  tbe_compiler order.schema --lang c `
-    --output generated/order.h `
-    --source-output generated/order.c `
-    --cbind-output generated/order_cbind.c
-  ```
-
-  sidecar 中的 `Type_cbind_data()` 返回 immutable CMeta semantic descriptor，
-  `Type_from_cserde(context, reader, object, error)` 将 format-neutral CSerde token decode 到
-  semantic-zero owning object。独立模式以 `{0}` 初始化；成功后调用方释放各 owning native
-  field（例如对 generated `string` member 调用 `tstr_freep()`）并恢复整棵对象为 zero，失败
-  时 CBind 已回滚为 zero。Combined 模式也可使用 typed source 提供的 `Type_init()` /
-  `Type_clear()`。该 descriptor 不含 `TbeTypedType` 的 TBE wire/layout metadata。
-  `[name]` 选择 CSerde map key，`[c]` 只选择 C member offset。CBind v1 仅接受
-  int32/int64/uint64、float、double、owning string 与嵌套 record；alias、optional、bool、
-  其他整数、enum、uuid、bytes、containers 与 unions 在写 output 前 fail fast。生成的
-  int64 mapping 断言 `int64_t` 与 `long` 的大小和对齐一致，因此 LLP64 Windows 上会编译
-  失败；以目标 ABI 编译 generated sidecar（例如 MSVC Release CI）验证这一防线。
-
 - `--guest-output <file>` or `-g <file>`
   - With the built-in C generator, emits a Wasm-friendly guest adapter `.c` file
   - Requires `--output`; custom templates and non-C languages are rejected
@@ -373,17 +330,11 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
   this companion source. Generated `*_to_bin_into` and schema-codec `text_to_binary_into`
   functions never allocate their output buffer; insufficient capacity is reported with the
   required size in `out_len`.
-- `--cbind-output` is an opt-in semantic sidecar. When requested, it adds CBind declarations to
-  the generated header. Without `--source-output`, that header contains the generated native
-  records and CBind API but no `tbe_typed.h` include, `TbeTypedType`, or DataBind declarations.
-  Combined `--source-output + --cbind-output` generation remains supported; default generation
-  remains CBind-free.
 - `--guest-output` adds allocation-free adapters over the zero-copy wire views. It does not
   embed JSON/YAML/CSV/XML parsers into Wasm and does not require `--source-output`.
 - C++, Go, Rust, Python, and TypeScript outputs currently generate schema type definitions, not complete wire codecs.
-- The compiler is a build-time tool. A typed `--source-output` links DataBind; an independent
-  `--cbind-output` sidecar declares `TurboUtils::Core` followed by `TurboUtils::CBind`. Core owns
-  the generated owning-string adapter symbols; neither dependency introduces DataBind.
-  A deployed process does not need the compiler.
+- The compiler is a build-time tool. Generated C links DataBind, but a deployed
+  RulesForge/TurboScript process loads only DataBind and any prebuilt schema
+  libraries; it does not need an external C compiler.
 - Dynamic schema hosts may skip code generation and use `DataBindObject`. Existing
   C structs use `TBE_TYPED_*` macro descriptors and also do not invoke the compiler.

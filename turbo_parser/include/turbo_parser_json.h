@@ -1,7 +1,6 @@
 #ifndef TURBO_PARSER_JSON_H
 #define TURBO_PARSER_JSON_H
 #include <turbo_parser_common.h>
-#include <cserde/reader.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,55 +65,6 @@ typedef struct turbo_json_path_stream_handler_s {
  * @return 0 on success, error code otherwise.
  */
 TURBO_PARSER_API int turbo_parse_json(const uint8_t *data, size_t len, turbo_json_doc_t **out);
-
-/**
- * @brief Create a bounded CSerde pull reader over a parsed JSON document.
- *
- * The reader borrows root and never modifies or frees it. The document must
- * remain alive and unmodified while reading. STRING tokens and object keys are
- * stable borrowed slices whose lifetime ends when root is modified or freed,
- * not when the reader is destroyed. The reader is single-threaded and emits
- * one document in object insertion order.
- *
- * JSON numbers without a decimal point or exponent emit CSERDE_SINT when
- * negative and CSERDE_UINT otherwise; decimal or exponent forms emit
- * CSERDE_FLOAT. Builder values without retained source text use the same %.17g
- * representation as turbo_json_create_number(), keeping equivalent double builder
- * paths consistent.
- *
- * @param root Borrowed JSON document; must not be NULL.
- * @param max_depth Maximum simultaneously open array/object count. Zero accepts
- * scalar roots; exceeding the bound returns CSERDE_LIMIT_EXCEEDED from the
- * reader and latches that failure.
- * @return Owned CSerde reader, or NULL for invalid input, allocation-size
- * overflow, or allocation failure. Release it with
- * turbo_json_cserde_reader_destroy().
- *
- * @note Integers outside int64_t/uint64_t and non-finite floating values return
- * CSERDE_VALUE_OUT_OF_RANGE. Invalid DOM state or number formatting failure
- * returns CSERDE_SOURCE_ERROR. Any provider failure is latched by the CSerde
- * reader core and returned by subsequent reads.
- *
- * @code
- * turbo_json_doc_t *root = NULL;
- * turbo_parse_json((const uint8_t *)"{\"id\":7}", 8, &root);
- * cserde_reader *reader = turbo_json_cserde_reader_create(root, 16);
- * cserde_token token;
- * while (cserde_reader_next(reader, &token) == CSERDE_OK) {
- *   consume_token(&token);
- * }
- * turbo_json_cserde_reader_destroy(reader);
- * turbo_free_json(&root);
- * @endcode
- */
-TURBO_PARSER_API cserde_reader *
-turbo_json_cserde_reader_create(const turbo_json_doc_t *root, size_t max_depth);
-
-/**
- * @brief Destroy a JSON CSerde reader without freeing its borrowed document.
- * @param reader Reader returned by turbo_json_cserde_reader_create(); NULL is accepted.
- */
-TURBO_PARSER_API void turbo_json_cserde_reader_destroy(cserde_reader *reader);
 
 /**
  * @brief Parse one complete JSON document with SAX callbacks.
