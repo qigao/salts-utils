@@ -13,7 +13,7 @@ target_include_directories(
 
 target_link_libraries(
   turbo_parser
-  PUBLIC TurboUtils::Core TurboUtils::CSerde
+  PUBLIC TurboUtils::Core
    PRIVATE TurboUtils::CsvParser
           TurboUtils::IniParser
           TurboUtils::JsonParser
@@ -54,12 +54,6 @@ cmake_add_test(test_turbo_parser_bdd
   SOURCES test/test_turbo_parser_bdd.c
   LIBS turbo_parser TurboUtils::TinyTest
   FOLDER turbo_parser)
-if(BUILD_TESTING)
-  cmake_add_test(test_turbo_parser_json_cserde
-    SOURCES test/test_turbo_parser_json_cserde.c
-    LIBS turbo_parser TurboUtils::CBind TurboUtils::TinyTest
-    FOLDER turbo_parser)
-endif()
 
 if(BUILD_EXAMPLES)
   add_subdirectory(example)

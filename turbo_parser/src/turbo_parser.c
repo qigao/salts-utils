@@ -17,7 +17,6 @@
 #include "dsv_filter.h"
 #include "frame_parser.h" // for TLV
 #include "ini_parser.h"
-#include "json_cserde_reader.h"
 #include "json_parser.h"
 #include "ltv_parser.h"
 #include "modbus_parser.h"
@@ -108,15 +107,6 @@ int turbo_parse_json(const uint8_t *data, size_t len, turbo_json_doc_t **out) {
   if (!val) return -1;
   *out = val;
   return 0;
-}
-
-cserde_reader *turbo_json_cserde_reader_create(const turbo_json_doc_t *root,
-                                                size_t max_depth) {
-  return json_cserde_reader_create(root, max_depth);
-}
-
-void turbo_json_cserde_reader_destroy(cserde_reader *reader) {
-  json_cserde_reader_destroy(reader);
 }
 
 static json_sax_handler_t turbo_json_sax_handler_to_raw(const turbo_json_sax_handler_t *handler) {

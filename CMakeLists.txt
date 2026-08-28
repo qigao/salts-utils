@@ -8,7 +8,7 @@ endif()
 
 project(
   TurboParser
-  VERSION 1.0.0
+  VERSION 2.0.0
   DESCRIPTION "Parsing and query runtime library for C and C++"
   HOMEPAGE_URL "https://github.com/qigao/turbo-parser"
   LANGUAGES C CXX)
@@ -66,14 +66,8 @@ endif()
 if(NOT TARGET TurboUtils::STL)
   message(FATAL_ERROR "TurboUtils::STL is required by TurboParser")
 endif()
-if(NOT TARGET TurboUtils::CSerde)
-  message(FATAL_ERROR "TurboUtils::CSerde is required by TurboParser")
-endif()
 if(BUILD_TESTING AND NOT TARGET TurboUtils::TinyTest)
   message(FATAL_ERROR "TurboUtils::TinyTest is required when TurboParser tests are enabled")
-endif()
-if(NOT TARGET TurboUtils::CBind)
-  message(FATAL_ERROR "TurboUtils::CBind is required by TurboParser::TbeCBind")
 endif()
 
 set(TURBOPARSER_REQUIRED_PARSER_TARGETS
@@ -101,22 +95,6 @@ foreach(parser_target IN LISTS TURBOPARSER_REQUIRED_PARSER_TARGETS)
   endif()
 endforeach()
 
-include(TurboUtilsCBindV2Probe)
-turboparser_require_turboutils_cbind_v2()
-
-if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
-  add_test(NAME test_turboutils_cbind_v2_dependency_floor
-    COMMAND ${CMAKE_COMMAND}
-      -DTP_MAIN_BINARY_DIR=${CMAKE_BINARY_DIR}
-      -DTP_FIXTURE_SOURCE_DIR=${CMAKE_SOURCE_DIR}/cmake/test/turboutils_cbind_v2_missing_surface
-      -DTP_PROBE_MODULE=${CMAKE_SOURCE_DIR}/cmake/TurboUtilsCBindV2Probe.cmake
-      -DTP_GENERATOR=${CMAKE_GENERATOR}
-      -P ${CMAKE_SOURCE_DIR}/cmake/test/test_turboutils_cbind_v2_dependency_floor.cmake)
-  set_tests_properties(test_turboutils_cbind_v2_dependency_floor PROPERTIES
-    LABELS "tbe_cbind;dependency-negative"
-    RUN_SERIAL TRUE)
-endif()
-
 # Additional components
 add_subdirectory(tools)
 include(FindTools)
@@ -138,7 +116,6 @@ set(verify_installed_device_dependencies
     turbo_cron
     mustache
     tbe_schema
-    tbe_cbind
     data_bind
     tbe_compiler)
 set(verify_capture_windows_runtime OFF)
@@ -180,7 +157,7 @@ configure_package_config_file(
 write_basic_package_version_file(
   "${CMAKE_BINARY_DIR}/TurboParserConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
-  COMPATIBILITY AnyNewerVersion)
+  COMPATIBILITY SameMajorVersion)
 
 # Install the config files
 install(FILES "${CMAKE_BINARY_DIR}/TurboParserConfig.cmake"
