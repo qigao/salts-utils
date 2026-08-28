@@ -76,6 +76,31 @@ if(NOT TARGET TurboUtils::CBind)
   message(FATAL_ERROR "TurboUtils::CBind is required by TurboParser::TbeCBind")
 endif()
 
+set(TURBOPARSER_REQUIRED_PARSER_TARGETS
+  QueryVM
+  IniParser
+  JsonParser
+  CsvParser
+  UriParser
+  TLVParser
+  LtvParser
+  ModbusParser
+  SoaParser
+  DotEnvParser
+  CmdParser
+  Toon
+  TomlParser
+  DateTimeParser
+  CYaml
+  CYamlJsonAdapter
+  Selector)
+foreach(parser_target IN LISTS TURBOPARSER_REQUIRED_PARSER_TARGETS)
+  if(NOT TARGET TurboUtils::${parser_target})
+    message(FATAL_ERROR
+      "TurboUtils::${parser_target} is required by TurboParser")
+  endif()
+endforeach()
+
 include(TurboUtilsCBindV2Probe)
 turboparser_require_turboutils_cbind_v2()
 
@@ -95,9 +120,7 @@ endif()
 # Additional components
 add_subdirectory(tools)
 include(FindTools)
-add_subdirectory(parser/query_vm)
 add_subdirectory(vendor)
-add_subdirectory(parser)
 add_subdirectory(turbo_parser)
 add_subdirectory(cron)
 add_subdirectory(mustache)
