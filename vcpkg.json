@@ -23,6 +23,15 @@
     },
     "lua"
   ],
+  "features": {
+    "capture": {
+      "description": "Native audio, video, and screen capture support",
+      "dependencies": [
+        "libyuv",
+        "miniaudio"
+      ]
+    }
+  },
   "overrides": [
     {
       "name": "sqlite3",

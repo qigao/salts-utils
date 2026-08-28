@@ -17,4 +17,7 @@ option(BUILD_TESTS "Build test suite" ON)
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
 
+option(TURBO_ENABLE_CAPTURE
+       "Build the optional native audio/video/screen capture component" OFF)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

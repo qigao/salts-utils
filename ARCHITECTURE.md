@@ -24,12 +24,19 @@ TurboParser 拥有并导出：
 - `TurboParser::TbeSchema`（兼容别名 `TurboParser::SchemaBE`）
 - `TurboParser::TbeCBind`
 - `TurboParser::DataBind`
+- `TurboParser::Serial`
+- 可选的 `TurboParser::Capture`
 
 TurboUtils 拥有并安装 QueryVM、JSON、YAML、CSV、INI、URI、TLV/LTV、Modbus、
 SOA、DotEnv、Cmd、TOON、TOML、DateTime 与 Selector 等低层 parser targets；
 其 namespace 统一为 `TurboUtils::*`。JSON 的 CSerde reader 与 CYAML/TOON 的 JSON
 adapter 随对应 parser 安装，CBind/CSerde kernel 仍由 TurboUtils 持有。
 第三方 cxml 与 Monocypher 由 TurboParser 私有持有，不向使用者暴露其 target 或生命周期。
+
+设备采集与串口实现也由 TurboParser 单独持有。迁移只改变源码和 CMake target 的归属：
+`turbo_capture.h`、`turbo_serial.h`、动态库文件名、C ABI、错误码和对象生命周期不变。
+Capture frame 仍是仅在同步 callback 返回前有效的 borrowed view；Serial handle 仍拥有
+RX/TX SPSC buffer，producer/consumer 拓扑与可用容量 `configured_size - 1` 不变。
 
 TBE schema、TbeCBind 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
 不会被 DataBind 或 TbeCBind 在运行时调用。DataBind 的公共头文件包含 `turbo_parser.h`，因此
@@ -97,6 +104,11 @@ JSONPath contains 扫描通过已安装的 `turbo_simd_scan.h` 调用
 `TurboParserConfig.cmake` 调用 `find_dependency(TurboUtils CONFIG)`，因此消费方只需把
 两个安装前缀加入 `CMAKE_PREFIX_PATH`。
 
+Serial 默认构建并导出 `TurboParser::Serial`。Capture 默认关闭；启用时同时设置
+`TURBO_ENABLE_CAPTURE=ON` 与 vcpkg `capture` feature，安装包才导出
+`TurboParser::Capture`。安装态消费测试会分别验证 feature-off 不导出 Capture、
+feature-on 导出 Capture，并运行 Serial/Capture 的最小 C 消费端。
+
 Windows 测试进程通过 preset 的 `PATH` 查找 TurboUtils DLL；构建系统不复制外部 DLL。
 Linux preset 对应设置 `LD_LIBRARY_PATH`。
 
@@ -107,13 +119,16 @@ Linux preset 对应设置 `LD_LIBRARY_PATH`。
 - 可维护性：TurboUtils API 是基础能力的唯一事实源；解析器 target 使用独立命名空间。
 - 兼容性：C API 保持稳定；CMake 使用者需把 Parser、Cron、Mustache、TBE 和 DataBind
   target 从 `TurboUtils::*` 迁移到 `TurboParser::*`，并改为
-  `find_package(TurboParser CONFIG REQUIRED)`。
+  `find_package(TurboParser CONFIG REQUIRED)`。Capture 与 Serial 使用者分别从
+  `TurboUtils::Capture`、`TurboUtils::turbo_serial` 迁移到
+  `TurboParser::Capture`、`TurboParser::Serial`。
 
 ## 迁移与回滚
 
-迁移顺序为：先安装 TurboUtils，再配置、构建和安装 TurboParser，最后迁移消费方的
-CMake target。发布前至少运行全量 CTest，并用 staging prefix 检查导出 target。
+迁移顺序为：先发布包含 Capture/Serial 的 TurboParser，再迁移消费方的 CMake target，
+最后发布移除旧 targets 的 TurboUtils。发布前至少运行全量 CTest，并用 staging prefix
+检查两个包的导出 target。
 
-若独立发布出现阻断，可回滚消费方的 CMake target 到已发布的
-`TurboUtils::Parser`；数据和 C API 无需迁移。不得通过重新引入 TurboUtils 源码目录或
-复制 DLL 的方式绕过 package 依赖。
+若独立发布出现阻断，在 TurboUtils 清理版本发布前可回滚消费方的 CMake target；数据和
+C API 无需迁移。TurboUtils 清理版本发布后应回滚整组发布，而不是让两个仓库长期同时
+导出同一实现。不得通过重新引入 TurboUtils 源码目录或复制 DLL 的方式绕过 package 依赖。
