@@ -1,11 +1,9 @@
 cmake_add_executable(junit_to_html
   SOURCES junit_to_html.c
-  LIBS TurboUtils::Core TurboParser::Mustache TurboParser::JsonParser
-       TurboParser::CmdParser cxml
+  LIBS TurboUtils::Core TurboParser::Mustache TurboUtils::JsonParser
+       TurboUtils::CmdParser cxml
   INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
            ${CMAKE_SOURCE_DIR}/mustache/include
-           ${CMAKE_SOURCE_DIR}/parser/json_parser/include
-           ${CMAKE_SOURCE_DIR}/parser/cmd_parser/include
            ${CMAKE_SOURCE_DIR}/vendor/cxml/include
   FOLDER "tools")
 

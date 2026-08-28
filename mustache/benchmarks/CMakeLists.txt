@@ -1,4 +1,4 @@
-set(BENCHMARK_LIBS TurboParser::Mustache TurboParser::JsonParser TurboUtils::TinyTest)
+set(BENCHMARK_LIBS TurboParser::Mustache TurboUtils::JsonParser TurboUtils::TinyTest)
 set(BENCHMARK_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)

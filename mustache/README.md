@@ -7,7 +7,7 @@ compiled templates, callback-based output, and TurboUtils arena support.
 
 - Mustache variables, sections, inverted sections, comments, delimiter changes,
   partials, dotted names, and optional lambdas
-- JSON integration through `TurboParser::JsonParser`
+- JSON integration through the installed `TurboUtils::JsonParser`
 - XML integration through cxml
 - HTML-escaped, unescaped, custom streaming, and arena-backed output
 - Immutable compiled templates that can be reused across renders
@@ -16,13 +16,13 @@ compiled templates, callback-based output, and TurboUtils arena support.
 
 ## Build and Link
 
-Inside the TurboUtils build, link the Mustache target and the parser used by the
+Inside the TurboParser build, link the Mustache target and the parser used by the
 application:
 
 ```cmake
 target_link_libraries(json_app PRIVATE
   TurboParser::Mustache
-  TurboParser::JsonParser)
+  TurboUtils::JsonParser)
 
 target_link_libraries(xml_app PRIVATE
   TurboParser::Mustache
@@ -33,6 +33,7 @@ Installed consumers can obtain the exported TurboUtils targets with:
 
 ```cmake
 find_package(TurboParser CONFIG REQUIRED)
+find_package(TurboUtils CONFIG REQUIRED)
 ```
 
 ## Quick Start: JSON to String

@@ -1,25 +1,23 @@
-# TurboParser 依赖边界
+# TurboParser / TurboUtils Parser 依赖边界
 
 ## 背景
 
-TurboParser 从 TurboUtils 的 `parser/` 子树独立出来。解析器继续复用
-TurboUtils 的错误、字符串、容器、文件、内存映射、正则和平台能力，但
-TurboUtils 不反向依赖 TurboParser。此边界用于避免两个安装包导出同名 target，
-并允许解析器和基础工具库分别发布。
+低层 parser 已迁入 TurboUtils 的 `parser/` 子树，并作为可安装组件导出。
+TurboParser 保留统一 facade、Mustache、Cron、TBE、DataBind、代码生成器与私有
+`vendor/cxml`。TurboParser 只消费已安装的 TurboUtils 公共头和 CMake targets，
+不访问 TurboUtils parser 的源码目录或私有头。
 
 ## 选择
 
 依赖方向固定为：
 
 ```text
-application -> TurboParser -> TurboUtils::Core
-                         \-> TurboUtils::TinyTest (tests only)
+application -> TurboParser facade -> installed TurboUtils parser targets
+                             \-----> TurboUtils::Core / CSerde / CBind
 ```
 
 TurboParser 拥有并导出：
 
-- `TurboParser::QueryVM`
-- `TurboParser::CYaml`
 - `TurboParser::Parser`
 - `TurboParser::Cron`
 - `TurboParser::Mustache`
@@ -27,8 +25,10 @@ TurboParser 拥有并导出：
 - `TurboParser::TbeCBind`
 - `TurboParser::DataBind`
 
-其他格式解析器当前作为 `TurboParser::Parser`、Mustache 或 DataBind 的私有静态组成部分。它们可以在
-构建树中通过 `TurboParser::*Parser` alias 单独测试，但不构成已安装的公共组件。
+TurboUtils 拥有并安装 QueryVM、JSON、YAML、CSV、INI、URI、TLV/LTV、Modbus、
+SOA、DotEnv、Cmd、TOON、TOML、DateTime 与 Selector 等低层 parser targets；
+其 namespace 统一为 `TurboUtils::*`。JSON 的 CSerde reader 与 CYAML/TOON 的 JSON
+adapter 随对应 parser 安装，CBind/CSerde kernel 仍由 TurboUtils 持有。
 第三方 cxml 与 Monocypher 由 TurboParser 私有持有，不向使用者暴露其 target 或生命周期。
 
 TBE schema、TbeCBind 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
@@ -73,12 +73,12 @@ CMeta descriptor；schema-only 请求不能安全推出 C ABI，也不会转为 
 
 ## 候选方案
 
-1. 继续把解析器留在 TurboUtils：无需迁移，但基础工具包必须携带全部格式解析器，
-   也无法独立演进查询运行时。
+1. 解析器由 TurboParser 源码树私有持有：facade 易于构建，但其他消费者无法通过
+   已安装 SDK 复用格式解析器，并会诱发跨仓源码 include。
 2. TurboParser 复制 TurboUtils 基础实现：构建独立，但产生错误码、容器和正则的
    双重事实源，修复和 ABI 容易分叉。
-3. TurboParser 单向依赖 TurboUtils：需要独立 package/export 配置，但保留基础能力
-   的唯一事实源。本仓库采用此方案。
+3. TurboUtils 安装 parser，TurboParser 作为 facade 单向消费：增加 TurboUtils SDK
+   的组件数量，但形成唯一实现与可独立复用的公共边界。本仓库采用此方案。
 
 ## 接口、所有权与错误语义
 

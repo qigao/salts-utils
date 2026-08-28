@@ -130,7 +130,7 @@ include(CheckLibraryExists)
 check_library_exists(m fmax "" LIBM_EXISTS)
 
 target_include_directories(cxml PUBLIC include)
-target_link_libraries(cxml PRIVATE TurboUtils::Core PUBLIC TurboParser::QueryVM)
+target_link_libraries(cxml PRIVATE TurboUtils::Core PUBLIC TurboUtils::QueryVM)
 target_compile_options(cxml PRIVATE ${CXML_WARN_FLAGS})
 target_compile_definitions(cxml PUBLIC ${CXML_BUILD_OPTIONS})
 
