@@ -496,72 +496,95 @@ static const char *database_enum_value(const Node *enum_node, const char *member
   return NULL;
 }
 
-static int database_append_integer_default(database_string_builder_t *constraints,
-                                           const char *value, database_integer_kind_t integer_kind) {
+static tbe_database_schema_status_t database_append_integer_default(
+    database_string_builder_t *constraints, const char *value, database_integer_kind_t integer_kind) {
   char normalized[32];
 
   if (database_integer_is_signed(integer_kind)) {
     long long parsed;
-    if (!database_parse_signed_default(value, integer_kind, &parsed)) return 0;
+    if (!database_parse_signed_default(value, integer_kind, &parsed))
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
     snprintf(normalized, sizeof(normalized), "%lld", parsed);
   } else {
     unsigned long long parsed;
-    if (!database_parse_unsigned_default(value, integer_kind, &parsed)) return 0;
+    if (!database_parse_unsigned_default(value, integer_kind, &parsed))
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
     snprintf(normalized, sizeof(normalized), "%llu", parsed);
   }
-  return database_string_builder_append_token(constraints, "DEFAULT") &&
-         database_string_builder_append_token(constraints, normalized);
+  if (!database_string_builder_append_token(constraints, "DEFAULT") ||
+      !database_string_builder_append_token(constraints, normalized))
+    return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
 }
 
-static int database_append_default(database_string_builder_t *constraints, const Node *schema_root,
-                                   const Node *field, tbe_database_dialect_t dialect,
-                                   database_integer_kind_t integer_kind, int is_bool) {
+static tbe_database_schema_status_t database_append_default(
+    database_string_builder_t *constraints, const Node *schema_root, const Node *field,
+    tbe_database_dialect_t dialect, database_integer_kind_t integer_kind, int is_bool) {
   const char *type = database_string_value(field, "type");
   const char *value = database_string_value(field, "default_value");
   Node *enum_node;
   database_string_builder_t literal = {0};
   const char *cursor;
-  int result = 0;
+  tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
 
-  if (!database_has_child(field, "has_default")) return 1;
-  if (!type || !value) return 0;
+  if (!database_has_child(field, "has_default")) return TBE_DATABASE_SCHEMA_STATUS_OK;
+  if (!type || !value) return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
   enum_node = database_find_enum(schema_root, type);
   if (enum_node) {
     const char *enum_value = database_enum_value(enum_node, value);
-    if (!enum_value) return 0;
-    result = database_append_integer_default(constraints, enum_value, integer_kind);
+    if (!enum_value) return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+    status = database_append_integer_default(constraints, enum_value, integer_kind);
   } else if (is_bool) {
     const char *sql_bool;
-    if (strcmp(value, "true") != 0 && strcmp(value, "false") != 0) return 0;
+    if (strcmp(value, "true") != 0 && strcmp(value, "false") != 0)
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
     sql_bool = dialect == TBE_DATABASE_DIALECT_SQLITE
                    ? (strcmp(value, "true") == 0 ? "1" : "0")
                    : (strcmp(value, "true") == 0 ? "TRUE" : "FALSE");
-    result = database_string_builder_append_token(constraints, "DEFAULT") &&
-             database_string_builder_append_token(constraints, sql_bool);
+    status = database_string_builder_append_token(constraints, "DEFAULT") &&
+                     database_string_builder_append_token(constraints, sql_bool)
+                 ? TBE_DATABASE_SCHEMA_STATUS_OK
+                 : TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
   } else if (integer_kind != DATABASE_INTEGER_NONE) {
-    result = database_append_integer_default(constraints, value, integer_kind);
+    status = database_append_integer_default(constraints, value, integer_kind);
   } else if (strcmp(type, "float") == 0 || strcmp(type, "f32") == 0 ||
              strcmp(type, "double") == 0 || strcmp(type, "f64") == 0) {
     if (!database_parse_float_default(value, strcmp(type, "float") == 0 || strcmp(type, "f32") == 0))
-      return 0;
-    result = database_string_builder_append_token(constraints, "DEFAULT") &&
-             database_string_builder_append_token(constraints, value);
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+    status = database_string_builder_append_token(constraints, "DEFAULT") &&
+                     database_string_builder_append_token(constraints, value)
+                 ? TBE_DATABASE_SCHEMA_STATUS_OK
+                 : TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
   } else if (strcmp(type, "string") == 0) {
-    if (!database_string_builder_append(&literal, "'")) goto cleanup;
-    for (cursor = value; *cursor; ++cursor) {
-      if (*cursor == '\'' && !database_string_builder_append(&literal, "'")) goto cleanup;
-      if (!database_string_builder_append_n(&literal, cursor, 1)) goto cleanup;
+    if (!database_string_builder_append(&literal, "'")) {
+      status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+      goto cleanup;
     }
-    if (!database_string_builder_append(&literal, "'")) goto cleanup;
-    result = database_string_builder_append_token(constraints, "DEFAULT") &&
-             database_string_builder_append_token(constraints, literal.data);
+    for (cursor = value; *cursor; ++cursor) {
+      if (*cursor == '\'' && !database_string_builder_append(&literal, "'")) {
+        status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+        goto cleanup;
+      }
+      if (!database_string_builder_append_n(&literal, cursor, 1)) {
+        status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+        goto cleanup;
+      }
+    }
+    if (!database_string_builder_append(&literal, "'")) {
+      status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+      goto cleanup;
+    }
+    status = database_string_builder_append_token(constraints, "DEFAULT") &&
+                     database_string_builder_append_token(constraints, literal.data)
+                 ? TBE_DATABASE_SCHEMA_STATUS_OK
+                 : TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
   } else {
-    return 0;
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
   }
 
 cleanup:
   database_string_builder_destroy(&literal);
-  return result;
+  return status;
 }
 
 static void database_sort_primary_keys(database_primary_key_ref_t *refs, size_t count) {
@@ -732,10 +755,8 @@ static tbe_database_schema_status_t database_build_table(
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
       goto field_cleanup;
     }
-    if (!database_append_default(&constraints, schema_root, field, dialect, integer_kind, is_bool)) {
-      status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
-      goto field_cleanup;
-    }
+    status = database_append_default(&constraints, schema_root, field, dialect, integer_kind, is_bool);
+    if (status != TBE_DATABASE_SCHEMA_STATUS_OK) goto field_cleanup;
     if (is_bool && dialect == TBE_DATABASE_DIALECT_SQLITE) {
       if (!database_string_builder_append_token(&constraints, "CHECK (") ||
           !database_string_builder_append(&constraints, sql_column_name) ||
