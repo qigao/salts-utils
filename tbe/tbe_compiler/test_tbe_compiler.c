@@ -321,17 +321,43 @@ spec("tbe_compiler") {
           " uint16 u16_value; int32 i32_value; uint32 u32_value; int64 i64_value;"
           " uint64 u64_value; float f32_value; double f64_value; string text_value;"
           " bytes payload_value; bytes(16) digest_value; uuid uuid_value; Kind kind_value;"
+          " u8 alias_u8_value; uint16_t alias_u16_value; u32 alias_u32_value;"
+          " uint64_t alias_u64_value;"
           "}";
       const char *sqlite_types[] = {
           "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER",
-          "INTEGER", "NUMERIC", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER"};
+          "INTEGER", "NUMERIC", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER",
+          "INTEGER", "INTEGER", "INTEGER", "NUMERIC"};
       const char *postgresql_types[] = {
           "boolean", "smallint", "smallint", "smallint", "integer", "integer", "bigint",
           "bigint", "numeric(20,0)", "real", "double precision", "text", "bytea", "bytea",
-          "uuid", "integer"};
+          "uuid", "integer", "smallint", "integer", "bigint", "numeric(20,0)"};
+      const char *sqlite_constraints[] = {
+          "NOT NULL CHECK (\"bool_value\" IN (0, 1))",
+          "NOT NULL CHECK (\"u8_value\" BETWEEN 0 AND 255)",
+          "NOT NULL CHECK (\"u16_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"u32_value\" BETWEEN 0 AND 4294967295)",
+          "NOT NULL CHECK (\"u64_value\" BETWEEN 0 AND 18446744073709551615)",
+          "NOT NULL CHECK (\"kind_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"alias_u8_value\" BETWEEN 0 AND 255)",
+          "NOT NULL CHECK (\"alias_u16_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"alias_u32_value\" BETWEEN 0 AND 4294967295)",
+          "NOT NULL CHECK (\"alias_u64_value\" BETWEEN 0 AND 18446744073709551615)"};
+      const char *postgresql_constraints[] = {
+          "NOT NULL", "NOT NULL CHECK (\"u8_value\" BETWEEN 0 AND 255)",
+          "NOT NULL CHECK (\"u16_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"u32_value\" BETWEEN 0 AND 4294967295)",
+          "NOT NULL CHECK (\"u64_value\" BETWEEN 0 AND 18446744073709551615)",
+          "NOT NULL CHECK (\"kind_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"alias_u8_value\" BETWEEN 0 AND 255)",
+          "NOT NULL CHECK (\"alias_u16_value\" BETWEEN 0 AND 65535)",
+          "NOT NULL CHECK (\"alias_u32_value\" BETWEEN 0 AND 4294967295)",
+          "NOT NULL CHECK (\"alias_u64_value\" BETWEEN 0 AND 18446744073709551615)"};
       const tbe_database_dialect_t dialects[] = {
           TBE_DATABASE_DIALECT_SQLITE, TBE_DATABASE_DIALECT_POSTGRESQL};
       const char *const *expected_types[] = {sqlite_types, postgresql_types};
+      const char *const *expected_constraints[] = {sqlite_constraints, postgresql_constraints};
+      const size_t constraint_columns[] = {0, 2, 4, 6, 8, 15, 16, 17, 18, 19};
 
       for (size_t dialect_index = 0; dialect_index < 2; ++dialect_index) {
         tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
@@ -345,7 +371,7 @@ spec("tbe_compiler") {
         table = database_ir_table(database_ir, 0);
         check_not_null(table);
         if (table) {
-          for (size_t column_index = 0; column_index < 16; ++column_index) {
+          for (size_t column_index = 0; column_index < 20; ++column_index) {
             Node *column = database_ir_column(table, column_index);
             check_not_null(column);
             if (column) {
@@ -353,8 +379,88 @@ spec("tbe_compiler") {
                           expected_types[dialect_index][column_index]);
             }
           }
+          for (size_t constraint_index = 0; constraint_index < 10; ++constraint_index) {
+            Node *column = database_ir_column(table, constraint_columns[constraint_index]);
+            check_not_null(column);
+            if (column) {
+              check_equal(find_child(column, "sql_constraints")->data.string_val,
+                          expected_constraints[dialect_index][constraint_index]);
+            }
+          }
         }
         tbe_database_schema_destroy(database_ir);
+      }
+    }
+
+    it("normalizes only type-valid defaults") {
+      const char *valid_schema =
+          "enum State <uint8> { Idle = 0; Active = 7; }"
+          "[db_table(defaults), custom(kept)] message Defaults {"
+          " bool enabled default true; int8 signed_value default 127;"
+          " uint8 unsigned_value default 255; float ratio default 1;"
+          " string label default \"O'Reilly\"; State state default Active;"
+          " uint8 hexadecimal_value default 0xFF;"
+          "}";
+      const char *invalid_schemas[] = {
+          "[db_table(invalid)] message Invalid { int32 accepted; bool value default 1; }",
+          "[db_table(invalid)] message Invalid { int8 value default true; }",
+          "[db_table(invalid)] message Invalid { uint8 value default 256; }",
+          "[db_table(invalid)] message Invalid { float value default NaN; }",
+          "enum State <uint8> { Idle = 0; } [db_table(invalid)] message Invalid { State value default Missing; }",
+          "[db_table(invalid)] message Invalid { bytes value default 1; }",
+          "[db_table(invalid)] message Invalid { uuid value default \"not-a-uuid\"; }"};
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      Node *database_ir = build_database_ir_from_schema(
+          valid_schema, TBE_DATABASE_DIALECT_SQLITE, &status);
+      Node *table;
+
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+      check_not_null(database_ir);
+      if (database_ir) {
+        table = database_ir_table(database_ir, 0);
+        check_not_null(table);
+        if (table) {
+          check_equal(find_child(database_ir_column(table, 0), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 1 CHECK (\"enabled\" IN (0, 1))");
+          check_equal(find_child(database_ir_column(table, 1), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 127");
+          check_equal(find_child(database_ir_column(table, 2), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 255 CHECK (\"unsigned_value\" BETWEEN 0 AND 255)");
+          check_equal(find_child(database_ir_column(table, 3), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 1");
+          check_equal(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 'O''Reilly'");
+          check_equal(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 7 CHECK (\"state\" BETWEEN 0 AND 255)");
+          check_equal(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" BETWEEN 0 AND 255)");
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+
+      for (size_t schema_index = 0;
+           schema_index < sizeof(invalid_schemas) / sizeof(invalid_schemas[0]); ++schema_index) {
+        database_ir = build_database_ir_from_schema(
+            invalid_schemas[schema_index], TBE_DATABASE_DIALECT_SQLITE, &status);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+        check_null(database_ir);
+      }
+    }
+
+    it("rejects db annotations outside their allowed location") {
+      const char *invalid_schemas[] = {
+          "[db_unknown(1)] message Invalid { int32 id; }",
+          "[db_column(wrong_location)] message Invalid { int32 id; }",
+          "[db_table(invalid)] message Invalid { [db_unknown(1)] int32 id; }",
+          "[db_table(invalid)] message Invalid { [db_table(wrong_location)] int32 id; }"};
+
+      for (size_t schema_index = 0;
+           schema_index < sizeof(invalid_schemas) / sizeof(invalid_schemas[0]); ++schema_index) {
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        Node *database_ir = build_database_ir_from_schema(
+            invalid_schemas[schema_index], TBE_DATABASE_DIALECT_SQLITE, &status);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+        check_null(database_ir);
       }
     }
   }
