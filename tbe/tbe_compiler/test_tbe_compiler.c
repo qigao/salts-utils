@@ -485,6 +485,32 @@ spec("tbe_compiler") {
   }
 
   describe("C template rendering") {
+    it("should parse CLI language names with stable enum values") {
+      int64_t lang_enum = -1;
+
+      check_equal(TBE_COMPILER_LANG_C, 0);
+      check_equal(TBE_COMPILER_LANG_PYTHON, 1);
+      check_equal(TBE_COMPILER_LANG_RUST, 2);
+      check_equal(TBE_COMPILER_LANG_CPP, 3);
+      check_equal(TBE_COMPILER_LANG_GO, 4);
+      check_equal(TBE_COMPILER_LANG_TS, 5);
+      check_equal(TBE_COMPILER_LANG_SQLITE, 6);
+      check_equal(TBE_COMPILER_LANG_POSTGRESQL, 7);
+
+      check_equal(tbe_compiler_parse_language_name("cxx", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_CPP);
+      check_equal(tbe_compiler_parse_language_name("py", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_PYTHON);
+      check_equal(tbe_compiler_parse_language_name("typescript", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_TS);
+      check_equal(tbe_compiler_parse_language_name("sqlite", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_SQLITE);
+      check_equal(tbe_compiler_parse_language_name("postgresql", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_POSTGRESQL);
+      check_equal(tbe_compiler_parse_language_name("postgres", &lang_enum), 0);
+      check_equal(lang_enum, TBE_COMPILER_LANG_POSTGRESQL);
+    }
+
     it("should resolve built-in templates through compiler core") {
       check_equal(tbe_compiler_resolve_template(NULL, 0), "templates/c_structs.mustache");
       check_equal(tbe_compiler_resolve_template(NULL, 1),

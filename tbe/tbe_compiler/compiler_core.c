@@ -1054,6 +1054,38 @@ char *tbe_compiler_read_file(const char *filename) {
   return dat;
 }
 
+int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum) {
+  static const struct {
+    const char *name;
+    int64_t lang_enum;
+  } languages[] = {
+      {"c", TBE_COMPILER_LANG_C},
+      {"cpp", TBE_COMPILER_LANG_CPP},
+      {"cxx", TBE_COMPILER_LANG_CPP},
+      {"go", TBE_COMPILER_LANG_GO},
+      {"rust", TBE_COMPILER_LANG_RUST},
+      {"python", TBE_COMPILER_LANG_PYTHON},
+      {"py", TBE_COMPILER_LANG_PYTHON},
+      {"ts", TBE_COMPILER_LANG_TS},
+      {"typescript", TBE_COMPILER_LANG_TS},
+      {"sqlite", TBE_COMPILER_LANG_SQLITE},
+      {"postgresql", TBE_COMPILER_LANG_POSTGRESQL},
+      {"postgres", TBE_COMPILER_LANG_POSTGRESQL},
+  };
+  size_t i;
+
+  if (!name || !out_lang_enum) return -1;
+
+  for (i = 0; i < sizeof(languages) / sizeof(languages[0]); ++i) {
+    if (strcmp(name, languages[i].name) == 0) {
+      *out_lang_enum = languages[i].lang_enum;
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
 const char *tbe_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum) {
   if (user_template) return user_template;

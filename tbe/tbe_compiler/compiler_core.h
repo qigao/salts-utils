@@ -28,10 +28,14 @@ enum {
   TBE_COMPILER_LANG_RUST = 2,
   TBE_COMPILER_LANG_CPP = 3,
   TBE_COMPILER_LANG_GO = 4,
-  TBE_COMPILER_LANG_TS = 5
+  TBE_COMPILER_LANG_TS = 5,
+  TBE_COMPILER_LANG_SQLITE = 6,
+  TBE_COMPILER_LANG_POSTGRESQL = 7
 };
 
 char *tbe_compiler_read_file(const char *filename);
+
+int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum);
 
 const char *tbe_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum);
