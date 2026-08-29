@@ -102,10 +102,10 @@
 - Modify: `tbe/tbe_compiler/compiler_core.c`
 - Modify: `tbe/tbe_compiler/test_tbe_compiler.c`
 
-- [ ] 更新 CLI 文档：命令、annotation、类型映射、v1 bootstrap 边界、失败情况和可运行示例。
-- [ ] 在 README 的 TBE compiler 入口增加数据库 DDL 链接，不把它描述为 migration engine。
-- [ ] 添加数据库语言与 C-only auxiliary outputs 冲突测试，再实现入口校验和可操作错误消息。
-- [ ] 构建 `tbe_compiler`，运行真实 CLI 分别生成 SQLite/PostgreSQL 文件并对输出做行为验证。
+- [x] 更新 CLI 文档：命令、annotation、类型映射、v1 bootstrap 边界、失败情况和可运行示例。
+- [x] 在 README 的 TBE compiler 入口增加数据库 DDL 链接，不把它描述为 migration engine。
+- [x] 添加数据库语言与 C-only auxiliary outputs 冲突测试，再实现入口校验和可操作错误消息。
+- [x] 构建 `tbe_compiler`，运行真实 CLI 分别生成 SQLite/PostgreSQL 文件并对输出做行为验证。
 
 ## Task 7: 回归、安装消费与远程 PostgreSQL
 
