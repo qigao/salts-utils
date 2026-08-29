@@ -113,9 +113,9 @@
 
 - Verify only unless测试暴露缺陷。
 
-- [ ] 执行 `cmake --build --preset win-release-user --target test_tbe_compiler test_tbe_database_ddl tbe_compiler --config Release`。
-- [ ] 执行 `ctest --preset win-release-user -R "tbe_compiler|tbe_database_ddl" --output-on-failure`，随后运行全量 `ctest --preset win-release-user --output-on-failure`。
-- [ ] 执行 `cmake --build --preset install-win-release-user --config Release`，从安装目录运行两种数据库语言，证明模板随包安装。
-- [ ] 按 TurboDB EU 远程 runbook 在临时 PostgreSQL 容器执行生成 DDL，验证 identity、numeric uint64、unique/not-null/check；容器和临时 volume 必须使用本任务专属名字并在确认目标后清理。
-- [ ] 运行 `codegraph sync .` 与 `codegraph affected`，检查受影响测试候选并补跑遗漏项。
-- [ ] 检查 `git diff --check`、`git status --short`、变更统计和公开文档一致性；记录无法执行的验证及残余风险。
+- [x] 执行 `cmake --build --preset win-release-user --target test_tbe_compiler test_tbe_database_ddl tbe_compiler --config Release`。
+- [x] 执行 `ctest --preset win-release-user -R "tbe_compiler|tbe_database_ddl" --output-on-failure`，随后运行全量 `ctest --preset win-release-user --output-on-failure`。
+- [x] 执行 `cmake --build --preset install-win-release-user --config Release`，从安装目录运行两种数据库语言，证明模板随包安装。
+- [x] 按 TurboDB EU 远程 runbook 在临时 PostgreSQL 容器执行生成 DDL，验证 identity、numeric uint64、unique/not-null/check；容器和临时 volume 必须使用本任务专属名字并在确认目标后清理。
+- [x] 运行 `codegraph sync .` 与 `codegraph affected`，检查受影响测试候选并补跑遗漏项。
+- [x] 检查 `git diff --check`、`git status --short`、变更统计和公开文档一致性；记录无法执行的验证及残余风险。
