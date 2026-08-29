@@ -72,12 +72,12 @@
 - Modify: `tbe/tbe_compiler/compiler_core.c`
 - Modify: `tbe/tbe_compiler/CMakeLists.txt`
 
-- [ ] 先添加两种 dialect 的完整 golden output tests，覆盖 quoted identifiers、单/复合主键、nullable、unique、default、range CHECK 与 identity。
-- [ ] 运行 focused test，确认 compiler 尚未构建数据库 IR/解析模板而失败。
-- [ ] 在 `tbe_compiler_run` 中只对数据库语言构建 IR，选择内置模板并渲染；自定义 `--template` 也必须收到相同 IR。
-- [ ] 增加两份只消费归一化字段的 Mustache 模板，确保逗号、换行与表顺序确定，不输出 `IF NOT EXISTS`。
-- [ ] 将模板加入 build copy、link dependency 与 install resource 列表。
-- [ ] 重跑 golden tests；手工变异一种类型映射或移除一个约束，确认至少一个测试会失败后恢复。
+- [x] 先添加两种 dialect 的完整 golden output tests，覆盖 quoted identifiers、单/复合主键、nullable、unique、default、range CHECK 与 identity。
+- [x] 运行 focused test，确认 compiler 尚未构建数据库 IR/解析模板而失败。
+- [x] 在 `tbe_compiler_run` 中只对数据库语言构建 IR，选择内置模板并渲染；自定义 `--template` 也必须收到相同 IR。
+- [x] 增加两份只消费归一化字段的 Mustache 模板，确保逗号、换行与表顺序确定，不输出 `IF NOT EXISTS`。
+- [x] 将模板加入 build copy、link dependency 与 install resource 列表。
+- [x] 重跑 golden tests；手工变异一种类型映射或移除一个约束，确认至少一个测试会失败后恢复。
 
 ## Task 5: 用真实 SQLite 执行生成 DDL
 
