@@ -117,6 +117,43 @@ static void sqlite_ddl_test_expect_constraint(sqlite_ddl_test_state_t *state, co
   check_equal(extended_code, expected_extended_code);
 }
 
+static void sqlite_ddl_test_expect_bound_u64_ok(sqlite_ddl_test_state_t *state,
+                                                const unsigned char *value, int value_size) {
+  int rc;
+
+  check(sqlite_ddl_test_prepare(
+      state, "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES (?1, NULL);"));
+  if (!state->statement) return;
+
+  rc = sqlite3_bind_text(state->statement, 1, (const char *)value, value_size, SQLITE_STATIC);
+  check_equal(rc, SQLITE_OK);
+  if (rc != SQLITE_OK) return;
+
+  rc = sqlite3_step(state->statement);
+  info("bound u64 size=%d step=%d error=%s", value_size, rc, sqlite3_errmsg(state->db));
+  check_equal(rc, SQLITE_DONE);
+}
+
+static void sqlite_ddl_test_expect_bound_u64_constraint(sqlite_ddl_test_state_t *state,
+                                                        const unsigned char *value,
+                                                        int value_size) {
+  int rc;
+
+  check(sqlite_ddl_test_prepare(
+      state, "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES (?1, NULL);"));
+  if (!state->statement) return;
+
+  rc = sqlite3_bind_text(state->statement, 1, (const char *)value, value_size, SQLITE_STATIC);
+  check_equal(rc, SQLITE_OK);
+  if (rc != SQLITE_OK) return;
+
+  rc = sqlite3_step(state->statement);
+  info("bound u64 bytes=%02x %02x %02x size=%d step=%d error=%s", value[0], value[1], value[2],
+       value_size, rc, sqlite3_errmsg(state->db));
+  check_equal(rc, SQLITE_CONSTRAINT_CHECK);
+  check_equal(sqlite3_extended_errcode(state->db), SQLITE_CONSTRAINT_CHECK);
+}
+
 static void sqlite_ddl_test_check_table_exists(sqlite_ddl_test_state_t *state,
                                                const char *table_name) {
   char sql[256];
@@ -253,6 +290,10 @@ spec("tbe_compiler SQLite DDL integration") {
   }
 
   it("executes generated SQLite schema and enforces live constraints") {
+    static const unsigned char canonical_one[] = {'1'};
+    static const unsigned char embedded_nul_x[] = {'1', 0x00, 'x'};
+    static const unsigned char embedded_nul_two[] = {'1', 0x00, '2'};
+    static const unsigned char non_ascii_digit_suffix[] = {'1', 0xc3, 0xa9};
     static const expected_column_t user_columns[] = {
         {"user_id", "INTEGER"},
         {"email", "TEXT"},
@@ -413,5 +454,12 @@ spec("tbe_compiler SQLite DDL integration") {
         &state,
         "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES ('1', 1.5);",
         SQLITE_CONSTRAINT_CHECK);
+    sqlite_ddl_test_expect_bound_u64_ok(&state, canonical_one, (int)sizeof(canonical_one));
+    sqlite_ddl_test_expect_bound_u64_constraint(&state, embedded_nul_x,
+                                                (int)sizeof(embedded_nul_x));
+    sqlite_ddl_test_expect_bound_u64_constraint(&state, embedded_nul_two,
+                                                (int)sizeof(embedded_nul_two));
+    sqlite_ddl_test_expect_bound_u64_constraint(&state, non_ascii_digit_suffix,
+                                                (int)sizeof(non_ascii_digit_suffix));
   }
 }

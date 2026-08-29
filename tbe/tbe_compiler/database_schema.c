@@ -462,7 +462,11 @@ static int database_append_range_constraint(database_string_builder_t *constrain
            database_string_builder_append(constraints, sql_column_name) &&
            database_string_builder_append(constraints, " IS NULL OR (typeof(") &&
            database_string_builder_append(constraints, sql_column_name) &&
-           database_string_builder_append(constraints, ") = 'text' AND length(") &&
+           database_string_builder_append(constraints, ") = 'text' AND length(CAST(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " AS BLOB)) = length(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ") AND length(") &&
            database_string_builder_append(constraints, sql_column_name) &&
            database_string_builder_append(constraints, ") BETWEEN 1 AND 20 AND ") &&
            database_string_builder_append(constraints, sql_column_name) &&

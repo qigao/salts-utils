@@ -198,6 +198,46 @@ suite("optional_fields_and_defaults") {
             }
         }
 
+        it("should reject default-only numeric forms outside field defaults") {
+            static const char *const schemas[] = {
+                "enum Invalid { Value = 1.25; }",
+                "enum Invalid { Value = 1e3; }",
+                "enum Invalid { Value = -1; }",
+                "flags Invalid { Value = 1.25; }",
+                "flags Invalid { Value = 1e3; }",
+                "flags Invalid { Value = -1; }",
+                "schema Invalid [id(1.25)];",
+                "schema Invalid [id(1e3)];",
+                "schema Invalid [id(-1)];",
+                "message Invalid { bytes(1.25) value; }",
+                "message Invalid { bytes(1e3) value; }",
+                "message Invalid { bytes(-1) value; }",
+            };
+
+            for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
+                Node *root = create_node_map("root");
+                int rc = parse_schema(schemas[index], strlen(schemas[index]), root, NULL);
+
+                info("schema=%s", schemas[index]);
+                check_not_equal(rc, 0);
+                node_free(root);
+            }
+        }
+
+        it("should retain integer and hexadecimal numbers in legacy contexts") {
+            const char *schema =
+                "schema Legacy [id(1), version(0x2)]; "
+                "enum Code { One = 1; Two = 0x2; } "
+                "flags Mask { One = 1; Two = 0x2; } "
+                "message Packet { bytes(16) digest; uint8[16] values; "
+                "int32 count default 1; uint32 bits default 0xFF; }";
+            Node *root = create_node_map("root");
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+
+            check_equal(rc, 0);
+            node_free(root);
+        }
+
         it("should parse string default values") {
             const char *schema = "message Config { "
                                 "string endpoint default \"localhost\"; "

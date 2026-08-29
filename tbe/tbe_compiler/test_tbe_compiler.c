@@ -661,12 +661,12 @@ spec("tbe_compiler") {
           "NOT NULL CHECK (\"u8_value\" IS NULL OR (typeof(\"u8_value\") = 'integer' AND \"u8_value\" BETWEEN 0 AND 255))",
           "NOT NULL CHECK (\"u16_value\" IS NULL OR (typeof(\"u16_value\") = 'integer' AND \"u16_value\" BETWEEN 0 AND 65535))",
           "NOT NULL CHECK (\"u32_value\" IS NULL OR (typeof(\"u32_value\") = 'integer' AND \"u32_value\" BETWEEN 0 AND 4294967295))",
-          "NOT NULL CHECK (\"u64_value\" IS NULL OR (typeof(\"u64_value\") = 'text' AND length(\"u64_value\") BETWEEN 1 AND 20 AND \"u64_value\" NOT GLOB '*[^0-9]*' AND (\"u64_value\" = '0' OR substr(\"u64_value\", 1, 1) <> '0') AND (length(\"u64_value\") < 20 OR \"u64_value\" <= '18446744073709551615')))",
+          "NOT NULL CHECK (\"u64_value\" IS NULL OR (typeof(\"u64_value\") = 'text' AND length(CAST(\"u64_value\" AS BLOB)) = length(\"u64_value\") AND length(\"u64_value\") BETWEEN 1 AND 20 AND \"u64_value\" NOT GLOB '*[^0-9]*' AND (\"u64_value\" = '0' OR substr(\"u64_value\", 1, 1) <> '0') AND (length(\"u64_value\") < 20 OR \"u64_value\" <= '18446744073709551615')))",
           "NOT NULL CHECK (\"kind_value\" IS NULL OR (typeof(\"kind_value\") = 'integer' AND \"kind_value\" BETWEEN 0 AND 65535))",
           "NOT NULL CHECK (\"alias_u8_value\" IS NULL OR (typeof(\"alias_u8_value\") = 'integer' AND \"alias_u8_value\" BETWEEN 0 AND 255))",
           "NOT NULL CHECK (\"alias_u16_value\" IS NULL OR (typeof(\"alias_u16_value\") = 'integer' AND \"alias_u16_value\" BETWEEN 0 AND 65535))",
           "NOT NULL CHECK (\"alias_u32_value\" IS NULL OR (typeof(\"alias_u32_value\") = 'integer' AND \"alias_u32_value\" BETWEEN 0 AND 4294967295))",
-          "NOT NULL CHECK (\"alias_u64_value\" IS NULL OR (typeof(\"alias_u64_value\") = 'text' AND length(\"alias_u64_value\") BETWEEN 1 AND 20 AND \"alias_u64_value\" NOT GLOB '*[^0-9]*' AND (\"alias_u64_value\" = '0' OR substr(\"alias_u64_value\", 1, 1) <> '0') AND (length(\"alias_u64_value\") < 20 OR \"alias_u64_value\" <= '18446744073709551615')))"};
+          "NOT NULL CHECK (\"alias_u64_value\" IS NULL OR (typeof(\"alias_u64_value\") = 'text' AND length(CAST(\"alias_u64_value\" AS BLOB)) = length(\"alias_u64_value\") AND length(\"alias_u64_value\") BETWEEN 1 AND 20 AND \"alias_u64_value\" NOT GLOB '*[^0-9]*' AND (\"alias_u64_value\" = '0' OR substr(\"alias_u64_value\", 1, 1) <> '0') AND (length(\"alias_u64_value\") < 20 OR \"alias_u64_value\" <= '18446744073709551615')))"};
       const char *postgresql_constraints[] = {
           "NOT NULL", "NOT NULL CHECK (\"u8_value\" BETWEEN 0 AND 255)",
           "NOT NULL CHECK (\"u16_value\" BETWEEN 0 AND 65535)",
@@ -833,7 +833,7 @@ spec("tbe_compiler") {
           check_equal(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" IS NULL OR (typeof(\"hexadecimal_value\") = 'integer' AND \"hexadecimal_value\" BETWEEN 0 AND 255))");
           check_equal(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT '18446744073709551615' CHECK (\"exact_value\" IS NULL OR (typeof(\"exact_value\") = 'text' AND length(\"exact_value\") BETWEEN 1 AND 20 AND \"exact_value\" NOT GLOB '*[^0-9]*' AND (\"exact_value\" = '0' OR substr(\"exact_value\", 1, 1) <> '0') AND (length(\"exact_value\") < 20 OR \"exact_value\" <= '18446744073709551615')))");
+                      "NOT NULL DEFAULT '18446744073709551615' CHECK (\"exact_value\" IS NULL OR (typeof(\"exact_value\") = 'text' AND length(CAST(\"exact_value\" AS BLOB)) = length(\"exact_value\") AND length(\"exact_value\") BETWEEN 1 AND 20 AND \"exact_value\" NOT GLOB '*[^0-9]*' AND (\"exact_value\" = '0' OR substr(\"exact_value\", 1, 1) <> '0') AND (length(\"exact_value\") < 20 OR \"exact_value\" <= '18446744073709551615')))");
         }
         tbe_database_schema_destroy(database_ir);
       }
@@ -1518,6 +1518,31 @@ spec("tbe_compiler") {
   }
 
   describe("C template rendering") {
+    it("should reject default-only numeric forms before C generation") {
+      static const char *const schemas[] = {
+          "enum Invalid { Value = 1.25; }",
+          "enum Invalid { Value = 1e3; }",
+          "enum Invalid { Value = -1; }",
+          "flags Invalid { Value = 1.25; }",
+          "flags Invalid { Value = 1e3; }",
+          "flags Invalid { Value = -1; }",
+          "schema Invalid [id(1.25)];",
+          "schema Invalid [id(1e3)];",
+          "schema Invalid [id(-1)];",
+          "message Invalid { bytes(1.25) value; }",
+          "message Invalid { bytes(1e3) value; }",
+          "message Invalid { bytes(-1) value; }",
+      };
+
+      for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
+        char *output = render_c_template(schemas[index]);
+
+        info("schema=%s", schemas[index]);
+        check_null(output);
+        free(output);
+      }
+    }
+
     it("should parse CLI language names with stable enum values") {
       int64_t lang_enum = -1;
 
@@ -1845,7 +1870,8 @@ spec("tbe_compiler") {
           "{{/db_columns}}{{/db_tables}}";
       const char *expected =
           "\"records\":\"record_id\" TEXT NOT NULL CHECK (\"record_id\" IS NULL OR "
-          "(typeof(\"record_id\") = 'text' AND length(\"record_id\") BETWEEN 1 AND 20 AND "
+          "(typeof(\"record_id\") = 'text' AND length(CAST(\"record_id\" AS BLOB)) = "
+          "length(\"record_id\") AND length(\"record_id\") BETWEEN 1 AND 20 AND "
           "\"record_id\" NOT GLOB '*[^0-9]*' AND (\"record_id\" = '0' OR "
           "substr(\"record_id\", 1, 1) <> '0') AND (length(\"record_id\") < 20 OR "
           "\"record_id\" <= '18446744073709551615'))) PRIMARY KEY;\"note\" TEXT";

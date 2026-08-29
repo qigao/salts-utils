@@ -44,6 +44,7 @@ lex_start:
         sign    = [+-]?;
         digits  = [0-9]+;
         exponent = [eE] [+-]? digits;
+        default_number = [+-] digits | sign digits ("." digits exponent? | exponent);
 
         // End of input
         $ {
@@ -162,15 +163,15 @@ lex_start:
             return 1;
         }
 
-        sign digits ("." digits exponent? | exponent) {
-            token->type = SCHEMA_TOKEN_NUMBER;
+        default_number {
+            token->type = SCHEMA_TOKEN_DEFAULT_NUMBER;
             token->value = token_start;
             token->length = (size_t)(YYCURSOR - token_start);
             lexer->cursor = YYCURSOR;
             return 1;
         }
 
-        sign digits {
+        digits {
             token->type = SCHEMA_TOKEN_NUMBER;
             token->value = token_start;
             token->length = (size_t)(YYCURSOR - token_start);

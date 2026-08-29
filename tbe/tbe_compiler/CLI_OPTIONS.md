@@ -163,10 +163,16 @@ tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --o
 Collection, map, group, composite, and union references do not fall back to JSON or BLOB.
 Use `db_ignore(1)` for fields that should stay out of the bootstrap schema.
 
+Signed integers, decimal fractions, and exponent tokens are accepted only after a field `default`.
+Enum/flags assignments, numeric annotations, and fixed lengths keep their existing non-negative
+integer rules; hexadecimal integers remain accepted only in contexts that already supported them.
+
 SQLite stores `uint64` as canonical decimal text so values above signed 64-bit remain exact:
 only ASCII digits are accepted, leading zeroes are rejected except for `0`, and the maximum is
-`18446744073709551615`. SQLite integer range checks also require integer storage, so fractional
-REAL values cannot pass; optional columns continue to allow `NULL`.
+`18446744073709551615`. Its check requires the BLOB byte length to equal the text character
+length, rejecting embedded NUL and multibyte non-ASCII payloads. SQLite integer range checks also
+require integer storage, so fractional REAL values cannot pass; optional columns continue to allow
+`NULL`.
 
 PostgreSQL string defaults are emitted as `E'...'` literals with both backslashes and single
 quotes escaped. Their meaning therefore does not depend on the server's
