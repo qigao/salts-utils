@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
                                  TBE_COMPILER_LANG_OPTION_HELP);
                                
     turbo_cmd_add_string(parser, &output_path, "output", "o",
-                                 "Output file path (required for sqlite/postgresql; "
+                                 "Output file path (required for sqlite/postgresql/postgres; "
                                  "default: stdout for other languages)");
 
     turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",

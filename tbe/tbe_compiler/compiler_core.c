@@ -1245,7 +1245,7 @@ static int tbe_compiler_is_database_language(int64_t lang_enum) {
 static int tbe_compiler_validate_database_output_option(const char *lang_name,
                                                         const char *option_name,
                                                         const char *option_value) {
-  if (option_value == NULL || option_value[0] == '\0') return 1;
+  if (option_value == NULL) return 1;
   fprintf(stderr,
           "%s is supported only for the built-in C generator and cannot be combined with "
           "--lang %s\n",

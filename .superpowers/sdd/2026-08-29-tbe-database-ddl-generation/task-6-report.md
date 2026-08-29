@@ -171,3 +171,111 @@ SQLite 行为正确性已由现有 `test_tbe_database_ddl` 真实 SQLite API 集
 ## Concerns
 
 - 仓库根原先没有 `README.md`。本任务为满足“README 入口链接详细 compiler docs”的公开行为要求，新建了最小入口页；若上游另有预期 README 模板，需要后续统一风格时再整合。
+
+## Fix Round 1
+
+### 范围
+
+- `tbe/tbe_compiler/compiler_core.c`
+- `tbe/tbe_compiler/main.c`
+- `tbe/tbe_compiler/test_tbe_compiler.c`
+
+### RED
+
+先只增加数据库语言下四个空字符串辅助输出冲突测试，再验证旧实现仍会先读 schema。
+
+命令：
+
+```powershell
+cmd /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && cmake --build --preset win-release-user --target test_tbe_compiler --config Release'
+& 'C:/projects/cpp/turbonet/.worktrees/turbo-parser-db-schema/build/Msvc-Release/bin/test_tbe_compiler.exe' --filter 'should reject empty'
+```
+
+关键输出：
+
+```text
+should reject empty source output with database languages before parsing
+[ FAIL ]
+with info: language=sqlite option=--source-output stderr=Failed to read schema file: missing_database_empty_conflict_contract.schema
+Check failed: expected "...missing_database_empty_conflict_contract.schema" to contain "--source-output"
+```
+
+```text
+should reject empty guest output with database languages before parsing
+[ FAIL ]
+...
+should reject empty Lua output with database languages before parsing
+[ FAIL ]
+...
+should reject empty DSL output with database languages before parsing
+[ FAIL ]
+...
+```
+
+结论：旧实现把空字符串当作“未提供”，没有在数据库语言入口边界 fail fast。
+
+### GREEN
+
+实现后先重跑新增空字符串用例，再跑相邻回归和全量 CTest。
+
+命令：
+
+```powershell
+cmd /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && cmake --build --preset win-release-user --target test_tbe_compiler tbe_compiler --config Release'
+& 'C:/projects/cpp/turbonet/.worktrees/turbo-parser-db-schema/build/Msvc-Release/bin/test_tbe_compiler.exe' --filter 'should reject empty'
+cmd /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && ctest --preset win-release-user -R "tbe_compiler|tbe_database_ddl" --output-on-failure'
+cmd /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && ctest --preset win-release-user --output-on-failure'
+```
+
+关键输出：
+
+```text
+should reject empty source output with database languages before parsing
+[ OK ]
+should reject empty guest output with database languages before parsing
+[ OK ]
+should reject empty Lua output with database languages before parsing
+[ OK ]
+should reject empty DSL output with database languages before parsing
+[ OK ]
+All tests passed
+```
+
+```text
+Test #31: test_tbe_compiler .... Passed
+Test #32: test_tbe_database_ddl . Passed
+100% tests passed, 0 tests failed out of 2
+```
+
+```text
+100% tests passed, 0 tests failed out of 36
+Total Test time (real) =   1.38 sec
+```
+
+### 真实 CLI / Help 验证
+
+命令：
+
+```powershell
+build/Msvc-Release/bin/tbe_compiler.exe missing.schema --lang sqlite --output build/Msvc-Release/task6-fix1-cli-verify/schema.sqlite.sql --source-output ""
+build/Msvc-Release/bin/tbe_compiler.exe --help
+```
+
+关键输出：
+
+```text
+exit_code=1
+output_exists=False
+--source-output is supported only for the built-in C generator and cannot be combined with --lang sqlite
+```
+
+```text
+-l, --lang: Target language (built-in template: c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres)
+-o, --output: Output file path (required for sqlite/postgresql/postgres; default: stdout for other languages)
+```
+
+### 自审
+
+- `MED` 已修复：数据库语言下四个辅助输出选项现在只要指针非 `NULL` 就会立即冲突，`""` 不再漏过入口校验。
+- 现有非空冲突测试保留，C 语言原有 `--source-output` / `--guest-output` / `--lua-output` / `--dsl-output` 路径未改。
+- `LOW` 已处理：CLI help 的 `--output` 文案已与 `sqlite` / `postgresql` / `postgres` 三个名字保持一致。
