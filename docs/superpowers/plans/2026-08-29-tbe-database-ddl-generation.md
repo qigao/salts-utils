@@ -56,11 +56,11 @@
 - Modify: `tbe/tbe_compiler/test_tbe_compiler.c`
 - Modify: `tbe/tbe_compiler/database_schema.c`
 
-- [ ] 增加 table-driven negative tests：无 `db_table`、重复 table/column、空表、重复/缺口/零主键序号、optional 主键、identity 非单列整数主键、identity+default/unique、非法 boolean annotation 值、`db_ignore` 冲突。
-- [ ] 增加 unsupported field tests：collection、map、group、composite/union 引用失败，而 `db_ignore(1)` 允许跳过。
-- [ ] 增加 default tests：字符串单引号转义、bool、signed/unsigned 边界、float、enum 常量；类型不匹配与越界必须失败。
-- [ ] 逐组运行确认新用例先按目标原因失败，再实现最小校验；错误结果包含 dialect、message、field、annotation 或 type 上下文。
-- [ ] 完成后运行全部 `test_tbe_compiler`，确认无旧行为回归。
+- [x] 增加 table-driven negative tests：无 `db_table`、重复 table/column、空表、重复/缺口/零主键序号、optional 主键、identity 非单列整数主键、identity+default/unique、非法 boolean annotation 值、`db_ignore` 冲突。
+- [x] 增加 unsupported field tests：collection、map、group、composite/union 引用失败，而 `db_ignore(1)` 允许跳过。
+- [x] 增加 default tests：字符串单引号转义、bool、signed/unsigned 边界、float、enum 常量；类型不匹配与越界必须失败。
+- [x] 逐组运行确认新用例先按目标原因失败，再实现最小校验；错误结果包含 dialect、message、field、annotation 或 type 上下文。
+- [x] 完成后运行全部 `test_tbe_compiler`，确认无旧行为回归。
 
 ## Task 4: 生成确定性 SQLite/PostgreSQL DDL
 
