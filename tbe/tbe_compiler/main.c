@@ -11,6 +11,8 @@
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
+ * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
+ * and DSL outputs remain part of the built-in C generation path only.
  */
 
 #include <stdbool.h>
@@ -96,7 +98,8 @@ int main(int argc, char **argv) {
                                  TBE_COMPILER_LANG_OPTION_HELP);
                                
     turbo_cmd_add_string(parser, &output_path, "output", "o",
-                                 "Output file path (default: stdout)");
+                                 "Output file path (required for sqlite/postgresql; "
+                                 "default: stdout for other languages)");
 
     turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",
                                  "Generate the C typed serde companion source");

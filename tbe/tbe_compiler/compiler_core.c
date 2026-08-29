@@ -1237,6 +1237,44 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
   return path;
 }
 
+static int tbe_compiler_is_database_language(int64_t lang_enum) {
+  return lang_enum == TBE_COMPILER_LANG_SQLITE ||
+         lang_enum == TBE_COMPILER_LANG_POSTGRESQL;
+}
+
+static int tbe_compiler_validate_database_output_option(const char *lang_name,
+                                                        const char *option_name,
+                                                        const char *option_value) {
+  if (option_value == NULL || option_value[0] == '\0') return 1;
+  fprintf(stderr,
+          "%s is supported only for the built-in C generator and cannot be combined with "
+          "--lang %s\n",
+          option_name, lang_name);
+  return 0;
+}
+
+static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
+                                         const char *lang_name) {
+  if (options == NULL || lang_name == NULL) return 0;
+  if (!tbe_compiler_is_database_language(options->lang_enum)) return 1;
+
+  if (options->output_path == NULL || options->output_path[0] == '\0') {
+    fprintf(stderr, "--lang %s requires explicit --output\n", lang_name);
+    return 0;
+  }
+  if (!tbe_compiler_validate_database_output_option(
+          lang_name, "--source-output", options->source_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--guest-output", options->guest_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--lua-output", options->lua_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--dsl-output", options->dsl_output_path)) {
+    return 0;
+  }
+  return 1;
+}
+
 int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
                                    char **out_schema_data) {
   tbe_error_t parse_err;
@@ -1350,8 +1388,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
             (long long)options->lang_enum);
     return 1;
   }
-  database_language = options->lang_enum == TBE_COMPILER_LANG_SQLITE ||
-                      options->lang_enum == TBE_COMPILER_LANG_POSTGRESQL;
+  database_language = tbe_compiler_is_database_language(options->lang_enum);
+  if (!tbe_compiler_validate_options(options, lang_name)) return 1;
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;

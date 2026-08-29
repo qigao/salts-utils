@@ -349,6 +349,146 @@ cleanup:
   return captured;
 }
 
+typedef enum compiler_conflicting_output_kind_e {
+  COMPILER_CONFLICTING_OUTPUT_SOURCE,
+  COMPILER_CONFLICTING_OUTPUT_GUEST,
+  COMPILER_CONFLICTING_OUTPUT_LUA,
+  COMPILER_CONFLICTING_OUTPUT_DSL
+} compiler_conflicting_output_kind_t;
+
+static const char *compiler_conflicting_output_option_name(
+    compiler_conflicting_output_kind_t kind) {
+  switch (kind) {
+    case COMPILER_CONFLICTING_OUTPUT_SOURCE:
+      return "--source-output";
+    case COMPILER_CONFLICTING_OUTPUT_GUEST:
+      return "--guest-output";
+    case COMPILER_CONFLICTING_OUTPUT_LUA:
+      return "--lua-output";
+    case COMPILER_CONFLICTING_OUTPUT_DSL:
+      return "--dsl-output";
+    default:
+      return "--unknown-output";
+  }
+}
+
+static const char *compiler_conflicting_output_suffix(
+    compiler_conflicting_output_kind_t kind) {
+  switch (kind) {
+    case COMPILER_CONFLICTING_OUTPUT_SOURCE:
+      return "source";
+    case COMPILER_CONFLICTING_OUTPUT_GUEST:
+      return "guest";
+    case COMPILER_CONFLICTING_OUTPUT_LUA:
+      return "lua";
+    case COMPILER_CONFLICTING_OUTPUT_DSL:
+      return "dsl";
+    default:
+      return "unknown";
+  }
+}
+
+static void compiler_assign_conflicting_output(tbe_compiler_options_t *options,
+                                               compiler_conflicting_output_kind_t kind,
+                                               const char *path) {
+  if (!options) return;
+  switch (kind) {
+    case COMPILER_CONFLICTING_OUTPUT_SOURCE:
+      options->source_output_path = path;
+      break;
+    case COMPILER_CONFLICTING_OUTPUT_GUEST:
+      options->guest_output_path = path;
+      break;
+    case COMPILER_CONFLICTING_OUTPUT_LUA:
+      options->lua_output_path = path;
+      break;
+    case COMPILER_CONFLICTING_OUTPUT_DSL:
+      options->dsl_output_path = path;
+      break;
+    default:
+      break;
+  }
+}
+
+static void check_database_language_requires_explicit_output(const char *language_name,
+                                                             int64_t lang_enum) {
+  tbe_compiler_options_t options = {
+      .schema_path = "missing_database_output_contract.schema",
+      .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      .lang_enum = lang_enum,
+  };
+  char *stderr_output = NULL;
+  int status = -1;
+
+  stderr_output = run_compiler_capture_stderr(&options, &status);
+  info("language=%s stderr=%s", language_name, stderr_output ? stderr_output : "(null)");
+  check_not_null(stderr_output);
+  check_not_equal(status, 0);
+  if (!stderr_output) return;
+
+  check_contains(stderr_output, "--output");
+  check_contains(stderr_output, language_name);
+  check(strstr(stderr_output, "Failed to read schema file") == NULL);
+  check(strstr(stderr_output, "Failed to render mustache template") == NULL);
+
+  free(stderr_output);
+}
+
+static void check_database_language_conflicting_output_fails_fast(
+    const char *language_name, int64_t lang_enum,
+    compiler_conflicting_output_kind_t conflicting_output_kind) {
+  char output_path[128];
+  char conflicting_output_path[128];
+  tbe_compiler_options_t options = {
+      .schema_path = "missing_database_conflict_contract.schema",
+      .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      .lang_enum = lang_enum,
+  };
+  char *stderr_output = NULL;
+  char *generated_output = NULL;
+  char *generated_conflicting_output = NULL;
+  size_t generated_output_size = 0;
+  size_t generated_conflicting_output_size = 0;
+  int status = -1;
+
+  snprintf(output_path, sizeof(output_path), "test_tbe_compiler_%s_conflict_output.sql",
+           language_name);
+  snprintf(conflicting_output_path, sizeof(conflicting_output_path),
+           "test_tbe_compiler_%s_conflict_%s.out", language_name,
+           compiler_conflicting_output_suffix(conflicting_output_kind));
+  cleanup_test_file(output_path);
+  cleanup_test_file(conflicting_output_path);
+
+  options.output_path = output_path;
+  compiler_assign_conflicting_output(&options, conflicting_output_kind, conflicting_output_path);
+
+  stderr_output = run_compiler_capture_stderr(&options, &status);
+  info("language=%s option=%s stderr=%s", language_name,
+       compiler_conflicting_output_option_name(conflicting_output_kind),
+       stderr_output ? stderr_output : "(null)");
+  check_not_null(stderr_output);
+  check_not_equal(status, 0);
+  if (stderr_output) {
+    check_contains(stderr_output,
+                   compiler_conflicting_output_option_name(conflicting_output_kind));
+    check_contains(stderr_output, language_name);
+    check(strstr(stderr_output, "Failed to read schema file") == NULL);
+    check(strstr(stderr_output, "Failed to render mustache template") == NULL);
+  }
+
+  generated_output = tt_read_file(output_path, &generated_output_size);
+  generated_conflicting_output =
+      tt_read_file(conflicting_output_path, &generated_conflicting_output_size);
+  check_null(generated_output);
+  check_null(generated_conflicting_output);
+
+  free(generated_output);
+  free(generated_conflicting_output);
+  free(stderr_output);
+  cleanup_test_file(output_path);
+  cleanup_test_file(conflicting_output_path);
+}
+
 spec("tbe_compiler") {
   describe("database schema IR") {
     it("normalizes annotated tables into owned SQLite IR") {
@@ -1680,6 +1820,42 @@ spec("tbe_compiler") {
       node_free(root);
       cleanup_test_file(template_path);
       cleanup_test_file(output_path);
+    }
+
+    it("should require explicit output for SQLite and PostgreSQL DDL") {
+      check_database_language_requires_explicit_output("sqlite", TBE_COMPILER_LANG_SQLITE);
+      check_database_language_requires_explicit_output("postgresql",
+                                                       TBE_COMPILER_LANG_POSTGRESQL);
+    }
+
+    it("should reject source output with database languages before parsing") {
+      check_database_language_conflicting_output_fails_fast(
+          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_SOURCE);
+      check_database_language_conflicting_output_fails_fast(
+          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          COMPILER_CONFLICTING_OUTPUT_SOURCE);
+    }
+
+    it("should reject guest output with database languages before parsing") {
+      check_database_language_conflicting_output_fails_fast(
+          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_GUEST);
+      check_database_language_conflicting_output_fails_fast(
+          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          COMPILER_CONFLICTING_OUTPUT_GUEST);
+    }
+
+    it("should reject Lua output with database languages before parsing") {
+      check_database_language_conflicting_output_fails_fast(
+          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_LUA);
+      check_database_language_conflicting_output_fails_fast(
+          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_LUA);
+    }
+
+    it("should reject DSL output with database languages before parsing") {
+      check_database_language_conflicting_output_fails_fast(
+          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_DSL);
+      check_database_language_conflicting_output_fails_fast(
+          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_DSL);
     }
 
     it("should preserve an existing output when replacement fails") {
