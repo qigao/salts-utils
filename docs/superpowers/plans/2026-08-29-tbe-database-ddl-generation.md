@@ -42,12 +42,12 @@
 - Create: `tbe/tbe_compiler/database_schema.c`
 - Modify: `tbe/tbe_compiler/CMakeLists.txt`
 
-- [ ] 添加一个最小 annotated schema fixture，经真实 parser/annotator 后调用数据库 IR builder；逐项断言表名、列名、必填/可空、主键顺序、unique、identity、default 和 dialect type token。
-- [ ] 分别为 SQLite/PostgreSQL 添加手工推导的类型映射表测试，覆盖 bool、signed/unsigned widths、float/double、string、bytes、uuid 和 enum underlying type。
-- [ ] 构建并运行，确认测试因 IR API 不存在而失败；为保证 RED 可编译，先只声明接口和测试所需错误枚举，不添加成功实现。
-- [ ] 实现最小 database IR ownership：builder 独占新 Node tree，失败释放全部派生节点，destroy 可重复处理 NULL；不得借用会在 AST 释放后失效的字符串。
-- [ ] 实现公共 annotation 解析、SQL identifier 双引号转义、列名去重、主键序号排序及 dialect 类型策略。
-- [ ] 重跑 focused test，确认基础 IR 与类型映射变绿。
+- [x] 添加一个最小 annotated schema fixture，经真实 parser/annotator 后调用数据库 IR builder；逐项断言表名、列名、必填/可空、主键顺序、unique、identity、default 和 dialect type token。
+- [x] 分别为 SQLite/PostgreSQL 添加手工推导的类型映射表测试，覆盖 bool、signed/unsigned widths、float/double、string、bytes、uuid 和 enum underlying type。
+- [x] 构建并运行，确认测试因 IR API 不存在而失败；为保证 RED 可编译，先只声明接口和测试所需错误枚举，不添加成功实现。
+- [x] 实现最小 database IR ownership：builder 独占新 Node tree，失败释放全部派生节点，destroy 可重复处理 NULL；不得借用会在 AST 释放后失效的字符串。
+- [x] 实现公共 annotation 解析、SQL identifier 双引号转义、列名去重、主键序号排序及 dialect 类型策略。
+- [x] 重跑 focused test，确认基础 IR 与类型映射变绿。
 
 ## Task 3: 覆盖 fail-fast 数据契约
 
