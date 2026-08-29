@@ -6,7 +6,8 @@ RTSP、WebRTC 以及移动端 Java/Swift 包装不属于该组件。
 
 ## 构建与链接
 
-组件默认关闭。通过 CMake 启用时，同时选择 vcpkg 的 `capture` feature：
+裸 CMake 配置默认关闭该组件。通过 CMake 启用时，同时选择 vcpkg 的 `capture`
+feature：
 
 ```sh
 cmake -S . -B build/capture \
@@ -15,9 +16,9 @@ cmake -S . -B build/capture \
 cmake --build build/capture
 ```
 
-仓库提供 `win-capture-{dev,release}-user` 与
-`linux-capture-{dev,release}-user` configure/build/test/install presets。安装后，
-消费端只依赖导出的组件：
+标准 Windows Release preset 已启用 Capture；构建其常规 `install` target 时会和其他库
+一起安装并导出 `TurboParser::Capture`，无需 Capture 或 Release 专用 install preset。
+Debug 与 Linux 仍使用对应的 capture-enabled preset。安装后，消费端只依赖导出的组件：
 
 ```cmake
 find_package(TurboParser CONFIG REQUIRED)
