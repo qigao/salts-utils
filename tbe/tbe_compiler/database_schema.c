@@ -154,31 +154,42 @@ static int database_annotation_allowed(const char *name, unsigned allowed_locati
   return 0;
 }
 
-static int database_validate_db_annotations(const Node *owner, unsigned allowed_locations) {
+static const char *database_invalid_db_annotation(const Node *owner,
+                                                  unsigned allowed_locations) {
   Node *attributes = database_attributes(owner);
   size_t index;
 
-  if (!owner) return 0;
-  if (!attributes) return 1;
+  if (!owner) return "<owner>";
+  if (!attributes) return NULL;
   for (index = 0; index < attributes->data.list.count; ++index) {
     const char *name = database_string_value(attributes->data.list.items[index], "name");
     if (name && strncmp(name, "db_", 3) == 0 &&
         !database_annotation_allowed(name, allowed_locations))
-      return 0;
+      return name;
   }
-  return 1;
+  return NULL;
 }
 
-static int database_validate_message_field_annotations(const Node *message) {
+static int database_validate_db_annotations(const Node *owner, unsigned allowed_locations) {
+  return database_invalid_db_annotation(owner, allowed_locations) == NULL;
+}
+
+static const Node *database_invalid_message_field_annotation(const Node *message,
+                                                             const char **out_annotation) {
   Node *fields = database_find_child(message, "fields");
   size_t index;
 
-  if (!message || !fields || fields->type != NODE_LIST) return 0;
+  if (out_annotation) *out_annotation = NULL;
+  if (!message || !fields || fields->type != NODE_LIST) return NULL;
   for (index = 0; index < fields->data.list.count; ++index) {
-    if (!database_validate_db_annotations(fields->data.list.items[index], DATABASE_ANNOTATION_FIELD))
-      return 0;
+    const Node *field = fields->data.list.items[index];
+    const char *annotation = database_invalid_db_annotation(field, DATABASE_ANNOTATION_FIELD);
+    if (annotation) {
+      if (out_annotation) *out_annotation = annotation;
+      return field;
+    }
   }
-  return 1;
+  return NULL;
 }
 
 static int database_add_string(Node *map, const char *name, const char *value) {
@@ -1002,13 +1013,24 @@ tbe_database_schema_status_t tbe_database_schema_build(
   for (message_index = 0; message_index < messages->data.list.count; ++message_index) {
     const Node *message = messages->data.list.items[message_index];
     const char *table_name = database_attribute_value(message, "db_table");
+    const char *invalid_message_annotation;
+    const char *invalid_field_annotation;
+    const Node *invalid_field;
     Node *table;
     size_t previous_index;
 
-    if (!database_validate_db_annotations(message, DATABASE_ANNOTATION_MESSAGE) ||
-        !database_validate_message_field_annotations(message)) {
+    invalid_message_annotation =
+        database_invalid_db_annotation(message, DATABASE_ANNOTATION_MESSAGE);
+    invalid_field = database_invalid_message_field_annotation(message, &invalid_field_annotation);
+    if (invalid_message_annotation) {
       database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
-                              "annotation=db_* is invalid for this location");
+                              "annotation=%s is invalid for this location", invalid_message_annotation);
+      goto cleanup;
+    }
+    if (invalid_field) {
+      database_set_diagnostic(out_diagnostic, dialect, database_message_name(message),
+                              database_string_value(invalid_field, "name"),
+                              "annotation=%s is invalid for this location", invalid_field_annotation);
       goto cleanup;
     }
     if (!table_name) continue;

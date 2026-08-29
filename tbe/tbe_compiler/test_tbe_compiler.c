@@ -45,23 +45,18 @@ static Node *find_child(Node *parent, const char *name) {
   return NULL;
 }
 
-static int add_test_string(Node *map, const char *name, const char *value) {
-  Node *child = create_node_string(name, value);
-  if (!child) return -1;
-  if (map_add(map, child) != 0) {
-    node_free(child);
-    return -1;
-  }
-  return 0;
-}
+static int replace_test_string(Node *map, const char *name, const char *value) {
+  Node *node = find_child(map, name);
+  char *replacement;
+  size_t length;
 
-static int add_test_attribute(Node *attributes, const char *name, const char *value) {
-  Node *attribute = create_node_map(NULL);
-  if (!attribute || add_test_string(attribute, "name", name) != 0 ||
-      add_test_string(attribute, "value", value) != 0 || list_add(attributes, attribute) != 0) {
-    node_free(attribute);
-    return -1;
-  }
+  if (!node || node->type != NODE_STRING || !value) return -1;
+  length = strlen(value);
+  replacement = (char *)malloc(length + 1u);
+  if (!replacement) return -1;
+  memcpy(replacement, value, length + 1u);
+  free(node->data.string_val);
+  node->data.string_val = replacement;
   return 0;
 }
 
@@ -96,6 +91,31 @@ static Node *build_database_ir_from_schema_with_diagnostic(
   }
 
   *status = tbe_database_schema_build(schema_root, dialect, &database_ir, diagnostic);
+  node_free(schema_root);
+  return database_ir;
+}
+
+static Node *build_database_ir_from_mutated_default(
+    const char *schema, const char *default_value, tbe_database_dialect_t dialect,
+    tbe_database_schema_status_t *status, tbe_database_schema_diagnostic_t *diagnostic) {
+  Node *schema_root = create_node_map("root");
+  Node *database_ir = NULL;
+  Node *messages;
+  Node *fields;
+  Node *field;
+
+  if (!schema_root) return NULL;
+  if (parse_schema(schema, strlen(schema), schema_root, NULL) != 0) goto cleanup;
+  messages = find_child(schema_root, "messages");
+  fields = messages && messages->type == NODE_LIST && messages->data.list.count == 1u ?
+               find_child(messages->data.list.items[0], "fields") : NULL;
+  field = fields && fields->type == NODE_LIST && fields->data.list.count == 1u ?
+              fields->data.list.items[0] : NULL;
+  if (!field || replace_test_string(field, "default_value", default_value) != 0) goto cleanup;
+
+  *status = tbe_database_schema_build(schema_root, dialect, &database_ir, diagnostic);
+
+cleanup:
   node_free(schema_root);
   return database_ir;
 }
@@ -502,21 +522,18 @@ spec("tbe_compiler") {
       }
     }
 
-    it("rejects db annotations outside their allowed location") {
-      const char *invalid_schemas[] = {
-          "[db_unknown(1)] message Invalid { int32 id; }",
-          "[db_column(wrong_location)] message Invalid { int32 id; }",
-          "[db_table(invalid)] message Invalid { [db_unknown(1)] int32 id; }",
-          "[db_table(invalid)] message Invalid { [db_table(wrong_location)] int32 id; }"};
+    it("reports the closest field and annotation for invalid field annotations") {
+      static const database_failure_case_t cases[] = {
+          {"rejects unknown field annotation",
+           "[db_table(annotation_scope)] message FieldUnknown { [db_unknown(1)] int32 id; }",
+           "FieldUnknown", "id", "annotation=db_unknown"},
+          {"rejects db_table on a field",
+           "[db_table(annotation_scope)] message FieldTable { [db_table(wrong_location)] int32 id; }",
+           "FieldTable", "id", "annotation=db_table"},
+      };
 
-      for (size_t schema_index = 0;
-           schema_index < sizeof(invalid_schemas) / sizeof(invalid_schemas[0]); ++schema_index) {
-        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
-        Node *database_ir = build_database_ir_from_schema(
-            invalid_schemas[schema_index], TBE_DATABASE_DIALECT_SQLITE, &status);
-        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
-        check_null(database_ir);
-      }
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
     }
 
     it("rejects every table, column, primary-key, identity, and db_ignore contract break") {
@@ -568,62 +585,20 @@ spec("tbe_compiler") {
     }
 
     it("rejects invalid db boolean values and db_ignore annotation conflicts") {
-      typedef struct annotation_case_s {
-        const char *name;
-        const char *value;
-        const char *second_name;
-        const char *second_value;
-        const char *context;
-      } annotation_case_t;
-      static const annotation_case_t cases[] = {
-          {"db_unique", "2", NULL, NULL, "annotation=db_unique"},
-          {"db_ignore", "2", NULL, NULL, "annotation=db_ignore"},
-          {"db_ignore", "1", "db_unique", "1", "annotation=db_ignore"},
+      static const database_failure_case_t cases[] = {
+          {"rejects a non-one db_unique value",
+           "[db_table(annotation_values)] message AnnotationValues { [db_unique(2)] int32 id; }",
+           "AnnotationValues", "id", "annotation=db_unique"},
+          {"rejects a non-one db_ignore value",
+           "[db_table(annotation_values)] message AnnotationValues { [db_ignore(2)] int32 id; }",
+           "AnnotationValues", "id", "annotation=db_ignore"},
+          {"rejects db_ignore combined with another database annotation",
+           "[db_table(annotation_values)] message AnnotationValues { [db_ignore(1), db_unique(1)] int32 id; }",
+           "AnnotationValues", "id", "annotation=db_ignore"},
       };
 
-      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
-        const char *schema = "[db_table(annotation_values)] message AnnotationValues { int32 id; }";
-        Node *schema_root = create_node_map("root");
-        Node *database_ir = NULL;
-        Node *messages;
-        Node *fields;
-        Node *attributes;
-        tbe_database_schema_diagnostic_t diagnostic;
-        tbe_database_schema_status_t status;
-
-        check_not_null(schema_root);
-        if (!schema_root) continue;
-        check_equal(parse_schema(schema, strlen(schema), schema_root, NULL), 0);
-        messages = find_child(schema_root, "messages");
-        fields = messages && messages->type == NODE_LIST ?
-                     find_child(messages->data.list.items[0], "fields") : NULL;
-        attributes = fields && fields->type == NODE_LIST ?
-                         create_node_list("attributes") : NULL;
-        check_not_null(attributes);
-        if (!attributes || !fields ||
-            add_test_attribute(attributes, cases[index].name, cases[index].value) != 0 ||
-            map_add(fields->data.list.items[0], attributes) != 0) {
-          node_free(attributes);
-          node_free(schema_root);
-          continue;
-        }
-        if (cases[index].second_name) {
-          if (add_test_attribute(attributes, cases[index].second_name, cases[index].second_value) != 0) {
-            node_free(schema_root);
-            continue;
-          }
-        }
-        status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE, &database_ir,
-                                           &diagnostic);
-        info("annotation=%s", cases[index].name);
-        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
-        check_null(database_ir);
-        check_equal(diagnostic.dialect, "sqlite");
-        check_equal(diagnostic.message_name, "AnnotationValues");
-        check_equal(diagnostic.field_name, "id");
-        check_contains(diagnostic.context, cases[index].context);
-        node_free(schema_root);
-      }
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
     }
 
     it("rejects unsupported persisted field shapes while db_ignore skips them") {
@@ -662,7 +637,7 @@ spec("tbe_compiler") {
       }
     }
 
-    it("normalizes default literals at every integer boundary and rejects type mismatch") {
+    it("normalizes grammar-expressible default literals and rejects type mismatch") {
       const char *valid_schema =
           "enum State <uint8> { Idle = 0; Active = 255; }"
           "[db_table(default_limits)] message DefaultLimits {"
@@ -720,6 +695,108 @@ spec("tbe_compiler") {
       }
       for (size_t index = 0; index < sizeof(invalid_cases) / sizeof(invalid_cases[0]); ++index)
         check_database_schema_failure(&invalid_cases[index]);
+    }
+
+    it("validates signed and floating defaults mutated after parsing when the grammar cannot express them") {
+      typedef struct default_case_s {
+        const char *type;
+        const char *value;
+        const char *expected_literal;
+      } default_case_t;
+      static const default_case_t valid_cases[] = {
+          {"int8", "-128", "DEFAULT -128"},
+          {"int8", "127", "DEFAULT 127"},
+          {"int16", "-32768", "DEFAULT -32768"},
+          {"int16", "32767", "DEFAULT 32767"},
+          {"int32", "-2147483648", "DEFAULT -2147483648"},
+          {"int32", "2147483647", "DEFAULT 2147483647"},
+          {"int64", "-9223372036854775808", "DEFAULT -9223372036854775808"},
+          {"int64", "9223372036854775807", "DEFAULT 9223372036854775807"},
+          {"uint64", "18446744073709551615", "DEFAULT 18446744073709551615"},
+          {"float", "-1.25", "DEFAULT -1.25"},
+          {"float", "1.25e+2", "DEFAULT 1.25e+2"},
+          {"double", "-1.0e-3", "DEFAULT -1.0e-3"},
+      };
+      static const database_failure_case_t invalid_cases[] = {
+          {"rejects int8 default below INT8_MIN", "int8|-129", "AstDefault", "value",
+           "type=int8 default=-129"},
+          {"rejects int8 default above INT8_MAX", "int8|128", "AstDefault", "value",
+           "type=int8 default=128"},
+          {"rejects int64 default below INT64_MIN", "int64|-9223372036854775809", "AstDefault", "value",
+           "type=int64 default=-9223372036854775809"},
+          {"rejects int64 default above INT64_MAX", "int64|9223372036854775808", "AstDefault", "value",
+           "type=int64 default=9223372036854775808"},
+          {"rejects uint64 default above UINT64_MAX", "uint64|18446744073709551616", "AstDefault", "value",
+           "type=uint64 default=18446744073709551616"},
+          {"rejects f32 overflow", "float|3.5e38", "AstDefault", "value",
+           "type=float default=3.5e38"},
+          {"rejects f64 overflow", "double|1e309", "AstDefault", "value",
+           "type=double default=1e309"},
+          {"rejects non-finite float", "float|NaN", "AstDefault", "value",
+           "type=float default=NaN"},
+      };
+
+      for (size_t index = 0; index < sizeof(valid_cases) / sizeof(valid_cases[0]); ++index) {
+        char schema[160];
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        tbe_database_schema_diagnostic_t diagnostic;
+        Node *database_ir;
+        Node *table;
+        Node *column;
+
+        snprintf(schema, sizeof(schema),
+                 "[db_table(ast_defaults)] message AstDefault { %s value default 0; }",
+                 valid_cases[index].type);
+        database_ir = build_database_ir_from_mutated_default(
+            schema, valid_cases[index].value, TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
+        info("type=%s default=%s", valid_cases[index].type, valid_cases[index].value);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+        check_not_null(database_ir);
+        if (!database_ir) continue;
+        table = database_ir_table(database_ir, 0);
+        check_not_null(table);
+        if (!table) {
+          tbe_database_schema_destroy(database_ir);
+          continue;
+        }
+        column = database_ir_column(table, 0);
+        check_not_null(column);
+        if (column) {
+          Node *constraints = find_child(column, "sql_constraints");
+          check_not_null(constraints);
+          if (constraints) check_contains(constraints->data.string_val, valid_cases[index].expected_literal);
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+
+      for (size_t index = 0; index < sizeof(invalid_cases) / sizeof(invalid_cases[0]); ++index) {
+        const char *separator = strchr(invalid_cases[index].schema, '|');
+        char schema[160];
+        char type[32];
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        tbe_database_schema_diagnostic_t diagnostic;
+        Node *database_ir;
+        size_t type_length;
+
+        check_not_null(separator);
+        if (!separator) continue;
+        type_length = (size_t)(separator - invalid_cases[index].schema);
+        check_less(type_length, sizeof(type));
+        if (type_length >= sizeof(type)) continue;
+        memcpy(type, invalid_cases[index].schema, type_length);
+        type[type_length] = '\0';
+        snprintf(schema, sizeof(schema),
+                 "[db_table(ast_defaults)] message AstDefault { %s value default 0; }", type);
+        database_ir = build_database_ir_from_mutated_default(
+            schema, separator + 1, TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
+        info("case=%s", invalid_cases[index].name);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+        check_null(database_ir);
+        check_equal(diagnostic.dialect, "postgresql");
+        check_equal(diagnostic.message_name, invalid_cases[index].message_name);
+        check_equal(diagnostic.field_name, invalid_cases[index].field_name);
+        check_contains(diagnostic.context, invalid_cases[index].context);
+      }
     }
   }
 
