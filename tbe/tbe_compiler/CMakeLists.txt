@@ -15,7 +15,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(tbe_compiler
-  SOURCES main.c compiler_core.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache
   FOLDER "tbe/tbe_compiler")
 target_include_directories(tbe_compiler
@@ -72,7 +72,7 @@ install(
 # =============================================================================
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c mustache_helpers.c
+  SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS TurboParser::TbeSchema TurboUtils::TinyTest TurboParser::Mustache
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"

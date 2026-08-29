@@ -1,6 +1,7 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "compiler_core.h"
+#include "database_schema.h"
 #include "node_tree.h"
 #include "tbe_wire.h"
 #include "schema_parser_dsl.h"
@@ -39,6 +40,35 @@ static Node *find_child(Node *parent, const char *name) {
   }
 
   return NULL;
+}
+
+static Node *database_ir_table(Node *database_ir, size_t index) {
+  Node *tables = find_child(database_ir, "db_tables");
+  if (!tables || tables->type != NODE_LIST || index >= tables->data.list.count) return NULL;
+  return tables->data.list.items[index];
+}
+
+static Node *database_ir_column(Node *table, size_t index) {
+  Node *columns = find_child(table, "db_columns");
+  if (!columns || columns->type != NODE_LIST || index >= columns->data.list.count) return NULL;
+  return columns->data.list.items[index];
+}
+
+static Node *build_database_ir_from_schema(const char *schema,
+                                           tbe_database_dialect_t dialect,
+                                           tbe_database_schema_status_t *status) {
+  Node *schema_root = create_node_map("root");
+  Node *database_ir = NULL;
+
+  if (!schema_root) return NULL;
+  if (parse_schema(schema, strlen(schema), schema_root, NULL) != 0) {
+    node_free(schema_root);
+    return NULL;
+  }
+
+  *status = tbe_database_schema_build(schema_root, dialect, &database_ir);
+  node_free(schema_root);
+  return database_ir;
 }
 
 static char *render_c_template(const char *schema) {
@@ -216,6 +246,119 @@ cleanup:
 }
 
 spec("tbe_compiler") {
+  describe("database schema IR") {
+    it("normalizes annotated tables into owned SQLite IR") {
+      const char *schema =
+          "schema Accounts [id(1), version(1), byte_order(little)];"
+          "enum Role <uint16> { User = 0; Admin = 1; }"
+          "[db_table(user_account)] message User {"
+          "  [db_column(user_id), db_primary_key(1), db_generated(identity)] int64 id;"
+          "  [db_unique(1)] string email;"
+          "  optional string display_name;"
+          "  optional uint32 login_count default 0;"
+          "  Role role;"
+          "}"
+          "[db_table(membership)] message Membership {"
+          "  [db_primary_key(2)] string tenant;"
+          "  [db_primary_key(1)] int32 user_id;"
+          "}";
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      Node *database_ir = build_database_ir_from_schema(
+          schema, TBE_DATABASE_DIALECT_SQLITE, &status);
+      Node *user_table;
+      Node *membership_table;
+      Node *primary_keys;
+
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+      check_not_null(database_ir);
+      if (!database_ir) return;
+
+      user_table = database_ir_table(database_ir, 0);
+      membership_table = database_ir_table(database_ir, 1);
+      check_not_null(user_table);
+      check_not_null(membership_table);
+      if (!user_table || !membership_table) {
+        tbe_database_schema_destroy(database_ir);
+        return;
+      }
+
+      check_equal(find_child(user_table, "sql_table_name")->data.string_val,
+                  "\"user_account\"");
+      check_equal(find_child(user_table, "db_columns")->data.list.count, (size_t)5);
+      check_equal(find_child(database_ir_column(user_table, 0), "sql_column_name")->data.string_val,
+                  "\"user_id\"");
+      check_equal(find_child(database_ir_column(user_table, 0), "sql_type")->data.string_val,
+                  "INTEGER");
+      check_equal(find_child(database_ir_column(user_table, 0), "sql_constraints")->data.string_val,
+                  "NOT NULL PRIMARY KEY AUTOINCREMENT");
+      check_equal(find_child(database_ir_column(user_table, 1), "sql_constraints")->data.string_val,
+                  "NOT NULL UNIQUE");
+      check_equal(find_child(database_ir_column(user_table, 2), "sql_constraints")->data.string_val,
+                  "");
+      check_contains(find_child(database_ir_column(user_table, 3), "sql_constraints")->data.string_val,
+                     "DEFAULT 0");
+      check_equal(find_child(database_ir_column(user_table, 4), "sql_type")->data.string_val,
+                  "INTEGER");
+
+      primary_keys = find_child(membership_table, "db_primary_key_columns");
+      check_equal(primary_keys->data.list.count, (size_t)2);
+      check_equal(find_child(primary_keys->data.list.items[0], "sql_column_name")->data.string_val,
+                  "\"user_id\"");
+      check_equal(find_child(primary_keys->data.list.items[1], "sql_column_name")->data.string_val,
+                  "\"tenant\"");
+      check_not_null(find_child(membership_table, "has_composite_primary_key"));
+
+      tbe_database_schema_destroy(database_ir);
+      tbe_database_schema_destroy(NULL);
+      tbe_database_schema_destroy(NULL);
+    }
+
+    it("maps every supported scalar type for SQLite and PostgreSQL") {
+      const char *schema =
+          "enum Kind <uint16> { First = 0; Second = 1; }"
+          "[db_table(types)] message Types {"
+          " bool bool_value; int8 i8_value; uint8 u8_value; int16 i16_value;"
+          " uint16 u16_value; int32 i32_value; uint32 u32_value; int64 i64_value;"
+          " uint64 u64_value; float f32_value; double f64_value; string text_value;"
+          " bytes payload_value; bytes(16) digest_value; uuid uuid_value; Kind kind_value;"
+          "}";
+      const char *sqlite_types[] = {
+          "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER",
+          "INTEGER", "NUMERIC", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER"};
+      const char *postgresql_types[] = {
+          "boolean", "smallint", "smallint", "smallint", "integer", "integer", "bigint",
+          "bigint", "numeric(20,0)", "real", "double precision", "text", "bytea", "bytea",
+          "uuid", "integer"};
+      const tbe_database_dialect_t dialects[] = {
+          TBE_DATABASE_DIALECT_SQLITE, TBE_DATABASE_DIALECT_POSTGRESQL};
+      const char *const *expected_types[] = {sqlite_types, postgresql_types};
+
+      for (size_t dialect_index = 0; dialect_index < 2; ++dialect_index) {
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        Node *database_ir = build_database_ir_from_schema(
+            schema, dialects[dialect_index], &status);
+        Node *table;
+
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+        check_not_null(database_ir);
+        if (!database_ir) continue;
+        table = database_ir_table(database_ir, 0);
+        check_not_null(table);
+        if (table) {
+          for (size_t column_index = 0; column_index < 16; ++column_index) {
+            Node *column = database_ir_column(table, column_index);
+            check_not_null(column);
+            if (column) {
+              check_equal(find_child(column, "sql_type")->data.string_val,
+                          expected_types[dialect_index][column_index]);
+            }
+          }
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+    }
+  }
+
   describe("Node creation") {
     it("should create string node") {
       Node *n = create_node_string("test_key", "test_val");
