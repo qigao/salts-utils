@@ -30,6 +30,9 @@
 #endif
 
 static void cleanup_test_file(const char *path);
+static Node *build_database_ir_from_schema_with_diagnostic(
+    const char *schema, tbe_database_dialect_t dialect, tbe_database_schema_status_t *status,
+    tbe_database_schema_diagnostic_t *diagnostic);
 
 static Node *find_child(Node *parent, const char *name) {
   if (!parent || parent->type != NODE_MAP) return NULL;
@@ -40,6 +43,26 @@ static Node *find_child(Node *parent, const char *name) {
   }
 
   return NULL;
+}
+
+static int add_test_string(Node *map, const char *name, const char *value) {
+  Node *child = create_node_string(name, value);
+  if (!child) return -1;
+  if (map_add(map, child) != 0) {
+    node_free(child);
+    return -1;
+  }
+  return 0;
+}
+
+static int add_test_attribute(Node *attributes, const char *name, const char *value) {
+  Node *attribute = create_node_map(NULL);
+  if (!attribute || add_test_string(attribute, "name", name) != 0 ||
+      add_test_string(attribute, "value", value) != 0 || list_add(attributes, attribute) != 0) {
+    node_free(attribute);
+    return -1;
+  }
+  return 0;
 }
 
 static Node *database_ir_table(Node *database_ir, size_t index) {
@@ -57,6 +80,12 @@ static Node *database_ir_column(Node *table, size_t index) {
 static Node *build_database_ir_from_schema(const char *schema,
                                            tbe_database_dialect_t dialect,
                                            tbe_database_schema_status_t *status) {
+  return build_database_ir_from_schema_with_diagnostic(schema, dialect, status, NULL);
+}
+
+static Node *build_database_ir_from_schema_with_diagnostic(
+    const char *schema, tbe_database_dialect_t dialect, tbe_database_schema_status_t *status,
+    tbe_database_schema_diagnostic_t *diagnostic) {
   Node *schema_root = create_node_map("root");
   Node *database_ir = NULL;
 
@@ -66,9 +95,35 @@ static Node *build_database_ir_from_schema(const char *schema,
     return NULL;
   }
 
-  *status = tbe_database_schema_build(schema_root, dialect, &database_ir);
+  *status = tbe_database_schema_build(schema_root, dialect, &database_ir, diagnostic);
   node_free(schema_root);
   return database_ir;
+}
+
+typedef struct database_failure_case_s {
+  const char *name;
+  const char *schema;
+  const char *message_name;
+  const char *field_name;
+  const char *context;
+} database_failure_case_t;
+
+static void check_database_schema_failure(const database_failure_case_t *test_case) {
+  tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+  tbe_database_schema_diagnostic_t diagnostic;
+  Node *database_ir;
+
+  check_not_null(test_case);
+  if (!test_case) return;
+  database_ir = build_database_ir_from_schema_with_diagnostic(
+      test_case->schema, TBE_DATABASE_DIALECT_SQLITE, &status, &diagnostic);
+  info("case=%s", test_case->name);
+  check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+  check_null(database_ir);
+  check_equal(diagnostic.dialect, "sqlite");
+  check_equal(diagnostic.message_name, test_case->message_name);
+  check_equal(diagnostic.field_name, test_case->field_name);
+  check_contains(diagnostic.context, test_case->context);
 }
 
 static char *render_c_template(const char *schema) {
@@ -462,6 +517,209 @@ spec("tbe_compiler") {
         check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
         check_null(database_ir);
       }
+    }
+
+    it("rejects every table, column, primary-key, identity, and db_ignore contract break") {
+      static const database_failure_case_t cases[] = {
+          {"requires a database table", "message NotTable { int32 id; }", "<schema>",
+           "<schema>", "annotation=db_table"},
+          {"rejects duplicate table names",
+           "[db_table(shared)] message First { int32 id; }"
+           "[db_table(shared)] message Second { int32 id; }",
+           "Second", "<message>", "annotation=db_table"},
+          {"rejects duplicate column names",
+           "[db_table(columns)] message ColumnNames { [db_column(id)] int32 first; "
+           "[db_column(id)] int32 second; }",
+           "ColumnNames", "second", "annotation=db_column"},
+          {"rejects a table without persisted columns",
+           "[db_table(empty)] message Empty { [db_ignore(1)] int32 id; }", "Empty", "<table>",
+           "annotation=db_ignore"},
+          {"rejects duplicate primary-key order",
+           "[db_table(keys)] message DuplicateOrder { [db_primary_key(1)] int32 first; "
+           "[db_primary_key(1)] int32 second; }",
+           "DuplicateOrder", "second", "annotation=db_primary_key"},
+          {"rejects a primary-key order gap",
+           "[db_table(keys)] message MissingOrder { [db_primary_key(1)] int32 first; "
+           "[db_primary_key(3)] int32 third; }",
+           "MissingOrder", "third", "annotation=db_primary_key"},
+          {"rejects zero primary-key order",
+           "[db_table(keys)] message ZeroOrder { [db_primary_key(0)] int32 id; }", "ZeroOrder", "id",
+           "annotation=db_primary_key"},
+          {"rejects an optional primary key",
+           "[db_table(keys)] message OptionalKey { optional [db_primary_key(1)] int32 id; }",
+           "OptionalKey", "id", "annotation=db_primary_key"},
+          {"rejects identity on a non-integer primary key",
+           "[db_table(identity)] message TextIdentity { [db_primary_key(1), db_generated(identity)] string id; }",
+           "TextIdentity", "id", "annotation=db_generated"},
+          {"rejects identity in a composite primary key",
+           "[db_table(identity)] message CompositeIdentity { [db_primary_key(1), db_generated(identity)] int64 id; "
+           "[db_primary_key(2)] int32 tenant; }",
+           "CompositeIdentity", "id", "annotation=db_generated"},
+          {"rejects identity with a TBE default",
+           "[db_table(identity)] message DefaultIdentity { [db_primary_key(1), db_generated(identity)] int64 id default 1; }",
+           "DefaultIdentity", "id", "annotation=db_generated"},
+          {"rejects identity with unique",
+           "[db_table(identity)] message UniqueIdentity { [db_primary_key(1), db_generated(identity), db_unique(1)] int64 id; }",
+           "UniqueIdentity", "id", "annotation=db_generated"},
+      };
+
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
+    }
+
+    it("rejects invalid db boolean values and db_ignore annotation conflicts") {
+      typedef struct annotation_case_s {
+        const char *name;
+        const char *value;
+        const char *second_name;
+        const char *second_value;
+        const char *context;
+      } annotation_case_t;
+      static const annotation_case_t cases[] = {
+          {"db_unique", "2", NULL, NULL, "annotation=db_unique"},
+          {"db_ignore", "2", NULL, NULL, "annotation=db_ignore"},
+          {"db_ignore", "1", "db_unique", "1", "annotation=db_ignore"},
+      };
+
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        const char *schema = "[db_table(annotation_values)] message AnnotationValues { int32 id; }";
+        Node *schema_root = create_node_map("root");
+        Node *database_ir = NULL;
+        Node *messages;
+        Node *fields;
+        Node *attributes;
+        tbe_database_schema_diagnostic_t diagnostic;
+        tbe_database_schema_status_t status;
+
+        check_not_null(schema_root);
+        if (!schema_root) continue;
+        check_equal(parse_schema(schema, strlen(schema), schema_root, NULL), 0);
+        messages = find_child(schema_root, "messages");
+        fields = messages && messages->type == NODE_LIST ?
+                     find_child(messages->data.list.items[0], "fields") : NULL;
+        attributes = fields && fields->type == NODE_LIST ?
+                         create_node_list("attributes") : NULL;
+        check_not_null(attributes);
+        if (!attributes || !fields ||
+            add_test_attribute(attributes, cases[index].name, cases[index].value) != 0 ||
+            map_add(fields->data.list.items[0], attributes) != 0) {
+          node_free(attributes);
+          node_free(schema_root);
+          continue;
+        }
+        if (cases[index].second_name) {
+          if (add_test_attribute(attributes, cases[index].second_name, cases[index].second_value) != 0) {
+            node_free(schema_root);
+            continue;
+          }
+        }
+        status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE, &database_ir,
+                                           &diagnostic);
+        info("annotation=%s", cases[index].name);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+        check_null(database_ir);
+        check_equal(diagnostic.dialect, "sqlite");
+        check_equal(diagnostic.message_name, "AnnotationValues");
+        check_equal(diagnostic.field_name, "id");
+        check_contains(diagnostic.context, cases[index].context);
+        node_free(schema_root);
+      }
+    }
+
+    it("rejects unsupported persisted field shapes while db_ignore skips them") {
+      static const database_failure_case_t cases[] = {
+          {"rejects a collection", "[db_table(unsupported)] message Collection { list<int32> values; }",
+           "Collection", "values", "type=list"},
+          {"rejects a map", "[db_table(unsupported)] message Map { map<string,int32> values; }", "Map",
+           "values", "type=map"},
+          {"rejects a group", "group Level { int32 price; } "
+                              "[db_table(unsupported)] message Group { group<Level> levels; }",
+           "Group", "levels", "type=group"},
+          {"rejects a composite reference", "composite Header { int32 sequence; } "
+                                            "[db_table(unsupported)] message Composite { Header header; }",
+           "Composite", "header", "type=Header"},
+          {"rejects a union reference", "union Choice { int32 value; } "
+                                        "[db_table(unsupported)] message Union { Choice choice; }",
+           "Union", "choice", "type=Choice"},
+      };
+      static const char *const ignored_schemas[] = {
+          "[db_table(ignored_collection)] message IgnoredCollection { int32 id; [db_ignore(1)] list<int32> values; }",
+          "[db_table(ignored_map)] message IgnoredMap { int32 id; [db_ignore(1)] map<string,int32> values; }",
+          "group Level { int32 price; } [db_table(ignored_group)] message IgnoredGroup { int32 id; [db_ignore(1)] group<Level> levels; }",
+          "composite Header { int32 sequence; } [db_table(ignored_composite)] message IgnoredComposite { int32 id; [db_ignore(1)] Header header; }",
+          "union Choice { int32 value; } [db_table(ignored_union)] message IgnoredUnion { int32 id; [db_ignore(1)] Choice choice; }",
+      };
+
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
+      for (size_t index = 0; index < sizeof(ignored_schemas) / sizeof(ignored_schemas[0]); ++index) {
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        Node *database_ir = build_database_ir_from_schema(
+            ignored_schemas[index], TBE_DATABASE_DIALECT_SQLITE, &status);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+        check_not_null(database_ir);
+        tbe_database_schema_destroy(database_ir);
+      }
+    }
+
+    it("normalizes default literals at every integer boundary and rejects type mismatch") {
+      const char *valid_schema =
+          "enum State <uint8> { Idle = 0; Active = 255; }"
+          "[db_table(default_limits)] message DefaultLimits {"
+          " int8 signed_min default 0; int8 signed_max default 127; int64 signed_max64 default 9223372036854775807;"
+          " uint8 unsigned_min default 0; uint64 unsigned_max default 18446744073709551615;"
+          " float decimal default 125; string quoted default \"D'Arcy\"; State state default Active;"
+          "}";
+      static const database_failure_case_t invalid_cases[] = {
+          {"rejects signed default above its maximum",
+           "[db_table(defaults)] message SignedOverflow { int8 value default 128; }",
+           "SignedOverflow", "value", "type=int8 default=128"},
+          {"rejects unsigned default above its maximum",
+           "[db_table(defaults)] message UnsignedOverflow { uint64 value default 18446744073709551616; }",
+           "UnsignedOverflow", "value", "type=uint64 default=18446744073709551616"},
+          {"rejects a boolean default written as an integer",
+           "[db_table(defaults)] message BooleanMismatch { bool value default 1; }",
+           "BooleanMismatch", "value", "type=bool default=1"},
+          {"rejects a non-finite float default",
+           "[db_table(defaults)] message FloatInvalid { float value default NaN; }",
+           "FloatInvalid", "value", "type=float default=NaN"},
+          {"rejects an unknown enum default constant",
+           "enum State <uint8> { Idle = 0; } "
+           "[db_table(defaults)] message EnumMismatch { State value default Missing; }",
+           "EnumMismatch", "value", "type=State default=Missing"},
+      };
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      Node *database_ir = build_database_ir_from_schema(
+          valid_schema, TBE_DATABASE_DIALECT_POSTGRESQL, &status);
+      Node *table;
+
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+      check_not_null(database_ir);
+      if (database_ir) {
+        table = database_ir_table(database_ir, 0);
+        check_not_null(table);
+        if (table) {
+          check_contains(find_child(database_ir_column(table, 0), "sql_constraints")->data.string_val,
+                         "DEFAULT 0");
+          check_contains(find_child(database_ir_column(table, 1), "sql_constraints")->data.string_val,
+                         "DEFAULT 127");
+          check_contains(find_child(database_ir_column(table, 2), "sql_constraints")->data.string_val,
+                         "DEFAULT 9223372036854775807");
+          check_contains(find_child(database_ir_column(table, 3), "sql_constraints")->data.string_val,
+                         "DEFAULT 0");
+          check_contains(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
+                         "DEFAULT 18446744073709551615");
+          check_contains(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
+                         "DEFAULT 125");
+          check_contains(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
+                         "DEFAULT 'D''Arcy'");
+          check_contains(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
+                         "DEFAULT 255");
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+      for (size_t index = 0; index < sizeof(invalid_cases) / sizeof(invalid_cases[0]); ++index)
+        check_database_schema_failure(&invalid_cases[index]);
     }
   }
 
