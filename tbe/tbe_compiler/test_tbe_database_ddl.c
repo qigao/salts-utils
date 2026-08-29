@@ -220,7 +220,8 @@ static void sqlite_ddl_test_populate_cleanup_probe(sqlite_ddl_test_state_t *stat
 spec("tbe_compiler SQLite DDL integration") {
   static sqlite_ddl_test_state_t state = {0};
   static size_t cleanup_probe_after_each_runs = 0;
-  static size_t cleanup_probe_resource_count = 0;
+  static size_t cleanup_probe_resource_count_before = 0;
+  static size_t cleanup_probe_resource_count_after = 0;
   static int cleanup_probe_armed = 0;
 
   before_each() { memset(&state, 0, sizeof(state)); }
@@ -228,11 +229,15 @@ spec("tbe_compiler SQLite DDL integration") {
   after_each() {
     if (cleanup_probe_armed) {
       ++cleanup_probe_after_each_runs;
-      cleanup_probe_resource_count = sqlite_ddl_test_live_resource_count(&state);
-      cleanup_probe_armed = 0;
+      cleanup_probe_resource_count_before = sqlite_ddl_test_live_resource_count(&state);
     }
 
     sqlite_ddl_test_cleanup(&state);
+
+    if (cleanup_probe_armed) {
+      cleanup_probe_resource_count_after = sqlite_ddl_test_live_resource_count(&state);
+      cleanup_probe_armed = 0;
+    }
   }
 
   it_should_fail("runs after_each cleanup after assertion longjmp") {
@@ -243,7 +248,8 @@ spec("tbe_compiler SQLite DDL integration") {
 
   it("observes fixture cleanup after the expected failure") {
     check_equal(cleanup_probe_after_each_runs, (size_t)1);
-    check_equal(cleanup_probe_resource_count, (size_t)5);
+    check_equal(cleanup_probe_resource_count_before, (size_t)5);
+    check_equal(cleanup_probe_resource_count_after, (size_t)0);
   }
 
   it("executes generated SQLite schema and enforces live constraints") {
