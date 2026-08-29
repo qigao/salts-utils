@@ -168,6 +168,53 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   return result;
 }
 
+static char *run_compiler_capture_stderr(const tbe_compiler_options_t *options,
+                                         int *out_status) {
+  int saved_stderr = -1;
+  FILE *capture_file = NULL;
+  char *stderr_path = NULL;
+  char *captured = NULL;
+  size_t captured_size = 0;
+
+  if (out_status) *out_status = -1;
+
+  stderr_path = tt_make_temp_file("tbe_compiler_stderr", ".log");
+  if (!stderr_path) return NULL;
+
+  fflush(stderr);
+  saved_stderr = tt_dup(tt_fileno(stderr));
+  if (saved_stderr < 0) goto cleanup;
+
+  capture_file = freopen(stderr_path, "w", stderr);
+  if (!capture_file) goto cleanup;
+
+  if (out_status) {
+    *out_status = tbe_compiler_run(options);
+  } else {
+    (void)tbe_compiler_run(options);
+  }
+  fflush(stderr);
+
+cleanup:
+  if (saved_stderr >= 0) {
+    tt_dup2(saved_stderr, tt_fileno(stderr));
+    tt_close(saved_stderr);
+  }
+
+  captured = tt_read_file(stderr_path, &captured_size);
+  if (captured != NULL && captured_size == 0) {
+    free(captured);
+    captured = NULL;
+  }
+
+  if (stderr_path != NULL) {
+    tt_remove_file(stderr_path);
+    free(stderr_path);
+  }
+
+  return captured;
+}
+
 spec("tbe_compiler") {
   describe("Node creation") {
     it("should create string node") {
@@ -522,6 +569,8 @@ spec("tbe_compiler") {
                    "templates/go_types.mustache");
       check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_TS),
                    "templates/ts_types.mustache");
+      check_null(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_SQLITE));
+      check_null(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_POSTGRESQL));
       check_equal(tbe_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
     }
 
@@ -587,6 +636,61 @@ spec("tbe_compiler") {
 
       free(output);
       cleanup_test_file(output_path);
+    }
+
+    it("should reject database languages before template rendering") {
+      const char *sqlite_output_path = "test_tbe_compiler_sqlite.out";
+      const char *postgres_output_path = "test_tbe_compiler_postgres.out";
+      int sqlite_status = -1;
+      int postgres_status = -1;
+      size_t sqlite_output_size = 0;
+      size_t postgres_output_size = 0;
+      char *sqlite_error = NULL;
+      char *postgres_error = NULL;
+      char *sqlite_output = NULL;
+      char *postgres_output = NULL;
+      tbe_compiler_options_t sqlite_options = {
+          .schema_path = SCHEMA_EXAMPLE_FILE,
+          .template_path = NULL,
+          .output_path = sqlite_output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      tbe_compiler_options_t postgres_options = {
+          .schema_path = SCHEMA_EXAMPLE_FILE,
+          .template_path = C_STRUCT_TEMPLATE_FILE,
+          .output_path = postgres_output_path,
+          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+      };
+
+      cleanup_test_file(sqlite_output_path);
+      cleanup_test_file(postgres_output_path);
+
+      sqlite_error = run_compiler_capture_stderr(&sqlite_options, &sqlite_status);
+      check(sqlite_status != 0);
+      check_not_null(sqlite_error);
+      if (sqlite_error != NULL) {
+        check_contains(sqlite_error, "--lang sqlite");
+        check_contains(sqlite_error, "not available yet");
+      }
+      sqlite_output = tt_read_file(sqlite_output_path, &sqlite_output_size);
+      check_null(sqlite_output);
+
+      postgres_error = run_compiler_capture_stderr(&postgres_options, &postgres_status);
+      check(postgres_status != 0);
+      check_not_null(postgres_error);
+      if (postgres_error != NULL) {
+        check_contains(postgres_error, "--lang postgresql");
+        check_contains(postgres_error, "not available yet");
+      }
+      postgres_output = tt_read_file(postgres_output_path, &postgres_output_size);
+      check_null(postgres_output);
+
+      free(sqlite_error);
+      free(postgres_error);
+      free(sqlite_output);
+      free(postgres_output);
+      cleanup_test_file(sqlite_output_path);
+      cleanup_test_file(postgres_output_path);
     }
 
     it("should generate RulesForge type declarations with the built-in DSL template") {

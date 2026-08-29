@@ -1086,12 +1086,34 @@ int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum) {
   return -1;
 }
 
+static const char *tbe_compiler_language_name(int64_t lang_enum) {
+  switch (lang_enum) {
+    case TBE_COMPILER_LANG_C:
+      return "c";
+    case TBE_COMPILER_LANG_PYTHON:
+      return "python";
+    case TBE_COMPILER_LANG_RUST:
+      return "rust";
+    case TBE_COMPILER_LANG_CPP:
+      return "cpp";
+    case TBE_COMPILER_LANG_GO:
+      return "go";
+    case TBE_COMPILER_LANG_TS:
+      return "ts";
+    case TBE_COMPILER_LANG_SQLITE:
+      return "sqlite";
+    case TBE_COMPILER_LANG_POSTGRESQL:
+      return "postgresql";
+    default:
+      return NULL;
+  }
+}
+
 const char *tbe_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum) {
   if (user_template) return user_template;
 
   switch (lang_enum) {
-    default:
     case TBE_COMPILER_LANG_C:
       return "templates/c_structs.mustache";
     case TBE_COMPILER_LANG_PYTHON:
@@ -1104,6 +1126,10 @@ const char *tbe_compiler_resolve_template(const char *user_template,
       return "templates/go_types.mustache";
     case TBE_COMPILER_LANG_TS:
       return "templates/ts_types.mustache";
+    case TBE_COMPILER_LANG_SQLITE:
+    case TBE_COMPILER_LANG_POSTGRESQL:
+    default:
+      return NULL;
   }
 }
 
@@ -1209,6 +1235,19 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   char *schema_data = NULL;
   char template_path[TURBO_FS_MAX_PATH];
   const char *resolved_template = NULL;
+  const char *lang_name = tbe_compiler_language_name(options->lang_enum);
+  if (lang_name == NULL) {
+    fprintf(stderr, "Unsupported compiler language enum: %lld\n",
+            (long long)options->lang_enum);
+    return 1;
+  }
+  if (options->lang_enum == TBE_COMPILER_LANG_SQLITE ||
+      options->lang_enum == TBE_COMPILER_LANG_POSTGRESQL) {
+    fprintf(stderr,
+            "Built-in database generation for --lang %s is not available yet\n",
+            lang_name);
+    return 1;
+  }
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
