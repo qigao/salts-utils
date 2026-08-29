@@ -1,5 +1,6 @@
 #include "compiler_core.h"
 
+#include "database_schema.h"
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
@@ -1127,7 +1128,9 @@ const char *tbe_compiler_resolve_template(const char *user_template,
     case TBE_COMPILER_LANG_TS:
       return "templates/ts_types.mustache";
     case TBE_COMPILER_LANG_SQLITE:
+      return "templates/sqlite_schema.mustache";
     case TBE_COMPILER_LANG_POSTGRESQL:
+      return "templates/postgresql_schema.mustache";
     default:
       return NULL;
   }
@@ -1194,6 +1197,8 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   char *templ_data = tbe_compiler_read_file(template_path);
   MUSTACHE_TEMPLATE *templ = NULL;
   FILE *out_file = stdout;
+  char *temporary_output_path = NULL;
+  int temporary_output_open = 0;
   int res = 1;
 
   if (!templ_data) {
@@ -1208,11 +1213,31 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   }
 
   if (output_path) {
-    out_file = fopen(output_path, "wb");
-    if (!out_file) {
-      fprintf(stderr, "Failed to open output file: %s\n", output_path);
+    const char temporary_suffix[] = ".tbe.tmp";
+    size_t output_length = strlen(output_path);
+    size_t suffix_length = sizeof(temporary_suffix);
+
+    if (output_length > SIZE_MAX - suffix_length) {
+      fprintf(stderr, "Output path is too long: %s\n", output_path);
       goto cleanup;
     }
+    temporary_output_path = (char *)malloc(output_length + suffix_length);
+    if (!temporary_output_path) {
+      fprintf(stderr, "Failed to allocate temporary output path\n");
+      goto cleanup;
+    }
+    memcpy(temporary_output_path, output_path, output_length);
+    memcpy(temporary_output_path + output_length, temporary_suffix, suffix_length);
+    if (turbo_fs_access(temporary_output_path, TURBO_FS_ACCESS_EXISTS) == 0) {
+      fprintf(stderr, "Temporary output file already exists: %s\n", temporary_output_path);
+      goto cleanup;
+    }
+    out_file = fopen(temporary_output_path, "wb");
+    if (!out_file) {
+      fprintf(stderr, "Failed to open temporary output file: %s\n", temporary_output_path);
+      goto cleanup;
+    }
+    temporary_output_open = 1;
   }
 
   if (mustache_process(templ, &renderer, out_file, &provider, root)
@@ -1221,10 +1246,26 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
     goto cleanup;
   }
 
+  if (out_file != stdout) {
+    int flush_status = fflush(out_file);
+    int close_status = fclose(out_file);
+    out_file = NULL;
+    temporary_output_open = 0;
+    if (flush_status != 0 || close_status != 0) {
+      fprintf(stderr, "Failed to finalize temporary output file: %s\n", temporary_output_path);
+      goto cleanup;
+    }
+    if (turbo_fs_rename(temporary_output_path, output_path) != 0) {
+      fprintf(stderr, "Failed to replace output file: %s\n", output_path);
+      goto cleanup;
+    }
+  }
   res = 0;
 
 cleanup:
-  if (out_file != stdout) fclose(out_file);
+  if (temporary_output_open && out_file != NULL) fclose(out_file);
+  if (temporary_output_path && res != 0) turbo_fs_unlink(temporary_output_path);
+  free(temporary_output_path);
   mustache_release(templ);
   free(templ_data);
   return res;
@@ -1232,39 +1273,52 @@ cleanup:
 
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
+  Node *database_ir = NULL;
   char *schema_data = NULL;
   char template_path[TURBO_FS_MAX_PATH];
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
+  int database_language;
   if (lang_name == NULL) {
     fprintf(stderr, "Unsupported compiler language enum: %lld\n",
             (long long)options->lang_enum);
     return 1;
   }
-  if (options->lang_enum == TBE_COMPILER_LANG_SQLITE ||
-      options->lang_enum == TBE_COMPILER_LANG_POSTGRESQL) {
-    fprintf(stderr,
-            "Built-in database generation for --lang %s is not available yet\n",
-            lang_name);
-    return 1;
-  }
+  database_language = options->lang_enum == TBE_COMPILER_LANG_SQLITE ||
+                      options->lang_enum == TBE_COMPILER_LANG_POSTGRESQL;
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
 
-  if (tbe_compiler_set_string(root, "generated_header",
-                              tbe_compiler_path_basename(options->output_path)) != 0) {
-    status = 1;
-    goto cleanup;
-  }
-  {
-    char *schema_literal = tbe_compiler_escape_c_string(schema_data);
-    if (!schema_literal || tbe_compiler_set_string(root, "schema_c_literal", schema_literal) != 0) {
-      free(schema_literal);
+  if (database_language) {
+    tbe_database_schema_diagnostic_t diagnostic;
+    tbe_database_dialect_t dialect = options->lang_enum == TBE_COMPILER_LANG_SQLITE
+                                         ? TBE_DATABASE_DIALECT_SQLITE
+                                         : TBE_DATABASE_DIALECT_POSTGRESQL;
+    tbe_database_schema_status_t database_status =
+        tbe_database_schema_build(root, dialect, &database_ir, &diagnostic);
+    if (database_status != TBE_DATABASE_SCHEMA_STATUS_OK) {
+      fprintf(stderr,
+              "Database schema validation failed for --lang %s: message=%s field=%s %s\n",
+              lang_name, diagnostic.message_name, diagnostic.field_name, diagnostic.context);
       status = 1;
       goto cleanup;
     }
-    free(schema_literal);
+  } else {
+    if (tbe_compiler_set_string(root, "generated_header",
+                                tbe_compiler_path_basename(options->output_path)) != 0) {
+      status = 1;
+      goto cleanup;
+    }
+    {
+      char *schema_literal = tbe_compiler_escape_c_string(schema_data);
+      if (!schema_literal || tbe_compiler_set_string(root, "schema_c_literal", schema_literal) != 0) {
+        free(schema_literal);
+        status = 1;
+        goto cleanup;
+      }
+      free(schema_literal);
+    }
   }
 
   if (options->source_output_path) {
@@ -1372,7 +1426,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       goto cleanup;
     }
   }
-  status = tbe_compiler_render_file(root, resolved_template, options->output_path);
+  status = tbe_compiler_render_file(database_language ? database_ir : root,
+                                    resolved_template, options->output_path);
 
   if (status == 0 && options->source_output_path) {
     resolved_template = tbe_compiler_resolve_resource(
@@ -1409,6 +1464,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
 
 cleanup:
   free(schema_data);
+  tbe_database_schema_destroy(database_ir);
   node_free(root);
   return status;
 }

@@ -12,6 +12,8 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/python_dataclass.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/rfl_types.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/sqlite_schema.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(tbe_compiler

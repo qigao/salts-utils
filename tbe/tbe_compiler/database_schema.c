@@ -648,8 +648,12 @@ static void database_sort_primary_keys(database_primary_key_ref_t *refs, size_t 
 }
 
 static int database_mark_last(Node *list) {
+  size_t index;
   Node *last;
   if (!list || list->type != NODE_LIST || list->data.list.count == 0) return 1;
+  for (index = 0; index + 1u < list->data.list.count; ++index) {
+    if (database_add_string(list->data.list.items[index], "is_last", "") != 0) return 0;
+  }
   last = list->data.list.items[list->data.list.count - 1u];
   return database_add_string(last, "is_last", "1") == 0;
 }

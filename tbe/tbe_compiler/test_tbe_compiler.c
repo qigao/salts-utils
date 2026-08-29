@@ -1202,8 +1202,10 @@ spec("tbe_compiler") {
                    "templates/go_types.mustache");
       check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_TS),
                    "templates/ts_types.mustache");
-      check_null(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_SQLITE));
-      check_null(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_POSTGRESQL));
+      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_SQLITE),
+                  "templates/sqlite_schema.mustache");
+      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_POSTGRESQL),
+                  "templates/postgresql_schema.mustache");
       check_equal(tbe_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
     }
 
@@ -1271,59 +1273,150 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
     }
 
-    it("should reject database languages before template rendering") {
-      const char *sqlite_output_path = "test_tbe_compiler_sqlite.out";
-      const char *postgres_output_path = "test_tbe_compiler_postgres.out";
-      int sqlite_status = -1;
-      int postgres_status = -1;
-      size_t sqlite_output_size = 0;
-      size_t postgres_output_size = 0;
-      char *sqlite_error = NULL;
-      char *postgres_error = NULL;
-      char *sqlite_output = NULL;
-      char *postgres_output = NULL;
-      tbe_compiler_options_t sqlite_options = {
-          .schema_path = SCHEMA_EXAMPLE_FILE,
-          .template_path = NULL,
-          .output_path = sqlite_output_path,
+    it("should render deterministic SQLite bootstrap DDL") {
+      const char *schema_path = "test_tbe_compiler_sqlite.schema";
+      const char *output_path = "test_tbe_compiler_sqlite.sql";
+      const char *schema =
+          "[db_table(\"User Records\")] message User {"
+          " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
+          " [db_column(select), db_unique(1)] string email;"
+          " optional string display_name;"
+          " optional uint32 login_count default 0;"
+          "}"
+          "[db_table(Membership)] message Membership {"
+          " [db_column(tenant), db_primary_key(2)] uint16 tenant_id;"
+          " [db_column(\"user id\"), db_primary_key(1)] int64 user_id;"
+          " optional bool active default true;"
+          " uint8 rank default 5;"
+          "}";
+      const char *expected =
+          "CREATE TABLE \"User Records\" (\n"
+          "  \"User Id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,\n"
+          "  \"select\" TEXT NOT NULL UNIQUE,\n"
+          "  \"display_name\" TEXT,\n"
+          "  \"login_count\" INTEGER DEFAULT 0 CHECK (\"login_count\" BETWEEN 0 AND 4294967295)\n"
+          ");\n"
+          "CREATE TABLE \"Membership\" (\n"
+          "  \"tenant\" INTEGER NOT NULL CHECK (\"tenant\" BETWEEN 0 AND 65535),\n"
+          "  \"user id\" INTEGER NOT NULL,\n"
+          "  \"active\" INTEGER DEFAULT 1 CHECK (\"active\" IN (0, 1)),\n"
+          "  \"rank\" INTEGER NOT NULL DEFAULT 5 CHECK (\"rank\" BETWEEN 0 AND 255)\n"
+          ", PRIMARY KEY (\"user id\", \"tenant\")\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
           .lang_enum = TBE_COMPILER_LANG_SQLITE,
       };
-      tbe_compiler_options_t postgres_options = {
-          .schema_path = SCHEMA_EXAMPLE_FILE,
-          .template_path = C_STRUCT_TEMPLATE_FILE,
-          .output_path = postgres_output_path,
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should render deterministic PostgreSQL bootstrap DDL") {
+      const char *schema_path = "test_tbe_compiler_postgresql.schema";
+      const char *output_path = "test_tbe_compiler_postgresql.sql";
+      const char *schema =
+          "[db_table(\"User Records\")] message User {"
+          " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
+          " [db_column(select), db_unique(1)] string email;"
+          " optional string display_name;"
+          " optional uint32 login_count default 0;"
+          "}"
+          "[db_table(Membership)] message Membership {"
+          " [db_column(tenant), db_primary_key(2)] uint16 tenant_id;"
+          " [db_column(\"user id\"), db_primary_key(1)] int64 user_id;"
+          " optional bool active default true;"
+          " uint8 rank default 5;"
+          "}";
+      const char *expected =
+          "CREATE TABLE \"User Records\" (\n"
+          "  \"User Id\" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
+          "  \"select\" text NOT NULL UNIQUE,\n"
+          "  \"display_name\" text,\n"
+          "  \"login_count\" bigint DEFAULT 0 CHECK (\"login_count\" BETWEEN 0 AND 4294967295)\n"
+          ");\n"
+          "CREATE TABLE \"Membership\" (\n"
+          "  \"tenant\" integer NOT NULL CHECK (\"tenant\" BETWEEN 0 AND 65535),\n"
+          "  \"user id\" bigint NOT NULL,\n"
+          "  \"active\" boolean DEFAULT TRUE,\n"
+          "  \"rank\" smallint NOT NULL DEFAULT 5 CHECK (\"rank\" BETWEEN 0 AND 255)\n"
+          ", PRIMARY KEY (\"user id\", \"tenant\")\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
           .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
       };
+      char *output = NULL;
+      size_t output_size = 0;
 
-      cleanup_test_file(sqlite_output_path);
-      cleanup_test_file(postgres_output_path);
-
-      sqlite_error = run_compiler_capture_stderr(&sqlite_options, &sqlite_status);
-      check(sqlite_status != 0);
-      check_not_null(sqlite_error);
-      if (sqlite_error != NULL) {
-        check_contains(sqlite_error, "--lang sqlite");
-        check_contains(sqlite_error, "not available yet");
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
       }
-      sqlite_output = tt_read_file(sqlite_output_path, &sqlite_output_size);
-      check_null(sqlite_output);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
 
-      postgres_error = run_compiler_capture_stderr(&postgres_options, &postgres_status);
-      check(postgres_status != 0);
-      check_not_null(postgres_error);
-      if (postgres_error != NULL) {
-        check_contains(postgres_error, "--lang postgresql");
-        check_contains(postgres_error, "not available yet");
+    it("should pass normalized database IR to custom database templates") {
+      const char *schema_path = "test_tbe_compiler_database_custom.schema";
+      const char *template_path = "test_tbe_compiler_database_custom.mustache";
+      const char *output_path = "test_tbe_compiler_database_custom.out";
+      const char *schema =
+          "[db_table(records)] message Record {"
+          " [db_column(record_id), db_primary_key(1)] uint64 id;"
+          " optional string note;"
+          "}";
+      const char *template_text =
+          "{{#db_tables}}{{sql_table_name}}:{{#db_columns}}{{sql_column_name}} {{sql_type}}"
+          "{{#sql_constraints}} {{sql_constraints}}{{/sql_constraints}}{{^is_last}};{{/is_last}}"
+          "{{/db_columns}}{{/db_tables}}";
+      const char *expected =
+          "\"records\":\"record_id\" NUMERIC NOT NULL CHECK (\"record_id\" BETWEEN 0 AND "
+          "18446744073709551615);\"note\" TEXT";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = template_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(template_path, template_text), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
       }
-      postgres_output = tt_read_file(postgres_output_path, &postgres_output_size);
-      check_null(postgres_output);
-
-      free(sqlite_error);
-      free(postgres_error);
-      free(sqlite_output);
-      free(postgres_output);
-      cleanup_test_file(sqlite_output_path);
-      cleanup_test_file(postgres_output_path);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
     }
 
     it("should generate RulesForge type declarations with the built-in DSL template") {
