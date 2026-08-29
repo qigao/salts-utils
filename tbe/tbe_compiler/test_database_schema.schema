@@ -15,3 +15,9 @@ message Session {
   int64 user_id;
   string token;
 }
+
+[db_table(integer_limits)]
+message IntegerLimits {
+  uint64 exact_u64;
+  optional uint32 nullable_u32;
+}

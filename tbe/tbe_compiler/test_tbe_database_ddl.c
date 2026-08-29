@@ -265,6 +265,10 @@ spec("tbe_compiler SQLite DDL integration") {
         {"user_id", "INTEGER"},
         {"token", "TEXT"},
     };
+    static const expected_column_t integer_limit_columns[] = {
+        {"exact_u64", "TEXT"},
+        {"nullable_u32", "INTEGER"},
+    };
     sqlite3_int64 generated_user_id = 0;
     int rc;
     size_t sql_size = 0;
@@ -288,6 +292,7 @@ spec("tbe_compiler SQLite DDL integration") {
     check_greater(sql_size, (size_t)0);
     check_contains(state.sql_text, "CREATE TABLE \"users\"");
     check_contains(state.sql_text, "CREATE TABLE \"sessions\"");
+    check_contains(state.sql_text, "CREATE TABLE \"integer_limits\"");
 
     rc = sqlite3_open(":memory:", &state.db);
     info("sqlite3_open rc=%d error=%s", rc,
@@ -299,11 +304,15 @@ spec("tbe_compiler SQLite DDL integration") {
 
     sqlite_ddl_test_check_table_exists(&state, "users");
     sqlite_ddl_test_check_table_exists(&state, "sessions");
+    sqlite_ddl_test_check_table_exists(&state, "integer_limits");
     sqlite_ddl_test_check_table_sql_contains(&state, "users", "AUTOINCREMENT");
     sqlite_ddl_test_check_table_columns(&state, "users", user_columns,
                                         sizeof(user_columns) / sizeof(user_columns[0]));
     sqlite_ddl_test_check_table_columns(&state, "sessions", session_columns,
                                         sizeof(session_columns) / sizeof(session_columns[0]));
+    sqlite_ddl_test_check_table_columns(
+        &state, "integer_limits", integer_limit_columns,
+        sizeof(integer_limit_columns) / sizeof(integer_limit_columns[0]));
 
     sqlite_ddl_test_expect_exec_ok(
         &state,
@@ -364,6 +373,45 @@ spec("tbe_compiler SQLite DDL integration") {
         &state,
         "INSERT INTO users (email, display_name, active, rank) "
         "VALUES ('bad-rank@example.com', 'Bad Rank', 1, 256);",
+        SQLITE_CONSTRAINT_CHECK);
+
+    sqlite_ddl_test_expect_exec_ok(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) "
+        "VALUES ('18446744073709551615', NULL);");
+    check(sqlite_ddl_test_prepare(
+        &state,
+        "SELECT exact_u64, typeof(exact_u64), nullable_u32 "
+        "FROM integer_limits WHERE exact_u64='18446744073709551615';"));
+    rc = sqlite3_step(state.statement);
+    check_equal(rc, SQLITE_ROW);
+    if (rc == SQLITE_ROW) {
+      check_equal((const char *)sqlite3_column_text(state.statement, 0),
+                  "18446744073709551615");
+      check_equal((const char *)sqlite3_column_text(state.statement, 1), "text");
+      check_equal(sqlite3_column_type(state.statement, 2), SQLITE_NULL);
+    }
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) "
+        "VALUES ('18446744073709551616', NULL);",
+        SQLITE_CONSTRAINT_CHECK);
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES (1.5, NULL);",
+        SQLITE_CONSTRAINT_CHECK);
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) "
+        "VALUES (18446744073709551615, NULL);",
+        SQLITE_CONSTRAINT_CHECK);
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES ('00', NULL);",
+        SQLITE_CONSTRAINT_CHECK);
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO integer_limits (exact_u64, nullable_u32) VALUES ('1', 1.5);",
         SQLITE_CONSTRAINT_CHECK);
   }
 }

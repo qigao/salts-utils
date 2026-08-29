@@ -22,6 +22,7 @@
 #define TBE_COMPILER_TEMP_OPEN_FLAGS (_O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY)
 #define TBE_COMPILER_TEMP_OPEN_MODE (_S_IREAD | _S_IWRITE)
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #define tbe_compiler_fdopen fdopen
 #define tbe_compiler_open open
@@ -1321,6 +1322,10 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   char *temporary_output_path = NULL;
   int temporary_output_open = 0;
   int temporary_output_owned = 0;
+#ifndef _WIN32
+  mode_t existing_output_mode = 0;
+  int preserve_existing_output_mode = 0;
+#endif
   int res = 1;
 
   if (!templ_data) {
@@ -1335,6 +1340,16 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   }
 
   if (output_path) {
+#ifndef _WIN32
+    struct stat output_status;
+    if (stat(output_path, &output_status) == 0) {
+      existing_output_mode = (mode_t)(output_status.st_mode & 0777);
+      preserve_existing_output_mode = 1;
+    } else if (errno != ENOENT) {
+      fprintf(stderr, "Failed to inspect existing output file: %s\n", output_path);
+      goto cleanup;
+    }
+#endif
     if (tbe_compiler_create_temporary_output(output_path, &temporary_output_path, &out_file) != 0) {
       fprintf(stderr, "Failed to create unique temporary output file for: %s\n", output_path);
       goto cleanup;
@@ -1358,6 +1373,13 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
       fprintf(stderr, "Failed to finalize temporary output file: %s\n", temporary_output_path);
       goto cleanup;
     }
+#ifndef _WIN32
+    if (preserve_existing_output_mode &&
+        chmod(temporary_output_path, existing_output_mode) != 0) {
+      fprintf(stderr, "Failed to preserve output file permissions: %s\n", output_path);
+      goto cleanup;
+    }
+#endif
     if (turbo_fs_rename(temporary_output_path, output_path) != 0) {
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;

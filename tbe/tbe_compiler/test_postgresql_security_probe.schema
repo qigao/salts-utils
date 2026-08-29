@@ -1,0 +1,7 @@
+[db_table(defaults)]
+message Defaults {
+  int32 signed_default default -1;
+  float decimal_default default 1.25;
+  double exponent_default default 1e-3;
+  string payload default "safe\'; DROP TABLE protected; --";
+}

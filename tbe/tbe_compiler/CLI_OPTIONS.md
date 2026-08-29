@@ -152,7 +152,7 @@ tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --o
 | `uint8` / `byte` and aliases | `INTEGER` + range `CHECK` | `smallint` + range `CHECK` |
 | `uint16` and aliases | `INTEGER` + range `CHECK` | `integer` + range `CHECK` |
 | `uint32` and aliases | `INTEGER` + range `CHECK` | `bigint` + range `CHECK` |
-| `uint64` and aliases | `NUMERIC` + range `CHECK` | `numeric(20,0)` + range `CHECK` |
+| `uint64` and aliases | Canonical decimal `TEXT` + syntax/range `CHECK` | `numeric(20,0)` + range `CHECK` |
 | `float` / `f32` | `REAL` | `real` |
 | `double` / `f64` | `REAL` | `double precision` |
 | `string` | `TEXT` | `text` |
@@ -163,6 +163,16 @@ tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --o
 Collection, map, group, composite, and union references do not fall back to JSON or BLOB.
 Use `db_ignore(1)` for fields that should stay out of the bootstrap schema.
 
+SQLite stores `uint64` as canonical decimal text so values above signed 64-bit remain exact:
+only ASCII digits are accepted, leading zeroes are rejected except for `0`, and the maximum is
+`18446744073709551615`. SQLite integer range checks also require integer storage, so fractional
+REAL values cannot pass; optional columns continue to allow `NULL`.
+
+PostgreSQL string defaults are emitted as `E'...'` literals with both backslashes and single
+quotes escaped. Their meaning therefore does not depend on the server's
+`standard_conforming_strings` setting. Defaults remain typed constants; raw SQL expressions are
+never accepted.
+
 ### Database Errors and Boundaries
 
 - Database languages fail fast when `--output` is omitted.
@@ -171,8 +181,14 @@ Use `db_ignore(1)` for fields that should stay out of the bootstrap schema.
   language before schema parsing or output creation.
 - Database output requires at least one `db_table(...)` message and at least one non-ignored
   field per generated table.
-- Defaults must stay within the TBE field type; arbitrary SQL expressions are not accepted.
-- PostgreSQL identity generation rejects unsupported shapes such as `uint64` numeric identity.
+- Numeric defaults accept signed integers, decimal fractions, and decimal exponents; hexadecimal
+  integer syntax remains supported. Malformed numeric tokens fail during parsing, and defaults
+  must stay within the TBE field type.
+- SQLite identity accepts only signed integer single-column primary keys. PostgreSQL accepts
+  `uint8`, `uint16`, and `uint32` identity columns while retaining their unsigned range checks,
+  but rejects `uint64` because PostgreSQL sequences do not support `numeric(20,0)`.
+- Output replacement is atomic. POSIX first creation follows `0666 & ~umask`, while overwriting an
+  existing target preserves its permission bits. No Windows ACL preservation guarantee is made.
 
 ### Custom Database Templates
 

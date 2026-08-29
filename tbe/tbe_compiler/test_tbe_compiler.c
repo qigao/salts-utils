@@ -89,6 +89,38 @@ cleanup:
   return NULL;
 }
 
+static Node *build_schema_with_null_database_annotation_value(void) {
+  static const char schema[] =
+      "[db_table(records)] message Record { [db_unique(1)] int32 value; }";
+  Node *root = create_node_map("root");
+  Node *messages;
+  Node *fields;
+  Node *attributes;
+  Node *value;
+
+  if (!root || parse_schema(schema, sizeof(schema) - 1u, root, NULL) != 0) {
+    node_free(root);
+    return NULL;
+  }
+  messages = find_child(root, "messages");
+  fields = messages && messages->type == NODE_LIST && messages->data.list.count == 1u
+               ? find_child(messages->data.list.items[0], "fields")
+               : NULL;
+  attributes = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
+                   ? find_child(fields->data.list.items[0], "attributes")
+                   : NULL;
+  value = attributes && attributes->type == NODE_LIST && attributes->data.list.count == 1u
+              ? find_child(attributes->data.list.items[0], "value")
+              : NULL;
+  if (!value || value->type != NODE_STRING) {
+    node_free(root);
+    return NULL;
+  }
+  free(value->data.string_val);
+  value->data.string_val = NULL;
+  return root;
+}
+
 static Node *database_ir_table(Node *database_ir, size_t index) {
   Node *tables = find_child(database_ir, "db_tables");
   if (!tables || tables->type != NODE_LIST || index >= tables->data.list.count) return NULL;
@@ -618,23 +650,23 @@ spec("tbe_compiler") {
           "}";
       const char *sqlite_types[] = {
           "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER",
-          "INTEGER", "NUMERIC", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER",
-          "INTEGER", "INTEGER", "INTEGER", "NUMERIC"};
+          "INTEGER", "TEXT", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER",
+          "INTEGER", "INTEGER", "INTEGER", "TEXT"};
       const char *postgresql_types[] = {
           "boolean", "smallint", "smallint", "smallint", "integer", "integer", "bigint",
           "bigint", "numeric(20,0)", "real", "double precision", "text", "bytea", "bytea",
           "uuid", "integer", "smallint", "integer", "bigint", "numeric(20,0)"};
       const char *sqlite_constraints[] = {
-          "NOT NULL CHECK (\"bool_value\" IN (0, 1))",
-          "NOT NULL CHECK (\"u8_value\" BETWEEN 0 AND 255)",
-          "NOT NULL CHECK (\"u16_value\" BETWEEN 0 AND 65535)",
-          "NOT NULL CHECK (\"u32_value\" BETWEEN 0 AND 4294967295)",
-          "NOT NULL CHECK (\"u64_value\" BETWEEN 0 AND 18446744073709551615)",
-          "NOT NULL CHECK (\"kind_value\" BETWEEN 0 AND 65535)",
-          "NOT NULL CHECK (\"alias_u8_value\" BETWEEN 0 AND 255)",
-          "NOT NULL CHECK (\"alias_u16_value\" BETWEEN 0 AND 65535)",
-          "NOT NULL CHECK (\"alias_u32_value\" BETWEEN 0 AND 4294967295)",
-          "NOT NULL CHECK (\"alias_u64_value\" BETWEEN 0 AND 18446744073709551615)"};
+          "NOT NULL CHECK (\"bool_value\" IS NULL OR (typeof(\"bool_value\") = 'integer' AND \"bool_value\" IN (0, 1)))",
+          "NOT NULL CHECK (\"u8_value\" IS NULL OR (typeof(\"u8_value\") = 'integer' AND \"u8_value\" BETWEEN 0 AND 255))",
+          "NOT NULL CHECK (\"u16_value\" IS NULL OR (typeof(\"u16_value\") = 'integer' AND \"u16_value\" BETWEEN 0 AND 65535))",
+          "NOT NULL CHECK (\"u32_value\" IS NULL OR (typeof(\"u32_value\") = 'integer' AND \"u32_value\" BETWEEN 0 AND 4294967295))",
+          "NOT NULL CHECK (\"u64_value\" IS NULL OR (typeof(\"u64_value\") = 'text' AND length(\"u64_value\") BETWEEN 1 AND 20 AND \"u64_value\" NOT GLOB '*[^0-9]*' AND (\"u64_value\" = '0' OR substr(\"u64_value\", 1, 1) <> '0') AND (length(\"u64_value\") < 20 OR \"u64_value\" <= '18446744073709551615')))",
+          "NOT NULL CHECK (\"kind_value\" IS NULL OR (typeof(\"kind_value\") = 'integer' AND \"kind_value\" BETWEEN 0 AND 65535))",
+          "NOT NULL CHECK (\"alias_u8_value\" IS NULL OR (typeof(\"alias_u8_value\") = 'integer' AND \"alias_u8_value\" BETWEEN 0 AND 255))",
+          "NOT NULL CHECK (\"alias_u16_value\" IS NULL OR (typeof(\"alias_u16_value\") = 'integer' AND \"alias_u16_value\" BETWEEN 0 AND 65535))",
+          "NOT NULL CHECK (\"alias_u32_value\" IS NULL OR (typeof(\"alias_u32_value\") = 'integer' AND \"alias_u32_value\" BETWEEN 0 AND 4294967295))",
+          "NOT NULL CHECK (\"alias_u64_value\" IS NULL OR (typeof(\"alias_u64_value\") = 'text' AND length(\"alias_u64_value\") BETWEEN 1 AND 20 AND \"alias_u64_value\" NOT GLOB '*[^0-9]*' AND (\"alias_u64_value\" = '0' OR substr(\"alias_u64_value\", 1, 1) <> '0') AND (length(\"alias_u64_value\") < 20 OR \"alias_u64_value\" <= '18446744073709551615')))"};
       const char *postgresql_constraints[] = {
           "NOT NULL", "NOT NULL CHECK (\"u8_value\" BETWEEN 0 AND 255)",
           "NOT NULL CHECK (\"u16_value\" BETWEEN 0 AND 65535)",
@@ -684,6 +716,79 @@ spec("tbe_compiler") {
       }
     }
 
+    it("supports identity only for integer types available to each dialect") {
+      const char *postgresql_schema =
+          "[db_table(ids_u8)] message IdU8 {"
+          " [db_primary_key(1), db_generated(identity)] uint8 id; }"
+          "[db_table(ids_u16)] message IdU16 {"
+          " [db_primary_key(1), db_generated(identity)] uint16 id; }"
+          "[db_table(ids_u32)] message IdU32 {"
+          " [db_primary_key(1), db_generated(identity)] uint32 id; }";
+      const char *postgresql_constraints[] = {
+          "NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY CHECK (\"id\" BETWEEN 0 AND 255)",
+          "NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY CHECK (\"id\" BETWEEN 0 AND 65535)",
+          "NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY CHECK (\"id\" BETWEEN 0 AND 4294967295)",
+      };
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      tbe_database_schema_diagnostic_t diagnostic;
+      Node *database_ir = build_database_ir_from_schema_with_diagnostic(
+          postgresql_schema, TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
+
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+      check_not_null(database_ir);
+      if (database_ir) {
+        for (size_t index = 0; index < 3u; ++index) {
+          Node *column = database_ir_column(database_ir_table(database_ir, index), 0);
+          check_not_null(column);
+          if (column) {
+            check_equal(find_child(column, "sql_constraints")->data.string_val,
+                        postgresql_constraints[index]);
+          }
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+
+      database_ir = build_database_ir_from_schema_with_diagnostic(
+          "[db_table(ids)] message Ids {"
+          " [db_primary_key(1), db_generated(identity)] uint64 id; }",
+          TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+      check_null(database_ir);
+      check_equal(diagnostic.field_name, "id");
+      check_contains(diagnostic.context, "identity");
+      check_contains(diagnostic.context, "uint64");
+
+      database_ir = build_database_ir_from_schema_with_diagnostic(
+          "[db_table(ids)] message Ids {"
+          " [db_primary_key(1), db_generated(identity)] uint8 id; }",
+          TBE_DATABASE_DIALECT_SQLITE, &status, &diagnostic);
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+      check_null(database_ir);
+      check_equal(diagnostic.field_name, "id");
+      check_contains(diagnostic.context, "signed");
+    }
+
+    it("quotes PostgreSQL string defaults independently of server settings") {
+      const char *schema =
+          "[db_table(strings)] message Strings {"
+          " string payload default \"safe\\'; DROP TABLE protected; --\"; }";
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      Node *database_ir = build_database_ir_from_schema(
+          schema, TBE_DATABASE_DIALECT_POSTGRESQL, &status);
+      Node *column;
+
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+      check_not_null(database_ir);
+      if (!database_ir) return;
+      column = database_ir_column(database_ir_table(database_ir, 0), 0);
+      check_not_null(column);
+      if (column) {
+        check_equal(find_child(column, "sql_constraints")->data.string_val,
+                    "NOT NULL DEFAULT E'safe\\\\''; DROP TABLE protected; --'");
+      }
+      tbe_database_schema_destroy(database_ir);
+    }
+
     it("normalizes only type-valid defaults") {
       const char *valid_schema =
           "enum State <uint8> { Idle = 0; Active = 7; }"
@@ -692,6 +797,7 @@ spec("tbe_compiler") {
           " uint8 unsigned_value default 255; float ratio default 1;"
           " string label default \"O'Reilly\"; State state default Active;"
           " uint8 hexadecimal_value default 0xFF;"
+          " uint64 exact_value default 18446744073709551615;"
           "}";
       const char *invalid_schemas[] = {
           "[db_table(invalid)] message Invalid { int32 accepted; bool value default 1; }",
@@ -713,19 +819,21 @@ spec("tbe_compiler") {
         check_not_null(table);
         if (table) {
           check_equal(find_child(database_ir_column(table, 0), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 1 CHECK (\"enabled\" IN (0, 1))");
+                      "NOT NULL DEFAULT 1 CHECK (\"enabled\" IS NULL OR (typeof(\"enabled\") = 'integer' AND \"enabled\" IN (0, 1)))");
           check_equal(find_child(database_ir_column(table, 1), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT 127");
           check_equal(find_child(database_ir_column(table, 2), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 255 CHECK (\"unsigned_value\" BETWEEN 0 AND 255)");
+                      "NOT NULL DEFAULT 255 CHECK (\"unsigned_value\" IS NULL OR (typeof(\"unsigned_value\") = 'integer' AND \"unsigned_value\" BETWEEN 0 AND 255))");
           check_equal(find_child(database_ir_column(table, 3), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT 1");
           check_equal(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT 'O''Reilly'");
           check_equal(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 7 CHECK (\"state\" BETWEEN 0 AND 255)");
+                      "NOT NULL DEFAULT 7 CHECK (\"state\" IS NULL OR (typeof(\"state\") = 'integer' AND \"state\" BETWEEN 0 AND 255))");
           check_equal(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" BETWEEN 0 AND 255)");
+                      "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" IS NULL OR (typeof(\"hexadecimal_value\") = 'integer' AND \"hexadecimal_value\" BETWEEN 0 AND 255))");
+          check_equal(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT '18446744073709551615' CHECK (\"exact_value\" IS NULL OR (typeof(\"exact_value\") = 'text' AND length(\"exact_value\") BETWEEN 1 AND 20 AND \"exact_value\" NOT GLOB '*[^0-9]*' AND (\"exact_value\" = '0' OR substr(\"exact_value\", 1, 1) <> '0') AND (length(\"exact_value\") < 20 OR \"exact_value\" <= '18446744073709551615')))");
         }
         tbe_database_schema_destroy(database_ir);
       }
@@ -912,7 +1020,7 @@ spec("tbe_compiler") {
           check_contains(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
                          "DEFAULT 125");
           check_contains(find_child(database_ir_column(table, 8), "sql_constraints")->data.string_val,
-                         "DEFAULT 'D''Arcy'");
+                         "DEFAULT E'D''Arcy'");
           check_contains(find_child(database_ir_column(table, 9), "sql_constraints")->data.string_val,
                          "DEFAULT 255");
         }
@@ -922,7 +1030,7 @@ spec("tbe_compiler") {
         check_database_schema_failure(&invalid_cases[index]);
     }
 
-    it("validates signed and floating defaults mutated after parsing when the grammar cannot express them") {
+    it("validates signed and floating default boundaries for mutated AST input") {
       typedef struct default_case_s {
         const char *type;
         const char *value;
@@ -1036,6 +1144,25 @@ spec("tbe_compiler") {
         check_contains(diagnostic.context, "fields");
         node_free(schema_root);
       }
+    }
+
+    it("rejects a malformed database annotation value with field context") {
+      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      tbe_database_schema_diagnostic_t diagnostic;
+      Node *schema_root = build_schema_with_null_database_annotation_value();
+      Node *database_ir = NULL;
+
+      check_not_null(schema_root);
+      if (!schema_root) return;
+      status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE,
+                                         &database_ir, &diagnostic);
+      check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+      check_null(database_ir);
+      check_equal(diagnostic.message_name, "Record");
+      check_equal(diagnostic.field_name, "value");
+      check_contains(diagnostic.context, "annotation=db_unique");
+      check_contains(diagnostic.context, "value");
+      node_free(schema_root);
     }
   }
 
@@ -1520,13 +1647,13 @@ spec("tbe_compiler") {
           "  \"User Id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,\n"
           "  \"select\" TEXT NOT NULL UNIQUE,\n"
           "  \"display_name\" TEXT,\n"
-          "  \"login_count\" INTEGER DEFAULT 0 CHECK (\"login_count\" BETWEEN 0 AND 4294967295)\n"
+          "  \"login_count\" INTEGER DEFAULT 0 CHECK (\"login_count\" IS NULL OR (typeof(\"login_count\") = 'integer' AND \"login_count\" BETWEEN 0 AND 4294967295))\n"
           ");\n"
           "CREATE TABLE \"Membership\" (\n"
-          "  \"tenant\" INTEGER NOT NULL CHECK (\"tenant\" BETWEEN 0 AND 65535),\n"
+          "  \"tenant\" INTEGER NOT NULL CHECK (\"tenant\" IS NULL OR (typeof(\"tenant\") = 'integer' AND \"tenant\" BETWEEN 0 AND 65535)),\n"
           "  \"user id\" INTEGER NOT NULL,\n"
-          "  \"active\" INTEGER DEFAULT 1 CHECK (\"active\" IN (0, 1)),\n"
-          "  \"rank\" INTEGER NOT NULL DEFAULT 5 CHECK (\"rank\" BETWEEN 0 AND 255)\n"
+          "  \"active\" INTEGER DEFAULT 1 CHECK (\"active\" IS NULL OR (typeof(\"active\") = 'integer' AND \"active\" IN (0, 1))),\n"
+          "  \"rank\" INTEGER NOT NULL DEFAULT 5 CHECK (\"rank\" IS NULL OR (typeof(\"rank\") = 'integer' AND \"rank\" BETWEEN 0 AND 255))\n"
           ", PRIMARY KEY (\"user id\", \"tenant\")\n"
           ");\n\n";
       tbe_compiler_options_t options = {
@@ -1600,6 +1727,35 @@ spec("tbe_compiler") {
         free(output);
       }
       cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should render parsed numeric and injection-shaped PostgreSQL defaults") {
+      const char *schema_path = POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE;
+      const char *output_path = "test_tbe_compiler_postgresql_defaults.sql";
+      const char *expected =
+          "CREATE TABLE \"defaults\" (\n"
+          "  \"signed_default\" integer NOT NULL DEFAULT -1,\n"
+          "  \"decimal_default\" real NOT NULL DEFAULT 1.25,\n"
+          "  \"exponent_default\" double precision NOT NULL DEFAULT 1e-3,\n"
+          "  \"payload\" text NOT NULL DEFAULT E'safe\\\\''; DROP TABLE protected; --'\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(output_path);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
       cleanup_test_file(output_path);
     }
 
@@ -1688,8 +1844,11 @@ spec("tbe_compiler") {
           "{{#has_next_column}};{{/has_next_column}}"
           "{{/db_columns}}{{/db_tables}}";
       const char *expected =
-          "\"records\":\"record_id\" NUMERIC NOT NULL CHECK (\"record_id\" BETWEEN 0 AND "
-          "18446744073709551615) PRIMARY KEY;\"note\" TEXT";
+          "\"records\":\"record_id\" TEXT NOT NULL CHECK (\"record_id\" IS NULL OR "
+          "(typeof(\"record_id\") = 'text' AND length(\"record_id\") BETWEEN 1 AND 20 AND "
+          "\"record_id\" NOT GLOB '*[^0-9]*' AND (\"record_id\" = '0' OR "
+          "substr(\"record_id\", 1, 1) <> '0') AND (length(\"record_id\") < 20 OR "
+          "\"record_id\" <= '18446744073709551615'))) PRIMARY KEY;\"note\" TEXT";
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,
@@ -1790,6 +1949,38 @@ spec("tbe_compiler") {
       check_equal(tbe_compiler_run(&options), 0);
       check_equal(stat(output_path, &output_status), 0);
       check_equal((mode_t)(output_status.st_mode & 0777), expected_mode);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+#else
+      check_true(1);
+#endif
+    }
+
+    it("should preserve existing POSIX output permissions when overwriting") {
+#ifndef _WIN32
+      static const mode_t modes[] = {0600, 0640};
+      const char *schema_path = "test_tbe_compiler_posix_overwrite_mode.schema";
+      const char *output_path = "test_tbe_compiler_posix_overwrite_mode.sql";
+      const char *schema =
+          "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      for (size_t index = 0; index < sizeof(modes) / sizeof(modes[0]); ++index) {
+        struct stat output_status;
+
+        check_equal(write_test_file(output_path, "existing-output"), 0);
+        check_equal(chmod(output_path, modes[index]), 0);
+        check_equal(tbe_compiler_run(&options), 0);
+        check_equal(stat(output_path, &output_status), 0);
+        check_equal((mode_t)(output_status.st_mode & 0777), modes[index]);
+      }
       cleanup_test_file(schema_path);
       cleanup_test_file(output_path);
 #else

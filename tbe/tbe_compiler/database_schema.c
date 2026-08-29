@@ -133,6 +133,23 @@ static const char *database_attribute_value(const Node *owner, const char *name)
   return NULL;
 }
 
+static const char *database_malformed_db_annotation(const Node *owner) {
+  Node *attributes = database_attributes(owner);
+  size_t index;
+
+  if (!attributes) return NULL;
+  for (index = 0; index < attributes->data.list.count; ++index) {
+    Node *attribute = attributes->data.list.items[index];
+    const char *name = database_string_value(attribute, "name");
+    Node *value;
+
+    if (!name || strncmp(name, "db_", 3) != 0) continue;
+    value = database_find_child(attribute, "value");
+    if (!value || value->type != NODE_STRING || !value->data.string_val) return name;
+  }
+  return NULL;
+}
+
 static int database_has_other_field_annotation(const Node *field, const char *allowed_name) {
   Node *attributes = database_attributes(field);
   size_t index;
@@ -176,19 +193,27 @@ static int database_validate_db_annotations(const Node *owner, unsigned allowed_
 
 static const Node *database_invalid_message_field_annotation(const Node *message,
                                                              const char **out_annotation,
-                                                             int *out_malformed_fields) {
+                                                             int *out_malformed_fields,
+                                                             int *out_malformed_value) {
   Node *fields = database_find_child(message, "fields");
   size_t index;
 
   if (out_annotation) *out_annotation = NULL;
   if (out_malformed_fields) *out_malformed_fields = 0;
+  if (out_malformed_value) *out_malformed_value = 0;
   if (!message || !fields || fields->type != NODE_LIST) {
     if (out_malformed_fields) *out_malformed_fields = 1;
     return NULL;
   }
   for (index = 0; index < fields->data.list.count; ++index) {
     const Node *field = fields->data.list.items[index];
-    const char *annotation = database_invalid_db_annotation(field, DATABASE_ANNOTATION_FIELD);
+    const char *annotation = database_malformed_db_annotation(field);
+    if (annotation) {
+      if (out_annotation) *out_annotation = annotation;
+      if (out_malformed_value) *out_malformed_value = 1;
+      return field;
+    }
+    annotation = database_invalid_db_annotation(field, DATABASE_ANNOTATION_FIELD);
     if (annotation) {
       if (out_annotation) *out_annotation = annotation;
       return field;
@@ -319,6 +344,12 @@ static int database_integer_is_signed(database_integer_kind_t kind) {
          kind == DATABASE_INTEGER_I32 || kind == DATABASE_INTEGER_I64;
 }
 
+static int database_identity_supported(tbe_database_dialect_t dialect,
+                                       database_integer_kind_t kind) {
+  if (dialect == TBE_DATABASE_DIALECT_SQLITE) return database_integer_is_signed(kind);
+  return kind != DATABASE_INTEGER_NONE && kind != DATABASE_INTEGER_U64;
+}
+
 static Node *database_find_enum(const Node *schema_root, const char *name) {
   Node *enums = database_find_child(schema_root, "enums");
   size_t index;
@@ -368,7 +399,7 @@ static tbe_database_schema_status_t database_map_type(const Node *schema_root,
   if (integer_kind != DATABASE_INTEGER_NONE) {
     *out_integer_kind = integer_kind;
     if (dialect == TBE_DATABASE_DIALECT_SQLITE) {
-      *out_sql_type = integer_kind == DATABASE_INTEGER_U64 ? "NUMERIC" : "INTEGER";
+      *out_sql_type = integer_kind == DATABASE_INTEGER_U64 ? "TEXT" : "INTEGER";
     } else {
       switch (integer_kind) {
         case DATABASE_INTEGER_I8:
@@ -422,9 +453,42 @@ static const char *database_unsigned_max(database_integer_kind_t kind) {
 
 static int database_append_range_constraint(database_string_builder_t *constraints,
                                             const char *sql_column_name,
-                                            database_integer_kind_t integer_kind) {
+                                            database_integer_kind_t integer_kind,
+                                            tbe_database_dialect_t dialect) {
   const char *maximum = database_unsigned_max(integer_kind);
   if (!maximum) return 1;
+  if (dialect == TBE_DATABASE_DIALECT_SQLITE && integer_kind == DATABASE_INTEGER_U64) {
+    return database_string_builder_append_token(constraints, "CHECK (") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " IS NULL OR (typeof(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ") = 'text' AND length(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ") BETWEEN 1 AND 20 AND ") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " NOT GLOB '*[^0-9]*' AND (") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " = '0' OR substr(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ", 1, 1) <> '0') AND (length(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ") < 20 OR ") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " <= '") &&
+           database_string_builder_append(constraints, maximum) &&
+           database_string_builder_append(constraints, "')))");
+  }
+  if (dialect == TBE_DATABASE_DIALECT_SQLITE) {
+    return database_string_builder_append_token(constraints, "CHECK (") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " IS NULL OR (typeof(") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, ") = 'integer' AND ") &&
+           database_string_builder_append(constraints, sql_column_name) &&
+           database_string_builder_append(constraints, " BETWEEN 0 AND ") &&
+           database_string_builder_append(constraints, maximum) &&
+           database_string_builder_append(constraints, "))");
+  }
   return database_string_builder_append_token(constraints, "CHECK (") &&
          database_string_builder_append(constraints, sql_column_name) &&
          database_string_builder_append(constraints, " BETWEEN 0 AND ") &&
@@ -544,8 +608,11 @@ static const char *database_enum_value(const Node *enum_node, const char *member
 }
 
 static tbe_database_schema_status_t database_append_integer_default(
-    database_string_builder_t *constraints, const char *value, database_integer_kind_t integer_kind) {
+    database_string_builder_t *constraints, const char *value,
+    database_integer_kind_t integer_kind, tbe_database_dialect_t dialect) {
   char normalized[32];
+  int quote_as_text = dialect == TBE_DATABASE_DIALECT_SQLITE &&
+                      integer_kind == DATABASE_INTEGER_U64;
 
   if (database_integer_is_signed(integer_kind)) {
     long long parsed;
@@ -558,9 +625,16 @@ static tbe_database_schema_status_t database_append_integer_default(
       return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
     snprintf(normalized, sizeof(normalized), "%llu", parsed);
   }
-  if (!database_string_builder_append_token(constraints, "DEFAULT") ||
-      !database_string_builder_append_token(constraints, normalized))
+  if (!database_string_builder_append_token(constraints, "DEFAULT"))
     return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  if (quote_as_text) {
+    if (!database_string_builder_append_token(constraints, "'") ||
+        !database_string_builder_append(constraints, normalized) ||
+        !database_string_builder_append(constraints, "'"))
+      return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  } else if (!database_string_builder_append_token(constraints, normalized)) {
+    return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  }
   return TBE_DATABASE_SCHEMA_STATUS_OK;
 }
 
@@ -580,7 +654,7 @@ static tbe_database_schema_status_t database_append_default(
   if (enum_node) {
     const char *enum_value = database_enum_value(enum_node, value);
     if (!enum_value) return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
-    status = database_append_integer_default(constraints, enum_value, integer_kind);
+    status = database_append_integer_default(constraints, enum_value, integer_kind, dialect);
   } else if (is_bool) {
     const char *sql_bool;
     if (strcmp(value, "true") != 0 && strcmp(value, "false") != 0)
@@ -593,7 +667,7 @@ static tbe_database_schema_status_t database_append_default(
                  ? TBE_DATABASE_SCHEMA_STATUS_OK
                  : TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
   } else if (integer_kind != DATABASE_INTEGER_NONE) {
-    status = database_append_integer_default(constraints, value, integer_kind);
+    status = database_append_integer_default(constraints, value, integer_kind, dialect);
   } else if (strcmp(type, "float") == 0 || strcmp(type, "f32") == 0 ||
              strcmp(type, "double") == 0 || strcmp(type, "f64") == 0) {
     if (!database_parse_float_default(value, strcmp(type, "float") == 0 || strcmp(type, "f32") == 0))
@@ -603,11 +677,17 @@ static tbe_database_schema_status_t database_append_default(
                  ? TBE_DATABASE_SCHEMA_STATUS_OK
                  : TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
   } else if (strcmp(type, "string") == 0) {
-    if (!database_string_builder_append(&literal, "'")) {
+    if (!database_string_builder_append(
+            &literal, dialect == TBE_DATABASE_DIALECT_POSTGRESQL ? "E'" : "'")) {
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
       goto cleanup;
     }
     for (cursor = value; *cursor; ++cursor) {
+      if (dialect == TBE_DATABASE_DIALECT_POSTGRESQL && *cursor == '\\' &&
+          !database_string_builder_append(&literal, "\\")) {
+        status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+        goto cleanup;
+      }
       if (*cursor == '\'' && !database_string_builder_append(&literal, "'")) {
         status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
         goto cleanup;
@@ -838,11 +918,26 @@ static tbe_database_schema_status_t database_build_table(
                                 database_diagnostic_text(database_string_value(field, "type")));
       goto cleanup;
     }
-    if (is_generated && (!is_primary_key || !database_integer_is_signed(integer_kind) || is_unique ||
-                         database_has_child(field, "has_default"))) {
+    if (is_generated &&
+        (!is_primary_key || !database_identity_supported(dialect, integer_kind) || is_unique ||
+         database_has_child(field, "has_default"))) {
       status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
-      database_set_diagnostic(diagnostic, dialect, message_name, field_name,
-                              "annotation=db_generated requires one signed integer primary key without default or db_unique");
+      if (dialect == TBE_DATABASE_DIALECT_SQLITE &&
+          !database_identity_supported(dialect, integer_kind)) {
+        database_set_diagnostic(
+            diagnostic, dialect, message_name, field_name,
+            "annotation=db_generated identity requires a signed integer primary key for SQLite, type=%s",
+            database_diagnostic_text(database_string_value(field, "type")));
+      } else if (dialect == TBE_DATABASE_DIALECT_POSTGRESQL &&
+                 integer_kind == DATABASE_INTEGER_U64) {
+        database_set_diagnostic(
+            diagnostic, dialect, message_name, field_name,
+            "annotation=db_generated identity does not support type=uint64 in PostgreSQL");
+      } else {
+        database_set_diagnostic(
+            diagnostic, dialect, message_name, field_name,
+            "annotation=db_generated requires one supported integer primary key without default or db_unique");
+      }
       goto cleanup;
     }
 
@@ -885,12 +980,17 @@ static tbe_database_schema_status_t database_build_table(
     if (is_bool && dialect == TBE_DATABASE_DIALECT_SQLITE) {
       if (!database_string_builder_append_token(&constraints, "CHECK (") ||
           !database_string_builder_append(&constraints, sql_column_name) ||
-          !database_string_builder_append(&constraints, " IN (0, 1))")) {
+          !database_string_builder_append(&constraints, " IS NULL OR (typeof(") ||
+          !database_string_builder_append(&constraints, sql_column_name) ||
+          !database_string_builder_append(&constraints, ") = 'integer' AND ") ||
+          !database_string_builder_append(&constraints, sql_column_name) ||
+          !database_string_builder_append(&constraints, " IN (0, 1)))")) {
         status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
         goto field_cleanup;
       }
     }
-    if (!database_append_range_constraint(&constraints, sql_column_name, integer_kind)) {
+    if (!database_append_range_constraint(&constraints, sql_column_name, integer_kind,
+                                          dialect)) {
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
       goto field_cleanup;
     }
@@ -947,7 +1047,7 @@ field_cleanup:
     }
   }
   if (identity_column && (primary_key_count != 1u || primary_keys[0].order != 1u ||
-                          !database_integer_is_signed(identity_kind))) {
+                          !database_identity_supported(dialect, identity_kind))) {
     database_set_diagnostic(diagnostic, dialect, message_name,
                             identity_field_name,
                             "annotation=db_generated requires a single primary key with order 1");
@@ -1047,16 +1147,26 @@ tbe_database_schema_status_t tbe_database_schema_build(
     const Node *message = messages->data.list.items[message_index];
     const char *table_name = database_attribute_value(message, "db_table");
     const char *invalid_message_annotation;
+    const char *malformed_message_annotation;
     const char *invalid_field_annotation;
     const Node *invalid_field;
     int malformed_fields;
+    int malformed_field_value;
     Node *table;
     size_t previous_index;
 
+    malformed_message_annotation = database_malformed_db_annotation(message);
     invalid_message_annotation =
         database_invalid_db_annotation(message, DATABASE_ANNOTATION_MESSAGE);
     invalid_field = database_invalid_message_field_annotation(message, &invalid_field_annotation,
-                                                               &malformed_fields);
+                                                               &malformed_fields,
+                                                               &malformed_field_value);
+    if (malformed_message_annotation) {
+      database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
+                              "annotation=%s requires a string value",
+                              malformed_message_annotation);
+      goto cleanup;
+    }
     if (invalid_message_annotation) {
       database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
                               "annotation=%s is invalid for this location", invalid_message_annotation);
@@ -1070,7 +1180,10 @@ tbe_database_schema_status_t tbe_database_schema_build(
     if (invalid_field) {
       database_set_diagnostic(out_diagnostic, dialect, database_message_name(message),
                               database_string_value(invalid_field, "name"),
-                              "annotation=%s is invalid for this location", invalid_field_annotation);
+                              malformed_field_value
+                                  ? "annotation=%s requires a string value"
+                                  : "annotation=%s is invalid for this location",
+                              invalid_field_annotation);
       goto cleanup;
     }
     if (!table_name) continue;
