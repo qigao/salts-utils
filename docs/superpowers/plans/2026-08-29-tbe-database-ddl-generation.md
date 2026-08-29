@@ -87,10 +87,10 @@
 - Create: `tbe/tbe_compiler/test_database_schema.schema`
 - Modify: `tbe/tbe_compiler/CMakeLists.txt`
 
-- [ ] 新增 TinyTest 集成测试 target，链接仓库现有 vcpkg SQLite target，不修改生产 target 依赖。
-- [ ] 测试调用真实 compiler core 生成临时 SQL，再用 SQLite API 在内存数据库执行；确认表/列存在、合法数据可插入，NOT NULL/UNIQUE/CHECK 违规被数据库拒绝。
-- [ ] 先让测试因数据库语言尚未完整接线或 DDL 约束错误而失败，再修到通过。
-- [ ] 用 TinyTest 临时文件 helper/统一 cleanup 释放 schema、SQL、SQLite handle，任何 setup 失败都报告明确断言。
+- [x] 新增 TinyTest 集成测试 target，链接仓库现有 vcpkg SQLite target，不修改生产 target 依赖。
+- [x] 测试调用真实 compiler core 生成临时 SQL，再用 SQLite API 在内存数据库执行；确认表/列存在、合法数据可插入，NOT NULL/UNIQUE/CHECK 违规被数据库拒绝。
+- [x] 首次执行真实 DDL；生产输出直接通过，诚实记录并修正 SQLite extended constraint code 的测试断言 RED。
+- [x] 用 TinyTest 临时文件 helper/统一 cleanup 释放 schema、SQL、SQLite handle，任何 setup 失败都报告明确断言。
 
 ## Task 6: 文档、安装与公开行为
 
