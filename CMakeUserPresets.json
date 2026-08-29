@@ -106,7 +106,9 @@
             "name": "win-release-user",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release",
+                "TURBO_ENABLE_CAPTURE": "ON",
+                "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
                 "TURBOUTILS_ROOT": "$env{PKG_ROOT}/turboutils/release",
@@ -364,18 +366,8 @@
             "targets": ["install"]
         },
         {
-            "name": "install-win-release-user",
-            "configurePreset": "win-release-user",
-            "targets": ["install"]
-        },
-        {
             "name": "install-win-capture-dev-user",
             "configurePreset": "win-capture-dev-user",
-            "targets": ["install"]
-        },
-        {
-            "name": "install-win-capture-release-user",
-            "configurePreset": "win-capture-release-user",
             "targets": ["install"]
         },
         {

@@ -76,10 +76,12 @@ JSONPath contains 扫描通过已安装的 `turbo_simd_scan.h` 调用
 `TurboParserConfig.cmake` 调用 `find_dependency(TurboUtils CONFIG)`，因此消费方只需把
 两个安装前缀加入 `CMAKE_PREFIX_PATH`。
 
-Serial 默认构建并导出 `TurboParser::Serial`。Capture 默认关闭；启用时同时设置
-`TURBO_ENABLE_CAPTURE=ON` 与 vcpkg `capture` feature，安装包才导出
-`TurboParser::Capture`。安装态消费测试会分别验证 feature-off 不导出 Capture、
-feature-on 导出 Capture，并运行 Serial/Capture 的最小 C 消费端。
+Serial 默认构建并导出 `TurboParser::Serial`。Capture 的裸 CMake 选项默认关闭；标准
+Windows Release preset 同时设置 `TURBO_ENABLE_CAPTURE=ON` 与 vcpkg `capture` feature，
+因此其常规 `install` target 会与其他库一起导出 `TurboParser::Capture`，无需独立 install
+preset。其他 profile 仅在显式启用 Capture 时导出该 target。安装态消费测试会分别验证
+feature-off 不导出 Capture、feature-on 导出 Capture，并运行 Serial/Capture 的最小 C
+消费端。
 
 Windows 测试进程通过 preset 的 `PATH` 查找 TurboUtils DLL；构建系统不复制外部 DLL。
 Linux preset 对应设置 `LD_LIBRARY_PATH`。
