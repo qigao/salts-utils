@@ -1,15 +1,36 @@
 #include "compiler_core.h"
 
+#include "database_schema.h"
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
 #include "tbe_error.h"
 #include "turbo_fs.h"
+#include "turbo_uuid.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <io.h>
+#include <sys/stat.h>
+#define tbe_compiler_fdopen _fdopen
+#define tbe_compiler_open _open
+#define TBE_COMPILER_TEMP_OPEN_FLAGS (_O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY)
+#define TBE_COMPILER_TEMP_OPEN_MODE (_S_IREAD | _S_IWRITE)
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define tbe_compiler_fdopen fdopen
+#define tbe_compiler_open open
+#define TBE_COMPILER_TEMP_OPEN_FLAGS (O_WRONLY | O_CREAT | O_EXCL)
+#define TBE_COMPILER_TEMP_OPEN_MODE 0666
+#endif
+
+#define TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS 16u
 
 static Node *tbe_compiler_find_child(Node *parent, const char *name) {
   if (!parent || !name) return NULL;
@@ -33,6 +54,70 @@ static const char *tbe_compiler_string_value(Node *parent, const char *name) {
   Node *child = tbe_compiler_find_child(parent, name);
   if (!child || child->type != NODE_STRING) return NULL;
   return child->data.string_val;
+}
+
+static int tbe_compiler_create_temporary_output(const char *output_path,
+                                                char **out_temporary_path,
+                                                FILE **out_file) {
+  static const char temporary_prefix[] = ".tbe.";
+  static const char temporary_suffix[] = ".tmp";
+  const size_t output_length = strlen(output_path);
+  const size_t prefix_length = sizeof(temporary_prefix) - 1u;
+  const size_t suffix_length = sizeof(temporary_suffix);
+  const size_t uuid_length = TURBO_UUID_STRING_LENGTH;
+  size_t path_length;
+  unsigned attempt;
+
+  if (!out_temporary_path || !out_file || output_length >
+      SIZE_MAX - prefix_length - uuid_length - suffix_length) {
+    return -1;
+  }
+  *out_temporary_path = NULL;
+  *out_file = NULL;
+  path_length = output_length + prefix_length + uuid_length + suffix_length;
+
+  for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
+    turbo_uuid_t uuid;
+    char uuid_text[TURBO_UUID_STRING_SIZE];
+    char *temporary_path;
+    FILE *file;
+    int descriptor;
+
+    if (turbo_uuid_v4_generate(&uuid) != TURBO_OK ||
+        turbo_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != TURBO_OK) {
+      return -1;
+    }
+    temporary_path = (char *)malloc(path_length);
+    if (!temporary_path) return -1;
+    memcpy(temporary_path, output_path, output_length);
+    memcpy(temporary_path + output_length, temporary_prefix, prefix_length);
+    memcpy(temporary_path + output_length + prefix_length, uuid_text, uuid_length);
+    memcpy(temporary_path + output_length + prefix_length + uuid_length, temporary_suffix,
+           suffix_length);
+
+    descriptor = tbe_compiler_open(temporary_path, TBE_COMPILER_TEMP_OPEN_FLAGS,
+                                   TBE_COMPILER_TEMP_OPEN_MODE);
+    if (descriptor < 0) {
+      free(temporary_path);
+      if (errno == EEXIST) continue;
+      return -1;
+    }
+    file = tbe_compiler_fdopen(descriptor, "wb");
+    if (!file) {
+#ifdef _WIN32
+      _close(descriptor);
+#else
+      close(descriptor);
+#endif
+      turbo_fs_unlink(temporary_path);
+      free(temporary_path);
+      return -1;
+    }
+    *out_temporary_path = temporary_path;
+    *out_file = file;
+    return 0;
+  }
+  return -1;
 }
 
 static int tbe_compiler_parse_size(const char *text, size_t *out) {
@@ -1054,12 +1139,66 @@ char *tbe_compiler_read_file(const char *filename) {
   return dat;
 }
 
+int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum) {
+  static const struct {
+    const char *name;
+    int64_t lang_enum;
+  } languages[] = {
+      {"c", TBE_COMPILER_LANG_C},
+      {"cpp", TBE_COMPILER_LANG_CPP},
+      {"cxx", TBE_COMPILER_LANG_CPP},
+      {"go", TBE_COMPILER_LANG_GO},
+      {"rust", TBE_COMPILER_LANG_RUST},
+      {"python", TBE_COMPILER_LANG_PYTHON},
+      {"py", TBE_COMPILER_LANG_PYTHON},
+      {"ts", TBE_COMPILER_LANG_TS},
+      {"typescript", TBE_COMPILER_LANG_TS},
+      {"sqlite", TBE_COMPILER_LANG_SQLITE},
+      {"postgresql", TBE_COMPILER_LANG_POSTGRESQL},
+      {"postgres", TBE_COMPILER_LANG_POSTGRESQL},
+  };
+  size_t i;
+
+  if (!name || !out_lang_enum) return -1;
+
+  for (i = 0; i < sizeof(languages) / sizeof(languages[0]); ++i) {
+    if (strcmp(name, languages[i].name) == 0) {
+      *out_lang_enum = languages[i].lang_enum;
+      return 0;
+    }
+  }
+
+  return -1;
+}
+
+static const char *tbe_compiler_language_name(int64_t lang_enum) {
+  switch (lang_enum) {
+    case TBE_COMPILER_LANG_C:
+      return "c";
+    case TBE_COMPILER_LANG_PYTHON:
+      return "python";
+    case TBE_COMPILER_LANG_RUST:
+      return "rust";
+    case TBE_COMPILER_LANG_CPP:
+      return "cpp";
+    case TBE_COMPILER_LANG_GO:
+      return "go";
+    case TBE_COMPILER_LANG_TS:
+      return "ts";
+    case TBE_COMPILER_LANG_SQLITE:
+      return "sqlite";
+    case TBE_COMPILER_LANG_POSTGRESQL:
+      return "postgresql";
+    default:
+      return NULL;
+  }
+}
+
 const char *tbe_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum) {
   if (user_template) return user_template;
 
   switch (lang_enum) {
-    default:
     case TBE_COMPILER_LANG_C:
       return "templates/c_structs.mustache";
     case TBE_COMPILER_LANG_PYTHON:
@@ -1072,6 +1211,12 @@ const char *tbe_compiler_resolve_template(const char *user_template,
       return "templates/go_types.mustache";
     case TBE_COMPILER_LANG_TS:
       return "templates/ts_types.mustache";
+    case TBE_COMPILER_LANG_SQLITE:
+      return "templates/sqlite_schema.mustache";
+    case TBE_COMPILER_LANG_POSTGRESQL:
+      return "templates/postgresql_schema.mustache";
+    default:
+      return NULL;
   }
 }
 
@@ -1091,6 +1236,44 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
     return NULL;
   }
   return path;
+}
+
+static int tbe_compiler_is_database_language(int64_t lang_enum) {
+  return lang_enum == TBE_COMPILER_LANG_SQLITE ||
+         lang_enum == TBE_COMPILER_LANG_POSTGRESQL;
+}
+
+static int tbe_compiler_validate_database_output_option(const char *lang_name,
+                                                        const char *option_name,
+                                                        const char *option_value) {
+  if (option_value == NULL) return 1;
+  fprintf(stderr,
+          "%s is supported only for the built-in C generator and cannot be combined with "
+          "--lang %s\n",
+          option_name, lang_name);
+  return 0;
+}
+
+static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
+                                         const char *lang_name) {
+  if (options == NULL || lang_name == NULL) return 0;
+  if (!tbe_compiler_is_database_language(options->lang_enum)) return 1;
+
+  if (options->output_path == NULL || options->output_path[0] == '\0') {
+    fprintf(stderr, "--lang %s requires explicit --output\n", lang_name);
+    return 0;
+  }
+  if (!tbe_compiler_validate_database_output_option(
+          lang_name, "--source-output", options->source_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--guest-output", options->guest_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--lua-output", options->lua_output_path) ||
+      !tbe_compiler_validate_database_output_option(
+          lang_name, "--dsl-output", options->dsl_output_path)) {
+    return 0;
+  }
+  return 1;
 }
 
 int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
@@ -1136,6 +1319,13 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   char *templ_data = tbe_compiler_read_file(template_path);
   MUSTACHE_TEMPLATE *templ = NULL;
   FILE *out_file = stdout;
+  char *temporary_output_path = NULL;
+  int temporary_output_open = 0;
+  int temporary_output_owned = 0;
+#ifndef _WIN32
+  mode_t existing_output_mode = 0;
+  int preserve_existing_output_mode = 0;
+#endif
   int res = 1;
 
   if (!templ_data) {
@@ -1150,11 +1340,22 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   }
 
   if (output_path) {
-    out_file = fopen(output_path, "wb");
-    if (!out_file) {
-      fprintf(stderr, "Failed to open output file: %s\n", output_path);
+#ifndef _WIN32
+    struct stat output_status;
+    if (stat(output_path, &output_status) == 0) {
+      existing_output_mode = (mode_t)(output_status.st_mode & 0777);
+      preserve_existing_output_mode = 1;
+    } else if (errno != ENOENT) {
+      fprintf(stderr, "Failed to inspect existing output file: %s\n", output_path);
       goto cleanup;
     }
+#endif
+    if (tbe_compiler_create_temporary_output(output_path, &temporary_output_path, &out_file) != 0) {
+      fprintf(stderr, "Failed to create unique temporary output file for: %s\n", output_path);
+      goto cleanup;
+    }
+    temporary_output_open = 1;
+    temporary_output_owned = 1;
   }
 
   if (mustache_process(templ, &renderer, out_file, &provider, root)
@@ -1163,10 +1364,34 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
     goto cleanup;
   }
 
+  if (out_file != stdout) {
+    int flush_status = fflush(out_file);
+    int close_status = fclose(out_file);
+    out_file = NULL;
+    temporary_output_open = 0;
+    if (flush_status != 0 || close_status != 0) {
+      fprintf(stderr, "Failed to finalize temporary output file: %s\n", temporary_output_path);
+      goto cleanup;
+    }
+#ifndef _WIN32
+    if (preserve_existing_output_mode &&
+        chmod(temporary_output_path, existing_output_mode) != 0) {
+      fprintf(stderr, "Failed to preserve output file permissions: %s\n", output_path);
+      goto cleanup;
+    }
+#endif
+    if (turbo_fs_rename(temporary_output_path, output_path) != 0) {
+      fprintf(stderr, "Failed to replace output file: %s\n", output_path);
+      goto cleanup;
+    }
+    temporary_output_owned = 0;
+  }
   res = 0;
 
 cleanup:
-  if (out_file != stdout) fclose(out_file);
+  if (temporary_output_open && out_file != NULL) fclose(out_file);
+  if (temporary_output_owned) turbo_fs_unlink(temporary_output_path);
+  free(temporary_output_path);
   mustache_release(templ);
   free(templ_data);
   return res;
@@ -1174,26 +1399,52 @@ cleanup:
 
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
+  Node *database_ir = NULL;
   char *schema_data = NULL;
   char template_path[TURBO_FS_MAX_PATH];
   const char *resolved_template = NULL;
+  const char *lang_name = tbe_compiler_language_name(options->lang_enum);
+  int database_language;
+  if (lang_name == NULL) {
+    fprintf(stderr, "Unsupported compiler language enum: %lld\n",
+            (long long)options->lang_enum);
+    return 1;
+  }
+  database_language = tbe_compiler_is_database_language(options->lang_enum);
+  if (!tbe_compiler_validate_options(options, lang_name)) return 1;
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
 
-  if (tbe_compiler_set_string(root, "generated_header",
-                              tbe_compiler_path_basename(options->output_path)) != 0) {
-    status = 1;
-    goto cleanup;
-  }
-  {
-    char *schema_literal = tbe_compiler_escape_c_string(schema_data);
-    if (!schema_literal || tbe_compiler_set_string(root, "schema_c_literal", schema_literal) != 0) {
-      free(schema_literal);
+  if (database_language) {
+    tbe_database_schema_diagnostic_t diagnostic;
+    tbe_database_dialect_t dialect = options->lang_enum == TBE_COMPILER_LANG_SQLITE
+                                         ? TBE_DATABASE_DIALECT_SQLITE
+                                         : TBE_DATABASE_DIALECT_POSTGRESQL;
+    tbe_database_schema_status_t database_status =
+        tbe_database_schema_build(root, dialect, &database_ir, &diagnostic);
+    if (database_status != TBE_DATABASE_SCHEMA_STATUS_OK) {
+      fprintf(stderr,
+              "Database schema validation failed for --lang %s: message=%s field=%s %s\n",
+              lang_name, diagnostic.message_name, diagnostic.field_name, diagnostic.context);
       status = 1;
       goto cleanup;
     }
-    free(schema_literal);
+  } else {
+    if (tbe_compiler_set_string(root, "generated_header",
+                                tbe_compiler_path_basename(options->output_path)) != 0) {
+      status = 1;
+      goto cleanup;
+    }
+    {
+      char *schema_literal = tbe_compiler_escape_c_string(schema_data);
+      if (!schema_literal || tbe_compiler_set_string(root, "schema_c_literal", schema_literal) != 0) {
+        free(schema_literal);
+        status = 1;
+        goto cleanup;
+      }
+      free(schema_literal);
+    }
   }
 
   if (options->source_output_path) {
@@ -1301,7 +1552,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       goto cleanup;
     }
   }
-  status = tbe_compiler_render_file(root, resolved_template, options->output_path);
+  status = tbe_compiler_render_file(database_language ? database_ir : root,
+                                    resolved_template, options->output_path);
 
   if (status == 0 && options->source_output_path) {
     resolved_template = tbe_compiler_resolve_resource(
@@ -1338,6 +1590,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
 
 cleanup:
   free(schema_data);
+  tbe_database_schema_destroy(database_ir);
   node_free(root);
   return status;
 }

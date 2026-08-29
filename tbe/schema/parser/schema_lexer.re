@@ -41,6 +41,10 @@ lex_start:
         newline = "\r\n" | "\r" | "\n";
         comment = "//" [^\r\n\x00]*;
         ident   = [a-zA-Z_][a-zA-Z0-9_]*;
+        sign    = [+-]?;
+        digits  = [0-9]+;
+        exponent = [eE] [+-]? digits;
+        default_number = [+-] digits | sign digits ("." digits exponent? | exponent);
 
         // End of input
         $ {
@@ -159,7 +163,15 @@ lex_start:
             return 1;
         }
 
-        [0-9]+ {
+        default_number {
+            token->type = SCHEMA_TOKEN_DEFAULT_NUMBER;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
+        digits {
             token->type = SCHEMA_TOKEN_NUMBER;
             token->value = token_start;
             token->length = (size_t)(YYCURSOR - token_start);

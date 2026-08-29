@@ -2,7 +2,7 @@
 
 ## Overview
 
-`tbe_compiler` generates code and DSL declarations from TBE schema files for multiple target languages and RulesForge integration.
+`tbe_compiler` generates code, bootstrap database DDL, and DSL declarations from TBE schema files for multiple target languages and RulesForge integration.
 
 ## Basic Usage
 
@@ -22,29 +22,31 @@ tbe_compiler <schema_file> [options]
 
 - `--output <file>` or `-o <file>`
   - Output file path for generated code
-  - Default: stdout
+  - Default: stdout for non-database languages
+  - Required for `--lang sqlite`, `--lang postgresql`, and `--lang postgres`
   - Example: `--output order.h`
 
 - `--lang <language>` or `-l <language>`
   - Target source language
-  - Options: `c`, `cpp`, `go`, `rust`, `python`, `py`, `ts`, `typescript`
+  - Options: `c`, `cpp`, `go`, `rust`, `python`, `py`, `ts`, `typescript`, `sqlite`, `postgresql`, `postgres`
   - Default: `c`
   - Example: `--lang c`
 
 - `--template <file>` or `-t <file>`
   - Path to custom Mustache template file
-  - Overrides `--lang` option
+  - Overrides the built-in template selected by `--lang`
+  - With database languages, custom templates consume the normalized database IR rather than the raw TBE AST
   - Example: `--template my_template.mustache`
 
 - `--source-output <file>` or `-s <file>`
   - With the built-in C generator, emits the typed serialization companion `.c` file
-  - Requires `--output`; custom templates and non-C languages are rejected
+  - Requires `--output`; custom templates, non-C languages, and database languages are rejected
   - The generated header exposes strong record types plus binary/JSON/YAML/CSV/XML APIs
   - Example: `--output order.h --source-output order.c`
 
 - `--guest-output <file>` or `-g <file>`
   - With the built-in C generator, emits a Wasm-friendly guest adapter `.c` file
-  - Requires `--output`; custom templates and non-C languages are rejected
+  - Requires `--output`; custom templates, non-C languages, and database languages are rejected
   - The adapter converts JSON/YAML/CSV/XML byte slices to generated wire views, and back,
     through a caller-provided `tbe_guest_bridge_t`
   - The adapter performs no parsing and owns no buffers; the runtime bridge controls
@@ -53,7 +55,7 @@ tbe_compiler <schema_file> [options]
 
 - `--lua-output <file>`
   - With the built-in C generator, emits typed C-to-Lua adapter functions
-  - Requires both `--output` and `--source-output`; custom templates and non-C languages are rejected
+  - Requires both `--output` and `--source-output`; custom templates, non-C languages, and database languages are rejected
   - Each owning record receives `Type_push_lua` and transactional `Type_from_lua` adapters
   - The generated source includes the C binding header `turbo_lua.h`; link
     the consumer with `turbo_lua_bind` (`TurboParser::LuaBind` in the build tree)
@@ -86,8 +88,128 @@ tbe_compiler <schema_file> [options]
 
 - `--dsl-output <file>` or `-d <file>`
   - Generate DSL type declarations (.rfl file)
+  - C-generation-only auxiliary output; database languages reject it
   - Contains `declare` statements for use in RulesForge
   - Example: `--dsl-output order.rfl`
+
+## Database DDL Generation
+
+`tbe_compiler` can generate deterministic bootstrap DDL for empty SQLite or PostgreSQL
+databases. This is a build-time feature only: TurboDB, ORM, and generated runtime code do
+not parse TBE at runtime and do not gain a TurboParser dependency from these outputs.
+
+Version 1 generates `CREATE TABLE` bootstrap DDL only. It does not inspect live schemas,
+does not emit `ALTER TABLE`, does not track migration history, and does not open database
+connections.
+
+### Runnable Schema Example
+
+```tbe
+schema Accounts [id(1), version(1), byte_order(little)];
+
+[db_table("users")]
+message User {
+    [db_column("id"), db_primary_key(1), db_generated(identity)] int64 id;
+    [db_unique(1)] string email;
+    optional string display_name;
+    optional uint32 login_count default 0;
+}
+
+[db_table("memberships")]
+message Membership {
+    [db_primary_key(1)] int64 user_id;
+    [db_primary_key(2)] string tenant;
+}
+```
+
+### Database Commands
+
+```bash
+tbe_compiler accounts.schema --lang sqlite --output accounts.sqlite.sql
+tbe_compiler accounts.schema --lang postgresql --output accounts.postgresql.sql
+tbe_compiler accounts.schema --lang postgres --output accounts.postgresql.sql
+tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --output accounts.sql
+```
+
+### Database Annotation Contract
+
+| Annotation | Parameter | Generated result | Compilation errors |
+|---|---|---|---|
+| `db_table("name")` | Non-empty logical table name without embedded NUL | Emits one quoted SQL table | Missing/empty value, duplicate table name, or no persistent fields |
+| `db_column("name")` | Optional column name override | Emits one quoted SQL column name | Missing/empty value, embedded NUL, or duplicate column name in the same table |
+| `db_primary_key(order)` | Integer order starting at `1` | Adds the field to the primary key in order | Missing/duplicate/gapped order, or `optional` field used as a primary key |
+| `db_unique(1)` | Literal `1` only | Adds a single-column `UNIQUE` constraint | Any value other than `1`, or conflicting field annotations |
+| `db_generated(identity)` | Literal `identity` only | Emits dialect identity syntax for a single-column integer primary key | Non-integer type, composite key, `optional`, TBE `default`, `db_unique`, or unsupported dialect/type combination |
+| `db_ignore(1)` | Literal `1` only | Excludes the field from the normalized database IR and output | Any value other than `1`, or combination with other `db_*` field annotations |
+
+### Database Type Mapping
+
+| TBE type | SQLite | PostgreSQL |
+|---|---|---|
+| `bool` | `INTEGER` + `CHECK (col IN (0, 1))` | `boolean` |
+| `int8` / `int16` / `int32` and aliases | `INTEGER` | `smallint` / `integer` |
+| `int64` and aliases | `INTEGER` | `bigint` |
+| `uint8` / `byte` and aliases | `INTEGER` + range `CHECK` | `smallint` + range `CHECK` |
+| `uint16` and aliases | `INTEGER` + range `CHECK` | `integer` + range `CHECK` |
+| `uint32` and aliases | `INTEGER` + range `CHECK` | `bigint` + range `CHECK` |
+| `uint64` and aliases | Canonical decimal `TEXT` + syntax/range `CHECK` | `numeric(20,0)` + range `CHECK` |
+| `float` / `f32` | `REAL` | `real` |
+| `double` / `f64` | `REAL` | `double precision` |
+| `string` | `TEXT` | `text` |
+| `bytes` and `bytes(n)` | `BLOB` | `bytea` |
+| `uuid` | `TEXT` | `uuid` |
+| enum references | Underlying integer mapping + range `CHECK` | Underlying integer mapping + range `CHECK` |
+
+Collection, map, group, composite, and union references do not fall back to JSON or BLOB.
+Use `db_ignore(1)` for fields that should stay out of the bootstrap schema.
+
+Signed integers, decimal fractions, and exponent tokens are accepted only after a field `default`.
+Enum/flags assignments, numeric annotations, and fixed lengths keep their existing non-negative
+integer rules; hexadecimal integers remain accepted only in contexts that already supported them.
+
+SQLite stores `uint64` as canonical decimal text so values above signed 64-bit remain exact:
+only ASCII digits are accepted, leading zeroes are rejected except for `0`, and the maximum is
+`18446744073709551615`. Its check requires the BLOB byte length to equal the text character
+length, rejecting embedded NUL and multibyte non-ASCII payloads. SQLite integer range checks also
+require integer storage, so fractional REAL values cannot pass; optional columns continue to allow
+`NULL`.
+
+PostgreSQL string defaults are emitted as `E'...'` literals with both backslashes and single
+quotes escaped. Their meaning therefore does not depend on the server's
+`standard_conforming_strings` setting. Defaults remain typed constants; raw SQL expressions are
+never accepted.
+
+### Database Errors and Boundaries
+
+- Database languages fail fast when `--output` is omitted.
+- `--source-output`, `--guest-output`, `--lua-output`, and `--dsl-output` fail fast with
+  `--lang sqlite` or `--lang postgresql`; the error names the conflicting option and
+  language before schema parsing or output creation.
+- Database output requires at least one `db_table(...)` message and at least one non-ignored
+  field per generated table.
+- Numeric defaults accept signed integers, decimal fractions, and decimal exponents; hexadecimal
+  integer syntax remains supported. Malformed numeric tokens fail during parsing, and defaults
+  must stay within the TBE field type.
+- SQLite identity accepts only signed integer single-column primary keys. PostgreSQL accepts
+  `uint8`, `uint16`, and `uint32` identity columns while retaining their unsigned range checks,
+  but rejects `uint64` because PostgreSQL sequences do not support `numeric(20,0)`.
+- Output replacement is atomic. POSIX first creation follows `0666 & ~umask`, while overwriting an
+  existing target preserves its permission bits. No Windows ACL preservation guarantee is made.
+
+### Custom Database Templates
+
+Custom database templates receive normalized database IR instead of the raw TBE AST. Stable
+fields include:
+
+- Schema scope: `db_tables`
+- Table scope: `sql_table_name`, `db_columns`, `db_primary_key_columns`,
+  `has_composite_primary_key`, `has_next_table`
+- Column scope: `sql_column_name`, `sql_type`, `sql_constraints`,
+  `has_sql_constraints`, `has_next_column`
+- Primary-key reference scope: `sql_column_name`, `has_next_primary_key`
+
+`has_next_*` and `has_sql_constraints` are the supported marker fields. Database templates
+must not depend on `is_last`.
 
 ## Usage Examples
 

@@ -554,7 +554,7 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor field_default { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
 
-%token ENUM FLAGS NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION.
 
 start ::= schema.
 schema ::= decl_list.
@@ -829,6 +829,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) IDENT(N) field_defa
 }
 
 field_default(D) ::= DEFAULT NUMBER(V). { D = tok_strdup(V); }
+field_default(D) ::= DEFAULT DEFAULT_NUMBER(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT STRING(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT TRUE(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT FALSE(V). { D = tok_strdup(V); }

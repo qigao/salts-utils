@@ -7,9 +7,12 @@
  * template files (built-in or custom).
  *
  * CLI (via cmd_arger):
- *   tbe_compiler <file> [--template <file>] [--lang c|cpp|go|rust|python|py|ts]
+ *   tbe_compiler <file> [--template <file>]
+ *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
+ * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
+ * and DSL outputs remain part of the built-in C generation path only.
  */
 
 #include <stdbool.h>
@@ -19,6 +22,12 @@
 #include "compiler_core.h"
 #include "turbo_fs.h"
 #include "turbo_parser.h"
+
+static const char *TBE_COMPILER_LANG_OPTION_LIST =
+    "c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres";
+static const char *TBE_COMPILER_LANG_OPTION_HELP =
+    "Target language (built-in template: c, cpp, cxx, go, rust, python, py, ts, "
+    "typescript, sqlite, postgresql, postgres)";
 
 static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
     const char *path_env;
@@ -63,12 +72,13 @@ static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
 int main(int argc, char **argv) {
     char    *schema_path   = NULL;
     char    *template_path = NULL;
+    char    *lang_name = NULL;
     char    *output_path   = NULL;
     char    *source_output_path = NULL;
     char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
-    int64_t  lang_enum     = 0;
+    int64_t  lang_enum     = TBE_COMPILER_LANG_C;
     char resource_dir[TURBO_FS_MAX_PATH];
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
@@ -83,25 +93,13 @@ int main(int argc, char **argv) {
     
     turbo_cmd_add_string(parser, &template_path, "template", "t",
                                  "Path to a custom Mustache template file");
-    
-    turbo_cmd_enum_t lang_choices[] = {
-        { "c",      "C header output",                 TBE_COMPILER_LANG_C },
-        { "cpp",    "C++ type output",                 TBE_COMPILER_LANG_CPP },
-        { "cxx",    "C++ type output",                 TBE_COMPILER_LANG_CPP },
-        { "go",     "Go type output",                  TBE_COMPILER_LANG_GO },
-        { "rust",   "Rust struct output",              TBE_COMPILER_LANG_RUST },
-        { "python", "Python dataclass output",         TBE_COMPILER_LANG_PYTHON },
-        { "py",     "Python dataclass output",         TBE_COMPILER_LANG_PYTHON },
-        { "ts",     "TypeScript type output",          TBE_COMPILER_LANG_TS },
-        { "typescript", "TypeScript type output",      TBE_COMPILER_LANG_TS },
-    };
-    
-    turbo_cmd_add_enum(parser, &lang_enum, "lang", "l",
-                               "Target language (built-in template)",
-                               lang_choices, sizeof(lang_choices) / sizeof(lang_choices[0]));
+
+    turbo_cmd_add_string(parser, &lang_name, "lang", "l",
+                                 TBE_COMPILER_LANG_OPTION_HELP);
                                
     turbo_cmd_add_string(parser, &output_path, "output", "o",
-                                 "Output file path (default: stdout)");
+                                 "Output file path (required for sqlite/postgresql/postgres; "
+                                 "default: stdout for other languages)");
 
     turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",
                                  "Generate the C typed serde companion source");
@@ -116,6 +114,14 @@ int main(int argc, char **argv) {
                                  "Generate DSL type declarations (.rfl file)");
 
     turbo_cmd_parse(parser, argc, argv, true);
+
+    if (lang_name != NULL &&
+        tbe_compiler_parse_language_name(lang_name, &lang_enum) != 0) {
+        fprintf(stderr, "Unsupported --lang '%s'. Expected one of: %s\n",
+                lang_name, TBE_COMPILER_LANG_OPTION_LIST);
+        turbo_cmd_destroy(parser);
+        return 1;
+    }
 
     tbe_compiler_options_t options = {
         .schema_path = schema_path,

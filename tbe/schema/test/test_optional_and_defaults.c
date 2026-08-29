@@ -139,6 +139,105 @@ suite("optional_fields_and_defaults") {
             node_free(root);
         }
 
+        it("should parse signed decimal and exponent default values") {
+            const char *schema = "message NumericDefaults { "
+                                 "int32 offset default -1; "
+                                 "float ratio default 1.25; "
+                                 "double threshold default 1e-3; "
+                                 "uint8 mask default 0xFF; "
+                                 "}";
+            Node *root = create_node_map("root");
+            Node *messages;
+            Node *fields;
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+
+            check_equal(rc, 0);
+            if (rc != 0) {
+                node_free(root);
+                return;
+            }
+
+            messages = find_child(root, "messages");
+            check_not_null(messages);
+            if (!messages || messages->type != NODE_LIST || messages->data.list.count != 1u) {
+                node_free(root);
+                return;
+            }
+            fields = find_child(messages->data.list.items[0], "fields");
+            check_not_null(fields);
+            if (fields && fields->type == NODE_LIST && fields->data.list.count == 4u) {
+                check_equal(find_child(fields->data.list.items[0], "default_value")->data.string_val,
+                            "-1");
+                check_equal(find_child(fields->data.list.items[1], "default_value")->data.string_val,
+                            "1.25");
+                check_equal(find_child(fields->data.list.items[2], "default_value")->data.string_val,
+                            "1e-3");
+                check_equal(find_child(fields->data.list.items[3], "default_value")->data.string_val,
+                            "0xFF");
+            } else {
+                check_equal(fields ? fields->data.list.count : 0u, (size_t)4);
+            }
+
+            node_free(root);
+        }
+
+        it("should reject incomplete numeric default tokens") {
+            static const char *const schemas[] = {
+                "message Invalid { double value default 1e; }",
+                "message Invalid { double value default 1.; }",
+                "message Invalid { int32 value default --1; }",
+            };
+
+            for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
+                Node *root = create_node_map("root");
+                int rc = parse_schema(schemas[index], strlen(schemas[index]), root, NULL);
+
+                info("schema=%s", schemas[index]);
+                check_not_equal(rc, 0);
+                node_free(root);
+            }
+        }
+
+        it("should reject default-only numeric forms outside field defaults") {
+            static const char *const schemas[] = {
+                "enum Invalid { Value = 1.25; }",
+                "enum Invalid { Value = 1e3; }",
+                "enum Invalid { Value = -1; }",
+                "flags Invalid { Value = 1.25; }",
+                "flags Invalid { Value = 1e3; }",
+                "flags Invalid { Value = -1; }",
+                "schema Invalid [id(1.25)];",
+                "schema Invalid [id(1e3)];",
+                "schema Invalid [id(-1)];",
+                "message Invalid { bytes(1.25) value; }",
+                "message Invalid { bytes(1e3) value; }",
+                "message Invalid { bytes(-1) value; }",
+            };
+
+            for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
+                Node *root = create_node_map("root");
+                int rc = parse_schema(schemas[index], strlen(schemas[index]), root, NULL);
+
+                info("schema=%s", schemas[index]);
+                check_not_equal(rc, 0);
+                node_free(root);
+            }
+        }
+
+        it("should retain integer and hexadecimal numbers in legacy contexts") {
+            const char *schema =
+                "schema Legacy [id(1), version(0x2)]; "
+                "enum Code { One = 1; Two = 0x2; } "
+                "flags Mask { One = 1; Two = 0x2; } "
+                "message Packet { bytes(16) digest; uint8[16] values; "
+                "int32 count default 1; uint32 bits default 0xFF; }";
+            Node *root = create_node_map("root");
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+
+            check_equal(rc, 0);
+            node_free(root);
+        }
+
         it("should parse string default values") {
             const char *schema = "message Config { "
                                 "string endpoint default \"localhost\"; "

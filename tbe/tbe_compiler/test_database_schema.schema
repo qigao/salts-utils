@@ -1,0 +1,23 @@
+schema Accounts [id(1), version(1), byte_order(little)];
+
+[db_table(users)]
+message User {
+  [db_column(user_id), db_primary_key(1), db_generated(identity)] int64 id;
+  [db_unique(1)] string email;
+  string display_name;
+  bool active default true;
+  uint8 rank default 0;
+}
+
+[db_table(sessions)]
+message Session {
+  [db_primary_key(1)] uint32 session_id;
+  int64 user_id;
+  string token;
+}
+
+[db_table(integer_limits)]
+message IntegerLimits {
+  uint64 exact_u64;
+  optional uint32 nullable_u32;
+}

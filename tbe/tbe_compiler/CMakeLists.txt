@@ -12,11 +12,13 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/python_dataclass.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/rfl_types.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/sqlite_schema.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(tbe_compiler
-  SOURCES main.c compiler_core.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache
+  SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache TurboUtils::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
@@ -72,8 +74,8 @@ install(
 # =============================================================================
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c mustache_helpers.c
-  LIBS TurboParser::TbeSchema TurboUtils::TinyTest TurboParser::Mustache
+  SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
+  LIBS TurboParser::TbeSchema TurboUtils::TinyTest TurboParser::Mustache TurboUtils::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     C_STRUCT_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -82,11 +84,32 @@ cmake_add_test(test_tbe_compiler
     PYTHON_DATACLASS_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/python_dataclass.mustache"
     RUST_STRUCTS_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
     TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
+    POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_postgresql_security_probe.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 tbe_copy_turbonet_runtime_deps(test_tbe_compiler)
+
+if(BUILD_TESTING)
+  find_package(unofficial-sqlite3 CONFIG REQUIRED)
+
+  cmake_add_test(test_tbe_database_ddl
+    SOURCES test_tbe_database_ddl.c compiler_core.c database_schema.c mustache_helpers.c
+    LIBS
+      TurboParser::TbeSchema
+      TurboUtils::TinyTest
+      TurboParser::Mustache
+      TurboUtils::Core
+      unofficial::sqlite3::sqlite3
+    DEFS
+      TEST_DATABASE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_database_schema.schema"
+      TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    FOLDER "tbe/tbe_compiler")
+  target_include_directories(test_tbe_database_ddl
+    PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+  tbe_copy_turbonet_runtime_deps(test_tbe_database_ddl)
+endif()
 
 set(TBE_TYPED_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(TBE_TYPED_ORDER_HEADER "${TBE_TYPED_ORDER_GENERATED_DIR}/typed_order.h")
