@@ -175,12 +175,17 @@ static int database_validate_db_annotations(const Node *owner, unsigned allowed_
 }
 
 static const Node *database_invalid_message_field_annotation(const Node *message,
-                                                             const char **out_annotation) {
+                                                             const char **out_annotation,
+                                                             int *out_malformed_fields) {
   Node *fields = database_find_child(message, "fields");
   size_t index;
 
   if (out_annotation) *out_annotation = NULL;
-  if (!message || !fields || fields->type != NODE_LIST) return NULL;
+  if (out_malformed_fields) *out_malformed_fields = 0;
+  if (!message || !fields || fields->type != NODE_LIST) {
+    if (out_malformed_fields) *out_malformed_fields = 1;
+    return NULL;
+  }
   for (index = 0; index < fields->data.list.count; ++index) {
     const Node *field = fields->data.list.items[index];
     const char *annotation = database_invalid_db_annotation(field, DATABASE_ANNOTATION_FIELD);
@@ -1016,15 +1021,22 @@ tbe_database_schema_status_t tbe_database_schema_build(
     const char *invalid_message_annotation;
     const char *invalid_field_annotation;
     const Node *invalid_field;
+    int malformed_fields;
     Node *table;
     size_t previous_index;
 
     invalid_message_annotation =
         database_invalid_db_annotation(message, DATABASE_ANNOTATION_MESSAGE);
-    invalid_field = database_invalid_message_field_annotation(message, &invalid_field_annotation);
+    invalid_field = database_invalid_message_field_annotation(message, &invalid_field_annotation,
+                                                               &malformed_fields);
     if (invalid_message_annotation) {
       database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
                               "annotation=%s is invalid for this location", invalid_message_annotation);
+      goto cleanup;
+    }
+    if (malformed_fields) {
+      database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
+                              "message fields must be a list");
       goto cleanup;
     }
     if (invalid_field) {

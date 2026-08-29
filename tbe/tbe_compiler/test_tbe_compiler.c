@@ -60,6 +60,33 @@ static int replace_test_string(Node *map, const char *name, const char *value) {
   return 0;
 }
 
+static Node *build_malformed_database_message_schema(int fields_as_string) {
+  Node *root = create_node_map("root");
+  Node *messages = create_node_list("messages");
+  Node *message = create_node_map(NULL);
+  Node *name = create_node_string("name", "Malformed");
+  Node *fields = fields_as_string ? create_node_string("fields", "not-a-list") : NULL;
+
+  if (!root || !messages || !message || !name || (fields_as_string && !fields)) goto cleanup;
+  if (map_add(message, name) != 0) goto cleanup;
+  name = NULL;
+  if (fields && map_add(message, fields) != 0) goto cleanup;
+  fields = NULL;
+  if (list_add(messages, message) != 0) goto cleanup;
+  message = NULL;
+  if (map_add(root, messages) != 0) goto cleanup;
+  messages = NULL;
+  return root;
+
+cleanup:
+  node_free(fields);
+  node_free(name);
+  node_free(message);
+  node_free(messages);
+  node_free(root);
+  return NULL;
+}
+
 static Node *database_ir_table(Node *database_ir, size_t index) {
   Node *tables = find_child(database_ir, "db_tables");
   if (!tables || tables->type != NODE_LIST || index >= tables->data.list.count) return NULL;
@@ -641,7 +668,8 @@ spec("tbe_compiler") {
       const char *valid_schema =
           "enum State <uint8> { Idle = 0; Active = 255; }"
           "[db_table(default_limits)] message DefaultLimits {"
-          " int8 signed_min default 0; int8 signed_max default 127; int64 signed_max64 default 9223372036854775807;"
+          " int8 signed_min default 0; int8 signed_max default 127; int16 signed_max16 default 32767;"
+          " int32 signed_max32 default 2147483647; int64 signed_max64 default 9223372036854775807;"
           " uint8 unsigned_min default 0; uint64 unsigned_max default 18446744073709551615;"
           " float decimal default 125; string quoted default \"D'Arcy\"; State state default Active;"
           "}";
@@ -652,6 +680,9 @@ spec("tbe_compiler") {
           {"rejects unsigned default above its maximum",
            "[db_table(defaults)] message UnsignedOverflow { uint64 value default 18446744073709551616; }",
            "UnsignedOverflow", "value", "type=uint64 default=18446744073709551616"},
+          {"rejects int64 default above its maximum",
+           "[db_table(defaults)] message Int64Overflow { int64 value default 9223372036854775808; }",
+           "Int64Overflow", "value", "type=int64 default=9223372036854775808"},
           {"rejects a boolean default written as an integer",
            "[db_table(defaults)] message BooleanMismatch { bool value default 1; }",
            "BooleanMismatch", "value", "type=bool default=1"},
@@ -679,16 +710,20 @@ spec("tbe_compiler") {
           check_contains(find_child(database_ir_column(table, 1), "sql_constraints")->data.string_val,
                          "DEFAULT 127");
           check_contains(find_child(database_ir_column(table, 2), "sql_constraints")->data.string_val,
-                         "DEFAULT 9223372036854775807");
+                         "DEFAULT 32767");
           check_contains(find_child(database_ir_column(table, 3), "sql_constraints")->data.string_val,
-                         "DEFAULT 0");
+                         "DEFAULT 2147483647");
           check_contains(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
-                         "DEFAULT 18446744073709551615");
+                         "DEFAULT 9223372036854775807");
           check_contains(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
-                         "DEFAULT 125");
+                         "DEFAULT 0");
           check_contains(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
-                         "DEFAULT 'D''Arcy'");
+                         "DEFAULT 18446744073709551615");
           check_contains(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
+                         "DEFAULT 125");
+          check_contains(find_child(database_ir_column(table, 8), "sql_constraints")->data.string_val,
+                         "DEFAULT 'D''Arcy'");
+          check_contains(find_child(database_ir_column(table, 9), "sql_constraints")->data.string_val,
                          "DEFAULT 255");
         }
         tbe_database_schema_destroy(database_ir);
@@ -705,14 +740,9 @@ spec("tbe_compiler") {
       } default_case_t;
       static const default_case_t valid_cases[] = {
           {"int8", "-128", "DEFAULT -128"},
-          {"int8", "127", "DEFAULT 127"},
           {"int16", "-32768", "DEFAULT -32768"},
-          {"int16", "32767", "DEFAULT 32767"},
           {"int32", "-2147483648", "DEFAULT -2147483648"},
-          {"int32", "2147483647", "DEFAULT 2147483647"},
           {"int64", "-9223372036854775808", "DEFAULT -9223372036854775808"},
-          {"int64", "9223372036854775807", "DEFAULT 9223372036854775807"},
-          {"uint64", "18446744073709551615", "DEFAULT 18446744073709551615"},
           {"float", "-1.25", "DEFAULT -1.25"},
           {"float", "1.25e+2", "DEFAULT 1.25e+2"},
           {"double", "-1.0e-3", "DEFAULT -1.0e-3"},
@@ -720,14 +750,8 @@ spec("tbe_compiler") {
       static const database_failure_case_t invalid_cases[] = {
           {"rejects int8 default below INT8_MIN", "int8|-129", "AstDefault", "value",
            "type=int8 default=-129"},
-          {"rejects int8 default above INT8_MAX", "int8|128", "AstDefault", "value",
-           "type=int8 default=128"},
           {"rejects int64 default below INT64_MIN", "int64|-9223372036854775809", "AstDefault", "value",
            "type=int64 default=-9223372036854775809"},
-          {"rejects int64 default above INT64_MAX", "int64|9223372036854775808", "AstDefault", "value",
-           "type=int64 default=9223372036854775808"},
-          {"rejects uint64 default above UINT64_MAX", "uint64|18446744073709551616", "AstDefault", "value",
-           "type=uint64 default=18446744073709551616"},
           {"rejects f32 overflow", "float|3.5e38", "AstDefault", "value",
            "type=float default=3.5e38"},
           {"rejects f64 overflow", "double|1e309", "AstDefault", "value",
@@ -796,6 +820,31 @@ spec("tbe_compiler") {
         check_equal(diagnostic.message_name, invalid_cases[index].message_name);
         check_equal(diagnostic.field_name, invalid_cases[index].field_name);
         check_contains(diagnostic.context, invalid_cases[index].context);
+      }
+    }
+
+    it("rejects malformed message fields before skipping a non-table message") {
+      static const int fields_as_string_cases[] = {0, 1};
+
+      for (size_t index = 0; index < sizeof(fields_as_string_cases) / sizeof(fields_as_string_cases[0]);
+           ++index) {
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        tbe_database_schema_diagnostic_t diagnostic;
+        Node *schema_root = build_malformed_database_message_schema(fields_as_string_cases[index]);
+        Node *database_ir = NULL;
+
+        check_not_null(schema_root);
+        if (!schema_root) continue;
+        status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE, &database_ir,
+                                           &diagnostic);
+        info("fields=%s", fields_as_string_cases[index] ? "string" : "missing");
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
+        check_null(database_ir);
+        check_equal(diagnostic.dialect, "sqlite");
+        check_equal(diagnostic.message_name, "Malformed");
+        check_equal(diagnostic.field_name, "<message>");
+        check_contains(diagnostic.context, "fields");
+        node_free(schema_root);
       }
     }
   }
