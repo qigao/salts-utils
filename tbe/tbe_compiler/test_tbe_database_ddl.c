@@ -21,6 +21,30 @@ typedef struct expected_column_s {
   const char *type;
 } expected_column_t;
 
+static char *sqlite_ddl_test_strdup(const char *text) {
+  size_t size;
+  char *copy;
+
+  if (!text) return NULL;
+  size = strlen(text) + 1u;
+  copy = (char *)malloc(size);
+  if (!copy) return NULL;
+  memcpy(copy, text, size);
+  return copy;
+}
+
+static size_t sqlite_ddl_test_live_resource_count(const sqlite_ddl_test_state_t *state) {
+  size_t count = 0;
+
+  if (!state) return 0;
+  if (state->db) ++count;
+  if (state->statement) ++count;
+  if (state->sql_output_path) ++count;
+  if (state->sql_text) ++count;
+  if (state->sqlite_error) ++count;
+  return count;
+}
+
 static void sqlite_ddl_test_reset_statement(sqlite_ddl_test_state_t *state) {
   if (state && state->statement) {
     sqlite3_finalize(state->statement);
@@ -165,7 +189,63 @@ static void sqlite_ddl_test_check_table_columns(sqlite_ddl_test_state_t *state,
   check_equal(sqlite3_step(state->statement), SQLITE_DONE);
 }
 
+static void sqlite_ddl_test_populate_cleanup_probe(sqlite_ddl_test_state_t *state) {
+  int rc;
+
+  check_not_null(state);
+  if (!state) return;
+
+  state->sql_output_path = tt_make_temp_file("tbe_database_probe", ".sql");
+  check_not_null(state->sql_output_path);
+  if (state->sql_output_path) {
+    check_equal(tt_write_file(state->sql_output_path, "probe", 5), 0);
+  }
+
+  state->sql_text = sqlite_ddl_test_strdup("SELECT 1;");
+  check_not_null(state->sql_text);
+
+  rc = sqlite3_open(":memory:", &state->db);
+  info("probe sqlite3_open rc=%d error=%s", rc,
+       state->db ? sqlite3_errmsg(state->db) : "no-handle");
+  check_equal(rc, SQLITE_OK);
+
+  check(sqlite_ddl_test_prepare(state, "SELECT 1;"));
+  rc = sqlite_ddl_test_exec(state, "SELECT * FROM missing_cleanup_probe;");
+  info("probe exec rc=%d error=%s", rc,
+       state->sqlite_error ? state->sqlite_error : sqlite3_errmsg(state->db));
+  check_equal(sqlite3_errcode(state->db), SQLITE_ERROR);
+  check_not_null(state->sqlite_error);
+}
+
 spec("tbe_compiler SQLite DDL integration") {
+  static sqlite_ddl_test_state_t state = {0};
+  static size_t cleanup_probe_after_each_runs = 0;
+  static size_t cleanup_probe_resource_count = 0;
+  static int cleanup_probe_armed = 0;
+
+  before_each() { memset(&state, 0, sizeof(state)); }
+
+  after_each() {
+    if (cleanup_probe_armed) {
+      ++cleanup_probe_after_each_runs;
+      cleanup_probe_resource_count = sqlite_ddl_test_live_resource_count(&state);
+      cleanup_probe_armed = 0;
+    }
+
+    sqlite_ddl_test_cleanup(&state);
+  }
+
+  it_should_fail("runs after_each cleanup after assertion longjmp") {
+    sqlite_ddl_test_populate_cleanup_probe(&state);
+    cleanup_probe_armed = 1;
+    check(false);
+  }
+
+  it("observes fixture cleanup after the expected failure") {
+    check_equal(cleanup_probe_after_each_runs, (size_t)1);
+    check_equal(cleanup_probe_resource_count, (size_t)5);
+  }
+
   it("executes generated SQLite schema and enforces live constraints") {
     static const expected_column_t user_columns[] = {
         {"user_id", "INTEGER"},
@@ -179,7 +259,6 @@ spec("tbe_compiler SQLite DDL integration") {
         {"user_id", "INTEGER"},
         {"token", "TEXT"},
     };
-    sqlite_ddl_test_state_t state = {0};
     sqlite3_int64 generated_user_id = 0;
     int rc;
     size_t sql_size = 0;
@@ -193,7 +272,6 @@ spec("tbe_compiler SQLite DDL integration") {
 
     state.sql_output_path = tt_make_temp_file("tbe_database_schema", ".sql");
     check_not_null(state.sql_output_path);
-    if (!state.sql_output_path) goto cleanup;
     check_equal(tt_remove_file(state.sql_output_path), 0);
 
     options.output_path = state.sql_output_path;
@@ -202,7 +280,6 @@ spec("tbe_compiler SQLite DDL integration") {
     state.sql_text = tt_read_file(state.sql_output_path, &sql_size);
     check_not_null(state.sql_text);
     check_greater(sql_size, (size_t)0);
-    if (!state.sql_text) goto cleanup;
     check_contains(state.sql_text, "CREATE TABLE \"users\"");
     check_contains(state.sql_text, "CREATE TABLE \"sessions\"");
 
@@ -210,7 +287,6 @@ spec("tbe_compiler SQLite DDL integration") {
     info("sqlite3_open rc=%d error=%s", rc,
          state.db ? sqlite3_errmsg(state.db) : "no-handle");
     check_equal(rc, SQLITE_OK);
-    if (rc != SQLITE_OK || !state.db) goto cleanup;
 
     check_equal(sqlite3_extended_result_codes(state.db, 1), SQLITE_OK);
     sqlite_ddl_test_expect_exec_ok(&state, state.sql_text);
@@ -232,12 +308,10 @@ spec("tbe_compiler SQLite DDL integration") {
         &state,
         "SELECT user_id, email, display_name, active, rank "
         "FROM users WHERE email='alpha@example.com';"));
-    if (!state.statement) goto cleanup;
 
     rc = sqlite3_step(state.statement);
     info("select generated user row step=%d", rc);
     check_equal(rc, SQLITE_ROW);
-    if (rc != SQLITE_ROW) goto cleanup;
 
     generated_user_id = sqlite3_column_int64(state.statement, 0);
     check_greater(generated_user_id, (sqlite3_int64)0);
@@ -285,8 +359,5 @@ spec("tbe_compiler SQLite DDL integration") {
         "INSERT INTO users (email, display_name, active, rank) "
         "VALUES ('bad-rank@example.com', 'Bad Rank', 1, 256);",
         SQLITE_CONSTRAINT_CHECK);
-
-  cleanup:
-    sqlite_ddl_test_cleanup(&state);
   }
 }

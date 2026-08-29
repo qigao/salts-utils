@@ -103,3 +103,93 @@ ninja: no work to do.
 
 - `事实`：本任务只改测试、fixture 与测试侧 CMake；生产编译器逻辑未改。
 - `LOW` `推论`：`find_package(unofficial-sqlite3 CONFIG REQUIRED)` 当前放在 `tbe_compiler` 的测试区块内，和现有测试 target 一样随该目录配置；若未来仓库统一把测试 target 包进 `if(BUILD_TESTING)`，这里也应跟随收口。
+
+## Fix Round 1
+
+### 问题核实
+
+- `事实`：TinyTest `check_*` 失败时会直接 `ttest_longjmp_fail__`，安装头 `C:/projects/cpp/external/pkgs/turboutils/release/include/tinytest.h:322-352` 明确在断言失败后调用 `ttest_longjmp_fail__(ttest_active_config__)`。
+- `事实`：TinyTest 源码 `C:/projects/cpp/turbonet/turbo-utils/tinytest/src/tinytest.c:718` 会把 `after_each` hooks 绑定到每个 leaf test 的 `after_each_nodes`。
+- `事实`：同一源码 `C:/projects/cpp/turbonet/turbo-utils/tinytest/src/tinytest.c:1178-1179` 在 `ttest_execute_target__` 之后遍历并执行 `after_each_nodes`，因此框架层负责在测试 body 失败后仍执行 cleanup hook。
+- `事实`：原 `test_tbe_database_ddl.c` 使用函数局部 `sqlite_ddl_test_state_t state` 和 body 末尾 `cleanup:` 标签；一旦 `check_*` longjmp，body-local cleanup 不会运行。
+
+### 实现
+
+- `事实`：把 SQLite 集成测试状态迁到 `spec` 作用域 `static sqlite_ddl_test_state_t state`。
+- `事实`：新增 `before_each()` 对该状态做零初始化；新增 `after_each()` 统一调用唯一的 `sqlite_ddl_test_cleanup(&state)`。
+- `事实`：删除主集成测试 body-local `cleanup:` 标签和 `goto cleanup` 依赖，让资源回收只依赖 TinyTest fixture 生命周期。
+- `事实`：新增 `it_should_fail("runs after_each cleanup after assertion longjmp")` 回归：先分配 temp path、SQL text、SQLite db、prepared statement、sqlite error，再故意触发断言失败。
+- `事实`：新增后续测试 `it("observes fixture cleanup after the expected failure")`，断言 `after_each` 已运行一次，且在 cleanup 前观察到 5 个 live resources，证明 hook 在 expected-fail longjmp 后被执行。
+
+### RED
+
+命令：
+
+```powershell
+cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat"" -arch=x64 -host_arch=x64 >nul && cmake --build --preset win-release-user --target test_tbe_database_ddl --config Release && ctest --preset win-release-user -R test_tbe_database_ddl --output-on-failure"
+```
+
+结果摘录：
+
+```text
+tbe_compiler SQLite DDL integration
+  demonstrates the missing fixture cleanup on assertion longjmp
+  [ XFAIL ]
+  requires after_each-managed cleanup after the expected failure
+  [ FAIL  ]
+    Check failed: expected == 1 but got 0
+```
+
+结论：
+
+- `事实`：`it_should_fail(...)` 本身按预期记为 `XFAIL`，suite 失败点来自其后的验证测试。
+- `事实`：失败值 `0` 说明当时还没有任何 `after_each` 记录到该失败用例的 cleanup 运行。
+
+### GREEN
+
+命令 1：
+
+```powershell
+cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat"" -arch=x64 -host_arch=x64 >nul && cmake --build --preset win-release-user --target test_tbe_database_ddl --config Release && ctest --preset win-release-user -R test_tbe_database_ddl --output-on-failure"
+```
+
+结果摘录：
+
+```text
+1/1 Test #32: test_tbe_database_ddl ............   Passed
+100% tests passed, 0 tests failed out of 1
+```
+
+命令 2：
+
+```powershell
+cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat"" -arch=x64 -host_arch=x64 >nul && cmake --build --preset win-release-user --target tbe_compiler test_tbe_compiler test_tbe_database_ddl --config Release && ctest --preset win-release-user -R ""tbe_compiler|tbe_database_ddl"" --output-on-failure"
+```
+
+结果摘录：
+
+```text
+ninja: no work to do.
+1/2 Test #31: test_tbe_compiler ................   Passed
+2/2 Test #32: test_tbe_database_ddl ............   Passed
+100% tests passed, 0 tests failed out of 2
+```
+
+### CMake 守卫检查
+
+- `事实`：执行
+
+```powershell
+rg.exe -n "BUILD_TESTING|if\(BUILD_TESTING\)|endif\(BUILD_TESTING\)|if\(ENABLE_TESTS\)" tbe/tbe_compiler tbe/schema tbe/data_bind -g "CMakeLists.txt"
+```
+
+返回空结果。
+
+- `推论`：在这三个相邻目录内没有现成、统一的 build-test guard 风格可复用。
+- `事实`：因此本轮没有把 `find_package(unofficial-sqlite3 CONFIG REQUIRED)` 或 `test_tbe_database_ddl` 包进新的单点守卫，避免制造与邻近测试不一致的例外风格。
+
+### 本轮自审
+
+- `事实`：本轮只修改 `tbe/tbe_compiler/test_tbe_database_ddl.c` 与同一报告文件。
+- `事实`：资源所有权现在对 longjmp 明确：body 只获取资源，`after_each()` 统一释放，`sqlite_ddl_test_cleanup()` 保持幂等单入口。
+- `LOW` `推论`：cleanup 回归依赖 TinyTest 的声明顺序执行 expected-fail 用例与后继观察用例；这对“验证 `after_each` 是否在上一用例失败后执行”是有意的顺序契约，不是业务状态耦合。
