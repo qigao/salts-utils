@@ -26,7 +26,7 @@
 #define tbe_compiler_fdopen fdopen
 #define tbe_compiler_open open
 #define TBE_COMPILER_TEMP_OPEN_FLAGS (O_WRONLY | O_CREAT | O_EXCL)
-#define TBE_COMPILER_TEMP_OPEN_MODE 0600
+#define TBE_COMPILER_TEMP_OPEN_MODE 0666
 #endif
 
 #define TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS 16u

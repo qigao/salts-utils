@@ -98,7 +98,19 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - 模板只负责排列已经转义的片段，不承担业务校验，不拼接未经验证的 annotation 值。
 - 输出文件沿用现有编译器写入边界：解析、校验或渲染失败时返回非零，不产生可被误认为成功的半成品结果。
 
-数据库 IR 对模板暴露以下稳定形状：schema 级 `db_tables`；table 级 `sql_table_name`、`db_columns`、`db_primary_key_columns`、`has_composite_primary_key`、`is_last`；column 级 `sql_column_name`、`sql_type`、`sql_constraints`、`is_last`。这些字段都是最终 SQL token 或布尔控制量，模板不读取原始 `attributes`。
+数据库 IR 对模板暴露以下稳定形状：schema 级 `db_tables`；table 级 `sql_table_name`、`db_columns`、`db_primary_key_columns`、`has_composite_primary_key`、`has_next_table`；column 级 `sql_column_name`、`sql_type`、`sql_constraints`、`has_sql_constraints`、`has_next_column`；主键引用级 `sql_column_name`、`has_next_primary_key`。`has_next_*` 和 `has_sql_constraints` 是唯一稳定的模板控制量：它们只在值为真时出现，并且按 table、column、primary-key-ref 各自作用域命名，避免 Mustache 向父 scope 回退而混淆分隔符。`is_last` 不属于数据库 IR 契约，数据库模板不得读取它。所有 SQL 名称、类型和约束文本都已经归一化；模板不读取原始 `attributes`。
+
+例如，自定义数据库模板可以只使用稳定字段生成多表分隔、列逗号和复合主键顺序：
+
+```mustache
+{{#db_tables}}CREATE TABLE {{sql_table_name}} (
+{{#db_columns}}  {{sql_column_name}} {{sql_type}}{{#has_sql_constraints}} {{sql_constraints}}{{/has_sql_constraints}}{{#has_next_column}},{{/has_next_column}}
+{{/db_columns}}{{#has_composite_primary_key}}, PRIMARY KEY ({{#db_primary_key_columns}}{{sql_column_name}}{{#has_next_primary_key}}, {{/has_next_primary_key}}{{/db_primary_key_columns}}){{/has_composite_primary_key}}
+);{{#has_next_table}}
+{{/has_next_table}}{{/db_tables}}
+```
+
+输出采用同目录、独占创建的临时文件，成功后替换目标；POSIX 临时文件以 `0666` 创建并由进程 `umask` 收窄，因此首次生成的最终文件保持原有 `fopen("wb")` 的权限语义。Windows 仍使用现有的 `_S_IREAD | _S_IWRITE` 创建模式。
 
 ## 错误语义
 
@@ -141,4 +153,3 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - PostgreSQL 输出先做 golden contract；合入前按远程测试 runbook 在真实 PostgreSQL 容器执行生成 DDL并检查约束。
 - 运行现有 `test_tbe_compiler` 与相关 CTest 回归，证明原语言输出不变。
 - 安装后从安装目录运行 `tbe_compiler`，证明两份内置模板随工具安装。
-

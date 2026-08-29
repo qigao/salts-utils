@@ -4,7 +4,7 @@
 
 - 内置 `sqlite` 与 `postgresql` 模板均从已校验、独立拥有的数据库 IR 渲染；`--template` 在数据库语言下使用同一 IR，而非原始 schema AST。
 - SQLite 与 PostgreSQL 的逐字节 golden 覆盖引用标识符、单列 identity 主键、复合主键、nullable、UNIQUE、DEFAULT、bool/unsigned CHECK 与 dialect 类型差异。
-- 输出先写入同目录 `<output>.tbe.tmp`，渲染、flush、close 成功后以 `turbo_fs_rename()` 替换目标；失败会移除临时文件，已有目标不会在渲染失败时被截断。
+- 输出先以同目录、独占创建的 `<output>.tbe.<uuid-v4>.tmp` 写入，渲染、flush、close 成功后以 `turbo_fs_rename()` 替换目标；失败只移除本次拥有的临时文件，已有目标不会在渲染失败时被截断。
 - 两份模板已进入 `TBE_COMPILER_TEMPLATE_FILES`，因此同时成为 link dependency、post-build copy 的输入，并随现有 `templates` 目录安装。
 
 ## TDD 证据
@@ -115,3 +115,36 @@ cmd.exe /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Com
 - `事实`：TurboUtils 当前公开 `turbo_fs_open` 标志仅含 `RDONLY/WRONLY/RDWR/CREAT/TRUNC/APPEND`，没有独占创建标志（`turbo_fs.h:310-315`）；故唯一的无竞态实现是在 UUID 同目录名上调用平台原子独占创建。命名熵与 `O_EXCL`/`_O_EXCL` 共同保证并发调用不会共享临时 inode；现有 `.tbe.tmp` 保留测试覆盖了可重复的碰撞前提。
 - `事实`：新增测试覆盖预存临时文件保留、模板编译失败时原目标保留、Windows 目标替换失败时原目标保留，以及两方言普通单列主键 DDL。全部 `test_tbe_compiler` 用例通过。
 - `LOW`：Windows 专属替换失败测试使用 `CreateFileA` 的零共享锁来稳定复现 `MoveFileExA` 失败；POSIX 替换语义已由 TurboUtils 的 `rename()` 实现和同一 `turbo_fs_rename` 公开契约核对，但本 Windows 工作树未执行 POSIX 运行时测试。
+
+## Fix Round 2
+
+### 修复结果
+
+- `MED`：数据库 IR 不再生成或承诺 `is_last`。稳定自定义模板 API 明确为 `has_next_table`、`has_next_column`、`has_next_primary_key` 和 `has_sql_constraints`；四个标记只在真值时存在，且名称绑定其各自嵌套 scope，不能向父 scope 同名字段回退。架构文档包含完整自定义模板示例。
+- `MED`：POSIX 独占创建的 mode 从 `0600` 修复为 `0666`，由 `umask` 收窄，和此前 `fopen("wb")` 首次创建目标的权限语义一致。Windows 的 `_S_IREAD | _S_IWRITE` 分支未变，也没有在 rename 后 chmod。
+
+### Round 2 RED
+
+命令：
+
+```powershell
+cmd.exe /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 & cmake --build --preset win-release-user --target test_tbe_compiler & ctest --test-dir build\Msvc-Release -R ^test_tbe_compiler$ --output-on-failure'
+```
+
+输出：构建成功，CTest 预期失败：`65 passed, 1 failed`。`normalizes annotated tables into owned SQLite IR` 在 `check_null(find_child(membership_table, "is_last"))` 失败，证明旧 IR 仍泄露了被文档承诺却无法在嵌套 Mustache scope 中安全使用的控制字段。新增多表 marker 模板回归已通过；POSIX mode 断言在 Windows 由条件编译跳过，保留给 POSIX 运行时执行。
+
+### Round 2 GREEN
+
+命令：
+
+```powershell
+cmd.exe /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 & cmake --build --preset win-release-user --target test_tbe_compiler tbe_compiler & ctest --test-dir build\Msvc-Release -R ^test_tbe_compiler$ --output-on-failure & powershell -NoProfile -Command "if ((Test-Path build/Msvc-Release/bin/templates/sqlite_schema.mustache) -and (Test-Path build/Msvc-Release/bin/templates/postgresql_schema.mustache)) { Write-Output TEMPLATE_RESOURCES_OK } else { Write-Error TEMPLATE_RESOURCES_MISSING; exit 1 }"'
+```
+
+输出：`1/1 Test #31: test_tbe_compiler Passed`、`100% tests passed, 0 tests failed out of 1`、`TEMPLATE_RESOURCES_OK`。
+
+### 自审与关注点
+
+- `事实`：多表自定义数据库模板回归同时断言 table 分隔符、列分隔符、复合主键引用分隔符和有约束列标记；IR 结构回归断言 table、column、primary-key-ref 均不再有 `is_last`。
+- `事实`：POSIX 分支包含真正的运行时测试，而不是源文本匹配：它读取当前 `umask`，生成新 DDL 文件，使用 `stat()` 比较 `(st_mode & 0777)` 与 `0666 & ~umask`。当前验证工作树为 Windows，因此该断言未在本轮命令中执行。
+- `LOW`：POSIX 权限断言仍应在 Linux/macOS CI 执行一次，以覆盖实际 libc、filesystem 与 umask 组合；创建路径本身使用标准 `open(..., O_CREAT | O_EXCL, 0666)`，不更改最终替换和所有权 cleanup 协议。

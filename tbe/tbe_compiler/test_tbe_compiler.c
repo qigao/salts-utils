@@ -10,6 +10,7 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 #include <stdio.h>
@@ -410,6 +411,11 @@ spec("tbe_compiler") {
       check_equal(find_child(primary_keys->data.list.items[1], "sql_column_name")->data.string_val,
                   "\"tenant\"");
       check_not_null(find_child(membership_table, "has_composite_primary_key"));
+      check_null(find_child(user_table, "is_last"));
+      check_null(find_child(membership_table, "is_last"));
+      check_null(find_child(database_ir_column(user_table, 4), "is_last"));
+      check_null(find_child(database_ir_column(membership_table, 1), "is_last"));
+      check_null(find_child(primary_keys->data.list.items[1], "is_last"));
 
       tbe_database_schema_destroy(database_ir);
       tbe_database_schema_destroy(NULL);
@@ -1525,6 +1531,87 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(template_path);
       cleanup_test_file(output_path);
+    }
+
+    it("should expose scoped database template markers without is_last") {
+      const char *schema_path = "test_tbe_compiler_database_markers.schema";
+      const char *template_path = "test_tbe_compiler_database_markers.mustache";
+      const char *output_path = "test_tbe_compiler_database_markers.out";
+      const char *schema =
+          "[db_table(alpha)] message Alpha {"
+          " [db_primary_key(1)] int64 a1;"
+          " optional string a2;"
+          " [db_primary_key(2)] uint16 a3;"
+          "}"
+          "[db_table(beta)] message Beta {"
+          " [db_primary_key(1)] string b1;"
+          "}";
+      const char *template_text =
+          "{{#db_tables}}T={{sql_table_name}}[{{#db_columns}}{{sql_column_name}}"
+          "{{#has_sql_constraints}}C{{/has_sql_constraints}}"
+          "{{#has_next_column}},{{/has_next_column}}{{/db_columns}}]"
+          "{{#has_composite_primary_key}}PK={{#db_primary_key_columns}}{{sql_column_name}}"
+          "{{#has_next_primary_key}}+{{/has_next_primary_key}}"
+          "{{/db_primary_key_columns}};{{/has_composite_primary_key}}"
+          "{{#has_next_table}}|{{/has_next_table}}{{/db_tables}}";
+      const char *expected =
+          "T=\"alpha\"[\"a1\"C,\"a2\",\"a3\"C]PK=\"a1\"+\"a3\";|"
+          "T=\"beta\"[\"b1\"C]";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = template_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(template_path, template_text), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should create POSIX output with fopen-compatible permissions") {
+#ifndef _WIN32
+      const char *schema_path = "test_tbe_compiler_posix_mode.schema";
+      const char *output_path = "test_tbe_compiler_posix_mode.sql";
+      const char *schema =
+          "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      struct stat output_status;
+      mode_t saved_umask;
+      mode_t expected_mode;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      saved_umask = umask(0);
+      umask(saved_umask);
+      expected_mode = (mode_t)(0666 & ~saved_umask);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(stat(output_path, &output_status), 0);
+      check_equal((mode_t)(output_status.st_mode & 0777), expected_mode);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+#else
+      check_true(1);
+#endif
     }
 
     it("should preserve a similarly named pre-existing temporary file") {

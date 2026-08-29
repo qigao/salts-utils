@@ -647,13 +647,6 @@ static void database_sort_primary_keys(database_primary_key_ref_t *refs, size_t 
   }
 }
 
-static int database_mark_last(Node *list) {
-  Node *last;
-  if (!list || list->type != NODE_LIST || list->data.list.count == 0) return 1;
-  last = list->data.list.items[list->data.list.count - 1u];
-  return database_add_string(last, "is_last", "1") == 0;
-}
-
 static int database_mark_has_next(Node *list, const char *name) {
   size_t index;
   if (!list || list->type != NODE_LIST || !name) return 0;
@@ -981,9 +974,7 @@ field_cleanup:
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
-  if (!database_mark_last(database_find_child(table, "db_columns")) ||
-      !database_mark_last(database_find_child(table, "db_primary_key_columns")) ||
-      !database_mark_has_next(database_find_child(table, "db_columns"), "has_next_column") ||
+  if (!database_mark_has_next(database_find_child(table, "db_columns"), "has_next_column") ||
       !database_mark_has_next(database_find_child(table, "db_primary_key_columns"),
                               "has_next_primary_key")) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
@@ -1109,8 +1100,7 @@ tbe_database_schema_status_t tbe_database_schema_build(
                             "annotation=db_table is required for database output");
     goto cleanup;
   }
-  if (!database_mark_last(database_find_child(database_ir, "db_tables")) ||
-      !database_mark_has_next(database_find_child(database_ir, "db_tables"), "has_next_table")) {
+  if (!database_mark_has_next(database_find_child(database_ir, "db_tables"), "has_next_table")) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
