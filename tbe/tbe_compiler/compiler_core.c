@@ -6,11 +6,30 @@
 #include "schema_parser_dsl.h"
 #include "tbe_error.h"
 #include "turbo_fs.h"
+#include "turbo_uuid.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <io.h>
+#include <sys/stat.h>
+#define tbe_compiler_fdopen _fdopen
+#define tbe_compiler_open _open
+#define TBE_COMPILER_TEMP_OPEN_FLAGS (_O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY)
+#define TBE_COMPILER_TEMP_OPEN_MODE (_S_IREAD | _S_IWRITE)
+#else
+#include <unistd.h>
+#define tbe_compiler_fdopen fdopen
+#define tbe_compiler_open open
+#define TBE_COMPILER_TEMP_OPEN_FLAGS (O_WRONLY | O_CREAT | O_EXCL)
+#define TBE_COMPILER_TEMP_OPEN_MODE 0600
+#endif
+
+#define TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS 16u
 
 static Node *tbe_compiler_find_child(Node *parent, const char *name) {
   if (!parent || !name) return NULL;
@@ -34,6 +53,70 @@ static const char *tbe_compiler_string_value(Node *parent, const char *name) {
   Node *child = tbe_compiler_find_child(parent, name);
   if (!child || child->type != NODE_STRING) return NULL;
   return child->data.string_val;
+}
+
+static int tbe_compiler_create_temporary_output(const char *output_path,
+                                                char **out_temporary_path,
+                                                FILE **out_file) {
+  static const char temporary_prefix[] = ".tbe.";
+  static const char temporary_suffix[] = ".tmp";
+  const size_t output_length = strlen(output_path);
+  const size_t prefix_length = sizeof(temporary_prefix) - 1u;
+  const size_t suffix_length = sizeof(temporary_suffix);
+  const size_t uuid_length = TURBO_UUID_STRING_LENGTH;
+  size_t path_length;
+  unsigned attempt;
+
+  if (!out_temporary_path || !out_file || output_length >
+      SIZE_MAX - prefix_length - uuid_length - suffix_length) {
+    return -1;
+  }
+  *out_temporary_path = NULL;
+  *out_file = NULL;
+  path_length = output_length + prefix_length + uuid_length + suffix_length;
+
+  for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
+    turbo_uuid_t uuid;
+    char uuid_text[TURBO_UUID_STRING_SIZE];
+    char *temporary_path;
+    FILE *file;
+    int descriptor;
+
+    if (turbo_uuid_v4_generate(&uuid) != TURBO_OK ||
+        turbo_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != TURBO_OK) {
+      return -1;
+    }
+    temporary_path = (char *)malloc(path_length);
+    if (!temporary_path) return -1;
+    memcpy(temporary_path, output_path, output_length);
+    memcpy(temporary_path + output_length, temporary_prefix, prefix_length);
+    memcpy(temporary_path + output_length + prefix_length, uuid_text, uuid_length);
+    memcpy(temporary_path + output_length + prefix_length + uuid_length, temporary_suffix,
+           suffix_length);
+
+    descriptor = tbe_compiler_open(temporary_path, TBE_COMPILER_TEMP_OPEN_FLAGS,
+                                   TBE_COMPILER_TEMP_OPEN_MODE);
+    if (descriptor < 0) {
+      free(temporary_path);
+      if (errno == EEXIST) continue;
+      return -1;
+    }
+    file = tbe_compiler_fdopen(descriptor, "wb");
+    if (!file) {
+#ifdef _WIN32
+      _close(descriptor);
+#else
+      close(descriptor);
+#endif
+      turbo_fs_unlink(temporary_path);
+      free(temporary_path);
+      return -1;
+    }
+    *out_temporary_path = temporary_path;
+    *out_file = file;
+    return 0;
+  }
+  return -1;
 }
 
 static int tbe_compiler_parse_size(const char *text, size_t *out) {
@@ -1199,6 +1282,7 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   FILE *out_file = stdout;
   char *temporary_output_path = NULL;
   int temporary_output_open = 0;
+  int temporary_output_owned = 0;
   int res = 1;
 
   if (!templ_data) {
@@ -1213,31 +1297,12 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
   }
 
   if (output_path) {
-    const char temporary_suffix[] = ".tbe.tmp";
-    size_t output_length = strlen(output_path);
-    size_t suffix_length = sizeof(temporary_suffix);
-
-    if (output_length > SIZE_MAX - suffix_length) {
-      fprintf(stderr, "Output path is too long: %s\n", output_path);
-      goto cleanup;
-    }
-    temporary_output_path = (char *)malloc(output_length + suffix_length);
-    if (!temporary_output_path) {
-      fprintf(stderr, "Failed to allocate temporary output path\n");
-      goto cleanup;
-    }
-    memcpy(temporary_output_path, output_path, output_length);
-    memcpy(temporary_output_path + output_length, temporary_suffix, suffix_length);
-    if (turbo_fs_access(temporary_output_path, TURBO_FS_ACCESS_EXISTS) == 0) {
-      fprintf(stderr, "Temporary output file already exists: %s\n", temporary_output_path);
-      goto cleanup;
-    }
-    out_file = fopen(temporary_output_path, "wb");
-    if (!out_file) {
-      fprintf(stderr, "Failed to open temporary output file: %s\n", temporary_output_path);
+    if (tbe_compiler_create_temporary_output(output_path, &temporary_output_path, &out_file) != 0) {
+      fprintf(stderr, "Failed to create unique temporary output file for: %s\n", output_path);
       goto cleanup;
     }
     temporary_output_open = 1;
+    temporary_output_owned = 1;
   }
 
   if (mustache_process(templ, &renderer, out_file, &provider, root)
@@ -1259,12 +1324,13 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;
     }
+    temporary_output_owned = 0;
   }
   res = 0;
 
 cleanup:
   if (temporary_output_open && out_file != NULL) fclose(out_file);
-  if (temporary_output_path && res != 0) turbo_fs_unlink(temporary_output_path);
+  if (temporary_output_owned) turbo_fs_unlink(temporary_output_path);
   free(temporary_output_path);
   mustache_release(templ);
   free(templ_data);

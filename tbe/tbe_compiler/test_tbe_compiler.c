@@ -8,6 +8,7 @@
 #include "tinytest.h"
 #ifdef _WIN32
 #include <io.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -890,6 +891,42 @@ spec("tbe_compiler") {
       check_not_null(r.out_escaped);
     }
 
+    it("should keep empty strings truthy in sections") {
+      Node *root = create_node_map(NULL);
+      Node *empty = create_node_string("empty", "");
+      MUSTACHE_TEMPLATE *templ = NULL;
+      MUSTACHE_STRING_RENDERER renderer;
+      MUSTACHE_DATAPROVIDER provider = mustache_helpers_provider();
+      char *output = NULL;
+      int renderer_ready = 0;
+
+      check_not_null(root);
+      check_not_null(empty);
+      if (!root || !empty) {
+        node_free(root);
+        node_free(empty);
+        return;
+      }
+      check_equal(map_add(root, empty), 0);
+      empty = NULL;
+      templ = mustache_compile("{{#empty}}present{{/empty}}",
+                               strlen("{{#empty}}present{{/empty}}"), NULL, NULL, 0);
+      check_not_null(templ);
+      check_equal(mustache_string_renderer_init(&renderer), 0);
+      renderer_ready = 1;
+      if (templ && renderer_ready) {
+        check_equal(mustache_process(templ, (MUSTACHE_RENDERER *)&renderer, &renderer,
+                                     &provider, root), MUSTACHE_ERR_SUCCESS);
+        output = mustache_string_renderer_get(&renderer);
+        check_not_null(output);
+        if (output) check_equal(output, "present");
+      }
+      free(output);
+      if (renderer_ready) mustache_string_renderer_free(&renderer);
+      mustache_release(templ);
+      node_free(root);
+    }
+
     it("renderer should report file write failures") {
       char *path = tt_make_temp_file("tbe_mustache", ".tmp");
       FILE *read_only = NULL;
@@ -1377,6 +1414,76 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
     }
 
+    it("should render a non-identity single primary key for SQLite") {
+      const char *schema_path = "test_tbe_compiler_sqlite_single_pk.schema";
+      const char *output_path = "test_tbe_compiler_sqlite_single_pk.sql";
+      const char *schema =
+          "[db_table(single_pk)] message SinglePk {"
+          " [db_primary_key(1)] int64 id;"
+          " string value;"
+          "}";
+      const char *expected =
+          "CREATE TABLE \"single_pk\" (\n"
+          "  \"id\" INTEGER NOT NULL PRIMARY KEY,\n"
+          "  \"value\" TEXT NOT NULL\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should render a non-identity single primary key for PostgreSQL") {
+      const char *schema_path = "test_tbe_compiler_postgresql_single_pk.schema";
+      const char *output_path = "test_tbe_compiler_postgresql_single_pk.sql";
+      const char *schema =
+          "[db_table(single_pk)] message SinglePk {"
+          " [db_primary_key(1)] int64 id;"
+          " string value;"
+          "}";
+      const char *expected =
+          "CREATE TABLE \"single_pk\" (\n"
+          "  \"id\" bigint NOT NULL PRIMARY KEY,\n"
+          "  \"value\" text NOT NULL\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
+
     it("should pass normalized database IR to custom database templates") {
       const char *schema_path = "test_tbe_compiler_database_custom.schema";
       const char *template_path = "test_tbe_compiler_database_custom.mustache";
@@ -1388,11 +1495,12 @@ spec("tbe_compiler") {
           "}";
       const char *template_text =
           "{{#db_tables}}{{sql_table_name}}:{{#db_columns}}{{sql_column_name}} {{sql_type}}"
-          "{{#sql_constraints}} {{sql_constraints}}{{/sql_constraints}}{{^is_last}};{{/is_last}}"
+          "{{#has_sql_constraints}} {{sql_constraints}}{{/has_sql_constraints}}"
+          "{{#has_next_column}};{{/has_next_column}}"
           "{{/db_columns}}{{/db_tables}}";
       const char *expected =
           "\"records\":\"record_id\" NUMERIC NOT NULL CHECK (\"record_id\" BETWEEN 0 AND "
-          "18446744073709551615);\"note\" TEXT";
+          "18446744073709551615) PRIMARY KEY;\"note\" TEXT";
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,
@@ -1417,6 +1525,113 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(template_path);
       cleanup_test_file(output_path);
+    }
+
+    it("should preserve a similarly named pre-existing temporary file") {
+      const char *schema_path = "test_tbe_compiler_temp_owner.schema";
+      const char *output_path = "test_tbe_compiler_temp_owner.sql";
+      const char *old_temp_path = "test_tbe_compiler_temp_owner.sql.tbe.tmp";
+      const char *schema =
+          "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
+      const char *expected =
+          "CREATE TABLE \"records\" (\n"
+          "  \"id\" INTEGER NOT NULL PRIMARY KEY\n"
+          ");\n\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      char *output = NULL;
+      char *old_temp = NULL;
+      size_t output_size = 0;
+      size_t old_temp_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      cleanup_test_file(old_temp_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(output_path, "known-good-output"), 0);
+      check_equal(write_test_file(old_temp_path, "unrelated-temporary-file"), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      old_temp = tt_read_file(old_temp_path, &old_temp_size);
+      check_not_null(output);
+      check_not_null(old_temp);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      if (old_temp) {
+        check_equal(old_temp, "unrelated-temporary-file");
+        free(old_temp);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      cleanup_test_file(old_temp_path);
+    }
+
+    it("should preserve an existing output when template compilation fails") {
+      const char *template_path = "test_tbe_compiler_invalid_template.mustache";
+      const char *output_path = "test_tbe_compiler_preserved_output.out";
+      Node *root = create_node_map(NULL);
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+      check_not_null(root);
+      check_equal(write_test_file(template_path, "{{/unterminated}}"), 0);
+      check_equal(write_test_file(output_path, "known-good-output"), 0);
+      if (root) check_not_equal(tbe_compiler_render_file(root, template_path, output_path), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, "known-good-output");
+        free(output);
+      }
+      node_free(root);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should preserve an existing output when replacement fails") {
+#ifdef _WIN32
+      const char *schema_path = "test_tbe_compiler_rename_failure.schema";
+      const char *output_path = "test_tbe_compiler_rename_failure.sql";
+      const char *schema =
+          "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      HANDLE output_lock;
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(output_path, "known-good-output"), 0);
+      output_lock = CreateFileA(output_path, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, NULL);
+      check_not_equal(output_lock, INVALID_HANDLE_VALUE);
+      if (output_lock != INVALID_HANDLE_VALUE) {
+        check_not_equal(tbe_compiler_run(&options), 0);
+        CloseHandle(output_lock);
+      }
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, "known-good-output");
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+#else
+      check_true(1);
+#endif
     }
 
     it("should generate RulesForge type declarations with the built-in DSL template") {

@@ -53,8 +53,7 @@ static void *get_child_by_index(void *node, unsigned index,
     } else if (n->type == NODE_MAP) {
         if (index < n->data.map.count) return n->data.map.items[index];
     } else {
-        if (index == 0 && n->type == NODE_STRING && n->data.string_val &&
-            n->data.string_val[0] != '\0') return n;
+        if (index == 0) return n;
     }
     return NULL;
 }

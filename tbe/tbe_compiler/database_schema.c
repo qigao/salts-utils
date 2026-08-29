@@ -648,14 +648,38 @@ static void database_sort_primary_keys(database_primary_key_ref_t *refs, size_t 
 }
 
 static int database_mark_last(Node *list) {
-  size_t index;
   Node *last;
   if (!list || list->type != NODE_LIST || list->data.list.count == 0) return 1;
-  for (index = 0; index + 1u < list->data.list.count; ++index) {
-    if (database_add_string(list->data.list.items[index], "is_last", "") != 0) return 0;
-  }
   last = list->data.list.items[list->data.list.count - 1u];
   return database_add_string(last, "is_last", "1") == 0;
+}
+
+static int database_mark_has_next(Node *list, const char *name) {
+  size_t index;
+  if (!list || list->type != NODE_LIST || !name) return 0;
+  for (index = 0; index + 1u < list->data.list.count; ++index) {
+    if (database_add_string(list->data.list.items[index], name, "1") != 0) return 0;
+  }
+  return 1;
+}
+
+static int database_append_column_constraint(Node *column, const char *constraint) {
+  Node *constraints = database_find_child(column, "sql_constraints");
+  database_string_builder_t builder = {0};
+  char *replacement;
+
+  if (!constraints || constraints->type != NODE_STRING || !constraint) return 0;
+  if (!database_string_builder_append(&builder, constraints->data.string_val) ||
+      !database_string_builder_append_token(&builder, constraint)) {
+    database_string_builder_destroy(&builder);
+    return 0;
+  }
+  replacement = builder.data;
+  builder.data = NULL;
+  database_string_builder_destroy(&builder);
+  free(constraints->data.string_val);
+  constraints->data.string_val = replacement;
+  return 1;
 }
 
 static tbe_database_schema_status_t database_build_table(
@@ -880,6 +904,7 @@ static tbe_database_schema_status_t database_build_table(
     if (database_add_string(column, "sql_column_name", sql_column_name) != 0 ||
         database_add_string(column, "sql_type", sql_type) != 0 ||
         database_add_string(column, "sql_constraints", constraints.data ? constraints.data : "") != 0 ||
+        (constraints.length != 0 && database_add_string(column, "has_sql_constraints", "1") != 0) ||
         list_add(database_find_child(table, "db_columns"), column) != 0) {
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
       goto field_cleanup;
@@ -936,6 +961,11 @@ field_cleanup:
     goto cleanup;
   }
   database_sort_primary_keys(primary_keys, primary_key_count);
+  if (primary_key_count == 1u && primary_keys[0].column != identity_column &&
+      !database_append_column_constraint(primary_keys[0].column, "PRIMARY KEY")) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
   for (field_index = 0; field_index < primary_key_count; ++field_index) {
     Node *primary_key_column = create_node_map(NULL);
     const char *sql_column_name = database_string_value(primary_keys[field_index].column, "sql_column_name");
@@ -952,7 +982,10 @@ field_cleanup:
     goto cleanup;
   }
   if (!database_mark_last(database_find_child(table, "db_columns")) ||
-      !database_mark_last(database_find_child(table, "db_primary_key_columns"))) {
+      !database_mark_last(database_find_child(table, "db_primary_key_columns")) ||
+      !database_mark_has_next(database_find_child(table, "db_columns"), "has_next_column") ||
+      !database_mark_has_next(database_find_child(table, "db_primary_key_columns"),
+                              "has_next_primary_key")) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
@@ -1076,7 +1109,8 @@ tbe_database_schema_status_t tbe_database_schema_build(
                             "annotation=db_table is required for database output");
     goto cleanup;
   }
-  if (!database_mark_last(database_find_child(database_ir, "db_tables"))) {
+  if (!database_mark_last(database_find_child(database_ir, "db_tables")) ||
+      !database_mark_has_next(database_find_child(database_ir, "db_tables"), "has_next_table")) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
