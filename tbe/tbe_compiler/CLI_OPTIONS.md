@@ -98,27 +98,32 @@ tbe_compiler <schema_file> [options]
 databases. This is a build-time feature only: TurboDB, ORM, and generated runtime code do
 not parse TBE at runtime and do not gain a TurboParser dependency from these outputs.
 
-Version 1 generates `CREATE TABLE` bootstrap DDL only. It does not inspect live schemas,
-does not emit `ALTER TABLE`, does not track migration history, and does not open database
-connections.
+Database output generates tables, foreign keys, normal or unique composite indexes, custom
+checks, and seed inserts. It does not inspect live schemas, emit `ALTER TABLE`, track migration
+history, or open database connections.
 
 ### Runnable Schema Example
 
 ```tbe
-schema Accounts [id(1), version(1), byte_order(little)];
+schema Accounts [
+    id(1), version(1), byte_order(little),
+    db_init(sqlite, "INSERT INTO users(id, tenant) VALUES (1, 7)")
+];
 
-[db_table("users")]
+[db_table("users"), db_unique_index(users_identity, id, tenant)]
 message User {
-    [db_column("id"), db_primary_key(1), db_generated(identity)] int64 id;
-    [db_unique(1)] string email;
-    optional string display_name;
-    optional uint32 login_count default 0;
+    [db_column("id"), db_primary_key(1)] int64 id;
+    [db_primary_key(2)] int32 tenant;
 }
 
-[db_table("memberships")]
-message Membership {
-    [db_primary_key(1)] int64 user_id;
-    [db_primary_key(2)] string tenant;
+[db_table("orders"),
+ db_foreign_key(fk_orders_user, User, user_id, id, tenant, tenant),
+ db_index(idx_orders_lookup, tenant, user_id),
+ db_check(ck_total, sqlite, "total_cents >= 0")]
+message Order {
+    int64 user_id;
+    int32 tenant;
+    int64 total_cents;
 }
 ```
 
@@ -136,11 +141,37 @@ tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --o
 | Annotation | Parameter | Generated result | Compilation errors |
 |---|---|---|---|
 | `db_table("name")` | Non-empty logical table name without embedded NUL | Emits one quoted SQL table | Missing/empty value, duplicate table name, or no persistent fields |
+| `db_foreign_key(name, Target, local, remote, ...)` | Constraint name, target message, and one or more local/remote field pairs | Emits a same-schema single or composite foreign key | Missing field/table, repeated fields, type mismatch, non-unique target, or duplicate constraint name |
+| `db_index(name, field, ...)` | Globally unique index name and ordered persistent fields | Emits a normal single or composite index | Missing/repeated field or duplicate index name |
+| `db_unique_index(name, field, ...)` | Globally unique index name and ordered persistent fields | Emits a unique single or composite index | Missing/repeated field or duplicate index name |
+| `db_check(name, dialect, "expression")` | Table-local name, `sqlite` or `postgresql`, and one safe expression | Emits a table-level check only for that dialect | Unknown dialect, duplicate constraint name, or unsafe SQL boundary |
+| `db_init(dialect, "INSERT ...")` | Schema-level dialect and one INSERT without a terminator | Emits the statement after tables and indexes, in declaration order | Unknown dialect, non-INSERT statement, or unsafe SQL boundary |
 | `db_column("name")` | Optional column name override | Emits one quoted SQL column name | Missing/empty value, embedded NUL, or duplicate column name in the same table |
 | `db_primary_key(order)` | Integer order starting at `1` | Adds the field to the primary key in order | Missing/duplicate/gapped order, or `optional` field used as a primary key |
 | `db_unique(1)` | Literal `1` only | Adds a single-column `UNIQUE` constraint | Any value other than `1`, or conflicting field annotations |
 | `db_generated(identity)` | Literal `identity` only | Emits dialect identity syntax for a single-column integer primary key | Non-integer type, composite key, `optional`, TBE `default`, `db_unique`, or unsupported dialect/type combination |
 | `db_ignore(1)` | Literal `1` only | Excludes the field from the normalized database IR and output | Any value other than `1`, or combination with other `db_*` field annotations |
+
+All annotation arguments are retained in declaration order. The legacy AST `value` field remains
+the first argument for compatibility. Existing single-argument database annotations reject extra
+arguments.
+
+Foreign-key targets must be persistent messages in the same schema. Their referenced field list
+must exactly match a primary key, a `db_unique(1)` column, or a `db_unique_index`, and normalized
+local/remote SQL types must match. Constraint names are unique per table; index names are unique
+for the schema and cannot collide with table names. SQLite applications must enable
+`PRAGMA foreign_keys=ON` on each connection that requires enforcement.
+
+SQLite emits foreign keys inline. PostgreSQL creates all tables and indexes first, then emits
+`ALTER TABLE ... ADD CONSTRAINT` for foreign keys. This supports forward message references and
+ensures a referenced `db_unique_index` exists before the foreign key is added. Seed inserts are
+always emitted last.
+
+Custom checks and seed statements are constrained build inputs, not arbitrary SQL scripts. The
+compiler rejects controls, semicolons, line/block comments, unterminated quotes, and unbalanced
+parentheses; initialization must begin with an independent `INSERT` keyword. This is a statement
+boundary check rather than a full SQL parser, so the selected database remains authoritative for
+SQL validity. Every annotation is validated even when its dialect is not selected.
 
 ### Database Type Mapping
 
@@ -193,6 +224,10 @@ never accepted.
 - SQLite identity accepts only signed integer single-column primary keys. PostgreSQL accepts
   `uint8`, `uint16`, and `uint32` identity columns while retaining their unsigned range checks,
   but rejects `uint64` because PostgreSQL sequences do not support `numeric(20,0)`.
+- Foreign keys fail when target fields are not an exact declared unique key or normalized SQL
+  types differ. Index fields must exist, be persistent, and appear only once.
+- Custom SQL fragments fail when they contain statement terminators/comments, malformed quote or
+  parenthesis structure, or when an initializer is not an INSERT.
 - Output replacement is atomic. POSIX first creation follows `0666 & ~umask`, while overwriting an
   existing target preserves its permission bits. No Windows ACL preservation guarantee is made.
 
@@ -201,12 +236,19 @@ never accepted.
 Custom database templates receive normalized database IR instead of the raw TBE AST. Stable
 fields include:
 
-- Schema scope: `db_tables`
+- Schema scope: `db_tables`, `db_indexes`, `db_initializers`
 - Table scope: `sql_table_name`, `db_columns`, `db_primary_key_columns`,
-  `has_composite_primary_key`, `has_next_table`
+  `db_foreign_keys`, `db_checks`, `has_composite_primary_key`, `has_next_table`
 - Column scope: `sql_column_name`, `sql_type`, `sql_constraints`,
   `has_sql_constraints`, `has_next_column`
 - Primary-key reference scope: `sql_column_name`, `has_next_primary_key`
+- Foreign-key scope: `sql_constraint_name`, `sql_referenced_table_name`,
+  `db_foreign_key_columns`; each field pair exposes `sql_column_name`,
+  `sql_referenced_column_name`, `has_next_foreign_key_column`
+- Index scope: `sql_index_name`, `sql_table_name`, `db_index_columns`, and the truthy marker
+  `is_unique_index`; index fields expose `sql_column_name`, `has_next_index_column`
+- Check scope: `sql_constraint_name`, `sql_check_expression`
+- Initializer scope: `sql_statement`
 
 `has_next_*` and `has_sql_constraints` are the supported marker fields. Database templates
 must not depend on `is_last`.

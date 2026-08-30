@@ -10,8 +10,8 @@ DDL，部署后的 TurboDB/ORM/DataBind 运行时不会因为数据库 DDL 生�
 - 数据库 DDL 设计与边界：[`docs/architecture/tbe-database-ddl-generation.md`](docs/architecture/tbe-database-ddl-generation.md)
 - DataBind 运行时说明：[`tbe/data_bind/README.md`](tbe/data_bind/README.md)
 
-数据库语言当前只生成空库初始化所需的 bootstrap DDL。它不是 migration engine，不会比较线上结构、
-不会生成 `ALTER TABLE`，也不会连接数据库执行迁移。
+数据库语言生成空库初始化所需的表、外键、普通/唯一复合索引、自定义 `CHECK` 与种子 `INSERT`。
+它不是 migration engine，不会比较线上结构、生成 `ALTER TABLE` 或连接数据库执行迁移。
 
 SQLite `uint64` 以受严格约束的 canonical decimal `TEXT` 保存，避免大整数经 REAL 静默舍入；
 PostgreSQL 字符串默认值使用与 `standard_conforming_strings` 无关的 escape literal。identity 能力按

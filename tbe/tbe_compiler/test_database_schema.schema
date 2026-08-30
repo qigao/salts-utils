@@ -1,4 +1,9 @@
-schema Accounts [id(1), version(1), byte_order(little)];
+schema Accounts [
+  id(1),
+  version(1),
+  byte_order(little),
+  db_init(sqlite, "INSERT INTO users (user_id, email, display_name, active, rank) VALUES (500, 'seed@example.com', 'Seed', 1, 4)")
+];
 
 [db_table(users)]
 message User {
@@ -9,7 +14,11 @@ message User {
   uint8 rank default 0;
 }
 
-[db_table(sessions)]
+[db_table(sessions),
+ db_foreign_key(fk_sessions_user, User, user_id, id),
+ db_index(idx_sessions_token_user, token, user_id),
+ db_unique_index(uidx_sessions_user_token, user_id, token),
+ db_check(ck_sessions_token, sqlite, "length(token) >= 4")]
 message Session {
   [db_primary_key(1)] uint32 session_id;
   int64 user_id;

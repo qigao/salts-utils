@@ -504,16 +504,35 @@ static void add_field(schema_parse_ctx_t *ctx,
     }
 }
 
-static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_tok,
-                                   schema_token_t value_tok) {
-    char *key = tok_strdup(key_tok);
+static Node *create_attribute_value_node(schema_parse_ctx_t *ctx, schema_token_t value_tok) {
     char *value = tok_strdup(value_tok);
-    Node *attr;
-    if (ctx->error) {
-        free(key);
-        free(value);
+    Node *node;
+
+    if (value == NULL) {
+        grammar_oom(ctx);
         return NULL;
     }
+    node = create_node_string(NULL, value);
+    free(value);
+    if (node == NULL) grammar_oom(ctx);
+    return node;
+}
+
+static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_tok,
+                                   Node *values) {
+    char *key = tok_strdup(key_tok);
+    Node *attr = NULL;
+    const char *value = NULL;
+
+    if (ctx->error || key == NULL || values == NULL || values->type != NODE_LIST ||
+        values->data.list.count == 0 || values->data.list.items[0] == NULL ||
+        values->data.list.items[0]->type != NODE_STRING) {
+        free(key);
+        node_free(values);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    value = values->data.list.items[0]->data.string_val;
     attr = create_node_map(key);
 
     if (attr == NULL) {
@@ -521,10 +540,19 @@ static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_t
     } else {
         add_string(ctx, attr, "name", key);
         add_string(ctx, attr, "value", value);
+        if (!ctx->error && map_add(attr, values) == 0) {
+            values = NULL;
+        } else {
+            grammar_oom(ctx);
+        }
     }
 
     free(key);
-    free(value);
+    node_free(values);
+    if (ctx->error) {
+        node_free(attr);
+        attr = NULL;
+    }
     return attr;
 }
 
@@ -547,12 +575,16 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %type attribute_list {Node *}
 %type attr_items {Node *}
 %type attr_item {Node *}
+%type attr_values {Node *}
+%type attr_value {Node *}
 %type field_default {char *}
 %type field_qualifier {int}
 %destructor attribute_list { (void)ctx; node_free($$); }
 %destructor attr_items { (void)ctx; node_free($$); }
 %destructor field_default { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
+%destructor attr_values { (void)ctx; node_free($$); }
+%destructor attr_value { (void)ctx; node_free($$); }
 
 %token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION.
 
@@ -590,9 +622,30 @@ attr_items(A) ::= attr_item(B). {
     }
 }
 
-attr_item(A) ::= IDENT(K) LPAREN IDENT(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
-attr_item(A) ::= IDENT(K) LPAREN NUMBER(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
-attr_item(A) ::= IDENT(K) LPAREN STRING(V) RPAREN. { A = create_attribute_node(ctx, K, V); }
+attr_item(A) ::= IDENT(K) LPAREN attr_values(V) RPAREN. {
+    A = create_attribute_node(ctx, K, V);
+}
+
+attr_values(A) ::= attr_values(B) COMMA attr_value(C). {
+    A = B;
+    if (list_add(A, C) != 0) {
+        node_free(C);
+        grammar_oom(ctx);
+    }
+}
+attr_values(A) ::= attr_value(B). {
+    A = create_node_list("values");
+    if (A == NULL || list_add(A, B) != 0) {
+        node_free(A);
+        A = NULL;
+        node_free(B);
+        grammar_oom(ctx);
+    }
+}
+
+attr_value(A) ::= IDENT(V). { A = create_attribute_value_node(ctx, V); }
+attr_value(A) ::= NUMBER(V). { A = create_attribute_value_node(ctx, V); }
+attr_value(A) ::= STRING(V). { A = create_attribute_value_node(ctx, V); }
 
 schema_decl ::= SCHEMA IDENT(N) attribute_list(A) SEMI. {
     if (ctx->schema_node != NULL) {

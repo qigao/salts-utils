@@ -6,7 +6,7 @@ TurboDB 当前允许调用方执行原始 DDL，但不会从模型生成 SQLite 
 
 本设计在 `tbe_compiler` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 TurboParser 运行时依赖。
 
-v1 只生成全新数据库所需的 `CREATE TABLE`。它不比较线上结构，不生成 `ALTER TABLE`，不维护 migration history，也不执行数据库连接。
+当前版本生成全新数据库所需的 `CREATE TABLE`、外键、普通/唯一复合索引、自定义 `CHECK` 和种子 `INSERT`。它不比较线上结构，不生成 `ALTER TABLE`，不维护 migration history，也不执行数据库连接。
 
 ## 公开接口
 
@@ -27,14 +27,26 @@ tbe_compiler model.schema --lang postgres --output schema.postgresql.sql
 只有带 `db_table` 的 message 会生成表。未标注的 message 继续服务于网络消息或绑定，不会意外进入数据库结构。
 
 ```tbe
-schema Accounts [id(1), version(1), byte_order(little)];
+schema Accounts [
+    id(1), version(1), byte_order(little),
+    db_init(sqlite, "INSERT INTO users(id, tenant) VALUES (1, 7)")
+];
 
-[db_table("users")]
+[db_table("users"), db_unique_index(users_identity, id, tenant)]
 message User {
-    [db_column("id"), db_primary_key(1), db_generated(identity)] int64 id;
-    [db_unique(1)] string email;
+    [db_column("id"), db_primary_key(1)] int64 id;
+    [db_primary_key(2)] int32 tenant;
     optional string display_name;
-    optional uint32 login_count default 0;
+}
+
+[db_table("orders"),
+ db_foreign_key(fk_orders_user, User, user_id, id, tenant, tenant),
+ db_index(idx_orders_lookup, tenant, user_id),
+ db_check(ck_total, sqlite, "total_cents >= 0")]
+message Order {
+    int64 user_id;
+    int32 tenant;
+    int64 total_cents;
 }
 ```
 
@@ -43,11 +55,22 @@ message User {
 | 位置 | Annotation | 语义 |
 |---|---|---|
 | message | `db_table("name")` | 将 message 映射为表，值是未引用的逻辑标识符 |
+| message | `db_foreign_key(name, Target, local, remote, ...)` | 创建同一 schema 内的单列或复合外键；字段参数必须成对出现 |
+| message | `db_index(name, field, ...)` | 按声明顺序创建普通单列或复合索引 |
+| message | `db_unique_index(name, field, ...)` | 按声明顺序创建唯一单列或复合索引 |
+| message | `db_check(name, dialect, "expression")` | 为指定 `sqlite` 或 `postgresql` dialect 创建表级检查约束 |
+| schema | `db_init(dialect, "INSERT ...")` | 在所有表和索引之后按声明顺序输出该 dialect 的种子 INSERT |
 | field | `db_column("name")` | 覆盖列名；缺省使用 TBE 字段名 |
 | field | `db_primary_key(order)` | 将字段加入主键；序号从 1 开始且必须连续、唯一 |
 | field | `db_unique(1)` | 为单列增加 `UNIQUE` 约束；只接受 `1` |
 | field | `db_generated(identity)` | 数据库生成整数主键；v1 只接受 `identity` |
 | field | `db_ignore(1)` | 不把字段持久化；只接受 `1`，且不能与其他 `db_*` field annotation 并用 |
+
+annotation 参数以有序 `values` 列表进入 AST；兼容字段 `value` 继续保存第一个参数。既有单参数 annotation 仍要求恰好一个参数，多余参数会 fail fast。
+
+外键目标必须是同一 schema 中带 `db_table` 的 message，且远端字段序列必须精确等于主键、单列 `db_unique(1)`，或一项 `db_unique_index`。本地与远端字段必须可持久化且归一化 SQL 类型一致。索引名称在整个 schema 内唯一，并且不能与表名冲突；约束名称在所属表内唯一。SQLite 调用方必须像其他 SQLite 外键方案一样在连接上启用 `PRAGMA foreign_keys=ON`。
+
+`db_check` 表达式和 `db_init` 语句是构建输入中的受约束 SQL 片段。编译器拒绝控制字符、分号、SQL 行/块注释、未闭合引号和不平衡括号；`db_init` 还必须以独立的 `INSERT` 关键字开头。编译器不解析完整 SQL 语法，最终合法性仍由目标数据库验证。非当前 dialect 的片段不输出，但仍执行安全与结构校验。
 
 标识符由编译器按 SQL 标准双引号规则转义。调用方传入的是原始名字，不能传入已经带引号的 SQL 片段。空字符串与包含 NUL 的名字非法。SQLite 和 PostgreSQL 都保留原始大小写，因为输出始终引用标识符。
 
@@ -99,10 +122,20 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - TBE AST 是输入事实源。
 - 数据库 IR 是单次编译内的派生只读视图，拥有自身节点并在编译结束释放。
 - dialect 只负责类型名、identity 片段和值域约束等策略差异；annotation 规则、标识符处理、主键排序与默认值校验共用一套实现。
+- SQLite 在建表语句内生成外键；PostgreSQL 先创建全部表和索引，再用 `ALTER TABLE ... ADD CONSTRAINT` 创建外键，因此目标 message 可后置声明，引用 `db_unique_index` 时该索引也已存在。initializer 始终最后输出。
 - 模板只负责排列已经转义的片段，不承担业务校验，不拼接未经验证的 annotation 值。
 - 输出文件沿用现有编译器写入边界：解析、校验或渲染失败时返回非零，不产生可被误认为成功的半成品结果。
 
-数据库 IR 对模板暴露以下稳定形状：schema 级 `db_tables`；table 级 `sql_table_name`、`db_columns`、`db_primary_key_columns`、`has_composite_primary_key`、`has_next_table`；column 级 `sql_column_name`、`sql_type`、`sql_constraints`、`has_sql_constraints`、`has_next_column`；主键引用级 `sql_column_name`、`has_next_primary_key`。`has_next_*` 和 `has_sql_constraints` 是唯一稳定的模板控制量：它们只在值为真时出现，并且按 table、column、primary-key-ref 各自作用域命名，避免 Mustache 向父 scope 回退而混淆分隔符。`is_last` 不属于数据库 IR 契约，数据库模板不得读取它。所有 SQL 名称、类型和约束文本都已经归一化；模板不读取原始 `attributes`。
+数据库 IR 对模板暴露以下稳定形状：
+
+- schema：`db_tables`、`db_indexes`、`db_initializers`；
+- table：`sql_table_name`、`db_columns`、`db_primary_key_columns`、`db_foreign_keys`、`db_checks`、`has_composite_primary_key`、`has_next_table`；
+- column/主键引用：既有 `sql_column_name`、类型、约束和对应 `has_next_*`；
+- foreign key：`sql_constraint_name`、`sql_referenced_table_name`、`db_foreign_key_columns`；每个列对提供 `sql_column_name`、`sql_referenced_column_name`、`has_next_foreign_key_column`；
+- index：`sql_index_name`、`sql_table_name`、`db_index_columns` 和仅在唯一索引出现的 `is_unique_index`；索引列提供 `sql_column_name`、`has_next_index_column`；
+- check：`sql_constraint_name`、`sql_check_expression`；initializer：`sql_statement`。
+
+`has_next_*`、`has_sql_constraints` 和 `is_unique_index` 只在值为真时出现。`is_last` 不属于数据库 IR 契约。所有 SQL 名称、类型和约束文本都已经归一化；模板不读取原始 `attributes`。
 
 例如，自定义数据库模板可以只使用稳定字段生成多表分隔、列逗号和复合主键顺序：
 
@@ -124,6 +157,9 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - annotation 缺值、值非法、重复或组合冲突；
 - 表/列重名，或表没有可持久化列；
 - 主键顺序非法；
+- 外键字段不存在、类型不一致或目标字段不具备唯一性；
+- 索引名称/字段重复或索引字段不存在；
+- CHECK/初始化 dialect 未知，或 SQL 片段越过单语句安全边界；
 - 类型不能映射或 identity 不能由目标 dialect 表达；
 - 默认值不符合字段类型；
 - 数据库语言与仅适用于 C 生成的附加输出选项组合。
@@ -142,7 +178,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 
 ### 独立数据库 schema 编译器
 
-边界清晰，但会复制 TBE CLI、资源查找、AST 与安装逻辑。当前只有两个 dialect，不足以抵消维护成本，因此 v1 作为 `tbe_compiler` 的语言策略实现。
+边界清晰，但会复制 TBE CLI、资源查找、AST 与安装逻辑。当前只有两个 dialect，不足以抵消维护成本，因此数据库 DDL 继续作为 `tbe_compiler` 的语言策略实现。
 
 ## 兼容性、迁移与回滚
 
@@ -153,7 +189,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 ## 验证范围
 
 - 编译器单元测试覆盖两种 dialect 的逐字节确定性输出、alias、标识符转义、默认值与所有非法组合。
-- SQLite 集成测试把生成结果交给真实 SQLite API 执行，并通过 catalog/插入约束验证 canonical `uint64` 最大值、越界值、分数拒绝与 optional `NULL`。
+- SQLite 集成测试把生成结果交给真实 SQLite API 执行，并通过 catalog/插入约束验证外键、CHECK、普通/复合唯一索引、种子数据，以及 canonical `uint64` 边界。
 - PostgreSQL 输出先做 golden contract；合入前按远程测试 runbook 在真实 PostgreSQL 16 容器、`standard_conforming_strings=off` 会话中执行生成 DDL，逐字节检查注入形状字符串默认值并检查约束。
 - 运行现有 `test_tbe_compiler` 与相关 CTest 回归，证明原语言输出不变。
 - 安装后从安装目录运行 `tbe_compiler`，证明两份内置模板随工具安装。

@@ -36,8 +36,9 @@ typedef struct database_primary_key_ref_s {
 } database_primary_key_ref_t;
 
 enum {
-  DATABASE_ANNOTATION_MESSAGE = 1u << 0,
-  DATABASE_ANNOTATION_FIELD = 1u << 1
+  DATABASE_ANNOTATION_SCHEMA = 1u << 0,
+  DATABASE_ANNOTATION_MESSAGE = 1u << 1,
+  DATABASE_ANNOTATION_FIELD = 1u << 2
 };
 
 static const char *database_dialect_name(tbe_database_dialect_t dialect) {
@@ -133,6 +134,47 @@ static const char *database_attribute_value(const Node *owner, const char *name)
   return NULL;
 }
 
+static const Node *database_attribute_at(const Node *owner, const char *name,
+                                         size_t occurrence) {
+  Node *attributes = database_attributes(owner);
+  size_t index;
+
+  if (!attributes || !name) return NULL;
+  for (index = 0; index < attributes->data.list.count; ++index) {
+    Node *attribute = attributes->data.list.items[index];
+    const char *attribute_name = database_string_value(attribute, "name");
+    if (!attribute_name || strcmp(attribute_name, name) != 0) continue;
+    if (occurrence == 0u) return attribute;
+    --occurrence;
+  }
+  return NULL;
+}
+
+static size_t database_attribute_argument_count(const Node *attribute) {
+  Node *values;
+  const char *value;
+
+  if (!attribute) return 0u;
+  values = database_find_child(attribute, "values");
+  if (values && values->type == NODE_LIST) return values->data.list.count;
+  value = database_string_value(attribute, "value");
+  return value ? 1u : 0u;
+}
+
+static const char *database_attribute_argument(const Node *attribute, size_t index) {
+  Node *values;
+
+  if (!attribute) return NULL;
+  values = database_find_child(attribute, "values");
+  if (values && values->type == NODE_LIST) {
+    Node *value;
+    if (index >= values->data.list.count) return NULL;
+    value = values->data.list.items[index];
+    return value && value->type == NODE_STRING ? value->data.string_val : NULL;
+  }
+  return index == 0u ? database_string_value(attribute, "value") : NULL;
+}
+
 static const char *database_malformed_db_annotation(const Node *owner) {
   Node *attributes = database_attributes(owner);
   size_t index;
@@ -141,11 +183,20 @@ static const char *database_malformed_db_annotation(const Node *owner) {
   for (index = 0; index < attributes->data.list.count; ++index) {
     Node *attribute = attributes->data.list.items[index];
     const char *name = database_string_value(attribute, "name");
+    Node *values;
     Node *value;
+    size_t value_index;
 
     if (!name || strncmp(name, "db_", 3) != 0) continue;
     value = database_find_child(attribute, "value");
     if (!value || value->type != NODE_STRING || !value->data.string_val) return name;
+    values = database_find_child(attribute, "values");
+    if (!values) continue;
+    if (values->type != NODE_LIST || values->data.list.count == 0u) return name;
+    for (value_index = 0; value_index < values->data.list.count; ++value_index) {
+      Node *argument = values->data.list.items[value_index];
+      if (!argument || argument->type != NODE_STRING || !argument->data.string_val) return name;
+    }
   }
   return NULL;
 }
@@ -163,7 +214,12 @@ static int database_has_other_field_annotation(const Node *field, const char *al
 }
 
 static int database_annotation_allowed(const char *name, unsigned allowed_locations) {
-  if (strcmp(name, "db_table") == 0) return (allowed_locations & DATABASE_ANNOTATION_MESSAGE) != 0;
+  if (strcmp(name, "db_init") == 0)
+    return (allowed_locations & DATABASE_ANNOTATION_SCHEMA) != 0;
+  if (strcmp(name, "db_table") == 0 || strcmp(name, "db_foreign_key") == 0 ||
+      strcmp(name, "db_index") == 0 || strcmp(name, "db_unique_index") == 0 ||
+      strcmp(name, "db_check") == 0)
+    return (allowed_locations & DATABASE_ANNOTATION_MESSAGE) != 0;
   if (strcmp(name, "db_column") == 0 || strcmp(name, "db_primary_key") == 0 ||
       strcmp(name, "db_unique") == 0 || strcmp(name, "db_generated") == 0 ||
       strcmp(name, "db_ignore") == 0)
@@ -189,6 +245,18 @@ static const char *database_invalid_db_annotation(const Node *owner,
 
 static int database_validate_db_annotations(const Node *owner, unsigned allowed_locations) {
   return database_invalid_db_annotation(owner, allowed_locations) == NULL;
+}
+
+static const char *database_table_annotation_without_table(const Node *message) {
+  static const char *const names[] = {
+      "db_foreign_key", "db_index", "db_unique_index", "db_check"};
+  size_t index;
+
+  if (database_attribute_count(message, "db_table") != 0u) return NULL;
+  for (index = 0; index < sizeof(names) / sizeof(names[0]); ++index) {
+    if (database_attribute_count(message, names[index]) != 0u) return names[index];
+  }
+  return NULL;
 }
 
 static const Node *database_invalid_message_field_annotation(const Node *message,
@@ -768,6 +836,8 @@ static tbe_database_schema_status_t database_build_table(
   Node *table = NULL;
   Node *columns = NULL;
   Node *primary_key_columns = NULL;
+  Node *foreign_keys = NULL;
+  Node *checks = NULL;
   database_primary_key_ref_t *primary_keys = NULL;
   const char **column_names = NULL;
   size_t primary_key_count = 0;
@@ -786,7 +856,8 @@ static tbe_database_schema_status_t database_build_table(
   }
   *out_table = NULL;
   if (!database_validate_db_annotations(message, DATABASE_ANNOTATION_MESSAGE) ||
-      database_attribute_count(message, "db_table") != 1u) {
+      database_attribute_count(message, "db_table") != 1u ||
+      database_attribute_argument_count(database_attribute_at(message, "db_table", 0u)) != 1u) {
     database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
                             "annotation=db_table is invalid or duplicated");
     return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
@@ -803,16 +874,19 @@ static tbe_database_schema_status_t database_build_table(
   table = create_node_map(NULL);
   columns = create_node_list("db_columns");
   primary_key_columns = create_node_list("db_primary_key_columns");
+  foreign_keys = create_node_list("db_foreign_keys");
+  checks = create_node_list("db_checks");
   primary_keys = fields->data.list.count ?
                      (database_primary_key_ref_t *)calloc(fields->data.list.count, sizeof(*primary_keys)) : NULL;
   column_names = fields->data.list.count ?
                      (const char **)calloc(fields->data.list.count, sizeof(*column_names)) : NULL;
-  if (!table || !columns || !primary_key_columns ||
+  if (!table || !columns || !primary_key_columns || !foreign_keys || !checks ||
       (fields->data.list.count && (!primary_keys || !column_names))) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
-  if (database_add_string(table, "sql_table_name", sql_table_name) != 0) {
+  if (database_add_string(table, "source_message_name", message_name) != 0 ||
+      database_add_string(table, "sql_table_name", sql_table_name) != 0) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
@@ -826,6 +900,16 @@ static tbe_database_schema_status_t database_build_table(
     goto cleanup;
   }
   primary_key_columns = NULL;
+  if (database_add_node(table, foreign_keys) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  foreign_keys = NULL;
+  if (database_add_node(table, checks) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  checks = NULL;
 
   for (field_index = 0; field_index < fields->data.list.count; ++field_index) {
     const Node *field = fields->data.list.items[field_index];
@@ -854,7 +938,8 @@ static tbe_database_schema_status_t database_build_table(
     }
     if (database_attribute_count(field, "db_ignore") > 1u ||
         (database_attribute_count(field, "db_ignore") == 1u &&
-         (strcmp(database_attribute_value(field, "db_ignore"), "1") != 0 ||
+         (database_attribute_argument_count(database_attribute_at(field, "db_ignore", 0u)) != 1u ||
+          strcmp(database_attribute_value(field, "db_ignore"), "1") != 0 ||
           database_has_other_field_annotation(field, "db_ignore")))) {
       database_set_diagnostic(diagnostic, dialect, message_name, field_name,
                               "annotation=db_ignore must be 1 and cannot be combined");
@@ -868,6 +953,31 @@ static tbe_database_schema_status_t database_build_table(
         database_attribute_count(field, "db_generated") > 1u) {
       database_set_diagnostic(diagnostic, dialect, message_name, field_name,
                               "annotation=db_* is duplicated");
+      goto cleanup;
+    }
+    if ((database_attribute_count(field, "db_column") == 1u &&
+         database_attribute_argument_count(database_attribute_at(field, "db_column", 0u)) != 1u) ||
+        (database_attribute_count(field, "db_primary_key") == 1u &&
+         database_attribute_argument_count(database_attribute_at(field, "db_primary_key", 0u)) != 1u) ||
+        (database_attribute_count(field, "db_unique") == 1u &&
+         database_attribute_argument_count(database_attribute_at(field, "db_unique", 0u)) != 1u) ||
+        (database_attribute_count(field, "db_generated") == 1u &&
+         database_attribute_argument_count(database_attribute_at(field, "db_generated", 0u)) != 1u)) {
+      const char *invalid_name =
+          database_attribute_count(field, "db_column") == 1u &&
+                  database_attribute_argument_count(database_attribute_at(field, "db_column", 0u)) != 1u
+              ? "db_column"
+              : database_attribute_count(field, "db_primary_key") == 1u &&
+                        database_attribute_argument_count(
+                            database_attribute_at(field, "db_primary_key", 0u)) != 1u
+                    ? "db_primary_key"
+                    : database_attribute_count(field, "db_unique") == 1u &&
+                              database_attribute_argument_count(
+                                  database_attribute_at(field, "db_unique", 0u)) != 1u
+                          ? "db_unique"
+                          : "db_generated";
+      database_set_diagnostic(diagnostic, dialect, message_name, field_name,
+                              "annotation=%s requires exactly one value", invalid_name);
       goto cleanup;
     }
     column_name = database_attribute_value(field, "db_column");
@@ -998,9 +1108,11 @@ static tbe_database_schema_status_t database_build_table(
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
       goto field_cleanup;
     }
-    if (database_add_string(column, "sql_column_name", sql_column_name) != 0 ||
+    if (database_add_string(column, "source_field_name", field_name) != 0 ||
+        database_add_string(column, "sql_column_name", sql_column_name) != 0 ||
         database_add_string(column, "sql_type", sql_type) != 0 ||
         database_add_string(column, "sql_constraints", constraints.data ? constraints.data : "") != 0 ||
+        (is_unique && database_add_string(column, "is_unique_column", "1") != 0) ||
         (constraints.length != 0 && database_add_string(column, "has_sql_constraints", "1") != 0) ||
         list_add(database_find_child(table, "db_columns"), column) != 0) {
       status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
@@ -1067,6 +1179,8 @@ field_cleanup:
     Node *primary_key_column = create_node_map(NULL);
     const char *sql_column_name = database_string_value(primary_keys[field_index].column, "sql_column_name");
     if (!primary_key_column || !sql_column_name ||
+        database_add_string(primary_key_column, "source_field_name",
+                            primary_keys[field_index].field_name) != 0 ||
         database_add_string(primary_key_column, "sql_column_name", sql_column_name) != 0 ||
         list_add(database_find_child(table, "db_primary_key_columns"), primary_key_column) != 0) {
       node_free(primary_key_column);
@@ -1096,8 +1210,561 @@ cleanup:
   free(column_names);
   node_free(columns);
   node_free(primary_key_columns);
+  node_free(foreign_keys);
+  node_free(checks);
   node_free(table);
   return status;
+}
+
+static Node *database_ir_table_by_message(const Node *database_ir, const char *message_name) {
+  Node *tables = database_find_child(database_ir, "db_tables");
+  size_t index;
+
+  if (!tables || tables->type != NODE_LIST || !message_name) return NULL;
+  for (index = 0; index < tables->data.list.count; ++index) {
+    Node *table = tables->data.list.items[index];
+    const char *source_name = database_string_value(table, "source_message_name");
+    if (source_name && strcmp(source_name, message_name) == 0) return table;
+  }
+  return NULL;
+}
+
+static Node *database_ir_column_by_field(const Node *table, const char *field_name) {
+  Node *columns = database_find_child(table, "db_columns");
+  size_t index;
+
+  if (!columns || columns->type != NODE_LIST || !field_name) return NULL;
+  for (index = 0; index < columns->data.list.count; ++index) {
+    Node *column = columns->data.list.items[index];
+    const char *source_name = database_string_value(column, "source_field_name");
+    if (source_name && strcmp(source_name, field_name) == 0) return column;
+  }
+  return NULL;
+}
+
+static int database_named_item_exists(const Node *list, const char *key, const char *value) {
+  size_t index;
+
+  if (!list || list->type != NODE_LIST || !key || !value) return 0;
+  for (index = 0; index < list->data.list.count; ++index) {
+    const char *candidate = database_string_value(list->data.list.items[index], key);
+    if (candidate && strcmp(candidate, value) == 0) return 1;
+  }
+  return 0;
+}
+
+static int database_constraint_name_exists(const Node *table, const char *sql_name) {
+  return database_named_item_exists(database_find_child(table, "db_foreign_keys"),
+                                    "sql_constraint_name", sql_name) ||
+         database_named_item_exists(database_find_child(table, "db_checks"),
+                                    "sql_constraint_name", sql_name);
+}
+
+static int database_dialect_argument_matches(const char *argument,
+                                             tbe_database_dialect_t dialect,
+                                             int *out_valid) {
+  if (out_valid) *out_valid = 1;
+  if (argument && strcmp(argument, "sqlite") == 0)
+    return dialect == TBE_DATABASE_DIALECT_SQLITE;
+  if (argument && strcmp(argument, "postgresql") == 0)
+    return dialect == TBE_DATABASE_DIALECT_POSTGRESQL;
+  if (out_valid) *out_valid = 0;
+  return 0;
+}
+
+static int database_sql_fragment_is_safe(const char *text) {
+  const unsigned char *cursor = (const unsigned char *)text;
+  unsigned char quote = 0;
+  size_t parenthesis_depth = 0;
+
+  if (!cursor || !cursor[0]) return 0;
+  while (*cursor) {
+    unsigned char current = *cursor;
+    unsigned char next = cursor[1];
+
+    if (current < 0x20u || current == 0x7fu) return 0;
+    if (quote != 0u) {
+      if (current == quote) {
+        if (next == quote) {
+          cursor += 2;
+          continue;
+        }
+        quote = 0u;
+      }
+      ++cursor;
+      continue;
+    }
+    if ((current == '-' && next == '-') || (current == '/' && next == '*') ||
+        (current == '*' && next == '/'))
+      return 0;
+    if (current == ';') return 0;
+    if (current == '\'' || current == '"') {
+      quote = current;
+    } else if (current == '(') {
+      if (parenthesis_depth == SIZE_MAX) return 0;
+      ++parenthesis_depth;
+    } else if (current == ')') {
+      if (parenthesis_depth == 0u) return 0;
+      --parenthesis_depth;
+    }
+    ++cursor;
+  }
+  return quote == 0u && parenthesis_depth == 0u;
+}
+
+static int database_sql_starts_with_insert(const char *statement) {
+  static const char keyword[] = "INSERT";
+  size_t index;
+
+  if (!statement) return 0;
+  while (*statement == ' ') ++statement;
+  for (index = 0; index + 1u < sizeof(keyword); ++index) {
+    if (!statement[index] ||
+        (unsigned char)toupper((unsigned char)statement[index]) != (unsigned char)keyword[index])
+      return 0;
+  }
+  return statement[index] == '\0' ||
+         (!isalnum((unsigned char)statement[index]) && statement[index] != '_');
+}
+
+static tbe_database_schema_status_t database_build_index_annotation(
+    const Node *message, Node *table, Node *database_ir, const Node *attribute,
+    int is_unique, tbe_database_dialect_t dialect,
+    tbe_database_schema_diagnostic_t *diagnostic) {
+  const char *message_name = database_message_name(message);
+  const char *annotation_name = is_unique ? "db_unique_index" : "db_index";
+  const char *index_name = database_attribute_argument(attribute, 0u);
+  const char *sql_table_name = database_string_value(table, "sql_table_name");
+  Node *indexes = database_find_child(database_ir, "db_indexes");
+  Node *index_node = NULL;
+  Node *index_columns = NULL;
+  char *sql_index_name = NULL;
+  size_t argument_count = database_attribute_argument_count(attribute);
+  size_t argument_index;
+  tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+
+  if (argument_count < 2u || !index_name || !index_name[0]) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=%s requires a name and at least one field",
+                            annotation_name);
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  sql_index_name = database_quote_identifier(index_name);
+  if (!sql_index_name) return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  if (database_named_item_exists(indexes, "sql_index_name", sql_index_name) ||
+      database_named_item_exists(database_find_child(database_ir, "db_tables"),
+                                 "sql_table_name", sql_index_name)) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=%s duplicates schema object %s", annotation_name,
+                            index_name);
+    goto cleanup;
+  }
+
+  index_node = create_node_map(NULL);
+  index_columns = create_node_list("db_index_columns");
+  if (!index_node || !index_columns ||
+      database_add_string(index_node, "source_table_message_name", message_name) != 0 ||
+      database_add_string(index_node, "sql_index_name", sql_index_name) != 0 ||
+      database_add_string(index_node, "sql_table_name", sql_table_name) != 0 ||
+      (is_unique && database_add_string(index_node, "is_unique_index", "1") != 0)) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+
+  for (argument_index = 1u; argument_index < argument_count; ++argument_index) {
+    const char *field_name = database_attribute_argument(attribute, argument_index);
+    Node *column = database_ir_column_by_field(table, field_name);
+    Node *column_ref;
+    size_t previous_index;
+
+    if (!field_name || !field_name[0] || !column) {
+      database_set_diagnostic(diagnostic, dialect, message_name, field_name,
+                              "annotation=%s references an unknown or ignored field",
+                              annotation_name);
+      goto cleanup;
+    }
+    for (previous_index = 1u; previous_index < argument_index; ++previous_index) {
+      const char *previous = database_attribute_argument(attribute, previous_index);
+      if (previous && strcmp(previous, field_name) == 0) {
+        database_set_diagnostic(diagnostic, dialect, message_name, field_name,
+                                "annotation=%s duplicates field %s", annotation_name,
+                                field_name);
+        goto cleanup;
+      }
+    }
+    column_ref = create_node_map(NULL);
+    if (!column_ref ||
+        database_add_string(column_ref, "source_field_name", field_name) != 0 ||
+        database_add_string(column_ref, "sql_column_name",
+                            database_string_value(column, "sql_column_name")) != 0 ||
+        list_add(index_columns, column_ref) != 0) {
+      node_free(column_ref);
+      status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+      goto cleanup;
+    }
+  }
+  if (!database_mark_has_next(index_columns, "has_next_index_column") ||
+      database_add_node(index_node, index_columns) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  index_columns = NULL;
+  if (list_add(indexes, index_node) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  index_node = NULL;
+  status = TBE_DATABASE_SCHEMA_STATUS_OK;
+
+cleanup:
+  free(sql_index_name);
+  node_free(index_columns);
+  node_free(index_node);
+  return status;
+}
+
+static tbe_database_schema_status_t database_build_indexes(
+    const Node *messages, Node *database_ir, tbe_database_dialect_t dialect,
+    tbe_database_schema_diagnostic_t *diagnostic) {
+  size_t message_index;
+
+  for (message_index = 0; message_index < messages->data.list.count; ++message_index) {
+    const Node *message = messages->data.list.items[message_index];
+    const char *message_name = database_message_name(message);
+    Node *table = database_ir_table_by_message(database_ir, message_name);
+    Node *attributes = database_attributes(message);
+    size_t attribute_index;
+
+    if (!table || !attributes) continue;
+    for (attribute_index = 0; attribute_index < attributes->data.list.count; ++attribute_index) {
+      const Node *attribute = attributes->data.list.items[attribute_index];
+      const char *name = database_string_value(attribute, "name");
+      tbe_database_schema_status_t status;
+      if (!name || (strcmp(name, "db_index") != 0 && strcmp(name, "db_unique_index") != 0))
+        continue;
+      status = database_build_index_annotation(
+          message, table, database_ir, attribute, strcmp(name, "db_unique_index") == 0,
+          dialect, diagnostic);
+      if (status != TBE_DATABASE_SCHEMA_STATUS_OK) return status;
+    }
+  }
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
+}
+
+static int database_primary_key_matches(const Node *table, const Node *foreign_key_attribute) {
+  Node *primary_keys = database_find_child(table, "db_primary_key_columns");
+  size_t pair_count = (database_attribute_argument_count(foreign_key_attribute) - 2u) / 2u;
+  size_t index;
+
+  if (!primary_keys || primary_keys->type != NODE_LIST ||
+      primary_keys->data.list.count != pair_count)
+    return 0;
+  for (index = 0; index < pair_count; ++index) {
+    const char *target_field = database_attribute_argument(foreign_key_attribute, 3u + index * 2u);
+    const char *primary_field =
+        database_string_value(primary_keys->data.list.items[index], "source_field_name");
+    if (!target_field || !primary_field || strcmp(target_field, primary_field) != 0) return 0;
+  }
+  return 1;
+}
+
+static int database_unique_index_matches(const Node *database_ir, const Node *table,
+                                         const Node *foreign_key_attribute) {
+  Node *indexes = database_find_child(database_ir, "db_indexes");
+  const char *message_name = database_string_value(table, "source_message_name");
+  size_t pair_count = (database_attribute_argument_count(foreign_key_attribute) - 2u) / 2u;
+  size_t index;
+
+  if (!indexes || indexes->type != NODE_LIST) return 0;
+  for (index = 0; index < indexes->data.list.count; ++index) {
+    Node *index_node = indexes->data.list.items[index];
+    Node *columns = database_find_child(index_node, "db_index_columns");
+    const char *source_table = database_string_value(index_node, "source_table_message_name");
+    size_t column_index;
+    int matches = 1;
+
+    if (!database_has_child(index_node, "is_unique_index") || !source_table ||
+        strcmp(source_table, message_name) != 0 || !columns || columns->type != NODE_LIST ||
+        columns->data.list.count != pair_count)
+      continue;
+    for (column_index = 0; column_index < pair_count; ++column_index) {
+      const char *target_field =
+          database_attribute_argument(foreign_key_attribute, 3u + column_index * 2u);
+      const char *index_field =
+          database_string_value(columns->data.list.items[column_index], "source_field_name");
+      if (!target_field || !index_field || strcmp(target_field, index_field) != 0) {
+        matches = 0;
+        break;
+      }
+    }
+    if (matches) return 1;
+  }
+  return 0;
+}
+
+static int database_foreign_key_target_is_unique(const Node *database_ir,
+                                                 const Node *target_table,
+                                                 const Node *attribute) {
+  size_t pair_count = (database_attribute_argument_count(attribute) - 2u) / 2u;
+  const char *target_field;
+  Node *target_column;
+
+  if (database_primary_key_matches(target_table, attribute) ||
+      database_unique_index_matches(database_ir, target_table, attribute))
+    return 1;
+  if (pair_count != 1u) return 0;
+  target_field = database_attribute_argument(attribute, 3u);
+  target_column = database_ir_column_by_field(target_table, target_field);
+  return target_column && database_has_child(target_column, "is_unique_column");
+}
+
+static tbe_database_schema_status_t database_build_foreign_key_annotation(
+    const Node *message, Node *table, Node *database_ir, const Node *attribute,
+    tbe_database_dialect_t dialect, tbe_database_schema_diagnostic_t *diagnostic) {
+  const char *message_name = database_message_name(message);
+  const char *constraint_name = database_attribute_argument(attribute, 0u);
+  const char *target_message_name = database_attribute_argument(attribute, 1u);
+  size_t argument_count = database_attribute_argument_count(attribute);
+  Node *target_table = database_ir_table_by_message(database_ir, target_message_name);
+  Node *foreign_key = NULL;
+  Node *columns = NULL;
+  char *sql_constraint_name = NULL;
+  size_t argument_index;
+  tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+
+  if (argument_count < 4u || (argument_count & 1u) != 0u || !constraint_name ||
+      !constraint_name[0] || !target_message_name || !target_message_name[0] || !target_table) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_foreign_key requires name, target message, and field pairs");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  sql_constraint_name = database_quote_identifier(constraint_name);
+  if (!sql_constraint_name) return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  if (database_constraint_name_exists(table, sql_constraint_name)) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_foreign_key duplicates constraint %s",
+                            constraint_name);
+    goto cleanup;
+  }
+
+  foreign_key = create_node_map(NULL);
+  columns = create_node_list("db_foreign_key_columns");
+  if (!foreign_key || !columns ||
+      database_add_string(foreign_key, "sql_constraint_name", sql_constraint_name) != 0 ||
+      database_add_string(foreign_key, "sql_referenced_table_name",
+                          database_string_value(target_table, "sql_table_name")) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+
+  for (argument_index = 2u; argument_index < argument_count; argument_index += 2u) {
+    const char *local_field_name = database_attribute_argument(attribute, argument_index);
+    const char *target_field_name = database_attribute_argument(attribute, argument_index + 1u);
+    Node *local_column = database_ir_column_by_field(table, local_field_name);
+    Node *target_column = database_ir_column_by_field(target_table, target_field_name);
+    Node *column_ref;
+    size_t previous_argument;
+
+    if (!local_column || !target_column) {
+      database_set_diagnostic(diagnostic, dialect, message_name, local_field_name,
+                              "annotation=db_foreign_key references an unknown or ignored field");
+      goto cleanup;
+    }
+    for (previous_argument = 2u; previous_argument < argument_index;
+         previous_argument += 2u) {
+      const char *previous_local =
+          database_attribute_argument(attribute, previous_argument);
+      const char *previous_target =
+          database_attribute_argument(attribute, previous_argument + 1u);
+      if ((previous_local && strcmp(previous_local, local_field_name) == 0) ||
+          (previous_target && strcmp(previous_target, target_field_name) == 0)) {
+        database_set_diagnostic(diagnostic, dialect, message_name, local_field_name,
+                                "annotation=db_foreign_key duplicates a field pair");
+        goto cleanup;
+      }
+    }
+    if (strcmp(database_string_value(local_column, "sql_type"),
+               database_string_value(target_column, "sql_type")) != 0) {
+      database_set_diagnostic(diagnostic, dialect, message_name, local_field_name,
+                              "annotation=db_foreign_key field types do not match");
+      goto cleanup;
+    }
+    column_ref = create_node_map(NULL);
+    if (!column_ref ||
+        database_add_string(column_ref, "source_field_name", local_field_name) != 0 ||
+        database_add_string(column_ref, "source_referenced_field_name", target_field_name) != 0 ||
+        database_add_string(column_ref, "sql_column_name",
+                            database_string_value(local_column, "sql_column_name")) != 0 ||
+        database_add_string(column_ref, "sql_referenced_column_name",
+                            database_string_value(target_column, "sql_column_name")) != 0 ||
+        list_add(columns, column_ref) != 0) {
+      node_free(column_ref);
+      status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+      goto cleanup;
+    }
+  }
+  if (!database_foreign_key_target_is_unique(database_ir, target_table, attribute)) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_foreign_key target fields are not unique");
+    goto cleanup;
+  }
+  if (!database_mark_has_next(columns, "has_next_foreign_key_column") ||
+      database_add_node(foreign_key, columns) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  columns = NULL;
+  if (list_add(database_find_child(table, "db_foreign_keys"), foreign_key) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  foreign_key = NULL;
+  status = TBE_DATABASE_SCHEMA_STATUS_OK;
+
+cleanup:
+  free(sql_constraint_name);
+  node_free(columns);
+  node_free(foreign_key);
+  return status;
+}
+
+static tbe_database_schema_status_t database_build_check_annotation(
+    const Node *message, Node *table, const Node *attribute,
+    tbe_database_dialect_t dialect, tbe_database_schema_diagnostic_t *diagnostic) {
+  const char *message_name = database_message_name(message);
+  const char *constraint_name = database_attribute_argument(attribute, 0u);
+  const char *dialect_name = database_attribute_argument(attribute, 1u);
+  const char *expression = database_attribute_argument(attribute, 2u);
+  int dialect_valid;
+  int dialect_matches;
+  Node *check = NULL;
+  char *sql_constraint_name = NULL;
+
+  if (database_attribute_argument_count(attribute) != 3u || !constraint_name ||
+      !constraint_name[0] || !expression || !expression[0]) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_check requires name, dialect, and expression");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  if (!database_sql_fragment_is_safe(expression)) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_check expression is not one safe SQL expression");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  dialect_matches = database_dialect_argument_matches(dialect_name, dialect, &dialect_valid);
+  if (!dialect_valid) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_check has unsupported dialect %s",
+                            database_diagnostic_text(dialect_name));
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  if (!dialect_matches) return TBE_DATABASE_SCHEMA_STATUS_OK;
+
+  sql_constraint_name = database_quote_identifier(constraint_name);
+  if (!sql_constraint_name) return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  if (database_constraint_name_exists(table, sql_constraint_name)) {
+    database_set_diagnostic(diagnostic, dialect, message_name, "<message>",
+                            "annotation=db_check duplicates constraint %s", constraint_name);
+    free(sql_constraint_name);
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  check = create_node_map(NULL);
+  if (!check || database_add_string(check, "sql_constraint_name", sql_constraint_name) != 0 ||
+      database_add_string(check, "sql_check_expression", expression) != 0 ||
+      list_add(database_find_child(table, "db_checks"), check) != 0) {
+    free(sql_constraint_name);
+    node_free(check);
+    return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  }
+  free(sql_constraint_name);
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
+}
+
+static tbe_database_schema_status_t database_build_table_constraints(
+    const Node *messages, Node *database_ir, tbe_database_dialect_t dialect,
+    tbe_database_schema_diagnostic_t *diagnostic) {
+  size_t message_index;
+
+  for (message_index = 0; message_index < messages->data.list.count; ++message_index) {
+    const Node *message = messages->data.list.items[message_index];
+    Node *table = database_ir_table_by_message(database_ir, database_message_name(message));
+    Node *attributes = database_attributes(message);
+    size_t attribute_index;
+
+    if (!table || !attributes) continue;
+    for (attribute_index = 0; attribute_index < attributes->data.list.count; ++attribute_index) {
+      const Node *attribute = attributes->data.list.items[attribute_index];
+      const char *name = database_string_value(attribute, "name");
+      tbe_database_schema_status_t status;
+      if (!name) continue;
+      if (strcmp(name, "db_foreign_key") == 0) {
+        status = database_build_foreign_key_annotation(message, table, database_ir, attribute,
+                                                       dialect, diagnostic);
+      } else if (strcmp(name, "db_check") == 0) {
+        status = database_build_check_annotation(message, table, attribute, dialect, diagnostic);
+      } else {
+        continue;
+      }
+      if (status != TBE_DATABASE_SCHEMA_STATUS_OK) return status;
+    }
+    if (!database_mark_has_next(database_find_child(table, "db_foreign_keys"),
+                                "has_next_foreign_key") ||
+        !database_mark_has_next(database_find_child(table, "db_checks"), "has_next_check"))
+      return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  }
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
+}
+
+static tbe_database_schema_status_t database_build_initializers(
+    const Node *schema_root, Node *database_ir, tbe_database_dialect_t dialect,
+    tbe_database_schema_diagnostic_t *diagnostic) {
+  Node *schema = database_find_child(schema_root, "schema");
+  size_t initializer_index;
+  size_t initializer_count;
+
+  if (!schema) return TBE_DATABASE_SCHEMA_STATUS_OK;
+  if (!database_validate_db_annotations(schema, DATABASE_ANNOTATION_SCHEMA)) {
+    database_set_diagnostic(diagnostic, dialect, "<schema>", "<schema>",
+                            "annotation=%s is invalid for schema",
+                            database_invalid_db_annotation(schema, DATABASE_ANNOTATION_SCHEMA));
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  initializer_count = database_attribute_count(schema, "db_init");
+  for (initializer_index = 0; initializer_index < initializer_count; ++initializer_index) {
+    const Node *attribute = database_attribute_at(schema, "db_init", initializer_index);
+    const char *dialect_name = database_attribute_argument(attribute, 0u);
+    const char *statement = database_attribute_argument(attribute, 1u);
+    int dialect_valid;
+    int dialect_matches;
+    Node *initializer;
+
+    if (database_attribute_argument_count(attribute) != 2u || !statement || !statement[0]) {
+      database_set_diagnostic(diagnostic, dialect, "<schema>", "<schema>",
+                              "annotation=db_init requires dialect and statement");
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+    }
+    if (!database_sql_fragment_is_safe(statement) ||
+        !database_sql_starts_with_insert(statement)) {
+      database_set_diagnostic(diagnostic, dialect, "<schema>", "<schema>",
+                              "annotation=db_init requires one INSERT statement");
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+    }
+    dialect_matches = database_dialect_argument_matches(dialect_name, dialect, &dialect_valid);
+    if (!dialect_valid) {
+      database_set_diagnostic(diagnostic, dialect, "<schema>", "<schema>",
+                              "annotation=db_init has unsupported dialect %s",
+                              database_diagnostic_text(dialect_name));
+      return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+    }
+    if (!dialect_matches) continue;
+    initializer = create_node_map(NULL);
+    if (!initializer || database_add_string(initializer, "sql_statement", statement) != 0 ||
+        list_add(database_find_child(database_ir, "db_initializers"), initializer) != 0) {
+      node_free(initializer);
+      return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    }
+  }
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
 }
 
 tbe_database_schema_status_t tbe_database_schema_build(
@@ -1106,6 +1773,8 @@ tbe_database_schema_status_t tbe_database_schema_build(
   Node *messages;
   Node *database_ir = NULL;
   Node *tables = NULL;
+  Node *indexes = NULL;
+  Node *initializers = NULL;
   const char **table_names = NULL;
   size_t table_count = 0;
   size_t message_index;
@@ -1135,9 +1804,12 @@ tbe_database_schema_status_t tbe_database_schema_build(
 
   database_ir = create_node_map(NULL);
   tables = create_node_list("db_tables");
+  indexes = create_node_list("db_indexes");
+  initializers = create_node_list("db_initializers");
   table_names = messages->data.list.count ?
                     (const char **)calloc(messages->data.list.count, sizeof(*table_names)) : NULL;
-  if (!database_ir || !tables || (messages->data.list.count && !table_names)) {
+  if (!database_ir || !tables || !indexes || !initializers ||
+      (messages->data.list.count && !table_names)) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
@@ -1146,12 +1818,23 @@ tbe_database_schema_status_t tbe_database_schema_build(
     goto cleanup;
   }
   tables = NULL;
+  if (database_add_node(database_ir, indexes) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  indexes = NULL;
+  if (database_add_node(database_ir, initializers) != 0) {
+    status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  initializers = NULL;
 
   for (message_index = 0; message_index < messages->data.list.count; ++message_index) {
     const Node *message = messages->data.list.items[message_index];
     const char *table_name = database_attribute_value(message, "db_table");
     const char *invalid_message_annotation;
     const char *malformed_message_annotation;
+    const char *orphan_table_annotation;
     const char *invalid_field_annotation;
     const Node *invalid_field;
     int malformed_fields;
@@ -1190,6 +1873,13 @@ tbe_database_schema_status_t tbe_database_schema_build(
                               invalid_field_annotation);
       goto cleanup;
     }
+    orphan_table_annotation = database_table_annotation_without_table(message);
+    if (orphan_table_annotation) {
+      database_set_diagnostic(out_diagnostic, dialect, database_message_name(message),
+                              "<message>", "annotation=%s requires db_table",
+                              orphan_table_annotation);
+      goto cleanup;
+    }
     if (!table_name) continue;
     if (database_attribute_count(message, "db_table") != 1u || !table_name[0]) {
       database_set_diagnostic(out_diagnostic, dialect, database_message_name(message), "<message>",
@@ -1217,7 +1907,16 @@ tbe_database_schema_status_t tbe_database_schema_build(
                             "annotation=db_table is required for database output");
     goto cleanup;
   }
-  if (!database_mark_has_next(database_find_child(database_ir, "db_tables"), "has_next_table")) {
+  status = database_build_indexes(messages, database_ir, dialect, out_diagnostic);
+  if (status != TBE_DATABASE_SCHEMA_STATUS_OK) goto cleanup;
+  status = database_build_table_constraints(messages, database_ir, dialect, out_diagnostic);
+  if (status != TBE_DATABASE_SCHEMA_STATUS_OK) goto cleanup;
+  status = database_build_initializers(schema_root, database_ir, dialect, out_diagnostic);
+  if (status != TBE_DATABASE_SCHEMA_STATUS_OK) goto cleanup;
+  if (!database_mark_has_next(database_find_child(database_ir, "db_tables"), "has_next_table") ||
+      !database_mark_has_next(database_find_child(database_ir, "db_indexes"), "has_next_index") ||
+      !database_mark_has_next(database_find_child(database_ir, "db_initializers"),
+                              "has_next_initializer")) {
     status = TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
     goto cleanup;
   }
@@ -1231,6 +1930,8 @@ cleanup:
     status = TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
   free(table_names);
   node_free(tables);
+  node_free(indexes);
+  node_free(initializers);
   node_free(database_ir);
   return status;
 }

@@ -115,6 +115,75 @@ suite("tbe_parser") {
       node_free(root);
     }
 
+    it("should retain ordered values for a multi-parameter attribute") {
+      const char *schema =
+          "[db_index(lookup, tenant, email)] message User { int64 tenant; string email; }";
+      const char *expected[] = {"lookup", "tenant", "email"};
+      Node *root = create_node_map("root");
+      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      Node *messages;
+      Node *attributes;
+      Node *attribute;
+      Node *values;
+
+      check_equal(rc, 0);
+      if (rc != 0) {
+        node_free(root);
+        return;
+      }
+      messages = find_child(root, "messages");
+      attributes = messages && messages->type == NODE_LIST && messages->data.list.count == 1u
+                       ? find_child(messages->data.list.items[0], "attributes")
+                       : NULL;
+      attribute = attributes && attributes->type == NODE_LIST && attributes->data.list.count == 1u
+                      ? attributes->data.list.items[0]
+                      : NULL;
+      values = attribute ? find_child(attribute, "values") : NULL;
+
+      check_not_null(attribute);
+      check_not_null(values);
+      if (attribute && values) {
+        check_equal(find_child(attribute, "value")->data.string_val, "lookup");
+        check_equal(values->data.list.count, (size_t)3);
+        for (size_t index = 0; index < values->data.list.count && index < 3u; ++index)
+          check_equal(values->data.list.items[index]->data.string_val, expected[index]);
+      }
+      node_free(root);
+    }
+
+    it("should preserve the legacy value for a single-parameter attribute") {
+      const char *schema = "[id(100)] message Message { int32 code; }";
+      Node *root = create_node_map("root");
+      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      Node *messages;
+      Node *attributes;
+      Node *attribute;
+      Node *values;
+
+      check_equal(rc, 0);
+      if (rc != 0) {
+        node_free(root);
+        return;
+      }
+      messages = find_child(root, "messages");
+      attributes = messages && messages->type == NODE_LIST && messages->data.list.count == 1u
+                       ? find_child(messages->data.list.items[0], "attributes")
+                       : NULL;
+      attribute = attributes && attributes->type == NODE_LIST && attributes->data.list.count == 1u
+                      ? attributes->data.list.items[0]
+                      : NULL;
+      values = attribute ? find_child(attribute, "values") : NULL;
+
+      check_not_null(attribute);
+      check_not_null(values);
+      if (attribute && values) {
+        check_equal(find_child(attribute, "value")->data.string_val, "100");
+        check_equal(values->data.list.count, (size_t)1);
+        check_equal(values->data.list.items[0]->data.string_val, "100");
+      }
+      node_free(root);
+    }
+
     it("should extract rich metadata") {
       const char *schema = "composite Data { uint32 u32; int64 i64; float f32; double d64; byte b; }";
       Node *root = create_node_map("root");
