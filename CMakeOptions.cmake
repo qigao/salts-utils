@@ -19,5 +19,9 @@ cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
 
 option(TURBO_ENABLE_CAPTURE
        "Build the optional native audio/video/screen capture component" OFF)
+if(WIN32)
+  set(TURBO_ENABLE_CAPTURE ON CACHE BOOL
+      "Build the native audio/video/screen capture component" FORCE)
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
