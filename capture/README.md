@@ -1,13 +1,14 @@
 # TurboParser Capture
 
-`TurboParser::Capture` 是可选的原生音频、摄像头与屏幕采集组件。它保留
+`TurboParser::Capture` 是 Windows 默认提供、其他平台可选的原生音频、摄像头与屏幕
+采集组件。它保留
 `turbo_capture.h` 的 C 接口、枚举值、结构布局和符号名称；播放、编解码、录制、
 RTSP、WebRTC 以及移动端 Java/Swift 包装不属于该组件。
 
 ## 构建与链接
 
-裸 CMake 配置默认关闭该组件。通过 CMake 启用时，同时选择 vcpkg 的 `capture`
-feature：
+Windows 配置始终启用该组件，标准 Windows preset 也统一选择 vcpkg 的 `capture`
+feature。其他平台的裸 CMake 配置默认关闭；显式启用时同时选择该 feature：
 
 ```sh
 cmake -S . -B build/capture \
@@ -16,9 +17,10 @@ cmake -S . -B build/capture \
 cmake --build build/capture
 ```
 
-标准 Windows Release preset 已启用 Capture；构建其常规 `install` target 时会和其他库
-一起安装并导出 `TurboParser::Capture`，无需 Capture 或 Release 专用 install preset。
-Debug 与 Linux 仍使用对应的 capture-enabled preset。安装后，消费端只依赖导出的组件：
+所有标准 Windows preset 都启用 Capture；构建其常规 `install` target 时会和其他库一起
+安装并导出 `TurboParser::Capture`，无需 Capture 或 Release 专用 install preset。既有
+Windows capture preset 仅为兼容已有命令保留；Linux 仍使用对应的 capture-enabled
+preset。安装后，消费端只依赖导出的组件：
 
 ```cmake
 find_package(TurboParser CONFIG REQUIRED)
