@@ -8,7 +8,7 @@ compiled templates, callback-based output, and TurboUtils arena support.
 - Mustache variables, sections, inverted sections, comments, delimiter changes,
   partials, dotted names, and optional lambdas
 - JSON integration through the installed `TurboUtils::JsonParser`
-- XML integration through cxml
+- XML integration through `TurboUtils::XmlParser`
 - HTML-escaped, unescaped, custom streaming, and arena-backed output
 - Immutable compiled templates that can be reused across renders
 - Bounded partial/lambda expansion for untrusted templates
@@ -26,7 +26,7 @@ target_link_libraries(json_app PRIVATE
 
 target_link_libraries(xml_app PRIVATE
   TurboParser::Mustache
-  cxml)
+  TurboUtils::XmlParser)
 ```
 
 Installed consumers can obtain the exported TurboUtils targets with:
@@ -168,7 +168,7 @@ updated to use the XML qualified name.
 | `mustache_process()` | Render with a custom provider | Uses the default expansion limit; returns `0` on success |
 | `mustache_process_ex()` | Render with an explicit expansion limit | `max_render_depth` must be nonzero |
 | `mustache_render_json()` | One-call JSON provider setup and render | Borrows JSON data and renderer |
-| `mustache_render_xml()` | One-call XML provider setup and render | Borrows the cxml tree and renderer |
+| `mustache_render_xml()` | One-call XML provider setup and render | Borrows the `TurboUtils::XmlParser` document node and renderer |
 | `mustache_string_renderer_get()` | Copy accumulated output | Returns a `malloc` allocation; caller uses `free()` |
 | `mustache_string_renderer_get_arena()` | Borrow arena-backed output | Do not `free()`; invalid after renderer/pool release or later mutation |
 

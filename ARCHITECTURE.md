@@ -3,8 +3,8 @@
 ## 背景
 
 低层 parser 已迁入 TurboUtils 的 `parser/` 子树，并作为可安装组件导出。
-TurboParser 保留统一 facade、Mustache、Cron、TBE、DataBind、代码生成器与私有
-`vendor/cxml`。TurboParser 只消费已安装的 TurboUtils 公共头和 CMake targets，
+TurboParser 保留统一 facade、Mustache、Cron、TBE、DataBind 与代码生成器；XML
+实现统一复用 `TurboUtils::XmlParser`。TurboParser 只消费已安装的 TurboUtils 公共头和 CMake targets，
 不访问 TurboUtils parser 的源码目录或私有头。
 
 ## 选择
@@ -29,7 +29,8 @@ TurboParser 拥有并导出：
 TurboUtils 拥有并安装 QueryVM、JSON、YAML、CSV、INI、URI、TLV/LTV、Modbus、
 SOA、DotEnv、Cmd、TOON、TOML、DateTime 与 Selector 等低层 parser targets；
 其 namespace 统一为 `TurboUtils::*`。CYAML/TOON 的 JSON adapter 随对应 parser 安装。
-第三方 cxml 与 Monocypher 由 TurboParser 私有持有，不向使用者暴露其 target 或生命周期。
+第三方 Monocypher 由 TurboParser 私有持有；XML 的第三方实现由
+`TurboUtils::XmlParser` 封装，TurboParser 不暴露其 target 或生命周期。
 
 设备采集与串口实现也由 TurboParser 单独持有。迁移只改变源码和 CMake target 的归属：
 `turbo_capture.h`、`turbo_serial.h`、动态库文件名、C ABI、错误码和对象生命周期不变。
@@ -39,7 +40,7 @@ RX/TX SPSC buffer，producer/consumer 拓扑与可用容量 `configured_size - 1
 TBE schema 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
 不会被 DataBind 在运行时调用。DataBind 的公共头文件包含 `turbo_parser.h`，因此
 `TurboParser::Parser` 是其 PUBLIC 依赖；schema 与 Mustache 仅为实现或编译器依赖。
-依赖 CmdParser、cxml 与 Mustache 的 `junit_to_html` 也归 TurboParser 所有；它是构建树
+只依赖 TurboUtils CmdParser、XmlParser 与 Core 的 `junit_to_html` 归 TinyTest 所有；它是构建树
 工具，不构成 TurboUtils 或 TurboParser 的安装时库依赖。
 依赖 CSV parser 的 SQLite VDBE benchmark 随 CSV 模块维护，避免 TurboUtils 测试目标
 携带 parser 链接项。

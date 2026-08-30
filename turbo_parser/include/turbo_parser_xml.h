@@ -6,9 +6,9 @@
 extern "C" {
 #endif
 
-/* XML Parser (cxml) */
-typedef struct _cx_doc_node turbo_xml_doc_t;
-typedef struct _cx_elem_node turbo_xml_node_t;
+/* XML Parser */
+typedef struct turbo_xml_doc_s turbo_xml_doc_t;
+typedef void turbo_xml_node_t;
 typedef void turbo_xml_xpath_node_t;
 typedef struct turbo_xml_sax_parser_s turbo_xml_sax_parser_t;
 typedef enum {

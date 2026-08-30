@@ -31,7 +31,7 @@ cmake_add_test(test_mustache_runtime
   FOLDER "mustache/tests")
 cmake_add_test(test_mustache_xml
   SOURCES test_xml_integration.c
-  LIBS ${TEST_LIBS} cxml
+  LIBS ${TEST_LIBS} TurboUtils::XmlParser
   INCLUDES ${TEST_INCLUDES}
   FOLDER "mustache/tests")
 

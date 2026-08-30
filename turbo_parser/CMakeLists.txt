@@ -28,7 +28,7 @@ target_link_libraries(
           TurboUtils::TomlParser
           TurboUtils::DateTimeParser
           TurboUtils::CYamlJsonAdapter
-          cxml)
+          TurboUtils::XmlParser)
 
 target_compile_definitions(turbo_parser PRIVATE TURBO_PARSER_BUILD_DLL)
 

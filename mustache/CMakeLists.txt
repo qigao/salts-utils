@@ -20,13 +20,12 @@ target_include_directories(
   mustache
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include> $<INSTALL_INTERFACE:include/mustache>
-  PRIVATE ${CMAKE_SOURCE_DIR}/vendor/cxml/include
-          ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Link to json_parser and common
 target_link_libraries(
   mustache
-  PRIVATE TurboUtils::JsonParser cxml
+  PRIVATE TurboUtils::JsonParser TurboUtils::XmlParser
   PUBLIC TurboUtils::Core)
 
 # Example executable
@@ -38,7 +37,7 @@ cmake_add_executable(mustache_json_example
 
 cmake_add_executable(mustache_xml_example
   SOURCES examples/xml_example.c
-  LIBS TurboParser::Mustache cxml
+  LIBS TurboParser::Mustache TurboUtils::XmlParser
   FOLDER "mustache/examples")
 
 add_subdirectory(test)

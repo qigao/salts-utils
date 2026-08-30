@@ -2,30 +2,33 @@
 
 #include "mustache.h"
 #include "mustache_xml.h"
-#include "xml/cxparser.h"
+#include <xml_parser/xml_parser.h>
 
 #include <stdlib.h>
 #include <string.h>
 
 static char *render_xml_text(const char *template_text, const char *xml_text) {
-  cxml_root_node *root = cxml_parse_xml(xml_text);
+  turbo_xml_document document = {0};
   MUSTACHE_TEMPLATE *templ = NULL;
   MUSTACHE_STRING_RENDERER renderer = {0};
   char *result = NULL;
   int renderer_ready = 0;
 
-  if (!root) return NULL;
+  if (turbo_xml_parse(&document, xml_text, strlen(xml_text), NULL, NULL) != TURBO_XML_OK)
+    return NULL;
   templ = mustache_compile(template_text, strlen(template_text), NULL, NULL, 0);
   if (!templ) goto cleanup;
   if (mustache_string_renderer_init(&renderer) != 0) goto cleanup;
   renderer_ready = 1;
-  if (mustache_render_xml(templ, root, &renderer.base, &renderer, NULL, NULL) != 0) goto cleanup;
+  if (mustache_render_xml(templ, (void *)turbo_xml_document_root(&document).impl,
+                          &renderer.base, &renderer, NULL, NULL) != 0)
+    goto cleanup;
   result = mustache_string_renderer_get(&renderer);
 
 cleanup:
   if (renderer_ready) mustache_string_renderer_free(&renderer);
   mustache_release(templ);
-  cxml_root_node_free(root);
+  turbo_xml_document_destroy(&document);
   return result;
 }
 
@@ -66,14 +69,18 @@ spec("mustache XML integration") {
     }
 
     it("should report success after initialization") {
-      cxml_root_node *root = cxml_parse_xml("<root/>");
+      turbo_xml_document document = {0};
       MUSTACHE_XML_PROVIDER provider;
-      check_not_null(root);
-      if (root) {
-        check_equal(mustache_xml_provider_init(&provider, root, NULL, NULL), 0);
+      check_equal(turbo_xml_parse(&document, "<root/>", strlen("<root/>"), NULL, NULL),
+                  TURBO_XML_OK);
+      if (document.impl) {
+        check_equal(mustache_xml_provider_init(
+                        &provider, (void *)turbo_xml_document_root(&document).impl,
+                        NULL, NULL),
+                    0);
         check_equal(mustache_xml_provider_status(&provider), 0);
         mustache_xml_provider_free(&provider);
-        cxml_root_node_free(root);
+        turbo_xml_document_destroy(&document);
       }
     }
   }
