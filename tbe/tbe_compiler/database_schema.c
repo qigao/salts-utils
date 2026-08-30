@@ -217,6 +217,7 @@ static int database_annotation_allowed(const char *name, unsigned allowed_locati
   if (strcmp(name, "db_init") == 0)
     return (allowed_locations & DATABASE_ANNOTATION_SCHEMA) != 0;
   if (strcmp(name, "db_table") == 0 || strcmp(name, "db_foreign_key") == 0 ||
+      strcmp(name, "db_foreign_key_on_delete") == 0 ||
       strcmp(name, "db_index") == 0 || strcmp(name, "db_unique_index") == 0 ||
       strcmp(name, "db_check") == 0)
     return (allowed_locations & DATABASE_ANNOTATION_MESSAGE) != 0;
@@ -249,7 +250,7 @@ static int database_validate_db_annotations(const Node *owner, unsigned allowed_
 
 static const char *database_table_annotation_without_table(const Node *message) {
   static const char *const names[] = {
-      "db_foreign_key", "db_index", "db_unique_index", "db_check"};
+      "db_foreign_key", "db_foreign_key_on_delete", "db_index", "db_unique_index", "db_check"};
   size_t index;
 
   if (database_attribute_count(message, "db_table") != 0u) return NULL;
@@ -1680,6 +1681,70 @@ static tbe_database_schema_status_t database_build_check_annotation(
   return TBE_DATABASE_SCHEMA_STATUS_OK;
 }
 
+static const char *database_foreign_key_delete_action(const char *action) {
+  if (!action) return NULL;
+  if (strcmp(action, "cascade") == 0) return "CASCADE";
+  if (strcmp(action, "restrict") == 0) return "RESTRICT";
+  if (strcmp(action, "no_action") == 0) return "NO ACTION";
+  return NULL;
+}
+
+static tbe_database_schema_status_t database_build_foreign_key_on_delete_annotation(
+    const Node *message, Node *table, const Node *attribute,
+    tbe_database_dialect_t dialect, tbe_database_schema_diagnostic_t *diagnostic) {
+  const char *message_name = database_message_name(message);
+  const char *constraint_name = database_attribute_argument(attribute, 0u);
+  const char *action_name = database_attribute_argument(attribute, 1u);
+  const char *sql_action = database_foreign_key_delete_action(action_name);
+  Node *foreign_keys = database_find_child(table, "db_foreign_keys");
+  Node *foreign_key = NULL;
+  char *sql_constraint_name = NULL;
+  size_t index;
+
+  if (database_attribute_argument_count(attribute) != 2u || !constraint_name ||
+      !constraint_name[0] || !action_name || !action_name[0]) {
+    database_set_diagnostic(
+        diagnostic, dialect, message_name, "<message>",
+        "annotation=db_foreign_key_on_delete requires constraint name and action");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  if (!sql_action) {
+    database_set_diagnostic(
+        diagnostic, dialect, message_name, "<message>",
+        "annotation=db_foreign_key_on_delete has unsupported action %s",
+        database_diagnostic_text(action_name));
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  sql_constraint_name = database_quote_identifier(constraint_name);
+  if (!sql_constraint_name) return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  for (index = 0u; foreign_keys && index < foreign_keys->data.list.count; ++index) {
+    Node *candidate = foreign_keys->data.list.items[index];
+    const char *candidate_name = database_string_value(candidate, "sql_constraint_name");
+    if (candidate_name && strcmp(candidate_name, sql_constraint_name) == 0) {
+      foreign_key = candidate;
+      break;
+    }
+  }
+  free(sql_constraint_name);
+  if (!foreign_key) {
+    database_set_diagnostic(
+        diagnostic, dialect, message_name, "<message>",
+        "annotation=db_foreign_key_on_delete references unknown foreign key %s",
+        constraint_name);
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  if (database_has_child(foreign_key, "has_on_delete_action")) {
+    database_set_diagnostic(
+        diagnostic, dialect, message_name, "<message>",
+        "annotation=db_foreign_key_on_delete duplicates action for %s", constraint_name);
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
+  }
+  if (database_add_string(foreign_key, "has_on_delete_action", "1") != 0 ||
+      database_add_string(foreign_key, "sql_on_delete_action", sql_action) != 0)
+    return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+  return TBE_DATABASE_SCHEMA_STATUS_OK;
+}
+
 static tbe_database_schema_status_t database_build_table_constraints(
     const Node *messages, Node *database_ir, tbe_database_dialect_t dialect,
     tbe_database_schema_diagnostic_t *diagnostic) {
@@ -1705,6 +1770,15 @@ static tbe_database_schema_status_t database_build_table_constraints(
       } else {
         continue;
       }
+      if (status != TBE_DATABASE_SCHEMA_STATUS_OK) return status;
+    }
+    for (attribute_index = 0; attribute_index < attributes->data.list.count; ++attribute_index) {
+      const Node *attribute = attributes->data.list.items[attribute_index];
+      const char *name = database_string_value(attribute, "name");
+      tbe_database_schema_status_t status;
+      if (!name || strcmp(name, "db_foreign_key_on_delete") != 0) continue;
+      status = database_build_foreign_key_on_delete_annotation(message, table, attribute,
+                                                               dialect, diagnostic);
       if (status != TBE_DATABASE_SCHEMA_STATUS_OK) return status;
     }
     if (!database_mark_has_next(database_find_child(table, "db_foreign_keys"),
