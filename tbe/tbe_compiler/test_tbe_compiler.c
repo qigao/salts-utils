@@ -133,6 +133,12 @@ static Node *database_ir_column(Node *table, size_t index) {
   return columns->data.list.items[index];
 }
 
+static Node *database_ir_list_item(Node *owner, const char *list_name, size_t index) {
+  Node *list = find_child(owner, list_name);
+  if (!list || list->type != NODE_LIST || index >= list->data.list.count) return NULL;
+  return list->data.list.items[index];
+}
+
 static Node *build_database_ir_from_schema(const char *schema,
                                            tbe_database_dialect_t dialect,
                                            tbe_database_schema_status_t *status) {
@@ -637,6 +643,125 @@ spec("tbe_compiler") {
       tbe_database_schema_destroy(NULL);
     }
 
+    it("normalizes foreign keys indexes checks and initializers for each dialect") {
+      const char *schema =
+          "schema Shop ["
+          " db_init(sqlite, \"INSERT INTO users(id, tenant) VALUES (1, 7)\"),"
+          " db_init(postgresql, \"INSERT INTO users(id, tenant) VALUES (2, 8)\"),"
+          " db_init(sqlite, \"INSERT INTO orders(user_id, tenant, order_number, total_cents) "
+          "VALUES (1, 7, 'seed', 100)\")"
+          "];"
+          "[db_table(users)] message User {"
+          " [db_primary_key(1)] int64 id;"
+          " [db_primary_key(2)] int32 tenant;"
+          "}"
+          "[db_table(orders),"
+          " db_foreign_key(fk_orders_user, User, user_id, id, tenant, tenant),"
+          " db_index(idx_orders_lookup, tenant, user_id),"
+          " db_unique_index(uidx_orders_number, tenant, order_number),"
+          " db_check(ck_total_sqlite, sqlite, \"total_cents >= 0\"),"
+          " db_check(ck_total_postgresql, postgresql, \"total_cents >= 0\")"
+          "] message Order {"
+          " int64 user_id; int32 tenant; string order_number; int64 total_cents;"
+          "}";
+      const tbe_database_dialect_t dialects[] = {
+          TBE_DATABASE_DIALECT_SQLITE, TBE_DATABASE_DIALECT_POSTGRESQL};
+      const char *expected_check_names[] = {
+          "\"ck_total_sqlite\"", "\"ck_total_postgresql\""};
+      const size_t expected_initializer_counts[] = {2u, 1u};
+
+      for (size_t dialect_index = 0; dialect_index < 2u; ++dialect_index) {
+        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+        Node *database_ir = build_database_ir_from_schema(schema, dialects[dialect_index], &status);
+        Node *order_table;
+        Node *foreign_key;
+        Node *foreign_key_columns;
+        Node *check_constraint;
+        Node *index;
+        Node *index_columns;
+        Node *initializers;
+
+        info("dialect_index=%zu", dialect_index);
+        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
+        check_not_null(database_ir);
+        if (!database_ir) continue;
+
+        check_equal(find_child(database_ir, "db_tables")->data.list.count, (size_t)2);
+        check_equal(find_child(database_ir, "db_indexes")->data.list.count, (size_t)2);
+        initializers = find_child(database_ir, "db_initializers");
+        check_not_null(initializers);
+        if (initializers)
+          check_equal(initializers->data.list.count, expected_initializer_counts[dialect_index]);
+
+        order_table = database_ir_table(database_ir, 1);
+        foreign_key = database_ir_list_item(order_table, "db_foreign_keys", 0);
+        check_constraint = database_ir_list_item(order_table, "db_checks", 0);
+        check_not_null(foreign_key);
+        check_not_null(check_constraint);
+        if (foreign_key) {
+          check_equal(find_child(foreign_key, "sql_constraint_name")->data.string_val,
+                      "\"fk_orders_user\"");
+          check_equal(find_child(foreign_key, "sql_referenced_table_name")->data.string_val,
+                      "\"users\"");
+          foreign_key_columns = find_child(foreign_key, "db_foreign_key_columns");
+          check_equal(foreign_key_columns->data.list.count, (size_t)2);
+          check_equal(find_child(foreign_key_columns->data.list.items[0], "sql_column_name")
+                          ->data.string_val,
+                      "\"user_id\"");
+          check_equal(find_child(foreign_key_columns->data.list.items[0],
+                                 "sql_referenced_column_name")
+                          ->data.string_val,
+                      "\"id\"");
+          check_equal(find_child(foreign_key_columns->data.list.items[1], "sql_column_name")
+                          ->data.string_val,
+                      "\"tenant\"");
+          check_equal(find_child(foreign_key_columns->data.list.items[1],
+                                 "sql_referenced_column_name")
+                          ->data.string_val,
+                      "\"tenant\"");
+        }
+        if (check_constraint) {
+          check_equal(find_child(check_constraint, "sql_constraint_name")->data.string_val,
+                      expected_check_names[dialect_index]);
+          check_equal(find_child(check_constraint, "sql_check_expression")->data.string_val,
+                      "total_cents >= 0");
+        }
+
+        index = database_ir_list_item(database_ir, "db_indexes", 0);
+        check_not_null(index);
+        if (index) {
+          check_equal(find_child(index, "sql_index_name")->data.string_val,
+                      "\"idx_orders_lookup\"");
+          check_equal(find_child(index, "sql_table_name")->data.string_val, "\"orders\"");
+          check_null(find_child(index, "is_unique_index"));
+          index_columns = find_child(index, "db_index_columns");
+          check_equal(index_columns->data.list.count, (size_t)2);
+          check_equal(find_child(index_columns->data.list.items[0], "sql_column_name")
+                          ->data.string_val,
+                      "\"tenant\"");
+          check_equal(find_child(index_columns->data.list.items[1], "sql_column_name")
+                          ->data.string_val,
+                      "\"user_id\"");
+        }
+        index = database_ir_list_item(database_ir, "db_indexes", 1);
+        check_not_null(index);
+        if (index) {
+          check_equal(find_child(index, "sql_index_name")->data.string_val,
+                      "\"uidx_orders_number\"");
+          check_not_null(find_child(index, "is_unique_index"));
+        }
+
+        if (initializers && initializers->data.list.count > 0u) {
+          check_equal(find_child(initializers->data.list.items[0], "sql_statement")
+                          ->data.string_val,
+                      dialect_index == 0u
+                          ? "INSERT INTO users(id, tenant) VALUES (1, 7)"
+                          : "INSERT INTO users(id, tenant) VALUES (2, 8)");
+        }
+        tbe_database_schema_destroy(database_ir);
+      }
+    }
+
     it("maps every supported scalar type for SQLite and PostgreSQL") {
       const char *schema =
           "enum Kind <uint16> { First = 0; Second = 1; }"
@@ -920,6 +1045,122 @@ spec("tbe_compiler") {
           {"rejects db_ignore combined with another database annotation",
            "[db_table(annotation_values)] message AnnotationValues { [db_ignore(1), db_unique(1)] int32 id; }",
            "AnnotationValues", "id", "annotation=db_ignore"},
+      };
+
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
+    }
+
+    it("rejects unsafe custom checks and non-insert initialization statements") {
+      static const database_failure_case_t cases[] = {
+          {"rejects multiple statements in a check",
+           "[db_table(records), db_check(ck_value, sqlite, \"value > 0; DROP TABLE records\")] "
+           "message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects a line comment in a check",
+           "[db_table(records), db_check(ck_value, sqlite, \"value > 0 -- bypass\")] "
+           "message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects a block comment in a check",
+           "[db_table(records), db_check(ck_value, sqlite, \"value > 0 /* bypass */\")] "
+           "message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects an unterminated string in a check",
+           "[db_table(records), db_check(ck_value, sqlite, \"value <> 'blocked\")] "
+           "message Records { string value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects unbalanced parentheses in a check",
+           "[db_table(records), db_check(ck_value, sqlite, \"value >= (0\")] "
+           "message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects a non-insert initializer",
+           "schema Records [db_init(sqlite, \"DELETE FROM records\")];"
+           "[db_table(records)] message Record { int32 value; }",
+           "<schema>", "<schema>", "annotation=db_init"},
+          {"rejects multiple initializer statements",
+           "schema Records [db_init(sqlite, \"INSERT INTO records(value) VALUES (1); "
+           "DELETE FROM records\")];"
+           "[db_table(records)] message Record { int32 value; }",
+           "<schema>", "<schema>", "annotation=db_init"},
+          {"rejects an initializer comment",
+           "schema Records [db_init(sqlite, \"INSERT INTO records(value) VALUES (1) -- trailing\")];"
+           "[db_table(records)] message Record { int32 value; }",
+           "<schema>", "<schema>", "annotation=db_init"},
+      };
+
+      for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
+        check_database_schema_failure(&cases[index]);
+    }
+
+    it("rejects malformed relation index and legacy database annotations") {
+      static const database_failure_case_t cases[] = {
+          {"rejects extra db_table arguments",
+           "[db_table(records, extra)] message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_table"},
+          {"rejects extra db_column arguments",
+           "[db_table(records)] message Records { [db_column(value, extra)] int32 value; }",
+           "Records", "value", "annotation=db_column"},
+          {"requires db_table for table-level database annotations",
+           "[db_index(idx_records, value)] message Records { int32 value; }"
+           "[db_table(other)] message Other { int32 value; }",
+           "Records", "<message>", "annotation=db_index"},
+          {"requires an indexed field",
+           "[db_table(records), db_index(idx_records)] message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_index"},
+          {"rejects duplicate index names across tables",
+           "[db_table(first), db_index(idx_shared, value)] message First { int32 value; }"
+           "[db_table(second), db_index(idx_shared, value)] message Second { int32 value; }",
+           "Second", "<message>", "annotation=db_index"},
+          {"rejects an index name that collides with a table",
+           "[db_table(records), db_index(other, value)] message Records { int32 value; }"
+           "[db_table(other)] message Other { int32 value; }",
+           "Records", "<message>", "annotation=db_index"},
+          {"rejects an unknown indexed field",
+           "[db_table(records), db_index(idx_records, missing)] message Records { int32 value; }",
+           "Records", "missing", "annotation=db_index"},
+          {"rejects a repeated indexed field",
+           "[db_table(records), db_index(idx_records, value, value)] "
+           "message Records { int32 value; }",
+           "Records", "value", "annotation=db_index"},
+          {"rejects incomplete foreign-key pairs",
+           "[db_table(users)] message User { [db_primary_key(1)] int64 id; }"
+           "[db_table(orders), db_foreign_key(fk_user, User, user_id)] "
+           "message Order { int64 user_id; }",
+           "Order", "<message>", "annotation=db_foreign_key"},
+          {"rejects an unknown foreign-key target message",
+           "[db_table(orders), db_foreign_key(fk_user, Missing, user_id, id)] "
+           "message Order { int64 user_id; }",
+           "Order", "<message>", "annotation=db_foreign_key"},
+          {"rejects incompatible foreign-key field types",
+           "[db_table(users)] message User { [db_primary_key(1)] int64 id; }"
+           "[db_table(orders), db_foreign_key(fk_user, User, user_id, id)] "
+           "message Order { string user_id; }",
+           "Order", "user_id", "annotation=db_foreign_key"},
+          {"requires a unique foreign-key target",
+           "[db_table(users)] message User { int64 id; }"
+           "[db_table(orders), db_foreign_key(fk_user, User, user_id, id)] "
+           "message Order { int64 user_id; }",
+           "Order", "<message>", "annotation=db_foreign_key"},
+          {"rejects repeated local foreign-key fields",
+           "[db_table(users)] message User { [db_primary_key(1)] int64 id; "
+           "[db_primary_key(2)] int64 tenant; }"
+           "[db_table(orders), db_foreign_key(fk_user, User, user_id, id, user_id, tenant)] "
+           "message Order { int64 user_id; }",
+           "Order", "user_id", "annotation=db_foreign_key"},
+          {"rejects duplicate table constraint names",
+           "[db_table(users)] message User { [db_primary_key(1)] int64 id; }"
+           "[db_table(orders), db_foreign_key(shared_name, User, user_id, id),"
+           " db_check(shared_name, sqlite, \"user_id > 0\")] "
+           "message Order { int64 user_id; }",
+           "Order", "<message>", "constraint"},
+          {"rejects an unknown check dialect",
+           "[db_table(records), db_check(ck_value, mysql, \"value > 0\")] "
+           "message Records { int32 value; }",
+           "Records", "<message>", "annotation=db_check"},
+          {"rejects an unknown initializer dialect",
+           "schema Records [db_init(mysql, \"INSERT INTO records(value) VALUES (1)\")];"
+           "[db_table(records)] message Record { int32 value; }",
+           "<schema>", "<schema>", "annotation=db_init"},
       };
 
       for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index)
@@ -1755,6 +1996,93 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
     }
 
+    it("should render deterministic database relationships indexes checks and seed inserts") {
+      const char *schema_path = "test_tbe_compiler_database_v2.schema";
+      const char *output_paths[] = {
+          "test_tbe_compiler_database_v2.sqlite.sql",
+          "test_tbe_compiler_database_v2.postgresql.sql"};
+      const int64_t languages[] = {
+          TBE_COMPILER_LANG_SQLITE, TBE_COMPILER_LANG_POSTGRESQL};
+      const char *schema =
+          "schema Shop ["
+          " db_init(sqlite, \"INSERT INTO users(id, tenant) VALUES (1, 7)\"),"
+          " db_init(postgresql, \"INSERT INTO users(id, tenant) VALUES (2, 8)\")"
+          "];"
+          "[db_table(orders),"
+          " db_foreign_key(fk_orders_user, User, user_id, id, tenant, tenant),"
+          " db_index(idx_orders_lookup, tenant, user_id),"
+          " db_unique_index(uidx_orders_number, tenant, order_number),"
+          " db_check(ck_total, sqlite, \"total_cents >= 0\"),"
+          " db_check(ck_total, postgresql, \"total_cents >= 0\")"
+          "] message Order {"
+          " int64 user_id; int32 tenant; string order_number; int64 total_cents;"
+          "}"
+          "[db_table(users)] message User {"
+          " [db_primary_key(1)] int64 id; [db_primary_key(2)] int32 tenant;"
+          "}";
+      const char *expected[] = {
+          "CREATE TABLE \"orders\" (\n"
+          "  \"user_id\" INTEGER NOT NULL,\n"
+          "  \"tenant\" INTEGER NOT NULL,\n"
+          "  \"order_number\" TEXT NOT NULL,\n"
+          "  \"total_cents\" INTEGER NOT NULL\n"
+          ", CONSTRAINT \"ck_total\" CHECK (total_cents >= 0)\n"
+          ", CONSTRAINT \"fk_orders_user\" FOREIGN KEY (\"user_id\", \"tenant\") "
+          "REFERENCES \"users\" (\"id\", \"tenant\")\n"
+          ");\n"
+          "CREATE TABLE \"users\" (\n"
+          "  \"id\" INTEGER NOT NULL,\n"
+          "  \"tenant\" INTEGER NOT NULL\n"
+          ", PRIMARY KEY (\"id\", \"tenant\")\n"
+          ");\n\n"
+          "CREATE INDEX \"idx_orders_lookup\" ON \"orders\" (\"tenant\", \"user_id\");\n"
+          "CREATE UNIQUE INDEX \"uidx_orders_number\" ON \"orders\" (\"tenant\", "
+          "\"order_number\");\n"
+          "INSERT INTO users(id, tenant) VALUES (1, 7);\n",
+          "CREATE TABLE \"orders\" (\n"
+          "  \"user_id\" bigint NOT NULL,\n"
+          "  \"tenant\" integer NOT NULL,\n"
+          "  \"order_number\" text NOT NULL,\n"
+          "  \"total_cents\" bigint NOT NULL\n"
+          ", CONSTRAINT \"ck_total\" CHECK (total_cents >= 0)\n"
+          ");\n"
+          "CREATE TABLE \"users\" (\n"
+          "  \"id\" bigint NOT NULL,\n"
+          "  \"tenant\" integer NOT NULL\n"
+          ", PRIMARY KEY (\"id\", \"tenant\")\n"
+          ");\n\n"
+          "CREATE INDEX \"idx_orders_lookup\" ON \"orders\" (\"tenant\", \"user_id\");\n"
+          "CREATE UNIQUE INDEX \"uidx_orders_number\" ON \"orders\" (\"tenant\", "
+          "\"order_number\");\n"
+          "ALTER TABLE \"orders\" ADD CONSTRAINT \"fk_orders_user\" FOREIGN KEY "
+          "(\"user_id\", \"tenant\") REFERENCES \"users\" (\"id\", \"tenant\");\n"
+          "INSERT INTO users(id, tenant) VALUES (2, 8);\n"};
+
+      cleanup_test_file(schema_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      for (size_t dialect_index = 0; dialect_index < 2u; ++dialect_index) {
+        tbe_compiler_options_t options = {
+            .schema_path = schema_path,
+            .output_path = output_paths[dialect_index],
+            .lang_enum = languages[dialect_index],
+        };
+        char *output;
+        size_t output_size = 0;
+
+        cleanup_test_file(output_paths[dialect_index]);
+        info("dialect_index=%zu", dialect_index);
+        check_equal(tbe_compiler_run(&options), 0);
+        output = tt_read_file(output_paths[dialect_index], &output_size);
+        check_not_null(output);
+        if (output) {
+          check_equal(output, expected[dialect_index]);
+          free(output);
+        }
+        cleanup_test_file(output_paths[dialect_index]);
+      }
+      cleanup_test_file(schema_path);
+    }
+
     it("should render parsed numeric and injection-shaped PostgreSQL defaults") {
       const char *schema_path = POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE;
       const char *output_path = "test_tbe_compiler_postgresql_defaults.sql";
@@ -1875,6 +2203,59 @@ spec("tbe_compiler") {
           "\"record_id\" NOT GLOB '*[^0-9]*' AND (\"record_id\" = '0' OR "
           "substr(\"record_id\", 1, 1) <> '0') AND (length(\"record_id\") < 20 OR "
           "\"record_id\" <= '18446744073709551615'))) PRIMARY KEY;\"note\" TEXT";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = template_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(write_test_file(template_path, template_text), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(template_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should expose relationship index check and initializer IR to custom templates") {
+      const char *schema_path = "test_tbe_compiler_database_v2_custom.schema";
+      const char *template_path = "test_tbe_compiler_database_v2_custom.mustache";
+      const char *output_path = "test_tbe_compiler_database_v2_custom.out";
+      const char *schema =
+          "schema Custom [db_init(sqlite, \"INSERT INTO users(id) VALUES (1)\")];"
+          "[db_table(users)] message User { [db_primary_key(1)] int64 id; }"
+          "[db_table(orders), db_foreign_key(fk_user, User, user_id, id),"
+          " db_unique_index(uidx_order_user, order_id, user_id),"
+          " db_check(ck_order_id, sqlite, \"order_id > 0\")]"
+          " message Order { int64 order_id; int64 user_id; }";
+      const char *template_text =
+          "{{#db_tables}}T{{sql_table_name}}"
+          "{{#db_checks}} C{{sql_constraint_name}}={{sql_check_expression}}{{/db_checks}}"
+          "{{#db_foreign_keys}} F{{sql_constraint_name}}>{{sql_referenced_table_name}}("
+          "{{#db_foreign_key_columns}}{{sql_column_name}}={{sql_referenced_column_name}}"
+          "{{#has_next_foreign_key_column}},{{/has_next_foreign_key_column}}"
+          "{{/db_foreign_key_columns}}){{/db_foreign_keys}};{{/db_tables}}"
+          "{{#db_indexes}} I{{#is_unique_index}}U{{/is_unique_index}}{{sql_index_name}}@"
+          "{{sql_table_name}}({{#db_index_columns}}{{sql_column_name}}"
+          "{{#has_next_index_column}},{{/has_next_index_column}}{{/db_index_columns}});"
+          "{{/db_indexes}}{{#db_initializers}} S{{sql_statement}};{{/db_initializers}}";
+      const char *expected =
+          "T\"users\";T\"orders\" C\"ck_order_id\"=order_id > 0"
+          " F\"fk_user\">\"users\"(\"user_id\"=\"id\");"
+          " IU\"uidx_order_user\"@\"orders\"(\"order_id\",\"user_id\");"
+          " SINSERT INTO users(id) VALUES (1);";
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,

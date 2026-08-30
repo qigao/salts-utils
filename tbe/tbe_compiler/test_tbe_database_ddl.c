@@ -172,6 +172,24 @@ static void sqlite_ddl_test_check_table_exists(sqlite_ddl_test_state_t *state,
   }
 }
 
+static void sqlite_ddl_test_check_index_exists(sqlite_ddl_test_state_t *state,
+                                               const char *index_name) {
+  char sql[256];
+  int rc;
+
+  snprintf(sql, sizeof(sql),
+           "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='%s';", index_name);
+  check(sqlite_ddl_test_prepare(state, sql));
+  if (!state->statement) return;
+
+  rc = sqlite3_step(state->statement);
+  info("index=%s step=%d", index_name, rc);
+  check_equal(rc, SQLITE_ROW);
+  if (rc == SQLITE_ROW) {
+    check_equal(sqlite3_column_int(state->statement, 0), 1);
+  }
+}
+
 static void sqlite_ddl_test_check_table_sql_contains(sqlite_ddl_test_state_t *state,
                                                      const char *table_name,
                                                      const char *needle) {
@@ -334,6 +352,11 @@ spec("tbe_compiler SQLite DDL integration") {
     check_contains(state.sql_text, "CREATE TABLE \"users\"");
     check_contains(state.sql_text, "CREATE TABLE \"sessions\"");
     check_contains(state.sql_text, "CREATE TABLE \"integer_limits\"");
+    check_contains(state.sql_text, "CONSTRAINT \"fk_sessions_user\" FOREIGN KEY");
+    check_contains(state.sql_text, "CONSTRAINT \"ck_sessions_token\" CHECK");
+    check_contains(state.sql_text, "CREATE INDEX \"idx_sessions_token_user\"");
+    check_contains(state.sql_text, "CREATE UNIQUE INDEX \"uidx_sessions_user_token\"");
+    check_contains(state.sql_text, "INSERT INTO users");
 
     rc = sqlite3_open(":memory:", &state.db);
     info("sqlite3_open rc=%d error=%s", rc,
@@ -341,11 +364,14 @@ spec("tbe_compiler SQLite DDL integration") {
     check_equal(rc, SQLITE_OK);
 
     check_equal(sqlite3_extended_result_codes(state.db, 1), SQLITE_OK);
+    sqlite_ddl_test_expect_exec_ok(&state, "PRAGMA foreign_keys=ON;");
     sqlite_ddl_test_expect_exec_ok(&state, state.sql_text);
 
     sqlite_ddl_test_check_table_exists(&state, "users");
     sqlite_ddl_test_check_table_exists(&state, "sessions");
     sqlite_ddl_test_check_table_exists(&state, "integer_limits");
+    sqlite_ddl_test_check_index_exists(&state, "idx_sessions_token_user");
+    sqlite_ddl_test_check_index_exists(&state, "uidx_sessions_user_token");
     sqlite_ddl_test_check_table_sql_contains(&state, "users", "AUTOINCREMENT");
     sqlite_ddl_test_check_table_columns(&state, "users", user_columns,
                                         sizeof(user_columns) / sizeof(user_columns[0]));
@@ -354,6 +380,16 @@ spec("tbe_compiler SQLite DDL integration") {
     sqlite_ddl_test_check_table_columns(
         &state, "integer_limits", integer_limit_columns,
         sizeof(integer_limit_columns) / sizeof(integer_limit_columns[0]));
+
+    check(sqlite_ddl_test_prepare(
+        &state, "SELECT display_name, rank FROM users WHERE email='seed@example.com';"));
+    rc = sqlite3_step(state.statement);
+    check_equal(rc, SQLITE_ROW);
+    if (rc == SQLITE_ROW) {
+      check_equal((const char *)sqlite3_column_text(state.statement, 0), "Seed");
+      check_equal(sqlite3_column_int(state.statement, 1), 4);
+    }
+    check_equal(sqlite3_step(state.statement), SQLITE_DONE);
 
     sqlite_ddl_test_expect_exec_ok(
         &state,
@@ -388,6 +424,21 @@ spec("tbe_compiler SQLite DDL integration") {
         "INSERT INTO sessions (session_id, user_id, token) "
         "VALUES (100, 999, 'tok-duplicate');",
         SQLITE_CONSTRAINT_PRIMARYKEY);
+    sqlite_ddl_test_expect_constraint(
+        &state,
+        "INSERT INTO sessions (session_id, user_id, token) "
+        "VALUES (101, 999999, 'orphan-token');",
+        SQLITE_CONSTRAINT_FOREIGNKEY);
+    snprintf(session_insert_sql, sizeof(session_insert_sql),
+             "INSERT INTO sessions (session_id, user_id, token) "
+             "VALUES (102, %lld, 'bad');",
+             (long long)generated_user_id);
+    sqlite_ddl_test_expect_constraint(&state, session_insert_sql, SQLITE_CONSTRAINT_CHECK);
+    snprintf(session_insert_sql, sizeof(session_insert_sql),
+             "INSERT INTO sessions (session_id, user_id, token) "
+             "VALUES (103, %lld, 'tok-100');",
+             (long long)generated_user_id);
+    sqlite_ddl_test_expect_constraint(&state, session_insert_sql, SQLITE_CONSTRAINT_UNIQUE);
     sqlite_ddl_test_expect_constraint(
         &state,
         "INSERT INTO users (email, display_name, active, rank) "
