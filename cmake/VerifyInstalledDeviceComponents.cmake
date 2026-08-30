@@ -2,6 +2,7 @@ foreach(required_var
         SOURCE_DIR
         BUILD_DIR
         CMAKE_COMMAND_PATH
+        CMAKE_CTEST_COMMAND_PATH
         BUILD_CONFIG
         BUILD_GENERATOR
         TURBOUTILS_ROOT
@@ -119,42 +120,13 @@ if(NOT build_result EQUAL 0)
           "TurboParser installed consumer build failed: ${build_result}")
 endif()
 
-function(find_consumer_executable name output_var)
-  set(candidates
-      "${consumer_build}/${name}"
-      "${consumer_build}/${name}.exe"
-      "${consumer_build}/${BUILD_CONFIG}/${name}"
-      "${consumer_build}/${BUILD_CONFIG}/${name}.exe")
-  foreach(candidate IN LISTS candidates)
-    if(EXISTS "${candidate}")
-      set(${output_var} "${candidate}" PARENT_SCOPE)
-      return()
-    endif()
-  endforeach()
-  message(FATAL_ERROR "TurboParser consumer executable ${name} was not generated")
-endfunction()
-
-function(run_consumer name)
-  find_consumer_executable("${name}" consumer_executable)
-  if(CMAKE_HOST_WIN32)
-    set(runtime_path
-        "${install_prefix}/bin;${TURBOUTILS_ROOT}/bin;$ENV{SystemRoot}/System32;$ENV{SystemRoot}")
-    execute_process(
-      COMMAND "${CMAKE_COMMAND_PATH}" -E env "PATH=${runtime_path}"
-              "${consumer_executable}"
-      WORKING_DIRECTORY "${install_prefix}/bin"
-      RESULT_VARIABLE consumer_result)
-  else()
-    execute_process(COMMAND "${consumer_executable}"
-                    RESULT_VARIABLE consumer_result)
-  endif()
-  if(NOT consumer_result EQUAL 0)
-    message(FATAL_ERROR
-            "TurboParser installed ${name} consumer failed: ${consumer_result}")
-  endif()
-endfunction()
-
-run_consumer(consume_serial)
-if(EXPECT_CAPTURE)
-  run_consumer(consume_capture)
+execute_process(
+  COMMAND "${CMAKE_CTEST_COMMAND_PATH}"
+          --test-dir "${consumer_build}"
+          --build-config "${BUILD_CONFIG}"
+          --output-on-failure
+  RESULT_VARIABLE consumer_test_result)
+if(NOT consumer_test_result EQUAL 0)
+  message(FATAL_ERROR
+          "TurboParser installed consumer tests failed: ${consumer_test_result}")
 endif()

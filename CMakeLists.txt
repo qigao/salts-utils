@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.27)
 if(POLICY CMP0144)
   cmake_policy(SET CMP0144 OLD)
 endif()
@@ -70,6 +70,10 @@ if(BUILD_TESTING AND NOT TARGET TurboUtils::TinyTest)
   message(FATAL_ERROR "TurboUtils::TinyTest is required when TurboParser tests are enabled")
 endif()
 
+if(BUILD_TESTING)
+  add_subdirectory(tests/runtime_path)
+endif()
+
 set(TURBOPARSER_REQUIRED_PARSER_TARGETS
   QueryVM
   IniParser
@@ -135,6 +139,7 @@ add_custom_target(
     -DCMAKE_COMMAND_PATH=${CMAKE_COMMAND}
     -DBUILD_CONFIG=$<CONFIG>
     -DBUILD_GENERATOR=${CMAKE_GENERATOR}
+    -DCMAKE_CTEST_COMMAND_PATH=${CMAKE_CTEST_COMMAND}
     -DTURBOUTILS_ROOT=$ENV{TURBOUTILS_ROOT}
     -DEXPECT_CAPTURE=${TURBO_ENABLE_CAPTURE}
     -DEXPECT_CAPTURE_WINDOWS_RUNTIME=${verify_capture_windows_runtime}

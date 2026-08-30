@@ -22,6 +22,7 @@ if(WIN32)
     capture_windows_test
     SOURCES test_capture_windows.c
     LIBS TurboParser::Capture TurboUtils::TinyTest
+    RUNTIME_TARGETS yuv
     FOLDER "capture/tests")
 endif()
 
