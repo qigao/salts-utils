@@ -142,6 +142,7 @@ tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --o
 |---|---|---|---|
 | `db_table("name")` | Non-empty logical table name without embedded NUL | Emits one quoted SQL table | Missing/empty value, duplicate table name, or no persistent fields |
 | `db_foreign_key(name, Target, local, remote, ...)` | Constraint name, target message, and one or more local/remote field pairs | Emits a same-schema single or composite foreign key | Missing field/table, repeated fields, type mismatch, non-unique target, or duplicate constraint name |
+| `db_foreign_key_on_delete(name, action)` | Existing foreign-key constraint name and `cascade`, `restrict`, or `no_action` | Appends the normalized `ON DELETE` action to that foreign key | Unknown key, duplicate action, unsupported action, or wrong argument count |
 | `db_index(name, field, ...)` | Globally unique index name and ordered persistent fields | Emits a normal single or composite index | Missing/repeated field or duplicate index name |
 | `db_unique_index(name, field, ...)` | Globally unique index name and ordered persistent fields | Emits a unique single or composite index | Missing/repeated field or duplicate index name |
 | `db_check(name, dialect, "expression")` | Table-local name, `sqlite` or `postgresql`, and one safe expression | Emits a table-level check only for that dialect | Unknown dialect, duplicate constraint name, or unsafe SQL boundary |
@@ -166,6 +167,11 @@ SQLite emits foreign keys inline. PostgreSQL creates all tables and indexes firs
 `ALTER TABLE ... ADD CONSTRAINT` for foreign keys. This supports forward message references and
 ensures a referenced `db_unique_index` exists before the foreign key is added. Seed inserts are
 always emitted last.
+
+Built-in SQLite and PostgreSQL outputs are complete standard DDL transactions: the file starts
+with `BEGIN;` and ends with `COMMIT;`. Consumers execute the file directly and must not add an
+outer transaction. `CREATE`, `ALTER`, index creation, and seed inserts therefore commit as one
+unit or remain uncommitted when execution fails.
 
 Custom checks and seed statements are constrained build inputs, not arbitrary SQL scripts. The
 compiler rejects controls, semicolons, line/block comments, unterminated quotes, and unbalanced

@@ -1,11 +1,13 @@
+BEGIN;
 {{#db_tables}}CREATE TABLE {{sql_table_name}} (
 {{#db_columns}}  {{sql_column_name}} {{sql_type}}{{#has_sql_constraints}} {{sql_constraints}}{{/has_sql_constraints}}{{#has_next_column}},{{/has_next_column}}
 {{/db_columns}}{{#has_composite_primary_key}}, PRIMARY KEY ({{#db_primary_key_columns}}{{sql_column_name}}{{#has_next_primary_key}}, {{/has_next_primary_key}}{{/db_primary_key_columns}})
 {{/has_composite_primary_key}}{{#db_checks}}, CONSTRAINT {{sql_constraint_name}} CHECK ({{sql_check_expression}})
-{{/db_checks}}{{#db_foreign_keys}}, CONSTRAINT {{sql_constraint_name}} FOREIGN KEY ({{#db_foreign_key_columns}}{{sql_column_name}}{{#has_next_foreign_key_column}}, {{/has_next_foreign_key_column}}{{/db_foreign_key_columns}}) REFERENCES {{sql_referenced_table_name}} ({{#db_foreign_key_columns}}{{sql_referenced_column_name}}{{#has_next_foreign_key_column}}, {{/has_next_foreign_key_column}}{{/db_foreign_key_columns}})
+{{/db_checks}}{{#db_foreign_keys}}, CONSTRAINT {{sql_constraint_name}} FOREIGN KEY ({{#db_foreign_key_columns}}{{sql_column_name}}{{#has_next_foreign_key_column}}, {{/has_next_foreign_key_column}}{{/db_foreign_key_columns}}) REFERENCES {{sql_referenced_table_name}} ({{#db_foreign_key_columns}}{{sql_referenced_column_name}}{{#has_next_foreign_key_column}}, {{/has_next_foreign_key_column}}{{/db_foreign_key_columns}}){{#has_on_delete_action}} ON DELETE {{sql_on_delete_action}}{{/has_on_delete_action}}
 {{/db_foreign_keys}});
 {{#has_next_table}}
 {{/has_next_table}}{{/db_tables}}
 {{#db_indexes}}CREATE {{#is_unique_index}}UNIQUE {{/is_unique_index}}INDEX {{sql_index_name}} ON {{sql_table_name}} ({{#db_index_columns}}{{sql_column_name}}{{#has_next_index_column}}, {{/has_next_index_column}}{{/db_index_columns}});
 {{/db_indexes}}{{#db_initializers}}{{sql_statement}};
 {{/db_initializers}}
+COMMIT;

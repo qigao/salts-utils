@@ -6,7 +6,7 @@ TurboDB 当前允许调用方执行原始 DDL，但不会从模型生成 SQLite 
 
 本设计在 `tbe_compiler` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 TurboParser 运行时依赖。
 
-当前版本生成全新数据库所需的 `CREATE TABLE`、外键、普通/唯一复合索引、自定义 `CHECK` 和种子 `INSERT`。它不比较线上结构，不生成 `ALTER TABLE`，不维护 migration history，也不执行数据库连接。
+当前版本生成全新数据库所需的 `CREATE TABLE`、外键、普通/唯一复合索引、自定义 `CHECK` 和种子 `INSERT`，并以标准 `BEGIN; ... COMMIT;` 包裹完整文件。它不比较线上结构，不规划已有数据库的 migration，不维护 migration history，也不执行数据库连接。
 
 ## 公开接口
 
@@ -59,6 +59,7 @@ message Order {
 | message | `db_index(name, field, ...)` | 按声明顺序创建普通单列或复合索引 |
 | message | `db_unique_index(name, field, ...)` | 按声明顺序创建唯一单列或复合索引 |
 | message | `db_check(name, dialect, "expression")` | 为指定 `sqlite` 或 `postgresql` dialect 创建表级检查约束 |
+| message | `db_foreign_key_on_delete(name, action)` | 为同一 message 中已声明的外键添加 `CASCADE`、`RESTRICT` 或 `NO ACTION` 删除动作 |
 | schema | `db_init(dialect, "INSERT ...")` | 在所有表和索引之后按声明顺序输出该 dialect 的种子 INSERT |
 | field | `db_column("name")` | 覆盖列名；缺省使用 TBE 字段名 |
 | field | `db_primary_key(order)` | 将字段加入主键；序号从 1 开始且必须连续、唯一 |
@@ -123,6 +124,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - 数据库 IR 是单次编译内的派生只读视图，拥有自身节点并在编译结束释放。
 - dialect 只负责类型名、identity 片段和值域约束等策略差异；annotation 规则、标识符处理、主键排序与默认值校验共用一套实现。
 - SQLite 在建表语句内生成外键；PostgreSQL 先创建全部表和索引，再用 `ALTER TABLE ... ADD CONSTRAINT` 创建外键，因此目标 message 可后置声明，引用 `db_unique_index` 时该索引也已存在。initializer 始终最后输出。
+- SQLite 与 PostgreSQL 内置模板都直接生成文件级 `BEGIN; ... COMMIT;`；执行方不得再添加外层事务。
 - 模板只负责排列已经转义的片段，不承担业务校验，不拼接未经验证的 annotation 值。
 - 输出文件沿用现有编译器写入边界：解析、校验或渲染失败时返回非零，不产生可被误认为成功的半成品结果。
 
