@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.27)
 if(POLICY CMP0144)
   cmake_policy(SET CMP0144 OLD)
 endif()
@@ -48,6 +48,10 @@ include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 find_package(TurboUtils CONFIG REQUIRED PATHS "$ENV{TURBOUTILS_ROOT}"
              NO_DEFAULT_PATH)
+
+if(BUILD_TESTING)
+  add_subdirectory(tests/runtime_path)
+endif()
 
 # Additional components
 add_subdirectory(tools)

@@ -182,10 +182,60 @@ function(cmake_add_executable target_name)
   cmake_config_target(${target_name} FOLDER "${ARG_FOLDER}")
 endfunction()
 
+function(cmake_set_test_runtime_path test_name target_name)
+  set(options)
+  set(oneValueArgs)
+  set(multiValueArgs RUNTIME_TARGETS)
+  cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+            "cmake_set_test_runtime_path: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+  if(NOT WIN32)
+    return()
+  endif()
+  if(NOT TARGET ${target_name})
+    message(FATAL_ERROR
+            "cmake_set_test_runtime_path: target '${target_name}' does not exist")
+  endif()
+  get_target_property(target_type ${target_name} TYPE)
+  if(NOT target_type STREQUAL "EXECUTABLE")
+    message(FATAL_ERROR
+            "cmake_set_test_runtime_path: target '${target_name}' is not executable")
+  endif()
+  get_property(directory_tests DIRECTORY PROPERTY TESTS)
+  if(NOT "${test_name}" IN_LIST directory_tests)
+    message(FATAL_ERROR
+            "cmake_set_test_runtime_path: test '${test_name}' does not exist in this directory")
+  endif()
+
+  # Reverse before repeated prepends so CMake's dependency order is retained.
+  set_property(
+    TEST ${test_name}
+    APPEND
+    PROPERTY ENVIRONMENT_MODIFICATION
+             "$<LIST:TRANSFORM,$<LIST:REVERSE,$<TARGET_RUNTIME_DLL_DIRS:${target_name}>>,PREPEND,PATH=path_list_prepend:>")
+
+  set(runtime_targets "${ARG_RUNTIME_TARGETS}")
+  list(REVERSE runtime_targets)
+  foreach(runtime_target IN LISTS runtime_targets)
+    if(NOT TARGET ${runtime_target})
+      message(FATAL_ERROR
+              "cmake_set_test_runtime_path: runtime target '${runtime_target}' does not exist")
+    endif()
+    set_property(
+      TEST ${test_name}
+      APPEND
+      PROPERTY ENVIRONMENT_MODIFICATION
+               "PATH=path_list_prepend:$<TARGET_FILE_DIR:${runtime_target}>")
+  endforeach()
+endfunction()
+
 function(cmake_add_test target_name)
   set(options)
   set(oneValueArgs FOLDER)
-  set(multiValueArgs SOURCES LIBS DEFS INCLUDES)
+  set(multiValueArgs SOURCES LIBS DEFS INCLUDES RUNTIME_TARGETS)
   cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   if(TARGET ${target_name})
@@ -206,6 +256,9 @@ function(cmake_add_test target_name)
     target_include_directories(${target_name} PRIVATE ${ARG_INCLUDES})
   endif()
   add_test(NAME ${target_name} COMMAND ${target_name})
+  cmake_set_test_runtime_path(
+    ${target_name} ${target_name}
+    RUNTIME_TARGETS ${ARG_RUNTIME_TARGETS})
   cmake_config_target(${target_name} FOLDER "${ARG_FOLDER}")
 endfunction()
 

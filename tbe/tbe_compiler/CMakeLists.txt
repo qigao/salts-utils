@@ -25,30 +25,6 @@ target_include_directories(tbe_compiler
 set_property(TARGET tbe_compiler APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
-function(tbe_copy_turbonet_runtime_deps target_name)
-  if(WIN32)
-    set(runtime_deps
-        $<TARGET_FILE:TurboParser::Parser>
-        $<TARGET_FILE:TurboParser::Mustache>
-        $<TARGET_FILE:TurboUtils::Core>)
-    if(ARGC GREATER 1 AND ARGV1 STREQUAL "WITH_DATABIND")
-      list(APPEND runtime_deps $<TARGET_FILE:TurboParser::DataBind>)
-    endif()
- 
-    add_custom_command(
-      TARGET ${target_name}
-      POST_BUILD
-      COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different
-        ${runtime_deps}
-        $<TARGET_FILE_DIR:${target_name}>
-      COMMENT "Copying TurboNet runtime DLLs for ${target_name}"
-      VERBATIM)
-  endif()
-endfunction()
-
-tbe_copy_turbonet_runtime_deps(tbe_compiler)
-
 # =============================================================================
 # Copy templates next to executable for easy access
 # =============================================================================
@@ -89,7 +65,6 @@ cmake_add_test(test_tbe_compiler
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
-tbe_copy_turbonet_runtime_deps(test_tbe_compiler)
 
 if(BUILD_TESTING)
   find_package(unofficial-sqlite3 CONFIG REQUIRED)
@@ -108,7 +83,6 @@ if(BUILD_TESTING)
     FOLDER "tbe/tbe_compiler")
   target_include_directories(test_tbe_database_ddl
     PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
-  tbe_copy_turbonet_runtime_deps(test_tbe_database_ddl)
 endif()
 
 set(TBE_TYPED_ORDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -161,7 +135,6 @@ cmake_add_test(test_tbe_typed_order
   LIBS test_tbe_typed_order_static TurboUtils::TinyTest
   INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
   FOLDER "tbe/tbe_compiler")
-tbe_copy_turbonet_runtime_deps(test_tbe_typed_order WITH_DATABIND)
 
 cmake_add_test(test_tbe_typed_order_cpp
   SOURCES test_typed_order_cpp.cpp
@@ -172,7 +145,6 @@ target_compile_definitions(test_tbe_typed_order_cpp PRIVATE TBE_GENERATED_USE_SH
 set_target_properties(test_tbe_typed_order_cpp PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON)
-tbe_copy_turbonet_runtime_deps(test_tbe_typed_order_cpp WITH_DATABIND)
 
 find_program(TBE_WASM_GUEST_CLANG NAMES clang clang.exe)
 if(TBE_WASM_GUEST_CLANG)
