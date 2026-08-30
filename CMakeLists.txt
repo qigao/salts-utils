@@ -45,104 +45,20 @@ include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
 
-if(NOT DEFINED ENV{TURBOUTILS_ROOT}
-   OR "$ENV{TURBOUTILS_ROOT}" STREQUAL "")
-  message(FATAL_ERROR "Required dependency root is not defined: TURBOUTILS_ROOT")
-endif()
-if(NOT IS_DIRECTORY "$ENV{TURBOUTILS_ROOT}")
-  message(FATAL_ERROR
-          "TURBOUTILS_ROOT is not a directory: $ENV{TURBOUTILS_ROOT}")
-endif()
-
 find_package(Threads REQUIRED)
-find_package(
-  TurboUtils CONFIG REQUIRED
-  PATHS "$ENV{TURBOUTILS_ROOT}"
-  NO_DEFAULT_PATH)
-
-if(NOT TARGET TurboUtils::Core)
-  message(FATAL_ERROR "TurboUtils::Core is required by TurboParser")
-endif()
-if(NOT TARGET TurboUtils::STL)
-  message(FATAL_ERROR "TurboUtils::STL is required by TurboParser")
-endif()
-if(BUILD_TESTING AND NOT TARGET TurboUtils::TinyTest)
-  message(FATAL_ERROR "TurboUtils::TinyTest is required when TurboParser tests are enabled")
-endif()
-
-set(TURBOPARSER_REQUIRED_PARSER_TARGETS
-  QueryVM
-  IniParser
-  JsonParser
-  CsvParser
-  UriParser
-  TLVParser
-  LtvParser
-  ModbusParser
-  SoaParser
-  DotEnvParser
-  CmdParser
-  Toon
-  TomlParser
-  DateTimeParser
-  CYaml
-  CYamlJsonAdapter
-  Selector)
-foreach(parser_target IN LISTS TURBOPARSER_REQUIRED_PARSER_TARGETS)
-  if(NOT TARGET TurboUtils::${parser_target})
-    message(FATAL_ERROR
-      "TurboUtils::${parser_target} is required by TurboParser")
-  endif()
-endforeach()
+find_package(TurboUtils CONFIG REQUIRED PATHS "$ENV{TURBOUTILS_ROOT}"
+             NO_DEFAULT_PATH)
 
 # Additional components
 add_subdirectory(tools)
 include(FindTools)
 add_subdirectory(vendor)
 add_subdirectory(turbo_parser)
-if(TURBO_ENABLE_CAPTURE)
-  add_subdirectory(capture)
-endif()
+add_subdirectory(capture)
 add_subdirectory(turbo_serial)
 add_subdirectory(cron)
 add_subdirectory(mustache)
-add_subdirectory(tools/junit_to_html)
 add_subdirectory(tbe)
-add_subdirectory(tools/lua)
-
-set(verify_installed_device_dependencies
-    turbo_parser
-    turbo_serial
-    turbo_cron
-    mustache
-    tbe_schema
-    data_bind
-    tbe_compiler)
-set(verify_capture_windows_runtime OFF)
-if(TURBO_ENABLE_CAPTURE)
-  list(APPEND verify_installed_device_dependencies turbo_capture)
-  if(WIN32)
-    set(verify_capture_windows_runtime ON)
-  endif()
-endif()
-
-add_custom_target(
-  verify_installed_device_components
-  COMMAND
-    ${CMAKE_COMMAND}
-    -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
-    -DBUILD_DIR=${CMAKE_BINARY_DIR}
-    -DCMAKE_COMMAND_PATH=${CMAKE_COMMAND}
-    -DBUILD_CONFIG=$<CONFIG>
-    -DBUILD_GENERATOR=${CMAKE_GENERATOR}
-    -DTURBOUTILS_ROOT=$ENV{TURBOUTILS_ROOT}
-    -DEXPECT_CAPTURE=${TURBO_ENABLE_CAPTURE}
-    -DEXPECT_CAPTURE_WINDOWS_RUNTIME=${verify_capture_windows_runtime}
-    -P ${CMAKE_SOURCE_DIR}/cmake/VerifyInstalledDeviceComponents.cmake
-  DEPENDS ${verify_installed_device_dependencies}
-  VERBATIM)
-set_target_properties(verify_installed_device_components
-                      PROPERTIES FOLDER "cmake")
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
