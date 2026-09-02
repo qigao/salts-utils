@@ -18,7 +18,7 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(turbo_capture PRIVATE TurboUtils::Core)
+target_link_libraries(turbo_capture PRIVATE Rocida::Core)
 
 # CMake serializes PRIVATE shared-library targets into installed dependency
 # properties. Consume backend usage requirements locally and link their

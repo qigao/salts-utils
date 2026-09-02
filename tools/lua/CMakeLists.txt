@@ -2,7 +2,7 @@ find_package(Lua REQUIRED)
 
 add_library(c11_lua_bind INTERFACE)
 target_include_directories(c11_lua_bind INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(c11_lua_bind INTERFACE TurboUtils::Core TurboUtils::CMeta)
+target_link_libraries(c11_lua_bind INTERFACE Rocida::Core Rocida::CMeta)
 
 if(TARGET Lua::Lua)
   target_link_libraries(c11_lua_bind INTERFACE Lua::Lua)

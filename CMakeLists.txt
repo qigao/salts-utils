@@ -46,7 +46,17 @@ include(CmakeUtils)
 include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
-find_package(TurboUtils CONFIG REQUIRED PATHS "$ENV{TURBOUTILS_ROOT}"
+if(NOT DEFINED ENV{ROCIDA_ROOT} OR "$ENV{ROCIDA_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "ROCIDA_ROOT must name the installed Rocida profile")
+endif()
+file(TO_CMAKE_PATH "$ENV{ROCIDA_ROOT}" ROCIDA_ROOT_PATH)
+if(NOT IS_DIRECTORY "${ROCIDA_ROOT_PATH}")
+  message(FATAL_ERROR "ROCIDA_ROOT is not a directory: $ENV{ROCIDA_ROOT}")
+endif()
+
+unset(Rocida_DIR CACHE)
+unset(Rocida_DIR)
+find_package(Rocida 1.1 CONFIG REQUIRED PATHS "${ROCIDA_ROOT_PATH}"
              NO_DEFAULT_PATH)
 
 if(BUILD_TESTING)

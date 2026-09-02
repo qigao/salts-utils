@@ -39,8 +39,8 @@ target_include_directories(${TARGET_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(${TARGET_NAME}
-  PUBLIC TurboUtils::Core
-  PRIVATE TurboUtils::STL ${TURBOSERIAL_PLATFORM_LIBS})
+  PUBLIC Rocida::Core
+  PRIVATE Rocida::STL ${TURBOSERIAL_PLATFORM_LIBS})
 
 set_target_properties(${TARGET_NAME} PROPERTIES
   C_STANDARD 11

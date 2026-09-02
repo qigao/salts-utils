@@ -1,6 +1,6 @@
 /**
  * @file mustache_xml.h
- * @brief XML data provider for Mustache4C using TurboUtils::XmlParser
+ * @brief XML data provider for Mustache4C using Rocida::XmlParser
  */
 
 #ifndef MUSTACHE_XML_H

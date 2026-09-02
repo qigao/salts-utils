@@ -5,7 +5,7 @@ foreach(required_var
         CMAKE_CTEST_COMMAND_PATH
         BUILD_CONFIG
         BUILD_GENERATOR
-        TURBOUTILS_ROOT
+        ROCIDA_ROOT
         EXPECT_CAPTURE)
   if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
     message(FATAL_ERROR
@@ -79,7 +79,7 @@ foreach(installed_target_file IN LISTS installed_target_files)
                "^  IMPORTED_LINK_DEPENDENT_LIBRARIES_[A-Z0-9_]+ \\\"(.*)\\\"$")
       set(capture_link_dependencies "${CMAKE_MATCH_1}")
       foreach(capture_link_dependency IN LISTS capture_link_dependencies)
-        if(NOT capture_link_dependency STREQUAL "TurboUtils::Core")
+        if(NOT capture_link_dependency STREQUAL "Rocida::Core")
           message(
             FATAL_ERROR
               "TurboParser::Capture export contains unapproved link dependency: ${capture_link_dependency}"
@@ -103,7 +103,7 @@ execute_process(
           -G "${BUILD_GENERATOR}"
           "-DCMAKE_BUILD_TYPE=${BUILD_CONFIG}"
           "-DTurboParser_DIR=${install_prefix}/lib/cmake/TurboParser"
-          "-DTurboUtils_DIR=${TURBOUTILS_ROOT}/lib/cmake/TurboUtils"
+          "-DRocida_DIR=${ROCIDA_ROOT}/lib/cmake/Rocida"
           "-DTURBOPARSER_EXPECT_CAPTURE=${EXPECT_CAPTURE}"
   RESULT_VARIABLE configure_result)
 if(NOT configure_result EQUAL 0)

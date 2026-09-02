@@ -8,7 +8,7 @@
 ## 先决条件
 
 - 已按仓库规范配置工具链（CMake + 编译器）
-- 已克隆/初始化子模块/依赖（仓库根目录已有 `find_package(TurboUtils)` 的要求）
+- 已安装 Rocida 1.1，并将 `ROCIDA_ROOT` 指向与当前构建 profile 匹配的安装前缀
 - 需要时打开示例开关（默认 ON）：
   - `BUILD_EXAMPLES`（顶层 CMake 选项）
 
@@ -61,4 +61,3 @@ cmake --build build --config Release
 - JSON 查询结果（数组长度/字段值）
 - YAML 查询结果（名称列表）
 - XPath 查询结果（节点文本与节点名）
-

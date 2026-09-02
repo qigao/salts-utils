@@ -45,9 +45,9 @@ typed struct 的 storage 始终由调用方拥有。typed destination 必须先�
 便捷读取函数作为源码兼容入口保留。新代码使用 `DataBindFormat`、配置式 stream 和
 带状态的 getter，以获得可区分的错误语义。
 
-### 路径查询与 `TurboUtils::QueryVM`
+### 路径查询与 `Rocida::QueryVM`
 
-DataBind 已通过已安装 parser 的公开查询前端间接复用 `TurboUtils::QueryVM`：JSON 使用
+DataBind 已通过已安装 parser 的公开查询前端间接复用 `Rocida::QueryVM`：JSON 使用
 JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前端保留自己的
 语法、树遍历、类型转换和操作符语义，并把可执行表达式降低为 QVM bytecode；DataBind
 只负责选择、绑定、所有权和错误转换，不直接构造或执行 QVM 指令。

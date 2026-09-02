@@ -23,8 +23,8 @@ target_link_libraries(${TARGET_NAME}
     monocypher
     TurboParser::TbeSchema
   PUBLIC
-    TurboUtils::Core
-    TurboUtils::STL
+    Rocida::Core
+    Rocida::STL
     TurboParser::Parser
 )
 
@@ -48,41 +48,41 @@ install(FILES data_bind.h tbe_typed.h DESTINATION include)
 
 cmake_add_test(test_data_bind
   SOURCES test_data_bind.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   INCLUDES ${CMAKE_SOURCE_DIR}/tbe/schema/include
   FOLDER "tbe/data_bind")
 
 cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_test(test_data_bind_record
   SOURCES test_data_bind_record.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_test(test_data_bind_pool
   SOURCES test_data_bind_pool.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_test(test_tbe_typed
   SOURCES test_tbe_typed.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_benchmark(benchmark_data_bind_pool
   SOURCES benchmark_data_bind_pool.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_benchmark(benchmark_data_bind_json_path
   SOURCES benchmark_data_bind_json_path.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_benchmark(benchmark_tbe_typed
   SOURCES benchmark_tbe_typed.c
-  LIBS TurboParser::DataBind TurboUtils::TinyTest
+  LIBS TurboParser::DataBind Rocida::TinyTest
   FOLDER "tbe/data_bind")

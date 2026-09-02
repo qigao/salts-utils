@@ -25,7 +25,7 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(${TARGET_NAME} PUBLIC TurboUtils::Core)
+target_link_libraries(${TARGET_NAME} PUBLIC Rocida::Core)
 
 cmake_config_target(
   ${TARGET_NAME}
@@ -54,7 +54,7 @@ install(
 # Tests
 # =============================================================================
 
-set(TBE_SCHEMA_TEST_LIBS TurboParser::TbeSchema TurboUtils::TinyTest)
+set(TBE_SCHEMA_TEST_LIBS TurboParser::TbeSchema Rocida::TinyTest)
 foreach(test_name
         test_tbe_parser
         test_flags_bdd
@@ -145,7 +145,7 @@ cmake_add_benchmark(benchmark_tbe_simple
 
 cmake_add_benchmark(benchmark_encoding
   SOURCES test/benchmark_encoding.c
-  LIBS TurboUtils::TinyTest
+  LIBS Rocida::TinyTest
   FOLDER "tbe/schema/benchmarks")
 
 # =============================================================================

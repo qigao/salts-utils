@@ -16,13 +16,13 @@ target_include_directories(test_serialport
 target_compile_definitions(test_serialport
   PRIVATE TURBO_SERIAL_EXPORTS ${TURBOSERIAL_PRIVATE_DEFS})
 target_link_libraries(test_serialport
-  PRIVATE TurboUtils::Core TurboUtils::STL TurboUtils::TinyTest ${TURBOSERIAL_PLATFORM_LIBS})
+  PRIVATE Rocida::Core Rocida::STL Rocida::TinyTest ${TURBOSERIAL_PLATFORM_LIBS})
 add_test(NAME test_serialport COMMAND test_serialport)
 set_target_properties(test_serialport PROPERTIES FOLDER "turbo_serial/tests")
 
 add_executable(test_turbo_serial_public_abi test_turbo_serial_public_abi.c)
 target_link_libraries(test_turbo_serial_public_abi
-  PRIVATE ${TARGET_NAME} TurboUtils::TinyTest)
+  PRIVATE ${TARGET_NAME} Rocida::TinyTest)
 add_test(NAME test_turbo_serial_public_abi COMMAND test_turbo_serial_public_abi)
 set_target_properties(test_turbo_serial_public_abi PROPERTIES FOLDER "turbo_serial/tests")
 
@@ -35,6 +35,6 @@ target_include_directories(test_turbo_serial_mock
 target_compile_definitions(test_turbo_serial_mock
   PRIVATE TURBO_SERIAL_EXPORTS ${TURBOSERIAL_PRIVATE_DEFS} TURBO_SERIAL_TESTING)
 target_link_libraries(test_turbo_serial_mock
-  PRIVATE TurboUtils::Core TurboUtils::STL TurboUtils::TinyTest ${TURBOSERIAL_PLATFORM_LIBS})
+  PRIVATE Rocida::Core Rocida::STL Rocida::TinyTest ${TURBOSERIAL_PLATFORM_LIBS})
 add_test(NAME test_turbo_serial_mock COMMAND test_turbo_serial_mock)
 set_target_properties(test_turbo_serial_mock PROPERTIES FOLDER "turbo_serial/tests")

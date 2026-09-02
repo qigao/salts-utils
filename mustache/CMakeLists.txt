@@ -25,19 +25,19 @@ target_include_directories(
 # Link to json_parser and common
 target_link_libraries(
   mustache
-  PRIVATE TurboUtils::JsonParser TurboUtils::XmlParser
-  PUBLIC TurboUtils::Core)
+  PRIVATE Rocida::JsonParser Rocida::XmlParser
+  PUBLIC Rocida::Core)
 
 # Example executable
 
 cmake_add_executable(mustache_json_example
   SOURCES examples/json_example.c
-  LIBS TurboParser::Mustache TurboUtils::JsonParser
+  LIBS TurboParser::Mustache Rocida::JsonParser
   FOLDER "mustache/examples")
 
 cmake_add_executable(mustache_xml_example
   SOURCES examples/xml_example.c
-  LIBS TurboParser::Mustache TurboUtils::XmlParser
+  LIBS TurboParser::Mustache Rocida::XmlParser
   FOLDER "mustache/examples")
 
 add_subdirectory(test)

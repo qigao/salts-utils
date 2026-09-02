@@ -18,7 +18,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
 
 cmake_add_executable(tbe_compiler
   SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache TurboUtils::Core
+  LIBS TurboParser::TbeSchema TurboParser::Parser TurboParser::Mustache Rocida::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
@@ -51,7 +51,7 @@ install(
 
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS TurboParser::TbeSchema TurboUtils::TinyTest TurboParser::Mustache TurboUtils::Core
+  LIBS TurboParser::TbeSchema Rocida::TinyTest TurboParser::Mustache Rocida::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     C_STRUCT_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -73,9 +73,9 @@ if(BUILD_TESTING)
     SOURCES test_tbe_database_ddl.c compiler_core.c database_schema.c mustache_helpers.c
     LIBS
       TurboParser::TbeSchema
-      TurboUtils::TinyTest
+      Rocida::TinyTest
       TurboParser::Mustache
-      TurboUtils::Core
+      Rocida::Core
       unofficial::sqlite3::sqlite3
     DEFS
       TEST_DATABASE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_database_schema.schema"
@@ -132,13 +132,13 @@ set_target_properties(test_tbe_typed_order_shared PROPERTIES FOLDER "tbe/tbe_com
 
 cmake_add_test(test_tbe_typed_order
   SOURCES test_typed_order.c "${TBE_TYPED_ORDER_GUEST_SOURCE}"
-  LIBS test_tbe_typed_order_static TurboUtils::TinyTest
+  LIBS test_tbe_typed_order_static Rocida::TinyTest
   INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
   FOLDER "tbe/tbe_compiler")
 
 cmake_add_test(test_tbe_typed_order_cpp
   SOURCES test_typed_order_cpp.cpp
-  LIBS test_tbe_typed_order_shared TurboUtils::TinyTest
+  LIBS test_tbe_typed_order_shared Rocida::TinyTest
   INCLUDES "${TBE_TYPED_ORDER_GENERATED_DIR}"
   FOLDER "tbe/tbe_compiler")
 target_compile_definitions(test_tbe_typed_order_cpp PRIVATE TBE_GENERATED_USE_SHARED)
