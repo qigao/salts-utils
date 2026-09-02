@@ -25,6 +25,7 @@ TurboParser 拥有并导出：
 - `TurboParser::DataBind`
 - `TurboParser::Serial`
 - 可选的 `TurboParser::Capture`
+- 可选的 `TurboParser::CFlowUSB`
 
 Rocida 拥有并安装 QueryVM、JSON、YAML、CSV、INI、URI、TLV/LTV、Modbus、
 SOA、DotEnv、Cmd、TOON、TOML、DateTime 与 Selector 等低层 parser targets；
@@ -32,10 +33,14 @@ SOA、DotEnv、Cmd、TOON、TOML、DateTime 与 Selector 等低层 parser target
 第三方 Monocypher 由 TurboParser 私有持有；XML 的第三方实现由
 `Rocida::XmlParser` 封装，TurboParser 不暴露其 target 或生命周期。
 
-设备采集与串口实现也由 TurboParser 单独持有。迁移只改变源码和 CMake target 的归属：
-`turbo_capture.h`、`turbo_serial.h`、动态库文件名、C ABI、错误码和对象生命周期不变。
-Capture frame 仍是仅在同步 callback 返回前有效的 borrowed view；Serial handle 仍拥有
-RX/TX SPSC buffer，producer/consumer 拓扑与可用容量 `configured_size - 1` 不变。
+设备采集、串口与 USB 适配实现也由 TurboParser 单独持有。迁移只改变源码和 CMake
+target 的归属：`turbo_capture.h`、`turbo_serial.h`、`<cflow/usb.h>`、动态库文件名、C ABI、
+错误码和对象生命周期不变。Capture frame 仍是仅在同步 callback 返回前有效的 borrowed
+view；Serial handle 仍拥有 RX/TX SPSC buffer，producer/consumer 拓扑与可用容量
+`configured_size - 1` 不变。CFlowUSB 仍由一个内部线程独占 libusb native events，使用
+固定 transfer slots 与 bounded hotplug queue，并只由 `cflow_usb_run_ready()` 交付用户
+callback；borrowed transfer buffer、exactly-once terminal completion 与 quiescent destroy
+契约保持不变。
 
 TBE schema 与 DataBind 属于运行时层；`tbe_compiler` 只在构建、CI 和代码生成阶段运行，
 不会被 DataBind 在运行时调用。DataBind 的公共头文件包含 `turbo_parser.h`，因此
@@ -83,6 +88,10 @@ Windows preset 统一选择 vcpkg `capture` feature；因此常规 `install` tar
 启用 Capture 时导出该 target。安装态消费测试会分别验证 feature-off 不导出 Capture、
 feature-on 导出 Capture，并运行 Serial/Capture 的最小 C 消费端。
 
+CFlowUSB 默认关闭；只有同时选择 vcpkg `usb` feature 并设置
+`TURBO_ENABLE_CFLOW_USB=ON` 时才构建、安装和导出 `TurboParser::CFlowUSB`。libusb 保持
+PRIVATE 依赖，不进入公共头或消费方链接契约。
+
 Windows 测试进程通过 preset 的 `PATH` 查找 Rocida DLL；构建系统不复制外部 DLL。
 Linux preset 对应设置 `LD_LIBRARY_PATH`。
 
@@ -95,13 +104,14 @@ Linux preset 对应设置 `LD_LIBRARY_PATH`。
   不提供兼容别名。CMake 使用者还需把 Parser、Cron、Mustache、TBE 和 DataBind
   target 从 `TurboUtils::*` 迁移到 `TurboParser::*`，并改为
   `find_package(TurboParser CONFIG REQUIRED)`。Capture 与 Serial 使用者分别从
-  `TurboUtils::Capture`、`TurboUtils::turbo_serial` 迁移到
-  `TurboParser::Capture`、`TurboParser::Serial`。
+  `TurboUtils::Capture`、`TurboUtils::turbo_serial`、`TurboUtils::CFlowUSB` 迁移到
+  `TurboParser::Capture`、`TurboParser::Serial`、`TurboParser::CFlowUSB`。
 
 ## 迁移与回滚
 
-迁移顺序为：先把跨包适配迁出 TurboParser 消费边界，再发布包含 Capture/Serial 的
-TurboParser，然后迁移消费方的 CMake target，最后发布移除旧 targets 的 Rocida。
+迁移顺序为：先把跨包适配迁出 TurboParser 消费边界，再发布包含 Capture、Serial 与
+CFlowUSB 的 TurboParser，然后迁移消费方的 CMake target，最后发布移除旧 targets 的
+Rocida。
 发布前至少运行全量 CTest，并用 staging prefix 检查两个包的导出 target。
 
 若独立发布出现阻断，在 Rocida 清理版本发布前可回滚消费方的 CMake target；数据和

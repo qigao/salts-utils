@@ -1,22 +1,6 @@
 @PACKAGE_INIT@
 
-if(NOT DEFINED ENV{ROCIDA_ROOT} OR "$ENV{ROCIDA_ROOT}" STREQUAL "")
-  set(TurboParser_FOUND FALSE)
-  set(TurboParser_NOT_FOUND_MESSAGE
-      "ROCIDA_ROOT must name the installed Rocida profile")
-  return()
-endif()
-file(TO_CMAKE_PATH "$ENV{ROCIDA_ROOT}" ROCIDA_ROOT_PATH)
-if(NOT IS_DIRECTORY "${ROCIDA_ROOT_PATH}")
-  set(TurboParser_FOUND FALSE)
-  set(TurboParser_NOT_FOUND_MESSAGE
-      "ROCIDA_ROOT is not a directory: $ENV{ROCIDA_ROOT}")
-  return()
-endif()
-
 include(CMakeFindDependencyMacro)
-unset(Rocida_DIR CACHE)
-unset(Rocida_DIR)
 find_dependency(Rocida 1.1 CONFIG REQUIRED PATHS "${ROCIDA_ROOT_PATH}"
                 NO_DEFAULT_PATH)
 
