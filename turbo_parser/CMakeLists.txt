@@ -13,22 +13,22 @@ target_include_directories(
 
 target_link_libraries(
   turbo_parser
-  PUBLIC TurboUtils::Core
-   PRIVATE TurboUtils::CsvParser
-          TurboUtils::IniParser
-          TurboUtils::JsonParser
-          TurboUtils::UriParser
-          TurboUtils::TLVParser
-          TurboUtils::LtvParser
-          TurboUtils::ModbusParser
-          TurboUtils::SoaParser
-          TurboUtils::DotEnvParser
-          TurboUtils::CmdParser
-          TurboUtils::Toon
-          TurboUtils::TomlParser
-          TurboUtils::DateTimeParser
-          TurboUtils::CYamlJsonAdapter
-          cxml)
+  PUBLIC Rocida::Core
+   PRIVATE Rocida::CsvParser
+          Rocida::IniParser
+          Rocida::JsonParser
+          Rocida::UriParser
+          Rocida::TLVParser
+          Rocida::LtvParser
+          Rocida::ModbusParser
+          Rocida::SoaParser
+          Rocida::DotEnvParser
+          Rocida::CmdParser
+          Rocida::Toon
+          Rocida::TomlParser
+          Rocida::DateTimeParser
+          Rocida::CYamlJsonAdapter
+          Rocida::XmlParser)
 
 target_compile_definitions(turbo_parser PRIVATE TURBO_PARSER_BUILD_DLL)
 
@@ -48,11 +48,11 @@ install(
 # Tests
 cmake_add_test(test_turbo_parser
   SOURCES test/test_turbo_parser.c
-  LIBS turbo_parser TurboUtils::TinyTest
+  LIBS turbo_parser Rocida::TinyTest
   FOLDER turbo_parser)
 cmake_add_test(test_turbo_parser_bdd
   SOURCES test/test_turbo_parser_bdd.c
-  LIBS turbo_parser TurboUtils::TinyTest
+  LIBS turbo_parser Rocida::TinyTest
   FOLDER turbo_parser)
 
 if(BUILD_EXAMPLES)

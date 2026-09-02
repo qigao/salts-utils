@@ -19,7 +19,7 @@
 #include "turbo_str.h"
 #include "turbo_thread.h"
 #include "turbo_uuid.h"
-#include <turbostl/typed.h>
+#include <rocida/stl.h>
 
 #include <ctype.h>
 #include <errno.h>

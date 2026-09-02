@@ -10,6 +10,15 @@
       "name": "simde"
     },
     {
+      "name": "c-ares"
+    },
+    {
+      "name": "llhttp"
+    },
+    {
+      "name": "openssl"
+    },
+    {
       "name": "sqlite3",
       "default-features": false,
       "features": [

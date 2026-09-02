@@ -1,14 +1,14 @@
-# TurboUtils Mustache Module
+# TurboParser Mustache Module
 
 A C11 Mustache template engine with JSON and XML data providers, reusable
-compiled templates, callback-based output, and TurboUtils arena support.
+compiled templates, callback-based output, and Rocida arena support.
 
 ## Features
 
 - Mustache variables, sections, inverted sections, comments, delimiter changes,
   partials, dotted names, and optional lambdas
-- JSON integration through the installed `TurboUtils::JsonParser`
-- XML integration through cxml
+- JSON integration through the installed `Rocida::JsonParser`
+- XML integration through `Rocida::XmlParser`
 - HTML-escaped, unescaped, custom streaming, and arena-backed output
 - Immutable compiled templates that can be reused across renders
 - Bounded partial/lambda expansion for untrusted templates
@@ -22,18 +22,18 @@ application:
 ```cmake
 target_link_libraries(json_app PRIVATE
   TurboParser::Mustache
-  TurboUtils::JsonParser)
+  Rocida::JsonParser)
 
 target_link_libraries(xml_app PRIVATE
   TurboParser::Mustache
-  cxml)
+  Rocida::XmlParser)
 ```
 
-Installed consumers can obtain the exported TurboUtils targets with:
+Installed consumers obtain the exported Rocida targets through TurboParser's
+package dependency. Set `ROCIDA_ROOT` to the matching installed profile, then:
 
 ```cmake
 find_package(TurboParser CONFIG REQUIRED)
-find_package(TurboUtils CONFIG REQUIRED)
 ```
 
 ## Quick Start: JSON to String
@@ -168,7 +168,7 @@ updated to use the XML qualified name.
 | `mustache_process()` | Render with a custom provider | Uses the default expansion limit; returns `0` on success |
 | `mustache_process_ex()` | Render with an explicit expansion limit | `max_render_depth` must be nonzero |
 | `mustache_render_json()` | One-call JSON provider setup and render | Borrows JSON data and renderer |
-| `mustache_render_xml()` | One-call XML provider setup and render | Borrows the cxml tree and renderer |
+| `mustache_render_xml()` | One-call XML provider setup and render | Borrows the `Rocida::XmlParser` document node and renderer |
 | `mustache_string_renderer_get()` | Copy accumulated output | Returns a `malloc` allocation; caller uses `free()` |
 | `mustache_string_renderer_get_arena()` | Borrow arena-backed output | Do not `free()`; invalid after renderer/pool release or later mutation |
 

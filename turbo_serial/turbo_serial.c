@@ -27,7 +27,7 @@
 #include "platform.h"
 #include "turbo_str.h"
 #include "turbo_thread.h"
-#include <turbostl/vec.h>
+#include <rocida/stl.h>
 
 #include <stdbool.h>
 #include <stdatomic.h>

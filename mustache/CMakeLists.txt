@@ -20,25 +20,24 @@ target_include_directories(
   mustache
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include> $<INSTALL_INTERFACE:include/mustache>
-  PRIVATE ${CMAKE_SOURCE_DIR}/vendor/cxml/include
-          ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Link to json_parser and common
 target_link_libraries(
   mustache
-  PRIVATE TurboUtils::JsonParser cxml
-  PUBLIC TurboUtils::Core)
+  PRIVATE Rocida::JsonParser Rocida::XmlParser
+  PUBLIC Rocida::Core)
 
 # Example executable
 
 cmake_add_executable(mustache_json_example
   SOURCES examples/json_example.c
-  LIBS TurboParser::Mustache TurboUtils::JsonParser
+  LIBS TurboParser::Mustache Rocida::JsonParser
   FOLDER "mustache/examples")
 
 cmake_add_executable(mustache_xml_example
   SOURCES examples/xml_example.c
-  LIBS TurboParser::Mustache cxml
+  LIBS TurboParser::Mustache Rocida::XmlParser
   FOLDER "mustache/examples")
 
 add_subdirectory(test)

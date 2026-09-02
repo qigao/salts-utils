@@ -3,7 +3,7 @@
  * @brief Example of using XML data provider with Mustache
  */
 #include "mustache_xml.h"
-#include "xml/cxparser.h"
+#include <xml_parser/xml_parser.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,8 +33,8 @@ int main(void) {
         "{{/stats.item}}";
 
     /* Parse XML */
-    cxml_root_node *root = cxml_parse_xml(xml_data);
-    if (!root) {
+    turbo_xml_document document = {0};
+    if (turbo_xml_parse(&document, xml_data, strlen(xml_data), NULL, NULL) != TURBO_XML_OK) {
         fprintf(stderr, "Failed to parse XML\n");
         return 1;
     }
@@ -43,7 +43,7 @@ int main(void) {
     MUSTACHE_TEMPLATE *templ = mustache_compile(template_text, strlen(template_text), NULL, NULL, 0);
     if (!templ) {
         fprintf(stderr, "Failed to compile template\n");
-        cxml_root_node_free(root);
+        turbo_xml_document_destroy(&document);
         return 1;
     }
 
@@ -52,16 +52,17 @@ int main(void) {
     if (mustache_string_renderer_init(&renderer) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
         mustache_release(templ);
-        cxml_root_node_free(root);
+        turbo_xml_document_destroy(&document);
         return 1;
     }
 
     /* Render */
-    if (mustache_render_xml(templ, root, &renderer.base, &renderer, NULL, NULL) != 0) {
+    if (mustache_render_xml(templ, (void *)turbo_xml_document_root(&document).impl,
+                            &renderer.base, &renderer, NULL, NULL) != 0) {
         fprintf(stderr, "Failed to render template\n");
         mustache_string_renderer_free(&renderer);
         mustache_release(templ);
-        cxml_root_node_free(root);
+        turbo_xml_document_destroy(&document);
         return 1;
     }
 
@@ -70,7 +71,7 @@ int main(void) {
         fprintf(stderr, "Failed to copy rendered output\n");
         mustache_string_renderer_free(&renderer);
         mustache_release(templ);
-        cxml_root_node_free(root);
+        turbo_xml_document_destroy(&document);
         return 1;
     }
     printf("Rendered result:\n---\n%s\n---\n", result);
@@ -79,7 +80,7 @@ int main(void) {
     /* Cleanup */
     mustache_string_renderer_free(&renderer);
     mustache_release(templ);
-    cxml_root_node_free(root);
+    turbo_xml_document_destroy(&document);
 
     return 0;
 }
