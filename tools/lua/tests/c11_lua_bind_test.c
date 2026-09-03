@@ -1,5 +1,5 @@
 /* C11 public binding API tests. */
-#include "turbo_lua.h"
+#include "salts_lua.h"
 #include "tinytest.h"
 
 #include <stdbool.h>
@@ -35,7 +35,7 @@ static int typed_fetch_continue(lua_State* L, int status,
 static int typed_fetch(lua_State* L) {
     int request_id;
     int rc = c11_lua_get_checked(L, 1, &request_id);
-    if (rc != TURBO_OK)
+    if (rc != SALTS_OK)
         return c11_lua_typed_argument_error(L, 1, rc);
     lua_pushliteral(L, "pending");
     return lua_yieldk(L, 1, (lua_KContext)request_id,
@@ -113,38 +113,38 @@ suite("c11 lua bind") {
         bool boolean = false;
 
         lua_pushinteger(L, 42);
-        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &integer), SALTS_OK);
         check_equal(integer, 42);
         lua_pop(L, 1);
 
         lua_pushnumber(L, 3.5);
         integer = 77;
-        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
+        check_equal(c11_lua_get_checked(L, -1, &integer), SALTS_EPROTO);
         check_equal(integer, 77);
-        check_equal(c11_lua_get_checked(L, -1, &number), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &number), SALTS_OK);
         check_within(number, 3.5, 0.00001);
         lua_pop(L, 1);
 
         lua_pushinteger(L, beyond_int);
         integer = 88;
-        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_ERANGE);
+        check_equal(c11_lua_get_checked(L, -1, &integer), SALTS_ERANGE);
         check_equal(integer, 88);
         lua_pop(L, 1);
 
         lua_pushinteger(L, -1);
         byte = 9;
-        check_equal(c11_lua_get_checked(L, -1, &byte), TURBO_ERANGE);
+        check_equal(c11_lua_get_checked(L, -1, &byte), SALTS_ERANGE);
         check_equal(byte, 9);
         lua_pop(L, 1);
 
         lua_pushboolean(L, 1);
-        check_equal(c11_lua_get_checked(L, -1, &boolean), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &boolean), SALTS_OK);
         check_true(boolean);
         lua_pop(L, 1);
 
         lua_pushstring(L, "12");
         integer = 99;
-        check_equal(c11_lua_get_checked(L, -1, &integer), TURBO_EPROTO);
+        check_equal(c11_lua_get_checked(L, -1, &integer), SALTS_EPROTO);
         check_equal(integer, 99);
         lua_pop(L, 1);
     }
@@ -154,7 +154,7 @@ suite("c11 lua bind") {
         tstr owned = NULL;
 
         lua_pushlstring(L, payload, sizeof(payload));
-        check_equal(c11_lua_get_checked(L, -1, &owned), TURBO_OK);
+        check_equal(c11_lua_get_checked(L, -1, &owned), SALTS_OK);
         lua_pop(L, 1);
 
         check_not_null(owned);
@@ -184,10 +184,10 @@ suite("c11 lua bind") {
     }
 
     it("adapts ordinary typed C functions to Lua") {
-        check_equal(C11_LUA_BIND_AS(L, "answer", typed_answer), TURBO_OK);
-        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
-        check_equal(C11_LUA_BIND_AS(L, "blend", typed_blend), TURBO_OK);
-        check_equal(C11_LUA_BIND_AS(L, "notify", typed_notify), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "answer", typed_answer), SALTS_OK);
+        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), SALTS_OK);
+        check_equal(C11_LUA_BIND_AS(L, "blend", typed_blend), SALTS_OK);
+        check_equal(C11_LUA_BIND_AS(L, "notify", typed_notify), SALTS_OK);
 
         check_equal(luaL_dostring(
                          L,
@@ -200,8 +200,8 @@ suite("c11 lua bind") {
     }
 
     it("adapts functions with nine parameters") {
-        check_equal(C11_LUA_BIND(L, typed_sum9), TURBO_OK);
-        check_equal(C11_LUA_BIND(L, typed_capture9), TURBO_OK);
+        check_equal(C11_LUA_BIND(L, typed_sum9), SALTS_OK);
+        check_equal(C11_LUA_BIND(L, typed_capture9), SALTS_OK);
 
         check_equal(luaL_dostring(
                          L,
@@ -212,7 +212,7 @@ suite("c11 lua bind") {
     }
 
     it("rejects typed function arity and argument mismatches") {
-        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "add", typed_add), SALTS_OK);
 
         check_not_equal(luaL_dostring(L, "return add(1)"), LUA_OK);
         check_contains(lua_tostring(L, -1), "expects 2 argument");
@@ -224,7 +224,7 @@ suite("c11 lua bind") {
     }
 
     it("binds a yieldable C function through the common binder") {
-        check_equal(C11_LUA_BIND_AS(L, "fetch", typed_fetch), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "fetch", typed_fetch), SALTS_OK);
 
         check_equal(luaL_dostring(
                          L,
@@ -239,7 +239,7 @@ suite("c11 lua bind") {
     }
 
     it("rejects coroutine suspension from the main Lua thread") {
-        check_equal(C11_LUA_BIND(L, typed_fetch), TURBO_OK);
+        check_equal(C11_LUA_BIND(L, typed_fetch), SALTS_OK);
         check_not_equal(luaL_dostring(L, "return typed_fetch(1)"), LUA_OK);
         check_true(lua_isstring(L, -1));
         lua_pop(L, 1);
@@ -249,11 +249,11 @@ suite("c11 lua bind") {
         int base = lua_gettop(L);
 
         check_equal(c11_lua_create_environment(L, "missing_child", "missing_parent", true),
-                     TURBO_ENOENT);
+                     SALTS_ENOENT);
         check_equal(lua_gettop(L), base);
 
-        check_equal(c11_lua_create_environment(L, "parent_env", NULL, true), TURBO_OK);
-        check_equal(c11_lua_create_environment(L, "child_env", "parent_env", true), TURBO_OK);
+        check_equal(c11_lua_create_environment(L, "parent_env", NULL, true), SALTS_OK);
+        check_equal(c11_lua_create_environment(L, "child_env", "parent_env", true), SALTS_OK);
         check_equal(c11_lua_run_script_in_environment(L, "parent_env", "shared = 8"),
                      LUA_OK);
         check_equal(c11_lua_run_script_in_environment(L, "child_env", "x = shared + 1"),
@@ -268,7 +268,7 @@ suite("c11 lua bind") {
         check_true(lua_isnil(L, -1));
         lua_pop(L, 1);
 
-        check_equal(c11_lua_create_isolated_environment(L, "isolated", NULL), TURBO_OK);
+        check_equal(c11_lua_create_isolated_environment(L, "isolated", NULL), SALTS_OK);
         check_not_equal(c11_lua_run_script_in_environment(L, "isolated", "print('blocked')"),
                      LUA_OK);
         check_true(lua_isstring(L, -1));
@@ -282,22 +282,22 @@ suite("c11 lua bind") {
         lua_newtable(L);
         lua_pushinteger(L, 17);
         lua_setfield(L, -2, "value");
-        check_equal(c11_lua_ref_create(L, -1, &ref), TURBO_OK);
+        check_equal(c11_lua_ref_create(L, -1, &ref), SALTS_OK);
         lua_pop(L, 1);
 
         check_true(c11_lua_ref_is_valid(&ref));
-        check_equal(c11_lua_ref_push(L, &ref), TURBO_OK);
+        check_equal(c11_lua_ref_push(L, &ref), SALTS_OK);
         lua_getfield(L, -1, "value");
         check_equal(lua_tointeger(L, -1), 17);
         lua_pop(L, 2);
 
-        check_equal(c11_lua_ref_release(&ref), TURBO_OK);
+        check_equal(c11_lua_ref_release(&ref), SALTS_OK);
         check_false(c11_lua_ref_is_valid(&ref));
-        check_equal(c11_lua_ref_push(L, &ref), TURBO_ENOENT);
+        check_equal(c11_lua_ref_push(L, &ref), SALTS_ENOENT);
     }
 
     it("calls global functions through a protected boundary") {
-        check_equal(C11_LUA_BIND_AS(L, "sum", typed_add), TURBO_OK);
+        check_equal(C11_LUA_BIND_AS(L, "sum", typed_add), SALTS_OK);
 
         lua_pushinteger(L, 20);
         lua_pushinteger(L, 22);

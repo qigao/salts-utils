@@ -19,9 +19,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cmd_arger.h"
 #include "compiler_core.h"
-#include "turbo_fs.h"
-#include "turbo_parser.h"
+#include "salts_fs.h"
 
 static const char *TBE_COMPILER_LANG_OPTION_LIST =
     "c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres";
@@ -32,12 +32,12 @@ static const char *TBE_COMPILER_LANG_OPTION_HELP =
 static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
     const char *path_env;
     const char *cursor;
-    char candidate[TURBO_FS_MAX_PATH];
-    char directory[TURBO_FS_MAX_PATH];
+    char candidate[SALTS_FS_MAX_PATH];
+    char directory[SALTS_FS_MAX_PATH];
 
     if (argv0 == NULL || out == NULL || out_size == 0) return 0;
     if (strchr(argv0, '/') != NULL || strchr(argv0, '\\') != NULL) {
-        return turbo_fs_path_dirname(argv0, out, out_size) == 0;
+        return salts_fs_path_dirname(argv0, out, out_size) == 0;
     }
     path_env = getenv("PATH");
     if (path_env == NULL) return 0;
@@ -54,13 +54,13 @@ static int resolve_resource_dir(const char *argv0, char *out, size_t out_size) {
         if (len > 0 && len < sizeof(directory)) {
             memcpy(directory, cursor, len);
             directory[len] = '\0';
-            if (turbo_fs_path_join(candidate, sizeof(candidate), directory, argv0) == 0 &&
-                turbo_fs_access(candidate, TURBO_FS_ACCESS_EXISTS) == 0)
-                return turbo_fs_path_dirname(candidate, out, out_size) == 0;
+            if (salts_fs_path_join(candidate, sizeof(candidate), directory, argv0) == 0 &&
+                salts_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
+                return salts_fs_path_dirname(candidate, out, out_size) == 0;
 #ifdef _WIN32
             if (snprintf(candidate, sizeof(candidate), "%s\\%s.exe", directory, argv0) > 0 &&
-                turbo_fs_access(candidate, TURBO_FS_ACCESS_EXISTS) == 0)
-                return turbo_fs_path_dirname(candidate, out, out_size) == 0;
+                salts_fs_access(candidate, SALTS_FS_ACCESS_EXISTS) == 0)
+                return salts_fs_path_dirname(candidate, out, out_size) == 0;
 #endif
         }
         if (end == NULL) break;
@@ -79,47 +79,46 @@ int main(int argc, char **argv) {
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
     int64_t  lang_enum     = TBE_COMPILER_LANG_C;
-    char resource_dir[TURBO_FS_MAX_PATH];
+    char resource_dir[SALTS_FS_MAX_PATH];
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
         fprintf(stderr, "Failed to locate tbe_compiler resource directory\n");
         return 1;
     }
 
-    turbo_cmd_parser_t *parser = turbo_cmd_create("tbe_compiler", "1.0");
-    
-    turbo_cmd_add_required_string(parser, &schema_path, "schema",
-                                 "Path to the .schema definition file");
-    
-    turbo_cmd_add_string(parser, &template_path, "template", "t",
-                                 "Path to a custom Mustache template file");
+    CmdArgerDesc required_args[] = {
+        cmd_arger_desc_string(&schema_path, "schema",
+                              "Path to the .schema definition file"),
+    };
+    CmdArgerDesc optional_args[] = {
+        cmd_arger_desc_string_sh(&template_path, "template", "t",
+                                 "Path to a custom Mustache template file"),
+        cmd_arger_desc_string_sh(&lang_name, "lang", "l",
+                                 TBE_COMPILER_LANG_OPTION_HELP),
+        cmd_arger_desc_string_sh(
+            &output_path, "output", "o",
+            "Output file path (required for sqlite/postgresql/postgres; "
+            "default: stdout for other languages)"),
+        cmd_arger_desc_string_sh(&source_output_path, "source-output", "s",
+                                 "Generate the C typed serde companion source"),
+        cmd_arger_desc_string(&lua_output_path, "lua-output",
+                              "Generate C adapters from typed records to Lua tables"),
+        cmd_arger_desc_string_sh(&guest_output_path, "guest-output", "g",
+                                 "Generate the C Wasm guest adapter source"),
+        cmd_arger_desc_string_sh(&dsl_output_path, "dsl-output", "d",
+                                 "Generate DSL type declarations (.rfl file)"),
+    };
 
-    turbo_cmd_add_string(parser, &lang_name, "lang", "l",
-                                 TBE_COMPILER_LANG_OPTION_HELP);
-                               
-    turbo_cmd_add_string(parser, &output_path, "output", "o",
-                                 "Output file path (required for sqlite/postgresql/postgres; "
-                                 "default: stdout for other languages)");
-
-    turbo_cmd_add_string(parser, &source_output_path, "source-output", "s",
-                                 "Generate the C typed serde companion source");
-
-    turbo_cmd_add_string(parser, &lua_output_path, "lua-output", NULL,
-                                 "Generate C adapters from typed records to Lua tables");
-
-    turbo_cmd_add_string(parser, &guest_output_path, "guest-output", "g",
-                                 "Generate the C Wasm guest adapter source");
-                                 
-    turbo_cmd_add_string(parser, &dsl_output_path, "dsl-output", "d",
-                                 "Generate DSL type declarations (.rfl file)");
-
-    turbo_cmd_parse(parser, argc, argv, true);
+    cmd_arger_parse(optional_args,
+                    (uint32_t)(sizeof(optional_args) / sizeof(optional_args[0])),
+                    required_args,
+                    (uint32_t)(sizeof(required_args) / sizeof(required_args[0])),
+                    argc, argv, "tbe_compiler 1.0", cmd_arger_true);
 
     if (lang_name != NULL &&
         tbe_compiler_parse_language_name(lang_name, &lang_enum) != 0) {
         fprintf(stderr, "Unsupported --lang '%s'. Expected one of: %s\n",
                 lang_name, TBE_COMPILER_LANG_OPTION_LIST);
-        turbo_cmd_destroy(parser);
         return 1;
     }
 
@@ -136,6 +135,5 @@ int main(int argc, char **argv) {
     };
 
     int res = tbe_compiler_run(&options);
-    turbo_cmd_destroy(parser);
     return res;
 }

@@ -79,13 +79,13 @@ static int opensles_init(android_audio_ctx_t *ctx) {
     /* Create engine */
     result = slCreateEngine(&ctx->engine_object, 0, NULL, 0, NULL, NULL);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create OpenSL ES engine");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create OpenSL ES engine");
         return -1;
     }
 
     result = (*ctx->engine_object)->Realize(ctx->engine_object, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to realize engine");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to realize engine");
         return -1;
     }
 
@@ -93,7 +93,7 @@ static int opensles_init(android_audio_ctx_t *ctx) {
                                                  SL_IID_ENGINE,
                                                  &ctx->engine);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to get engine interface");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to get engine interface");
         return -1;
     }
 
@@ -141,13 +141,13 @@ static int opensles_init(android_audio_ctx_t *ctx) {
     );
 
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create audio recorder");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create audio recorder");
         return -1;
     }
 
     result = (*ctx->recorder_object)->Realize(ctx->recorder_object, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to realize recorder");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to realize recorder");
         return -1;
     }
 
@@ -156,7 +156,7 @@ static int opensles_init(android_audio_ctx_t *ctx) {
                                                    SL_IID_RECORD,
                                                    &ctx->recorder);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to get recorder interface");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to get recorder interface");
         return -1;
     }
 
@@ -165,7 +165,7 @@ static int opensles_init(android_audio_ctx_t *ctx) {
                                                    SL_IID_ANDROIDSIMPLEBUFFERQUEUE,
                                                    &ctx->buffer_queue);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to get buffer queue interface");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to get buffer queue interface");
         return -1;
     }
 
@@ -174,7 +174,7 @@ static int opensles_init(android_audio_ctx_t *ctx) {
                                                     opensles_buffer_queue_callback,
                                                     ctx);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to register callback");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to register callback");
         return -1;
     }
 
@@ -194,7 +194,7 @@ static int opensles_start(android_audio_ctx_t *ctx) {
     SLresult result = (*ctx->recorder)->SetRecordState(ctx->recorder,
                                                        SL_RECORDSTATE_RECORDING);
     if (result != SL_RESULT_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to start recording");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to start recording");
         return -1;
     }
 
@@ -250,7 +250,7 @@ static int miniaudio_init(android_audio_ctx_t *ctx) {
     config.pUserData = ctx;
 
     if (ma_device_init(NULL, &config, &ctx->miniaudio_device) != MA_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to initialize miniaudio");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to initialize miniaudio");
         return -1;
     }
 
@@ -260,7 +260,7 @@ static int miniaudio_init(android_audio_ctx_t *ctx) {
 
 static int miniaudio_start(android_audio_ctx_t *ctx) {
     if (ma_device_start(&ctx->miniaudio_device) != MA_SUCCESS) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to start miniaudio");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to start miniaudio");
         return -1;
     }
 

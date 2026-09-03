@@ -1,11 +1,11 @@
 /**
  * Android Capture Dispatcher
  *
- * Adapts the Android native capture backends to the TurboUtils capture API.
+ * Adapts the Android native capture backends to the Salts capture API.
  * Screen frames require the application-owned Java MediaProjection surface.
  */
 
-#include "turbo_capture.h"
+#include "salts_capture.h"
 #include "capture_video_backend.h"
 
 #include <camera/NdkCameraManager.h>
@@ -90,7 +90,7 @@ static uint64_t now_us(void) {
 }
 
 static void android_audio_callback(void *user_data, const int16_t *data, size_t frames) {
-    turbo_capture_t *capture = (turbo_capture_t *)user_data;
+    salts_capture_t *capture = (salts_capture_t *)user_data;
     if (!capture || !capture->audio_cb || !capture->platform_ctx) return;
 
     android_audio_platform_t *platform = (android_audio_platform_t *)capture->platform_ctx;
@@ -104,30 +104,30 @@ static void android_video_callback(void *user_data,
                                    int width,
                                    int height,
                                    int64_t timestamp_us) {
-    turbo_capture_t *capture = (turbo_capture_t *)user_data;
+    salts_capture_t *capture = (salts_capture_t *)user_data;
     if (!capture || !capture->video_cb) return;
     capture->video_cb(capture, data, len, width, height,
                       (uint64_t)timestamp_us, capture->user_data);
 }
 
-int turbo_capture_list_audio_devices(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     memset(&devices[0], 0, sizeof(devices[0]));
     devices[0].index = 0;
-    devices[0].type = TURBO_CAPTURE_TYPE_AUDIO;
+    devices[0].type = SALTS_CAPTURE_TYPE_AUDIO;
     devices[0].is_default = 1;
     strncpy(devices[0].id, "default", sizeof(devices[0].id) - 1);
     strncpy(devices[0].name, "Default Microphone", sizeof(devices[0].name) - 1);
     return 1;
 }
 
-int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_video_devices(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     memset(&devices[0], 0, sizeof(devices[0]));
     devices[0].index = 0;
-    devices[0].type = TURBO_CAPTURE_TYPE_VIDEO;
+    devices[0].type = SALTS_CAPTURE_TYPE_VIDEO;
     devices[0].is_default = 1;
     strncpy(devices[0].id, "back", sizeof(devices[0].id) - 1);
     strncpy(devices[0].name, "Back Camera", sizeof(devices[0].name) - 1);
@@ -136,7 +136,7 @@ int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_co
 
     memset(&devices[1], 0, sizeof(devices[1]));
     devices[1].index = 1;
-    devices[1].type = TURBO_CAPTURE_TYPE_VIDEO;
+    devices[1].type = SALTS_CAPTURE_TYPE_VIDEO;
     devices[1].is_default = 0;
     strncpy(devices[1].id, "front", sizeof(devices[1].id) - 1);
     strncpy(devices[1].name, "Front Camera", sizeof(devices[1].name) - 1);
@@ -146,7 +146,7 @@ int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_co
 static int android_video_mode_from_metadata(
     const ACameraMetadata *metadata,
     uint64_t mode_id,
-    turbo_video_native_mode_t *mode,
+    salts_video_native_mode_t *mode,
     int *out_min_framerate,
     int *out_max_framerate) {
     ACameraMetadata_const_entry configurations;
@@ -170,7 +170,7 @@ static int android_video_mode_from_metadata(
         ACameraMetadata_getConstEntry(
             metadata, ACAMERA_SCALER_AVAILABLE_MIN_FRAME_DURATIONS,
             &min_frame_durations) != ACAMERA_OK) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     configuration_offset = stream_index * 4u;
@@ -181,7 +181,7 @@ static int android_video_mode_from_metadata(
             AIMAGE_FORMAT_YUV_420_888 ||
         configurations.data.i32[configuration_offset + 3u] !=
             ANDROID_STREAM_CONFIGURATION_OUTPUT) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
     min_framerate = fps_ranges.data.i32[fps_offset];
@@ -189,7 +189,7 @@ static int android_video_mode_from_metadata(
     if (configurations.data.i32[configuration_offset + 1u] <= 0 ||
         configurations.data.i32[configuration_offset + 2u] <= 0 ||
         min_framerate <= 0 || max_framerate != min_framerate) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
     for (uint32_t offset = 0; offset + 3u < min_frame_durations.count;
@@ -206,18 +206,18 @@ static int android_video_mode_from_metadata(
     }
     if (min_frame_duration <= 0 ||
         max_framerate > INT64_C(1000000000) / min_frame_duration) {
-        return TURBO_CAPTURE_ERR_UNSUPPORTED;
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
     }
 
     mode->width = configurations.data.i32[configuration_offset + 1u];
     mode->height = configurations.data.i32[configuration_offset + 2u];
     mode->framerate_numerator = (uint32_t)max_framerate;
     mode->framerate_denominator = 1;
-    mode->format = TURBO_VIDEO_CAPTURE_FORMAT_I420;
+    mode->format = SALTS_VIDEO_CAPTURE_FORMAT_I420;
     mode->mode_id = mode_id;
     if (out_min_framerate) *out_min_framerate = min_framerate;
     if (out_max_framerate) *out_max_framerate = max_framerate;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
 static int android_video_device_open(const char *device_id,
@@ -228,7 +228,7 @@ static int android_video_device_open(const char *device_id,
     int use_facing;
     int requested_facing;
 
-    if (!backend_ctx) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!backend_ctx) return SALTS_CAPTURE_ERR_FORMAT;
     *backend_ctx = NULL;
     use_facing = !device_id || !device_id[0] ||
                  strcmp(device_id, "back") == 0 ||
@@ -243,14 +243,14 @@ static int android_video_device_open(const char *device_id,
         !camera_ids) {
         if (camera_ids) ACameraManager_deleteCameraIdList(camera_ids);
         if (manager) ACameraManager_delete(manager);
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (android_video_device_ctx_t *)calloc(1, sizeof(*ctx));
     if (!ctx) {
         ACameraManager_deleteCameraIdList(camera_ids);
         ACameraManager_delete(manager);
-        return TURBO_CAPTURE_ERR_NOMEM;
+        return SALTS_CAPTURE_ERR_NOMEM;
     }
     ctx->manager = manager;
 
@@ -284,10 +284,10 @@ static int android_video_device_open(const char *device_id,
     if (!ctx->metadata) {
         ACameraManager_delete(ctx->manager);
         free(ctx);
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
     *backend_ctx = ctx;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
 static void android_video_device_close(void *backend_ctx) {
@@ -301,7 +301,7 @@ static void android_video_device_close(void *backend_ctx) {
 
 static int android_video_device_list_modes(
     void *backend_ctx,
-    turbo_video_native_mode_t *modes,
+    salts_video_native_mode_t *modes,
     size_t capacity,
     size_t *out_count) {
     android_video_device_ctx_t *ctx =
@@ -313,7 +313,7 @@ static int android_video_device_list_modes(
     size_t count = 0;
 
     if (!ctx || !modes || capacity == 0 || !out_count) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
     if (ACameraMetadata_getConstEntry(
             ctx->metadata, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS,
@@ -321,7 +321,7 @@ static int android_video_device_list_modes(
         ACameraMetadata_getConstEntry(
             ctx->metadata, ACAMERA_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES,
             &fps_ranges) != ACAMERA_OK) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     memset(modes, 0, sizeof(*modes) * capacity);
@@ -333,7 +333,7 @@ static int android_video_device_list_modes(
             uint64_t mode_id = ((uint64_t)stream_index << 32) | fps_index;
             if (android_video_mode_from_metadata(
                     ctx->metadata, mode_id, &modes[count], NULL, NULL) ==
-                TURBO_CAPTURE_OK) {
+                SALTS_CAPTURE_OK) {
                 if (++count == capacity) goto done;
             }
         }
@@ -341,31 +341,31 @@ static int android_video_device_list_modes(
 
 done:
     *out_count = count;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_screens(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     memset(&devices[0], 0, sizeof(devices[0]));
     devices[0].index = 0;
-    devices[0].type = TURBO_CAPTURE_TYPE_SCREEN;
+    devices[0].type = SALTS_CAPTURE_TYPE_SCREEN;
     devices[0].is_default = 1;
     strncpy(devices[0].id, "screen:0", sizeof(devices[0].id) - 1);
     strncpy(devices[0].name, "Device Screen", sizeof(devices[0].name) - 1);
     return 1;
 }
 
-int turbo_capture_list_gpu_devices(turbo_capture_device_t *devices, int max_count) {
-    if (!devices || max_count <= 0) return TURBO_CAPTURE_ERR_NOMEM;
+int salts_capture_list_gpu_devices(salts_capture_device_t *devices, int max_count) {
+    if (!devices || max_count <= 0) return SALTS_CAPTURE_ERR_NOMEM;
     return 0;
 }
 
-turbo_capture_t *turbo_audio_capture_create(const char *device_id,
-                                            const turbo_audio_capture_config_t *config) {
+salts_capture_t *salts_audio_capture_create(const char *device_id,
+                                            const salts_audio_capture_config_t *config) {
     (void)device_id;
 
-    turbo_capture_t *capture = (turbo_capture_t *)calloc(1, sizeof(*capture));
+    salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(*capture));
     android_audio_platform_t *platform =
         (android_audio_platform_t *)calloc(1, sizeof(*platform));
     if (!capture || !platform) {
@@ -384,8 +384,8 @@ turbo_capture_t *turbo_audio_capture_create(const char *device_id,
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_AUDIO;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_AUDIO;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = platform;
     android_audio_set_callback(platform->native, android_audio_callback, capture);
     return capture;
@@ -393,27 +393,27 @@ turbo_capture_t *turbo_audio_capture_create(const char *device_id,
 
 static int android_video_device_create_capture(
     void *backend_ctx,
-    const turbo_video_native_mode_t *mode,
-    turbo_capture_t **out_capture) {
+    const salts_video_native_mode_t *mode,
+    salts_capture_t **out_capture) {
     android_video_device_ctx_t *device =
         (android_video_device_ctx_t *)backend_ctx;
     ACameraMetadata *metadata = NULL;
-    turbo_video_native_mode_t actual_mode;
-    turbo_capture_t *capture;
+    salts_video_native_mode_t actual_mode;
+    salts_capture_t *capture;
     android_video_platform_t *platform;
     int min_framerate = 0;
     int max_framerate = 0;
 
-    if (!device || !mode || !out_capture) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!device || !mode || !out_capture) return SALTS_CAPTURE_ERR_FORMAT;
     *out_capture = NULL;
     if (ACameraManager_getCameraCharacteristics(
             device->manager, device->camera_id, &metadata) != ACAMERA_OK ||
         !metadata) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
     if (android_video_mode_from_metadata(
             metadata, mode->mode_id, &actual_mode,
-            &min_framerate, &max_framerate) != TURBO_CAPTURE_OK ||
+            &min_framerate, &max_framerate) != SALTS_CAPTURE_OK ||
         actual_mode.width != mode->width ||
         actual_mode.height != mode->height ||
         actual_mode.framerate_numerator != mode->framerate_numerator ||
@@ -421,16 +421,16 @@ static int android_video_device_create_capture(
         actual_mode.format != mode->format ||
         actual_mode.mode_id != mode->mode_id) {
         ACameraMetadata_free(metadata);
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
     ACameraMetadata_free(metadata);
 
-    capture = (turbo_capture_t *)calloc(1, sizeof(*capture));
+    capture = (salts_capture_t *)calloc(1, sizeof(*capture));
     platform = (android_video_platform_t *)calloc(1, sizeof(*platform));
     if (!capture || !platform) {
         free(capture);
         free(platform);
-        return TURBO_CAPTURE_ERR_NOMEM;
+        return SALTS_CAPTURE_ERR_NOMEM;
     }
     platform->native = android_camera_create(
         mode->width, mode->height, min_framerate, max_framerate,
@@ -438,20 +438,20 @@ static int android_video_device_create_capture(
     if (!platform->native) {
         free(platform);
         free(capture);
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_VIDEO;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_VIDEO;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = platform;
     android_camera_set_callback(platform->native,
                                 android_video_callback, capture);
     *out_capture = capture;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
-    static const turbo_video_backend_ops_t ops = {
+const salts_video_backend_ops_t *salts_video_platform_backend(void) {
+    static const salts_video_backend_ops_t ops = {
         android_video_device_open,
         android_video_device_close,
         android_video_device_list_modes,
@@ -460,8 +460,8 @@ const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
     return &ops;
 }
 
-turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t *config) {
-    turbo_capture_t *capture = (turbo_capture_t *)calloc(1, sizeof(*capture));
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+    salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(*capture));
     android_screen_platform_t *platform =
         (android_screen_platform_t *)calloc(1, sizeof(*platform));
     if (!capture || !platform) {
@@ -478,101 +478,101 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_SCREEN;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_SCREEN;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = platform;
     android_screen_set_callback(platform->native, android_video_callback, capture);
     return capture;
 }
 
-void turbo_audio_capture_set_callback(turbo_capture_t *capture,
-                                      turbo_audio_capture_cb cb,
+void salts_audio_capture_set_callback(salts_capture_t *capture,
+                                      salts_audio_capture_cb cb,
                                       void *user_data) {
-    if (!capture || capture->type != TURBO_CAPTURE_TYPE_AUDIO) return;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_AUDIO) return;
     capture->audio_cb = cb;
     capture->user_data = user_data;
 }
 
-void turbo_video_capture_set_callback(turbo_capture_t *capture,
-                                      turbo_video_capture_cb cb,
+void salts_video_capture_set_callback(salts_capture_t *capture,
+                                      salts_video_capture_cb cb,
                                       void *user_data) {
-    if (!capture || capture->type != TURBO_CAPTURE_TYPE_VIDEO) return;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_VIDEO) return;
     capture->video_cb = cb;
     capture->user_data = user_data;
 }
 
-void turbo_screen_capture_set_callback(turbo_capture_t *capture,
-                                       turbo_video_capture_cb cb,
+void salts_screen_capture_set_callback(salts_capture_t *capture,
+                                       salts_video_capture_cb cb,
                                        void *user_data) {
-    if (!capture || capture->type != TURBO_CAPTURE_TYPE_SCREEN) return;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_SCREEN) return;
     capture->video_cb = cb;
     capture->user_data = user_data;
 }
 
-int turbo_video_capture_get_control_range(turbo_capture_t *capture,
-                                          turbo_camera_control_t control,
-                                          turbo_camera_control_range_t *range) {
+int salts_video_capture_get_control_range(salts_capture_t *capture,
+                                          salts_camera_control_t control,
+                                          salts_camera_control_range_t *range) {
     (void)capture;
     (void)control;
-    if (!range) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!range) return SALTS_CAPTURE_ERR_DEVICE;
     memset(range, 0, sizeof(*range));
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_set_control(turbo_capture_t *capture,
-                                    turbo_camera_control_t control,
+int salts_video_capture_set_control(salts_capture_t *capture,
+                                    salts_camera_control_t control,
                                     int value) {
     (void)capture;
     (void)control;
     (void)value;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_get_control(turbo_capture_t *capture,
-                                    turbo_camera_control_t control,
+int salts_video_capture_get_control(salts_capture_t *capture,
+                                    salts_camera_control_t control,
                                     int *value) {
     (void)capture;
     (void)control;
     if (value) *value = 0;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_set_crop(turbo_capture_t *capture,
-                                 const turbo_video_crop_t *crop) {
+int salts_video_capture_set_crop(salts_capture_t *capture,
+                                 const salts_video_crop_t *crop) {
     (void)capture;
     (void)crop;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_get_crop(turbo_capture_t *capture,
-                                 turbo_video_crop_t *crop) {
+int salts_video_capture_get_crop(salts_capture_t *capture,
+                                 salts_video_crop_t *crop) {
     (void)capture;
-    if (!crop) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!crop) return SALTS_CAPTURE_ERR_DEVICE;
     memset(crop, 0, sizeof(*crop));
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_capture_start(turbo_capture_t *capture) {
+int salts_capture_start(salts_capture_t *capture) {
     if (!capture) return -1;
-    if (capture->state == TURBO_CAPTURE_STATE_RUNNING) return 0;
+    if (capture->state == SALTS_CAPTURE_STATE_RUNNING) return 0;
 
-    capture->state = TURBO_CAPTURE_STATE_STARTING;
+    capture->state = SALTS_CAPTURE_STATE_STARTING;
 
     int result = -1;
     switch (capture->type) {
-        case TURBO_CAPTURE_TYPE_AUDIO: {
+        case SALTS_CAPTURE_TYPE_AUDIO: {
             android_audio_platform_t *platform =
                 (android_audio_platform_t *)capture->platform_ctx;
             result = platform ? android_audio_start(platform->native) : -1;
             break;
         }
-        case TURBO_CAPTURE_TYPE_VIDEO: {
+        case SALTS_CAPTURE_TYPE_VIDEO: {
             android_video_platform_t *platform =
                 (android_video_platform_t *)capture->platform_ctx;
             result = platform ? android_camera_start(platform->native) : -1;
             break;
         }
-        case TURBO_CAPTURE_TYPE_SCREEN: {
+        case SALTS_CAPTURE_TYPE_SCREEN: {
             android_screen_platform_t *platform =
                 (android_screen_platform_t *)capture->platform_ctx;
             /* The Java layer owns MediaProjection and attaches the native
@@ -586,32 +586,32 @@ int turbo_capture_start(turbo_capture_t *capture) {
             break;
     }
 
-    capture->state = (result == 0) ? TURBO_CAPTURE_STATE_RUNNING : TURBO_CAPTURE_STATE_ERROR;
+    capture->state = (result == 0) ? SALTS_CAPTURE_STATE_RUNNING : SALTS_CAPTURE_STATE_ERROR;
     if (capture->state_cb) {
         capture->state_cb(capture, capture->state, capture->user_data);
     }
     return result;
 }
 
-void turbo_capture_stop(turbo_capture_t *capture) {
-    if (!capture || capture->state == TURBO_CAPTURE_STATE_STOPPED) return;
+void salts_capture_stop(salts_capture_t *capture) {
+    if (!capture || capture->state == SALTS_CAPTURE_STATE_STOPPED) return;
 
-    capture->state = TURBO_CAPTURE_STATE_STOPPING;
+    capture->state = SALTS_CAPTURE_STATE_STOPPING;
 
     switch (capture->type) {
-        case TURBO_CAPTURE_TYPE_AUDIO: {
+        case SALTS_CAPTURE_TYPE_AUDIO: {
             android_audio_platform_t *platform =
                 (android_audio_platform_t *)capture->platform_ctx;
             if (platform) android_audio_stop(platform->native);
             break;
         }
-        case TURBO_CAPTURE_TYPE_VIDEO: {
+        case SALTS_CAPTURE_TYPE_VIDEO: {
             android_video_platform_t *platform =
                 (android_video_platform_t *)capture->platform_ctx;
             if (platform) android_camera_stop(platform->native);
             break;
         }
-        case TURBO_CAPTURE_TYPE_SCREEN: {
+        case SALTS_CAPTURE_TYPE_SCREEN: {
             android_screen_platform_t *platform =
                 (android_screen_platform_t *)capture->platform_ctx;
             if (platform) android_screen_stop(platform->native);
@@ -621,17 +621,17 @@ void turbo_capture_stop(turbo_capture_t *capture) {
             break;
     }
 
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     if (capture->state_cb) {
         capture->state_cb(capture, capture->state, capture->user_data);
     }
 }
 
-void turbo_capture_destroy(turbo_capture_t *capture) {
+void salts_capture_destroy(salts_capture_t *capture) {
     if (!capture) return;
 
     switch (capture->type) {
-        case TURBO_CAPTURE_TYPE_AUDIO: {
+        case SALTS_CAPTURE_TYPE_AUDIO: {
             android_audio_platform_t *platform =
                 (android_audio_platform_t *)capture->platform_ctx;
             if (platform) {
@@ -640,7 +640,7 @@ void turbo_capture_destroy(turbo_capture_t *capture) {
             }
             break;
         }
-        case TURBO_CAPTURE_TYPE_VIDEO: {
+        case SALTS_CAPTURE_TYPE_VIDEO: {
             android_video_platform_t *platform =
                 (android_video_platform_t *)capture->platform_ctx;
             if (platform) {
@@ -649,7 +649,7 @@ void turbo_capture_destroy(turbo_capture_t *capture) {
             }
             break;
         }
-        case TURBO_CAPTURE_TYPE_SCREEN: {
+        case SALTS_CAPTURE_TYPE_SCREEN: {
             android_screen_platform_t *platform =
                 (android_screen_platform_t *)capture->platform_ctx;
             if (platform) {
@@ -665,10 +665,10 @@ void turbo_capture_destroy(turbo_capture_t *capture) {
     free(capture);
 }
 
-turbo_capture_state_t turbo_capture_get_state(turbo_capture_t *capture) {
-    return capture ? capture->state : TURBO_CAPTURE_STATE_STOPPED;
+salts_capture_state_t salts_capture_get_state(salts_capture_t *capture) {
+    return capture ? capture->state : SALTS_CAPTURE_STATE_STOPPED;
 }
 
-void turbo_capture_on_state(turbo_capture_t *capture, turbo_capture_state_cb cb) {
+void salts_capture_on_state(salts_capture_t *capture, salts_capture_state_cb cb) {
     if (capture) capture->state_cb = cb;
 }

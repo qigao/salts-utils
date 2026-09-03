@@ -5,8 +5,8 @@
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
 #include "tbe_error.h"
-#include "turbo_fs.h"
-#include "turbo_uuid.h"
+#include "salts_fs.h"
+#include "salts_uuid.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -64,7 +64,7 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
   const size_t output_length = strlen(output_path);
   const size_t prefix_length = sizeof(temporary_prefix) - 1u;
   const size_t suffix_length = sizeof(temporary_suffix);
-  const size_t uuid_length = TURBO_UUID_STRING_LENGTH;
+  const size_t uuid_length = SALTS_UUID_STRING_LENGTH;
   size_t path_length;
   unsigned attempt;
 
@@ -77,14 +77,14 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
   path_length = output_length + prefix_length + uuid_length + suffix_length;
 
   for (attempt = 0; attempt < TBE_COMPILER_TEMP_OUTPUT_ATTEMPTS; ++attempt) {
-    turbo_uuid_t uuid;
-    char uuid_text[TURBO_UUID_STRING_SIZE];
+    salts_uuid_t uuid;
+    char uuid_text[SALTS_UUID_STRING_SIZE];
     char *temporary_path;
     FILE *file;
     int descriptor;
 
-    if (turbo_uuid_v4_generate(&uuid) != TURBO_OK ||
-        turbo_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != TURBO_OK) {
+    if (salts_uuid_v4_generate(&uuid) != SALTS_OK ||
+        salts_uuid_format(&uuid, uuid_text, sizeof(uuid_text)) != SALTS_OK) {
       return -1;
     }
     temporary_path = (char *)malloc(path_length);
@@ -109,7 +109,7 @@ static int tbe_compiler_create_temporary_output(const char *output_path,
 #else
       close(descriptor);
 #endif
-      turbo_fs_unlink(temporary_path);
+      salts_fs_unlink(temporary_path);
       free(temporary_path);
       return -1;
     }
@@ -332,7 +332,7 @@ static const char *tbe_compiler_cpp_scalar_type(const char *type) {
   if (strcmp(type, "double") == 0) return "double";
   if (strcmp(type, "string") == 0) return "std::string";
   if (strcmp(type, "bytes") == 0) return "std::vector<std::uint8_t>";
-  if (strcmp(type, "uuid") == 0) return "turbo_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
   return type;
 }
 
@@ -422,7 +422,7 @@ static const char *tbe_compiler_typed_c_scalar(const char *type) {
   if (integer_type) return integer_type->c_type;
   if (strcmp(type, "float") == 0) return "float";
   if (strcmp(type, "double") == 0) return "double";
-  if (strcmp(type, "uuid") == 0) return "turbo_uuid_t";
+  if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
   return NULL;
 }
 
@@ -1231,7 +1231,7 @@ static const char *tbe_compiler_resolve_resource(const tbe_compiler_options_t *o
     fprintf(stderr, "Built-in template resource directory is unavailable\n");
     return NULL;
   }
-  if (turbo_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
+  if (salts_fs_path_join(path, path_size, resource_dir, relative_path) != 0) {
     fprintf(stderr, "Built-in template path is too long: %s\n", relative_path);
     return NULL;
   }
@@ -1380,7 +1380,7 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
       goto cleanup;
     }
 #endif
-    if (turbo_fs_rename(temporary_output_path, output_path) != 0) {
+    if (salts_fs_rename(temporary_output_path, output_path) != 0) {
       fprintf(stderr, "Failed to replace output file: %s\n", output_path);
       goto cleanup;
     }
@@ -1390,7 +1390,7 @@ int tbe_compiler_render_file(Node *root, const char *template_path,
 
 cleanup:
   if (temporary_output_open && out_file != NULL) fclose(out_file);
-  if (temporary_output_owned) turbo_fs_unlink(temporary_output_path);
+  if (temporary_output_owned) salts_fs_unlink(temporary_output_path);
   free(temporary_output_path);
   mustache_release(templ);
   free(templ_data);
@@ -1401,7 +1401,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
   Node *database_ir = NULL;
   char *schema_data = NULL;
-  char template_path[TURBO_FS_MAX_PATH];
+  char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
   const char *lang_name = tbe_compiler_language_name(options->lang_enum);
   int database_language;

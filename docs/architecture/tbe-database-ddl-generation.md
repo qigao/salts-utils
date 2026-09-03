@@ -4,7 +4,7 @@
 
 TurboDB 当前允许调用方执行原始 DDL，但不会从模型生成 SQLite 或 PostgreSQL schema。TBE 已经是字段类型、可选性、默认值和绑定 annotation 的事实源，因此数据库初始化结构也应由同一份 TBE schema 在构建期生成。
 
-本设计在 `tbe_compiler` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 TurboParser 运行时依赖。
+本设计在 `tbe_compiler` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 SaltsUtils 运行时依赖。
 
 当前版本生成全新数据库所需的 `CREATE TABLE`、外键、普通/唯一复合索引、自定义 `CHECK` 和种子 `INSERT`，并以标准 `BEGIN; ... COMMIT;` 包裹完整文件。它不比较线上结构，不规划已有数据库的 migration，不维护 migration history，也不执行数据库连接。
 
@@ -176,7 +176,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 
 ### 在 TurboDB/ORM 运行时生成 DDL
 
-可以靠近数据库连接，但会让 ORM 运行时依赖 TurboParser/TBE，并让模型解析进入数据路径。它也会把 schema 生成与迁移执行混为一体，因此不采用。
+可以靠近数据库连接，但会让 ORM 运行时依赖 SaltsUtils/TBE，并让模型解析进入数据路径。它也会把 schema 生成与迁移执行混为一体，因此不采用。
 
 ### 独立数据库 schema 编译器
 

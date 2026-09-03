@@ -4,10 +4,10 @@
 #include "lua.h"
 #include "lualib.h"
 #include "tinytest.h"
-#include "turbo_error.h"
-#include "turbo_lua_executor.h"
-#include "turbo_lua_worker.h"
-#include "turbo_thread.h"
+#include "salts_error.h"
+#include "salts_lua_executor.h"
+#include "salts_lua_worker.h"
+#include "salts/thread.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,7 +74,7 @@ static void test_lua_client_producer(void *context) {
 }
 
 static int test_managed_lua_client_start(struct lua_State *L,
-                                         turbo_lua_executor_t *executor,
+                                         salts_lua_executor_t *executor,
                                          void *context) {
   TestManagedLuaClientContext *test =
       (TestManagedLuaClientContext *)context;
@@ -84,26 +84,26 @@ static int test_managed_lua_client_start(struct lua_State *L,
           "return { id = request.id + 3, symbol = request.symbol .. '-worker' }, nil "
           "end }") != LUA_OK) {
     lua_pop(L, 1);
-    return TURBO_EIO;
+    return SALTS_EIO;
   }
   test->start_status = Orders_lua_client_create(
       &test->client, executor, -1, &test->limits, &test->error);
   lua_pop(L, 1);
-  return test->start_status == DATA_BIND_OK ? TURBO_OK : TURBO_EIO;
+  return test->start_status == DATA_BIND_OK ? SALTS_OK : SALTS_EIO;
 }
 
 static int test_managed_lua_client_stop(struct lua_State *L,
-                                        turbo_lua_executor_t *executor,
+                                        salts_lua_executor_t *executor,
                                         void *context) {
   TestManagedLuaClientContext *test =
       (TestManagedLuaClientContext *)context;
   (void)L;
   (void)executor;
-  if (test->client == NULL) return TURBO_OK;
+  if (test->client == NULL) return SALTS_OK;
   test->close_status =
       Orders_lua_client_close(test->client, &test->error);
   if (test->close_status == DATA_BIND_OK) test->client = NULL;
-  return test->close_status == DATA_BIND_OK ? TURBO_OK : TURBO_EIO;
+  return test->close_status == DATA_BIND_OK ? SALTS_OK : SALTS_EIO;
 }
 
 static DataBindStatus test_create_order(void *context, const Order_t *request,
@@ -347,7 +347,7 @@ spec("generated typed Order Lua adapter") {
 
   it("should call a Lua import with typed C request and response objects") {
     Orders_lua_client_t *client = NULL;
-    turbo_lua_executor_t *executor = NULL;
+    salts_lua_executor_t *executor = NULL;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     LuaOrder_t request;
@@ -369,7 +369,7 @@ spec("generated typed Order Lua adapter") {
     check_equal(lua_status, LUA_OK);
 
     base = lua_gettop(L);
-    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, NULL), SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -385,15 +385,15 @@ spec("generated typed Order Lua adapter") {
     check_equal(response.symbol, "ABC-lua");
 
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
 
   it("should reject generated Lua client control from a non-owner thread") {
     Orders_lua_client_t *client = NULL;
-    turbo_lua_executor_t *executor = NULL;
-    turbo_thread_t thread = NULL;
+    salts_lua_executor_t *executor = NULL;
+    salts_thread_t thread = NULL;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     LuaOrder_t request;
@@ -411,7 +411,7 @@ spec("generated typed Order Lua adapter") {
             "return { enrich_order = function(request) "
             "return { id = request.id, symbol = request.symbol }, nil end }"),
         LUA_OK);
-    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, NULL), SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -422,17 +422,17 @@ spec("generated typed Order Lua adapter") {
     context.response = &response;
     context.call_error = (DataBindError)DATA_BIND_ERROR_INIT;
     context.close_error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(turbo_thread_create(&thread, test_lua_client_non_owner,
+    check_equal(salts_thread_create(&thread, test_lua_client_non_owner,
                                      &context),
                  0);
-    check_equal(turbo_thread_join(&thread), 0);
+    check_equal(salts_thread_join(&thread), 0);
     check_equal(context.call_status, DATA_BIND_ERR_RUNTIME);
     check_equal(context.call_error.path, "executor.owner");
     check_equal(context.close_status, DATA_BIND_ERR_RUNTIME);
     check_equal(context.close_error.path, "executor.owner");
 
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
@@ -440,10 +440,10 @@ spec("generated typed Order Lua adapter") {
   it("should execute a copied typed Lua import through the bounded executor") {
     Orders_lua_client_t *client = NULL;
     Orders_lua_enrich_order_deferred_future_t *future = NULL;
-    turbo_lua_executor_t *executor = NULL;
-    turbo_thread_t producer = NULL;
-    turbo_lua_executor_config_t executor_config =
-        TURBO_LUA_EXECUTOR_CONFIG_DEFAULT;
+    salts_lua_executor_t *executor = NULL;
+    salts_thread_t producer = NULL;
+    salts_lua_executor_config_t executor_config =
+        SALTS_LUA_EXECUTOR_CONFIG_DEFAULT;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     AsyncLuaOrder_t request;
@@ -465,8 +465,8 @@ spec("generated typed Order Lua adapter") {
             "end }"),
         LUA_OK);
     executor_config.queue_capacity = 2u;
-    check_equal(turbo_lua_executor_create(&executor, L, &executor_config),
-                 TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, &executor_config),
+                 SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -476,10 +476,10 @@ spec("generated typed Order Lua adapter") {
     producer_context.request = &request;
     producer_context.error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
-        turbo_thread_create(&producer, test_lua_client_producer,
+        salts_thread_create(&producer, test_lua_client_producer,
                             &producer_context),
         0);
-    check_equal(turbo_thread_join(&producer), 0);
+    check_equal(salts_thread_join(&producer), 0);
     check_equal(producer_context.status, DATA_BIND_OK);
     future = producer_context.future;
     check_not_null(future);
@@ -490,7 +490,7 @@ spec("generated typed Order Lua adapter") {
                  DATA_BIND_OK);
     check_false(done);
 
-    check_equal(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
+    check_equal(salts_lua_executor_poll(executor, 1u, &processed), SALTS_OK);
     check_equal(processed, 1u);
     check_true(Orders_lua_enrich_order_deferred_future_done(future));
     check_equal(Orders_lua_enrich_order_deferred_future_poll(
@@ -502,13 +502,13 @@ spec("generated typed Order Lua adapter") {
 
     Orders_lua_enrich_order_deferred_future_destroy(future);
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
   }
 
   it("should drain a generated async client on a managed Lua worker") {
-    turbo_lua_worker_t *managed = NULL;
-    turbo_lua_worker_config_t config = TURBO_LUA_WORKER_CONFIG_DEFAULT;
+    salts_lua_worker_t *managed = NULL;
+    salts_lua_worker_config_t config = SALTS_LUA_WORKER_CONFIG_DEFAULT;
     Orders_lua_enrich_order_deferred_future_t *future = NULL;
     TestManagedLuaClientContext context = {
         .limits = {16u, 64u, 4u},
@@ -528,16 +528,16 @@ spec("generated typed Order Lua adapter") {
     config.on_start = test_managed_lua_client_start;
     config.on_stop = test_managed_lua_client_stop;
     config.context = &context;
-    check_equal(turbo_lua_worker_create(&managed, &config), TURBO_OK);
+    check_equal(salts_lua_worker_create(&managed, &config), SALTS_OK);
     check_equal(context.start_status, DATA_BIND_OK);
 
     check_equal(Orders_lua_client_enrich_order_deferred_async(
                      context.client, &request, &future, &future_error),
                  DATA_BIND_OK);
     AsyncLuaOrder_clear(&request);
-    check_equal(turbo_lua_worker_stop(
-                     managed, TURBO_LUA_EXECUTOR_SHUTDOWN_DRAIN),
-                 TURBO_OK);
+    check_equal(salts_lua_worker_stop(
+                     managed, SALTS_LUA_EXECUTOR_SHUTDOWN_DRAIN),
+                 SALTS_OK);
     check_equal(context.close_status, DATA_BIND_OK);
     check_null(context.client);
     check_true(Orders_lua_enrich_order_deferred_future_done(future));
@@ -549,7 +549,7 @@ spec("generated typed Order Lua adapter") {
     check_equal(response.symbol, "ASYNC-worker");
 
     Orders_lua_enrich_order_deferred_future_destroy(future);
-    check_equal(turbo_lua_worker_destroy(managed), TURBO_OK);
+    check_equal(salts_lua_worker_destroy(managed), SALTS_OK);
     OrderResult_clear(&response);
   }
 
@@ -557,9 +557,9 @@ spec("generated typed Order Lua adapter") {
     Orders_lua_client_t *client = NULL;
     Orders_lua_enrich_order_deferred_future_t *first = NULL;
     Orders_lua_enrich_order_deferred_future_t *second = NULL;
-    turbo_lua_executor_t *executor = NULL;
-    turbo_lua_executor_config_t executor_config =
-        TURBO_LUA_EXECUTOR_CONFIG_DEFAULT;
+    salts_lua_executor_t *executor = NULL;
+    salts_lua_executor_config_t executor_config =
+        SALTS_LUA_EXECUTOR_CONFIG_DEFAULT;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     AsyncLuaOrder_t request;
@@ -578,8 +578,8 @@ spec("generated typed Order Lua adapter") {
             "return { id = request.id, symbol = request.symbol }, nil end }"),
         LUA_OK);
     executor_config.queue_capacity = 1u;
-    check_equal(turbo_lua_executor_create(&executor, L, &executor_config),
-                 TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, &executor_config),
+                 SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -598,19 +598,19 @@ spec("generated typed Order Lua adapter") {
                      first, &done, &response, &call_error),
                  DATA_BIND_ERR_CANCELED);
     check_true(done);
-    check_equal(turbo_lua_executor_poll(executor, 1u, &processed), TURBO_OK);
+    check_equal(salts_lua_executor_poll(executor, 1u, &processed), SALTS_OK);
     check_equal(processed, 1u);
 
     Orders_lua_enrich_order_deferred_future_destroy(first);
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     AsyncLuaOrder_clear(&request);
   }
 
   it("should preserve the C response and stack when a Lua import reports an error") {
     Orders_lua_client_t *client = NULL;
-    turbo_lua_executor_t *executor = NULL;
+    salts_lua_executor_t *executor = NULL;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     LuaOrder_t request;
@@ -632,7 +632,7 @@ spec("generated typed Order Lua adapter") {
             "return nil, { code = 8, path = 'lua.enrich_order', "
             "message = 'order rejected' } end }"),
         LUA_OK);
-    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, NULL), SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -650,14 +650,14 @@ spec("generated typed Order Lua adapter") {
     check_equal(call_error.message, "order rejected");
 
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
 
   it("should preserve the C response when a Lua import returns the wrong type") {
     Orders_lua_client_t *client = NULL;
-    turbo_lua_executor_t *executor = NULL;
+    salts_lua_executor_t *executor = NULL;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     LuaOrder_t request;
@@ -675,7 +675,7 @@ spec("generated typed Order Lua adapter") {
             "return { enrich_order = function(_) "
             "return { id = 'wrong', symbol = 'invalid' }, nil end }"),
         LUA_OK);
-    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, NULL), SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -692,14 +692,14 @@ spec("generated typed Order Lua adapter") {
     check_equal(call_error.path, "response");
 
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }
 
   it("should fail atomically without invoking a module index metamethod") {
     Orders_lua_client_t *client = NULL;
-    turbo_lua_executor_t *executor = NULL;
+    salts_lua_executor_t *executor = NULL;
     Orders_lua_limits_t limits = {16u, 64u, 4u};
     DataBindError call_error = DATA_BIND_ERROR_INIT;
     LuaOrder_t request;
@@ -714,7 +714,7 @@ spec("generated typed Order Lua adapter") {
             "return setmetatable({}, { __index = function() "
             "error('module index escaped protected call') end })"),
         LUA_OK);
-    check_equal(turbo_lua_executor_create(&executor, L, NULL), TURBO_OK);
+    check_equal(salts_lua_executor_create(&executor, L, NULL), SALTS_OK);
     check_equal(Orders_lua_client_create(&client, executor, -1, &limits,
                                           &call_error),
                  DATA_BIND_OK);
@@ -730,7 +730,7 @@ spec("generated typed Order Lua adapter") {
     check_contains(call_error.message, "missing");
 
     check_equal(Orders_lua_client_close(client, &call_error), DATA_BIND_OK);
-    check_equal(turbo_lua_executor_destroy(executor), TURBO_OK);
+    check_equal(salts_lua_executor_destroy(executor), SALTS_OK);
     OrderResult_clear(&response);
     LuaOrder_clear(&request);
   }

@@ -1,12 +1,12 @@
 #include "{{generated_header}}"
 
-#include "turbo_lua.h"
+#include "salts_lua.h"
 {{#has_lua_imports}}
-#include "turbo_lua_executor.h"
+#include "salts_lua_executor.h"
 {{/has_lua_imports}}
 {{#has_lua_async_imports}}
-#include "turbo_error.h"
-#include "turbo_thread.h"
+#include "salts_error.h"
+#include "salts/thread.h"
 {{/has_lua_async_imports}}
 
 #include <stdatomic.h>
@@ -525,10 +525,10 @@ DataBindStatus {{schema.schema_name}}_lua_push_module(
 {{#has_lua_imports}}
 struct {{schema.schema_name}}_lua_client_s {
     c11_lua_ref_t module;
-    turbo_lua_executor_t *executor;
+    salts_lua_executor_t *executor;
     {{schema.schema_name}}_lua_limits_t limits;
 {{#has_lua_async_imports}}
-    turbo_mutex_t state_lock;
+    salts_mutex_t state_lock;
     size_t references;
     int closing;
 {{/has_lua_async_imports}}
@@ -626,34 +626,34 @@ static DataBindStatus {{schema.schema_name}}_lua_client_read_error(
 static int {{schema.schema_name}}_lua_client_retain(
     {{schema.schema_name}}_lua_client_t *client) {
     int retained = 0;
-    turbo_mutex_lock(&client->state_lock);
+    salts_mutex_lock(&client->state_lock);
     if (!client->closing) {
         ++client->references;
         retained = 1;
     }
-    turbo_mutex_unlock(&client->state_lock);
+    salts_mutex_unlock(&client->state_lock);
     return retained;
 }
 
 static void {{schema.schema_name}}_lua_client_release(
     {{schema.schema_name}}_lua_client_t *client) {
     int dispose = 0;
-    turbo_mutex_lock(&client->state_lock);
+    salts_mutex_lock(&client->state_lock);
     if (client->references != 0u) {
         --client->references;
         dispose = client->references == 0u;
     }
-    turbo_mutex_unlock(&client->state_lock);
+    salts_mutex_unlock(&client->state_lock);
     if (!dispose) return;
     if (c11_lua_ref_is_valid(&client->module))
         (void)c11_lua_ref_release(&client->module);
-    turbo_mutex_destroy(&client->state_lock);
+    salts_mutex_destroy(&client->state_lock);
     free(client);
 }
 {{/has_lua_async_imports}}
 
 DataBindStatus {{schema.schema_name}}_lua_client_create(
-    {{schema.schema_name}}_lua_client_t **out, turbo_lua_executor_t *executor,
+    {{schema.schema_name}}_lua_client_t **out, salts_lua_executor_t *executor,
     int module_index, const {{schema.schema_name}}_lua_limits_t *limits,
     DataBindError *error) {
     {{schema.schema_name}}_lua_client_t *client;
@@ -671,7 +671,7 @@ DataBindStatus {{schema.schema_name}}_lua_client_create(
             error, DATA_BIND_ERR_INVALID_ARG, "client",
             "Lua client output must point to NULL");
     }
-    if (turbo_lua_executor_owner_state(executor, &L) != TURBO_OK) {
+    if (salts_lua_executor_owner_state(executor, &L) != SALTS_OK) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_RUNTIME, "executor.owner",
             "Lua client creation requires the executor owner thread");
@@ -696,14 +696,14 @@ DataBindStatus {{schema.schema_name}}_lua_client_create(
     client->executor = executor;
     client->limits = *limits;
 {{#has_lua_async_imports}}
-    turbo_mutex_init(&client->state_lock);
+    salts_mutex_init(&client->state_lock);
     client->references = 1u;
     client->closing = 0;
 {{/has_lua_async_imports}}
     reference_status = c11_lua_ref_create(L, module_index, &client->module);
-    if (reference_status != TURBO_OK) {
+    if (reference_status != SALTS_OK) {
 {{#has_lua_async_imports}}
-        turbo_mutex_destroy(&client->state_lock);
+        salts_mutex_destroy(&client->state_lock);
 {{/has_lua_async_imports}}
         free(client);
         return {{schema.schema_name}}_lua_client_set_error(
@@ -721,15 +721,15 @@ DataBindStatus {{schema.schema_name}}_lua_client_close(
             error, DATA_BIND_ERR_INVALID_ARG, "client",
             "Lua client close requires a live client");
     }
-    if (!turbo_lua_executor_is_owner(client->executor)) {
+    if (!salts_lua_executor_is_owner(client->executor)) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_RUNTIME, "executor.owner",
             "Lua client close requires the executor owner thread");
     }
 {{#has_lua_async_imports}}
-    turbo_mutex_lock(&client->state_lock);
+    salts_mutex_lock(&client->state_lock);
     client->closing = 1;
-    turbo_mutex_unlock(&client->state_lock);
+    salts_mutex_unlock(&client->state_lock);
     {{schema.schema_name}}_lua_client_release(client);
     return DATA_BIND_OK;
 {{/has_lua_async_imports}}
@@ -767,7 +767,7 @@ static DataBindStatus {{schema.schema_name}}_lua_client_call_{{lua_import_name}}
             "Lua stack cannot invoke the imported function");
         goto cleanup;
     }
-    if (c11_lua_ref_push(L, &client->module) != TURBO_OK ||
+    if (c11_lua_ref_push(L, &client->module) != SALTS_OK ||
         !lua_istable(L, -1)) {
         status = {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_RUNTIME, "{{lua_import_name}}",
@@ -832,20 +832,20 @@ cleanup:
 DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_on_owner(
     {{schema.schema_name}}_lua_client_t *client, const {{name}}_t *request,
     {{lua_response_type}}_t *response, DataBindError *error) {
-    if (client == NULL || !turbo_lua_executor_is_owner(client->executor)) {
+    if (client == NULL || !salts_lua_executor_is_owner(client->executor)) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_RUNTIME, "executor.owner",
             "Synchronous Lua import requires the executor owner thread");
     }
 {{#has_lua_async_imports}}
-    turbo_mutex_lock(&client->state_lock);
+    salts_mutex_lock(&client->state_lock);
     if (client->closing) {
-        turbo_mutex_unlock(&client->state_lock);
+        salts_mutex_unlock(&client->state_lock);
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_CANCELED, "client",
             "Lua client is closing");
     }
-    turbo_mutex_unlock(&client->state_lock);
+    salts_mutex_unlock(&client->state_lock);
 {{/has_lua_async_imports}}
     return {{schema.schema_name}}_lua_client_call_{{lua_import_name}}(
         client, request, response, error);
@@ -853,7 +853,7 @@ DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_on_owner(
 
 {{#lua_async_enabled}}
 struct {{schema.schema_name}}_lua_{{lua_import_name}}_future_s {
-    turbo_mutex_t lock;
+    salts_mutex_t lock;
     atomic_size_t references;
     {{schema.schema_name}}_lua_client_t *client;
     {{name}}_t request;
@@ -871,7 +871,7 @@ static void {{schema.schema_name}}_lua_{{lua_import_name}}_future_release(
     }
     {{lua_response_type}}_clear(&future->response);
     {{name}}_clear(&future->request);
-    turbo_mutex_destroy(&future->lock);
+    salts_mutex_destroy(&future->lock);
     free(future);
 }
 
@@ -885,7 +885,7 @@ static void {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
 
 static void {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch(
     struct lua_State *L, void *context,
-    turbo_lua_executor_dispatch_reason_t reason) {
+    salts_lua_executor_dispatch_reason_t reason) {
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future =
         ({{schema.schema_name}}_lua_{{lua_import_name}}_future_t *)context;
     {{lua_response_type}}_t response;
@@ -895,21 +895,21 @@ static void {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch(
 
     (void)L;
     {{lua_response_type}}_init(&response);
-    turbo_mutex_lock(&future->lock);
+    salts_mutex_lock(&future->lock);
     if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
-        if (reason == TURBO_LUA_EXECUTOR_CANCEL) {
+        if (reason == SALTS_LUA_EXECUTOR_CANCEL) {
             {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
                 future, "Lua executor canceled the queued import");
         } else {
             execute = 1;
         }
     }
-    turbo_mutex_unlock(&future->lock);
+    salts_mutex_unlock(&future->lock);
 
     if (execute) {
         status = {{schema.schema_name}}_lua_client_call_{{lua_import_name}}(
             future->client, &future->request, &response, &error);
-        turbo_mutex_lock(&future->lock);
+        salts_mutex_lock(&future->lock);
         if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
             future->status = status;
             future->error = error;
@@ -923,7 +923,7 @@ static void {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch(
                                     : {{schema.schema_name}}_LUA_CLIENT_FUTURE_FAILED;
             }
         }
-        turbo_mutex_unlock(&future->lock);
+        salts_mutex_unlock(&future->lock);
     }
 
     {{lua_response_type}}_clear(&response);
@@ -934,17 +934,17 @@ static void {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch(
 
 static DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_post_error(
     int post_status, DataBindError *error) {
-    if (post_status == TURBO_ENOSPC) {
+    if (post_status == SALTS_ENOSPC) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_LIMIT, "executor",
             "Lua executor command queue is full");
     }
-    if (post_status == TURBO_ECANCELED) {
+    if (post_status == SALTS_ECANCELED) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_CANCELED, "executor",
             "Lua executor no longer accepts commands");
     }
-    if (post_status == TURBO_ENOMEM) {
+    if (post_status == SALTS_ENOMEM) {
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_OOM, "executor",
             "Lua executor cannot retain the command");
@@ -960,7 +960,7 @@ DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t **out,
     DataBindError *error) {
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future;
-    turbo_lua_executor_command_t command;
+    salts_lua_executor_command_t command;
     uint8_t *wire = NULL;
     size_t wire_size = 0u;
     DataBindStatus status;
@@ -979,7 +979,7 @@ DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_OOM, "future", "Cannot allocate Lua import Future");
     }
-    turbo_mutex_init(&future->lock);
+    salts_mutex_init(&future->lock);
     atomic_init(&future->references, 1u);
     {{name}}_init(&future->request);
     {{lua_response_type}}_init(&future->response);
@@ -1009,8 +1009,8 @@ DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
     atomic_store_explicit(&future->references, 2u, memory_order_relaxed);
     command.dispatch = {{schema.schema_name}}_lua_{{lua_import_name}}_dispatch;
     command.context = future;
-    post_status = turbo_lua_executor_try_post(client->executor, &command);
-    if (post_status != TURBO_OK) {
+    post_status = salts_lua_executor_try_post(client->executor, &command);
+    if (post_status != SALTS_OK) {
         {{schema.schema_name}}_lua_client_release(client);
         future->client = NULL;
         atomic_store_explicit(&future->references, 1u, memory_order_relaxed);
@@ -1027,9 +1027,9 @@ int {{schema.schema_name}}_lua_{{lua_import_name}}_future_done(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
     int done;
     if (future == NULL) return 0;
-    turbo_mutex_lock(&future->lock);
+    salts_mutex_lock(&future->lock);
     done = future->state != {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING;
-    turbo_mutex_unlock(&future->lock);
+    salts_mutex_unlock(&future->lock);
     return done;
 }
 
@@ -1037,13 +1037,13 @@ int {{schema.schema_name}}_lua_{{lua_import_name}}_future_cancel(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future) {
     int canceled = 0;
     if (future == NULL) return 0;
-    turbo_mutex_lock(&future->lock);
+    salts_mutex_lock(&future->lock);
     if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
         {{schema.schema_name}}_lua_{{lua_import_name}}_future_set_canceled(
             future, "Async Lua import was canceled");
         canceled = 1;
     }
-    turbo_mutex_unlock(&future->lock);
+    salts_mutex_unlock(&future->lock);
     return canceled;
 }
 
@@ -1057,10 +1057,10 @@ DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
             "Future poll requires a Future, completion output, and response");
     }
 
-    turbo_mutex_lock(&future->lock);
+    salts_mutex_lock(&future->lock);
     if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING) {
         *out_done = 0;
-        turbo_mutex_unlock(&future->lock);
+        salts_mutex_unlock(&future->lock);
         return DATA_BIND_OK;
     }
     *out_done = 1;
@@ -1069,11 +1069,11 @@ DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
         *response = future->response;
         memset(&future->response, 0, sizeof(future->response));
         future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_TAKEN;
-        turbo_mutex_unlock(&future->lock);
+        salts_mutex_unlock(&future->lock);
         return DATA_BIND_OK;
     }
     if (future->state == {{schema.schema_name}}_LUA_CLIENT_FUTURE_TAKEN) {
-        turbo_mutex_unlock(&future->lock);
+        salts_mutex_unlock(&future->lock);
         return {{schema.schema_name}}_lua_client_set_error(
             error, DATA_BIND_ERR_INVALID_ARG, "future",
             "Future response was already consumed");
@@ -1083,7 +1083,7 @@ DataBindStatus {{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
     {{schema.schema_name}}_lua_client_set_error_text(
         error, status, future->error.path, strlen(future->error.path),
         future->error.message, strlen(future->error.message));
-    turbo_mutex_unlock(&future->lock);
+    salts_mutex_unlock(&future->lock);
     return status;
 }
 

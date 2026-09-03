@@ -170,7 +170,7 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
     );
 
     if (status != AMEDIA_OK) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create image reader");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create image reader");
         free(ctx);
         return NULL;
     }
@@ -178,7 +178,7 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
     /* Set image listener */
     status = AImageReader_setImageListener(ctx->image_reader, &ctx->image_listener);
     if (status != AMEDIA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set screen image listener: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set screen image listener: {}", status);
         AImageReader_delete(ctx->image_reader);
         free(ctx);
         return NULL;
@@ -187,7 +187,7 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
     /* Get image reader window */
     status = AImageReader_getWindow(ctx->image_reader, &ctx->image_reader_window);
     if (status != AMEDIA_OK || !ctx->image_reader_window) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to get screen image reader surface: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to get screen image reader surface: {}", status);
         AImageReader_delete(ctx->image_reader);
         free(ctx);
         return NULL;

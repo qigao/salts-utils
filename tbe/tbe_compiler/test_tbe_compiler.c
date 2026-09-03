@@ -2796,7 +2796,7 @@ spec("tbe_compiler") {
         check_contains(header, "LoginMessage_from_lua(struct lua_State *L");
       }
       if (lua_source != NULL) {
-        check_contains(lua_source, "#include \"turbo_lua.h\"");
+        check_contains(lua_source, "#include \"salts_lua.h\"");
         check_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
         check_contains(lua_source, "c11_lua_read_tbe_typed");
       }
@@ -2869,19 +2869,19 @@ spec("tbe_compiler") {
         check_contains(header, "Orders_lua_fetch_order_async_t *operation");
         check_contains(header, "void (*destroy)(void *state, int canceled)");
         check_contains(header, "size_t max_pending_operations");
-        check(strstr(header, "turbo_coro") == NULL);
+        check(strstr(header, "salts_coro") == NULL);
         check(strstr(header, "coroutine_stack_size") == NULL);
         check_contains(header, "Orders_lua_push_module");
       }
       if (lua_source != NULL) {
-        check_contains(lua_source, "#include \"turbo_lua.h\"");
+        check_contains(lua_source, "#include \"salts_lua.h\"");
         check_contains(lua_source, "Orders_lua_call_create_order");
         check_contains(lua_source, "Orders_lua_fetch_order_poll");
         check_contains(lua_source, "Orders_lua_fetch_order_await");
         check_contains(lua_source, "lua_yieldk");
         check_contains(lua_source, "future->operation.poll");
         check_contains(lua_source, "future->operation.destroy");
-        check(strstr(lua_source, "turbo_coro") == NULL);
+        check(strstr(lua_source, "salts_coro") == NULL);
         check_contains(lua_source, "CreateOrder_from_lua");
         check_contains(lua_source, "OrderResult_push_lua");
       }
@@ -2987,13 +2987,13 @@ spec("tbe_compiler") {
       if (header != NULL) {
         check_contains(header, "Stateful_lua_fetch_async_t");
         check_contains(header, "size_t max_pending_operations");
-        check(strstr(header, "#include \"turbo_coro.h\"") == NULL);
+        check(strstr(header, "#include \"salts_coro.h\"") == NULL);
         check(strstr(header, "coroutine_stack_size") == NULL);
       }
       if (lua_source != NULL) {
         check_contains(lua_source, "future->operation.poll");
         check_contains(lua_source, "future->operation.destroy");
-        check(strstr(lua_source, "turbo_coro_pool") == NULL);
+        check(strstr(lua_source, "salts_coro_pool") == NULL);
       }
 
       free(header);
@@ -3004,14 +3004,14 @@ spec("tbe_compiler") {
       cleanup_test_file(lua_path);
     }
 
-    it("should reject the removed turbo_coro async interface") {
+    it("should reject the removed salts_coro async interface") {
       const char *schema_path = "test_tbe_compiler_lua_async_invalid.tbe";
       const char *header_path = "test_tbe_compiler_lua_async_invalid.h";
       const char *source_path = "test_tbe_compiler_lua_async_invalid_typed.c";
       const char *lua_path = "test_tbe_compiler_lua_async_invalid.c";
       const char *schema =
           "schema Orders;"
-          "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(turbo_coro)] "
+          "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(salts_coro)] "
           "message FetchOrder { uint32 id; }"
           "message OrderResult { uint32 id; }";
       tbe_compiler_options_t options = {
@@ -3071,7 +3071,7 @@ spec("tbe_compiler") {
         check_not_null(header);
         check_not_null(lua_source);
         if (header != NULL) {
-          check_contains(header, "typedef struct turbo_lua_executor turbo_lua_executor_t");
+          check_contains(header, "typedef struct salts_lua_executor salts_lua_executor_t");
           check_contains(header, "Orders_lua_client_close");
           check_contains(header, "Orders_lua_client_fetch_order_async");
           check_contains(header, "Orders_lua_fetch_order_future_poll");
@@ -3079,7 +3079,7 @@ spec("tbe_compiler") {
         }
         if (lua_source != NULL) {
           check_contains(lua_source, "tbe_typed_serialize_binary");
-          check_contains(lua_source, "turbo_lua_executor_try_post");
+          check_contains(lua_source, "salts_lua_executor_try_post");
           check_contains(lua_source, "Orders_lua_fetch_order_dispatch");
         }
         free(header);
@@ -3221,8 +3221,8 @@ spec("tbe_compiler") {
       check_contains(cpp_output, "std::vector<Level> bids;");
       check_contains(cpp_output, "std::string symbol;");
       check_contains(cpp_output, "std::vector<std::uint8_t> digest;");
-      check_contains(cpp_output, "turbo_uuid_t request_id;");
-      check_contains(cpp_output, "#include \"turbo_uuid.h\"");
+      check_contains(cpp_output, "salts_uuid_t request_id;");
+      check_contains(cpp_output, "#include \"salts_uuid.h\"");
 
       check_contains(go_output, "package market");
       check_contains(go_output, "Bids []Level");
@@ -3283,13 +3283,13 @@ spec("tbe_compiler") {
       char *output = render_c_template(schema);
 
       check_not_null(output);
-      check_contains(output, "#include \"turbo_uuid.h\"");
-      check_contains(output, "turbo_uuid_t request_id;");
+      check_contains(output, "#include \"salts_uuid.h\"");
+      check_contains(output, "salts_uuid_t request_id;");
       check_contains(output, "enum { Event_BLOCK_LENGTH = 16 };");
       check_contains(output, "static inline bool Event_request_id_set(");
-      check_contains(output, "const turbo_uuid_t *value");
+      check_contains(output, "const salts_uuid_t *value");
       check_contains(output, "static inline bool Event_request_id_get(");
-      check_contains(output, "turbo_uuid_t *value");
+      check_contains(output, "salts_uuid_t *value");
 
       free(output);
     }

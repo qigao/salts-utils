@@ -1,5 +1,9 @@
 # tbe_compiler Command Line Options
 
+> DataBind typed/Lua 输出属于遗留迁移接口。DataBind runtime、公共头和 target 已不再由 SaltsUtils 构建、安装或导出；
+> 新的原生 C 数据绑定应直接使用基础 Salts 包的 `Salts::CBind`。CBind 与 DataBind API
+> 不兼容，因此以下 DataBind 示例仅用于理解旧生成物，不应用于新项目。
+
 ## Overview
 
 `tbe_compiler` generates code, bootstrap database DDL, and DSL declarations from TBE schema files for multiple target languages and RulesForge integration.
@@ -57,9 +61,9 @@ tbe_compiler <schema_file> [options]
   - With the built-in C generator, emits typed C-to-Lua adapter functions
   - Requires both `--output` and `--source-output`; custom templates, non-C languages, and database languages are rejected
   - Each owning record receives `Type_push_lua` and transactional `Type_from_lua` adapters
-  - The generated source includes the C binding header `turbo_lua.h`; link
-    the consumer with `turbo_lua_bind` (`TurboParser::LuaBind` in the build tree)
-  - C++ consumers may include `turbo_lua.hpp` to combine the same C/DataBind
+  - The generated source includes the C binding header `salts_lua.h`; link
+    the consumer with `salts_lua_bind` (`Salts::LuaBind` in the build tree)
+  - C++ consumers may include `salts_lua.hpp` to combine the same C/DataBind
     adapters with function, class, property, inheritance, and reflection binding
   - Example: `--output order.h --source-output order.c --lua-output order_lua.c`
   - A request message annotated with
@@ -96,7 +100,7 @@ tbe_compiler <schema_file> [options]
 
 `tbe_compiler` can generate deterministic bootstrap DDL for empty SQLite or PostgreSQL
 databases. This is a build-time feature only: TurboDB, ORM, and generated runtime code do
-not parse TBE at runtime and do not gain a TurboParser dependency from these outputs.
+not parse TBE at runtime and do not gain a SaltsUtils dependency from these outputs.
 
 Database output generates tables, foreign keys, normal or unique composite indexes, custom
 checks, and seed inserts. It does not inspect live schemas, emit `ALTER TABLE`, track migration
@@ -320,13 +324,15 @@ Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller
 capacity-bounded wire storage, so a runtime can enforce its output quota before conversion.
 The reverse `binary_to_text` operation returns an allocated host buffer and is intended for
 trusted host code unless the runtime also enforces the serializer's temporary-allocation budget.
-Schema `uuid` fields are generated as `turbo_uuid_t`; text formats use canonical UUID strings
+Schema `uuid` fields are generated as `salts_uuid_t`; text formats use canonical UUID strings
 and binary serialization preserves the fixed 16-byte wire value.
-Compile `order.c` in the consumer target and link `TurboParser::DataBind`:
+This legacy example required the retired DataBind runtime. Installed SaltsUtils no longer
+provides a DataBind target; new consumers should model the generated C type with CMeta and
+link `Salts::CBind` instead:
 
 ```cmake
 add_executable(order_app main.c order.c)
-target_link_libraries(order_app PRIVATE TurboParser::DataBind)
+target_link_libraries(order_app PRIVATE Salts::CBind)
 ```
 
 The same generated header is C++ compatible. Its C functions use `extern "C"`, and
@@ -381,8 +387,8 @@ for applying its input, output, object, and execution quotas before invoking the
 trusted host codec.
 
 For a freestanding wasm32 build, define `TBE_WASM_GUEST=1`. This removes the generated
-wire header's dependency on host libc and the TurboUtils UUID runtime while preserving
-the same fixed 16-byte `turbo_uuid_t` value layout:
+wire header's dependency on host libc and the Salts UUID runtime while preserving
+the same fixed 16-byte `salts_uuid_t` value layout:
 
 ```bash
 clang --target=wasm32-unknown-unknown -DTBE_WASM_GUEST=1 -O2 -nostdlib \
@@ -471,7 +477,7 @@ tbe_compiler order.schema --lang py --output order.py
 ```cmake
 add_library(order_schema STATIC order.c)
 target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
+# Legacy generated DataBind code is not part of the installed SaltsUtils package.
 ```
 
 ### Example 10: Compile Generated C as a Shared Library
@@ -480,7 +486,7 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
 add_library(order_schema SHARED order.c)
 target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
+# New bindings should link Salts::CBind after migrating descriptors and adapters.
 ```
 
 ## Removed Options

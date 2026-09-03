@@ -5,7 +5,7 @@ foreach(required_var
         CMAKE_CTEST_COMMAND_PATH
         BUILD_CONFIG
         BUILD_GENERATOR
-        ROCIDA_ROOT
+        SALTS_ROOT
         EXPECT_CAPTURE)
   if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
     message(FATAL_ERROR
@@ -29,7 +29,7 @@ execute_process(
           --prefix "${install_prefix}" --config "${BUILD_CONFIG}"
   RESULT_VARIABLE install_result)
 if(NOT install_result EQUAL 0)
-  message(FATAL_ERROR "TurboParser package install failed: ${install_result}")
+  message(FATAL_ERROR "SaltsUtils package install failed: ${install_result}")
 endif()
 
 if(EXPECT_CAPTURE_WINDOWS_RUNTIME)
@@ -38,20 +38,24 @@ if(EXPECT_CAPTURE_WINDOWS_RUNTIME)
         "${install_prefix}/bin/${capture_runtime_dependency}")
     if(NOT EXISTS "${capture_runtime_path}")
       message(FATAL_ERROR
-              "TurboParser Capture package is missing ${capture_runtime_path}")
+              "SaltsUtils Capture package is missing ${capture_runtime_path}")
     endif()
   endforeach()
 endif()
 
 file(GLOB installed_target_files
-     "${install_prefix}/lib/cmake/TurboParser/TurboParserTargets*.cmake")
+     "${install_prefix}/lib/cmake/SaltsUtils/SaltsUtilsTargets*.cmake")
 if(NOT installed_target_files)
-  message(FATAL_ERROR "TurboParser installed target files were not generated")
+  message(FATAL_ERROR "SaltsUtils installed target files were not generated")
 endif()
 
+string(CONCAT legacy_parser_namespace "Turbo" "Parser::")
+string(CONCAT legacy_base_namespace "Roc" "ida::")
+string(CONCAT legacy_databind_target "Salts::Data" "Bind")
 set(forbidden_export_references "${SOURCE_DIR}" "${BUILD_DIR}"
-                                "TurboUtils::Capture"
-                                "TurboUtils::turbo_serial")
+                                "${legacy_parser_namespace}"
+                                "${legacy_base_namespace}"
+                                "${legacy_databind_target}")
 set(capture_export_found FALSE)
 foreach(installed_target_file IN LISTS installed_target_files)
   file(READ "${installed_target_file}" installed_target_content)
@@ -60,7 +64,7 @@ foreach(installed_target_file IN LISTS installed_target_files)
            forbidden_reference_offset)
     if(NOT forbidden_reference_offset EQUAL -1)
       message(FATAL_ERROR
-              "TurboParser export ${installed_target_file} contains private reference: ${forbidden_reference}")
+              "SaltsUtils export ${installed_target_file} contains private reference: ${forbidden_reference}")
     endif()
   endforeach()
 
@@ -68,7 +72,7 @@ foreach(installed_target_file IN LISTS installed_target_files)
   set(in_capture_properties FALSE)
   foreach(installed_target_line IN LISTS installed_target_lines)
     if(installed_target_line MATCHES
-       "^set_target_properties\\(TurboParser::Capture PROPERTIES$")
+       "^set_target_properties\\(Salts::Capture PROPERTIES$")
       set(in_capture_properties TRUE)
       set(capture_export_found TRUE)
     elseif(in_capture_properties AND installed_target_line MATCHES
@@ -79,10 +83,10 @@ foreach(installed_target_file IN LISTS installed_target_files)
                "^  IMPORTED_LINK_DEPENDENT_LIBRARIES_[A-Z0-9_]+ \\\"(.*)\\\"$")
       set(capture_link_dependencies "${CMAKE_MATCH_1}")
       foreach(capture_link_dependency IN LISTS capture_link_dependencies)
-        if(NOT capture_link_dependency STREQUAL "Rocida::Core")
+        if(NOT capture_link_dependency STREQUAL "Salts::Core")
           message(
             FATAL_ERROR
-              "TurboParser::Capture export contains unapproved link dependency: ${capture_link_dependency}"
+              "Salts::Capture export contains unapproved link dependency: ${capture_link_dependency}"
           )
         endif()
       endforeach()
@@ -91,9 +95,9 @@ foreach(installed_target_file IN LISTS installed_target_files)
 endforeach()
 
 if(EXPECT_CAPTURE AND NOT capture_export_found)
-  message(FATAL_ERROR "TurboParser::Capture was not found in installed exports")
+  message(FATAL_ERROR "Salts::Capture was not found in installed exports")
 elseif(NOT EXPECT_CAPTURE AND capture_export_found)
-  message(FATAL_ERROR "TurboParser::Capture leaked into a feature-off export")
+  message(FATAL_ERROR "Salts::Capture leaked into a feature-off export")
 endif()
 
 execute_process(
@@ -102,13 +106,13 @@ execute_process(
           -B "${consumer_build}"
           -G "${BUILD_GENERATOR}"
           "-DCMAKE_BUILD_TYPE=${BUILD_CONFIG}"
-          "-DTurboParser_DIR=${install_prefix}/lib/cmake/TurboParser"
-          "-DRocida_DIR=${ROCIDA_ROOT}/lib/cmake/Rocida"
-          "-DTURBOPARSER_EXPECT_CAPTURE=${EXPECT_CAPTURE}"
+          "-DSaltsUtils_DIR=${install_prefix}/lib/cmake/SaltsUtils"
+          "-DSalts_DIR=${SALTS_ROOT}/lib/cmake/Salts"
+          "-DSALTS_UTILS_EXPECT_CAPTURE=${EXPECT_CAPTURE}"
   RESULT_VARIABLE configure_result)
 if(NOT configure_result EQUAL 0)
   message(FATAL_ERROR
-          "TurboParser installed consumer configure failed: ${configure_result}")
+          "SaltsUtils installed consumer configure failed: ${configure_result}")
 endif()
 
 execute_process(
@@ -117,7 +121,7 @@ execute_process(
   RESULT_VARIABLE build_result)
 if(NOT build_result EQUAL 0)
   message(FATAL_ERROR
-          "TurboParser installed consumer build failed: ${build_result}")
+          "SaltsUtils installed consumer build failed: ${build_result}")
 endif()
 
 execute_process(
@@ -128,5 +132,5 @@ execute_process(
   RESULT_VARIABLE consumer_test_result)
 if(NOT consumer_test_result EQUAL 0)
   message(FATAL_ERROR
-          "TurboParser installed consumer tests failed: ${consumer_test_result}")
+          "SaltsUtils installed consumer tests failed: ${consumer_test_result}")
 endif()

@@ -375,7 +375,7 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
         snprintf(size_text, sizeof(size_text), "%d", size);
         add_string(ctx, field_map, "ctype", "UUID");
         add_string(ctx, field_map, "size_bytes", size_text);
-        add_string(ctx, field_map, "host_type", "turbo_uuid_t");
+        add_string(ctx, field_map, "host_type", "salts_uuid_t");
         add_true(ctx, field_map, "is_uuid");
         add_true(ctx, field_map, "is_primitive");
         add_true(ctx, field_map, "is_fixed_size");

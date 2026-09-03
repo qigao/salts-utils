@@ -1,6 +1,6 @@
 /**
  * @file mustache_xml.c
- * @brief XML data provider implementation backed by Rocida::XmlParser
+ * @brief XML data provider implementation backed by Salts::XmlParser
  */
 
 #include "mustache_xml.h"
@@ -30,12 +30,12 @@ static MUSTACHE_TEMPLATE *xml_get_partial(const char *name, size_t size,
                                           void *provider_data);
 static int xml_provider_failed(const MUSTACHE_XML_PROVIDER *provider);
 
-static turbo_xml_node xml_node_from_raw(const void *impl) {
-    const turbo_xml_node node = {impl};
+static salts_xml_node xml_node_from_raw(const void *impl) {
+    const salts_xml_node node = {impl};
     return node;
 }
 
-static int xml_view_eq(turbo_xml_string_view candidate, const char *expected,
+static int xml_view_eq(salts_xml_string_view candidate, const char *expected,
                        size_t expected_size) {
     return candidate.size == expected_size &&
            (expected_size == 0u ||
@@ -132,8 +132,8 @@ static int is_surrogate(void *node) {
 static int xml_dump(void *raw_node,
                     int (*out_fn)(const char *, size_t, void *),
                     void *renderer_data, void *provider_data) {
-    turbo_xml_node node;
-    turbo_xml_node_kind type;
+    salts_xml_node node;
+    salts_xml_node_kind type;
     size_t child_count;
     size_t index;
     int result;
@@ -143,23 +143,23 @@ static int xml_dump(void *raw_node,
     if (is_surrogate(raw_node)) return out_fn("[list]", 6u, renderer_data);
 
     node = xml_node_from_raw(raw_node);
-    type = turbo_xml_node_type(node);
-    if (type == TURBO_XML_ATTRIBUTE || type == TURBO_XML_TEXT) {
-        const turbo_xml_string_view value = turbo_xml_node_text_view(node);
+    type = salts_xml_node_type(node);
+    if (type == SALTS_XML_ATTRIBUTE || type == SALTS_XML_TEXT) {
+        const salts_xml_string_view value = salts_xml_node_text_view(node);
         return value.data != NULL ? out_fn(value.data, value.size, renderer_data) : 0;
     }
-    if (type != TURBO_XML_ELEMENT) return 0;
+    if (type != SALTS_XML_ELEMENT) return 0;
 
-    child_count = turbo_xml_node_child_count(node);
+    child_count = salts_xml_node_child_count(node);
     for (index = 0u; index < child_count; ++index) {
-        if (turbo_xml_node_type(turbo_xml_node_child_at(node, index)) ==
-            TURBO_XML_ELEMENT)
+        if (salts_xml_node_type(salts_xml_node_child_at(node, index)) ==
+            SALTS_XML_ELEMENT)
             return out_fn("[object]", 8u, renderer_data);
     }
     for (index = 0u; index < child_count; ++index) {
-        const turbo_xml_node child = turbo_xml_node_child_at(node, index);
-        if (turbo_xml_node_type(child) == TURBO_XML_TEXT) {
-            const turbo_xml_string_view value = turbo_xml_node_text_view(child);
+        const salts_xml_node child = salts_xml_node_child_at(node, index);
+        if (salts_xml_node_type(child) == SALTS_XML_TEXT) {
+            const salts_xml_string_view value = salts_xml_node_text_view(child);
             if (value.data != NULL) {
                 result = out_fn(value.data, value.size, renderer_data);
                 if (result != 0) return result;
@@ -177,7 +177,7 @@ static void *xml_get_root(void *provider_data) {
 static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size,
                                    void *provider_data) {
     MUSTACHE_XML_PROVIDER *provider = (MUSTACHE_XML_PROVIDER *)provider_data;
-    turbo_xml_node node;
+    salts_xml_node node;
     size_t index;
     size_t child_count;
     size_t match_count = 0u;
@@ -186,28 +186,28 @@ static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size
         xml_provider_failed(provider))
         return NULL;
     node = xml_node_from_raw(raw_node);
-    if (turbo_xml_node_type(node) != TURBO_XML_ELEMENT &&
-        turbo_xml_node_type(node) != TURBO_XML_DOCUMENT)
+    if (salts_xml_node_type(node) != SALTS_XML_ELEMENT &&
+        salts_xml_node_type(node) != SALTS_XML_DOCUMENT)
         return NULL;
 
-    for (index = 0u; index < turbo_xml_node_attribute_count(node); ++index) {
-        const turbo_xml_attribute attribute = turbo_xml_node_attribute_at(node, index);
-        if (xml_view_eq(turbo_xml_attribute_qualified_name(attribute), name, size))
+    for (index = 0u; index < salts_xml_node_attribute_count(node); ++index) {
+        const salts_xml_attribute attribute = salts_xml_node_attribute_at(node, index);
+        if (xml_view_eq(salts_xml_attribute_qualified_name(attribute), name, size))
             return (void *)attribute.impl;
     }
 
-    child_count = turbo_xml_node_child_count(node);
+    child_count = salts_xml_node_child_count(node);
     for (index = 0u; index < child_count; ++index) {
-        const turbo_xml_node child = turbo_xml_node_child_at(node, index);
-        if (turbo_xml_node_type(child) == TURBO_XML_ELEMENT &&
-            xml_view_eq(turbo_xml_node_qualified_name(child), name, size))
+        const salts_xml_node child = salts_xml_node_child_at(node, index);
+        if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
+            xml_view_eq(salts_xml_node_qualified_name(child), name, size))
             ++match_count;
     }
     if (match_count == 1u) {
         for (index = 0u; index < child_count; ++index) {
-            const turbo_xml_node child = turbo_xml_node_child_at(node, index);
-            if (turbo_xml_node_type(child) == TURBO_XML_ELEMENT &&
-                xml_view_eq(turbo_xml_node_qualified_name(child), name, size))
+            const salts_xml_node child = salts_xml_node_child_at(node, index);
+            if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
+                xml_view_eq(salts_xml_node_qualified_name(child), name, size))
                 return (void *)child.impl;
         }
     } else if (match_count > 1u) {
@@ -215,9 +215,9 @@ static void *xml_get_child_by_name(void *raw_node, const char *name, size_t size
         size_t match_index = 0u;
         if (list == NULL) return NULL;
         for (index = 0u; index < child_count; ++index) {
-            const turbo_xml_node child = turbo_xml_node_child_at(node, index);
-            if (turbo_xml_node_type(child) == TURBO_XML_ELEMENT &&
-                xml_view_eq(turbo_xml_node_qualified_name(child), name, size))
+            const salts_xml_node child = salts_xml_node_child_at(node, index);
+            if (salts_xml_node_type(child) == SALTS_XML_ELEMENT &&
+                xml_view_eq(salts_xml_node_qualified_name(child), name, size))
                 list->items[match_index++] = (void *)child.impl;
         }
         return list;

@@ -1,5 +1,5 @@
-#ifndef TURBONET_SBE_ENDIAN_H
-#define TURBONET_SBE_ENDIAN_H
+#ifndef SALTS_SBE_ENDIAN_H
+#define SALTS_SBE_ENDIAN_H
 
 #include <stdint.h>
 
@@ -58,4 +58,4 @@
   #define tbe_htobe64(x) (uint64_t)(x)
 #endif
 
-#endif /* TURBONET_SBE_ENDIAN_H */
+#endif /* SALTS_SBE_ENDIAN_H */

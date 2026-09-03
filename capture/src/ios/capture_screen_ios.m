@@ -1,24 +1,24 @@
 /**
  * iOS Screen Capture Implementation
  *
- * Uses ReplayKit and emits contiguous NV12 frames through turbo_video_capture_cb.
+ * Uses ReplayKit and emits contiguous NV12 frames through salts_video_capture_cb.
  */
 
 #import <Foundation/Foundation.h>
 #import <ReplayKit/ReplayKit.h>
 #import "capture_ios_guard.h"
-#include "turbo_capture.h"
+#include "salts_capture.h"
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct {
-    turbo_capture_t base;
+    salts_capture_t base;
     RPScreenRecorder *recorder;
     uint8_t *frame_buffer;
     size_t frame_buffer_size;
     int is_running;
-    TurboCaptureGuard *guard;
+    SaltsCaptureGuard *guard;
 } ios_screen_capture_t;
 
 static void ios_screen_finalize(void *capture) {
@@ -77,7 +77,7 @@ static uint8_t *copy_nv12_frame(ios_screen_capture_t *cap,
     return cap->frame_buffer;
 }
 
-int ios_screen_start(turbo_capture_t *capture) {
+int ios_screen_start(salts_capture_t *capture) {
     ios_screen_capture_t *cap = (ios_screen_capture_t *)capture;
 
     @autoreleasepool {
@@ -85,7 +85,7 @@ int ios_screen_start(turbo_capture_t *capture) {
             return -1;
         }
 
-        TurboCaptureGuard *guard = cap->guard;
+        SaltsCaptureGuard *guard = cap->guard;
         [cap->recorder
             startCaptureWithHandler:^(CMSampleBufferRef sample_buffer,
                                       RPSampleBufferType buffer_type,
@@ -124,7 +124,7 @@ int ios_screen_start(turbo_capture_t *capture) {
                 if (frame) {
                     CMTime pts = CMSampleBufferGetPresentationTimeStamp(sample_buffer);
                     uint64_t timestamp = (uint64_t)(CMTimeGetSeconds(pts) * 1000000.0);
-                    cap_ref->base.video_cb((turbo_capture_t *)cap_ref, frame, len,
+                    cap_ref->base.video_cb((salts_capture_t *)cap_ref, frame, len,
                                            width, height, timestamp,
                                            cap_ref->base.user_data);
                 }
@@ -138,9 +138,9 @@ int ios_screen_start(turbo_capture_t *capture) {
                 if (!cap_ref) return;
                 if (error) {
                     cap_ref->is_running = 0;
-                    cap_ref->base.state = TURBO_CAPTURE_STATE_ERROR;
+                    cap_ref->base.state = SALTS_CAPTURE_STATE_ERROR;
                     if (cap_ref->base.state_cb) {
-                        cap_ref->base.state_cb((turbo_capture_t *)cap_ref,
+                        cap_ref->base.state_cb((salts_capture_t *)cap_ref,
                                                cap_ref->base.state,
                                                cap_ref->base.user_data);
                     }
@@ -154,11 +154,11 @@ int ios_screen_start(turbo_capture_t *capture) {
     }
 }
 
-void ios_screen_stop(turbo_capture_t *capture) {
+void ios_screen_stop(salts_capture_t *capture) {
     ios_screen_capture_t *cap = (ios_screen_capture_t *)capture;
 
     @autoreleasepool {
-        TurboCaptureGuard *guard = cap->guard;
+        SaltsCaptureGuard *guard = cap->guard;
         [cap->recorder stopCaptureWithHandler:^(NSError *error) {
             (void)error;
             ios_screen_capture_t *cap_ref =
@@ -171,7 +171,7 @@ void ios_screen_stop(turbo_capture_t *capture) {
     }
 }
 
-void ios_screen_destroy(turbo_capture_t *capture) {
+void ios_screen_destroy(salts_capture_t *capture) {
     ios_screen_capture_t *cap = (ios_screen_capture_t *)capture;
 
     @autoreleasepool {
@@ -184,22 +184,22 @@ void ios_screen_destroy(turbo_capture_t *capture) {
     }
 }
 
-turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t *config) {
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
     (void)config;
 
     @autoreleasepool {
         ios_screen_capture_t *cap = calloc(1, sizeof(ios_screen_capture_t));
         if (!cap) return NULL;
 
-        cap->guard = [[TurboCaptureGuard alloc] initWithCapture:cap
+        cap->guard = [[SaltsCaptureGuard alloc] initWithCapture:cap
                                                      finalizer:ios_screen_finalize];
         if (!cap->guard) {
             free(cap);
             return NULL;
         }
 
-        cap->base.type = TURBO_CAPTURE_TYPE_SCREEN;
-        cap->base.state = TURBO_CAPTURE_STATE_STOPPED;
+        cap->base.type = SALTS_CAPTURE_TYPE_SCREEN;
+        cap->base.state = SALTS_CAPTURE_STATE_STOPPED;
         cap->base.platform_ctx = cap;
         cap->recorder = [RPScreenRecorder sharedRecorder];
 
@@ -209,6 +209,6 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
             return NULL;
         }
 
-        return (turbo_capture_t *)cap;
+        return (salts_capture_t *)cap;
     }
 }

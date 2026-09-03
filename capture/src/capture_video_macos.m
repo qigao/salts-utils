@@ -3,7 +3,7 @@
  *
  * Uses AVFoundation for camera capture
  */
-#import "turbo_capture.h"
+#import "salts_capture.h"
 #import "capture_video_backend.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
@@ -31,15 +31,15 @@ static uint64_t get_timestamp_us(void) {
  * Capture Delegate
  * ============================================================================= */
 
-@interface TurboVideoCaptureDelegate : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
-@property (nonatomic, assign) turbo_capture_t *capture;
+@interface SaltsVideoCaptureDelegate : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
+@property (nonatomic, assign) salts_capture_t *capture;
 @property (nonatomic, assign) int width;
 @property (nonatomic, assign) int height;
 @property (nonatomic, assign) uint8_t *convertBuffer;
 @property (nonatomic, assign) size_t convertBufferSize;
 @end
 
-@implementation TurboVideoCaptureDelegate
+@implementation SaltsVideoCaptureDelegate
 
 - (void)captureOutput:(AVCaptureOutput *)output
         didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
@@ -110,7 +110,7 @@ typedef struct {
     AVCaptureSession *session;
     AVCaptureDeviceInput *input;
     AVCaptureVideoDataOutput *output;
-    TurboVideoCaptureDelegate *delegate;
+    SaltsVideoCaptureDelegate *delegate;
     dispatch_queue_t captureQueue;
 
     int width;
@@ -122,7 +122,7 @@ typedef struct {
     char device_id[128];
 } avf_video_device_ctx_t;
 
-void avfoundation_video_destroy(turbo_capture_t *capture);
+void avfoundation_video_destroy(salts_capture_t *capture);
 
 static AVCaptureDevice *avf_find_video_device(const char *device_id) {
     if (device_id && device_id[0]) {
@@ -144,17 +144,17 @@ static int avf_make_mode(AVCaptureDevice *device,
                          uint32_t format_index,
                          uint32_t range_index,
                          uint32_t endpoint,
-                         turbo_video_native_mode_t *mode,
+                         salts_video_native_mode_t *mode,
                          AVCaptureDeviceFormat **out_format,
                          CMTime *out_duration) {
     if (!device || !mode || endpoint > 1 ||
         format_index >= (uint32_t)device.formats.count) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
     AVCaptureDeviceFormat *format = device.formats[format_index];
     NSArray<AVFrameRateRange *> *ranges = format.videoSupportedFrameRateRanges;
-    if (range_index >= (uint32_t)ranges.count) return TURBO_CAPTURE_ERR_FORMAT;
+    if (range_index >= (uint32_t)ranges.count) return SALTS_CAPTURE_ERR_FORMAT;
 
     AVFrameRateRange *range = ranges[range_index];
     CMTime duration = endpoint == 0 ? range.minFrameDuration
@@ -166,22 +166,22 @@ static int avf_make_mode(AVCaptureDevice *device,
         (uint64_t)duration.value > UINT32_MAX ||
         (uint64_t)duration.timescale > UINT32_MAX ||
         dimensions.width <= 0 || dimensions.height <= 0) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
     mode->width = dimensions.width;
     mode->height = dimensions.height;
     mode->framerate_numerator = (uint32_t)duration.timescale;
     mode->framerate_denominator = (uint32_t)duration.value;
-    mode->format = TURBO_VIDEO_CAPTURE_FORMAT_BGRA;
+    mode->format = SALTS_VIDEO_CAPTURE_FORMAT_BGRA;
     mode->mode_id = avf_mode_id(format_index, range_index, endpoint);
     if (out_format) *out_format = format;
     if (out_duration) *out_duration = duration;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-static int avf_modes_equal(const turbo_video_native_mode_t *lhs,
-                           const turbo_video_native_mode_t *rhs) {
+static int avf_modes_equal(const salts_video_native_mode_t *lhs,
+                           const salts_video_native_mode_t *rhs) {
     return lhs->width == rhs->width && lhs->height == rhs->height &&
            lhs->framerate_numerator == rhs->framerate_numerator &&
            lhs->framerate_denominator == rhs->framerate_denominator &&
@@ -192,7 +192,7 @@ static int avf_modes_equal(const turbo_video_native_mode_t *lhs,
  * Device Enumeration
  * ============================================================================= */
 
-int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_video_devices(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     @autoreleasepool {
@@ -210,11 +210,11 @@ int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_co
         for (AVCaptureDevice *device in videoDevices) {
             if (count >= max_count) break;
 
-            turbo_capture_device_t *dev = &devices[count];
+            salts_capture_device_t *dev = &devices[count];
             memset(dev, 0, sizeof(*dev));
 
             dev->index = count;
-            dev->type = TURBO_CAPTURE_TYPE_VIDEO;
+            dev->type = SALTS_CAPTURE_TYPE_VIDEO;
             dev->is_default = (count == 0) ? 1 : 0;
 
             const char *name = [device.localizedName UTF8String];
@@ -237,22 +237,22 @@ int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_co
 static int avf_video_device_open(const char *device_id, void **backend_ctx) {
     avf_video_device_ctx_t *ctx;
 
-    if (!backend_ctx) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!backend_ctx) return SALTS_CAPTURE_ERR_FORMAT;
     *backend_ctx = NULL;
     @autoreleasepool {
         AVCaptureDevice *device = avf_find_video_device(device_id);
         const char *unique_id;
-        if (!device) return TURBO_CAPTURE_ERR_DEVICE;
+        if (!device) return SALTS_CAPTURE_ERR_DEVICE;
         unique_id = [device.uniqueID UTF8String];
         if (!unique_id || strlen(unique_id) >= sizeof(ctx->device_id)) {
-            return TURBO_CAPTURE_ERR_FORMAT;
+            return SALTS_CAPTURE_ERR_FORMAT;
         }
 
         ctx = (avf_video_device_ctx_t *)calloc(1, sizeof(*ctx));
-        if (!ctx) return TURBO_CAPTURE_ERR_NOMEM;
+        if (!ctx) return SALTS_CAPTURE_ERR_NOMEM;
         memcpy(ctx->device_id, unique_id, strlen(unique_id) + 1);
         *backend_ctx = ctx;
-        return TURBO_CAPTURE_OK;
+        return SALTS_CAPTURE_OK;
     }
 }
 
@@ -262,20 +262,20 @@ static void avf_video_device_close(void *backend_ctx) {
 
 static int avf_video_device_list_modes(
     void *backend_ctx,
-    turbo_video_native_mode_t *modes,
+    salts_video_native_mode_t *modes,
     size_t capacity,
     size_t *out_count) {
     avf_video_device_ctx_t *ctx = (avf_video_device_ctx_t *)backend_ctx;
     size_t count = 0;
 
     if (!ctx || !modes || capacity == 0 || !out_count) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
     memset(modes, 0, sizeof(*modes) * capacity);
 
     @autoreleasepool {
         AVCaptureDevice *device = avf_find_video_device(ctx->device_id);
-        if (!device) return TURBO_CAPTURE_ERR_DEVICE;
+        if (!device) return SALTS_CAPTURE_ERR_DEVICE;
 
         for (uint32_t format_index = 0;
              format_index < (uint32_t)device.formats.count;
@@ -289,21 +289,21 @@ static int avf_video_device_list_modes(
                 AVFrameRateRange *range = ranges[range_index];
                 if (avf_make_mode(device, format_index, range_index, 0,
                                   &modes[count], NULL, NULL) ==
-                    TURBO_CAPTURE_OK) {
+                    SALTS_CAPTURE_OK) {
                     if (++count == capacity) goto done;
                 }
                 if (CMTimeCompare(range.minFrameDuration,
                                   range.maxFrameDuration) != 0 &&
                     avf_make_mode(device, format_index, range_index, 1,
                                   &modes[count], NULL, NULL) ==
-                        TURBO_CAPTURE_OK) {
+                        SALTS_CAPTURE_OK) {
                     if (++count == capacity) goto done;
                 }
             }
         }
 done:
         *out_count = count;
-        return TURBO_CAPTURE_OK;
+        return SALTS_CAPTURE_OK;
     }
 }
 
@@ -313,8 +313,8 @@ done:
 
 static int avf_video_device_create_capture(
     void *backend_ctx,
-    const turbo_video_native_mode_t *mode,
-    turbo_capture_t **out_capture) {
+    const salts_video_native_mode_t *mode,
+    salts_capture_t **out_capture) {
     avf_video_device_ctx_t *device_ctx =
         (avf_video_device_ctx_t *)backend_ctx;
     uint32_t format_index = (uint32_t)(mode->mode_id >> 32);
@@ -322,35 +322,35 @@ static int avf_video_device_create_capture(
         (uint32_t)(mode->mode_id & UINT32_MAX) >> 1;
     uint32_t endpoint = (uint32_t)(mode->mode_id & 1u);
 
-    if (!device_ctx || !mode || !out_capture) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!device_ctx || !mode || !out_capture) return SALTS_CAPTURE_ERR_FORMAT;
     *out_capture = NULL;
 
     @autoreleasepool {
         AVCaptureDevice *device = avf_find_video_device(device_ctx->device_id);
-        turbo_video_native_mode_t actual_mode;
+        salts_video_native_mode_t actual_mode;
         AVCaptureDeviceFormat *selected_format = nil;
         CMTime duration = kCMTimeInvalid;
         NSError *error = nil;
-        turbo_capture_t *capture;
+        salts_capture_t *capture;
         avf_video_ctx_t *ctx;
 
         if (!device ||
             avf_make_mode(device, format_index, range_index, endpoint,
                           &actual_mode, &selected_format, &duration) !=
-                TURBO_CAPTURE_OK ||
+                SALTS_CAPTURE_OK ||
             !avf_modes_equal(&actual_mode, mode)) {
-            return TURBO_CAPTURE_ERR_FORMAT;
+            return SALTS_CAPTURE_ERR_FORMAT;
         }
 
-        capture = (turbo_capture_t *)calloc(1, sizeof(*capture));
+        capture = (salts_capture_t *)calloc(1, sizeof(*capture));
         ctx = (avf_video_ctx_t *)calloc(1, sizeof(*ctx));
         if (!capture || !ctx) {
             free(capture);
             free(ctx);
-            return TURBO_CAPTURE_ERR_NOMEM;
+            return SALTS_CAPTURE_ERR_NOMEM;
         }
-        capture->type = TURBO_CAPTURE_TYPE_VIDEO;
-        capture->state = TURBO_CAPTURE_STATE_STOPPED;
+        capture->type = SALTS_CAPTURE_TYPE_VIDEO;
+        capture->state = SALTS_CAPTURE_STATE_STOPPED;
         capture->platform_ctx = ctx;
         ctx->width = mode->width;
         ctx->height = mode->height;
@@ -380,7 +380,7 @@ static int avf_video_device_create_capture(
                 @(kCVPixelFormatType_32BGRA)
         };
         ctx->output.alwaysDiscardsLateVideoFrames = YES;
-        ctx->delegate = [[TurboVideoCaptureDelegate alloc] init];
+        ctx->delegate = [[SaltsVideoCaptureDelegate alloc] init];
         ctx->delegate.capture = capture;
         ctx->captureQueue = dispatch_queue_create(
             "turbo.video.capture", DISPATCH_QUEUE_SERIAL);
@@ -390,16 +390,16 @@ static int avf_video_device_create_capture(
         [ctx->session addOutput:ctx->output];
 
         *out_capture = capture;
-        return TURBO_CAPTURE_OK;
+        return SALTS_CAPTURE_OK;
 
 error:
         avfoundation_video_destroy(capture);
-        return TURBO_CAPTURE_ERR_DEVICE;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 }
 
-const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
-    static const turbo_video_backend_ops_t ops = {
+const salts_video_backend_ops_t *salts_video_platform_backend(void) {
+    static const salts_video_backend_ops_t ops = {
         avf_video_device_open,
         avf_video_device_close,
         avf_video_device_list_modes,
@@ -408,8 +408,8 @@ const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
     return &ops;
 }
 
-void turbo_video_capture_set_callback(turbo_capture_t *capture,
-                                       turbo_video_capture_cb cb,
+void salts_video_capture_set_callback(salts_capture_t *capture,
+                                       salts_video_capture_cb cb,
                                        void *user_data) {
     if (!capture) return;
     capture->video_cb = cb;
@@ -420,7 +420,7 @@ void turbo_video_capture_set_callback(turbo_capture_t *capture,
  * Platform Hooks
  * ============================================================================= */
 
-int avfoundation_video_start(turbo_capture_t *capture) {
+int avfoundation_video_start(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return -1;
     avf_video_ctx_t *ctx = (avf_video_ctx_t *)capture->platform_ctx;
 
@@ -432,7 +432,7 @@ int avfoundation_video_start(turbo_capture_t *capture) {
     }
 }
 
-void avfoundation_video_stop(turbo_capture_t *capture) {
+void avfoundation_video_stop(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return;
     avf_video_ctx_t *ctx = (avf_video_ctx_t *)capture->platform_ctx;
 
@@ -443,7 +443,7 @@ void avfoundation_video_stop(turbo_capture_t *capture) {
     }
 }
 
-void avfoundation_video_destroy(turbo_capture_t *capture) {
+void avfoundation_video_destroy(salts_capture_t *capture) {
     if (!capture) return;
 
     avfoundation_video_stop(capture);
@@ -467,47 +467,47 @@ void avfoundation_video_destroy(turbo_capture_t *capture) {
     free(capture);
 }
 
-int turbo_video_capture_get_control_range(turbo_capture_t *capture,
-                                           turbo_camera_control_t control,
-                                           turbo_camera_control_range_t *range) {
+int salts_video_capture_get_control_range(salts_capture_t *capture,
+                                           salts_camera_control_t control,
+                                           salts_camera_control_range_t *range) {
     (void)capture;
     (void)control;
-    if (!range) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!range) return SALTS_CAPTURE_ERR_DEVICE;
     memset(range, 0, sizeof(*range));
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_set_control(turbo_capture_t *capture,
-                                     turbo_camera_control_t control,
+int salts_video_capture_set_control(salts_capture_t *capture,
+                                     salts_camera_control_t control,
                                      int value) {
     (void)capture;
     (void)control;
     (void)value;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_get_control(turbo_capture_t *capture,
-                                     turbo_camera_control_t control,
+int salts_video_capture_get_control(salts_capture_t *capture,
+                                     salts_camera_control_t control,
                                      int *value) {
     (void)capture;
     (void)control;
     if (value) *value = 0;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_set_crop(turbo_capture_t *capture,
-                                  const turbo_video_crop_t *crop) {
+int salts_video_capture_set_crop(salts_capture_t *capture,
+                                  const salts_video_crop_t *crop) {
     (void)capture;
     (void)crop;
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_get_crop(turbo_capture_t *capture,
-                                  turbo_video_crop_t *crop) {
+int salts_video_capture_get_crop(salts_capture_t *capture,
+                                  salts_video_crop_t *crop) {
     (void)capture;
-    if (!crop) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!crop) return SALTS_CAPTURE_ERR_DEVICE;
     memset(crop, 0, sizeof(*crop));
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
 #endif /* __APPLE__ && __MACH__ */

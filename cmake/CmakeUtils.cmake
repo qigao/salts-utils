@@ -1,4 +1,4 @@
-# TurboParser CMake utilities
+# SaltsUtils CMake utilities
 
 function(cmake_config_target target_name)
     set(options)

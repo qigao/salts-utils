@@ -1,5 +1,5 @@
-#ifndef TURBONET_SBE_WIRE_H
-#define TURBONET_SBE_WIRE_H
+#ifndef SALTS_SBE_WIRE_H
+#define SALTS_SBE_WIRE_H
 
 #include "tbe_endian.h"
 
@@ -227,4 +227,4 @@ static inline const uint8_t *tbe_wire_var_data_end(const tbe_var_data_t *value) 
 
 #undef TBE_WIRE_MEMCPY
 
-#endif /* TURBONET_SBE_WIRE_H */
+#endif /* SALTS_SBE_WIRE_H */

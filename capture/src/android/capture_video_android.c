@@ -61,7 +61,7 @@ static void camera_device_on_disconnected(void *context, ACameraDevice *device) 
 
 static void camera_device_on_error(void *context, ACameraDevice *device, int error) {
     (void)device;
-    TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Camera error: {}", error);
+    SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Camera error: {}", error);
     android_camera_ctx_t *ctx = (android_camera_ctx_t *)context;
     ctx->capturing = 0;
 }
@@ -259,7 +259,7 @@ android_camera_ctx_t *android_camera_create(int width,
     /* Create camera manager */
     ctx->camera_manager = ACameraManager_create();
     if (!ctx->camera_manager) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create camera manager");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create camera manager");
         free(ctx);
         return NULL;
     }
@@ -273,7 +273,7 @@ android_camera_ctx_t *android_camera_create(int width,
     );
 
     if (status != AMEDIA_OK) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create image reader");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create image reader");
         ACameraManager_delete(ctx->camera_manager);
         free(ctx);
         return NULL;
@@ -282,7 +282,7 @@ android_camera_ctx_t *android_camera_create(int width,
     /* Set image listener */
     status = AImageReader_setImageListener(ctx->image_reader, &ctx->image_listener);
     if (status != AMEDIA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set image reader listener: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set image reader listener: {}", status);
         AImageReader_delete(ctx->image_reader);
         ACameraManager_delete(ctx->camera_manager);
         free(ctx);
@@ -293,7 +293,7 @@ android_camera_ctx_t *android_camera_create(int width,
     status = AImageReader_getWindow(ctx->image_reader, &ctx->image_reader_window);
     if (status != AMEDIA_OK || !ctx->image_reader_window ||
         ACameraOutputTarget_create(ctx->image_reader_window, &ctx->output_target) != ACAMERA_OK) {
-        TURBO_LOG_ERROR(tlog_get_default(), "capture", "Failed to create camera output target");
+        SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create camera output target");
         AImageReader_delete(ctx->image_reader);
         ACameraManager_delete(ctx->camera_manager);
         free(ctx);
@@ -340,7 +340,7 @@ int android_camera_start(android_camera_ctx_t *ctx) {
     );
 
     if (status != ACAMERA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to open camera: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to open camera: {}", status);
         return -1;
     }
 
@@ -351,14 +351,14 @@ int android_camera_start(android_camera_ctx_t *ctx) {
         &capture_request
     );
     if (status != ACAMERA_OK || !capture_request) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create capture request: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create capture request: {}", status);
         goto fail;
     }
 
     /* Add target window */
     status = ACaptureRequest_addTarget(capture_request, ctx->output_target);
     if (status != ACAMERA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to add camera output target: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to add camera output target: {}", status);
         goto fail;
     }
 
@@ -371,26 +371,26 @@ int android_camera_start(android_camera_ctx_t *ctx) {
         fps_range
     );
     if (status != ACAMERA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set camera FPS range: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set camera FPS range: {}", status);
         goto fail;
     }
 
     /* Create capture session */
     status = ACaptureSessionOutputContainer_create(&output_container);
     if (status != ACAMERA_OK || !output_container) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera output container: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera output container: {}", status);
         goto fail;
     }
 
     status = ACaptureSessionOutput_create(ctx->image_reader_window, &session_output);
     if (status != ACAMERA_OK || !session_output) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera session output: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera session output: {}", status);
         goto fail;
     }
 
     status = ACaptureSessionOutputContainer_add(output_container, session_output);
     if (status != ACAMERA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to add camera session output: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to add camera session output: {}", status);
         goto fail;
     }
 
@@ -401,7 +401,7 @@ int android_camera_start(android_camera_ctx_t *ctx) {
         &ctx->capture_session
     );
     if (status != ACAMERA_OK || !ctx->capture_session) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera capture session: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to create camera capture session: {}", status);
         goto fail;
     }
 
@@ -414,7 +414,7 @@ int android_camera_start(android_camera_ctx_t *ctx) {
         NULL   /* Sequence ID */
     );
     if (status != ACAMERA_OK) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture", "Failed to start camera repeating request: {}", status);
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to start camera repeating request: {}", status);
         goto fail;
     }
 

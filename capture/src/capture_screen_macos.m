@@ -4,7 +4,7 @@
  * Uses CGDisplayStream (macOS 10.8+) for screen capture
  * Note: ScreenCaptureKit requires macOS 12.3+ and is not used for broader compatibility
  */
-#import "turbo_capture.h"
+#import "salts_capture.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 
@@ -49,14 +49,14 @@ typedef struct {
     uint8_t *frame_buffer;
     size_t frame_buffer_size;
 
-    turbo_capture_t *capture;
+    salts_capture_t *capture;
 } cgdisplay_ctx_t;
 
 /* =============================================================================
  * Screen Enumeration
  * ============================================================================= */
 
-int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_screens(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     CGDirectDisplayID displayIDs[16];
@@ -73,11 +73,11 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
     for (uint32_t i = 0; i < displayCount && count < max_count; i++) {
         CGDirectDisplayID displayID = displayIDs[i];
 
-        turbo_capture_device_t *dev = &devices[count];
+        salts_capture_device_t *dev = &devices[count];
         memset(dev, 0, sizeof(*dev));
 
         dev->index = count;
-        dev->type = TURBO_CAPTURE_TYPE_SCREEN;
+        dev->type = SALTS_CAPTURE_TYPE_SCREEN;
         dev->is_default = (displayID == mainDisplay) ? 1 : 0;
 
         size_t width = CGDisplayPixelsWide(displayID);
@@ -97,8 +97,8 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
  * Screen Capture Implementation
  * ============================================================================= */
 
-turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t *config) {
-    turbo_capture_t *capture = (turbo_capture_t *)calloc(1, sizeof(turbo_capture_t));
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+    salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
     cgdisplay_ctx_t *ctx = (cgdisplay_ctx_t *)calloc(1, sizeof(cgdisplay_ctx_t));
@@ -107,8 +107,8 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_SCREEN;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_SCREEN;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = ctx;
     ctx->capture = capture;
 
@@ -149,8 +149,8 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
     return capture;
 }
 
-void turbo_screen_capture_set_callback(turbo_capture_t *capture,
-                                        turbo_video_capture_cb cb,
+void salts_screen_capture_set_callback(salts_capture_t *capture,
+                                        salts_video_capture_cb cb,
                                         void *user_data) {
     if (!capture) return;
     capture->video_cb = cb;
@@ -161,7 +161,7 @@ void turbo_screen_capture_set_callback(turbo_capture_t *capture,
  * Platform Hooks
  * ============================================================================= */
 
-int macos_screen_start(turbo_capture_t *capture) {
+int macos_screen_start(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return -1;
     cgdisplay_ctx_t *ctx = (cgdisplay_ctx_t *)capture->platform_ctx;
 
@@ -209,7 +209,7 @@ int macos_screen_start(turbo_capture_t *capture) {
 
             if (!frameSurface) return;
 
-            turbo_capture_t *cap = blockCtx->capture;
+            salts_capture_t *cap = blockCtx->capture;
             if (!cap || !cap->video_cb) return;
 
             /* Lock IOSurface for reading */
@@ -265,7 +265,7 @@ int macos_screen_start(turbo_capture_t *capture) {
     return 0;
 }
 
-void macos_screen_stop(turbo_capture_t *capture) {
+void macos_screen_stop(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return;
     cgdisplay_ctx_t *ctx = (cgdisplay_ctx_t *)capture->platform_ctx;
 
@@ -278,7 +278,7 @@ void macos_screen_stop(turbo_capture_t *capture) {
     }
 }
 
-void macos_screen_destroy(turbo_capture_t *capture) {
+void macos_screen_destroy(salts_capture_t *capture) {
     if (!capture) return;
 
     macos_screen_stop(capture);
