@@ -2,7 +2,7 @@
  * @file data_bind.h
  * @brief Public C API for schema-driven binary/JSON/CSV/XML data binding.
  *
- * Third-party users should include this header and link TurboParser::DataBind.
+ * Third-party users should include this header and link Salts::DataBind.
  * The API exposes only opaque handles and accessor functions; returned strings
  * and child pointers are borrowed views owned by their DataBind/DataBindValue.
  *
@@ -15,12 +15,13 @@
 #ifndef DATA_BIND_H
 #define DATA_BIND_H
 
-#include "turbo_parser.h"
-#include "turbo_uuid.h"
+#include "turbo_parser_common.h"
+#include "turbo_parser_datetime.h"
+#include <salts_uuid.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define DATA_BIND_UUID_SIZE TURBO_UUID_SIZE
+#define DATA_BIND_UUID_SIZE SALTS_UUID_SIZE
 
 #define DATA_BIND_VERSION_MAJOR 2
 #define DATA_BIND_VERSION_MINOR 5
@@ -43,6 +44,8 @@ extern "C" {
 #endif
 
 typedef struct DataBind DataBind;
+/** DataBind-owned name for the legacy parser-compatible datetime layout. */
+typedef turbo_datetime_t DataBindDateTime;
 /**
  * Immutable recursive dynamic node. Parse outputs own their root node; values
  * returned by object, field, list, map, and record accessors are borrowed.
@@ -1145,7 +1148,7 @@ DATA_BIND_API int data_bind_value_as_uuid(const DataBindValue *value,
                                           uint8_t out[DATA_BIND_UUID_SIZE]);
 DATA_BIND_API const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out,
                                                          size_t len);
-DATA_BIND_API int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *out);
+DATA_BIND_API int data_bind_value_as_datetime(const DataBindValue *value, DataBindDateTime *out);
 DATA_BIND_API double data_bind_value_as_datetime_timestamp(const DataBindValue *value);
 DATA_BIND_API const char *data_bind_value_as_datetime_string(const DataBindValue *value, char *out,
                                                              size_t len);
@@ -1192,7 +1195,7 @@ DATA_BIND_API DataBindStatus data_bind_value_get_bytes(const DataBindValue *valu
 DATA_BIND_API DataBindStatus data_bind_value_get_uuid(const DataBindValue *value,
                                                       uint8_t out[DATA_BIND_UUID_SIZE]);
 DATA_BIND_API DataBindStatus data_bind_value_get_datetime(const DataBindValue *value,
-                                                          turbo_datetime_t *out);
+                                                          DataBindDateTime *out);
 DATA_BIND_API DataBindStatus data_bind_value_get_date(const DataBindValue *value,
                                                       DataBindDate *out);
 DATA_BIND_API DataBindStatus data_bind_value_get_time(const DataBindValue *value,

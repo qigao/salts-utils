@@ -558,8 +558,8 @@ spec("typed DataBind binary") {
       check_not_null(entry.key);
       if (entry.key != NULL) {
         push_status = macro_child_map_vec_t_push(&collections.children_by_name, entry);
-        check_equal(push_status, TURBO_OK);
-        if (push_status != TURBO_OK) tstr_free(entry.key);
+        check_equal(push_status, SALTS_OK);
+        if (push_status != SALTS_OK) tstr_free(entry.key);
       }
     }
     check_equal(macro_child_map_vec_t_size(&collections.children_by_name), 1u);

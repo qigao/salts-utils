@@ -78,6 +78,8 @@ static DataBindRecordAction collect_exact_record(void *user_data, const DataBind
 
 spec("data_bind public API") {
   it("should expose version and ABI metadata") {
+    DataBindDateTime datetime = {0};
+    datetime.year = 2026;
     check_equal(data_bind_library_version(), DATA_BIND_VERSION);
     check_equal(data_bind_abi_version(), DATA_BIND_ABI_VERSION);
     DataBindStatus (*feed_fn)(data_bind_stream_t *, const void *, size_t) = data_bind_stream_feed;
@@ -93,6 +95,7 @@ spec("data_bind public API") {
     check_not_null(finish_fn);
     check_equal(data_bind_status_name(DATA_BIND_ERR_TYPE_MISMATCH), "type_mismatch");
     check_equal(data_bind_status_name(DATA_BIND_ERR_LIMIT), "limit");
+    check_equal(datetime.year, 2026);
   }
 
   it("should honor versioned error buffer boundaries") {
@@ -1574,7 +1577,7 @@ spec("data_bind public API") {
     DataBindTime time;
     DataBindDecimal decimal;
     DataBindMoney money;
-    turbo_uuid_t uuid;
+    salts_uuid_t uuid;
     char text[64];
     const char *source_bigint;
 

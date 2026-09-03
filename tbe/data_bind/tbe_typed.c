@@ -58,7 +58,7 @@ static size_t typed_kind_size(TbeTypedKind kind) {
   case TBE_TYPED_F64:
     return 8;
   case TBE_TYPED_UUID:
-    return TURBO_UUID_SIZE;
+    return SALTS_UUID_SIZE;
   default:
     return 0;
   }
@@ -304,7 +304,7 @@ static DataBindStatus typed_from_one(TbeTypedKind kind, TbeTypedKind wire_kind,
     return DATA_BIND_OK;
   }
   if (kind == TBE_TYPED_UUID) {
-    if (data_bind_value_get_uuid(value, ((turbo_uuid_t *)out)->bytes) != DATA_BIND_OK)
+    if (data_bind_value_get_uuid(value, ((salts_uuid_t *)out)->bytes) != DATA_BIND_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path, "Expected UUID value");
     return DATA_BIND_OK;
   }
@@ -475,8 +475,8 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
     return turbo_json_create_string_n(text ? text : "", len);
   }
   if (kind == TBE_TYPED_UUID) {
-    char text[TURBO_UUID_STRING_SIZE];
-    if (turbo_uuid_format((const turbo_uuid_t *)ptr, text, sizeof(text)) != TURBO_OK) return NULL;
+    char text[SALTS_UUID_STRING_SIZE];
+    if (salts_uuid_format((const salts_uuid_t *)ptr, text, sizeof(text)) != SALTS_OK) return NULL;
     return turbo_json_create_string(text);
   }
   if (kind == TBE_TYPED_F32) {
@@ -1059,7 +1059,7 @@ static void typed_read_wire_scalar(TbeTypedKind kind, const uint8_t *source, int
     *(double *)output = tbe_wire_read_f64(source, big_endian);
     break;
   case TBE_TYPED_UUID:
-    memcpy(((turbo_uuid_t *)output)->bytes, source, TURBO_UUID_SIZE);
+    memcpy(((salts_uuid_t *)output)->bytes, source, SALTS_UUID_SIZE);
     break;
   default:
     break;
@@ -1436,7 +1436,7 @@ static void typed_write_scalar(TbeTypedKind kind, uint8_t *dst, int big_endian, 
     tbe_wire_write_f64(dst, big_endian, *(const double *)src);
     break;
   case TBE_TYPED_UUID:
-    memcpy(dst, ((const turbo_uuid_t *)src)->bytes, TURBO_UUID_SIZE);
+    memcpy(dst, ((const salts_uuid_t *)src)->bytes, SALTS_UUID_SIZE);
     break;
   default:
     break;
