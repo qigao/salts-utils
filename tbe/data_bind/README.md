@@ -1,4 +1,9 @@
-# TurboParser DataBind 2.5
+# Legacy DataBind 2.5 (retired)
+
+> DataBind runtime、公共头和 CMake target 已从 SaltsUtils 的默认构建、测试、安装与 export 中移除。
+> 本目录仅保留迁移参考；新代码使用基础 Salts 包的 `Salts::CBind` 和
+> `<cbind/cbind.h>`。CBind 不是 DataBind 的 ABI 兼容别名，迁移时应根据
+> CMeta/CSerde/CBind 契约重新建立描述符和 reader/writer 边界。
 
 DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，

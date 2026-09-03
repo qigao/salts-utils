@@ -30,7 +30,7 @@
 #include <tlog.h>
 
 #endif /* _WIN32 */
-#include "turbo_capture.h"
+#include "salts_capture.h"
 #include "capture_video_backend.h"
 
 #ifdef _WIN32
@@ -119,10 +119,10 @@ typedef struct {
     int width;
     int height;
     int framerate;
-    int format;         /* turbo_video_capture_format_t */
+    int format;         /* salts_video_capture_format_t */
     int source_format;          /* Turbo format of the native media type */
     mf_native_format_t native_source; /* Actual reader output subtype */
-    turbo_video_native_mode_t native_mode;
+    salts_video_native_mode_t native_mode;
     unsigned int read_error_logs;
 
     /* Conversion buffer */
@@ -131,7 +131,7 @@ typedef struct {
 
     /* Software camera controls */
     int zoom_percent;
-    turbo_video_crop_t crop;
+    salts_video_crop_t crop;
     int crop_enabled;
     CRITICAL_SECTION control_lock;
     int control_lock_initialized;
@@ -202,20 +202,20 @@ static mf_native_format_t mf_subtype_to_native(REFGUID subtype) {
     return MF_NATIVE_UNKNOWN;
 }
 
-static int mf_native_to_turbo_format(mf_native_format_t native) {
+static int mf_native_to_salts_format(mf_native_format_t native) {
     switch (native) {
     case MF_NATIVE_I420:
     case MF_NATIVE_YUY2:
     case MF_NATIVE_UYVY:
-        return TURBO_VIDEO_CAPTURE_FORMAT_I420;
+        return SALTS_VIDEO_CAPTURE_FORMAT_I420;
     case MF_NATIVE_NV12:
-        return TURBO_VIDEO_CAPTURE_FORMAT_NV12;
+        return SALTS_VIDEO_CAPTURE_FORMAT_NV12;
     case MF_NATIVE_RGB24:
-        return TURBO_VIDEO_CAPTURE_FORMAT_RGB24;
+        return SALTS_VIDEO_CAPTURE_FORMAT_RGB24;
     case MF_NATIVE_BGRA:
-        return TURBO_VIDEO_CAPTURE_FORMAT_BGRA;
+        return SALTS_VIDEO_CAPTURE_FORMAT_BGRA;
     case MF_NATIVE_MJPG:
-        return TURBO_VIDEO_CAPTURE_FORMAT_MJPEG;
+        return SALTS_VIDEO_CAPTURE_FORMAT_MJPEG;
     default:
         return -1;
     }
@@ -229,7 +229,7 @@ static int mf_frame_rate_to_int(UINT32 numerator, UINT32 denominator) {
 static int mf_media_type_to_native_mode(
     IMFMediaType *media_type,
     DWORD native_type_index,
-    turbo_video_native_mode_t *mode) {
+    salts_video_native_mode_t *mode) {
     GUID subtype;
     UINT32 width = 0;
     UINT32 height = 0;
@@ -254,13 +254,13 @@ static int mf_media_type_to_native_mode(
     mode->height = (int)height;
     mode->framerate_numerator = fps_num;
     mode->framerate_denominator = fps_den;
-    mode->format = mf_native_to_turbo_format(native_format);
+    mode->format = mf_native_to_salts_format(native_format);
     mode->mode_id = (uint64_t)native_type_index;
     return mode->format >= 0 ? 0 : -1;
 }
 
-static int mf_native_modes_equal(const turbo_video_native_mode_t *lhs,
-                                 const turbo_video_native_mode_t *rhs) {
+static int mf_native_modes_equal(const salts_video_native_mode_t *lhs,
+                                 const salts_video_native_mode_t *rhs) {
     return lhs->width == rhs->width &&
            lhs->height == rhs->height &&
            lhs->framerate_numerator == rhs->framerate_numerator &&
@@ -272,7 +272,7 @@ static int mf_native_modes_equal(const turbo_video_native_mode_t *lhs,
 static HRESULT mf_configure_video_output(mf_video_capture_ctx_t *ctx) {
     IMFMediaType *media_type = NULL;
     IMFMediaType *current_type = NULL;
-    turbo_video_native_mode_t actual_mode;
+    salts_video_native_mode_t actual_mode;
     GUID subtype;
     mf_native_format_t native_format;
     HRESULT hr;
@@ -285,8 +285,8 @@ static HRESULT mf_configure_video_output(mf_video_capture_ctx_t *ctx) {
             media_type, (DWORD)ctx->native_mode.mode_id,
             &actual_mode) != 0 ||
         !mf_native_modes_equal(&actual_mode, &ctx->native_mode) ||
-        actual_mode.format < TURBO_VIDEO_CAPTURE_FORMAT_I420 ||
-        actual_mode.format > TURBO_VIDEO_CAPTURE_FORMAT_MJPEG) {
+        actual_mode.format < SALTS_VIDEO_CAPTURE_FORMAT_I420 ||
+        actual_mode.format > SALTS_VIDEO_CAPTURE_FORMAT_MJPEG) {
         IMFMediaType_Release(media_type);
         return MF_E_INVALIDMEDIATYPE;
     }
@@ -309,14 +309,14 @@ static HRESULT mf_configure_video_output(mf_video_capture_ctx_t *ctx) {
 
     native_format = mf_subtype_to_native(&subtype);
     if (native_format == MF_NATIVE_UNKNOWN) return MF_E_INVALIDMEDIATYPE;
-    if (ctx->format == TURBO_VIDEO_CAPTURE_FORMAT_I420) {
+    if (ctx->format == SALTS_VIDEO_CAPTURE_FORMAT_I420) {
         if (native_format != MF_NATIVE_I420 &&
             native_format != MF_NATIVE_NV12 &&
             native_format != MF_NATIVE_YUY2 &&
             native_format != MF_NATIVE_UYVY) {
             return MF_E_INVALIDMEDIATYPE;
         }
-    } else if (mf_native_to_turbo_format(native_format) != ctx->format) {
+    } else if (mf_native_to_salts_format(native_format) != ctx->format) {
         return MF_E_INVALIDMEDIATYPE;
     }
     ctx->native_source = native_format;
@@ -389,7 +389,7 @@ static int attach_camera_control(mf_video_capture_ctx_t *ctx,
     HRESULT hr;
     ULONG fetched = 0;
     int index = 0;
-    int result = TURBO_CAPTURE_ERR_UNSUPPORTED;
+    int result = SALTS_CAPTURE_ERR_UNSUPPORTED;
 
     hr = CoCreateInstance(&CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
                           &IID_ICreateDevEnum, (void **)&dev_enum);
@@ -411,19 +411,19 @@ static int attach_camera_control(mf_video_capture_ctx_t *ctx,
                                                 &IID_IAMCameraControl,
                                                 (void **)&ctx->camera_control);
                 if (SUCCEEDED(hr) && ctx->camera_control) {
-                    result = TURBO_CAPTURE_OK;
+                    result = SALTS_CAPTURE_OK;
                 }
 
                 hr = IBaseFilter_QueryInterface(filter,
                                                 &IID_IAMVideoProcAmp,
                                                 (void **)&ctx->video_proc_amp);
                 if (SUCCEEDED(hr) && ctx->video_proc_amp) {
-                    result = TURBO_CAPTURE_OK;
+                    result = SALTS_CAPTURE_OK;
                 }
 
                 result = (ctx->camera_control || ctx->video_proc_amp)
-                         ? TURBO_CAPTURE_OK
-                         : TURBO_CAPTURE_ERR_UNSUPPORTED;
+                         ? SALTS_CAPTURE_OK
+                         : SALTS_CAPTURE_ERR_UNSUPPORTED;
             }
             IMoniker_Release(moniker);
             moniker = NULL;
@@ -443,23 +443,23 @@ cleanup:
     return result;
 }
 
-static int camera_control_to_dshow(turbo_camera_control_t control, long *property) {
+static int camera_control_to_dshow(salts_camera_control_t control, long *property) {
     if (!property) return 0;
 
     switch (control) {
-    case TURBO_CAMERA_CONTROL_ZOOM:
+    case SALTS_CAMERA_CONTROL_ZOOM:
         *property = CameraControl_Zoom;
         return 1;
-    case TURBO_CAMERA_CONTROL_FOCUS:
+    case SALTS_CAMERA_CONTROL_FOCUS:
         *property = CameraControl_Focus;
         return 1;
-    case TURBO_CAMERA_CONTROL_EXPOSURE:
+    case SALTS_CAMERA_CONTROL_EXPOSURE:
         *property = CameraControl_Exposure;
         return 1;
-    case TURBO_CAMERA_CONTROL_PAN:
+    case SALTS_CAMERA_CONTROL_PAN:
         *property = CameraControl_Pan;
         return 1;
-    case TURBO_CAMERA_CONTROL_TILT:
+    case SALTS_CAMERA_CONTROL_TILT:
         *property = CameraControl_Tilt;
         return 1;
     default:
@@ -467,20 +467,20 @@ static int camera_control_to_dshow(turbo_camera_control_t control, long *propert
     }
 }
 
-static int video_proc_amp_to_dshow(turbo_camera_control_t control, long *property) {
+static int video_proc_amp_to_dshow(salts_camera_control_t control, long *property) {
     if (!property) return 0;
 
     switch (control) {
-    case TURBO_CAMERA_CONTROL_BRIGHTNESS:
+    case SALTS_CAMERA_CONTROL_BRIGHTNESS:
         *property = VideoProcAmp_Brightness;
         return 1;
-    case TURBO_CAMERA_CONTROL_CONTRAST:
+    case SALTS_CAMERA_CONTROL_CONTRAST:
         *property = VideoProcAmp_Contrast;
         return 1;
-    case TURBO_CAMERA_CONTROL_HUE:
+    case SALTS_CAMERA_CONTROL_HUE:
         *property = VideoProcAmp_Hue;
         return 1;
-    case TURBO_CAMERA_CONTROL_WHITE_BALANCE:
+    case SALTS_CAMERA_CONTROL_WHITE_BALANCE:
         *property = VideoProcAmp_WhiteBalance;
         return 1;
     default:
@@ -518,12 +518,12 @@ static int align_even_down(int value) {
     return value & ~1;
 }
 
-static int get_effective_crop(mf_video_capture_ctx_t *ctx, turbo_video_crop_t *crop) {
+static int get_effective_crop(mf_video_capture_ctx_t *ctx, salts_video_crop_t *crop) {
     int crop_width;
     int crop_height;
     int zoom_percent;
     int crop_enabled;
-    turbo_video_crop_t configured_crop;
+    salts_video_crop_t configured_crop;
 
     if (!ctx || !crop) return 0;
 
@@ -566,7 +566,7 @@ static int get_effective_crop(mf_video_capture_ctx_t *ctx, turbo_video_crop_t *c
     return 1;
 }
 
-static int deliver_i420_frame(turbo_capture_t *capture,
+static int deliver_i420_frame(salts_capture_t *capture,
                               mf_video_capture_ctx_t *ctx,
                               const uint8_t *data,
                               size_t data_len,
@@ -576,7 +576,7 @@ static int deliver_i420_frame(turbo_capture_t *capture,
     const uint8_t *src_y = data;
     const uint8_t *src_u = data + y_size;
     const uint8_t *src_v = src_u + y_size / 4;
-    turbo_video_crop_t crop;
+    salts_video_crop_t crop;
     uint8_t *dst_y;
     uint8_t *dst_u;
     uint8_t *dst_v;
@@ -618,7 +618,7 @@ static int deliver_i420_frame(turbo_capture_t *capture,
     return 0;
 }
 
-static int deliver_nv12_frame(turbo_capture_t *capture,
+static int deliver_nv12_frame(salts_capture_t *capture,
                               mf_video_capture_ctx_t *ctx,
                               const uint8_t *data,
                               size_t data_len,
@@ -627,7 +627,7 @@ static int deliver_nv12_frame(turbo_capture_t *capture,
     const size_t frame_size = y_size + y_size / 2;
     const uint8_t *src_y = data;
     const uint8_t *src_uv = data + y_size;
-    turbo_video_crop_t crop;
+    salts_video_crop_t crop;
     uint8_t *dst_y;
     uint8_t *dst_uv;
     int result;
@@ -664,7 +664,7 @@ static int deliver_nv12_frame(turbo_capture_t *capture,
     return 0;
 }
 
-static int deliver_video_frame(turbo_capture_t *capture,
+static int deliver_video_frame(salts_capture_t *capture,
                                mf_video_capture_ctx_t *ctx,
                                const uint8_t *data,
                                size_t data_len,
@@ -679,11 +679,11 @@ static int deliver_video_frame(turbo_capture_t *capture,
 
     if (!capture->video_cb) return 0;
 
-    if (ctx->format == TURBO_VIDEO_CAPTURE_FORMAT_NV12) {
+    if (ctx->format == SALTS_VIDEO_CAPTURE_FORMAT_NV12) {
         return deliver_nv12_frame(capture, ctx, data, data_len, timestamp);
     }
 
-    if (ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_I420) {
+    if (ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_I420) {
         /* MJPEG / RGB24 / BGRA passthrough */
         capture->video_cb(capture, data, data_len,
                           ctx->width, ctx->height,
@@ -746,12 +746,12 @@ static int deliver_video_frame(turbo_capture_t *capture,
 static ULONG STDMETHODCALLTYPE mf_reader_callback_add_ref(
     IMFSourceReaderCallback *iface);
 
-static void mf_video_report_read_error(turbo_capture_t *capture,
+static void mf_video_report_read_error(salts_capture_t *capture,
                                        mf_video_capture_ctx_t *ctx,
                                        HRESULT hr,
                                        DWORD flags) {
     if (ctx->read_error_logs < MF_MAX_READ_ERROR_LOGS) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture",
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture",
                          "operation=video_read phase=sample format={} "
                          "width={} height={} fps={} native_code={} flags={}",
                          ctx->format, ctx->width, ctx->height, ctx->framerate,
@@ -760,7 +760,7 @@ static void mf_video_report_read_error(turbo_capture_t *capture,
     }
 
     InterlockedExchange(&ctx->running, 0);
-    capture->state = TURBO_CAPTURE_STATE_ERROR;
+    capture->state = SALTS_CAPTURE_STATE_ERROR;
     if (capture->state_cb) {
         capture->state_cb(capture, capture->state, capture->user_data);
     }
@@ -807,7 +807,7 @@ static HRESULT STDMETHODCALLTYPE mf_reader_callback_on_read_sample(
     IMFSample *sample) {
     mf_source_reader_callback_t *callback = CONTAINING_RECORD(
         iface, mf_source_reader_callback_t, iface);
-    turbo_capture_t *capture = (turbo_capture_t *)InterlockedCompareExchangePointer(
+    salts_capture_t *capture = (salts_capture_t *)InterlockedCompareExchangePointer(
         &callback->capture, NULL, NULL);
     mf_video_capture_ctx_t *ctx;
     HRESULT hr = S_OK;
@@ -874,7 +874,7 @@ static HRESULT STDMETHODCALLTYPE mf_reader_callback_on_flush(
     IMFSourceReaderCallback *iface, DWORD stream_index) {
     mf_source_reader_callback_t *callback = CONTAINING_RECORD(
         iface, mf_source_reader_callback_t, iface);
-    turbo_capture_t *capture = (turbo_capture_t *)InterlockedCompareExchangePointer(
+    salts_capture_t *capture = (salts_capture_t *)InterlockedCompareExchangePointer(
         &callback->capture, NULL, NULL);
     (void)stream_index;
 
@@ -906,7 +906,7 @@ static IMFSourceReaderCallbackVtbl mf_reader_callback_vtable = {
 };
 
 static mf_source_reader_callback_t *mf_reader_callback_create(
-    turbo_capture_t *capture) {
+    salts_capture_t *capture) {
     mf_source_reader_callback_t *callback =
         (mf_source_reader_callback_t *)calloc(1, sizeof(*callback));
     if (!callback) return NULL;
@@ -921,7 +921,7 @@ static mf_source_reader_callback_t *mf_reader_callback_create(
  * Device Enumeration
  * ============================================================================= */
 
-int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_video_devices(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     HRESULT hr;
@@ -946,10 +946,10 @@ int turbo_capture_list_video_devices(turbo_capture_device_t *devices, int max_co
     if (FAILED(hr)) goto cleanup;
 
     for (UINT32 i = 0; i < device_count && count < max_count; i++) {
-        turbo_capture_device_t *dev = &devices[count];
+        salts_capture_device_t *dev = &devices[count];
         memset(dev, 0, sizeof(*dev));
         dev->index = count;
-        dev->type = TURBO_CAPTURE_TYPE_VIDEO;
+        dev->type = SALTS_CAPTURE_TYPE_VIDEO;
         dev->is_default = (i == 0) ? 1 : 0;
 
         /* Get friendly name */
@@ -988,7 +988,7 @@ cleanup:
 
 static int mf_video_device_list_modes(
     void *backend_ctx,
-    turbo_video_native_mode_t *modes,
+    salts_video_native_mode_t *modes,
     size_t capacity,
     size_t *out_count) {
     mf_video_device_ctx_t *device = (mf_video_device_ctx_t *)backend_ctx;
@@ -1002,16 +1002,16 @@ static int mf_video_device_list_modes(
     IMFMediaSource *source = NULL;
     IMFSourceReader *reader = NULL;
     size_t count = 0;
-    int result = TURBO_CAPTURE_ERR_DEVICE;
+    int result = SALTS_CAPTURE_ERR_DEVICE;
 
     if (!device || !modes || capacity == 0 || !out_count) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
     device_id = device->device_id[0] ? device->device_id : NULL;
     memset(modes, 0, sizeof(*modes) * capacity);
 
     hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
-    if (FAILED(hr)) return TURBO_CAPTURE_ERR_DEVICE;
+    if (FAILED(hr)) return SALTS_CAPTURE_ERR_DEVICE;
 
     hr = MFCreateAttributes(&attributes, 1);
     if (FAILED(hr)) goto cleanup;
@@ -1057,12 +1057,12 @@ static int mf_video_device_list_modes(
     hr = MFCreateSourceReaderFromMediaSource(source, NULL, &reader);
     if (FAILED(hr)) goto cleanup;
 
-    result = TURBO_CAPTURE_OK;
+    result = SALTS_CAPTURE_OK;
     {
         DWORD consecutive_errors = 0;
         for (DWORD type_index = 0; count < capacity; ++type_index) {
             IMFMediaType *media_type = NULL;
-            turbo_video_native_mode_t mode;
+            salts_video_native_mode_t mode;
 
             hr = IMFSourceReader_GetNativeMediaType(
                 reader, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
@@ -1078,8 +1078,8 @@ static int mf_video_device_list_modes(
             consecutive_errors = 0;
 
             if (mf_media_type_to_native_mode(media_type, type_index, &mode) == 0 &&
-                mode.format >= TURBO_VIDEO_CAPTURE_FORMAT_I420 &&
-                mode.format <= TURBO_VIDEO_CAPTURE_FORMAT_MJPEG) {
+                mode.format >= SALTS_VIDEO_CAPTURE_FORMAT_I420 &&
+                mode.format <= SALTS_VIDEO_CAPTURE_FORMAT_MJPEG) {
                 modes[count++] = mode;
             }
             IMFMediaType_Release(media_type);
@@ -1109,9 +1109,9 @@ cleanup:
  * Video Capture Implementation
  * ============================================================================= */
 
-static turbo_capture_t *mf_video_capture_create_exact(
+static salts_capture_t *mf_video_capture_create_exact(
     const char *device_id,
-    const turbo_video_native_mode_t *native_mode) {
+    const salts_video_native_mode_t *native_mode) {
     HRESULT hr;
     int device_index = -1;
     int selected_index = -1;
@@ -1129,15 +1129,15 @@ static turbo_capture_t *mf_video_capture_create_exact(
     if (width <= 0 || height <= 0 ||
         native_mode->framerate_numerator == 0 ||
         native_mode->framerate_denominator == 0 ||
-        format < TURBO_VIDEO_CAPTURE_FORMAT_I420 ||
-        format > TURBO_VIDEO_CAPTURE_FORMAT_MJPEG) {
+        format < SALTS_VIDEO_CAPTURE_FORMAT_I420 ||
+        format > SALTS_VIDEO_CAPTURE_FORMAT_MJPEG) {
         return NULL;
     }
 
     hr = MFStartup(MF_VERSION, MFSTARTUP_LITE);
     if (FAILED(hr)) return NULL;
 
-    turbo_capture_t *capture = (turbo_capture_t *)calloc(1, sizeof(turbo_capture_t));
+    salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) {
         MFShutdown();
         return NULL;
@@ -1160,8 +1160,8 @@ static turbo_capture_t *mf_video_capture_create_exact(
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_VIDEO;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_VIDEO;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = ctx;
     InitializeCriticalSection(&ctx->control_lock);
     ctx->control_lock_initialized = 1;
@@ -1247,7 +1247,7 @@ static turbo_capture_t *mf_video_capture_create_exact(
         reader_attrs, &MF_SOURCE_READER_ASYNC_CALLBACK,
         (IUnknown *)&ctx->reader_callback->iface);
     if (SUCCEEDED(hr) &&
-        ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_MJPEG) {
+        ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_MJPEG) {
         hr = IMFAttributes_SetUINT32(reader_attrs,
                                      &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
                                      TRUE);
@@ -1267,7 +1267,7 @@ static turbo_capture_t *mf_video_capture_create_exact(
 
     hr = mf_configure_video_output(ctx);
     if (FAILED(hr)) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture",
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture",
                          "operation=create_video_capture "
                          "phase=format_negotiation format={} width={} "
                          "height={} fps={} native_code={}",
@@ -1295,26 +1295,26 @@ error:
         CoTaskMemFree(device_list);
     }
     if (attributes) IMFAttributes_Release(attributes);
-    turbo_capture_destroy(capture);
+    salts_capture_destroy(capture);
     return NULL;
 }
 
 static int mf_video_device_open(const char *device_id, void **backend_ctx) {
-    turbo_capture_device_t devices[TURBO_CAPTURE_MAX_DEVICES];
+    salts_capture_device_t devices[SALTS_CAPTURE_MAX_DEVICES];
     mf_video_device_ctx_t *ctx;
     int device_index = -1;
     int count;
     int found = 0;
 
-    if (!backend_ctx) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!backend_ctx) return SALTS_CAPTURE_ERR_FORMAT;
     *backend_ctx = NULL;
     if (device_id && strlen(device_id) >= sizeof(ctx->device_id)) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
-    count = turbo_capture_list_video_devices(
-        devices, TURBO_CAPTURE_MAX_DEVICES);
-    if (count <= 0) return TURBO_CAPTURE_ERR_DEVICE;
+    count = salts_capture_list_video_devices(
+        devices, SALTS_CAPTURE_MAX_DEVICES);
+    if (count <= 0) return SALTS_CAPTURE_ERR_DEVICE;
 
     if (!device_id || !device_id[0]) {
         found = 1;
@@ -1328,13 +1328,13 @@ static int mf_video_device_open(const char *device_id, void **backend_ctx) {
             }
         }
     }
-    if (!found) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!found) return SALTS_CAPTURE_ERR_DEVICE;
 
     ctx = (mf_video_device_ctx_t *)calloc(1, sizeof(*ctx));
-    if (!ctx) return TURBO_CAPTURE_ERR_NOMEM;
+    if (!ctx) return SALTS_CAPTURE_ERR_NOMEM;
     if (device_id) memcpy(ctx->device_id, device_id, strlen(device_id) + 1);
     *backend_ctx = ctx;
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
 static void mf_video_device_close(void *backend_ctx) {
@@ -1343,19 +1343,19 @@ static void mf_video_device_close(void *backend_ctx) {
 
 static int mf_video_device_create_capture(
     void *backend_ctx,
-    const turbo_video_native_mode_t *mode,
-    turbo_capture_t **out_capture) {
+    const salts_video_native_mode_t *mode,
+    salts_capture_t **out_capture) {
     mf_video_device_ctx_t *device = (mf_video_device_ctx_t *)backend_ctx;
     const char *device_id;
 
-    if (!device || !mode || !out_capture) return TURBO_CAPTURE_ERR_FORMAT;
+    if (!device || !mode || !out_capture) return SALTS_CAPTURE_ERR_FORMAT;
     device_id = device->device_id[0] ? device->device_id : NULL;
     *out_capture = mf_video_capture_create_exact(device_id, mode);
-    return *out_capture ? TURBO_CAPTURE_OK : TURBO_CAPTURE_ERR_DEVICE;
+    return *out_capture ? SALTS_CAPTURE_OK : SALTS_CAPTURE_ERR_DEVICE;
 }
 
-const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
-    static const turbo_video_backend_ops_t ops = {
+const salts_video_backend_ops_t *salts_video_platform_backend(void) {
+    static const salts_video_backend_ops_t ops = {
         mf_video_device_open,
         mf_video_device_close,
         mf_video_device_list_modes,
@@ -1364,17 +1364,17 @@ const turbo_video_backend_ops_t *turbo_video_platform_backend(void) {
     return &ops;
 }
 
-void turbo_video_capture_set_callback(turbo_capture_t *capture,
-                                        turbo_video_capture_cb cb,
+void salts_video_capture_set_callback(salts_capture_t *capture,
+                                        salts_video_capture_cb cb,
                                         void *user_data) {
     if (!capture) return;
     capture->video_cb = cb;
     capture->user_data = user_data;
 }
 
-int turbo_video_capture_get_control_range(turbo_capture_t *capture,
-                                           turbo_camera_control_t control,
-                                           turbo_camera_control_range_t *range) {
+int salts_video_capture_get_control_range(salts_capture_t *capture,
+                                           salts_camera_control_t control,
+                                           salts_camera_control_range_t *range) {
     mf_video_capture_ctx_t *ctx;
     long property;
     long min_value;
@@ -1385,12 +1385,12 @@ int turbo_video_capture_get_control_range(turbo_capture_t *capture,
     long current_value;
     HRESULT hr;
 
-    if (!capture || !range || capture->type != TURBO_CAPTURE_TYPE_VIDEO) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+    if (!capture || !range || capture->type != SALTS_CAPTURE_TYPE_VIDEO) {
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
-    if (!ctx) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
     memset(range, 0, sizeof(*range));
 
@@ -1413,7 +1413,7 @@ int turbo_video_capture_get_control_range(turbo_capture_t *capture,
                 range->current_value = range->default_value;
             }
 
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
@@ -1436,11 +1436,11 @@ int turbo_video_capture_get_control_range(turbo_capture_t *capture,
                 range->current_value = range->default_value;
             }
 
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
-    if (control == TURBO_CAMERA_CONTROL_ZOOM) {
+    if (control == SALTS_CAMERA_CONTROL_ZOOM) {
         range->min_value = 100;
         range->max_value = 400;
         range->step = 1;
@@ -1448,61 +1448,61 @@ int turbo_video_capture_get_control_range(turbo_capture_t *capture,
         EnterCriticalSection(&ctx->control_lock);
         range->current_value = ctx->zoom_percent;
         LeaveCriticalSection(&ctx->control_lock);
-        return TURBO_CAPTURE_OK;
+        return SALTS_CAPTURE_OK;
     }
 
-    return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_UNSUPPORTED;
 }
 
-int turbo_video_capture_set_control(turbo_capture_t *capture,
-                                     turbo_camera_control_t control,
+int salts_video_capture_set_control(salts_capture_t *capture,
+                                     salts_camera_control_t control,
                                      int value) {
     mf_video_capture_ctx_t *ctx;
     long property;
     HRESULT hr;
 
-    if (!capture || capture->type != TURBO_CAPTURE_TYPE_VIDEO) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_VIDEO) {
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
-    if (!ctx) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
     if (ctx->camera_control && camera_control_to_dshow(control, &property)) {
         hr = IAMCameraControl_Set(ctx->camera_control, property, value, CameraControl_Flags_Manual);
         if (SUCCEEDED(hr)) {
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
     if (ctx->video_proc_amp && video_proc_amp_to_dshow(control, &property)) {
         hr = IAMVideoProcAmp_Set(ctx->video_proc_amp, property, value, VideoProcAmp_Flags_Manual);
         if (SUCCEEDED(hr)) {
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
-    if (control != TURBO_CAMERA_CONTROL_ZOOM) {
-        return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    if (control != SALTS_CAMERA_CONTROL_ZOOM) {
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
     }
 
     if (value < 100 || value > 400) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
-    if (ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_I420 &&
-        ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_NV12) {
-        return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    if (ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_I420 &&
+        ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_NV12) {
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
     }
 
     EnterCriticalSection(&ctx->control_lock);
     ctx->zoom_percent = value;
     LeaveCriticalSection(&ctx->control_lock);
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-int turbo_video_capture_get_control(turbo_capture_t *capture,
-                                     turbo_camera_control_t control,
+int salts_video_capture_get_control(salts_capture_t *capture,
+                                     salts_camera_control_t control,
                                      int *value) {
     mf_video_capture_ctx_t *ctx;
     long property;
@@ -1510,18 +1510,18 @@ int turbo_video_capture_get_control(turbo_capture_t *capture,
     long ignored_flags;
     HRESULT hr;
 
-    if (!capture || !value || capture->type != TURBO_CAPTURE_TYPE_VIDEO) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+    if (!capture || !value || capture->type != SALTS_CAPTURE_TYPE_VIDEO) {
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
-    if (!ctx) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
     if (ctx->camera_control && camera_control_to_dshow(control, &property)) {
         hr = IAMCameraControl_Get(ctx->camera_control, property, &ds_value, &ignored_flags);
         if (SUCCEEDED(hr)) {
             *value = (int)ds_value;
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
@@ -1529,35 +1529,35 @@ int turbo_video_capture_get_control(turbo_capture_t *capture,
         hr = IAMVideoProcAmp_Get(ctx->video_proc_amp, property, &ds_value, &ignored_flags);
         if (SUCCEEDED(hr)) {
             *value = (int)ds_value;
-            return TURBO_CAPTURE_OK;
+            return SALTS_CAPTURE_OK;
         }
     }
 
-    if (control != TURBO_CAMERA_CONTROL_ZOOM) {
-        return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    if (control != SALTS_CAMERA_CONTROL_ZOOM) {
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
     }
 
     EnterCriticalSection(&ctx->control_lock);
     *value = ctx->zoom_percent;
     LeaveCriticalSection(&ctx->control_lock);
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-int turbo_video_capture_set_crop(turbo_capture_t *capture,
-                                  const turbo_video_crop_t *crop) {
+int salts_video_capture_set_crop(salts_capture_t *capture,
+                                  const salts_video_crop_t *crop) {
     mf_video_capture_ctx_t *ctx;
-    turbo_video_crop_t normalized;
+    salts_video_crop_t normalized;
 
-    if (!capture || capture->type != TURBO_CAPTURE_TYPE_VIDEO) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_VIDEO) {
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
-    if (!ctx) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
-    if (ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_I420 &&
-        ctx->format != TURBO_VIDEO_CAPTURE_FORMAT_NV12) {
-        return TURBO_CAPTURE_ERR_UNSUPPORTED;
+    if (ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_I420 &&
+        ctx->format != SALTS_VIDEO_CAPTURE_FORMAT_NV12) {
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
     }
 
     if (!crop || crop->width <= 0 || crop->height <= 0) {
@@ -1565,7 +1565,7 @@ int turbo_video_capture_set_crop(turbo_capture_t *capture,
         ctx->crop_enabled = 0;
         memset(&ctx->crop, 0, sizeof(ctx->crop));
         LeaveCriticalSection(&ctx->control_lock);
-        return TURBO_CAPTURE_OK;
+        return SALTS_CAPTURE_OK;
     }
 
     normalized = *crop;
@@ -1578,26 +1578,26 @@ int turbo_video_capture_set_crop(turbo_capture_t *capture,
         normalized.width < 2 || normalized.height < 2 ||
         normalized.x + normalized.width > ctx->width ||
         normalized.y + normalized.height > ctx->height) {
-        return TURBO_CAPTURE_ERR_FORMAT;
+        return SALTS_CAPTURE_ERR_FORMAT;
     }
 
     EnterCriticalSection(&ctx->control_lock);
     ctx->crop = normalized;
     ctx->crop_enabled = 1;
     LeaveCriticalSection(&ctx->control_lock);
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
-int turbo_video_capture_get_crop(turbo_capture_t *capture,
-                                  turbo_video_crop_t *crop) {
+int salts_video_capture_get_crop(salts_capture_t *capture,
+                                  salts_video_crop_t *crop) {
     mf_video_capture_ctx_t *ctx;
 
-    if (!capture || !crop || capture->type != TURBO_CAPTURE_TYPE_VIDEO) {
-        return TURBO_CAPTURE_ERR_DEVICE;
+    if (!capture || !crop || capture->type != SALTS_CAPTURE_TYPE_VIDEO) {
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
-    if (!ctx) return TURBO_CAPTURE_ERR_DEVICE;
+    if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
     EnterCriticalSection(&ctx->control_lock);
     if (ctx->crop_enabled) {
@@ -1610,14 +1610,14 @@ int turbo_video_capture_get_crop(turbo_capture_t *capture,
     }
     LeaveCriticalSection(&ctx->control_lock);
 
-    return TURBO_CAPTURE_OK;
+    return SALTS_CAPTURE_OK;
 }
 
 /* =============================================================================
  * Hooks for centralized dispatcher
  * ============================================================================= */
 
-int mf_video_start(turbo_capture_t *capture) {
+int mf_video_start(salts_capture_t *capture) {
     mf_video_capture_ctx_t *ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
     HRESULT hr;
 
@@ -1635,7 +1635,7 @@ int mf_video_start(turbo_capture_t *capture) {
     return 0;
 }
 
-void mf_video_stop(turbo_capture_t *capture) {
+void mf_video_stop(salts_capture_t *capture) {
     mf_video_capture_ctx_t *ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
     HRESULT hr;
     LONG was_running;
@@ -1648,13 +1648,13 @@ void mf_video_stop(turbo_capture_t *capture) {
         hr = IMFSourceReader_Flush(
             ctx->reader, MF_SOURCE_READER_FIRST_VIDEO_STREAM);
         if (FAILED(hr)) {
-            TURBO_LOG_ERRORF(tlog_get_default(), "capture",
+            SALTS_LOG_ERRORF(tlog_get_default(), "capture",
                              "operation=stop_video_capture phase=flush "
                              "native_code={}",
                              (unsigned int)hr);
         } else if (WaitForSingleObject(ctx->flush_event, MF_FLUSH_TIMEOUT_MS) !=
                        WAIT_OBJECT_0) {
-            TURBO_LOG_ERRORF(tlog_get_default(), "capture",
+            SALTS_LOG_ERRORF(tlog_get_default(), "capture",
                              "operation=stop_video_capture "
                              "phase=flush_wait timeout_ms={}",
                              (unsigned int)MF_FLUSH_TIMEOUT_MS);
@@ -1664,14 +1664,14 @@ void mf_video_stop(turbo_capture_t *capture) {
     if (InterlockedCompareExchange(&ctx->callbacks_in_flight, 0, 0) != 0 &&
         WaitForSingleObject(ctx->callback_idle_event, MF_FLUSH_TIMEOUT_MS) !=
             WAIT_OBJECT_0) {
-        TURBO_LOG_ERRORF(tlog_get_default(), "capture",
+        SALTS_LOG_ERRORF(tlog_get_default(), "capture",
                          "operation=stop_video_capture "
                          "phase=callback_drain timeout_ms={}",
                          (unsigned int)MF_FLUSH_TIMEOUT_MS);
     }
 }
 
-void mf_video_destroy(turbo_capture_t *capture) {
+void mf_video_destroy(salts_capture_t *capture) {
     mf_video_capture_ctx_t *ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
     if (!ctx) return;
 

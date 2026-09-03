@@ -14,14 +14,14 @@ target_include_directories(
 cmake_add_test(
   capture_contract_test
   SOURCES test_capture_contract.c
-  LIBS capture_common_test_impl Rocida::TinyTest
+  LIBS capture_common_test_impl Salts::TinyTest
   FOLDER "capture/tests")
 
 if(WIN32)
   cmake_add_test(
     capture_windows_test
     SOURCES test_capture_windows.c
-    LIBS TurboParser::Capture Rocida::TinyTest
+    LIBS Salts::Capture Salts::TinyTest
     RUNTIME_TARGETS yuv
     FOLDER "capture/tests")
 endif()
@@ -30,7 +30,7 @@ if(ANDROID)
   cmake_add_test(
     capture_android_test
     SOURCES test_capture_android.c
-    LIBS TurboParser::Capture Rocida::TinyTest
+    LIBS Salts::Capture Salts::TinyTest
     FOLDER "capture/tests")
 endif()
 
@@ -38,6 +38,6 @@ if(UNIX AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   cmake_add_test(
     capture_posix_test
     SOURCES test_capture_posix.c
-    LIBS TurboParser::Capture Rocida::TinyTest
+    LIBS Salts::Capture Salts::TinyTest
     FOLDER "capture/tests")
 endif()

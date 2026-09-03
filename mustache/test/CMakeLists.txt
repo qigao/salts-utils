@@ -1,6 +1,6 @@
 # Mustache Tests (current suite)
 # Common configuration
-set(TEST_LIBS TurboParser::Mustache Rocida::JsonParser Rocida::TinyTest)
+set(TEST_LIBS Salts::Mustache Salts::JsonParser Salts::TinyTest)
 set(TEST_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
@@ -31,7 +31,7 @@ cmake_add_test(test_mustache_runtime
   FOLDER "mustache/tests")
 cmake_add_test(test_mustache_xml
   SOURCES test_xml_integration.c
-  LIBS ${TEST_LIBS} Rocida::XmlParser
+  LIBS ${TEST_LIBS} Salts::XmlParser
   INCLUDES ${TEST_INCLUDES}
   FOLDER "mustache/tests")
 

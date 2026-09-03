@@ -1,14 +1,14 @@
-#ifndef TURBO_CAPTURE_IOS_GUARD_H
-#define TURBO_CAPTURE_IOS_GUARD_H
+#ifndef SALTS_CAPTURE_IOS_GUARD_H
+#define SALTS_CAPTURE_IOS_GUARD_H
 
 #import <Foundation/Foundation.h>
 
-typedef void (*turbo_ios_capture_finalizer)(void *capture);
+typedef void (*salts_ios_capture_finalizer)(void *capture);
 
-@interface TurboCaptureGuard : NSObject
+@interface SaltsCaptureGuard : NSObject
 
 - (instancetype)initWithCapture:(void *)capture
-                       finalizer:(turbo_ios_capture_finalizer)finalizer;
+                       finalizer:(salts_ios_capture_finalizer)finalizer;
 - (void *)acquireCapture;
 - (void)releaseCapture;
 - (void)detachOwner;

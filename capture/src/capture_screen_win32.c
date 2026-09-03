@@ -25,7 +25,7 @@
 #include <stdio.h>
 
 #endif /* _WIN32 */
-#include "turbo_capture.h"
+#include "salts_capture.h"
 
 #ifdef _WIN32
 
@@ -74,7 +74,7 @@ static void wide_to_utf8_screen(const WCHAR *wide, char *utf8, size_t utf8_len) 
     WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, (int)utf8_len, NULL, NULL);
 }
 
-int turbo_capture_list_gpu_devices(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_gpu_devices(salts_capture_device_t *devices, int max_count) {
     IDXGIFactory1 *factory = NULL;
     HRESULT hr;
     UINT adapter_index;
@@ -88,7 +88,7 @@ int turbo_capture_list_gpu_devices(turbo_capture_device_t *devices, int max_coun
     for (adapter_index = 0; count < max_count; ++adapter_index) {
         IDXGIAdapter1 *adapter = NULL;
         DXGI_ADAPTER_DESC1 desc;
-        turbo_capture_device_t *dev;
+        salts_capture_device_t *dev;
 
         hr = IDXGIFactory1_EnumAdapters1(factory, adapter_index, &adapter);
         if (hr == DXGI_ERROR_NOT_FOUND) break;
@@ -100,7 +100,7 @@ int turbo_capture_list_gpu_devices(turbo_capture_device_t *devices, int max_coun
             dev = &devices[count];
             memset(dev, 0, sizeof(*dev));
             dev->index = (int)adapter_index;
-            dev->type = TURBO_CAPTURE_TYPE_GPU;
+            dev->type = SALTS_CAPTURE_TYPE_GPU;
             dev->is_default = (count == 0) ? 1 : 0;
             wide_to_utf8_screen(desc.Description, dev->name, sizeof(dev->name));
             if (strstr(dev->name, "Microsoft Basic Render") == NULL) {
@@ -225,10 +225,10 @@ static void cleanup_dxgi(dxgi_screen_capture_ctx_t *ctx) {
  * ============================================================================= */
 
 static DWORD WINAPI dxgi_screen_capture_thread(LPVOID param) {
-    turbo_capture_t *capture = (turbo_capture_t *)param;
+    salts_capture_t *capture = (salts_capture_t *)param;
     dxgi_screen_capture_ctx_t *ctx = (dxgi_screen_capture_ctx_t *)capture->platform_ctx;
 
-    capture->state = TURBO_CAPTURE_STATE_RUNNING;
+    capture->state = SALTS_CAPTURE_STATE_RUNNING;
     if (capture->state_cb) {
         capture->state_cb(capture, capture->state, capture->user_data);
     }
@@ -268,7 +268,7 @@ static DWORD WINAPI dxgi_screen_capture_thread(LPVOID param) {
             /* Need to reinitialize (e.g., mode change) */
             cleanup_dxgi(ctx);
             if (init_dxgi(ctx) != 0) {
-                capture->state = TURBO_CAPTURE_STATE_ERROR;
+                capture->state = SALTS_CAPTURE_STATE_ERROR;
                 break;
             }
             continue;
@@ -334,7 +334,7 @@ static DWORD WINAPI dxgi_screen_capture_thread(LPVOID param) {
  * Screen Enumeration
  * ============================================================================= */
 
-int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_screens(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     HRESULT hr;
@@ -358,11 +358,11 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
             DXGI_OUTPUT_DESC desc;
             hr = IDXGIOutput_GetDesc(output, &desc);
             if (SUCCEEDED(hr)) {
-                turbo_capture_device_t *dev = &devices[count];
+                salts_capture_device_t *dev = &devices[count];
                 memset(dev, 0, sizeof(*dev));
 
                 dev->index = count;
-                dev->type = TURBO_CAPTURE_TYPE_SCREEN;
+                dev->type = SALTS_CAPTURE_TYPE_SCREEN;
                 dev->is_default = (count == 0) ? 1 : 0;
 
                 /* Convert device name */
@@ -390,8 +390,8 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
  * Screen Capture Implementation
  * ============================================================================= */
 
-turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t *config) {
-    turbo_capture_t *capture = (turbo_capture_t *)calloc(1, sizeof(turbo_capture_t));
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+    salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
     dxgi_screen_capture_ctx_t *ctx = (dxgi_screen_capture_ctx_t *)calloc(1, sizeof(dxgi_screen_capture_ctx_t));
@@ -400,8 +400,8 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_SCREEN;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_SCREEN;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = ctx;
 
     /* Store config */
@@ -415,22 +415,22 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
 
     /* Initialize DXGI */
     if (init_dxgi(ctx) != 0) {
-        turbo_capture_destroy(capture);
+        salts_capture_destroy(capture);
         return NULL;
     }
 
     /* Create stop event */
     ctx->stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!ctx->stop_event) {
-        turbo_capture_destroy(capture);
+        salts_capture_destroy(capture);
         return NULL;
     }
 
     return capture;
 }
 
-void turbo_screen_capture_set_callback(turbo_capture_t *capture,
-                                         turbo_video_capture_cb cb,
+void salts_screen_capture_set_callback(salts_capture_t *capture,
+                                         salts_video_capture_cb cb,
                                          void *user_data) {
     if (!capture) return;
     capture->video_cb = cb;
@@ -441,7 +441,7 @@ void turbo_screen_capture_set_callback(turbo_capture_t *capture,
  * Hooks for centralized dispatcher
  * ============================================================================= */
 
-int dxgi_screen_start(turbo_capture_t *capture) {
+int dxgi_screen_start(salts_capture_t *capture) {
     dxgi_screen_capture_ctx_t *ctx = (dxgi_screen_capture_ctx_t *)capture->platform_ctx;
 
     ResetEvent(ctx->stop_event);
@@ -452,7 +452,7 @@ int dxgi_screen_start(turbo_capture_t *capture) {
     return ctx->capture_thread ? 0 : -1;
 }
 
-void dxgi_screen_stop(turbo_capture_t *capture) {
+void dxgi_screen_stop(salts_capture_t *capture) {
     dxgi_screen_capture_ctx_t *ctx = (dxgi_screen_capture_ctx_t *)capture->platform_ctx;
 
     ctx->running = 0;
@@ -465,7 +465,7 @@ void dxgi_screen_stop(turbo_capture_t *capture) {
     }
 }
 
-void dxgi_screen_destroy(turbo_capture_t *capture) {
+void dxgi_screen_destroy(salts_capture_t *capture) {
     dxgi_screen_capture_ctx_t *ctx = (dxgi_screen_capture_ctx_t *)capture->platform_ctx;
     if (!ctx) return;
 

@@ -1,4 +1,4 @@
-set(BENCHMARK_LIBS TurboParser::Mustache Rocida::JsonParser Rocida::TinyTest)
+set(BENCHMARK_LIBS Salts::Mustache Salts::JsonParser Salts::TinyTest)
 set(BENCHMARK_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)

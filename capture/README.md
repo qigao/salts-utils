@@ -1,8 +1,8 @@
-# TurboParser Capture
+# SaltsUtils Capture
 
-`TurboParser::Capture` 是 Windows 默认提供、其他平台可选的原生音频、摄像头与屏幕
+`Salts::Capture` 是 Windows 默认提供、其他平台可选的原生音频、摄像头与屏幕
 采集组件。它保留
-`turbo_capture.h` 的 C 接口、枚举值、结构布局和符号名称；播放、编解码、录制、
+`salts_capture.h` 的 C 接口、枚举值、结构布局和符号名称；播放、编解码、录制、
 RTSP、WebRTC 以及移动端 Java/Swift 包装不属于该组件。
 
 ## 构建与链接
@@ -12,26 +12,26 @@ feature。其他平台的裸 CMake 配置默认关闭；显式启用时同时选
 
 ```sh
 cmake -S . -B build/capture \
-  -DTURBO_ENABLE_CAPTURE=ON \
+  -DSALTS_ENABLE_CAPTURE=ON \
   -DVCPKG_MANIFEST_FEATURES=capture
 cmake --build build/capture
 ```
 
 所有标准 Windows preset 都启用 Capture；构建其常规 `install` target 时会和其他库一起
-安装并导出 `TurboParser::Capture`，无需 Capture 或 Release 专用 install preset。既有
+安装并导出 `Salts::Capture`，无需 Capture 或 Release 专用 install preset。既有
 Windows capture preset 仅为兼容已有命令保留；Linux 仍使用对应的 capture-enabled
 preset。安装后，消费端只依赖导出的组件：
 
 ```cmake
-find_package(TurboParser CONFIG REQUIRED)
-target_link_libraries(app PRIVATE TurboParser::Capture)
+find_package(SaltsUtils CONFIG REQUIRED)
+target_link_libraries(app PRIVATE Salts::Capture)
 ```
 
 Windows 使用 Media Foundation、DirectShow、D3D11 与 DXGI；Linux 配置时要求
 PipeWire 0.3、X11 和 Xext；macOS/iOS 使用系统 Framework；Android 使用 NDK
 Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依赖，其类型
 不会进入公开头文件。Windows 动态构建会把 `libyuv.dll` 及其 `jpeg62.dll` 运行时依赖
-安装到 SDK 的 `bin/`，与 `turbo_capture.dll` 一起部署即可满足加载依赖。
+安装到 SDK 的 `bin/`，与 `salts_capture.dll` 一起部署即可满足加载依赖。
 
 ## 所有权、线程与关闭
 
@@ -43,8 +43,8 @@ Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依
   callback 可能增加延迟或使原生后端丢帧。
 - create/start/stop/destroy、callback setter 和设备控制属于 control plane；同一实例
   需要由调用方串行化，不能从该实例自己的 callback 中调用 stop/destroy。
-- 正常关闭顺序是先 `turbo_capture_stop()`，等待后端停止投递，再调用
-  `turbo_capture_destroy()`。启动失败进入 `TURBO_CAPTURE_STATE_ERROR`，不会报告
+- 正常关闭顺序是先 `salts_capture_stop()`，等待后端停止投递，再调用
+  `salts_capture_destroy()`。启动失败进入 `SALTS_CAPTURE_STATE_ERROR`，不会报告
   `RUNNING`。
 
 设备不存在时，枚举返回零项。参数、权限、格式协商、原生资源或模式身份无效时接口会
@@ -55,7 +55,7 @@ Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依
 ## 下游迁移
 
 TurboMedia 应在单独的改动中将 `TurboMedia::Device` 调用方切换到已安装的
-`TurboParser::Capture`，运行其设备与打包测试后，再删除 TurboMedia 中重复的 capture
+`Salts::Capture`，运行其设备与打包测试后，再删除 TurboMedia 中重复的 capture
 源码。该顺序使回滚只需恢复链接目标，不需要恢复已删除的实现文件。
 
 Windows 和 Android arm64 可由本仓库 presets 在当前环境编译验证。Linux、macOS 与 iOS

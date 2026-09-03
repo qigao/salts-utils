@@ -10,7 +10,7 @@ cmake_add_source(SOURCE_FILES RECURSE DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src
 # Build as SHARED library (DLL)
 add_library(mustache SHARED ${HEADER_FILES} ${SOURCE_FILES})
 cmake_config_target(mustache
-  ALIAS TurboParser::Mustache
+  ALIAS Salts::Mustache
   FOLDER "mustache"
   EXPORT_NAME Mustache)
 
@@ -25,19 +25,19 @@ target_include_directories(
 # Link to json_parser and common
 target_link_libraries(
   mustache
-  PRIVATE Rocida::JsonParser Rocida::XmlParser
-  PUBLIC Rocida::Core)
+  PRIVATE Salts::JsonParser Salts::XmlParser
+  PUBLIC Salts::Core)
 
 # Example executable
 
 cmake_add_executable(mustache_json_example
   SOURCES examples/json_example.c
-  LIBS TurboParser::Mustache Rocida::JsonParser
+  LIBS Salts::Mustache Salts::JsonParser
   FOLDER "mustache/examples")
 
 cmake_add_executable(mustache_xml_example
   SOURCES examples/xml_example.c
-  LIBS TurboParser::Mustache Rocida::XmlParser
+  LIBS Salts::Mustache Salts::XmlParser
   FOLDER "mustache/examples")
 
 add_subdirectory(test)
@@ -47,7 +47,7 @@ endif()
 
 install(
   TARGETS mustache
-  EXPORT TurboParserTargets
+  EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

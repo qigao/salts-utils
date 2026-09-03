@@ -5,8 +5,8 @@
 
 #include "tinytest.h"
 #include "mustache.h"
-#include "turbo_vstr.h"
-#include "turbo_str.h"
+#include "salts_vstr.h"
+#include "salts_str.h"
 #include <stdint.h>
 #include <string.h>
 
