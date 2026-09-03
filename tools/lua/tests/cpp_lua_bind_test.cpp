@@ -1,5 +1,5 @@
 /* C++17 public binding API tests. */
-#include "turbo_lua.hpp"
+#include "salts_lua.hpp"
 #include "tinytest.hpp"
 
 #include <functional>

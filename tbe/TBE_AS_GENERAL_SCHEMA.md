@@ -1,5 +1,8 @@
 # TBE As A General Schema Format
 
+> 本文中的 DataBind 路径是遗留设计记录。DataBind 已退出 SaltsUtils 默认构建与安装；
+> 新代码使用基础 Salts 的 `Salts::CBind`，并通过 CMeta/CSerde 描述数据与格式边界。
+
 Updated: 2026-07-26
 
 ## Summary
@@ -106,7 +109,7 @@ Avoid TBE for:
 - storage models requiring ad hoc queries
 - schemas that require arbitrary field reordering without performance tradeoffs
 
-## TurboUtils Integration Direction
+## Salts Integration Direction
 
 Recommended boundaries:
 

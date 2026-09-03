@@ -1,6 +1,6 @@
 #include "data_bind.h"
 #include "tinytest.h"
-#include "turbo_thread.h"
+#include <salts_thread.h>
 
 #include <stdio.h>
 #include <stdatomic.h>
@@ -28,7 +28,7 @@ static void data_bind_pool_test_worker(void *arg) {
   data_bind_pool_test_worker_t *worker = (data_bind_pool_test_worker_t *)arg;
   size_t i;
   atomic_fetch_add_explicit(worker->ready_count, 1U, memory_order_release);
-  while (!atomic_load_explicit(worker->start, memory_order_acquire)) turbo_thread_yield();
+  while (!atomic_load_explicit(worker->start, memory_order_acquire)) salts_thread_yield();
   for (i = 0; i < DATA_BIND_POOL_TEST_THREAD_ITERS; ++i) {
     DataBindValue *value = NULL;
     if (data_bind_parse_json(worker->codec, "Batch", worker->json, strlen(worker->json), &value,
@@ -44,7 +44,7 @@ static void data_bind_pool_test_toggler(void *arg) {
   data_bind_pool_test_toggler_t *toggler = (data_bind_pool_test_toggler_t *)arg;
   size_t i;
   atomic_fetch_add_explicit(toggler->ready_count, 1U, memory_order_release);
-  while (!atomic_load_explicit(toggler->start, memory_order_acquire)) turbo_thread_yield();
+  while (!atomic_load_explicit(toggler->start, memory_order_acquire)) salts_thread_yield();
   for (i = 0; i < DATA_BIND_POOL_TEST_TOGGLE_ITERS; ++i) {
     data_bind_set_value_pool_enabled(0);
     data_bind_set_value_pool_enabled(1);
@@ -155,8 +155,8 @@ spec("DataBind value pool") {
     char json[512];
     DataBind *codecs[DATA_BIND_POOL_TEST_THREADS] = {0};
     data_bind_pool_test_worker_t workers[DATA_BIND_POOL_TEST_THREADS];
-    turbo_thread_t threads[DATA_BIND_POOL_TEST_THREADS] = {0};
-    turbo_thread_t toggle_thread = {0};
+    salts_thread_t threads[DATA_BIND_POOL_TEST_THREADS] = {0};
+    salts_thread_t toggle_thread = {0};
     data_bind_pool_test_toggler_t toggler;
     atomic_size_t ready_count = 0;
     atomic_size_t failures = 0;
@@ -178,7 +178,7 @@ spec("DataBind value pool") {
       workers[i].start = &start;
       workers[i].failures = &failures;
       if (codecs[i] != NULL &&
-          turbo_thread_create(&threads[i], data_bind_pool_test_worker, &workers[i]) == 0) {
+          salts_thread_create(&threads[i], data_bind_pool_test_worker, &workers[i]) == 0) {
         created++;
       } else {
         atomic_fetch_add_explicit(&failures, 1U, memory_order_relaxed);
@@ -188,17 +188,17 @@ spec("DataBind value pool") {
 
     toggler.ready_count = &ready_count;
     toggler.start = &start;
-    if (turbo_thread_create(&toggle_thread, data_bind_pool_test_toggler, &toggler) == 0) {
+    if (salts_thread_create(&toggle_thread, data_bind_pool_test_toggler, &toggler) == 0) {
       toggle_created = 1;
     } else {
       atomic_fetch_add_explicit(&failures, 1U, memory_order_relaxed);
     }
 
     while (atomic_load_explicit(&ready_count, memory_order_acquire) < created + toggle_created)
-      turbo_thread_yield();
+      salts_thread_yield();
     atomic_store_explicit(&start, 1, memory_order_release);
-    for (i = 0; i < created; ++i) check_equal(turbo_thread_join(&threads[i]), 0);
-    if (toggle_created != 0) check_equal(turbo_thread_join(&toggle_thread), 0);
+    for (i = 0; i < created; ++i) check_equal(salts_thread_join(&threads[i]), 0);
+    if (toggle_created != 0) check_equal(salts_thread_join(&toggle_thread), 0);
 
     check_equal(created, DATA_BIND_POOL_TEST_THREADS);
     check_equal(toggle_created, 1U);
@@ -214,7 +214,7 @@ spec("DataBind value pool") {
     DataBind *codec = NULL;
     DataBindValue *value = NULL;
     data_bind_pool_test_worker_t workers[DATA_BIND_POOL_TEST_THREADS];
-    turbo_thread_t threads[DATA_BIND_POOL_TEST_THREADS] = {0};
+    salts_thread_t threads[DATA_BIND_POOL_TEST_THREADS] = {0};
     atomic_size_t ready_count = 0;
     atomic_size_t failures = 0;
     atomic_int start = 0;
@@ -235,7 +235,7 @@ spec("DataBind value pool") {
       workers[i].ready_count = &ready_count;
       workers[i].start = &start;
       workers[i].failures = &failures;
-      if (turbo_thread_create(&threads[i], data_bind_pool_test_worker, &workers[i]) == 0) {
+      if (salts_thread_create(&threads[i], data_bind_pool_test_worker, &workers[i]) == 0) {
         created++;
       } else {
         atomic_fetch_add_explicit(&failures, 1U, memory_order_relaxed);
@@ -244,9 +244,9 @@ spec("DataBind value pool") {
     }
 
     while (atomic_load_explicit(&ready_count, memory_order_acquire) < created)
-      turbo_thread_yield();
+      salts_thread_yield();
     atomic_store_explicit(&start, 1, memory_order_release);
-    for (i = 0; i < created; ++i) check_equal(turbo_thread_join(&threads[i]), 0);
+    for (i = 0; i < created; ++i) check_equal(salts_thread_join(&threads[i]), 0);
 
     check_equal(created, DATA_BIND_POOL_TEST_THREADS);
     check_equal(atomic_load_explicit(&failures, memory_order_relaxed), 0U);

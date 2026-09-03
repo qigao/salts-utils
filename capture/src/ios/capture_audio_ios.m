@@ -7,18 +7,18 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import "capture_ios_guard.h"
-#include "turbo_capture.h"
+#include "salts_capture.h"
 #include <stdlib.h>
 
 typedef struct {
-    turbo_capture_t base;
+    salts_capture_t base;
     AVAudioEngine *engine;
     AVAudioInputNode *input_node;
     AVAudioFormat *format;
     int sample_rate;
     int channels;
     int bits_per_sample;
-    TurboCaptureGuard *guard;
+    SaltsCaptureGuard *guard;
 } ios_audio_capture_t;
 
 static uint64_t now_us(void) {
@@ -31,7 +31,7 @@ static void ios_audio_finalize(void *capture) {
     free(cap);
 }
 
-int ios_audio_start(turbo_capture_t *capture) {
+int ios_audio_start(salts_capture_t *capture) {
     ios_audio_capture_t *cap = (ios_audio_capture_t *)capture;
 
     @autoreleasepool {
@@ -44,7 +44,7 @@ int ios_audio_start(turbo_capture_t *capture) {
     }
 }
 
-void ios_audio_stop(turbo_capture_t *capture) {
+void ios_audio_stop(salts_capture_t *capture) {
     ios_audio_capture_t *cap = (ios_audio_capture_t *)capture;
 
     @autoreleasepool {
@@ -52,7 +52,7 @@ void ios_audio_stop(turbo_capture_t *capture) {
     }
 }
 
-void ios_audio_destroy(turbo_capture_t *capture) {
+void ios_audio_destroy(salts_capture_t *capture) {
     ios_audio_capture_t *cap = (ios_audio_capture_t *)capture;
 
     @autoreleasepool {
@@ -70,23 +70,23 @@ void ios_audio_destroy(turbo_capture_t *capture) {
     }
 }
 
-turbo_capture_t *turbo_audio_capture_create(const char *device_id,
-                                            const turbo_audio_capture_config_t *config) {
+salts_capture_t *salts_audio_capture_create(const char *device_id,
+                                            const salts_audio_capture_config_t *config) {
     (void)device_id;
 
     @autoreleasepool {
         ios_audio_capture_t *cap = calloc(1, sizeof(ios_audio_capture_t));
         if (!cap) return NULL;
 
-        cap->guard = [[TurboCaptureGuard alloc] initWithCapture:cap
+        cap->guard = [[SaltsCaptureGuard alloc] initWithCapture:cap
                                                      finalizer:ios_audio_finalize];
         if (!cap->guard) {
             free(cap);
             return NULL;
         }
 
-        cap->base.type = TURBO_CAPTURE_TYPE_AUDIO;
-        cap->base.state = TURBO_CAPTURE_STATE_STOPPED;
+        cap->base.type = SALTS_CAPTURE_TYPE_AUDIO;
+        cap->base.state = SALTS_CAPTURE_STATE_STOPPED;
         cap->base.platform_ctx = cap;
         cap->sample_rate = (config && config->sample_rate > 0) ? config->sample_rate : 48000;
         cap->channels = (config && config->channels > 0) ? config->channels : 1;
@@ -104,7 +104,7 @@ turbo_capture_t *turbo_audio_capture_create(const char *device_id,
             ![session setPreferredSampleRate:cap->sample_rate error:&error] ||
             ![session setPreferredIOBufferDuration:0.005 error:&error] ||
             ![session setActive:YES error:&error]) {
-            ios_audio_destroy((turbo_capture_t *)cap);
+            ios_audio_destroy((salts_capture_t *)cap);
             return NULL;
         }
 
@@ -118,11 +118,11 @@ turbo_capture_t *turbo_audio_capture_create(const char *device_id,
                          channels:(AVAudioChannelCount)cap->channels
                       interleaved:YES];
         if (!cap->format) {
-            ios_audio_destroy((turbo_capture_t *)cap);
+            ios_audio_destroy((salts_capture_t *)cap);
             return NULL;
         }
 
-        TurboCaptureGuard *guard = cap->guard;
+        SaltsCaptureGuard *guard = cap->guard;
         [cap->input_node installTapOnBus:0
                               bufferSize:1024
                                   format:input_format
@@ -142,11 +142,11 @@ turbo_capture_t *turbo_audio_capture_create(const char *device_id,
                          (size_t)buffer.format.channelCount *
                          sizeof(float);
 
-            strong_cap->base.audio_cb((turbo_capture_t *)strong_cap, samples, len,
+            strong_cap->base.audio_cb((salts_capture_t *)strong_cap, samples, len,
                                       now_us(), strong_cap->base.user_data);
             [guard releaseCapture];
         }];
 
-        return (turbo_capture_t *)cap;
+        return (salts_capture_t *)cap;
     }
 }

@@ -1,6 +1,6 @@
 /**
  * @file test_spec_adapted.c
- * @brief Mustache specification tests adapted for TurboUtils JSON parser using TinyTest
+ * @brief Mustache specification tests adapted for Salts JSON parser using TinyTest
  */
 
 #include "tinytest.h"

@@ -6,7 +6,7 @@
 #include "data_bind.h"
 #include "tbe_wire.h"
 #include "tinytest.h"
-#include "turbo_uuid.h"
+#include <salts_uuid.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -812,12 +812,12 @@ suite("Data Bind") {
 
     given("a schema with a uuid field") {
       const char *id_text = "01890f3e-5c5a-7cc2-9f2b-8b7f47f0c001";
-      turbo_uuid_t expected;
+      salts_uuid_t expected;
       write_schema("test_uuid.tbe", "message Event { uuid id; }\n");
 
       DataBind *codec = data_bind_create("test_uuid.tbe");
       check_not_null(codec);
-      check_equal(turbo_uuid_parse(id_text, &expected), TURBO_OK);
+      check_equal(salts_uuid_parse(id_text, &expected), SALTS_OK);
 
       if (codec) {
         when("parsing binary data") {
@@ -825,8 +825,8 @@ suite("Data Bind") {
 
           then("uuid should bind from its fixed 16 byte payload") {
             const DataBindValue *id;
-            turbo_uuid_t actual;
-            char text[TURBO_UUID_STRING_SIZE];
+            salts_uuid_t actual;
+            char text[SALTS_UUID_STRING_SIZE];
             check_not_null(v);
             id = require_field(v, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);
@@ -852,7 +852,7 @@ suite("Data Bind") {
 
           then("all text formats should produce native uuid values") {
             const DataBindValue *id;
-            turbo_uuid_t actual;
+            salts_uuid_t actual;
             check_not_null(from_json);
             id = require_field(from_json, "id");
             check(data_bind_value_kind(id) == DATA_BIND_VALUE_UUID);

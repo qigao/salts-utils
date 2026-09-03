@@ -1,4 +1,7 @@
-# TurboParser DataBind 2.5
+# DataBind 2.5
+
+DataBind 由 SaltsUtils 构建、测试、安装并导出为 `Salts::DataBind`。基础 Salts 的
+`Salts::CBind` 是另一套原生 C 描述符绑定接口，不是 DataBind 的 ABI 兼容别名。
 
 DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
@@ -12,8 +15,8 @@ DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造�
 
 ## 设计边界
 
-DataBind 是 TurboParser 自有的 schema、动态值和 typed conversion 运行时。它只依赖
-TurboParser 的 schema 与具体格式解析能力，不提供跨包 binding kernel 的桥接或生成路径。
+DataBind 是 SaltsUtils 自有的 schema、动态值和 typed conversion 运行时。它依赖
+SaltsUtils 的 TBE schema，并通过内部 compatibility 层消费基础 Salts 的具体格式解析能力。
 
 DataBind 2.5 只定义两条强类型路线：
 
@@ -45,9 +48,9 @@ typed struct 的 storage 始终由调用方拥有。typed destination 必须先�
 便捷读取函数作为源码兼容入口保留。新代码使用 `DataBindFormat`、配置式 stream 和
 带状态的 getter，以获得可区分的错误语义。
 
-### 路径查询与 `Rocida::QueryVM`
+### 路径查询与 `Salts::QueryVM`
 
-DataBind 已通过已安装 parser 的公开查询前端间接复用 `Rocida::QueryVM`：JSON 使用
+DataBind 已通过已安装 parser 的公开查询前端间接复用 `Salts::QueryVM`：JSON 使用
 JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前端保留自己的
 语法、树遍历、类型转换和操作符语义，并把可执行表达式降低为 QVM bytecode；DataBind
 只负责选择、绑定、所有权和错误转换，不直接构造或执行 QVM 指令。
@@ -128,7 +131,7 @@ data_bind_free(codec);
 ```cmake
 add_library(order_schema STATIC generated/order.c)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 ```
 
 ### 编译动态库
@@ -137,7 +140,7 @@ target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
 add_library(order_schema SHARED generated/order.c)
 target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC TurboParser::DataBind)
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 
 target_compile_definitions(my_app PRIVATE TBE_GENERATED_USE_SHARED) # Windows consumer
 target_link_libraries(my_app PRIVATE order_schema)
@@ -252,10 +255,10 @@ DataBind 核心 target 的依赖与 ABI 保持不变。需要把已解析的不�
 或 CFlow 时，显式链接可选适配库：
 
 ```cmake
-target_link_libraries(my_app PRIVATE TurboParser::DataBindCFlow)
+target_link_libraries(my_app PRIVATE Salts::DataBindCFlow)
 ```
 
-`TurboParser::DataBindCFlow` 传递链接 `TurboParser::DataBindCMeta`；只需要同步
+`Salts::DataBindCFlow` 传递链接 `Salts::DataBindCMeta`；只需要同步
 `cmeta_range` 时可单独链接后者。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
 `DataBindFieldRef`，MAP 映射为 `DataBindMapEntryRef`。三者均有稳定的 CMeta type
 identity，并保持 DataBind 的 encounter/schema order。

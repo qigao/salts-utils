@@ -17,14 +17,14 @@ option(BUILD_TESTS "Build test suite" ON)
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
 
-option(TURBO_ENABLE_CAPTURE
+option(SALTS_UTILS_ENABLE_CAPTURE
        "Build the optional native audio/video/screen capture component" OFF)
 if(WIN32)
-  set(TURBO_ENABLE_CAPTURE ON CACHE BOOL
+  set(SALTS_UTILS_ENABLE_CAPTURE ON CACHE BOOL
       "Build the native audio/video/screen capture component" FORCE)
 endif()
 
-option(TURBO_ENABLE_CFLOW_USB
+option(SALTS_UTILS_ENABLE_CFLOW_USB
        "Build the optional libusb-backed CFlow device adapter" OFF)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

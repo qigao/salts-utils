@@ -1,5 +1,5 @@
-#ifndef TURBO_CRON_LEXER_H
-#define TURBO_CRON_LEXER_H
+#ifndef SALTS_CRON_LEXER_H
+#define SALTS_CRON_LEXER_H
 
 #include <stddef.h>
 

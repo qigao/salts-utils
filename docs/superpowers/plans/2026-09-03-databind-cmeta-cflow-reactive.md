@@ -4,7 +4,7 @@
 
 **Goal:** 在不改变现有 DataBind ABI/行为的前提下，增加 CMeta range、CFlow stream 和 Reactive publisher 适配，并修复版本化 stream config 的越界字段访问。
 
-**Architecture:** 保持 `TurboParser::DataBind` 为格式与不可变值核心；新增 `DataBindCMeta` 和 `DataBindCFlow` 两个可选薄适配库。CMeta Schema/Replay 生成三种借用引用类型的 descriptor，CFlow 复用既有 range factories，不新增队列、调度器或自定义背压状态机。
+**Architecture:** 保持 `Salts::DataBind` 为格式与不可变值核心；新增 `DataBindCMeta` 和 `DataBindCFlow` 两个可选薄适配库。CMeta Schema/Replay 生成三种借用引用类型的 descriptor，CFlow 复用既有 range factories，不新增队列、调度器或自定义背压状态机。
 
 **Tech Stack:** C11、TurboParser DataBind、Rocida CMeta/CFlow/Reactive、CMake Presets、TinyTest。
 

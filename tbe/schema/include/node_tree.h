@@ -12,38 +12,38 @@
 
 /* Schema (DSL) Parser */
 typedef enum {
-  TURBO_NODE_ROOT,
-  TURBO_NODE_STRING,
-  TURBO_NODE_LIST,
-  TURBO_NODE_MAP,
+  SALTS_NODE_ROOT,
+  SALTS_NODE_STRING,
+  SALTS_NODE_LIST,
+  SALTS_NODE_MAP,
 
   /* Compatibility aliases for tbe_compiler */
-  NODE_ROOT   = TURBO_NODE_ROOT,
-  NODE_STRING = TURBO_NODE_STRING,
-  NODE_LIST   = TURBO_NODE_LIST,
-  NODE_MAP    = TURBO_NODE_MAP
-} turbo_node_type_t;
+  NODE_ROOT   = SALTS_NODE_ROOT,
+  NODE_STRING = SALTS_NODE_STRING,
+  NODE_LIST   = SALTS_NODE_LIST,
+  NODE_MAP    = SALTS_NODE_MAP
+} salts_node_type_t;
 
-typedef struct turbo_node_s {
-  turbo_node_type_t type;
+typedef struct salts_node_s {
+  salts_node_type_t type;
   const char *name;
   union {
     char *string_val;
     struct {
-      struct turbo_node_s **items;
+      struct salts_node_s **items;
       size_t count;
       size_t cap;
     } list;
     struct {
-      struct turbo_node_s **items;
+      struct salts_node_s **items;
       size_t count;
       size_t cap;
     } map;
   } data;
-} turbo_node_t;
+} salts_node_t;
 
-typedef turbo_node_type_t NodeType;
-typedef turbo_node_t Node;
+typedef salts_node_type_t NodeType;
+typedef salts_node_t Node;
 
 /** Create a string-valued node. Both @p name and @p val are duplicated.
  *  @return Node pointer on success, NULL on allocation failure. */

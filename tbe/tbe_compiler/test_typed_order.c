@@ -74,7 +74,7 @@ static void check_status_ok(DataBindStatus status, const DataBindError *error) {
 static void check_order(const Order_t *order) {
   const Fill_t *first;
   const Fill_t *second;
-  turbo_uuid_t expected_request_id;
+  salts_uuid_t expected_request_id;
 
   check_not_null(order);
   if (order == NULL) return;
@@ -82,8 +82,8 @@ static void check_order(const Order_t *order) {
   check_equal(order->order_id, 42);
   check(order->min_value == INT64_MIN);
   check(order->max_value == UINT64_MAX);
-  check_equal(turbo_uuid_parse(TEST_ORDER_REQUEST_ID, &expected_request_id), TURBO_OK);
-  check_true(turbo_uuid_equal(&order->request_id, &expected_request_id));
+  check_equal(salts_uuid_parse(TEST_ORDER_REQUEST_ID, &expected_request_id), SALTS_OK);
+  check_true(salts_uuid_equal(&order->request_id, &expected_request_id));
   check_equal(order->side, Side_Buy);
   check_equal(order->symbol, "ABC");
   check_equal(tbe_bytes_t_size(&order->payload), 3);

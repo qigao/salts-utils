@@ -1,6 +1,6 @@
 #include <libusb.h>
 
-#include <turbo/thread.h>
+#include <salts/thread.h>
 
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -18,7 +18,7 @@ struct libusb_device_handle {
 };
 
 struct libusb_context {
-    turbo_mutex_t gate;
+    salts_mutex_t gate;
     struct libusb_transfer *pending[FAKE_PENDING_CAPACITY];
     size_t pending_count;
     libusb_hotplug_callback_fn hotplug;
@@ -47,7 +47,7 @@ int libusb_init(libusb_context **context) {
     created = (libusb_context *)calloc(1u, sizeof(*created));
     if (created == NULL)
         return LIBUSB_ERROR_NO_MEM;
-    turbo_mutex_init(&created->gate);
+    salts_mutex_init(&created->gate);
     atomic_store(&fake_completion_allowed, 0);
     fake_last_context = created;
     *context = created;
@@ -59,7 +59,7 @@ void libusb_exit(libusb_context *context) {
         return;
     if (fake_last_context == context)
         fake_last_context = NULL;
-    turbo_mutex_destroy(&context->gate);
+    salts_mutex_destroy(&context->gate);
     free(context);
 }
 
@@ -156,13 +156,13 @@ int libusb_submit_transfer(struct libusb_transfer *transfer) {
     libusb_context *context = fake_last_context;
     if (context == NULL || transfer == NULL || transfer->dev_handle == NULL)
         return LIBUSB_ERROR_INVALID_PARAM;
-    turbo_mutex_lock(&context->gate);
+    salts_mutex_lock(&context->gate);
     if (context->pending_count == FAKE_PENDING_CAPACITY) {
-        turbo_mutex_unlock(&context->gate);
+        salts_mutex_unlock(&context->gate);
         return LIBUSB_ERROR_BUSY;
     }
     context->pending[context->pending_count++] = transfer;
-    turbo_mutex_unlock(&context->gate);
+    salts_mutex_unlock(&context->gate);
     return LIBUSB_SUCCESS;
 }
 
@@ -170,9 +170,9 @@ int libusb_cancel_transfer(struct libusb_transfer *transfer) {
     libusb_context *context = fake_last_context;
     if (transfer == NULL)
         return LIBUSB_ERROR_NOT_FOUND;
-    turbo_mutex_lock(&context->gate);
+    salts_mutex_lock(&context->gate);
     transfer->status = LIBUSB_TRANSFER_CANCELLED;
-    turbo_mutex_unlock(&context->gate);
+    salts_mutex_unlock(&context->gate);
     atomic_store(&fake_completion_allowed, 1);
     return LIBUSB_SUCCESS;
 }
@@ -183,17 +183,17 @@ int libusb_handle_events_timeout_completed(libusb_context *context,
     struct libusb_transfer *transfer = NULL;
     (void)timeout;
     (void)completed;
-    turbo_sleep_ms(1u);
+    salts_sleep_ms(1u);
     if (!atomic_load(&fake_completion_allowed))
         return LIBUSB_SUCCESS;
-    turbo_mutex_lock(&context->gate);
+    salts_mutex_lock(&context->gate);
     if (context->pending_count != 0u) {
         transfer = context->pending[0];
         --context->pending_count;
         memmove(&context->pending[0], &context->pending[1],
                 context->pending_count * sizeof(context->pending[0]));
     }
-    turbo_mutex_unlock(&context->gate);
+    salts_mutex_unlock(&context->gate);
     if (transfer == NULL)
         return LIBUSB_SUCCESS;
     if (transfer->status != LIBUSB_TRANSFER_CANCELLED)

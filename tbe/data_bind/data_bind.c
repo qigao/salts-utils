@@ -14,12 +14,12 @@
 #include "tbe_typed.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
-#include "turbo_fs.h"
 #include "turbo_parser.h"
-#include "turbo_str.h"
-#include "turbo_thread.h"
-#include "turbo_uuid.h"
-#include <rocida/stl.h>
+#include <salts_fs.h>
+#include <salts_str.h>
+#include <salts_thread.h>
+#include <salts_uuid.h>
+#include <cstl.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -84,16 +84,16 @@ static uintptr_t g_value_pool_closed_slot_storage;
 
 enum value_pool_state { VALUE_POOL_DISABLED = 0, VALUE_POOL_ENABLED };
 
-static turbo_mutex_t g_value_pool_control_mutex;
+static salts_mutex_t g_value_pool_control_mutex;
 static atomic_int g_value_pool_state = VALUE_POOL_ENABLED;
 static _Atomic uint64_t g_value_pool_ready_mask;
 static atomic_size_t g_value_pool_allocated_count;
 static atomic_size_t g_value_pool_reused_count;
-static turbo_once_t g_value_pool_once = TURBO_ONCE_INIT;
-static TURBO_THREAD_LOCAL size_t g_value_pool_take_cursor;
-static TURBO_THREAD_LOCAL size_t g_value_pool_put_cursor;
+static salts_once_t g_value_pool_once = SALTS_ONCE_INIT;
+static SALTS_THREAD_LOCAL size_t g_value_pool_take_cursor;
+static SALTS_THREAD_LOCAL size_t g_value_pool_put_cursor;
 
-static void value_pool_init_once(void) { turbo_mutex_init(&g_value_pool_control_mutex); }
+static void value_pool_init_once(void) { salts_mutex_init(&g_value_pool_control_mutex); }
 
 static int value_pool_is_enabled(void) {
   return atomic_load_explicit(&g_value_pool_state, memory_order_acquire) == VALUE_POOL_ENABLED;
@@ -298,7 +298,7 @@ struct DataBindValue {
       uint8_t *ptr;
       size_t len;
     } bytes_val;
-    turbo_uuid_t uuid_val;
+    salts_uuid_t uuid_val;
     turbo_datetime_t datetime_val;
     DataBindDate date_val;
     DataBindTime time_val;
@@ -404,8 +404,8 @@ static const type_meta_t *find_type_meta(const char *type) {
   size_t i;
   if (info == NULL) return NULL;
   if (!atomic_load_explicit(&g_type_metas_ready, memory_order_acquire)) {
-    turbo_once(&g_value_pool_once, value_pool_init_once);
-    turbo_mutex_lock(&g_value_pool_control_mutex);
+    salts_once(&g_value_pool_once, value_pool_init_once);
+    salts_mutex_lock(&g_value_pool_control_mutex);
     if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
       for (i = 0; i < TYPE_META_COUNT; ++i) {
         const schema_builtin_type_info_t *src = &SCHEMA_BUILTIN_TYPES[i];
@@ -418,7 +418,7 @@ static const type_meta_t *find_type_meta(const char *type) {
       }
       atomic_store_explicit(&g_type_metas_ready, 1, memory_order_release);
     }
-    turbo_mutex_unlock(&g_value_pool_control_mutex);
+    salts_mutex_unlock(&g_value_pool_control_mutex);
   }
   index = (size_t)(info - SCHEMA_BUILTIN_TYPES);
   return &g_type_metas[index];
@@ -759,8 +759,8 @@ static DataBindValue *dbv_uuid_bytes(const uint8_t *data) {
 }
 
 static DataBindValue *dbv_uuid_text(const char *text) {
-  turbo_uuid_t uuid;
-  if (text == NULL || turbo_uuid_parse(text, &uuid) != TURBO_OK) return NULL;
+  salts_uuid_t uuid;
+  if (text == NULL || salts_uuid_parse(text, &uuid) != SALTS_OK) return NULL;
   return dbv_uuid_bytes(uuid.bytes);
 }
 
@@ -4597,7 +4597,7 @@ static DataBindStatus db_binary_write_scalar(data_bind_binary_writer_t *writer,
     if (value->kind != DATA_BIND_VALUE_UUID)
       return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
                           "UUID field has the wrong value type");
-    return db_binary_write_bytes(writer, value->data.uuid_val.bytes, TURBO_UUID_SIZE, field->name);
+    return db_binary_write_bytes(writer, value->data.uuid_val.bytes, SALTS_UUID_SIZE, field->name);
   case EF_FIX_BYTES:
     if (value->kind != DATA_BIND_VALUE_BYTES || value->data.bytes_val.len != (size_t)field->size)
       return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
@@ -5309,21 +5309,21 @@ static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **o
 
 DataBindStatus data_bind_create(const char *schema_path, DataBind **out_codec,
                                 DataBindError *error) {
-  turbo_fs_buf_t schema = {NULL, 0};
+  salts_fs_buf_t schema = {NULL, 0};
   Node *schema_root;
   DataBindStatus status;
   if (out_codec != NULL) *out_codec = NULL;
   if (schema_path == NULL || out_codec == NULL)
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
                         "Invalid codec create arguments");
-  if (turbo_fs_read_file(schema_path, &schema) != 0)
+  if (salts_fs_read_file(schema_path, &schema) != 0)
     return db_error_set(error, DATA_BIND_ERR_IO, schema_path, -1, -1,
                         "Cannot read schema: %s", schema_path);
   schema_root =
       parse_schema_text_to_root(schema.base, schema.len, schema_path, NULL, 0, error);
   status = schema_root != NULL ? data_bind_create_from_root(schema_root, out_codec, error)
                                : db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
-  turbo_fs_buf_free(&schema);
+  salts_fs_buf_free(&schema);
   return status;
 }
 
@@ -5349,8 +5349,8 @@ void data_bind_set_value_pool_enabled(int enabled) {
   DataBindValue *nodes[VALUE_POOL_SIZE];
   size_t node_count = 0;
   size_t i;
-  turbo_once(&g_value_pool_once, value_pool_init_once);
-  turbo_mutex_lock(&g_value_pool_control_mutex);
+  salts_once(&g_value_pool_once, value_pool_init_once);
+  salts_mutex_lock(&g_value_pool_control_mutex);
 
   if (enabled) {
     int state = atomic_load_explicit(&g_value_pool_state, memory_order_relaxed);
@@ -5372,7 +5372,7 @@ void data_bind_set_value_pool_enabled(int enabled) {
     }
     atomic_store_explicit(&g_value_pool_ready_mask, 0, memory_order_relaxed);
   }
-  turbo_mutex_unlock(&g_value_pool_control_mutex);
+  salts_mutex_unlock(&g_value_pool_control_mutex);
 
   for (i = 0; i < node_count; ++i)
     free(nodes[i]);
@@ -7572,7 +7572,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindError *error = parser ? parser->error : NULL;
   char *chunk = NULL;
-  turbo_file_t fd;
+  salts_file_t fd;
   DataBindStatus status;
   int close_rc;
 
@@ -7580,22 +7580,22 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed_file", -1, -1,
                         "Invalid stream file feed arguments");
   }
-  fd = turbo_fs_open(file_path, TURBO_FS_O_RDONLY, 0);
-  if (fd == TURBO_INVALID_FILE) {
+  fd = salts_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
+  if (fd == SALTS_INVALID_FILE) {
     return db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                         "Failed to open stream input file");
   }
 
   chunk = (char *)malloc(DATA_BIND_FILE_STREAM_CHUNK_SIZE);
   if (chunk == NULL) {
-    turbo_fs_close(fd);
+    salts_fs_close(fd);
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed_file", -1, -1,
                         "Out of memory allocating stream file chunk");
   }
 
   status = DATA_BIND_OK;
   for (;;) {
-    int nread = turbo_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
+    int nread = salts_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
     if (nread < 0) {
       status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                             "Failed to read stream input file");
@@ -7607,7 +7607,7 @@ DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char
   }
 
   free(chunk);
-  close_rc = turbo_fs_close(fd);
+  close_rc = salts_fs_close(fd);
   if (status == DATA_BIND_OK && close_rc != 0) {
     status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
                           "Failed to close stream input file");
@@ -9256,7 +9256,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
                                       value->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
-    if (turbo_uuid_format(&value->data.uuid_val, text, sizeof(text)) != TURBO_OK) {
+    if (salts_uuid_format(&value->data.uuid_val, text, sizeof(text)) != SALTS_OK) {
       *status = DATA_BIND_ERR_RUNTIME;
       return NULL;
     }
@@ -9464,7 +9464,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_BOOL:
     return snprintf(text, size, "%s", value->data.bool_val ? "true" : "false") > 0;
   case DATA_BIND_VALUE_UUID:
-    return turbo_uuid_format(&value->data.uuid_val, text, size) == TURBO_OK;
+    return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME: {
     time_t timestamp = turbo_datetime_to_time(&value->data.datetime_val);
     return timestamp != (time_t)-1 && turbo_datetime_format_rfc822(timestamp, text, size) >= 0;
@@ -10111,9 +10111,9 @@ int data_bind_value_as_uuid(const DataBindValue *value, uint8_t out[DATA_BIND_UU
 
 const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out, size_t len) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_UUID || out == NULL ||
-      len < TURBO_UUID_STRING_SIZE)
+      len < SALTS_UUID_STRING_SIZE)
     return NULL;
-  return turbo_uuid_format(&value->data.uuid_val, out, len) == TURBO_OK ? out : NULL;
+  return salts_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
 int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *out) {

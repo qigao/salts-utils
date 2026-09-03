@@ -1,15 +1,15 @@
 #import "capture_ios_guard.h"
 
-@implementation TurboCaptureGuard {
+@implementation SaltsCaptureGuard {
     NSLock *_lock;
     void *_capture;
-    turbo_ios_capture_finalizer _finalizer;
+    salts_ios_capture_finalizer _finalizer;
     NSUInteger _references;
     BOOL _acceptingCallbacks;
 }
 
 - (instancetype)initWithCapture:(void *)capture
-                       finalizer:(turbo_ios_capture_finalizer)finalizer {
+                       finalizer:(salts_ios_capture_finalizer)finalizer {
     self = [super init];
     if (self) {
         _lock = [[NSLock alloc] init];
@@ -34,7 +34,7 @@
 
 - (void)releaseCapture {
     void *capture = NULL;
-    turbo_ios_capture_finalizer finalizer = NULL;
+    salts_ios_capture_finalizer finalizer = NULL;
 
     [_lock lock];
     if (_references > 0 && --_references == 0) {
@@ -49,7 +49,7 @@
 
 - (void)detachOwner {
     void *capture = NULL;
-    turbo_ios_capture_finalizer finalizer = NULL;
+    salts_ios_capture_finalizer finalizer = NULL;
 
     [_lock lock];
     if (_acceptingCallbacks) {

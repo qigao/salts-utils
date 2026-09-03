@@ -1,6 +1,6 @@
-# TurboUtils Cron
+# Salts Cron
 
-Cross-platform cron expression parser and minute-based background runner for TurboUtils.
+Cross-platform cron expression parser and minute-based background runner for Salts.
 
 ## Features
 
@@ -60,13 +60,13 @@ This is important. `0 0 13 * 5` means "the 13th of the month, or every Friday", 
 ## Quick Start
 
 ```c
-#include "turbo_cron.h"
+#include "salts_cron.h"
 
-turbo_cron_expr_t expr;
+salts_cron_expr_t expr;
 time_t next_fire;
 
-if (turbo_cron_parse("*/15 9-17 * * 1-5", &expr) == TURBO_CRON_OK &&
-    turbo_cron_next(&expr, time(NULL), &next_fire) == TURBO_CRON_OK) {
+if (salts_cron_parse("*/15 9-17 * * 1-5", &expr) == SALTS_CRON_OK &&
+    salts_cron_next(&expr, time(NULL), &next_fire) == SALTS_CRON_OK) {
   /* next_fire now holds the next matching local time */
 }
 ```
@@ -74,21 +74,21 @@ if (turbo_cron_parse("*/15 9-17 * * 1-5", &expr) == TURBO_CRON_OK &&
 ## Next N Fire Times
 
 ```c
-#include "turbo_cron.h"
+#include "salts_cron.h"
 
-turbo_cron_expr_t expr;
+salts_cron_expr_t expr;
 time_t next_times[5];
 int count;
 
-if (turbo_cron_parse("*/20 9-10 * * *", &expr) == TURBO_CRON_OK) {
-  count = turbo_cron_next_n(&expr, time(NULL), next_times, 5);
+if (salts_cron_parse("*/20 9-10 * * *", &expr) == SALTS_CRON_OK) {
+  count = salts_cron_next_n(&expr, time(NULL), next_times, 5);
   if (count > 0) {
     /* next_times[0..count-1] now holds future matching local times */
   }
 }
 ```
 
-`turbo_cron_next_n()` is useful when:
+`salts_cron_next_n()` is useful when:
 
 - building a debug screen
 - previewing a user's schedule before saving it
@@ -96,18 +96,18 @@ if (turbo_cron_parse("*/20 9-10 * * *", &expr) == TURBO_CRON_OK) {
 
 ## Formatting Helper
 
-If thou merely needest a stable local-time string, use `turbo_cron_format_time()`:
+If thou merely needest a stable local-time string, use `salts_cron_format_time()`:
 
 ```c
 char buf[32];
-turbo_cron_format_time(next_times[0], buf, sizeof(buf), NULL);
+salts_cron_format_time(next_times[0], buf, sizeof(buf), NULL);
 /* buf -> "2024-01-02 03:04" */
 ```
 
 Pass a custom `strftime` format when needed:
 
 ```c
-turbo_cron_format_time(next_times[0], buf, sizeof(buf), "%H:%M");
+salts_cron_format_time(next_times[0], buf, sizeof(buf), "%H:%M");
 ```
 
 ## Crontab-Like Table Loader
@@ -129,14 +129,14 @@ Examples:
 Use it like this:
 
 ```c
-turbo_cron_table_t table;
-turbo_cron_table_init(&table);
+salts_cron_table_t table;
+salts_cron_table_init(&table);
 
-if (turbo_cron_table_load_file("jobs.cron", &table, NULL, 0) == TURBO_CRON_OK) {
+if (salts_cron_table_load_file("jobs.cron", &table, NULL, 0) == SALTS_CRON_OK) {
   /* table.entries[i].expr + table.entries[i].payload */
 }
 
-turbo_cron_table_free(&table);
+salts_cron_table_free(&table);
 ```
 
 This module does not execute payloads. It only parses and stores them. The
@@ -146,29 +146,29 @@ anything else.
 ## Background Runner
 
 ```c
-static void on_fire(const turbo_cron_expr_t *expr, time_t scheduled_at, void *user_data) {
+static void on_fire(const salts_cron_expr_t *expr, time_t scheduled_at, void *user_data) {
   (void)expr;
   (void)scheduled_at;
   (void)user_data;
 }
 
-turbo_cron_runner_t *runner =
-    turbo_cron_runner_create("0 * * * *", on_fire, NULL);
+salts_cron_runner_t *runner =
+    salts_cron_runner_create("0 * * * *", on_fire, NULL);
 
-turbo_cron_runner_start(runner);
+salts_cron_runner_start(runner);
 /* ... */
-turbo_cron_runner_stop(runner);
-turbo_cron_runner_destroy(runner);
+salts_cron_runner_stop(runner);
+salts_cron_runner_destroy(runner);
 ```
 
-See [cron_example.c](C:/projects/cpp/turbonet/turbonet/cron/examples/cron_example.c) for a full example.
+See [cron_example.c](examples/cron_example.c) for a full example.
 
 ## Deterministic Testing
 
-For unit tests, use `turbo_cron_runner_advance()` instead of sleeping on real time:
+For unit tests, use `salts_cron_runner_advance()` instead of sleeping on real time:
 
 ```c
-turbo_cron_runner_advance(runner, fake_now);
+salts_cron_runner_advance(runner, fake_now);
 ```
 
 This advances the runner to a chosen local minute and fires every due callback exactly once.
@@ -178,7 +178,7 @@ This advances the runner to a chosen local minute and fires every due callback e
 Link against:
 
 ```cmake
-target_link_libraries(your_target PRIVATE TurboParser::Cron)
+target_link_libraries(your_target PRIVATE Salts::Cron)
 ```
 
 ## Tests

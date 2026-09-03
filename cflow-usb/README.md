@@ -1,15 +1,15 @@
 # CFlowUSB
 
-`TurboParser::CFlowUSB` is a default-off shared adapter around libusb 1.0. Enable
+`Salts::CFlowUSB` is a default-off shared adapter around libusb 1.0. Enable
 it explicitly with both the vcpkg manifest feature and the CMake option:
 
 ```powershell
 cmake --fresh --preset win-release-user `
   -DVCPKG_MANIFEST_FEATURES="capture;usb" `
-  -DTURBO_ENABLE_CFLOW_USB=ON
+  -DSALTS_UTILS_ENABLE_CFLOW_USB=ON
 ```
 
-The default package neither exports `TurboParser::CFlowUSB` nor links libusb.
+The default package neither exports `Salts::CFlowUSB` nor links libusb.
 The shared target keeps libusb types and link details out of core CFlow's public
 contract.
 
@@ -21,7 +21,7 @@ interrupt buffers are borrowed directly; control payloads use bounded internal
 storage and successful IN data is copied back before callback delivery.
 
 Enumeration size queries use `out == NULL` and `out_capacity == 0`.
-`TURBO_ENOBUFS` returns the required count without committing a partial
+`SALTS_ENOBUFS` returns the required count without committing a partial
 snapshot. Bus address is observed identity, not a stable reconnect key, so an
 unplug/replug requires enumeration and an explicit new open. A lost hotplug
 event also marks matching handles lost and requests cancellation of their live
@@ -39,7 +39,7 @@ Minimal lifecycle:
 
 ```c
 #include <cflow/usb.h>
-#include <turbo/error_codes.h>
+#include <salts/error_codes.h>
 
 #include <stdlib.h>
 
@@ -57,17 +57,17 @@ size_t required = 0;
 int status;
 int result = 1;
 
-if (cflow_usb_context_init(&context, &config) != TURBO_OK)
+if (cflow_usb_context_init(&context, &config) != SALTS_OK)
     return 1;
 status = cflow_usb_enumerate(&context, NULL, 0, &required);
-if ((required == 0 && status != TURBO_OK) ||
-    (required != 0 && status != TURBO_ENOBUFS))
+if ((required == 0 && status != SALTS_OK) ||
+    (required != 0 && status != SALTS_ENOBUFS))
     goto cleanup;
 if (required != 0) {
     size_t actual = 0;
     devices = calloc(required, sizeof(*devices));
     if (devices == NULL ||
-        cflow_usb_enumerate(&context, devices, required, &actual) != TURBO_OK ||
+        cflow_usb_enumerate(&context, devices, required, &actual) != SALTS_OK ||
         actual != required)
         goto cleanup;
 }
@@ -76,7 +76,7 @@ if (required != 0) {
 result = 0;
 cleanup:
 free(devices);
-if (cflow_usb_context_destroy(&context) != TURBO_OK)
+if (cflow_usb_context_destroy(&context) != SALTS_OK)
     return 1;
 return result;
 }

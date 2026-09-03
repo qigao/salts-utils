@@ -3,7 +3,7 @@
  *
  * Selects PipeWire on Wayland or X11 XShm on X11.
  */
-#include "turbo_capture.h"
+#include "salts_capture.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 
@@ -15,13 +15,13 @@
 #include <unistd.h>
 #include <errno.h>
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/debug/types.h>
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
@@ -42,7 +42,7 @@
 typedef struct {
     int use_wayland;
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
     /* PipeWire (Wayland) */
     struct pw_main_loop *loop;
     struct pw_stream *stream;
@@ -51,7 +51,7 @@ typedef struct {
     int pw_height;
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
     /* X11 */
     Display *display;
     Window root;
@@ -77,7 +77,7 @@ typedef struct {
     uint64_t last_frame_time;
 
     /* Parent capture */
-    turbo_capture_t *capture;
+    salts_capture_t *capture;
 } screen_ctx_t;
 
 /* =============================================================================
@@ -94,7 +94,7 @@ static uint64_t get_timestamp_us(void) {
  * PipeWire Portal Implementation (Wayland)
  * ============================================================================= */
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
 
 static void on_stream_param_changed(void *userdata, uint32_t id,
                                      const struct spa_pod *param) {
@@ -126,7 +126,7 @@ static void on_stream_param_changed(void *userdata, uint32_t id,
 
 static void on_stream_process(void *userdata) {
     screen_ctx_t *ctx = (screen_ctx_t *)userdata;
-    turbo_capture_t *capture = ctx->capture;
+    salts_capture_t *capture = ctx->capture;
     struct pw_buffer *b;
 
     if ((b = pw_stream_dequeue_buffer(ctx->stream)) == NULL) {
@@ -308,17 +308,17 @@ static void pipewire_screen_cleanup(screen_ctx_t *ctx) {
     pw_deinit();
 }
 
-#endif /* TURBO_HAS_PIPEWIRE */
+#endif /* SALTS_HAS_PIPEWIRE */
 
 /* =============================================================================
  * X11 XShm Implementation
  * ============================================================================= */
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
 
 static void *x11_screen_thread(void *arg) {
     screen_ctx_t *ctx = (screen_ctx_t *)arg;
-    turbo_capture_t *capture = ctx->capture;
+    salts_capture_t *capture = ctx->capture;
 
     while (ctx->running) {
         uint64_t now = get_timestamp_us();
@@ -473,18 +473,18 @@ static void x11_screen_cleanup(screen_ctx_t *ctx) {
     }
 }
 
-#endif /* TURBO_HAS_X11 */
+#endif /* SALTS_HAS_X11 */
 
 /* =============================================================================
  * Screen Enumeration
  * ============================================================================= */
 
-int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
+int salts_capture_list_screens(salts_capture_device_t *devices, int max_count) {
     if (!devices || max_count <= 0) return -1;
 
     int count = 0;
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
     const char *display_name = getenv("DISPLAY");
     if (display_name) {
         Display *display = XOpenDisplay(display_name);
@@ -492,11 +492,11 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
             int screen_count = ScreenCount(display);
 
             for (int i = 0; i < screen_count && count < max_count; i++) {
-                turbo_capture_device_t *dev = &devices[count];
+                salts_capture_device_t *dev = &devices[count];
                 memset(dev, 0, sizeof(*dev));
 
                 dev->index = count;
-                dev->type = TURBO_CAPTURE_TYPE_SCREEN;
+                dev->type = SALTS_CAPTURE_TYPE_SCREEN;
                 dev->is_default = (count == 0) ? 1 : 0;
 
                 int width = DisplayWidth(display, i);
@@ -515,10 +515,10 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
 
     /* Add default if none found */
     if (count == 0 && max_count > 0) {
-        turbo_capture_device_t *dev = &devices[0];
+        salts_capture_device_t *dev = &devices[0];
         memset(dev, 0, sizeof(*dev));
         dev->index = 0;
-        dev->type = TURBO_CAPTURE_TYPE_SCREEN;
+        dev->type = SALTS_CAPTURE_TYPE_SCREEN;
         dev->is_default = 1;
         snprintf(dev->name, sizeof(dev->name), "Primary Screen");
         snprintf(dev->id, sizeof(dev->id), "0");
@@ -532,8 +532,8 @@ int turbo_capture_list_screens(turbo_capture_device_t *devices, int max_count) {
  * Screen Capture Implementation
  * ============================================================================= */
 
-turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t *config) {
-    turbo_capture_t *capture = calloc(1, sizeof(turbo_capture_t));
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+    salts_capture_t *capture = calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
     screen_ctx_t *ctx = calloc(1, sizeof(screen_ctx_t));
@@ -542,8 +542,8 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
         return NULL;
     }
 
-    capture->type = TURBO_CAPTURE_TYPE_SCREEN;
-    capture->state = TURBO_CAPTURE_STATE_STOPPED;
+    capture->type = SALTS_CAPTURE_TYPE_SCREEN;
+    capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = ctx;
 
     ctx->capture = capture;
@@ -557,7 +557,7 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
     ctx->capture_cursor = config ? config->capture_cursor : 1;
     ctx->frame_interval_us = 1000000 / ctx->framerate;
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
     if (getenv("WAYLAND_DISPLAY")) {
         if (pipewire_screen_init(ctx) == 0) {
             return capture;
@@ -568,7 +568,7 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
     }
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
     if (getenv("DISPLAY")) {
         if (x11_screen_init(ctx) == 0) {
             return capture;
@@ -582,8 +582,8 @@ turbo_capture_t *turbo_screen_capture_create(const turbo_screen_capture_config_t
     return NULL;
 }
 
-void turbo_screen_capture_set_callback(turbo_capture_t *capture,
-                                        turbo_video_capture_cb cb,
+void salts_screen_capture_set_callback(salts_capture_t *capture,
+                                        salts_video_capture_cb cb,
                                         void *user_data) {
     if (!capture) return;
     capture->video_cb = cb;
@@ -594,17 +594,17 @@ void turbo_screen_capture_set_callback(turbo_capture_t *capture,
  * Platform Hooks
  * ============================================================================= */
 
-int linux_screen_start(turbo_capture_t *capture) {
+int linux_screen_start(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return -1;
     screen_ctx_t *ctx = (screen_ctx_t *)capture->platform_ctx;
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
     if (ctx->use_wayland) {
         return pipewire_screen_start(ctx);
     }
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
     if (!ctx->use_wayland) {
         return x11_screen_start(ctx);
     }
@@ -613,38 +613,38 @@ int linux_screen_start(turbo_capture_t *capture) {
     return -1;
 }
 
-void linux_screen_stop(turbo_capture_t *capture) {
+void linux_screen_stop(salts_capture_t *capture) {
     if (!capture || !capture->platform_ctx) return;
     screen_ctx_t *ctx = (screen_ctx_t *)capture->platform_ctx;
 
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
     if (ctx->use_wayland) {
         pipewire_screen_stop(ctx);
         return;
     }
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
     if (!ctx->use_wayland) {
         x11_screen_stop(ctx);
     }
 #endif
 }
 
-void linux_screen_destroy(turbo_capture_t *capture) {
+void linux_screen_destroy(salts_capture_t *capture) {
     if (!capture) return;
 
     linux_screen_stop(capture);
 
     screen_ctx_t *ctx = (screen_ctx_t *)capture->platform_ctx;
     if (ctx) {
-#ifdef TURBO_HAS_PIPEWIRE
+#ifdef SALTS_HAS_PIPEWIRE
         if (ctx->use_wayland) {
             pipewire_screen_cleanup(ctx);
         }
 #endif
 
-#ifdef TURBO_HAS_X11
+#ifdef SALTS_HAS_X11
         if (!ctx->use_wayland) {
             x11_screen_cleanup(ctx);
         }

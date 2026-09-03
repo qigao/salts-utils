@@ -1,5 +1,5 @@
 #include <cflow/usb.h>
-#include <turbo/error_codes.h>
+#include <salts/error_codes.h>
 #include <tinytest.h>
 
 #include <stdlib.h>
@@ -68,24 +68,24 @@ spec("CFlow USB") {
         size_t actual = 0u;
         int status;
 
-        check_equal(cflow_usb_context_init(NULL, &config), TURBO_EINVAL);
-        check_equal(cflow_usb_context_init(&context, &config), TURBO_OK);
+        check_equal(cflow_usb_context_init(NULL, &config), SALTS_EINVAL);
+        check_equal(cflow_usb_context_init(&context, &config), SALTS_OK);
         status = cflow_usb_enumerate(&context, NULL, 0u, &required);
         if (required == 0u) {
-            check_equal(status, TURBO_OK);
+            check_equal(status, SALTS_OK);
         } else {
-            check_equal(status, TURBO_ENOBUFS);
+            check_equal(status, SALTS_ENOBUFS);
             devices = (cflow_usb_device_info *)calloc(required,
                                                        sizeof(*devices));
             check_not_null(devices);
             check_equal(cflow_usb_enumerate(
-                            &context, devices, required, &actual), TURBO_OK);
+                            &context, devices, required, &actual), SALTS_OK);
             check_equal(actual, required);
         }
         check_true(cflow_usb_get_stats(&context, &stats));
         check_equal(stats.device_capacity, device_capacity);
         check_true(stats.enumerations >= (size_t)1u);
-        check_equal(cflow_usb_context_destroy(&context), TURBO_OK);
+        check_equal(cflow_usb_context_destroy(&context), SALTS_OK);
         check_null(context.impl);
         free(devices);
     }
@@ -111,18 +111,18 @@ spec("CFlow USB") {
         cflow_usb_transfer_id id = CFLOW_USB_INVALID_TRANSFER_ID;
         size_t delivered = 99u;
 
-        check_equal(cflow_usb_context_init(&context, &config), TURBO_OK);
+        check_equal(cflow_usb_context_init(&context, &config), SALTS_OK);
         check_equal(cflow_usb_device_open(&context, &missing, &device),
-                    TURBO_ENODEV);
+                    SALTS_ENODEV);
         check_null(device.impl);
         check_equal(cflow_usb_submit(&context, &device, &request, &id),
-                    TURBO_EINVAL);
+                    SALTS_EINVAL);
         check_equal(id, CFLOW_USB_INVALID_TRANSFER_ID);
         check_equal(cflow_usb_cancel(&context,
                                      CFLOW_USB_INVALID_TRANSFER_ID),
-                    TURBO_EINVAL);
-        check_equal(cflow_usb_run_ready(&context, 1u, &delivered), TURBO_OK);
+                    SALTS_EINVAL);
+        check_equal(cflow_usb_run_ready(&context, 1u, &delivered), SALTS_OK);
         check_equal(delivered, (size_t)0u);
-        check_equal(cflow_usb_context_destroy(&context), TURBO_OK);
+        check_equal(cflow_usb_context_destroy(&context), SALTS_OK);
     }
 }

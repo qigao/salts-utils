@@ -1,8 +1,8 @@
 #include <cflow/usb.h>
 #include <libusb.h>
 #include <tinytest.h>
-#include <turbo/error_codes.h>
-#include <turbo/thread.h>
+#include <salts/error_codes.h>
+#include <salts/thread.h>
 
 #include <string.h>
 
@@ -53,10 +53,10 @@ static void drive_until(cflow_usb_context *context, size_t expected,
     for (attempt = 0u; attempt < 1000u && *total < expected; ++attempt) {
         size_t delivered = 0u;
         check_equal(cflow_usb_run_ready(context, expected, &delivered),
-                    TURBO_OK);
+                    SALTS_OK);
         *total += delivered;
         if (*total < expected)
-            turbo_sleep_ms(1u);
+            salts_sleep_ms(1u);
     }
 }
 
@@ -75,9 +75,9 @@ spec("CFlow USB bounded state machine") {
         size_t count = 0u;
         size_t delivered;
 
-        check_equal(cflow_usb_context_init(&context, &config), TURBO_OK);
+        check_equal(cflow_usb_context_init(&context, &config), SALTS_OK);
         check_equal(cflow_usb_enumerate(&context, &info, 1u, &count),
-                    TURBO_OK);
+                    SALTS_OK);
         check_equal(count, (size_t)1u);
         identity = (cflow_usb_device_identity){
             .bus_number = info.bus_number,
@@ -86,11 +86,11 @@ spec("CFlow USB bounded state machine") {
             .product_id = info.product_id,
         };
         check_equal(cflow_usb_device_open(&context, &identity, &device),
-                    TURBO_OK);
-        check_equal(cflow_usb_device_set_configuration(&device, 1), TURBO_OK);
-        check_equal(cflow_usb_device_claim_interface(&device, 1u), TURBO_OK);
+                    SALTS_OK);
+        check_equal(cflow_usb_device_set_configuration(&device, 1), SALTS_OK);
+        check_equal(cflow_usb_device_claim_interface(&device, 1u), SALTS_OK);
         check_equal(cflow_usb_device_claim_interface(&device, 1u),
-                    TURBO_EALREADY);
+                    SALTS_EALREADY);
 
         request = (cflow_usb_transfer_request){
             .kind = CFLOW_USB_TRANSFER_BULK,
@@ -103,25 +103,25 @@ spec("CFlow USB bounded state machine") {
         };
         fake_libusb_allow_completion(0);
         check_equal(cflow_usb_submit(&context, &device, &request, &id),
-                    TURBO_OK);
+                    SALTS_OK);
         check(id != CFLOW_USB_INVALID_TRANSFER_ID);
         first_id = id;
         check_equal(cflow_usb_submit(&context, &device, &request, &id),
-                    TURBO_ENOBUFS);
-        check_equal(cflow_usb_cancel(&context, id), TURBO_EINVAL);
+                    SALTS_ENOBUFS);
+        check_equal(cflow_usb_cancel(&context, id), SALTS_EINVAL);
 
         id = CFLOW_USB_INVALID_TRANSFER_ID;
         check_equal(cflow_usb_submit(&context, &device, &request, &id),
-                    TURBO_ENOBUFS);
-        check_equal(cflow_usb_cancel(&context, first_id), TURBO_OK);
+                    SALTS_ENOBUFS);
+        check_equal(cflow_usb_cancel(&context, first_id), SALTS_OK);
         drive_until(&context, 1u, &delivered);
         check_equal(delivered, (size_t)1u);
         check_equal(probe.calls, (size_t)1u);
-        check_equal(probe.last.status, TURBO_ECANCELED);
+        check_equal(probe.last.status, SALTS_ECANCELED);
         check_equal(cflow_usb_device_release_interface(&device, 1u),
-                    TURBO_OK);
-        check_equal(cflow_usb_device_close(&device), TURBO_OK);
-        check_equal(cflow_usb_context_destroy(&context), TURBO_OK);
+                    SALTS_OK);
+        check_equal(cflow_usb_device_close(&device), SALTS_OK);
+        check_equal(cflow_usb_context_destroy(&context), SALTS_OK);
     }
 
     it("copies control IN data before terminal delivery") {
@@ -150,20 +150,20 @@ spec("CFlow USB bounded state machine") {
         cflow_usb_transfer_id id;
         size_t delivered;
 
-        check_equal(cflow_usb_context_init(&context, &config), TURBO_OK);
+        check_equal(cflow_usb_context_init(&context, &config), SALTS_OK);
         check_equal(cflow_usb_device_open(&context, &identity, &device),
-                    TURBO_OK);
+                    SALTS_OK);
         fake_libusb_allow_completion(0);
         check_equal(cflow_usb_submit(&context, &device, &request, &id),
-                    TURBO_OK);
+                    SALTS_OK);
         fake_libusb_allow_completion(1);
         drive_until(&context, 1u, &delivered);
-        check_equal(probe.last.status, TURBO_OK);
+        check_equal(probe.last.status, SALTS_OK);
         check_equal(probe.last.bytes_transferred, sizeof(payload));
         check_equal(payload[0], (unsigned char)0xa5u);
         check_equal(payload[sizeof(payload) - 1u], (unsigned char)0xa5u);
-        check_equal(cflow_usb_device_close(&device), TURBO_OK);
-        check_equal(cflow_usb_context_destroy(&context), TURBO_OK);
+        check_equal(cflow_usb_device_close(&device), SALTS_OK);
+        check_equal(cflow_usb_context_destroy(&context), SALTS_OK);
     }
 
     it("turns hotplug queue loss into one acknowledged rescan marker") {
@@ -173,7 +173,7 @@ spec("CFlow USB bounded state machine") {
         cflow_usb_stats stats = {0};
         size_t delivered;
 
-        check_equal(cflow_usb_context_init(&context, &config), TURBO_OK);
+        check_equal(cflow_usb_context_init(&context, &config), SALTS_OK);
         fake_libusb_emit_hotplug(LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED);
         fake_libusb_emit_hotplug(LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT);
         drive_until(&context, 2u, &delivered);
@@ -187,7 +187,7 @@ spec("CFlow USB bounded state machine") {
         fake_libusb_emit_hotplug(LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED);
         check_true(cflow_usb_get_stats(&context, &stats));
         check_equal(stats.hotplug_suppressed, (size_t)2u);
-        check_equal(cflow_usb_acknowledge_hotplug_rescan(&context), TURBO_OK);
+        check_equal(cflow_usb_acknowledge_hotplug_rescan(&context), SALTS_OK);
         check_true(cflow_usb_get_stats(&context, &stats));
         check_equal(stats.hotplug_queued, (size_t)1u);
         check_equal(stats.hotplug_rescan_required, (size_t)2u);
@@ -195,9 +195,9 @@ spec("CFlow USB bounded state machine") {
         check_equal(delivered, (size_t)1u);
         check_equal(probe.calls, (size_t)3u);
         check_equal(probe.kinds[2], CFLOW_USB_HOTPLUG_RESCAN_REQUIRED);
-        check_equal(cflow_usb_acknowledge_hotplug_rescan(&context), TURBO_OK);
+        check_equal(cflow_usb_acknowledge_hotplug_rescan(&context), SALTS_OK);
         check_equal(cflow_usb_acknowledge_hotplug_rescan(&context),
-                    TURBO_EALREADY);
-        check_equal(cflow_usb_context_destroy(&context), TURBO_OK);
+                    SALTS_EALREADY);
+        check_equal(cflow_usb_context_destroy(&context), SALTS_OK);
     }
 }

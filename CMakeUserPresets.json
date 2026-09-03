@@ -28,7 +28,7 @@
                 "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "VCPKG_MANIFEST_MODE": "ON",
                 "VCPKG_APPLOCAL_DEPS": "OFF",
-                "TURBO_ENABLE_CAPTURE": "ON",
+                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "architecture": {
@@ -69,24 +69,24 @@
             "name": "android-dependencies-debug",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser-android/debug",
-                "TURBO_ENABLE_CAPTURE": "ON",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/debug",
+                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida-android/debug"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts-android/debug"
             }
         },
         {
             "name": "android-dependencies-release",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser-android/release",
-                "TURBO_ENABLE_CAPTURE": "ON",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils-android/release",
+                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida-android/release"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts-android/release"
             }
         },
         {
@@ -94,11 +94,11 @@
             "cacheVariables": {
                 "ENABLE_SANITIZER_ADDRESS": "ON",
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows/debug",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/debug"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/debug",
-                "PATH": "${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "PATH": "${sourceDir}/build/Msvc/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-user",
@@ -109,11 +109,11 @@
             "name": "win-release-user",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/release",
-                "PATH": "${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "PATH": "${sourceDir}/build/Msvc-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-user",
@@ -124,7 +124,7 @@
             "name": "win-capture-dev-user",
             "binaryDir": "${sourceDir}/build/Msvc-Capture",
             "environment": {
-                "PATH": "${sourceDir}/build/Msvc-Capture/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "${sourceDir}/build/Msvc-Capture/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": "win-dev-user"
         },
@@ -132,7 +132,7 @@
             "name": "win-capture-release-user",
             "binaryDir": "${sourceDir}/build/Msvc-Capture-Release",
             "environment": {
-                "PATH": "${sourceDir}/build/Msvc-Capture-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "PATH": "${sourceDir}/build/Msvc-Capture-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": "win-release-user"
         },
@@ -141,11 +141,11 @@
             "cacheVariables": {
                 "ENABLE_SANITIZER_ADDRESS": "ON",
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux/debug",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/debug"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/debug",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{ROCIDA_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
                 "base-linux-dev-user",
@@ -156,11 +156,11 @@
             "name": "linux-capture-dev-user",
             "binaryDir": "${sourceDir}/build/linux-gcc-capture-debug",
             "cacheVariables": {
-                "TURBO_ENABLE_CAPTURE": "ON",
+                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{ROCIDA_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/debug/lib${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": "linux-dev-user"
         },
@@ -168,11 +168,11 @@
             "name": "linux-release-user",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/release",
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{ROCIDA_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": [
                 "release-linux-ninja",
@@ -183,11 +183,11 @@
             "name": "linux-capture-release-user",
             "binaryDir": "${sourceDir}/build/linux-gcc-capture-release",
             "cacheVariables": {
-                "TURBO_ENABLE_CAPTURE": "ON",
+                "SALTS_UTILS_ENABLE_CAPTURE": "ON",
                 "VCPKG_MANIFEST_FEATURES": "capture"
             },
             "environment": {
-                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{ROCIDA_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
+                "LD_LIBRARY_PATH": "${sourceDir}/build/linux-gcc-capture-release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-linux/lib${pathListSep}$env{SALTS_ROOT}/lib${pathListSep}$penv{LD_LIBRARY_PATH}"
             },
             "inherits": "linux-release-user"
         },
@@ -196,14 +196,14 @@
             "binaryDir": "${sourceDir}/build/linux-gcc-sdk-package",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release",
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
                 "ENABLE_SANITIZER_ADDRESS": "OFF",
                 "ENABLE_TESTS": "OFF",
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/release"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release"
             },
             "inherits": [
                 "release-linux-ninja",
@@ -287,11 +287,11 @@
             "cacheVariables": {
                 "ENABLE_SANITIZER_ADDRESS": "OFF",
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows/debug",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/debug"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/debug"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/debug",
-                "PATH": "${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/debug",
+                "PATH": "${sourceDir}/build/Clang/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/debug/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-dev-clang-user",
@@ -304,11 +304,11 @@
                 "ENABLE_SANITIZER_ADDRESS": "OFF",
                 "ENABLE_TESTS": "ON",
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
-                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/turboparser/release"
+                "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
             "environment": {
-                "ROCIDA_ROOT": "$env{PKG_ROOT}/rocida/release",
-                "PATH": "${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{ROCIDA_ROOT}/bin${pathListSep}$penv{PATH}"
+                "SALTS_ROOT": "$env{PKG_ROOT}/salts/release",
+                "PATH": "${sourceDir}/build/Clang-Release/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$penv{PATH}"
             },
             "inherits": [
                 "base-win-release-clang-user",
@@ -356,6 +356,11 @@
         {
             "name": "install-win-dev-user",
             "configurePreset": "win-dev-user",
+            "targets": ["install"]
+        },
+        {
+            "name": "install-win-release-user",
+            "configurePreset": "win-release-user",
             "targets": ["install"]
         },
         {

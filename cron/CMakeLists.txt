@@ -1,4 +1,4 @@
-set(TARGET_NAME turbo_cron)
+set(TARGET_NAME salts_cron)
 
 set(CRON_LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/cron_lexer.re)
 set(CRON_LEXER_GEN ${CMAKE_CURRENT_BINARY_DIR}/cron_lexer_gen.c)
@@ -10,18 +10,18 @@ add_custom_command(
   COMMENT "Generating cron lexer with re2c"
   VERBATIM)
 
-set(CRON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/turbo_cron.c ${CRON_LEXER_GEN})
-set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/turbo_cron.h)
+set(CRON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/salts_cron.c ${CRON_LEXER_GEN})
+set(CRON_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/salts_cron.h)
 
 add_library(${TARGET_NAME} SHARED ${CRON_SOURCES} ${CRON_HEADERS})
 
 cmake_config_target(
   ${TARGET_NAME}
-  ALIAS TurboParser::Cron
+  ALIAS Salts::Cron
   FOLDER "cron"
   EXPORT_NAME Cron)
 
-target_compile_definitions(${TARGET_NAME} PRIVATE TURBO_CRON_BUILD_DLL)
+target_compile_definitions(${TARGET_NAME} PRIVATE SALTS_CRON_BUILD_DLL)
 
 target_include_directories(
   ${TARGET_NAME}
@@ -30,11 +30,11 @@ target_include_directories(
          $<INSTALL_INTERFACE:include/cron>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(${TARGET_NAME} PUBLIC Rocida::Core)
+target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
 
 install(
   TARGETS ${TARGET_NAME}
-  EXPORT TurboParserTargets
+  EXPORT SaltsUtilsTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

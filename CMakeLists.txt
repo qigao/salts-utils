@@ -7,10 +7,10 @@ if(POLICY CMP0167)
 endif()
 
 project(
-  TurboParser
+  SaltsUtils
   VERSION 2.0.0
-  DESCRIPTION "Parsing and query runtime library for C and C++"
-  HOMEPAGE_URL "https://github.com/qigao/turbo-parser"
+  DESCRIPTION "Higher-level utilities built on Salts"
+  HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
 
 # Project configuration - output directories
@@ -46,18 +46,17 @@ include(CmakeUtils)
 include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
-if(NOT DEFINED ENV{ROCIDA_ROOT} OR "$ENV{ROCIDA_ROOT}" STREQUAL "")
-  message(FATAL_ERROR "ROCIDA_ROOT must name the installed Rocida profile")
+if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "SALTS_ROOT must name the installed Salts profile")
 endif()
-file(TO_CMAKE_PATH "$ENV{ROCIDA_ROOT}" ROCIDA_ROOT_PATH)
-if(NOT IS_DIRECTORY "${ROCIDA_ROOT_PATH}")
-  message(FATAL_ERROR "ROCIDA_ROOT is not a directory: $ENV{ROCIDA_ROOT}")
+file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
+if(NOT IS_DIRECTORY "${SALTS_ROOT_PATH}")
+  message(FATAL_ERROR "SALTS_ROOT is not a directory: $ENV{SALTS_ROOT}")
 endif()
 
-unset(Rocida_DIR CACHE)
-unset(Rocida_DIR)
-find_package(Rocida 1.1 CONFIG REQUIRED PATHS "${ROCIDA_ROOT_PATH}"
-             NO_DEFAULT_PATH)
+unset(Salts_DIR CACHE)
+unset(Salts_DIR)
+find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}" NO_DEFAULT_PATH)
 
 if(BUILD_TESTING)
   add_subdirectory(tests/runtime_path)
@@ -67,12 +66,11 @@ endif()
 add_subdirectory(tools)
 include(FindTools)
 add_subdirectory(vendor)
-add_subdirectory(turbo_parser)
-if(TURBO_ENABLE_CAPTURE)
+if(SALTS_UTILS_ENABLE_CAPTURE)
   add_subdirectory(capture)
 endif()
-add_subdirectory(turbo_serial)
-if(TURBO_ENABLE_CFLOW_USB)
+add_subdirectory(salts_serial)
+if(SALTS_UTILS_ENABLE_CFLOW_USB)
   add_subdirectory(cflow-usb)
 endif()
 add_subdirectory(cron)
@@ -84,29 +82,29 @@ include(CMakePackageConfigHelpers)
 
 # Generate the config file
 configure_package_config_file(
-  "${CMAKE_SOURCE_DIR}/cmake/TurboParserConfig.cmake.in"
-  "${CMAKE_BINARY_DIR}/TurboParserConfig.cmake"
-  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser")
+  "${CMAKE_SOURCE_DIR}/cmake/SaltsUtilsConfig.cmake.in"
+  "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
 
 # Generate the version file
 write_basic_package_version_file(
-  "${CMAKE_BINARY_DIR}/TurboParserConfigVersion.cmake"
+  "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion)
 
 # Install the config files
-install(FILES "${CMAKE_BINARY_DIR}/TurboParserConfig.cmake"
-              "${CMAKE_BINARY_DIR}/TurboParserConfigVersion.cmake"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser")
+install(FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
+              "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
 
 # Install the export set
 export(
-  EXPORT TurboParserTargets
-  FILE "${CMAKE_BINARY_DIR}/TurboParserTargets.cmake"
-  NAMESPACE TurboParser::)
+  EXPORT SaltsUtilsTargets
+  FILE "${CMAKE_BINARY_DIR}/SaltsUtilsTargets.cmake"
+  NAMESPACE Salts::)
 
 install(
-  EXPORT TurboParserTargets
-  FILE TurboParserTargets.cmake
-  NAMESPACE TurboParser::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/TurboParser")
+  EXPORT SaltsUtilsTargets
+  FILE SaltsUtilsTargets.cmake
+  NAMESPACE Salts::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")

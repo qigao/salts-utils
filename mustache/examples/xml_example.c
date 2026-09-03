@@ -11,7 +11,7 @@
 int main(void) {
     const char *xml_data = 
         "<dashboard>"
-        "  <project name=\"TurboUtils\">"
+        "  <project name=\"Salts\">"
         "    <version>2.0</version>"
         "    <status>Active</status>"
         "  </project>"
@@ -33,8 +33,8 @@ int main(void) {
         "{{/stats.item}}";
 
     /* Parse XML */
-    turbo_xml_document document = {0};
-    if (turbo_xml_parse(&document, xml_data, strlen(xml_data), NULL, NULL) != TURBO_XML_OK) {
+    salts_xml_document document = {0};
+    if (salts_xml_parse(&document, xml_data, strlen(xml_data), NULL, NULL) != SALTS_XML_OK) {
         fprintf(stderr, "Failed to parse XML\n");
         return 1;
     }
@@ -43,7 +43,7 @@ int main(void) {
     MUSTACHE_TEMPLATE *templ = mustache_compile(template_text, strlen(template_text), NULL, NULL, 0);
     if (!templ) {
         fprintf(stderr, "Failed to compile template\n");
-        turbo_xml_document_destroy(&document);
+        salts_xml_document_destroy(&document);
         return 1;
     }
 
@@ -52,17 +52,17 @@ int main(void) {
     if (mustache_string_renderer_init(&renderer) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
         mustache_release(templ);
-        turbo_xml_document_destroy(&document);
+        salts_xml_document_destroy(&document);
         return 1;
     }
 
     /* Render */
-    if (mustache_render_xml(templ, (void *)turbo_xml_document_root(&document).impl,
+    if (mustache_render_xml(templ, (void *)salts_xml_document_root(&document).impl,
                             &renderer.base, &renderer, NULL, NULL) != 0) {
         fprintf(stderr, "Failed to render template\n");
         mustache_string_renderer_free(&renderer);
         mustache_release(templ);
-        turbo_xml_document_destroy(&document);
+        salts_xml_document_destroy(&document);
         return 1;
     }
 
@@ -71,7 +71,7 @@ int main(void) {
         fprintf(stderr, "Failed to copy rendered output\n");
         mustache_string_renderer_free(&renderer);
         mustache_release(templ);
-        turbo_xml_document_destroy(&document);
+        salts_xml_document_destroy(&document);
         return 1;
     }
     printf("Rendered result:\n---\n%s\n---\n", result);
@@ -80,7 +80,7 @@ int main(void) {
     /* Cleanup */
     mustache_string_renderer_free(&renderer);
     mustache_release(templ);
-    turbo_xml_document_destroy(&document);
+    salts_xml_document_destroy(&document);
 
     return 0;
 }

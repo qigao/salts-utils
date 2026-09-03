@@ -130,7 +130,7 @@ typedef struct cflow_usb_stats {
  * Initialize an owning libusb context.
  * @param context Zero-initialized destination.
  * @param config Positive hard device snapshot capacity.
- * @return TURBO_OK, TURBO_EINVAL, TURBO_ENOMEM, or mapped libusb error.
+ * @return SALTS_OK, SALTS_EINVAL, SALTS_ENOMEM, or mapped libusb error.
  */
 int cflow_usb_context_init(cflow_usb_context *context,
                            const cflow_usb_context_config *config);
@@ -138,7 +138,7 @@ int cflow_usb_context_init(cflow_usb_context *context,
  * Produce one caller-owned enumeration snapshot.
  *
  * A NULL/zero output is a size query. If the discovered count exceeds either
- * the context bound or output capacity, returns TURBO_ENOBUFS, writes the
+ * the context bound or output capacity, returns SALTS_ENOBUFS, writes the
  * required count, and commits no partial entries. Device identity is the
  * observed bus/address/VID/PID tuple; reconnect always requires re-enumeration.
  */
@@ -151,25 +151,25 @@ int cflow_usb_enumerate(cflow_usb_context *context,
  * @param context Live owning context.
  * @param identity Exact bus/address/VID/PID snapshot.
  * @param device Zero-initialized destination.
- * @return TURBO_OK, TURBO_ENODEV, TURBO_ENOBUFS, or a mapped libusb error.
+ * @return SALTS_OK, SALTS_ENODEV, SALTS_ENOBUFS, or a mapped libusb error.
  */
 int cflow_usb_device_open(cflow_usb_context *context,
                           const cflow_usb_device_identity *identity,
                           cflow_usb_device *device);
 /**
  * Set the active device configuration before claiming interfaces.
- * @return TURBO_EBUSY while interfaces/transfers are active, otherwise the
+ * @return SALTS_EBUSY while interfaces/transfers are active, otherwise the
  * mapped libusb result.
  */
 int cflow_usb_device_set_configuration(cflow_usb_device *device,
                                        int configuration);
-/** Claim one explicit interface; duplicate claims return TURBO_EALREADY. */
+/** Claim one explicit interface; duplicate claims return SALTS_EALREADY. */
 int cflow_usb_device_claim_interface(cflow_usb_device *device,
                                      uint8_t interface_number);
-/** Release an idle claimed interface; active transfers return TURBO_EBUSY. */
+/** Release an idle claimed interface; active transfers return SALTS_EBUSY. */
 int cflow_usb_device_release_interface(cflow_usb_device *device,
                                        uint8_t interface_number);
-/** Close an idle device; claimed interfaces or transfers return TURBO_EBUSY. */
+/** Close an idle device; claimed interfaces or transfers return SALTS_EBUSY. */
 int cflow_usb_device_close(cflow_usb_device *device);
 /**
  * Submit one bounded asynchronous control, bulk, or interrupt transfer.
@@ -177,7 +177,7 @@ int cflow_usb_device_close(cflow_usb_device *device);
  * returns from cflow_usb_run_ready(). Control payloads are copied into fixed
  * context-owned storage; successful IN payloads are copied back before the
  * callback. Bulk and interrupt payloads are passed directly to libusb.
- * @return TURBO_ENOBUFS when every fixed slot is occupied; no request is
+ * @return SALTS_ENOBUFS when every fixed slot is occupied; no request is
  * accepted on any error and out_id remains CFLOW_USB_INVALID_TRANSFER_ID.
  */
 int cflow_usb_submit(cflow_usb_context *context,
@@ -186,7 +186,7 @@ int cflow_usb_submit(cflow_usb_context *context,
                      cflow_usb_transfer_id *out_id);
 /**
  * Request cancellation; completion remains asynchronous and exactly once.
- * Unknown IDs return TURBO_ENOENT and already-terminal IDs TURBO_EALREADY.
+ * Unknown IDs return SALTS_ENOENT and already-terminal IDs SALTS_EALREADY.
  */
 int cflow_usb_cancel(cflow_usb_context *context,
                      cflow_usb_transfer_id id);
@@ -200,7 +200,7 @@ int cflow_usb_run_ready(cflow_usb_context *context, size_t max_events,
  * Resume detailed hotplug delivery after the rescan marker was observed.
  * Changes suppressed after marker delivery retain the loss state and queue
  * another marker; callers repeat until hotplug_queued remains zero. Calling
- * before marker delivery returns TURBO_EALREADY.
+ * before marker delivery returns SALTS_EALREADY.
  */
 int cflow_usb_acknowledge_hotplug_rescan(cflow_usb_context *context);
 /** Copy an observational enumeration/capacity snapshot. */
