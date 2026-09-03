@@ -1,6 +1,6 @@
 #include "data_bind.h"
 #include "tinytest.h"
-#include "turbo_thread.h"
+#include <salts_thread.h>
 
 #include <stdio.h>
 #include <stdatomic.h>
@@ -28,7 +28,7 @@ static void data_bind_pool_bench_worker(void *arg) {
   data_bind_pool_worker_t *worker = (data_bind_pool_worker_t *)arg;
   size_t i;
   atomic_fetch_add_explicit(worker->ready_count, 1U, memory_order_release);
-  while (!atomic_load_explicit(worker->start, memory_order_acquire)) turbo_thread_yield();
+  while (!atomic_load_explicit(worker->start, memory_order_acquire)) salts_thread_yield();
   for (i = 0; i < worker->iterations; ++i) {
     DataBindValue *value = NULL;
     if (data_bind_parse_json(worker->codec, "Batch", g_pool_bench_json,
@@ -43,7 +43,7 @@ static void data_bind_pool_bench_worker(void *arg) {
 }
 
 static void data_bind_pool_bench_parallel(size_t thread_count) {
-  turbo_thread_t threads[DATA_BIND_POOL_BENCH_MAX_THREADS] = {0};
+  salts_thread_t threads[DATA_BIND_POOL_BENCH_MAX_THREADS] = {0};
   data_bind_pool_worker_t workers[DATA_BIND_POOL_BENCH_MAX_THREADS];
   atomic_size_t ready_count = 0;
   atomic_int start = 0;
@@ -55,16 +55,16 @@ static void data_bind_pool_bench_parallel(size_t thread_count) {
     workers[i].ready_count = &ready_count;
     workers[i].start = &start;
     workers[i].iterations = DATA_BIND_POOL_BENCH_PARALLEL_ITERS;
-    if (turbo_thread_create(&threads[i], data_bind_pool_bench_worker, &workers[i]) != 0) {
+    if (salts_thread_create(&threads[i], data_bind_pool_bench_worker, &workers[i]) != 0) {
       atomic_fetch_add_explicit(&g_pool_bench_failures, 1U, memory_order_relaxed);
       break;
     }
     created++;
   }
-  while (atomic_load_explicit(&ready_count, memory_order_acquire) < created) turbo_thread_yield();
+  while (atomic_load_explicit(&ready_count, memory_order_acquire) < created) salts_thread_yield();
   atomic_store_explicit(&start, 1, memory_order_release);
   for (i = 0; i < created; ++i) {
-    if (turbo_thread_join(&threads[i]) != 0)
+    if (salts_thread_join(&threads[i]) != 0)
       atomic_fetch_add_explicit(&g_pool_bench_failures, 1U, memory_order_relaxed);
   }
 }

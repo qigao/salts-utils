@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 #include "fmt.h"
+#include "turbo_parser_json.h"
 
 #ifdef __cplusplus
 extern "C" {
