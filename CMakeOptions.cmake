@@ -24,4 +24,7 @@ if(WIN32)
       "Build the native audio/video/screen capture component" FORCE)
 endif()
 
+option(SALTS_UTILS_ENABLE_CFLOW_USB
+       "Build the optional libusb-backed CFlow device adapter" OFF)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

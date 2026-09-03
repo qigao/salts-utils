@@ -64,8 +64,34 @@ cmake_config_target(
   FOLDER "tbe/data_bind"
   EXPORT_NAME DataBind)
 
+add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
+target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
+target_include_directories(data_bind_cmeta
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+         $<INSTALL_INTERFACE:include>)
+target_link_libraries(data_bind_cmeta
+  PUBLIC Salts::DataBind Salts::CMeta)
+cmake_config_target(
+  data_bind_cmeta
+  ALIAS Salts::DataBindCMeta
+  FOLDER tbe/data_bind
+  EXPORT_NAME DataBindCMeta)
+
+add_library(data_bind_cflow SHARED data_bind_cflow.c data_bind_cflow.h)
+target_compile_definitions(data_bind_cflow PRIVATE DATA_BIND_CFLOW_BUILD_DLL)
+target_include_directories(data_bind_cflow
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+         $<INSTALL_INTERFACE:include>)
+target_link_libraries(data_bind_cflow
+  PUBLIC Salts::DataBindCMeta Salts::CFlow)
+cmake_config_target(
+  data_bind_cflow
+  ALIAS Salts::DataBindCFlow
+  FOLDER tbe/data_bind
+  EXPORT_NAME DataBindCFlow)
+
 install(
-  TARGETS ${DATA_BIND_TARGET}
+  TARGETS ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
   EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -73,6 +99,8 @@ install(
 install(
   FILES
     data_bind.h
+    data_bind_cflow.h
+    data_bind_cmeta.h
     tbe_typed.h
     parser_compat/include/turbo_parser_common.h
     parser_compat/include/turbo_parser_datetime.h
@@ -87,6 +115,21 @@ cmake_add_test(test_data_bind
 cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
+
+cmake_add_test(test_data_bind_cmeta
+  SOURCES test_data_bind_cmeta.c
+  LIBS Salts::DataBindCMeta Salts::TinyTest
+  FOLDER "tbe/data_bind/tests")
+
+cmake_add_test(test_data_bind_cflow
+  SOURCES test_data_bind_cflow.c
+  LIBS Salts::DataBindCFlow Salts::TinyTest
+  FOLDER "tbe/data_bind/tests")
+
+cmake_add_test(test_data_bind_adapters_cpp
+  SOURCES test_data_bind_adapters_cpp.cpp
+  LIBS Salts::DataBindCFlow Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_record
   SOURCES test_data_bind_record.c
