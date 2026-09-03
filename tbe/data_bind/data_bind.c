@@ -7216,9 +7216,12 @@ DataBindStatus data_bind_stream_create(DataBind *codec, const DataBindStreamConf
   const size_t required_size = offsetof(DataBindStreamConfig, out_value) + sizeof(config->out_value);
 
   if (out_stream != NULL) *out_stream = NULL;
-  if (config != NULL && config->out_value != NULL) *config->out_value = NULL;
-  if (codec == NULL || config == NULL || out_stream == NULL || config->size < required_size ||
-      config->type_name == NULL || config->type_name[0] == '\0') {
+  if (codec == NULL || config == NULL || out_stream == NULL || config->size < required_size) {
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_create", -1, -1,
+                        "Invalid configured stream arguments");
+  }
+  if (config->out_value != NULL) *config->out_value = NULL;
+  if (config->type_name == NULL || config->type_name[0] == '\0') {
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_create", -1, -1,
                         "Invalid configured stream arguments");
   }

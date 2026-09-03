@@ -2539,6 +2539,30 @@ spec("data_bind public API") {
     data_bind_free(codec);
   }
 
+  it("should not access configured stream fields beyond the declared size") {
+    const char *schema = "message Order { uint32 id; }\n";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStreamConfig config = DATA_BIND_STREAM_CONFIG_INIT;
+    DataBindValue *sentinel = (DataBindValue *)&config;
+    DataBindValue *value = sentinel;
+    data_bind_stream_t *stream = NULL;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    config.type_name = "Order";
+    config.out_value = &value;
+    config.size = offsetof(DataBindStreamConfig, out_value);
+
+    check_equal(data_bind_stream_create(codec, &config, &stream, &error),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_null(stream);
+    check(value == sentinel);
+    check_equal(error.code, DATA_BIND_ERR_INVALID_ARG);
+
+    data_bind_free(codec);
+  }
+
   it("should create callback-only streams atomically and cancel distinctly") {
     const char *schema = "message Order { uint32 id; }\n";
     const char *json = "[{\"id\":1},{\"id\":2}]";

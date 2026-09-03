@@ -246,6 +246,39 @@ data_bind_free(codec);
 语言应把 `order.id` 语法转换为动态属性查询；若必须得到真实 C 成员，只能选择
 上述两条强类型路线之一。
 
+## CMeta / CFlow / Reactive 可选适配
+
+DataBind 核心 target 的依赖与 ABI 保持不变。需要把已解析的不可变动态值接入 CMeta
+或 CFlow 时，显式链接可选适配库：
+
+```cmake
+target_link_libraries(my_app PRIVATE TurboParser::DataBindCFlow)
+```
+
+`TurboParser::DataBindCFlow` 传递链接 `TurboParser::DataBindCMeta`；只需要同步
+`cmeta_range` 时可单独链接后者。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
+`DataBindFieldRef`，MAP 映射为 `DataBindMapEntryRef`。三者均有稳定的 CMeta type
+identity，并保持 DataBind 的 encounter/schema order。
+
+```c
+#include "data_bind_cflow.h"
+
+cflow_publisher source = {0};
+const DataBindValue *items = data_bind_value_get(root, "items");
+
+if (data_bind_cflow_publisher_from_value(
+        items, DATA_BIND_CMETA_RANGE_VALUES, &source) != DATA_BIND_OK) {
+  return 1;
+}
+/* cflow_subscribe() 成功后移动 source；按 Subscription demand 拉取。 */
+```
+
+range、stream、publisher 和 subscription 都只借用 `DataBindValue` owner；适配器不
+释放 owner，也不预取或缓存 payload。owner 必须存活至 range 遍历完成、stream 销毁，
+或 publisher/subscription 关闭。释放 owner 后，已发出的 value/name/key 指针立即
+失效。range cursor 是单线程对象；Reactive resume 由 CFlow 串行化，cancel/close 只
+结束消费状态。kind 与值类型不匹配时返回 `DATA_BIND_ERR_INVALID_ARG`，不自动降级。
+
 ## 流式消费
 
 stream 默认保留所有绑定结果，并只在 `data_bind_stream_finish()` 成功时转移

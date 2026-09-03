@@ -34,13 +34,39 @@ cmake_config_target(
   FOLDER tbe/data_bind
   EXPORT_NAME DataBind)
 
+add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
+target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
+target_include_directories(data_bind_cmeta
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+         $<INSTALL_INTERFACE:include>)
+target_link_libraries(data_bind_cmeta
+  PUBLIC TurboParser::DataBind Rocida::CMeta)
+cmake_config_target(
+  data_bind_cmeta
+  ALIAS TurboParser::DataBindCMeta
+  FOLDER tbe/data_bind
+  EXPORT_NAME DataBindCMeta)
+
+add_library(data_bind_cflow SHARED data_bind_cflow.c data_bind_cflow.h)
+target_compile_definitions(data_bind_cflow PRIVATE DATA_BIND_CFLOW_BUILD_DLL)
+target_include_directories(data_bind_cflow
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+         $<INSTALL_INTERFACE:include>)
+target_link_libraries(data_bind_cflow
+  PUBLIC TurboParser::DataBindCMeta Rocida::CFlow)
+cmake_config_target(
+  data_bind_cflow
+  ALIAS TurboParser::DataBindCFlow
+  FOLDER tbe/data_bind
+  EXPORT_NAME DataBindCFlow)
+
 install(
-  TARGETS ${TARGET_NAME}
+  TARGETS ${TARGET_NAME} data_bind_cmeta data_bind_cflow
   EXPORT TurboParserTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES data_bind.h tbe_typed.h DESTINATION include)
+install(FILES data_bind.h data_bind_cflow.h data_bind_cmeta.h tbe_typed.h DESTINATION include)
 
 # =============================================================================
 # Tests
@@ -55,6 +81,21 @@ cmake_add_test(test_data_bind
 cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS TurboParser::DataBind Rocida::TinyTest
+  FOLDER "tbe/data_bind")
+
+cmake_add_test(test_data_bind_cmeta
+  SOURCES test_data_bind_cmeta.c
+  LIBS TurboParser::DataBindCMeta Rocida::TinyTest
+  FOLDER "tbe/data_bind")
+
+cmake_add_test(test_data_bind_cflow
+  SOURCES test_data_bind_cflow.c
+  LIBS TurboParser::DataBindCFlow Rocida::TinyTest
+  FOLDER "tbe/data_bind")
+
+cmake_add_test(test_data_bind_adapters_cpp
+  SOURCES test_data_bind_adapters_cpp.cpp
+  LIBS TurboParser::DataBindCFlow Rocida::TinyTest
   FOLDER "tbe/data_bind")
 
 cmake_add_test(test_data_bind_record
