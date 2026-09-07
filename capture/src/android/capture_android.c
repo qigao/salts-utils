@@ -51,10 +51,11 @@ extern void android_audio_set_callback(android_audio_ctx_t *ctx,
                                                         size_t frames),
                                        void *user_data);
 
-extern android_screen_ctx_t *android_screen_create(int width, int height,
-                                                   int framerate);
+extern int android_screen_create(int width, int height, int framerate,
+                                 android_screen_ctx_t **out_ctx);
 extern void android_screen_destroy(android_screen_ctx_t *ctx);
 extern int android_screen_start(android_screen_ctx_t *ctx, jobject media_projection);
+extern int android_screen_commit_start(android_screen_ctx_t *ctx);
 extern int android_screen_stop(android_screen_ctx_t *ctx);
 extern void android_screen_set_callback(android_screen_ctx_t *ctx,
                                         void (*callback)(void *user_data,
@@ -481,11 +482,12 @@ static int android_screen_capture_create(int width, int height, int framerate,
         return SALTS_CAPTURE_ERR_NOMEM;
     }
 
-    platform->native = android_screen_create(width, height, framerate);
-    if (!platform->native) {
+    int result = android_screen_create(width, height, framerate,
+                                       &platform->native);
+    if (result != SALTS_CAPTURE_OK) {
         free(platform);
         free(capture);
-        return SALTS_CAPTURE_ERR_DEVICE;
+        return result;
     }
 
     capture->type = SALTS_CAPTURE_TYPE_SCREEN;
@@ -649,6 +651,10 @@ int salts_capture_start(salts_capture_t *capture) {
              * ImageReader surface before it produces frames.  Preserve the
              * public native lifecycle while that external surface is idle. */
             result = platform ? android_screen_start(platform->native, NULL) : -1;
+            if (result == 0) {
+                capture->state = SALTS_CAPTURE_STATE_RUNNING;
+                result = android_screen_commit_start(platform->native);
+            }
             break;
         }
         default:
@@ -656,7 +662,8 @@ int salts_capture_start(salts_capture_t *capture) {
             break;
     }
 
-    capture->state = (result == 0) ? SALTS_CAPTURE_STATE_RUNNING : SALTS_CAPTURE_STATE_ERROR;
+    capture->state = (result == 0) ? SALTS_CAPTURE_STATE_RUNNING
+                                   : SALTS_CAPTURE_STATE_ERROR;
     if (capture->state_cb) {
         capture->state_cb(capture, capture->state, capture->user_data);
     }

@@ -56,6 +56,8 @@ Android MediaProjection 使用 `<salts_capture_android.h>`。Salts 拥有
 创建 capture、取得 Surface、创建 VirtualDisplay、启动 capture；关闭时先释放
 VirtualDisplay/MediaProjection，再 stop/destroy capture。该接口直接使用 API 26 的
 `ANativeWindow_toSurface()`，所以 Android 最低平台是 API 26，不提供低版本 fallback。
+ImageReader listener 仅在 capture 为 RUNNING 时交付并计数帧；`stop` 会关闭该 gate 并
+等待已进入的 callback 返回，因此 `stop` 返回后不会继续访问 callback payload。
 
 ## 下游迁移
 

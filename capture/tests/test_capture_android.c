@@ -39,12 +39,17 @@ suite("capture Android lifecycle") {
   it("starts the native screen lifecycle before Java produces frames") {
     salts_screen_capture_config_t config = {0, 30, 1, 0};
     salts_capture_t *capture = salts_screen_capture_create(&config);
+    uint64_t frame_count = UINT64_MAX;
 
     check_not_null(capture);
     if (!capture) return;
 
     check_equal(salts_capture_get_state(capture),
                 SALTS_CAPTURE_STATE_STOPPED);
+    check_equal(salts_android_screen_capture_get_frame_count(
+                    capture, &frame_count),
+                SALTS_CAPTURE_OK);
+    check_equal(frame_count, 0);
     check_equal(salts_capture_start(capture), SALTS_CAPTURE_OK);
     check_equal(salts_capture_get_state(capture),
                 SALTS_CAPTURE_STATE_RUNNING);
@@ -52,6 +57,10 @@ suite("capture Android lifecycle") {
     salts_capture_stop(capture);
     check_equal(salts_capture_get_state(capture),
                 SALTS_CAPTURE_STATE_STOPPED);
+    check_equal(salts_android_screen_capture_get_frame_count(
+                    capture, &frame_count),
+                SALTS_CAPTURE_OK);
+    check_equal(frame_count, 0);
     salts_capture_destroy(capture);
   }
 }
