@@ -253,6 +253,6 @@ ANativeWindow *android_screen_get_surface(android_screen_ctx_t *ctx) {
     return ctx ? ctx->image_reader_window : NULL;
 }
 
-uint64_t android_screen_get_frame_count(android_screen_ctx_t *ctx) {
+uint64_t android_screen_get_frame_count(const android_screen_ctx_t *ctx) {
     return ctx ? atomic_load_explicit(&ctx->frame_count, memory_order_relaxed) : 0u;
 }

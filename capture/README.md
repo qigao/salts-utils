@@ -48,9 +48,14 @@ Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依
   `RUNNING`。
 
 设备不存在时，枚举返回零项。参数、权限、格式协商、原生资源或模式身份无效时接口会
-明确失败，不会静默切换为另一种设备语义。Android 屏幕采集的 native 生命周期可以先
-启动，但应用层仍必须完成 Java MediaProjection 授权与 ImageReader surface 交接后才会
-产生视频帧。
+明确失败，不会静默切换为另一种设备语义。
+
+Android MediaProjection 使用 `<salts_capture_android.h>`。Salts 拥有
+`salts_capture_t`、`AImageReader` 与其 `ANativeWindow`；Java 拥有权限结果、
+`MediaProjection`、`VirtualDisplay` 和从 JNI 返回的 `Surface` 对象。控制顺序必须是：
+创建 capture、取得 Surface、创建 VirtualDisplay、启动 capture；关闭时先释放
+VirtualDisplay/MediaProjection，再 stop/destroy capture。该接口直接使用 API 26 的
+`ANativeWindow_toSurface()`，所以 Android 最低平台是 API 26，不提供低版本 fallback。
 
 ## 下游迁移
 

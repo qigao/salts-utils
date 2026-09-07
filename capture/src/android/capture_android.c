@@ -5,9 +5,11 @@
  * Screen frames require the application-owned Java MediaProjection surface.
  */
 
-#include "salts_capture.h"
 #include "capture_video_backend.h"
+#include "salts_capture.h"
+#include "salts_capture_android.h"
 
+#include <android/native_window_jni.h>
 #include <camera/NdkCameraManager.h>
 #include <camera/NdkCameraMetadata.h>
 #include <jni.h>
@@ -18,7 +20,6 @@
 #include <time.h>
 
 #define ANDROID_STREAM_CONFIGURATION_OUTPUT 0
-
 typedef struct android_camera_ctx_t android_camera_ctx_t;
 typedef struct android_audio_ctx_t android_audio_ctx_t;
 typedef struct android_screen_ctx_t android_screen_ctx_t;
@@ -63,6 +64,9 @@ extern void android_screen_set_callback(android_screen_ctx_t *ctx,
                                                          int height,
                                                          int64_t timestamp_us),
                                         void *user_data);
+extern ANativeWindow *android_screen_get_surface(android_screen_ctx_t *ctx);
+extern uint64_t android_screen_get_frame_count(
+    const android_screen_ctx_t *ctx);
 
 typedef struct {
     android_audio_ctx_t *native;
@@ -460,29 +464,95 @@ const salts_video_backend_ops_t *salts_video_platform_backend(void) {
     return &ops;
 }
 
-salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+static int android_screen_capture_create(int width, int height, int framerate,
+                                         salts_capture_t **out_capture) {
+    if (!out_capture) return SALTS_CAPTURE_ERR_FORMAT;
+    *out_capture = NULL;
+    if (width <= 0 || height <= 0 || framerate <= 0) {
+        return SALTS_CAPTURE_ERR_FORMAT;
+    }
+
     salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(*capture));
     android_screen_platform_t *platform =
         (android_screen_platform_t *)calloc(1, sizeof(*platform));
     if (!capture || !platform) {
         free(capture);
         free(platform);
-        return NULL;
+        return SALTS_CAPTURE_ERR_NOMEM;
     }
 
-    int framerate = (config && config->framerate > 0) ? config->framerate : 30;
-    platform->native = android_screen_create(1280, 720, framerate);
+    platform->native = android_screen_create(width, height, framerate);
     if (!platform->native) {
         free(platform);
         free(capture);
-        return NULL;
+        return SALTS_CAPTURE_ERR_DEVICE;
     }
 
     capture->type = SALTS_CAPTURE_TYPE_SCREEN;
     capture->state = SALTS_CAPTURE_STATE_STOPPED;
     capture->platform_ctx = platform;
     android_screen_set_callback(platform->native, android_video_callback, capture);
+    *out_capture = capture;
+    return SALTS_CAPTURE_OK;
+}
+
+salts_capture_t *salts_screen_capture_create(const salts_screen_capture_config_t *config) {
+    salts_capture_t *capture = NULL;
+    int framerate = (config && config->framerate > 0) ? config->framerate : 30;
+    if (android_screen_capture_create(1280, 720, framerate, &capture) !=
+        SALTS_CAPTURE_OK) {
+        return NULL;
+    }
     return capture;
+}
+
+int salts_android_screen_capture_create(
+    const salts_android_screen_capture_config_t *config,
+    salts_capture_t **out_capture) {
+    if (!out_capture) return SALTS_CAPTURE_ERR_FORMAT;
+    *out_capture = NULL;
+    if (!config) return SALTS_CAPTURE_ERR_FORMAT;
+    return android_screen_capture_create(config->width, config->height,
+                                         config->framerate, out_capture);
+}
+
+int salts_android_screen_capture_get_surface(JNIEnv *env,
+                                             salts_capture_t *capture,
+                                             jobject *out_surface) {
+    android_screen_platform_t *platform;
+    ANativeWindow *window;
+
+    if (!out_surface) return SALTS_CAPTURE_ERR_FORMAT;
+    *out_surface = NULL;
+    if (!env || !capture || capture->type != SALTS_CAPTURE_TYPE_SCREEN ||
+        !capture->platform_ctx) {
+        return SALTS_CAPTURE_ERR_FORMAT;
+    }
+
+    platform = (android_screen_platform_t *)capture->platform_ctx;
+    if (!platform->native) return SALTS_CAPTURE_ERR_FORMAT;
+    window = android_screen_get_surface(platform->native);
+    if (!window) return SALTS_CAPTURE_ERR_DEVICE;
+
+    *out_surface = ANativeWindow_toSurface(env, window);
+    return *out_surface ? SALTS_CAPTURE_OK : SALTS_CAPTURE_ERR_DEVICE;
+}
+
+int salts_android_screen_capture_get_frame_count(
+    const salts_capture_t *capture, uint64_t *out_frame_count) {
+    const android_screen_platform_t *platform;
+
+    if (!out_frame_count) return SALTS_CAPTURE_ERR_FORMAT;
+    *out_frame_count = 0;
+    if (!capture || capture->type != SALTS_CAPTURE_TYPE_SCREEN ||
+        !capture->platform_ctx) {
+        return SALTS_CAPTURE_ERR_FORMAT;
+    }
+
+    platform = (const android_screen_platform_t *)capture->platform_ctx;
+    if (!platform->native) return SALTS_CAPTURE_ERR_FORMAT;
+    *out_frame_count = android_screen_get_frame_count(platform->native);
+    return SALTS_CAPTURE_OK;
 }
 
 void salts_audio_capture_set_callback(salts_capture_t *capture,
