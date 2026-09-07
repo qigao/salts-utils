@@ -13,6 +13,10 @@ project(
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
 
+if(ANDROID)
+  add_compile_definitions(CSTL_NO_LEGACY_STACK_T=1)
+endif()
+
 # Project configuration - output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -56,7 +60,8 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}" NO_DEFAULT_PATH)
+find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+             NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 if(BUILD_TESTING)
   add_subdirectory(tests/runtime_path)

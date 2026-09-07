@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <salts/thread.h>
+#include <salts_capture.h>
 #include <tlog.h>
 
 /* =============================================================================
@@ -32,6 +34,10 @@ typedef struct android_screen_ctx_t {
 
     /* State */
     int capturing;
+    int starting;
+    size_t active_callbacks;
+    salts_mutex_t state_mutex;
+    salts_cond_t callbacks_idle;
     atomic_uint_fast64_t frame_count;
 
     /* Java objects (passed from JNI) */
@@ -52,12 +58,25 @@ int android_screen_stop(android_screen_ctx_t *ctx);
 
 static void on_image_available(void *context, AImageReader *reader) {
     android_screen_ctx_t *ctx = (android_screen_ctx_t *)context;
+    void (*on_frame)(void *, const uint8_t *, size_t, int, int, int64_t);
+    void *user_data;
+    int deliver_frame;
+
+    salts_mutex_lock(&ctx->state_mutex);
+    ctx->active_callbacks++;
+    deliver_frame = ctx->capturing;
+    on_frame = ctx->on_frame;
+    user_data = ctx->user_data;
+    salts_mutex_unlock(&ctx->state_mutex);
 
     AImage *image = NULL;
     media_status_t status = AImageReader_acquireLatestImage(reader, &image);
 
     if (status != AMEDIA_OK || !image) {
-        return;
+        goto callback_complete;
+    }
+    if (!deliver_frame) {
+        goto image_complete;
     }
 
     /* Get image properties */
@@ -70,8 +89,7 @@ static void on_image_available(void *context, AImageReader *reader) {
         AImage_getHeight(image, &height) != AMEDIA_OK ||
         AImage_getTimestamp(image, &timestamp) != AMEDIA_OK ||
         format != AIMAGE_FORMAT_RGBA_8888 || width <= 0 || height <= 0) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     /* Get RGBA plane (screen capture is typically RGBA) */
@@ -80,16 +98,14 @@ static void on_image_available(void *context, AImageReader *reader) {
     int32_t rgba_stride = 0;
     int32_t rgba_pixel_stride = 0;
     if (width > INT_MAX / 4) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     if (AImage_getPlaneData(image, 0, &rgba_data, &rgba_len) != AMEDIA_OK ||
         AImage_getPlaneRowStride(image, 0, &rgba_stride) != AMEDIA_OK ||
         AImage_getPlanePixelStride(image, 0, &rgba_pixel_stride) != AMEDIA_OK ||
         !rgba_data || rgba_len < 0 || rgba_stride < width * 4 || rgba_pixel_stride != 4) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     size_t rgba_row_tail = (size_t)width * 4u;
@@ -97,14 +113,12 @@ static void on_image_available(void *context, AImageReader *reader) {
     if ((prior_rows > 0u &&
          (size_t)rgba_stride > (SIZE_MAX - rgba_row_tail) / prior_rows) ||
         (size_t)width > SIZE_MAX / (size_t)height) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     size_t required_rgba_size = (size_t)rgba_stride * prior_rows + rgba_row_tail;
     if ((size_t)rgba_len < required_rgba_size) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     size_t y_size = (size_t)width * (size_t)height;
@@ -112,8 +126,7 @@ static void on_image_available(void *context, AImageReader *reader) {
     size_t uv_height = ((size_t)height + 1u) / 2u;
     size_t uv_size = uv_width * uv_height;
     if (uv_size > (SIZE_MAX - y_size) / 2u) {
-        AImage_delete(image);
-        return;
+        goto image_complete;
     }
 
     size_t i420_size = y_size + 2u * uv_size;
@@ -130,33 +143,57 @@ static void on_image_available(void *context, AImageReader *reader) {
                                         width, height);
         if (convert_result == 0) {
             atomic_fetch_add_explicit(&ctx->frame_count, 1u, memory_order_relaxed);
-            if (ctx->on_frame) {
-                ctx->on_frame(ctx->user_data, i420_data, i420_size,
-                              width, height, timestamp / 1000);  /* ns to us */
+            if (on_frame) {
+                on_frame(user_data, i420_data, i420_size,
+                         width, height, timestamp / 1000);  /* ns to us */
             }
-        } else {
         }
 
         free(i420_data);
     }
 
+image_complete:
     AImage_delete(image);
+
+callback_complete:
+    salts_mutex_lock(&ctx->state_mutex);
+    ctx->active_callbacks--;
+    if (ctx->active_callbacks == 0) {
+        salts_cond_broadcast(&ctx->callbacks_idle);
+    }
+    salts_mutex_unlock(&ctx->state_mutex);
 }
 
 /* =============================================================================
  * Screen Capture Management
  * ============================================================================= */
 
-android_screen_ctx_t *android_screen_create(int width, int height, int framerate) {
-    if (width <= 0 || height <= 0 || framerate <= 0) return NULL;
+int android_screen_create(int width, int height, int framerate,
+                          android_screen_ctx_t **out_ctx) {
+    int result = SALTS_CAPTURE_ERR_DEVICE;
+    android_screen_ctx_t *ctx;
 
-    android_screen_ctx_t *ctx = (android_screen_ctx_t *)calloc(1, sizeof(android_screen_ctx_t));
-    if (!ctx) return NULL;
+    if (!out_ctx || width <= 0 || height <= 0 || framerate <= 0) {
+        return SALTS_CAPTURE_ERR_FORMAT;
+    }
+    *out_ctx = NULL;
+    ctx = (android_screen_ctx_t *)calloc(1, sizeof(*ctx));
+    if (!ctx) return SALTS_CAPTURE_ERR_NOMEM;
 
     ctx->width = width;
     ctx->height = height;
     ctx->framerate = framerate;
     ctx->capturing = 0;
+    salts_mutex_init(&ctx->state_mutex);
+    if (!ctx->state_mutex) {
+        result = SALTS_CAPTURE_ERR_NOMEM;
+        goto create_failed;
+    }
+    salts_cond_init(&ctx->callbacks_idle);
+    if (!ctx->callbacks_idle) {
+        result = SALTS_CAPTURE_ERR_NOMEM;
+        goto create_failed;
+    }
     atomic_init(&ctx->frame_count, 0u);
     ctx->image_listener.context = ctx;
     ctx->image_listener.onImageAvailable = on_image_available;
@@ -171,8 +208,7 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
 
     if (status != AMEDIA_OK) {
         SALTS_LOG_ERROR(tlog_get_default(), "capture", "Failed to create image reader");
-        free(ctx);
-        return NULL;
+        goto create_failed;
     }
 
     /* Set image listener */
@@ -180,8 +216,8 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
     if (status != AMEDIA_OK) {
         SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to set screen image listener: {}", status);
         AImageReader_delete(ctx->image_reader);
-        free(ctx);
-        return NULL;
+        ctx->image_reader = NULL;
+        goto create_failed;
     }
 
     /* Get image reader window */
@@ -189,25 +225,46 @@ android_screen_ctx_t *android_screen_create(int width, int height, int framerate
     if (status != AMEDIA_OK || !ctx->image_reader_window) {
         SALTS_LOG_ERRORF(tlog_get_default(), "capture", "Failed to get screen image reader surface: {}", status);
         AImageReader_delete(ctx->image_reader);
-        free(ctx);
-        return NULL;
+        ctx->image_reader = NULL;
+        goto create_failed;
     }
 
+    *out_ctx = ctx;
+    return SALTS_CAPTURE_OK;
 
-    return ctx;
+create_failed:
+    salts_cond_destroy(&ctx->callbacks_idle);
+    salts_mutex_destroy(&ctx->state_mutex);
+    free(ctx);
+    return result;
 }
 
 void android_screen_destroy(android_screen_ctx_t *ctx) {
     if (!ctx) return;
 
-    if (ctx->capturing) {
-        android_screen_stop(ctx);
+    salts_mutex_lock(&ctx->state_mutex);
+    ctx->capturing = 0;
+    ctx->starting = 0;
+    salts_mutex_unlock(&ctx->state_mutex);
+
+    if (ctx->image_reader) {
+        AImageReader_setImageListener(ctx->image_reader, NULL);
     }
+
+    salts_mutex_lock(&ctx->state_mutex);
+    while (ctx->active_callbacks != 0) {
+        salts_cond_wait(&ctx->callbacks_idle, &ctx->state_mutex);
+    }
+    ctx->media_projection = NULL;
+    ctx->virtual_display = NULL;
+    salts_mutex_unlock(&ctx->state_mutex);
 
     if (ctx->image_reader) {
         AImageReader_delete(ctx->image_reader);
     }
 
+    salts_cond_destroy(&ctx->callbacks_idle);
+    salts_mutex_destroy(&ctx->state_mutex);
     free(ctx);
 }
 
@@ -216,24 +273,76 @@ void android_screen_destroy(android_screen_ctx_t *ctx) {
  * that attachment. */
 
 int android_screen_start(android_screen_ctx_t *ctx, jobject media_projection) {
-    if (!ctx || ctx->capturing) return -1;
+    if (!ctx) return -1;
+
+    salts_mutex_lock(&ctx->state_mutex);
+    if (ctx->capturing || ctx->starting) {
+        salts_mutex_unlock(&ctx->state_mutex);
+        return -1;
+    }
 
     ctx->media_projection = media_projection;
+    ctx->starting = 1;
+    salts_mutex_unlock(&ctx->state_mutex);
+    return 0;
+}
+
+int android_screen_commit_start(android_screen_ctx_t *ctx) {
+    AImage *stale_image = NULL;
+    media_status_t status;
+
+    if (!ctx) return -1;
+
+    salts_mutex_lock(&ctx->state_mutex);
+    if (!ctx->starting || ctx->capturing) {
+        salts_mutex_unlock(&ctx->state_mutex);
+        return -1;
+    }
+
+    while (ctx->active_callbacks != 0) {
+        salts_cond_wait(&ctx->callbacks_idle, &ctx->state_mutex);
+    }
+    status = AImageReader_acquireLatestImage(ctx->image_reader, &stale_image);
+    if (status == AMEDIA_OK) {
+        if (!stale_image) {
+            ctx->starting = 0;
+            ctx->media_projection = NULL;
+            salts_mutex_unlock(&ctx->state_mutex);
+            return -1;
+        }
+        AImage_delete(stale_image);
+    } else if (status != AMEDIA_IMGREADER_NO_BUFFER_AVAILABLE) {
+        ctx->starting = 0;
+        ctx->media_projection = NULL;
+        salts_mutex_unlock(&ctx->state_mutex);
+        return -1;
+    }
+
     ctx->capturing = 1;
+    ctx->starting = 0;
+    salts_mutex_unlock(&ctx->state_mutex);
 
-
-    /* Java creates the VirtualDisplay with image_reader_window as its surface. */
+    /* The public state is RUNNING before this delivery gate is committed. */
 
     return 0;
 }
 
 int android_screen_stop(android_screen_ctx_t *ctx) {
-    if (!ctx || !ctx->capturing) return -1;
+    if (!ctx) return -1;
 
+    salts_mutex_lock(&ctx->state_mutex);
+    if (!ctx->capturing && !ctx->starting) {
+        salts_mutex_unlock(&ctx->state_mutex);
+        return -1;
+    }
     ctx->capturing = 0;
+    ctx->starting = 0;
+    while (ctx->active_callbacks != 0) {
+        salts_cond_wait(&ctx->callbacks_idle, &ctx->state_mutex);
+    }
     ctx->media_projection = NULL;
     ctx->virtual_display = NULL;
-
+    salts_mutex_unlock(&ctx->state_mutex);
 
     return 0;
 }
@@ -245,14 +354,16 @@ void android_screen_set_callback(android_screen_ctx_t *ctx,
                                                  int64_t timestamp_us),
                                  void *user_data) {
     if (!ctx) return;
+    salts_mutex_lock(&ctx->state_mutex);
     ctx->on_frame = callback;
     ctx->user_data = user_data;
+    salts_mutex_unlock(&ctx->state_mutex);
 }
 
 ANativeWindow *android_screen_get_surface(android_screen_ctx_t *ctx) {
     return ctx ? ctx->image_reader_window : NULL;
 }
 
-uint64_t android_screen_get_frame_count(android_screen_ctx_t *ctx) {
+uint64_t android_screen_get_frame_count(const android_screen_ctx_t *ctx) {
     return ctx ? atomic_load_explicit(&ctx->frame_count, memory_order_relaxed) : 0u;
 }
