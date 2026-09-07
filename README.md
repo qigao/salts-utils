@@ -1,7 +1,7 @@
 # SaltsUtils
 
 SaltsUtils 提供基于 Salts 的高层工具，包括 Mustache、Cron、TBE schema、DataBind、Serial、
-Capture 及构建期代码生成器。底层 JSON、XML、YAML、CSV、Cmd 等 parser 由 Salts 直接提供；
+Capture、Playback 及构建期代码生成器。底层 JSON、XML、YAML、CSV、Cmd 等 parser 由 Salts 直接提供；
 SaltsUtils 不再提供聚合 parser facade。
 
 DataBind 保留独立的 schema 驱动动态值与 typed conversion API，并通过 Salts parser 实现格式
@@ -16,11 +16,16 @@ Publisher 通过独立适配 targets 提供，不增加 DataBind 核心 target �
 find_package(SaltsUtils CONFIG REQUIRED)
 
 target_link_libraries(app PRIVATE
+  Salts::Playback
   Salts::Mustache
   Salts::Cron
   Salts::TbeSchema
   Salts::DataBindCFlow)
 ```
+
+`Salts::Playback` 是 Windows、Linux、macOS、Android 与 iOS 共用的有界 PCM
+设备 sink；所有权、线程与背压契约见
+[`docs/architecture/media-playback-ownership.md`](docs/architecture/media-playback-ownership.md)。
 
 只需要基础 Salts 的原生 C 描述符绑定时直接消费 `CBind`：
 

@@ -22,6 +22,7 @@ SaltsUtils 不访问 Salts 源码目录或私有头，也不再提供聚合 `Par
 - `Salts::TbeSchema`（以及 `Salts::SchemaBE` 兼容别名）
 - `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
 - `Salts::Serial`
+- `Salts::Playback`
 - 可选的 `Salts::Capture`、`Salts::CFlowUSB`；`Salts::LuaBind` 当前仅作为构建树内适配 target
 
 基础 Salts 包拥有并导出：
@@ -47,6 +48,10 @@ compat 层消费已安装 Salts 的格式 parser；它不是基础包 `Salts::CB
 本次 package 迁移不改变仍保留的 Cron、Mustache、Serial 和 Capture 运行时所有权契约。
 Capture frame 仍是仅在同步 callback 返回前有效的 borrowed view；Serial handle 仍拥有 RX/TX
 SPSC buffer，producer/consumer 拓扑与可用容量 `configured_size - 1` 不变。
+
+Playback 与 Capture 同属 SaltsUtils Media I/O 边界。`Salts::Playback` 只拥有 native
+output device 与有界 PCM SPSC ring；文件 demux、decode、clock 和 playlist 由媒体层拥有。
+PCM 写入在返回前完成复制，短写是显式背压，destroy 在释放前同步静止 native callback。
 
 CFlowUSB 由一个内部线程独占 libusb native events，使用固定 transfer slots 与 bounded hotplug
 queue，并只由 `cflow_usb_run_ready()` 交付用户 callback。borrowed transfer buffer、exactly-once

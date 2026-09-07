@@ -12,6 +12,7 @@
     {
       "name": "openssl"
     },
+    "miniaudio",
     {
       "name": "zstd"
     },
@@ -21,8 +22,7 @@
     "capture": {
       "description": "Native audio, video, and screen capture support",
       "dependencies": [
-        "libyuv",
-        "miniaudio"
+        "libyuv"
       ]
     },
     "usb": {
