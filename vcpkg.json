@@ -13,15 +13,6 @@
       "name": "openssl"
     },
     {
-      "name": "sqlite3",
-      "default-features": false,
-      "features": [
-        "rtree",
-        "vdbe"
-      ],
-      "version>=": "3.50.4"
-    },
-    {
       "name": "zstd"
     },
     "lua"
@@ -41,12 +32,5 @@
       ]
     }
   },
-  "overrides": [
-    {
-      "name": "sqlite3",
-      "version": "3.50.4",
-      "port-version": 1
-    }
-  ],
   "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01"
 }

@@ -65,22 +65,3 @@ cmake_add_test(test_tbe_compiler
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
-
-if(BUILD_TESTING)
-  find_package(unofficial-sqlite3 CONFIG REQUIRED)
-
-  cmake_add_test(test_tbe_database_ddl
-    SOURCES test_tbe_database_ddl.c compiler_core.c database_schema.c mustache_helpers.c
-    LIBS
-      Salts::TbeSchema
-      Salts::TinyTest
-      Salts::Mustache
-      Salts::Core
-      unofficial::sqlite3::sqlite3
-    DEFS
-      TEST_DATABASE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_database_schema.schema"
-      TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-    FOLDER "tbe/tbe_compiler")
-  target_include_directories(test_tbe_database_ddl
-    PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
-endif()

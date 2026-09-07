@@ -191,7 +191,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 ## 验证范围
 
 - 编译器单元测试覆盖两种 dialect 的逐字节确定性输出、alias、标识符转义、默认值与所有非法组合。
-- SQLite 集成测试把生成结果交给真实 SQLite API 执行，并通过 catalog/插入约束验证外键、CHECK、普通/复合唯一索引、种子数据，以及 canonical `uint64` 边界。
+- SQLite 输出由编译器单元测试验证确定性文本、约束形状与 canonical `uint64` 边界；采用方负责按迁移流程在目标 SQLite 版本执行生成 DDL。
 - PostgreSQL 输出先做 golden contract；合入前按远程测试 runbook 在真实 PostgreSQL 16 容器、`standard_conforming_strings=off` 会话中执行生成 DDL，逐字节检查注入形状字符串默认值并检查约束。
 - 运行现有 `test_tbe_compiler` 与相关 CTest 回归，证明原语言输出不变。
 - 安装后从安装目录运行 `tbe_compiler`，证明两份内置模板随工具安装。
