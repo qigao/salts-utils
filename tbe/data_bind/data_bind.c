@@ -16,7 +16,7 @@
 #include "tbe_wire.h"
 #include "turbo_parser.h"
 #include <salts_fs.h>
-#include <salts_str.h>
+#include <tstr.h>
 #include <salts_thread.h>
 #include <salts_uuid.h>
 #include <cstl.h>

@@ -25,7 +25,7 @@
 #include "salts_serial_internal.h"
 #include "ring_buffer_spsc.h"
 #include "platform.h"
-#include "salts_str.h"
+#include "tstr.h"
 #include "salts/thread.h"
 #include <cstl.h>
 
