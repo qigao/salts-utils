@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
-#include <salts_vstr.h>
+#include <vstr.h>
 
 #ifndef TURBO_PARSER_API
   #if defined(_WIN32) && defined(TURBO_PARSER_BUILD_DLL)

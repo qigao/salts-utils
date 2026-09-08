@@ -2,7 +2,7 @@
 #define TBE_TYPED_H
 
 #include "data_bind.h"
-#include <salts_str.h>
+#include <tstr.h>
 #include <cstl.h>
 
 #include <stdbool.h>

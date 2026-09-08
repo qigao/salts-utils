@@ -27,7 +27,7 @@
 #include "uri_parser.h"
 #include <xml_parser/xml_parser.h>
 #include <fmt.h>
-#include <salts_str.h>
+#include <tstr.h>
 
 static void turbo_query_diagnostic_copy(turbo_query_diagnostic_t *destination,
                                         const qvm_diagnostic_t *source,

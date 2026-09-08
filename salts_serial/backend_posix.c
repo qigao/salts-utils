@@ -38,7 +38,7 @@
 #include <dirent.h>
 
 #include "salts_serial_internal.h"
-#include "salts_str.h"
+#include "tstr.h"
 
 struct salts_port_handle {
   int fd;
