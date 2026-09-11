@@ -12,5 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Show active parser compatibility symbols
+        run: grep -hEo 'turbo_[A-Za-z0-9_]+' tbe/data_bind/data_bind.c tbe/data_bind/data_bind.h tbe/data_bind/tbe_typed.c tbe/data_bind/test_data_bind.c | sort -u || true
       - name: Require direct salts parser integration
         run: cmake -DDATA_BIND_SOURCE_DIR="$GITHUB_WORKSPACE/tbe/data_bind" -P "$GITHUB_WORKSPACE/tbe/data_bind/test_no_parser_compat.cmake"
