@@ -19,6 +19,8 @@
 #include "query_vm.h"
 #include "csv_parser.h"
 #include "dsv_filter.h"
+#include "cyaml.h"
+#include "cyaml_json_adapter.h"
 #include <salts_fs.h>
 #include <tstr.h>
 #include <salts_thread.h>
@@ -340,7 +342,7 @@ struct data_bind_stream_t {
   json_path_program_t *json_path_program;
   json_path_stream_t *json_path_stream;
   json_value_t *json_match_value;
-  turbo_yaml_sax_parser_t *yaml_sax;
+  cyaml_sax_parser_t *yaml_sax;
   turbo_xml_sax_parser_t *xml_sax;
   data_bind_json_stream_frame_t *json_frames;
   size_t json_frame_count;
@@ -6281,8 +6283,13 @@ static const turbo_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
     NULL};
 
 static const json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
-static const turbo_yaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
+static const cyaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
 static const turbo_xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
+
+static const char *data_bind_yaml_sax_error(const cyaml_sax_parser_t *parser) {
+  const cyaml_error_t *error = cyaml_sax_parser_error(parser);
+  return error != NULL && error->msg[0] != '\0' ? error->msg : NULL;
+}
 
 static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, DataBindError *error,
                                                  const char *operation) {
@@ -6298,7 +6305,7 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
       message = json_sax_parser_error(parser->json_sax);
       path = "json";
     } else if (parser->yaml_sax != NULL) {
-      message = turbo_yaml_sax_parser_error(parser->yaml_sax);
+      message = data_bind_yaml_sax_error(parser->yaml_sax);
       path = "yaml";
     } else if (parser->xml_sax != NULL) {
       message = turbo_xml_sax_parser_error(parser->xml_sax);
@@ -6334,7 +6341,7 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
       return data_bind_stream_sax_error(parser, error, "JSON stream feed");
     }
   } else if (parser->yaml_sax != NULL) {
-    if (turbo_yaml_sax_parser_feed(parser->yaml_sax, data, len) != 0) {
+    if (cyaml_sax_parser_feed(parser->yaml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream feed");
     }
   } else if (parser->xml_sax != NULL) {
@@ -6359,7 +6366,7 @@ static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
       return data_bind_stream_sax_error(parser, error, "JSON stream finish");
     }
   } else if (parser->yaml_sax != NULL) {
-    if (turbo_yaml_sax_parser_finish(parser->yaml_sax) != 0) {
+    if (cyaml_sax_parser_finish(parser->yaml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream finish");
     }
   } else if (parser->xml_sax != NULL) {
@@ -6785,1508 +6792,6 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     const char *jsonpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error);
-static DataBindStatus data_bind_parse_yaml_selected(
-    DataBind *codec, const char *type_name, const char *yaml, size_t len,
-    const char *yamlpath, int bind_all, const DataBindQueryLimits *query_limits,
-    DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
-    DataBindError *error);
-static DataBindStatus data_bind_parse_xml_path_all_with_query(
-    DataBind *codec, const char *type_name, const char *xml, size_t len,
-    const char *xmlpath, const DataBindQueryLimits *query_limits,
-    DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
-    DataBindError *error);
-
-static data_bind_stream_t *data_bind_stream_create_common(
-    DataBind *codec, const char *type_name, const char *path_or_expr, DataBindValue **out_value,
-    DataBindError *error,
-    DataBindStatus (*feed_fn)(data_bind_stream_t *, const char *, size_t, DataBindError *),
-    DataBindStatus (*finish_fn)(data_bind_stream_t *, DataBindValue **, DataBindError *),
-    DataBindStatus (*bind_fn)(DataBind *, const char *, const char *, size_t, const char *,
-                              const DataBindQueryLimits *, DataBindQueryDiagnostic *,
-                              DataBindValue **, DataBindError *),
-    int is_csv, int json_stream_candidate, int json_path_stream_mode,
-    int xml_stream_candidate) {
-  data_bind_stream_t *parser = NULL;
-  size_t type_name_len;
-  size_t path_len;
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || type_name == NULL || type_name[0] == '\0' || out_value == NULL ||
-      feed_fn == NULL || finish_fn == NULL || (!is_csv && bind_fn == NULL)) {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_create", -1, -1,
-                 "Invalid stream constructor arguments");
-    return NULL;
-  }
-
-  parser = (data_bind_stream_t *)malloc(sizeof(*parser));
-  if (parser == NULL) {
-    db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                 "Out of memory creating stream");
-    return NULL;
-  }
-
-  type_name_len = strlen(type_name);
-  parser->type_name = (char *)malloc(type_name_len + 1);
-  if (parser->type_name == NULL) {
-    free(parser);
-    db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                 "Out of memory creating stream");
-    return NULL;
-  }
-  memcpy(parser->type_name, type_name, type_name_len + 1);
-
-  if (path_or_expr != NULL && path_or_expr[0] != '\0') {
-    path_len = strlen(path_or_expr);
-    parser->path_or_expr = (char *)malloc(path_len + 1);
-    if (parser->path_or_expr == NULL) {
-      free(parser->type_name);
-      free(parser);
-      db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                   "Out of memory creating stream");
-      return NULL;
-    }
-    memcpy(parser->path_or_expr, path_or_expr, path_len + 1);
-  } else {
-    parser->path_or_expr = NULL;
-  }
-
-  parser->codec = codec;
-  parser->out_value = out_value;
-  parser->internal_out_value = NULL;
-  parser->error = error;
-  parser->record_callback = NULL;
-  parser->record_callback_user = NULL;
-  parser->record_callback_index = 0;
-  parser->output_mode = DATA_BIND_STREAM_OUTPUT_RETAIN;
-  parser->limits.size = sizeof(parser->limits);
-  parser->limits.max_input_bytes = DATA_BIND_STREAM_DEFAULT_MAX_INPUT_BYTES;
-  parser->limits.max_record_bytes = DATA_BIND_STREAM_DEFAULT_MAX_RECORD_BYTES;
-  parser->limits.max_field_bytes = DATA_BIND_STREAM_DEFAULT_MAX_FIELD_BYTES;
-  parser->limits.max_result_count = DATA_BIND_STREAM_DEFAULT_MAX_RESULT_COUNT;
-  parser->query_limits = (DataBindQueryLimits)DATA_BIND_QUERY_LIMITS_INIT;
-  parser->query_diagnostic =
-      (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-  parser->query_limits_configured = 0;
-  parser->total_input_bytes = 0;
-  parser->result_count = 0;
-  parser->feed_fn = feed_fn;
-  parser->finish_fn = finish_fn;
-  parser->bind_fn = bind_fn;
-  parser->buffer = NULL;
-  parser->size = 0;
-  parser->capacity = 0;
-  parser->csv_header = NULL;
-  parser->csv_header_len = 0;
-  parser->csv_record = NULL;
-  parser->csv_record_len = 0;
-  parser->csv_record_capacity = 0;
-  parser->csv_field = NULL;
-  parser->csv_field_len = 0;
-  parser->csv_field_capacity = 0;
-  parser->csv_fields = NULL;
-  parser->csv_field_storage = NULL;
-  parser->csv_field_count = 0;
-  parser->csv_fields_capacity = 0;
-  parser->csv_filter_doc = NULL;
-  parser->csv_filter = NULL;
-  parser->csv_values = NULL;
-  parser->stream_values = NULL;
-  parser->json_sax = NULL;
-  parser->json_path_program = NULL;
-  parser->json_path_stream = NULL;
-  parser->json_match_value = NULL;
-  parser->yaml_sax = NULL;
-  parser->xml_sax = NULL;
-  parser->json_frames = NULL;
-  parser->json_frame_count = 0;
-  parser->json_frame_capacity = 0;
-  parser->json_sax_depth = 0;
-  parser->xml_stream_target = NULL;
-  parser->xml_capture = NULL;
-  parser->xml_capture_depth = 0;
-  parser->csv_data_row = 0;
-  parser->csv_header_seen = 0;
-  parser->csv_in_quotes = 0;
-  parser->csv_quote_pending = 0;
-  parser->csv_skip_next_lf = 0;
-  parser->csv_failed = 0;
-  parser->sax_failed = 0;
-  parser->is_csv = is_csv;
-  parser->json_stream_candidate = json_stream_candidate;
-  parser->json_path_stream_mode = json_path_stream_mode;
-  parser->json_stream_active = 0;
-  parser->json_stream_done = 0;
-  parser->json_root_seen = 0;
-  parser->xml_stream_candidate = xml_stream_candidate;
-  parser->xml_capture_active = 0;
-  parser->xml_open_start = 0;
-  parser->stream_error[0] = '\0';
-  parser->finished = 0;
-  parser->started = 0;
-  parser->record_callback_stopped = 0;
-  parser->record_callback_failed = 0;
-  parser->limit_failed = 0;
-  parser->canceled = 0;
-  if (is_csv) {
-    parser->csv_values = dbv_new(DATA_BIND_VALUE_LIST);
-    if (parser->csv_values == NULL) {
-      free(parser->path_or_expr);
-      free(parser->type_name);
-      free(parser);
-      db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                   "Out of memory creating CSV stream output");
-      return NULL;
-    }
-  } else if (finish_fn == data_bind_stream_json_finish) {
-    if (parser->json_stream_candidate ||
-        parser->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_ALL) {
-      parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
-      if (parser->stream_values == NULL) {
-        free(parser->path_or_expr);
-        free(parser->type_name);
-        free(parser);
-        db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                     "Out of memory creating JSON stream output");
-        return NULL;
-      }
-    }
-    if (parser->json_path_stream_mode != DATA_BIND_JSON_PATH_STREAM_NONE) {
-      const char *path_error;
-      parser->json_path_program = json_path_compile(parser->path_or_expr);
-      if (parser->json_path_program == NULL) {
-        parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
-        data_bind_value_free(parser->stream_values);
-        parser->stream_values = NULL;
-      } else {
-        parser->json_path_stream = json_path_stream_create(
-            parser->json_path_program, &DATA_BIND_JSON_PATH_STREAM_HANDLER, parser);
-      }
-      if (parser->json_path_program != NULL && parser->json_path_stream == NULL) {
-        path_error = json_path_stream_error(NULL);
-        if (path_error != NULL && strstr(path_error, "not streamable") != NULL) {
-          json_path_program_free(parser->json_path_program);
-          parser->json_path_program = NULL;
-          parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
-          data_bind_value_free(parser->stream_values);
-          parser->stream_values = NULL;
-        } else {
-          json_path_program_free(parser->json_path_program);
-          data_bind_value_free(parser->stream_values);
-          free(parser->path_or_expr);
-          free(parser->type_name);
-          free(parser);
-          db_error_set(error, DATA_BIND_ERR_OOM, "json", -1, -1,
-                       "Unable to create JSONPath stream: %s",
-                       path_error != NULL ? path_error : "out of memory");
-          return NULL;
-        }
-      }
-    }
-    if (parser->json_path_stream == NULL) {
-      parser->json_sax = parser->json_stream_candidate
-                             ? json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
-                                                               parser)
-                             : json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
-                                                           parser);
-    }
-    if (parser->json_path_stream == NULL && parser->json_sax == NULL) {
-      data_bind_value_free(parser->stream_values);
-      json_path_program_free(parser->json_path_program);
-      free(parser->path_or_expr);
-      free(parser->type_name);
-      free(parser);
-      db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                   "Out of memory creating JSON stream validator");
-      return NULL;
-    }
-  } else if (finish_fn == data_bind_stream_buffered_finish) {
-    parser->yaml_sax =
-        turbo_yaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser);
-    if (parser->yaml_sax == NULL) {
-      free(parser->path_or_expr);
-      free(parser->type_name);
-      free(parser);
-      db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                   "Out of memory creating YAML stream validator");
-      return NULL;
-    }
-  } else if (finish_fn == data_bind_stream_xml_finish) {
-    if (parser->xml_stream_candidate) {
-      parser->xml_stream_target = data_bind_stream_xml_target_from_path(parser->path_or_expr);
-      parser->xml_capture = tstr_new();
-      parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
-      if (parser->xml_stream_target == NULL || parser->xml_capture == NULL ||
-          parser->stream_values == NULL) {
-        free(parser->xml_stream_target);
-        tstr_free(parser->xml_capture);
-        data_bind_value_free(parser->stream_values);
-        free(parser->path_or_expr);
-        free(parser->type_name);
-        free(parser);
-        db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                     "Out of memory creating XML stream output");
-        return NULL;
-      }
-    }
-    parser->xml_sax = turbo_xml_sax_parser_create(parser->xml_stream_candidate
-                                                      ? &DATA_BIND_XML_STREAM_HANDLER
-                                                      : &DATA_BIND_XML_SAX_VALIDATE_HANDLER,
-                                                  parser);
-    if (parser->xml_sax == NULL) {
-      free(parser->xml_stream_target);
-      tstr_free(parser->xml_capture);
-      data_bind_value_free(parser->stream_values);
-      free(parser->path_or_expr);
-      free(parser->type_name);
-      free(parser);
-      db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_create", -1, -1,
-                   "Out of memory creating XML stream validator");
-      return NULL;
-    }
-  }
-  db_error_clear(error);
-  return parser;
-}
-
-static DataBindStatus data_bind_stream_bind_json(DataBind *codec, const char *type_name,
-                                                 const char *text, size_t len, const char *path,
-                                                 const DataBindQueryLimits *query_limits,
-                                                 DataBindQueryDiagnostic *query_diagnostic,
-                                                 DataBindValue **out_value, DataBindError *error) {
-  (void)path;
-  (void)query_limits;
-  (void)query_diagnostic;
-  return data_bind_parse_json(codec, type_name, text, len, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_json_all(DataBind *codec, const char *type_name,
-                                                     const char *text, size_t len, const char *path,
-                                                     const DataBindQueryLimits *query_limits,
-                                                     DataBindQueryDiagnostic *query_diagnostic,
-                                                     DataBindValue **out_value,
-                                                     DataBindError *error) {
-  (void)path;
-  (void)query_limits;
-  (void)query_diagnostic;
-  return data_bind_parse_json_all(codec, type_name, text, len, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_json_path(DataBind *codec, const char *type_name,
-                                                      const char *text, size_t len,
-                                                      const char *path,
-                                                      const DataBindQueryLimits *query_limits,
-                                                      DataBindQueryDiagnostic *query_diagnostic,
-                                                      DataBindValue **out_value,
-                                                      DataBindError *error) {
-  return data_bind_parse_json_path_with_query(codec, type_name, text, len, path,
-                                              query_limits, query_diagnostic,
-                                              out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_json_path_all(DataBind *codec, const char *type_name,
-                                                          const char *text, size_t len,
-                                                          const char *path,
-                                                          const DataBindQueryLimits *query_limits,
-                                                          DataBindQueryDiagnostic *query_diagnostic,
-                                                          DataBindValue **out_value,
-                                                          DataBindError *error) {
-  return data_bind_parse_json_path_all_with_query(codec, type_name, text, len, path,
-                                                  query_limits, query_diagnostic,
-                                                  out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_yaml(DataBind *codec, const char *type_name,
-                                                 const char *text, size_t len, const char *path,
-                                                 const DataBindQueryLimits *query_limits,
-                                                 DataBindQueryDiagnostic *query_diagnostic,
-                                                 DataBindValue **out_value, DataBindError *error) {
-  (void)path;
-  (void)query_limits;
-  (void)query_diagnostic;
-  return data_bind_parse_yaml(codec, type_name, text, len, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_yaml_all(DataBind *codec, const char *type_name,
-                                                     const char *text, size_t len, const char *path,
-                                                     const DataBindQueryLimits *query_limits,
-                                                     DataBindQueryDiagnostic *query_diagnostic,
-                                                     DataBindValue **out_value,
-                                                     DataBindError *error) {
-  (void)path;
-  (void)query_limits;
-  (void)query_diagnostic;
-  return data_bind_parse_yaml_all(codec, type_name, text, len, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_yaml_path(DataBind *codec, const char *type_name,
-                                                      const char *text, size_t len,
-                                                      const char *path,
-                                                      const DataBindQueryLimits *query_limits,
-                                                      DataBindQueryDiagnostic *query_diagnostic,
-                                                      DataBindValue **out_value,
-                                                      DataBindError *error) {
-  return data_bind_parse_yaml_selected(codec, type_name, text, len, path, 0,
-                                       query_limits, query_diagnostic, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_yaml_path_all(DataBind *codec, const char *type_name,
-                                                          const char *text, size_t len,
-                                                          const char *path,
-                                                          const DataBindQueryLimits *query_limits,
-                                                          DataBindQueryDiagnostic *query_diagnostic,
-                                                          DataBindValue **out_value,
-                                                          DataBindError *error) {
-  return data_bind_parse_yaml_selected(codec, type_name, text, len, path, 1,
-                                       query_limits, query_diagnostic, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_xml(DataBind *codec, const char *type_name,
-                                                const char *text, size_t len, const char *path,
-                                                const DataBindQueryLimits *query_limits,
-                                                DataBindQueryDiagnostic *query_diagnostic,
-                                                DataBindValue **out_value, DataBindError *error) {
-  (void)path;
-  (void)query_limits;
-  (void)query_diagnostic;
-  return data_bind_parse_xml(codec, type_name, text, len, out_value, error);
-}
-
-static DataBindStatus data_bind_stream_bind_xml_path_all(DataBind *codec, const char *type_name,
-                                                         const char *text, size_t len,
-                                                         const char *path,
-                                                         const DataBindQueryLimits *query_limits,
-                                                         DataBindQueryDiagnostic *query_diagnostic,
-                                                         DataBindValue **out_value,
-                                                         DataBindError *error) {
-  return data_bind_parse_xml_path_all_with_query(codec, type_name, text, len, path,
-                                                 query_limits, query_diagnostic,
-                                                 out_value, error);
-}
-
-data_bind_stream_t *data_bind_stream_json_create(DataBind *codec, const char *type_name,
-                                                 DataBindValue **out_value, DataBindError *error) {
-  return data_bind_stream_create_common(codec, type_name, NULL, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_json_finish,
-                                        data_bind_stream_bind_json, 0, 0,
-                                        DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_json_all_create(DataBind *codec, const char *type_name,
-                                                     DataBindValue **out_value,
-                                                     DataBindError *error) {
-  return data_bind_stream_create_common(codec, type_name, NULL, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_json_finish,
-                                        data_bind_stream_bind_json_all, 0, 1,
-                                        DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_json_path_create(DataBind *codec, const char *type_name,
-                                                      const char *json_path,
-                                                      DataBindValue **out_value,
-                                                      DataBindError *error) {
-  if (json_path == NULL || json_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_json_path_create", -1, -1,
-                 "JSONPath is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(codec, type_name, json_path, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_json_finish,
-                                        data_bind_stream_bind_json_path, 0, 0,
-                                        DATA_BIND_JSON_PATH_STREAM_FIRST, 0);
-}
-
-data_bind_stream_t *data_bind_stream_json_path_all_create(DataBind *codec, const char *type_name,
-                                                          const char *json_path,
-                                                          DataBindValue **out_value,
-                                                          DataBindError *error) {
-  if (json_path == NULL || json_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_json_path_all_create", -1, -1,
-                 "JSONPath is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(codec, type_name, json_path, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_json_finish,
-                                        data_bind_stream_bind_json_path_all, 0,
-                                        strcmp(json_path, "$[*]") == 0 ? 1 : 0,
-                                        strcmp(json_path, "$[*]") == 0
-                                            ? DATA_BIND_JSON_PATH_STREAM_NONE
-                                            : (data_bind_stream_json_path_is_bounded(json_path)
-                                                   ? DATA_BIND_JSON_PATH_STREAM_ALL
-                                                   : DATA_BIND_JSON_PATH_STREAM_NONE),
-                                        0);
-}
-
-data_bind_stream_t *data_bind_stream_yaml_create(DataBind *codec, const char *type_name,
-                                                 DataBindValue **out_value, DataBindError *error) {
-  return data_bind_stream_create_common(
-      codec, type_name, NULL, out_value, error, data_bind_stream_text_feed,
-      data_bind_stream_buffered_finish, data_bind_stream_bind_yaml, 0, 0,
-      DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_yaml_all_create(DataBind *codec, const char *type_name,
-                                                     DataBindValue **out_value,
-                                                     DataBindError *error) {
-  return data_bind_stream_create_common(
-      codec, type_name, NULL, out_value, error, data_bind_stream_text_feed,
-      data_bind_stream_buffered_finish, data_bind_stream_bind_yaml_all, 0, 0,
-      DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_yaml_path_create(DataBind *codec, const char *type_name,
-                                                      const char *yaml_path,
-                                                      DataBindValue **out_value,
-                                                      DataBindError *error) {
-  if (yaml_path == NULL || yaml_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_yaml_path_create", -1, -1,
-                 "YPATH is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(
-      codec, type_name, yaml_path, out_value, error, data_bind_stream_text_feed,
-      data_bind_stream_buffered_finish, data_bind_stream_bind_yaml_path, 0, 0,
-      DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_yaml_path_all_create(DataBind *codec, const char *type_name,
-                                                          const char *yaml_path,
-                                                          DataBindValue **out_value,
-                                                          DataBindError *error) {
-  if (yaml_path == NULL || yaml_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_yaml_path_all_create", -1, -1,
-                 "YPATH is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(
-      codec, type_name, yaml_path, out_value, error, data_bind_stream_text_feed,
-      data_bind_stream_buffered_finish, data_bind_stream_bind_yaml_path_all, 0, 0,
-      DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_csv_all_create(DataBind *codec, const char *type_name,
-                                                    DataBindValue **out_value,
-                                                    DataBindError *error) {
-  return data_bind_stream_create_common(codec, type_name, NULL, out_value, error,
-                                        data_bind_stream_csv_feed, data_bind_stream_csv_finish,
-                                        NULL, 1, 0, DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_csv_path_create(DataBind *codec, const char *type_name,
-                                                     const char *csv_path,
-                                                     DataBindValue **out_value,
-                                                     DataBindError *error) {
-  if (csv_path == NULL || csv_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_csv_path_create", -1, -1,
-                 "CSVPath is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(codec, type_name, csv_path, out_value, error,
-                                        data_bind_stream_csv_feed, data_bind_stream_csv_finish,
-                                        NULL, 1, 0, DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_xml_create(DataBind *codec, const char *type_name,
-                                                DataBindValue **out_value, DataBindError *error) {
-  return data_bind_stream_create_common(codec, type_name, NULL, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_xml_finish,
-                                        data_bind_stream_bind_xml, 0, 0,
-                                        DATA_BIND_JSON_PATH_STREAM_NONE, 0);
-}
-
-data_bind_stream_t *data_bind_stream_xml_path_all_create(DataBind *codec, const char *type_name,
-                                                         const char *xml_path,
-                                                         DataBindValue **out_value,
-                                                         DataBindError *error) {
-  if (xml_path == NULL || xml_path[0] == '\0') {
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_xml_path_all_create", -1, -1,
-                 "XMLPath is required");
-    return NULL;
-  }
-  return data_bind_stream_create_common(codec, type_name, xml_path, out_value, error,
-                                        data_bind_stream_text_feed, data_bind_stream_xml_finish,
-                                        data_bind_stream_bind_xml_path_all, 0, 0,
-                                        DATA_BIND_JSON_PATH_STREAM_NONE,
-                                        data_bind_stream_xml_can_bind_incrementally(xml_path));
-}
-
-static int data_bind_stream_supports(DataBindFormat format, DataBindStreamSelection selection) {
-  switch (format) {
-  case DATA_BIND_FORMAT_JSON:
-  case DATA_BIND_FORMAT_YAML:
-    return selection == DATA_BIND_STREAM_SELECT_ROOT ||
-           selection == DATA_BIND_STREAM_SELECT_ALL ||
-           selection == DATA_BIND_STREAM_SELECT_PATH_FIRST ||
-           selection == DATA_BIND_STREAM_SELECT_PATH_ALL;
-  case DATA_BIND_FORMAT_CSV:
-    return selection == DATA_BIND_STREAM_SELECT_ALL ||
-           selection == DATA_BIND_STREAM_SELECT_PATH_ALL;
-  case DATA_BIND_FORMAT_XML:
-    return selection == DATA_BIND_STREAM_SELECT_ROOT ||
-           selection == DATA_BIND_STREAM_SELECT_PATH_ALL;
-  case DATA_BIND_FORMAT_BINARY:
-  default:
-    return 0;
-  }
-}
-
-DataBindStatus data_bind_stream_create(DataBind *codec, const DataBindStreamConfig *config,
-                                       data_bind_stream_t **out_stream, DataBindError *error) {
-  DataBindValue *discard_output = NULL;
-  DataBindValue **output = NULL;
-  data_bind_stream_t *stream = NULL;
-  DataBindStatus status;
-  DataBindError create_error = DATA_BIND_ERROR_INIT;
-  const size_t required_size = offsetof(DataBindStreamConfig, out_value) + sizeof(config->out_value);
-
-  if (out_stream != NULL) *out_stream = NULL;
-  if (codec == NULL || config == NULL || out_stream == NULL || config->size < required_size) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_create", -1, -1,
-                        "Invalid configured stream arguments");
-  }
-  if (config->out_value != NULL) *config->out_value = NULL;
-  if (config->type_name == NULL || config->type_name[0] == '\0') {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_create", -1, -1,
-                        "Invalid configured stream arguments");
-  }
-  if (config->output_mode != DATA_BIND_STREAM_OUTPUT_RETAIN &&
-      config->output_mode != DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.output_mode", -1, -1,
-                        "Invalid configured stream output mode");
-  }
-  if (config->output_mode == DATA_BIND_STREAM_OUTPUT_RETAIN && config->out_value == NULL) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.out_value", -1, -1,
-                        "Retained stream output requires out_value");
-  }
-  if (config->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
-      config->record_callback == NULL) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.record_callback", -1, -1,
-                        "Callback-only stream output requires a record callback");
-  }
-  if (!data_bind_stream_supports(config->format, config->selection)) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.format_selection", -1, -1,
-                        "Unsupported stream format and selection combination");
-  }
-  if ((config->selection == DATA_BIND_STREAM_SELECT_PATH_FIRST ||
-       config->selection == DATA_BIND_STREAM_SELECT_PATH_ALL) &&
-      (config->path == NULL || config->path[0] == '\0')) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.path", -1, -1,
-                        "Path selection requires a non-empty path");
-  }
-  if ((config->selection == DATA_BIND_STREAM_SELECT_ROOT ||
-       config->selection == DATA_BIND_STREAM_SELECT_ALL) &&
-      config->path != NULL && config->path[0] != '\0') {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "stream.path", -1, -1,
-                        "Root/all stream selection does not accept a path");
-  }
-
-  output = config->out_value != NULL ? config->out_value : &discard_output;
-  switch (config->format) {
-  case DATA_BIND_FORMAT_JSON:
-    switch (config->selection) {
-    case DATA_BIND_STREAM_SELECT_ROOT:
-      stream = data_bind_stream_json_create(codec, config->type_name, output, &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_ALL:
-      stream = data_bind_stream_json_all_create(codec, config->type_name, output, &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_PATH_FIRST:
-      stream = data_bind_stream_json_path_create(codec, config->type_name, config->path, output,
-                                                 &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_PATH_ALL:
-      stream = data_bind_stream_json_path_all_create(codec, config->type_name, config->path, output,
-                                                     &create_error);
-      break;
-    default: break;
-    }
-    break;
-  case DATA_BIND_FORMAT_YAML:
-    switch (config->selection) {
-    case DATA_BIND_STREAM_SELECT_ROOT:
-      stream = data_bind_stream_yaml_create(codec, config->type_name, output, &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_ALL:
-      stream = data_bind_stream_yaml_all_create(codec, config->type_name, output, &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_PATH_FIRST:
-      stream = data_bind_stream_yaml_path_create(codec, config->type_name, config->path, output,
-                                                 &create_error);
-      break;
-    case DATA_BIND_STREAM_SELECT_PATH_ALL:
-      stream = data_bind_stream_yaml_path_all_create(codec, config->type_name, config->path, output,
-                                                     &create_error);
-      break;
-    default: break;
-    }
-    break;
-  case DATA_BIND_FORMAT_CSV:
-    if (config->selection == DATA_BIND_STREAM_SELECT_ALL)
-      stream = data_bind_stream_csv_all_create(codec, config->type_name, output, &create_error);
-    else if (config->selection == DATA_BIND_STREAM_SELECT_PATH_ALL)
-      stream = data_bind_stream_csv_path_create(codec, config->type_name, config->path, output,
-                                                &create_error);
-    break;
-  case DATA_BIND_FORMAT_XML:
-    if (config->selection == DATA_BIND_STREAM_SELECT_ROOT)
-      stream = data_bind_stream_xml_create(codec, config->type_name, output, &create_error);
-    else if (config->selection == DATA_BIND_STREAM_SELECT_PATH_ALL)
-      stream = data_bind_stream_xml_path_all_create(codec, config->type_name, config->path, output,
-                                                    &create_error);
-    break;
-  case DATA_BIND_FORMAT_BINARY:
-  default:
-    break;
-  }
-  if (stream == NULL) {
-    status = create_error.code != DATA_BIND_OK ? create_error.code : DATA_BIND_ERR_OOM;
-    db_error_set(error, status, create_error.path, create_error.line, create_error.column, "%s",
-                 create_error.message[0] != '\0' ? create_error.message
-                                                  : "Failed to create configured stream");
-    return status;
-  }
-
-  stream->error = error;
-  db_error_clear(error);
-  if (config->out_value == NULL) stream->out_value = &stream->internal_out_value;
-  if (config->record_callback != NULL) {
-    status = data_bind_stream_set_record_callback(stream, config->record_callback,
-                                                  config->record_callback_user);
-    if (status != DATA_BIND_OK) goto fail;
-  }
-  status = data_bind_stream_set_output_mode(stream, config->output_mode);
-  if (status != DATA_BIND_OK) goto fail;
-  status = data_bind_stream_set_limits(stream, &config->limits);
-  if (status != DATA_BIND_OK) goto fail;
-  if (config->size >= offsetof(DataBindStreamConfig, query_limits) +
-                          sizeof(config->query_limits)) {
-    status = data_bind_stream_set_query_limits(stream, &config->query_limits);
-    if (status != DATA_BIND_OK) goto fail;
-  }
-
-  *out_stream = stream;
-  return DATA_BIND_OK;
-
-fail:
-  data_bind_stream_destroy(stream);
-  return status;
-}
-
-DataBindStatus data_bind_stream_set_record_callback(data_bind_stream_t *stream,
-                                                    DataBindRecordFn callback, void *user_data) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  if (parser == NULL || callback == NULL || parser->started || parser->finished) {
-    return db_error_set(parser != NULL ? parser->error : NULL, DATA_BIND_ERR_INVALID_ARG,
-                        "data_bind_stream_set_record_callback", -1, -1,
-                        "Record callback must be set before first feed");
-  }
-  parser->record_callback = callback;
-  parser->record_callback_user = user_data;
-  parser->record_callback_index = 0;
-  parser->record_callback_stopped = 0;
-  parser->record_callback_failed = 0;
-  db_error_clear(parser->error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_stream_set_output_mode(data_bind_stream_t *stream,
-                                                DataBindStreamOutputMode mode) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  if (parser == NULL || parser->started || parser->finished ||
-      (mode != DATA_BIND_STREAM_OUTPUT_RETAIN &&
-       mode != DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY)) {
-    return db_error_set(parser != NULL ? parser->error : NULL, DATA_BIND_ERR_INVALID_ARG,
-                        "data_bind_stream_set_output_mode", -1, -1,
-                        "Valid stream output mode must be set before first feed");
-  }
-  parser->output_mode = mode;
-  db_error_clear(parser->error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
-                                           const DataBindStreamLimits *limits) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  if (parser == NULL || limits == NULL || limits->size < sizeof(*limits) || parser->started ||
-      parser->finished || limits->max_input_bytes == 0 || limits->max_input_bytes == SIZE_MAX ||
-      limits->max_record_bytes == 0 || limits->max_record_bytes == SIZE_MAX ||
-      limits->max_field_bytes == 0 || limits->max_field_bytes == SIZE_MAX ||
-      limits->max_result_count == 0 || limits->max_field_bytes > limits->max_record_bytes ||
-      limits->max_record_bytes > limits->max_input_bytes) {
-    return db_error_set(parser != NULL ? parser->error : NULL, DATA_BIND_ERR_INVALID_ARG,
-                        "data_bind_stream_set_limits", -1, -1,
-                        "Valid stream limits must be set before first feed");
-  }
-  parser->limits = *limits;
-  parser->limits.size = sizeof(parser->limits);
-  parser->limit_failed = 0;
-  parser->stream_error[0] = '\0';
-  db_error_clear(parser->error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_stream_set_query_limits(
-    data_bind_stream_t *stream, const DataBindQueryLimits *limits) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  if (parser == NULL || limits == NULL || limits->size < sizeof(*limits) ||
-      parser->started || parser->finished || limits->max_instructions == 0 ||
-      limits->max_operands == 0 || limits->max_regexes == 0 ||
-      limits->max_steps == 0) {
-    return db_error_set(parser ? parser->error : NULL, DATA_BIND_ERR_INVALID_ARG,
-                        "data_bind_stream_set_query_limits", -1, -1,
-                        "Valid query limits must be set before first feed");
-  }
-  parser->query_limits = *limits;
-  parser->query_limits.size = sizeof(parser->query_limits);
-  parser->query_diagnostic =
-      (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-  parser->query_limits_configured = 1;
-
-  if (parser->json_path_program != NULL && parser->path_or_expr != NULL) {
-    json_path_program_t *verified = data_bind_json_path_compile_ex(
-        parser->path_or_expr, &parser->query_limits, &parser->query_diagnostic);
-    if (verified == NULL) {
-      DataBindStatus status = data_bind_query_failure_status(
-          &parser->query_diagnostic);
-      return db_error_set(parser->error, status, "jsonpath", -1, -1,
-                          "JSONPath query limits rejected the program: %s",
-                          parser->query_diagnostic.message[0]
-                              ? parser->query_diagnostic.message
-                              : "query VM failure");
-    }
-    json_path_program_free(verified);
-    if (parser->json_path_stream != NULL &&
-        (limits->max_instructions != TURBO_QUERY_DEFAULT_MAX_INSTRUCTIONS ||
-         limits->max_operands != TURBO_QUERY_DEFAULT_MAX_OPERANDS ||
-         limits->max_regexes != TURBO_QUERY_DEFAULT_MAX_REGEXES ||
-         limits->max_steps != TURBO_QUERY_DEFAULT_MAX_STEPS)) {
-      json_sax_parser_t *replacement = json_sax_parser_create(
-          &DATA_BIND_JSON_SAX_VALIDATE_HANDLER, parser);
-      if (replacement == NULL)
-        return db_error_set(parser->error, DATA_BIND_ERR_OOM, "jsonpath", -1,
-                            -1, "Out of memory applying JSONPath query limits");
-      json_path_stream_destroy(parser->json_path_stream);
-      parser->json_path_stream = NULL;
-      parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
-      data_bind_value_free(parser->stream_values);
-      parser->stream_values = NULL;
-      parser->json_sax = replacement;
-    }
-  }
-  db_error_clear(parser->error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_stream_query_diagnostic(
-    const data_bind_stream_t *stream, DataBindQueryDiagnostic *diagnostic) {
-  const data_bind_stream_t *parser = (const data_bind_stream_t *)stream;
-  size_t size;
-  if (parser == NULL || diagnostic == NULL ||
-      diagnostic->size < sizeof(*diagnostic))
-    return DATA_BIND_ERR_INVALID_ARG;
-  size = diagnostic->size;
-  *diagnostic = parser->query_diagnostic;
-  diagnostic->size = size;
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus data_bind_stream_text_feed(data_bind_stream_t *parser, const char *data,
-                                                 size_t len, DataBindError *error) {
-  size_t needed;
-  size_t new_cap;
-  char *grown;
-  DataBindStatus status;
-
-  if (parser == NULL || parser->finished) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed", -1, -1,
-                        "Invalid stream parser feed state");
-  }
-  if (len == 0) return DATA_BIND_OK;
-  if (data == NULL) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed", -1, -1,
-                        "Invalid stream parser feed data");
-  }
-
-  status = data_bind_stream_sax_feed(parser, data, len, error);
-  if (status != DATA_BIND_OK) return status;
-
-  if (parser->json_path_stream != NULL ||
-      (parser->json_stream_candidate && parser->json_stream_active) ||
-      parser->xml_stream_candidate) {
-    parser->started = 1;
-    db_error_clear(error);
-    return DATA_BIND_OK;
-  }
-
-  needed = parser->size + len;
-  if (needed < parser->size) {
-    return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
-                        "Stream input size overflow");
-  }
-  if (parser->capacity < needed + 1) {
-    new_cap = parser->capacity == 0 ? 4096 : parser->capacity * 2;
-    while (new_cap < needed + 1) {
-      if (new_cap > (SIZE_MAX / 2)) {
-        return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
-                            "Stream input too large");
-      }
-      new_cap *= 2;
-    }
-    grown = (char *)realloc(parser->buffer, new_cap);
-    if (grown == NULL) {
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
-                          "Out of memory while extending stream buffer");
-    }
-    parser->buffer = grown;
-    parser->capacity = new_cap;
-  }
-  memcpy(parser->buffer + parser->size, data, len);
-  parser->size += len;
-  parser->buffer[parser->size] = '\0';
-  parser->started = 1;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-
-static void data_bind_stream_discard_results(data_bind_stream_t *parser) {
-  if (parser == NULL) return;
-  data_bind_value_free(parser->stream_values);
-  parser->stream_values = NULL;
-  data_bind_value_free(parser->csv_values);
-  parser->csv_values = NULL;
-  data_bind_value_free(parser->internal_out_value);
-  parser->internal_out_value = NULL;
-  if (parser->out_value != NULL) *parser->out_value = NULL;
-}
-
-DataBindStatus data_bind_stream_feed(data_bind_stream_t *stream, const void *data, size_t len) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  DataBindStatus status;
-  if (parser == NULL || parser->feed_fn == NULL) return DATA_BIND_ERR_INVALID_ARG;
-  if (parser->canceled)
-    return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_feed", -1, -1,
-                        "Stream was canceled");
-  if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
-      parser->record_callback == NULL) {
-    return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG, "stream.output_mode", -1, -1,
-                        "Callback-only stream output requires a record callback");
-  }
-  if (parser->limit_failed)
-    return db_error_set(parser->error, DATA_BIND_ERR_LIMIT, "stream.limit", -1, -1,
-                        "Stream is in a failed resource-limit state");
-  if (data_bind_stream_limit_exceeded(parser->total_input_bytes, len,
-                                      parser->limits.max_input_bytes)) {
-    parser->limit_failed = 1;
-    return db_error_set(parser->error, DATA_BIND_ERR_LIMIT, "stream.input", -1, -1,
-                        "Stream input exceeds byte limit of %zu",
-                        parser->limits.max_input_bytes);
-  }
-  status = parser->feed_fn(parser, (const char *)data, len, parser->error);
-  if (status == DATA_BIND_OK) {
-    parser->total_input_bytes += len;
-    parser->started = 1;
-    db_error_clear(parser->error);
-  } else if (status == DATA_BIND_ERR_CANCELED) {
-    data_bind_stream_discard_results(parser);
-  }
-  return status;
-}
-
-DataBindStatus data_bind_stream_feed_file(data_bind_stream_t *stream, const char *file_path) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  DataBindError *error = parser ? parser->error : NULL;
-  char *chunk = NULL;
-  salts_file_t fd;
-  DataBindStatus status;
-  int close_rc;
-
-  if (parser == NULL || file_path == NULL || file_path[0] == '\0') {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_feed_file", -1, -1,
-                        "Invalid stream file feed arguments");
-  }
-  fd = salts_fs_open(file_path, SALTS_FS_O_RDONLY, 0);
-  if (fd == SALTS_INVALID_FILE) {
-    return db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
-                        "Failed to open stream input file");
-  }
-
-  chunk = (char *)malloc(DATA_BIND_FILE_STREAM_CHUNK_SIZE);
-  if (chunk == NULL) {
-    salts_fs_close(fd);
-    return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed_file", -1, -1,
-                        "Out of memory allocating stream file chunk");
-  }
-
-  status = DATA_BIND_OK;
-  for (;;) {
-    int nread = salts_fs_read(fd, chunk, DATA_BIND_FILE_STREAM_CHUNK_SIZE);
-    if (nread < 0) {
-      status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
-                            "Failed to read stream input file");
-      break;
-    }
-    if (nread == 0) break;
-    status = data_bind_stream_feed(parser, chunk, (size_t)nread);
-    if (status != DATA_BIND_OK) break;
-  }
-
-  free(chunk);
-  close_rc = salts_fs_close(fd);
-  if (status == DATA_BIND_OK && close_rc != 0) {
-    status = db_error_set(error, DATA_BIND_ERR_IO, file_path, -1, -1,
-                          "Failed to close stream input file");
-  }
-  return status;
-}
-
-static DataBindStatus data_bind_stream_json_finish(data_bind_stream_t *parser,
-                                                   DataBindValue **out_value,
-                                                   DataBindError *error) {
-  const char *path = parser ? parser->path_or_expr : NULL;
-  DataBindStatus status = DATA_BIND_OK;
-
-  if (parser == NULL || out_value == NULL || parser->codec == NULL || parser->type_name == NULL ||
-      parser->finished) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_finish", -1, -1,
-                        "Invalid stream parser finish state");
-  }
-  status = data_bind_stream_sax_finish(parser, error);
-  if (status != DATA_BIND_OK) {
-    parser->finished = 1;
-    return status;
-  }
-  if (parser->json_path_stream != NULL ||
-      (parser->json_stream_candidate && parser->json_stream_active) ||
-      parser->xml_stream_candidate) {
-    if (parser->json_path_stream != NULL &&
-        parser->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST &&
-        parser->result_count == 0) {
-      parser->finished = 1;
-      return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, path, -1, -1,
-                          "JSONPath selected no value for type: %s", parser->type_name);
-    }
-    *out_value = parser->stream_values;
-    parser->stream_values = NULL;
-    parser->finished = 1;
-    db_error_clear(error);
-    return DATA_BIND_OK;
-  }
-  if (!parser->started) {
-    parser->buffer = (char *)realloc(parser->buffer, 1);
-    if (parser->buffer == NULL) {
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
-                          "Out of memory while finalizing stream parser");
-    }
-    parser->buffer[0] = '\0';
-    parser->size = 0;
-    parser->capacity = 1;
-  }
-  if (parser->buffer == NULL) {
-    parser->buffer = (char *)malloc(1);
-    if (parser->buffer == NULL) {
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
-                          "Out of memory while finalizing stream parser");
-    }
-    parser->buffer[0] = '\0';
-    parser->capacity = 1;
-  }
-  parser->buffer[parser->size] = '\0';
-
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size, path,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
-
-  if (status == DATA_BIND_OK) {
-    status = data_bind_stream_emit_result(parser, *out_value, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_value_free(*out_value);
-      *out_value = NULL;
-    }
-  }
-
-  parser->finished = 1;
-  return status;
-}
-
-static DataBindStatus data_bind_stream_xml_finish(data_bind_stream_t *parser,
-                                                  DataBindValue **out_value, DataBindError *error) {
-  const char *path = parser ? parser->path_or_expr : NULL;
-  DataBindStatus status;
-  if (parser == NULL || out_value == NULL || parser->codec == NULL || parser->type_name == NULL ||
-      parser->finished) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_finish", -1, -1,
-                        "Invalid stream finish state");
-  }
-  status = data_bind_stream_sax_finish(parser, error);
-  if (status != DATA_BIND_OK) {
-    parser->finished = 1;
-    return status;
-  }
-  if (parser->xml_stream_candidate) {
-    *out_value = parser->stream_values;
-    parser->stream_values = NULL;
-    parser->finished = 1;
-    db_error_clear(error);
-    return DATA_BIND_OK;
-  }
-  if (!parser->started) {
-    parser->buffer = (char *)realloc(parser->buffer, 1);
-    if (parser->buffer == NULL) {
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
-                          "Out of memory while finalizing stream");
-    }
-    parser->buffer[0] = '\0';
-    parser->size = 0;
-    parser->capacity = 1;
-  }
-  if (parser->buffer == NULL) {
-    parser->buffer = (char *)malloc(1);
-    if (parser->buffer == NULL) {
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
-                          "Out of memory while finalizing stream");
-    }
-    parser->buffer[0] = '\0';
-    parser->capacity = 1;
-  }
-  parser->buffer[parser->size] = '\0';
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size, path,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
-  if (status == DATA_BIND_OK) {
-    status = data_bind_stream_emit_result(parser, *out_value, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_value_free(*out_value);
-      *out_value = NULL;
-    }
-  }
-  parser->finished = 1;
-  return status;
-}
-
-static DataBindStatus data_bind_stream_buffered_finish(data_bind_stream_t *parser,
-                                                       DataBindValue **out_value,
-                                                       DataBindError *error) {
-  DataBindStatus status;
-  if (parser == NULL || out_value == NULL || parser->codec == NULL || parser->type_name == NULL ||
-      parser->bind_fn == NULL || parser->finished) {
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_finish", -1, -1,
-                        "Invalid buffered stream finish state");
-  }
-  status = data_bind_stream_sax_finish(parser, error);
-  if (status != DATA_BIND_OK) {
-    parser->finished = 1;
-    return status;
-  }
-  if (parser->buffer == NULL) {
-    parser->buffer = (char *)malloc(1);
-    if (parser->buffer == NULL) {
-      parser->finished = 1;
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
-                          "Out of memory finalizing buffered stream");
-    }
-    parser->buffer[0] = '\0';
-    parser->capacity = 1;
-  }
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size,
-                           parser->path_or_expr,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
-  if (status == DATA_BIND_OK) {
-    status = data_bind_stream_emit_result(parser, *out_value, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_value_free(*out_value);
-      *out_value = NULL;
-    }
-  }
-  parser->finished = 1;
-  return status;
-}
-
-DataBindStatus data_bind_stream_finish(data_bind_stream_t *stream) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  DataBindValue *callback_value = NULL;
-  DataBindStatus status;
-  if (parser == NULL || parser->finish_fn == NULL || parser->out_value == NULL) {
-    return DATA_BIND_ERR_INVALID_ARG;
-  }
-  if (parser->canceled) {
-    data_bind_stream_discard_results(parser);
-    return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_finish", -1, -1,
-                        "Stream was canceled");
-  }
-  if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
-      parser->record_callback == NULL) {
-    return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG, "stream.output_mode", -1, -1,
-                        "Callback-only stream output requires a record callback");
-  }
-  if (parser->limit_failed) {
-    parser->finished = 1;
-    return db_error_set(parser->error, DATA_BIND_ERR_LIMIT, "stream.limit", -1, -1,
-                        "Stream is in a failed resource-limit state");
-  }
-  if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_RETAIN) {
-    return parser->finish_fn(parser, parser->out_value, parser->error);
-  }
-  status = parser->finish_fn(parser, &callback_value, parser->error);
-  data_bind_value_free(callback_value);
-  *parser->out_value = NULL;
-  return status;
-}
-
-DataBindStatus data_bind_stream_cancel(data_bind_stream_t *stream) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  if (parser == NULL) return DATA_BIND_ERR_INVALID_ARG;
-  if (parser->canceled)
-    return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_cancel", -1, -1,
-                        "Stream was canceled");
-  if (parser->finished)
-    return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_cancel", -1,
-                        -1, "Finished stream cannot be canceled");
-  parser->canceled = 1;
-  data_bind_stream_discard_results(parser);
-  return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_cancel", -1, -1,
-                      "Stream was canceled");
-}
-
-void data_bind_stream_destroy(data_bind_stream_t *stream) {
-  data_bind_stream_t *parser = (data_bind_stream_t *)stream;
-  size_t i;
-  if (parser == NULL) return;
-  free(parser->type_name);
-  free(parser->path_or_expr);
-  free(parser->buffer);
-  free(parser->csv_header);
-  free(parser->csv_record);
-  data_bind_stream_csv_clear_fields(parser);
-  free(parser->csv_field);
-  free(parser->csv_fields);
-  free(parser->csv_field_storage);
-  if (parser->csv_filter != NULL) dsv_filter_destroy(parser->csv_filter);
-  if (parser->json_path_stream != NULL)
-    json_path_stream_destroy(parser->json_path_stream);
-  if (parser->json_path_program != NULL)
-    json_path_program_free(parser->json_path_program);
-  if (parser->json_sax != NULL) json_sax_parser_destroy(parser->json_sax);
-  if (parser->yaml_sax != NULL) turbo_yaml_sax_parser_destroy(parser->yaml_sax);
-  if (parser->xml_sax != NULL) turbo_xml_sax_parser_destroy(parser->xml_sax);
-  if (parser->json_match_value != NULL) {
-    data_bind_json_freep(&parser->json_match_value);
-  } else if (parser->json_frame_count != 0 && parser->json_frames[0].value != NULL) {
-    json_value_t *partial = parser->json_frames[0].value;
-    data_bind_json_freep(&partial);
-  }
-  for (i = 0; i < parser->json_frame_count; ++i) {
-    free(parser->json_frames[i].pending_key);
-  }
-  free(parser->json_frames);
-  free(parser->xml_stream_target);
-  tstr_free(parser->xml_capture);
-  data_bind_value_free(parser->stream_values);
-  if (parser->csv_filter_doc != NULL) {
-    csv_doc_t *doc = parser->csv_filter_doc;
-    data_bind_csv_freep(&doc);
-  }
-  data_bind_value_free(parser->csv_values);
-  data_bind_value_free(parser->internal_out_value);
-  free(parser);
-}
-
-static DataBindStatus data_bind_json_root_to_value(DataBind *codec, const char *type_name,
-                                                   json_value_t *root,
-                                                   DataBindValue **out_value,
-                                                   DataBindError *error) {
-  DataBindValue *result;
-  char error_path[128];
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || root == NULL ||
-      out_value == NULL)
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG, "Invalid JSON bind arguments");
-  result = bind_json_typed_value(codec->schema_root, type_name, root);
-  if (result == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", "$");
-    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                        "JSON bind failed for type: %s", type_name);
-  }
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, const char *json,
-                                    size_t len, DataBindValue **out_value, DataBindError *error) {
-  json_value_t *root = NULL;
-  DataBindStatus status;
-  char error_path[128];
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || json == NULL ||
-      out_value == NULL)
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG, "Invalid JSON bind arguments");
-  if (!bind_type_supported(codec->schema_root, type_name)) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
-                        "Type not found: %s", type_name);
-  }
-  if ((root = json_parse(json, len)) == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
-  }
-  status = data_bind_json_root_to_value(codec, type_name, root, out_value, error);
-  data_bind_json_freep(&root);
-  return status;
-}
-
-DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, const char *json,
-                                        size_t len, DataBindValue **out_value,
-                                        DataBindError *error) {
-  json_value_t *root = NULL;
-  DataBindValue *list;
-  size_t i;
-  char error_path[128];
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || json == NULL ||
-      out_value == NULL)
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
-                          "Invalid JSON bind_all arguments");
-  if (!bind_type_supported(codec->schema_root, type_name)) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
-                        "Type not found: %s", type_name);
-  }
-  if ((root = json_parse(json, len)) == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
-  }
-  list = dbv_new(DATA_BIND_VALUE_LIST);
-  if (list != NULL) {
-    if (json_type(root) == JSON_ARRAY) {
-      for (i = 0; i < json_array_size(root); i++) {
-        DataBindValue *item =
-            bind_json_typed_value(codec->schema_root, type_name, json_array_get(root, i));
-        if (item == NULL) {
-          data_bind_value_free(list);
-          list = NULL;
-          break;
-        }
-        if (!dbv_array_push(&list->data.array_val, item)) {
-          data_bind_value_free(item);
-          data_bind_value_free(list);
-          list = NULL;
-          break;
-        }
-      }
-    } else {
-      DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, root);
-      if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
-        data_bind_value_free(item);
-        data_bind_value_free(list);
-        list = NULL;
-      }
-    }
-  }
-  data_bind_json_freep(&root);
-  if (list == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", "$[]");
-    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                        "JSON bind_all failed for type: %s", type_name);
-  }
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus data_bind_query_failure_status(
-    const DataBindQueryDiagnostic *diagnostic) {
-  if (!diagnostic) return DATA_BIND_ERR_PARSE;
-  if (diagnostic->status == TURBO_QUERY_RESOURCE_LIMIT)
-    return DATA_BIND_ERR_LIMIT;
-  if (diagnostic->status == TURBO_QUERY_NO_MEMORY)
-    return DATA_BIND_ERR_OOM;
-  if (diagnostic->status == TURBO_QUERY_INVALID_ARGUMENT)
-    return DATA_BIND_ERR_INVALID_ARG;
-  return DATA_BIND_ERR_PARSE;
-}
-
-static DataBindStatus data_bind_parse_json_path_with_query(
-    DataBind *codec, const char *type_name, const char *json, size_t len,
-    const char *jsonpath, const DataBindQueryLimits *query_limits,
-    DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
-    DataBindError *error) {
-  json_value_t *root = NULL;
-  json_value_t *selected;
-  json_path_program_t *program = NULL;
-  DataBindValue *result;
-  char error_path[256];
-  const char *path_error;
-  if (jsonpath == NULL || jsonpath[0] == '\0')
-    return data_bind_parse_json(codec, type_name, json, len, out_value, error);
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || json == NULL ||
-      out_value == NULL)
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
-                          "Invalid JSONPath bind arguments");
-  if (!bind_type_supported(codec->schema_root, type_name)) {
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
-                        "Type not found: %s", type_name);
-  }
-  if ((root = json_parse(json, len)) == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
-  }
-  program = data_bind_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
-  if (program == NULL) {
-    DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    path_error = json_path_get_error();
-    data_bind_json_freep(&root);
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, query_status, error_path, -1, -1,
-                        "JSONPath compile failed: %s",
-                        query_diagnostic && query_diagnostic->message[0]
-                            ? query_diagnostic->message
-                            : (path_error ? path_error : "invalid path"));
-  }
-  selected = data_bind_json_path_get_compiled_ex(root, program, query_diagnostic);
-  json_path_program_free(program);
-  path_error = json_path_get_error();
-  if (selected == NULL) {
-    DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    data_bind_json_freep(&root);
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    if (query_diagnostic && query_diagnostic->status != TURBO_QUERY_OK)
-      return db_error_set(error, query_status, error_path, -1, -1,
-                          "JSONPath query failed: %s",
-                          query_diagnostic->message[0]
-                              ? query_diagnostic->message
-                              : "query VM failure");
-    if (path_error != NULL)
-      return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1,
-                          "JSONPath parse failed: %s", path_error);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                        "JSONPath selected no value for type: %s", type_name);
-  }
-  result = bind_json_typed_value(codec->schema_root, type_name, selected);
-  data_bind_json_freep(&root);
-  if (result == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                        "JSONPath bind failed for type: %s", type_name);
-  }
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_parse_json_path(DataBind *codec, const char *type_name,
-                                         const char *json, size_t len,
-                                         const char *jsonpath,
-                                         DataBindValue **out_value,
-                                         DataBindError *error) {
-  DataBindQueryLimits limits = DATA_BIND_QUERY_LIMITS_INIT;
-  DataBindQueryDiagnostic diagnostic = DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-  return data_bind_parse_json_path_with_query(codec, type_name, json, len, jsonpath,
-                                              &limits, &diagnostic, out_value, error);
-}
-
-static DataBindStatus data_bind_parse_json_path_all_with_query(
-    DataBind *codec, const char *type_name, const char *json, size_t len,
-    const char *jsonpath, const DataBindQueryLimits *query_limits,
-    DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
-    DataBindError *error) {
-  json_value_t *root = NULL;
-  json_path_program_t *program = NULL;
-  json_path_result_t *matches = NULL;
-  DataBindValue *list;
-  int program_compiled = 0;
-  size_t i;
-  char error_path[256];
-  const char *path_error;
-  if (jsonpath == NULL || jsonpath[0] == '\0')
-    return data_bind_parse_json_all(codec, type_name, json, len, out_value, error);
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || json == NULL ||
-      out_value == NULL)
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
-                          "Invalid JSONPath bind_all arguments");
-  if (!bind_type_supported(codec->schema_root, type_name)) {
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
-                        "Type not found: %s", type_name);
-  }
-  if ((root = json_parse(json, len)) == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
-    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
-  }
-  program = data_bind_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
-  if (program != NULL) {
-    program_compiled = 1;
-    matches = data_bind_json_path_query_compiled_ex(root, program, query_diagnostic);
-  }
-  json_path_program_free(program);
-  path_error = json_path_get_error();
-  if (matches == NULL && (!program_compiled || path_error != NULL)) {
-    DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    data_bind_json_freep(&root);
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, query_status, error_path, -1, -1,
-                        "JSONPath query failed: %s",
-                        query_diagnostic && query_diagnostic->message[0]
-                            ? query_diagnostic->message
-                            : (path_error ? path_error : "invalid path"));
-  }
-  list = dbv_new(DATA_BIND_VALUE_LIST);
-  if (list == NULL) {
-    if (matches != NULL) json_path_result_free(matches);
-    data_bind_json_freep(&root);
-    db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
-                        "Out of memory binding JSONPath result");
-  }
-  if (matches != NULL) {
-    DataBindStatus failure = DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < json_path_result_size(matches); i++) {
-      json_value_t *matched = json_path_result_get(matches, i);
-      DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, matched);
-      if (item == NULL) {
-        data_bind_value_free(list);
-        list = NULL;
-        break;
-      }
-      if (!dbv_array_push(&list->data.array_val, item)) {
-        data_bind_value_free(item);
-        data_bind_value_free(list);
-        list = NULL;
-        failure = DATA_BIND_ERR_OOM;
-        break;
-      }
-    }
-    if (list == NULL) {
-      json_path_result_free(matches);
-      data_bind_json_freep(&root);
-      db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-      if (failure == DATA_BIND_ERR_OOM)
-        return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
-                            "Out of memory binding JSONPath result");
-      return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                          "JSONPath bind_all failed for type: %s", type_name);
-    }
-  }
-  if (matches != NULL) json_path_result_free(matches);
-  data_bind_json_freep(&root);
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-
-DataBindStatus data_bind_parse_json_path_all(DataBind *codec, const char *type_name,
-                                             const char *json, size_t len,
-                                             const char *jsonpath,
-                                             DataBindValue **out_value,
-                                             DataBindError *error) {
-  DataBindQueryLimits limits = DATA_BIND_QUERY_LIMITS_INIT;
-  DataBindQueryDiagnostic diagnostic = DATA_BIND_QUERY_DIAGNOSTIC_INIT;
-  return data_bind_parse_json_path_all_with_query(
-      codec, type_name, json, len, jsonpath, &limits, &diagnostic, out_value,
-      error);
-}
-
 static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char *type_name,
                                                     const char *yaml, size_t len,
                                                     const char *yamlpath, int bind_all,
@@ -8294,13 +6799,14 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
                                                     DataBindQueryDiagnostic *query_diagnostic,
                                                     DataBindValue **out_value,
                                                     DataBindError *error) {
-  turbo_yaml_doc_t *doc = NULL;
-  turbo_yaml_path_result_t *matches = NULL;
-  turbo_yaml_node_t *root;
+  cyaml_doc_t *doc = NULL;
+  cyaml_path_result_t matches = {0};
+  cyaml_node_t *root;
   DataBindValue *result = NULL;
   char error_path[256];
   size_t count = 0;
   size_t i;
+  int has_matches = 0;
 
   if (out_value != NULL) *out_value = NULL;
   if (codec == NULL || codec->schema_root == NULL || type_name == NULL || yaml == NULL ||
@@ -8312,46 +6818,48 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_yaml((const uint8_t *)yaml, len, &doc) != 0 || doc == NULL) {
+  doc = cyaml_parse(yaml, len, NULL, NULL);
+  if (doc == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "yaml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "YAML parse failed");
   }
 
-  root = turbo_yaml_root(doc);
+  root = cyaml_root(doc);
   if (yamlpath != NULL && yamlpath[0] != '\0') {
-    matches = turbo_yaml_path_query_ex(doc, NULL, yamlpath, query_limits,
-                                       query_diagnostic);
-    if (matches == NULL) {
-      turbo_free_yaml(&doc);
+    qvm_limits_t native_limits;
+    qvm_diagnostic_t native_diagnostic;
+    if (!data_bind_query_limits_to_qvm(query_limits, &native_limits, query_diagnostic)) {
+      cyaml_free(doc);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
-                          error_path, -1, -1, "Unable to execute YPATH: %s",
-                          query_diagnostic && query_diagnostic->message[0]
-                              ? query_diagnostic->message
-                              : "out of memory");
+      return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, error_path, -1, -1,
+                          "Invalid YPATH query limits");
     }
-    if (turbo_yaml_path_result_error(matches) != NULL) {
-      const char *path_error = turbo_yaml_path_result_error(matches);
-      size_t error_pos = turbo_yaml_path_result_error_pos(matches);
+    data_bind_qvm_diagnostic_init(&native_diagnostic);
+    matches = cyaml_path_query_ex(doc, NULL, yamlpath, &native_limits, &native_diagnostic);
+    has_matches = 1;
+    data_bind_query_diagnostic_from_qvm(query_diagnostic, &native_diagnostic,
+                                        TURBO_QUERY_OK, NULL);
+    if (matches.error != NULL) {
+      size_t error_pos = matches.error_pos;
       char path_message[160];
-      snprintf(path_message, sizeof(path_message), "%s", path_error);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      snprintf(path_message, sizeof(path_message), "%s", matches.error);
+      cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, data_bind_query_failure_status(query_diagnostic), error_path, -1,
                           error_pos <= INT_MAX ? (int)error_pos : -1, "YPATH parse failed: %s",
                           path_message);
     }
-    count = turbo_yaml_path_result_size(matches);
-  } else if (bind_all && turbo_yaml_node_type(root) == TURBO_YAML_NODE_SEQUENCE) {
-    count = turbo_yaml_sequence_size(root);
+    count = matches.count;
+  } else if (bind_all && root != NULL && root->type == CYAML_SEQ) {
+    count = root->seq.count;
   } else if (root != NULL) {
     count = 1;
   }
 
   if (count == 0) {
-    turbo_yaml_path_result_free(matches);
-    turbo_free_yaml(&doc);
+    if (has_matches) cyaml_path_result_free(&matches);
+    cyaml_free(doc);
     db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "YAML selection matched no values");
@@ -8360,27 +6868,26 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
   if (bind_all) {
     result = dbv_new(DATA_BIND_VALUE_LIST);
     if (result == NULL) {
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      if (has_matches) cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                           "Out of memory creating YAML result list");
     }
   }
 
   for (i = 0; i < (bind_all ? count : 1); i++) {
-    turbo_yaml_node_t *node;
+    cyaml_node_t *node;
     json_value_t *json_value;
     DataBindValue *bound;
-    if (matches != NULL) node = turbo_yaml_path_result_get(matches, i);
-    else if (bind_all && turbo_yaml_node_type(root) == TURBO_YAML_NODE_SEQUENCE)
-      node = turbo_yaml_sequence_get(root, i);
+    if (has_matches) node = matches.nodes[i];
+    else if (bind_all && root->type == CYAML_SEQ) node = root->seq.items[i];
     else node = root;
 
-    json_value = turbo_yaml_node_to_json(doc, node);
+    json_value = json_value_from_cyaml_node(doc, node);
     if (json_value == NULL) {
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      if (has_matches) cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                           "YAML value cannot be represented as JSON-compatible data");
@@ -8389,8 +6896,8 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     data_bind_json_freep(&json_value);
     if (bound == NULL) {
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      if (has_matches) cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                           "YAML bind failed for type: %s", type_name);
@@ -8400,15 +6907,15 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     } else if (!dbv_array_push(&result->data.array_val, bound)) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      if (has_matches) cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                           "Out of memory appending YAML result");
     }
   }
 
-  turbo_yaml_path_result_free(matches);
-  turbo_free_yaml(&doc);
+  if (has_matches) cyaml_path_result_free(&matches);
+  cyaml_free(doc);
   *out_value = result;
   db_error_clear(error);
   return DATA_BIND_OK;
@@ -9537,7 +8044,7 @@ static DataBindStatus data_bind_object_serialize_yaml_canonical(
     const DataBindObject *object, char **out_yaml, size_t *out_len, DataBindError *error) {
   DataBindStatus status = DATA_BIND_OK;
   json_value_t *json;
-  turbo_yaml_doc_t *yaml;
+  cyaml_doc_t *yaml;
 
   if (out_yaml != NULL) *out_yaml = NULL;
   if (out_len != NULL) *out_len = 0;
@@ -9548,13 +8055,13 @@ static DataBindStatus data_bind_object_serialize_yaml_canonical(
   if (!json)
     return db_error_set(error, status, "yaml", -1, -1,
                         "DataBind value cannot be represented as YAML");
-  yaml = turbo_yaml_from_json(json);
+  yaml = cyaml_doc_from_json_value(json);
   data_bind_json_freep(&json);
   if (!yaml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                         "Failed to construct YAML document");
-  *out_yaml = turbo_yaml_serialize(yaml, out_len);
-  turbo_free_yaml(&yaml);
+  *out_yaml = cyaml_emit(yaml, NULL, out_len);
+  cyaml_free(yaml);
   if (!*out_yaml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                         "Failed to serialize YAML document");

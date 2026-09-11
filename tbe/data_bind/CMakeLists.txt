@@ -55,6 +55,8 @@ target_link_libraries(
     monocypher
     ${DATA_BIND_PARSER_COMPAT_TARGET}
     Salts::CsvParser
+    Salts::CYaml
+    Salts::CYamlJsonAdapter
     Salts::JsonParser
     Salts::TbeSchema
   PUBLIC
