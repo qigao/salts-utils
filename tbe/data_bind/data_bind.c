@@ -17,6 +17,8 @@
 #include "turbo_parser.h"
 #include "json_parser.h"
 #include "query_vm.h"
+#include "csv_parser.h"
+#include "dsv_filter.h"
 #include <salts_fs.h>
 #include <tstr.h>
 #include <salts_thread.h>
@@ -120,6 +122,38 @@ static json_path_result_t *data_bind_json_path_query_compiled_ex(
   result = json_path_query_compiled_ex(root, program, &native_diagnostic);
   data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);
   return result;
+}
+
+static void data_bind_csv_freep(csv_doc_t **doc) {
+  if (doc == NULL || *doc == NULL) return;
+  csv_free(*doc);
+  *doc = NULL;
+}
+
+static bool data_bind_dsv_filter_compile_ex(
+    dsv_filter_t *filter, const char *expression, const DataBindQueryLimits *limits,
+    DataBindQueryDiagnostic *diagnostic) {
+  qvm_limits_t native_limits;
+  qvm_diagnostic_t native_diagnostic;
+  bool compiled;
+  if (!data_bind_query_limits_to_qvm(limits, &native_limits, diagnostic)) return false;
+  data_bind_qvm_diagnostic_init(&native_diagnostic);
+  compiled = dsv_filter_compile_ex(filter, expression, &native_limits, &native_diagnostic);
+  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);
+  return compiled;
+}
+
+static turbo_query_status_t data_bind_dsv_filter_query_diagnostic(
+    const dsv_filter_t *filter, DataBindQueryDiagnostic *diagnostic) {
+  const qvm_diagnostic_t *native = dsv_filter_qvm_diagnostic(filter);
+  if (native == NULL) {
+    data_bind_query_diagnostic_from_qvm(diagnostic, NULL, TURBO_QUERY_INVALID_ARGUMENT,
+                                        "Invalid CSV filter");
+    return TURBO_QUERY_INVALID_ARGUMENT;
+  }
+  data_bind_query_diagnostic_from_qvm(diagnostic, native,
+                                      (turbo_query_status_t)native->status, NULL);
+  return (turbo_query_status_t)native->status;
 }
 
 typedef enum data_bind_wire_type {
@@ -298,8 +332,8 @@ struct data_bind_stream_t {
   char **csv_field_storage;
   size_t csv_field_count;
   size_t csv_fields_capacity;
-  turbo_csv_doc_t *csv_filter_doc;
-  turbo_dsv_filter_t *csv_filter;
+  csv_doc_t *csv_filter_doc;
+  dsv_filter_t *csv_filter;
   DataBindValue *csv_values;
   DataBindValue *stream_values;
   json_sax_parser_t *json_sax;
@@ -3284,25 +3318,25 @@ static void csv_sanitize_path(const char *path, char *out, size_t out_size) {
   out[w] = '\0';
 }
 
-static int csv_find_named_column(turbo_csv_doc_t *doc, const char *name, size_t *out_col) {
+static int csv_find_named_column(csv_doc_t *doc, const char *name, size_t *out_col) {
   char typed_name[256];
   size_t col;
   if (doc == NULL || name == NULL || out_col == NULL) return 0;
-  col = turbo_csv_find_column(doc, name);
-  if (col < turbo_csv_column_count(doc)) {
+  col = csv_find_column(doc, name);
+  if (col < csv_column_count(doc)) {
     *out_col = col;
     return 1;
   }
   if (snprintf(typed_name, sizeof(typed_name), "%s_n", name) < (int)sizeof(typed_name)) {
-    col = turbo_csv_find_column(doc, typed_name);
-    if (col < turbo_csv_column_count(doc)) {
+    col = csv_find_column(doc, typed_name);
+    if (col < csv_column_count(doc)) {
       *out_col = col;
       return 1;
     }
   }
   if (snprintf(typed_name, sizeof(typed_name), "%s_s", name) < (int)sizeof(typed_name)) {
-    col = turbo_csv_find_column(doc, typed_name);
-    if (col < turbo_csv_column_count(doc)) {
+    col = csv_find_column(doc, typed_name);
+    if (col < csv_column_count(doc)) {
       *out_col = col;
       return 1;
     }
@@ -3310,7 +3344,7 @@ static int csv_find_named_column(turbo_csv_doc_t *doc, const char *name, size_t 
   return 0;
 }
 
-static int csv_find_path_column(turbo_csv_doc_t *doc, const char *path, size_t *out_col) {
+static int csv_find_path_column(csv_doc_t *doc, const char *path, size_t *out_col) {
   char sanitized[256];
   if (csv_find_named_column(doc, path, out_col)) return 1;
   csv_sanitize_path(path, sanitized, sizeof(sanitized));
@@ -3450,14 +3484,14 @@ static int csv_header_matches_path(const char *header, const char *path) {
   return 0;
 }
 
-static int csv_row_has_nonempty_path(turbo_csv_doc_t *doc, size_t row,
+static int csv_row_has_nonempty_path(csv_doc_t *doc, size_t row,
                                      const data_bind_csv_headers_t *headers, const char *path) {
   size_t i;
-  if (doc == NULL || headers == NULL || path == NULL || row >= turbo_csv_row_count(doc)) return 0;
+  if (doc == NULL || headers == NULL || path == NULL || row >= csv_row_count(doc)) return 0;
   for (i = 0; i < headers->count; i++) {
     const char *text;
     if (!csv_header_matches_path(headers->names[i], path)) continue;
-    text = turbo_csv_get(doc, row, i);
+    text = csv_get(doc, row, i);
     if (!db_text_is_empty(text)) return 1;
   }
   return 0;
@@ -3488,35 +3522,35 @@ static int csv_header_map_key(const char *header, const char *path, char *key, s
 }
 
 static DataBindValue *bind_csv_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_csv_doc_t *doc, size_t row,
+                                           csv_doc_t *doc, size_t row,
                                            const data_bind_csv_headers_t *headers,
                                            const char *path);
 
 static DataBindValue *bind_csv_scalar_at_path(Node *schema_root, const char *type_name,
-                                              data_bind_text_kind_t kind, turbo_csv_doc_t *doc,
+                                              data_bind_text_kind_t kind, csv_doc_t *doc,
                                               size_t row, const char *path) {
   size_t col = 0;
   const char *text;
   if (doc == NULL || path == NULL || kind == DB_TEXT_UNSUPPORTED) return NULL;
   if (!csv_find_path_column(doc, path, &col)) return NULL;
-  text = turbo_csv_get(doc, row, col);
+  text = csv_get(doc, row, col);
   if (text == NULL) return NULL;
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
 static DataBindValue *bind_csv_scalar_value(Node *schema_root, const char *type_name,
-                                            data_bind_text_kind_t kind, turbo_csv_doc_t *doc,
+                                            data_bind_text_kind_t kind, csv_doc_t *doc,
                                             size_t row) {
   size_t col = 0;
   const char *text;
-  if (doc == NULL || row >= turbo_csv_row_count(doc) || kind == DB_TEXT_UNSUPPORTED) return NULL;
+  if (doc == NULL || row >= csv_row_count(doc) || kind == DB_TEXT_UNSUPPORTED) return NULL;
   if (!csv_find_path_column(doc, "value", &col)) col = 0;
-  text = turbo_csv_get(doc, row, col);
+  text = csv_get(doc, row, col);
   if (text == NULL) return NULL;
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
-static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, csv_doc_t *doc,
                                            size_t row, const data_bind_csv_headers_t *headers,
                                            const char *path) {
   const char *value_type = get_string_val(find_child(field, "value_type"));
@@ -3556,7 +3590,7 @@ static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, turbo
   return map;
 }
 
-static DataBindValue *bind_csv_list_at_path(Node *schema_root, Node *field, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_list_at_path(Node *schema_root, Node *field, csv_doc_t *doc,
                                             size_t row, const data_bind_csv_headers_t *headers,
                                             const char *path, DataBindValueKind list_kind) {
   const char *inner_type = get_string_val(find_child(field, "inner_type"));
@@ -3609,7 +3643,7 @@ fail_indexes:
 }
 
 static DataBindValue *bind_csv_union_at_path(Node *schema_root, Node *union_node,
-                                             turbo_csv_doc_t *doc, size_t row,
+                                             csv_doc_t *doc, size_t row,
                                              const data_bind_csv_headers_t *headers,
                                              const char *path) {
   Node *fields = fields_node_for_record(union_node);
@@ -3647,13 +3681,13 @@ static DataBindValue *bind_csv_union_at_path(Node *schema_root, Node *union_node
   return result;
 }
 
-static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, csv_doc_t *doc,
                                               size_t row, const data_bind_csv_headers_t *headers,
                                               const char *prefix) {
   Node *fields = fields_node_for_record(record);
   DataBindValue *result;
   size_t i;
-  if (fields == NULL || doc == NULL || row >= turbo_csv_row_count(doc)) return NULL;
+  if (fields == NULL || doc == NULL || row >= csv_row_count(doc)) return NULL;
   if (prefix != NULL && prefix[0] != '\0' && !csv_headers_have_path(headers, prefix)) return NULL;
   result = dbv_new(DATA_BIND_VALUE_OBJECT);
   if (result == NULL) return NULL;
@@ -3705,7 +3739,7 @@ static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, t
 }
 
 static DataBindValue *bind_csv_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_csv_doc_t *doc, size_t row,
+                                           csv_doc_t *doc, size_t row,
                                            const data_bind_csv_headers_t *headers,
                                            const char *path) {
   Node *record = find_data_record(schema_root, type_name);
@@ -6443,7 +6477,7 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
                                                           DataBindError *error) {
   char *header_doc = NULL;
   size_t header_doc_len;
-  turbo_csv_options_t opts = {false, ',', '"', true};
+  csv_options_t opts = {false, ',', '"', true};
   int compiled;
 
   if (parser == NULL || parser->path_or_expr == NULL || parser->csv_filter != NULL)
@@ -6460,8 +6494,7 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
   header_doc[parser->csv_header_len] = '\n';
   header_doc[header_doc_len] = '\0';
 
-  if (turbo_parse_csv_opts((const uint8_t *)header_doc, header_doc_len, &opts,
-                           &parser->csv_filter_doc) != 0) {
+  if ((parser->csv_filter_doc = csv_parse_opts(header_doc, header_doc_len, &opts)) == NULL) {
     free(header_doc);
     parser->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1,
@@ -6474,18 +6507,18 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
                         "Failed to parse CSVPath stream header");
   }
 
-  parser->csv_filter = turbo_dsv_filter_create(parser->csv_filter_doc, 0);
+  parser->csv_filter = dsv_filter_create(parser->csv_filter_doc, 0);
   compiled = parser->csv_filter != NULL &&
              (parser->query_limits_configured
-                  ? turbo_dsv_filter_compile_ex(parser->csv_filter,
+                  ? data_bind_dsv_filter_compile_ex(parser->csv_filter,
                                                 parser->path_or_expr,
                                                 &parser->query_limits,
                                                 &parser->query_diagnostic)
-                  : turbo_dsv_filter_compile(parser->csv_filter,
+                  : dsv_filter_compile(parser->csv_filter,
                                              parser->path_or_expr));
   if (!compiled) {
     const char *filter_error = parser->csv_filter != NULL
-                                   ? turbo_dsv_filter_error(parser->csv_filter)
+                                   ? dsv_filter_error(parser->csv_filter)
                                    : "Failed to create CSVPath filter";
     parser->csv_failed = 1;
     {
@@ -6535,10 +6568,10 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
       status = data_bind_stream_csv_compile_filter(parser, error);
       if (status != DATA_BIND_OK) return status;
     }
-    match = turbo_dsv_filter_check_values(parser->csv_filter, parser->csv_fields,
+    match = dsv_filter_check_values(parser->csv_filter, parser->csv_fields,
                                           parser->csv_field_count);
     if (match < 0) {
-      turbo_query_status_t query_status = turbo_dsv_filter_query_diagnostic(
+      turbo_query_status_t query_status = data_bind_dsv_filter_query_diagnostic(
           parser->csv_filter, &parser->query_diagnostic);
       parser->csv_failed = 1;
       if (query_status == TURBO_QUERY_RESOURCE_LIMIT) parser->limit_failed = 1;
@@ -7926,7 +7959,7 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   free(parser->csv_field);
   free(parser->csv_fields);
   free(parser->csv_field_storage);
-  if (parser->csv_filter != NULL) turbo_dsv_filter_destroy(parser->csv_filter);
+  if (parser->csv_filter != NULL) dsv_filter_destroy(parser->csv_filter);
   if (parser->json_path_stream != NULL)
     json_path_stream_destroy(parser->json_path_stream);
   if (parser->json_path_program != NULL)
@@ -7948,8 +7981,8 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   tstr_free(parser->xml_capture);
   data_bind_value_free(parser->stream_values);
   if (parser->csv_filter_doc != NULL) {
-    turbo_csv_doc_t *doc = parser->csv_filter_doc;
-    turbo_free_csv(&doc);
+    csv_doc_t *doc = parser->csv_filter_doc;
+    data_bind_csv_freep(&doc);
   }
   data_bind_value_free(parser->csv_values);
   data_bind_value_free(parser->internal_out_value);
@@ -8415,9 +8448,9 @@ DataBindStatus data_bind_parse_yaml_path_all(DataBind *codec, const char *type_n
 DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const char *csv,
                                    size_t len, size_t row, DataBindValue **out_value,
                                    DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   DataBindValue *result = NULL;
   char error_path[128];
   if (out_value != NULL) *out_value = NULL;
@@ -8429,14 +8462,14 @@ DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
   if (csv_parse_header_names(csv, len, &headers))
     result = bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  data_bind_csv_freep(&doc);
   if (result == NULL) {
     snprintf(error_path, sizeof(error_path), "csv: row %zu", row);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, (int)row, -1,
@@ -8450,9 +8483,9 @@ DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const
 DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, const char *csv,
                                        size_t len, DataBindValue **out_value,
                                        DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   DataBindValue *list = NULL;
   size_t row;
   char error_path[128];
@@ -8466,14 +8499,14 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
   if (csv_parse_header_names(csv, len, &headers)) {
     list = dbv_new(DATA_BIND_VALUE_LIST);
     if (list != NULL) {
-      for (row = 0; row < turbo_csv_row_count(doc); row++) {
+      for (row = 0; row < csv_row_count(doc); row++) {
         DataBindValue *item =
             bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
         if (item == NULL) {
@@ -8491,7 +8524,7 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
     }
   }
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  data_bind_csv_freep(&doc);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", "multiple rows");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8507,12 +8540,12 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
     const char *csvpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
-  turbo_csv_doc_t *bind_doc = NULL;
-  turbo_csv_doc_t *filter_doc = NULL;
-  turbo_dsv_filter_t *filter = NULL;
+  csv_doc_t *bind_doc = NULL;
+  csv_doc_t *filter_doc = NULL;
+  dsv_filter_t *filter = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t bind_opts = {true, ',', '"', true};
-  turbo_csv_options_t filter_opts = {false, ',', '"', true};
+  csv_options_t bind_opts = {true, ',', '"', true};
+  csv_options_t filter_opts = {false, ',', '"', true};
   DataBindValue *list = NULL;
   size_t raw_row;
   char error_path[256];
@@ -8528,35 +8561,33 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &bind_opts, &bind_doc) != 0 ||
-      bind_doc == NULL) {
+  if ((bind_doc = csv_parse_opts(csv, len, &bind_opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &filter_opts, &filter_doc) != 0 ||
-      filter_doc == NULL) {
-    turbo_free_csv(&bind_doc);
+  if ((filter_doc = csv_parse_opts(csv, len, &filter_opts)) == NULL) {
+    data_bind_csv_freep(&bind_doc);
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSVPath parse failed");
   }
   if (!csv_parse_header_names(csv, len, &headers)) {
-    turbo_free_csv(&filter_doc);
-    turbo_free_csv(&bind_doc);
+    data_bind_csv_freep(&filter_doc);
+    data_bind_csv_freep(&bind_doc);
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV header parse failed");
   }
-  filter = turbo_dsv_filter_create(filter_doc, 0);
+  filter = dsv_filter_create(filter_doc, 0);
   if (filter == NULL ||
-      !(query_limits ? turbo_dsv_filter_compile_ex(filter, csvpath, query_limits,
+      !(query_limits ? data_bind_dsv_filter_compile_ex(filter, csvpath, query_limits,
                                                    query_diagnostic)
-                     : turbo_dsv_filter_compile(filter, csvpath))) {
-    const char *filter_error = turbo_dsv_filter_error(filter);
+                     : dsv_filter_compile(filter, csvpath))) {
+    const char *filter_error = dsv_filter_error(filter);
     char filter_msg[128];
     snprintf(filter_msg, sizeof(filter_msg), "%s",
              filter_error != NULL && filter_error[0] != '\0' ? filter_error : "invalid filter");
-    if (filter != NULL) turbo_dsv_filter_destroy(filter);
+    if (filter != NULL) dsv_filter_destroy(filter);
     csv_headers_free(&headers);
-    turbo_free_csv(&filter_doc);
-    turbo_free_csv(&bind_doc);
+    data_bind_csv_freep(&filter_doc);
+    data_bind_csv_freep(&bind_doc);
     db_error_format_path(error_path, sizeof(error_path), "csv", csvpath);
     return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
                         error_path, -1, -1,
@@ -8564,11 +8595,11 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list != NULL) {
-    for (raw_row = 1; raw_row < turbo_csv_row_count(filter_doc); raw_row++) {
-      int match = turbo_dsv_filter_check_row(filter, raw_row);
+    for (raw_row = 1; raw_row < csv_row_count(filter_doc); raw_row++) {
+      int match = dsv_filter_check_row(filter, raw_row);
       if (match < 0) {
         turbo_query_status_t query_status =
-            turbo_dsv_filter_query_diagnostic(filter, query_diagnostic);
+            data_bind_dsv_filter_query_diagnostic(filter, query_diagnostic);
         data_bind_value_free(list);
         list = NULL;
         failure = query_status == TURBO_QUERY_RESOURCE_LIMIT ? DATA_BIND_ERR_LIMIT
@@ -8600,10 +8631,10 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
       }
     }
   }
-  turbo_dsv_filter_destroy(filter);
+  dsv_filter_destroy(filter);
   csv_headers_free(&headers);
-  turbo_free_csv(&filter_doc);
-  turbo_free_csv(&bind_doc);
+  data_bind_csv_freep(&filter_doc);
+  data_bind_csv_freep(&bind_doc);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", csvpath);
     return db_error_set(error, failure != DATA_BIND_OK ? failure : DATA_BIND_ERR_TYPE_MISMATCH,
@@ -8822,9 +8853,9 @@ DataBindStatus data_bind_validate_yaml_path(DataBind *codec, const char *type_na
 
 DataBindStatus data_bind_validate_csv(DataBind *codec, const char *type_name, const char *csv,
                                       size_t len, DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   size_t row;
   if (codec == NULL || codec->schema_root == NULL || type_name == NULL || csv == NULL)
     return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
@@ -8833,26 +8864,26 @@ DataBindStatus data_bind_validate_csv(DataBind *codec, const char *type_name, co
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV parse failed");
   }
   if (!csv_parse_header_names(csv, len, &headers)) {
-    turbo_free_csv(&doc);
+    data_bind_csv_freep(&doc);
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV header parse failed");
   }
-  for (row = 0; row < turbo_csv_row_count(doc); row++) {
+  for (row = 0; row < csv_row_count(doc); row++) {
     DataBindValue *item =
         bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
     if (item == NULL) {
       csv_headers_free(&headers);
-      turbo_free_csv(&doc);
+      data_bind_csv_freep(&doc);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "CSV validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   }
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  data_bind_csv_freep(&doc);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
