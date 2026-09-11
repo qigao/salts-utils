@@ -437,7 +437,11 @@ DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize(
     const void *object, DataBindFormat format, char **out, size_t *out_len,
     DataBindError *error);
 
-/** Serialize an owning object into its schema binary wire representation. */
+/**
+ * Serialize an owning object into its schema binary wire representation.
+ * Optional presence bits are authoritative: absent fixed fields are zeroed,
+ * absent variable data has zero length, and absent groups have zero entries.
+ */
 DATA_BIND_API DataBindStatus tbe_typed_serialize_binary(const TbeTypedType *type,
                                                         const void *object, uint8_t **out,
                                                         size_t *out_len, DataBindError *error);
@@ -446,7 +450,8 @@ DATA_BIND_API DataBindStatus tbe_typed_serialize_binary(const TbeTypedType *type
  * Serialize binary wire bytes into caller-owned storage without allocating the
  * output buffer. out_len receives the required size even when capacity is too
  * small, in which case DATA_BIND_ERR_BUFFER_TOO_SMALL is returned. Passing
- * output=NULL and capacity=0 performs a size query without writing bytes.
+ * output=NULL and capacity=0 performs a size query without writing bytes. The
+ * size query and writer both use the optional presence rules above.
  */
 DATA_BIND_API DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type,
                                                              const void *object, uint8_t *output,

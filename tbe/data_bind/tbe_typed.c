@@ -1433,24 +1433,28 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
+      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
       size_t payload_size;
       size_t field_size;
       if (field->object_type == NULL || field->object_type->fixed_block_size > UINT16_MAX ||
-          vec->size > UINT16_MAX || (vec->size != 0 && vec->data == NULL)) {
+          count > UINT16_MAX || (count != 0 && vec->data == NULL)) {
         *supported = 0;
         return 0;
       }
-      if (!typed_multiply_fits(vec->size, field->object_type->fixed_block_size, &payload_size) ||
+      if (!typed_multiply_fits(count, field->object_type->fixed_block_size, &payload_size) ||
           !typed_add_fits(sizeof(uint16_t) * 2u, payload_size, &field_size) ||
           !typed_add_fits(total, field_size, &total)) {
         *supported = 0;
         return 0;
       }
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
-      size_t len = field->kind == TBE_TYPED_STRING
-                       ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
-                       : ((const vec_t *)ptr)->size;
+      size_t len = 0u;
       size_t field_size;
+      if (typed_optional_present(type, object, field)) {
+        len = field->kind == TBE_TYPED_STRING
+                  ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
+                  : ((const vec_t *)ptr)->size;
+      }
       if ((field->kind == TBE_TYPED_BYTES && len != 0 &&
            ((const vec_t *)ptr)->data == NULL) ||
           len > UINT32_MAX || !typed_add_fits(sizeof(uint32_t), len, &field_size) ||
@@ -1525,6 +1529,7 @@ static int typed_write_fixed(const TbeTypedType *type, const void *object, uint8
     const uint8_t *src = (const uint8_t *)object + field->offset;
     size_t j;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
+    if (!typed_optional_present(type, object, field)) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       if (!typed_write_fixed(field->object_type, src, dst + field->wire_offset,
                              size - field->wire_offset))
@@ -1592,12 +1597,13 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
+      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
       size_t j;
       tbe_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
-      tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)vec->size);
+      tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
       cursor += 4u;
-      for (j = 0; j < vec->size; ++j) {
+      for (j = 0; j < count; ++j) {
         if (!typed_write_fixed(field->object_type,
                                (const uint8_t *)vec->data + j * field->element_size,
                                output + cursor, total - cursor)) {
@@ -1609,7 +1615,10 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       const void *bytes;
       size_t len;
-      if (field->kind == TBE_TYPED_STRING) {
+      if (!typed_optional_present(type, object, field)) {
+        bytes = NULL;
+        len = 0u;
+      } else if (field->kind == TBE_TYPED_STRING) {
         tstr text = *(const tstr *)ptr;
         bytes = text ? text : "";
         len = text ? tstr_len(text) : 0;

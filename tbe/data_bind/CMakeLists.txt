@@ -143,6 +143,10 @@ cmake_add_test(test_tbe_typed
   SOURCES test_tbe_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_tbe_typed_optional_binary
+  SOURCES test_tbe_typed_optional_binary.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_tbe_typed_descriptor_safety
   SOURCES test_tbe_typed_descriptor_safety.c
   LIBS ${DATA_BIND_TEST_LIBS}
