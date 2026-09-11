@@ -1,9 +1,8 @@
 #include "schema_enum.h"
 #include "schema_builtin_type.h"
 
-#include <inttypes.h>
+#include <fmt.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,7 +52,7 @@ static int enum_set_string(Node *map, const char *name, const char *value) {
 static int enum_fail(tbe_error_t *error, tbe_error_code_t code,
                      const char *name, const char *reason) {
     char message[sizeof(((tbe_error_t *)0)->message)];
-    snprintf(message, sizeof(message), "enum/flags '%s': %s", name ? name : "<unnamed>", reason);
+    fmt(message, sizeof(message), "enum/flags '{}': {}", name ? name : "<unnamed>", reason);
     tbe_error_set(error, code, -1, -1, message);
     return -1;
 }
@@ -138,14 +137,14 @@ static int enum_set_constant(Node *owner, const char *key,
 static int enum_normalize_item(Node *item, enum_number_t number) {
     char decimal[ENUM_DECIMAL_CAPACITY];
     char literal[ENUM_LITERAL_CAPACITY];
-    snprintf(decimal, sizeof(decimal), "%s%" PRIu64, number.negative ? "-" : "", number.magnitude);
+    fmt(decimal, sizeof(decimal), "{}{}", number.negative ? "-" : "", number.magnitude);
     if (!number.negative) {
-        snprintf(literal, sizeof(literal), "UINT64_C(%" PRIu64 ")", number.magnitude);
+        fmt(literal, sizeof(literal), "UINT64_C({})", number.magnitude);
     } else if (number.magnitude == (UINT64_C(1) << 63u)) {
         /* The positive magnitude of INT64_MIN is not a signed C constant. */
-        snprintf(literal, sizeof(literal), "(-INT64_C(9223372036854775807) - INT64_C(1))");
+        fmt_text(literal, sizeof(literal), "(-INT64_C(9223372036854775807) - INT64_C(1))");
     } else {
-        snprintf(literal, sizeof(literal), "(-INT64_C(%" PRIu64 "))", number.magnitude);
+        fmt(literal, sizeof(literal), "(-INT64_C({}))", number.magnitude);
     }
     return enum_set_string(item, "value", decimal) != 0 ||
            enum_set_string(item, "c_literal", literal) != 0 ? -1 : 0;
@@ -173,8 +172,8 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     size_t count = items->data.list.count;
     if (count > SIZE_MAX / sizeof(*entries) || !(entries = malloc(count * sizeof(*entries))))
         goto oom;
-    snprintf(canonical, sizeof(canonical), "%sint%zu", type->is_unsigned ? "u" : "",
-             type->size * ENUM_BITS_PER_BYTE);
+    fmt(canonical, sizeof(canonical), "{}int{}", type->is_unsigned ? "u" : "",
+        type->size * ENUM_BITS_PER_BYTE);
     if (enum_set_string(owner, "underlying_type", canonical) != 0) goto oom;
     for (size_t i = 0; i < count; ++i) {
         Node *item = items->data.list.items[i];
