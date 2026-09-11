@@ -9265,7 +9265,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
   case DATA_BIND_VALUE_DATETIME: {
     time_t timestamp = datetime_to_time(&value->data.datetime_val);
     if (timestamp == (time_t)-1 ||
-        turbo_datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
+        datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
@@ -9467,7 +9467,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
     return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME: {
     time_t timestamp = datetime_to_time(&value->data.datetime_val);
-    return timestamp != (time_t)-1 && turbo_datetime_format_rfc822(timestamp, text, size) >= 0;
+    return timestamp != (time_t)-1 && datetime_format_rfc822(timestamp, text, size) >= 0;
   }
   case DATA_BIND_VALUE_DATE:
     return db_date_to_text(value->data.date_val, text, size);
@@ -10132,7 +10132,7 @@ const char *data_bind_value_as_datetime_string(const DataBindValue *value, char 
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL || len < 32)
     return NULL;
   ts = datetime_to_time(&value->data.datetime_val);
-  if (ts == (time_t)-1 || turbo_datetime_format_rfc822(ts, out, len) < 0) return NULL;
+  if (ts == (time_t)-1 || datetime_format_rfc822(ts, out, len) < 0) return NULL;
   return out;
 }
 
