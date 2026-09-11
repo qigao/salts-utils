@@ -1,0 +1,51 @@
+name: Publish verified direct parser migration
+on:
+  push:
+    branches: [work/databind-migration-publish]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: transport
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f99dbf51d91d8c5bd3cc56a977c6b0a58cb88b34
+          path: source
+      - name: Apply deterministic source migration only
+        working-directory: source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = f99dbf51d91d8c5bd3cc56a977c6b0a58cb88b34
+          test -z "$(git status --porcelain)"
+          test "$(git ls-remote --heads origin refs/heads/refactor/databind-direct-salts-parsers | cut -f1)" = f99dbf51d91d8c5bd3cc56a977c6b0a58cb88b34
+          python3 - <<'PY'
+          from pathlib import Path
+          import gzip, hashlib
+          script = gzip.decompress(Path('../transport/.github/databind-migration.py.gz').read_bytes())
+          assert hashlib.sha256(script).hexdigest() == '3424e4d143809ec248e6f5ca0a441ec09bf6a9582de3e40a94dfd7cf3c6e2c35'
+          exec(compile(script, 'verified-databind-migration.py', 'exec'))
+          PY
+          git diff --check
+          python3 tests/databind_direct_parsers/check_boundary.py -v
+          git add -A -- tbe/data_bind tests/databind_direct_parsers/installed
+          test "$(git write-tree)" = 9dcea6945a3080735f820c311ac2877fe903d889
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'refactor(databind): consume native Salts parsers and remove compatibility facade'
+          git push origin HEAD:refs/heads/refactor/databind-direct-salts-parsers
+          mkdir -p "$RUNNER_TEMP/databind-published"
+          git rev-parse HEAD > "$RUNNER_TEMP/databind-published/head.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/databind-published/tree.txt"
+          git diff HEAD^ HEAD > "$RUNNER_TEMP/databind-published/migration.patch"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/databind-published/source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: databind-published-${{ github.run_id }}
+          retention-days: 7
+          path: ${{ runner.temp }}/databind-published/
