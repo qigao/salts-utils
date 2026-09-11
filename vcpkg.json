@@ -10,7 +10,7 @@
       "name": "simde"
     },
     {
-      "name": "openssl"
+      "name": "boringssl"
     },
     "miniaudio",
     {
