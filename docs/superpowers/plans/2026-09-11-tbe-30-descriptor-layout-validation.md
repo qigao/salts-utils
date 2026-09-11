@@ -1,6 +1,6 @@
 # TBE #30 Descriptor Layout Validation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make `TbeTypedDescriptor` a fail-fast ABI boundary that rejects unsafe host and fixed-wire layouts before parse, serialize, initialization, or cleanup can use descriptor metadata.
 
@@ -45,7 +45,7 @@ cmake_add_test(test_tbe_typed_descriptor_safety
   FOLDER "tbe/data_bind/tests")
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 Run on a repository-capable Linux environment:
 
@@ -57,7 +57,7 @@ ctest --test-dir build/linux-gcc-debug -R '^test_tbe_typed_descriptor_safety$' -
 
 Expected: the invalid descriptors fail their assertions because current validation returns `DATA_BIND_OK` or reaches `DATA_BIND_ERR_BUFFER_TOO_SMALL` instead of `DATA_BIND_ERR_SCHEMA`; the adjacent positive control passes.
 
-- [ ] **Step 4: Record the RED output in issue #30 before production changes**
+- [x] **Step 4: Record the RED output in issue #30 before production changes**
 
 ### Task 2: Harden host descriptor validation
 
@@ -69,11 +69,11 @@ Expected: the invalid descriptors fail their assertions because current validati
 - Consumes: existing derived host extents and `typed_size_fits()`.
 - Produces: descriptor validation that rejects unsafe host ownership aliasing.
 
-- [ ] **Step 1: Keep the existing RED host-overlap tests failing before editing production**
+- [x] **Step 1: Keep the existing RED host-overlap tests failing before editing production**
 
 The production change that makes them pass is interval-overlap validation; do not alter the expected status.
 
-- [ ] **Step 2: Add one half-open interval predicate**
+- [x] **Step 2: Add one half-open interval predicate**
 
 ```c
 static int typed_ranges_overlap(size_t left_offset, size_t left_size,
@@ -89,15 +89,15 @@ static int typed_ranges_overlap(size_t left_offset, size_t left_size,
 
 Zero-sized ranges do not overlap. If an end cannot be represented, validation treats the range as invalid/overlapping rather than wrapping.
 
-- [ ] **Step 3: Reject map key/value overlap**
+- [x] **Step 3: Reject map key/value overlap**
 
 After deriving `value_extent`, reject overlap between `[map_key_offset, map_key_offset + sizeof(tstr))` and `[map_value_offset, map_value_offset + value_extent)`.
 
-- [ ] **Step 4: Reject owning host field overlap and presence/owning overlap**
+- [x] **Step 4: Reject owning host field overlap and presence/owning overlap**
 
-During descriptor validation, compare only fields whose cleanup owns/reaches owned storage: `STRING`, `BYTES`, `LIST`, `SET`, `MAP`, `OBJECT`, and fixed arrays whose element kind is owning/object. Reject pairwise overlap between those host ranges; also reject any such range overlapping the host presence bitmap.
+During descriptor validation, compare only fields whose cleanup owns/reaches owned storage: `STRING`, `BYTES`, `LIST`, `SET`, `MAP`, `OBJECT`, and fixed arrays whose element kind is owning/object. Reject any host overlap where either field owns or reaches owned storage, including owning/scalar aliases; also reject owning storage overlapping the host presence bitmap.
 
-- [ ] **Step 5: Run the focused test**
+- [x] **Step 5: Run the focused test**
 
 Expected: host/map overlap cases turn GREEN; wire-layout cases remain RED until Task 3.
 
@@ -111,7 +111,7 @@ Expected: host/map overlap cases turn GREEN; wire-layout cases remain RED until 
 - Consumes: `typed_field_wire_extent()`, `typed_size_fits()`, interval predicate from Task 2.
 - Produces: deterministic fixed-block layout contract.
 
-- [ ] **Step 1: Reject a presence wire range larger than the fixed block**
+- [x] **Step 1: Reject a presence wire range larger than the fixed block**
 
 The current wire representation places the presence bitmap at wire offset zero, so require:
 
@@ -121,19 +121,19 @@ if (type->presence_size > type->fixed_block_size)
                      "Typed presence bitmap exceeds the fixed wire block");
 ```
 
-- [ ] **Step 2: Make `wire_size` exact for fixed wire fields**
+- [x] **Step 2: Make `wire_size` exact for fixed wire fields**
 
 After deriving `wire_extent`, require `field->wire_size == wire_extent`. Do not infer or repair mismatched metadata.
 
-- [ ] **Step 3: Reject fixed wire fields overlapping the presence range**
+- [x] **Step 3: Reject fixed wire fields overlapping the presence range**
 
 For each fixed field interval, reject overlap with `[0, presence_size)`.
 
-- [ ] **Step 4: Reject pairwise fixed wire overlap**
+- [x] **Step 4: Reject pairwise fixed wire overlap**
 
 Compare each fixed field with later fixed fields using their derived extents. Adjacent intervals such as `[0,2)` and `[2,4)` remain valid.
 
-- [ ] **Step 5: Run focused test**
+- [x] **Step 5: Run focused test**
 
 Expected: all #30 descriptor-safety tests pass.
 
@@ -145,11 +145,11 @@ Expected: all #30 descriptor-safety tests pass.
 **Interfaces:**
 - Produces: public contract matching runtime validation without changing ABI.
 
-- [ ] **Step 1: Document host and wire interval rules**
+- [x] **Step 1: Document host and wire interval rules**
 
-State that fixed wire ranges and the wire presence range are non-overlapping, `wire_size` is the exact derived fixed-field extent, owning host storage cannot alias other owned storage/presence storage, and malformed descriptors return `DATA_BIND_ERR_SCHEMA`.
+State that fixed wire ranges and the wire presence range are non-overlapping, `wire_size` is the exact derived fixed-field extent, owning host storage cannot alias any other field or presence storage, and malformed descriptors return `DATA_BIND_ERR_SCHEMA`.
 
-- [ ] **Step 2: Do not add new public fields or version the ABI for documentation-only clarification**
+- [x] **Step 2: Do not add new public fields or version the ABI for documentation-only clarification**
 
 ### Task 5: Verification and integration gate
 
@@ -161,14 +161,14 @@ State that fixed wire ranges and the wire presence range are non-overlapping, `w
 **Interfaces:**
 - Produces: exact-head evidence suitable for a focused PR closing #30.
 
-- [ ] **Step 1: Build focused targets under the Linux developer/ASan profile**
+- [x] **Step 1: Build focused targets under the Linux developer/ASan profile**
 
 ```sh
 cmake --preset linux-dev-user
 cmake --build build/linux-gcc-debug --target test_tbe_typed_descriptor_safety test_tbe_typed
 ```
 
-- [ ] **Step 2: Run focused CTest with sanitizer enabled**
+- [x] **Step 2: Run focused CTest with sanitizer enabled**
 
 ```sh
 ctest --test-dir build/linux-gcc-debug -R '^(test_tbe_typed_descriptor_safety|test_tbe_typed)$' --output-on-failure
@@ -176,7 +176,7 @@ ctest --test-dir build/linux-gcc-debug -R '^(test_tbe_typed_descriptor_safety|te
 
 Expected: PASS, no ASan diagnostics.
 
-- [ ] **Step 3: Run the broader DataBind/TBE tests available in the configured build**
+- [x] **Step 3: Run the broader DataBind/TBE tests available in the configured build**
 
 ```sh
 ctest --test-dir build/linux-gcc-debug -R '(data_bind|tbe)' --output-on-failure
@@ -184,8 +184,17 @@ ctest --test-dir build/linux-gcc-debug -R '(data_bind|tbe)' --output-on-failure
 
 Expected: PASS.
 
-- [ ] **Step 4: Review the exact diff against `main`**
+- [x] **Step 4: Review the exact diff against `main`**
 
 Allowed product files for #30: `tbe/data_bind/tbe_typed.c`, `tbe/data_bind/tbe_typed.h`; test/CMake/plan files as above. No parser/compiler feature work from #31-#34.
 
-- [ ] **Step 5: Commit, open a focused PR referencing `Fixes #30`, and record exact-head test evidence in #30**
+- [x] **Step 5: Commit, open a focused PR referencing `Fixes #30`, and record exact-head test evidence in #30**
+
+
+## Verified implementation evidence (2026-09-11)
+
+- Historical behavioral RED: [run 34550205061](https://github.com/qigao/salts-utils/actions/runs/34550205061), job `103111321728`. Build succeeded; the original descriptor suite reported seven invalid-layout failures and one adjacent-layout positive control passing. Wire probes reached buffer-too-small, while host/map overlap probes incorrectly returned success.
+- The subsequent implementation adds checked host/wire intervals and exact fixed-field `wire_size`, with ten safety cases and nineteen additional boundary cases. The added boundary cases strengthen GREEN coverage; the historical RED claim above refers to the original seven failing cases.
+- Local ASan+UBSan verification passed all four focused CTest targets, including the compiled generated C consumer, and all 22 tests in the TBE subtree. A generator renderer regression was observed under UBSan and fixed with empty-span and invalid-buffer tests (four renderer tests pass).
+- Lemon source is unchanged. The sanitizer workflow builds it as a standalone host tool and passes its executable explicitly; TBE compiler/runtime and tests retain both sanitizer flags.
+- Local LeakSanitizer cannot inspect process state in the managed environment. Local tests used `detect_leaks=0`; CI retains `detect_leaks=1`. The implementation checklist is complete, but closing #30 still requires successful CI leak/sanitizer verification of the published head.
