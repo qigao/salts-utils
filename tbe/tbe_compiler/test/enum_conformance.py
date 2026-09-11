@@ -33,6 +33,8 @@ class EnumConformance(unittest.TestCase):
         src.write_text('schema enumprobe;\n' + schema, encoding='utf-8')
         out = self.path / ('types.' + {'c': 'h', 'cpp': 'hpp', 'go': 'go',
                                       'ts': 'ts', 'rust': 'rs', 'python': 'py'}[language])
+        if language == 'python':
+            out = self.path / 'enum_values.py'
         sentinel = b'previous-valid-output\n'
         out.write_bytes(sentinel)
         result = self.run_command([ARGS.compiler, src, '--lang', language, '--output', out])
@@ -147,6 +149,37 @@ class EnumConformance(unittest.TestCase):
                       'enum Signed <int64> { Min=-9223372036854775808; }', 'cpp')
         self.compile_c('if (static_cast<uint64_t>(Wide::Max)!=UINT64_MAX || '
                        'static_cast<int64_t>(Signed::Min)!=INT64_MIN) return 1;', cpp=True)
+
+    def test_rulesforge_rejects_value_loss_before_any_output(self):
+        src = self.path / 'input.schema'
+        header, dsl = self.path / 'types.h', self.path / 'types.rfl'
+        sentinel = b'previous-valid-output\n'
+        for members, expected in [('Zero=0; One=1;', True), ('One=1; Two=2;', False),
+                                  ('High=9223372036854775808;', False)]:
+            with self.subTest(members=members):
+                src.write_text('schema enumprobe; enum E <uint64> {' + members + '}')
+                header.write_bytes(sentinel)
+                dsl.write_bytes(sentinel)
+                result = self.run_command([ARGS.compiler, src, '--lang', 'c', '--output',
+                                           header, '--dsl-output', dsl])
+                if expected:
+                    self.assertEqual(result.returncode, 0, result.stdout)
+                    self.assertIn('enum E <uint64>', dsl.read_text())
+                else:
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertEqual(header.read_bytes(), sentinel)
+                    self.assertEqual(dsl.read_bytes(), sentinel)
+
+    def test_python_keeps_exact_canonical_values(self):
+        self.generate('enum E <uint64> { Eight=008; Max=18446744073709551615; } '
+                      'enum S <int64> { Min=-9223372036854775808; }', 'python')
+        result = self.run_command(['python3', '-c',
+                                  ''
+                                  'import runpy; d=runpy.run_path("enum_values.py"); '
+                                  'assert int(d["E"].Max)==18446744073709551615; '
+                                  'assert int(d["E"].Eight)==8; '
+                                  'assert int(d["S"].Min)==-9223372036854775808'])
+        self.assertEqual(result.returncode, 0, result.stdout)
 
     def test_typescript_rejects_inexact_values(self):
         self.generate('enum Wide <uint64> { Max=18446744073709551615; }', 'ts', False)

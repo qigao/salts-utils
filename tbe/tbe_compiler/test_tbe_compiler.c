@@ -1804,7 +1804,7 @@ spec("tbe_compiler") {
       static const char *const schemas[] = {
           "enum Invalid { Value = 1.25; }",
           "enum Invalid { Value = 1e3; }",
-          "enum Invalid { Value = -1; }",
+          "enum Invalid <uint32> { Value = -1; }",
           "flags Invalid { Value = 1.25; }",
           "flags Invalid { Value = 1e3; }",
           "flags Invalid { Value = -1; }",
@@ -2636,7 +2636,7 @@ spec("tbe_compiler") {
       const char *dsl_path = "test_tbe_compiler_rfl.rfl";
       const char *schema =
           "schema Market;"
-          "enum Side <uint8> { Buy = 1; Sell = 2; }"
+          "enum Side <uint8> { Buy = 0; Sell = 1; }"
           "composite Header { uint32 seq; }"
           "group Level { uint64 price; uint32 qty; }"
           "message Book { Header header; bytes(16) digest; uuid request_id; "

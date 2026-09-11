@@ -58,6 +58,7 @@ set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
         test_schema_boundaries
+        test_schema_enum_conformance
         test_flags_bdd
         test_tbe_parser_bdd
         test_benchmark_schemas_bdd
