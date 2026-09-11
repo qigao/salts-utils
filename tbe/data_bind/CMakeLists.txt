@@ -107,6 +107,12 @@ install(
   DESTINATION include)
 
 set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)
+add_test(
+  NAME test_data_bind_no_parser_compat
+  COMMAND ${CMAKE_COMMAND}
+          -DDATA_BIND_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/test_no_parser_compat.cmake)
+set_tests_properties(test_data_bind_no_parser_compat PROPERTIES FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind
   SOURCES test_data_bind.c
   LIBS ${DATA_BIND_TEST_LIBS}
