@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 
+#include <cmeta/data.h>
 #include <cmeta/range.h>
 
 #if defined(_WIN32) && defined(DATA_BIND_CMETA_BUILD_DLL)
@@ -42,6 +43,18 @@ typedef struct DataBindMapEntryRef {
 DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_value_ref_type(void);
 DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_field_ref_type(void);
 DATA_BIND_CMETA_API const cmeta_type_desc *data_bind_cmeta_map_entry_ref_type(void);
+
+/**
+ * Maps the legacy dynamic value kind onto its canonical CMeta data semantic.
+ *
+ * This is a migration compatibility surface only; it does not create or own a
+ * second descriptor/type-identity universe. NULL has no standalone native CMeta
+ * storage kind and is rejected with DATA_BIND_ERR_TYPE_MISMATCH. Invalid input
+ * and a NULL output pointer are rejected with DATA_BIND_ERR_INVALID_ARG. On
+ * failure, *out_kind is left unchanged.
+ */
+DATA_BIND_CMETA_API DataBindStatus data_bind_cmeta_data_kind(DataBindValueKind value_kind,
+                                                             cmeta_data_kind *out_kind);
 
 /**
  * Creates a synchronous, allocation-free range over an immutable DataBind value.
