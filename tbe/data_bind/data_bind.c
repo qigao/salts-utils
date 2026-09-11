@@ -2883,6 +2883,8 @@ static const char *xml_path_text(const salts_xml_document *doc, const char *path
       salts_xml_node_list_size(&nodes) != 0) {
     salts_xml_node node = salts_xml_node_list_at(&nodes, 0);
     text = salts_xml_node_text_view(node).data;
+    /* An existing empty element binds as an empty string, not a missing field. */
+    if (!text && salts_xml_node_type(node) == SALTS_XML_ELEMENT) text = "";
   }
   /* The selected list owns no node/text; text remains borrowed from doc. */
   salts_xml_node_list_destroy(&nodes);
@@ -9580,14 +9582,14 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
       if (child_value->kind == DATA_BIND_VALUE_LIST || child_value->kind == DATA_BIND_VALUE_SET) {
         for (size_t j = 0; j < child_value->data.array_val.count; ++j) {
           salts_xml_node child = {0};
-          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
+        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
           if (!child.impl ||
               !data_bind_value_to_xml(child_value->data.array_val.items[j], child, depth + 1))
             return 0;
         }
       } else {
         salts_xml_node child = {0};
-          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
+        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
         if (!child.impl || !data_bind_value_to_xml(child_value, child, depth + 1)) return 0;
       }
     }
@@ -9596,7 +9598,7 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
   case DATA_BIND_VALUE_SET:
     for (i = 0; i < value->data.array_val.count; ++i) {
       salts_xml_node child = {0};
-          if (salts_xml_node_add_element(node, "item", &child) != SALTS_XML_OK) return 0;
+      if (salts_xml_node_add_element(node, "item", &child) != SALTS_XML_OK) return 0;
       if (!child.impl || !data_bind_value_to_xml(value->data.array_val.items[i], child, depth + 1))
         return 0;
     }

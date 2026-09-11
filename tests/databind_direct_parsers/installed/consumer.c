@@ -31,6 +31,13 @@ int main(void) {
   if (data_bind_value_as_int(data_bind_value_get(value, "id")) != 7) goto cleanup;
   const char *name = data_bind_value_as_string(data_bind_value_get(value, "name"));
   if (!name || strcmp(name, "native") != 0) goto cleanup;
+  data_bind_value_free(value);
+  value = NULL;
+  const char xml[] = "<Event><at>Sat, 04 Mar 2006 13:27:54 GMT</at><id>7</id><name/></Event>";
+  if (data_bind_parse_xml(bind, "Event", xml, sizeof(xml) - 1, &value, &error) != DATA_BIND_OK)
+    goto cleanup;
+  name = data_bind_value_as_string(data_bind_value_get(value, "name"));
+  if (!name || name[0] != '\0') goto cleanup;
   failed = 0;
 cleanup:
   if (failed) fprintf(stderr, "Installed native DataBind consumer failed: %s\n", error.message);
