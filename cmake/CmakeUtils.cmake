@@ -280,7 +280,7 @@ endfunction()
 function(cmake_add_benchmark target_name)
   set(options)
   set(oneValueArgs FOLDER)
-  set(multiValueArgs SOURCES LIBS DEFS INCLUDES RUNTIME_TARGETS)
+  set(multiValueArgs SOURCES LIBS DEFS INCLUDES)
   cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   if(TARGET ${target_name})
