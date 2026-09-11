@@ -99,7 +99,9 @@ static int validate_type_name_supported(schema_parse_ctx_t *ctx, const char *typ
     return 1;
 }
 
-static int validate_fixed_length(schema_parse_ctx_t *ctx, const char *length_text) {
+static int validate_fixed_length(schema_parse_ctx_t *ctx,
+                                 const char *field_name,
+                                 const char *length_text) {
     size_t ignored;
 
     if (!is_numeric_literal(length_text)) {
@@ -108,7 +110,8 @@ static int validate_fixed_length(schema_parse_ctx_t *ctx, const char *length_tex
 
     if (!schema_parse_fixed_layout_size(length_text, &ignored)) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Fixed field length exceeds the safe TBE layout range");
+                 "Fixed field length '%s' for field '%s' exceeds the safe TBE layout range",
+                 length_text, field_name ? field_name : "<unnamed>");
         ctx->error = 1;
         return 0;
     }
@@ -369,6 +372,7 @@ static int field_supported_in_tbe(const char *field_type,
 
 static int validate_field_layout(schema_parse_ctx_t *ctx,
                                  const char *field_type,
+                                 const char *field_name,
                                  int is_collection,
                                  const char *collection_inner,
                                  int is_group_field,
@@ -387,7 +391,7 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
         !validate_type_name_supported(ctx, collection_inner)) {
         return 0;
     }
-    if (!validate_fixed_length(ctx, length_field)) {
+    if (!validate_fixed_length(ctx, field_name, length_field)) {
         return 0;
     }
 
@@ -416,7 +420,8 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
         ctx->cur_record_kind == SCHEMA_RECORD_GROUP) {
         if (section < ctx->cur_field_section) {
             snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                     "Invalid TBE field order: fields must be fixed, then group, then variable data");
+                     "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
+                     field_name ? field_name : "<unnamed>", field_type);
             ctx->error = 1;
             return 0;
         }
@@ -566,7 +571,8 @@ static void add_field(schema_parse_ctx_t *ctx,
         node_free(attrs);
         return;
     }
-    if (!validate_field_layout(ctx, type_str, is_collection, inner, is_group_field, len_field)) {
+    if (!validate_field_layout(ctx, type_str, name_str, is_collection, inner,
+                               is_group_field, len_field)) {
         node_free(attrs);
         return;
     }
