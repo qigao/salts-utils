@@ -101,13 +101,28 @@ function(cmake_add_grammar TARGET_NAME)
   endif()
 
   if(ARG_GRAMMAR_Y)
+    if(DEFINED SALTS_UTILS_HOST_LEMON_EXECUTABLE AND
+       NOT "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}" STREQUAL "")
+      get_filename_component(
+        lemon_command "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}" ABSOLUTE
+        BASE_DIR "${CMAKE_BINARY_DIR}")
+      if(NOT EXISTS "${lemon_command}")
+        message(FATAL_ERROR
+                "SALTS_UTILS_HOST_LEMON_EXECUTABLE does not exist: ${lemon_command}")
+      endif()
+      set(lemon_depends "${lemon_command}")
+    else()
+      set(lemon_command "$<TARGET_FILE:lemon>")
+      set(lemon_depends lemon)
+    endif()
+
     set(GRAMMAR_GEN "${CMAKE_CURRENT_BINARY_DIR}/${target_name_lower}_grammar_gen.c")
     set(GRAMMAR_Y_GEN "${CMAKE_CURRENT_BINARY_DIR}/${target_name_lower}_grammar_gen.y")
     add_custom_command(
       OUTPUT ${GRAMMAR_GEN} ${GRAMMAR_H}
       COMMAND ${CMAKE_COMMAND} -E copy ${ARG_GRAMMAR_Y} ${GRAMMAR_Y_GEN}
-      COMMAND $<TARGET_FILE:lemon> -T${LEMPAR} ${GRAMMAR_Y_GEN}
-      DEPENDS ${ARG_GRAMMAR_Y} lemon
+      COMMAND "${lemon_command}" -T${LEMPAR} ${GRAMMAR_Y_GEN}
+      DEPENDS ${ARG_GRAMMAR_Y} ${lemon_depends}
       COMMENT "Generating ${TARGET_NAME} parser with lemon"
       VERBATIM)
     set(GRAMMAR_TARGET "${TARGET_NAME}_grammar_codegen")

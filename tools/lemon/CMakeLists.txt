@@ -3,19 +3,7 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   project(SaltsUtilsLemonHost LANGUAGES C)
 endif()
 
-set(SALTS_UTILS_HOST_LEMON_EXECUTABLE "" CACHE FILEPATH
-    "Prebuilt host Lemon executable used for parser generation")
-
-if(SALTS_UTILS_HOST_LEMON_EXECUTABLE)
-  if(NOT IS_ABSOLUTE "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}" OR
-     NOT EXISTS "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}" OR
-     IS_DIRECTORY "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}")
-    message(FATAL_ERROR "SALTS_UTILS_HOST_LEMON_EXECUTABLE must name an existing absolute executable path")
-  endif()
-  add_executable(lemon IMPORTED GLOBAL)
-  set_target_properties(lemon PROPERTIES
-    IMPORTED_LOCATION "${SALTS_UTILS_HOST_LEMON_EXECUTABLE}")
-elseif(CMAKE_CROSSCOMPILING)
+if(CMAKE_CROSSCOMPILING)
   include(ExternalProject)
 
   set(lemon_host_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/host-build")
@@ -63,3 +51,4 @@ else()
 endif()
 
 add_executable(Salts::Lemon ALIAS lemon)
+

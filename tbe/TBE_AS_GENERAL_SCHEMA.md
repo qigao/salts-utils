@@ -3,7 +3,7 @@
 > 本文中的 DataBind 路径是遗留设计记录。DataBind 已退出 SaltsUtils 默认构建与安装；
 > 新代码使用基础 Salts 的 `Salts::CBind`，并通过 CMeta/CSerde 描述数据与格式边界。
 
-Updated: 2026-07-26
+Updated: 2026-09-11
 
 ## Summary
 
@@ -62,6 +62,12 @@ message Broken {
 ```
 
 The second form is rejected because a group cannot be located after a var-data field without runtime offset metadata.
+
+### `varint` capability
+
+`varint` is explicitly unsupported by the current TBE profile. The schema validator rejects it before compiler model construction or code generation. It must not be treated as a parser-only compatibility alias.
+
+Support may only be enabled after the runtime, typed descriptors, binary conversion paths, and every advertised generator agree on one documented wire encoding and range contract.
 
 ## Language Output Model
 

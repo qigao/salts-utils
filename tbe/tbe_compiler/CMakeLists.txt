@@ -65,3 +65,11 @@ cmake_add_test(test_tbe_compiler
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+
+cmake_add_test(test_tbe_compiler_schema_boundary
+  SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
+  LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
+  DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  FOLDER "tbe/tbe_compiler")
+target_include_directories(test_tbe_compiler_schema_boundary
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)

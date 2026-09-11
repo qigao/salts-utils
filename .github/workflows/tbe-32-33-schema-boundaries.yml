@@ -1,41 +1,43 @@
-name: TBE descriptor safety
+name: TBE schema boundaries
 
 on:
   push:
-    branches: [main, fix/tbe-30-descriptor-layout-validation]
+    branches: [main, fix/tbe-32-33-schema-boundaries]
     paths:
-      - 'tbe/**'
-      - 'tools/lemon/CMakeLists.txt'
+      - 'tbe/schema/**'
+      - 'tbe/tbe_compiler/**'
+      - 'tools/lemon/**'
       - 'cmake/**'
       - 'presets/**'
       - 'CMake*.txt'
       - 'CMake*.cmake'
       - 'CMake*Presets.json'
       - 'vcpkg.json'
-      - '.github/workflows/tbe-30-green.yml'
+      - '.github/workflows/tbe-32-33-schema-boundaries.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'tbe/**'
-      - 'tools/lemon/CMakeLists.txt'
+      - 'tbe/schema/**'
+      - 'tbe/tbe_compiler/**'
+      - 'tools/lemon/**'
       - 'cmake/**'
       - 'presets/**'
       - 'CMake*.txt'
       - 'CMake*.cmake'
       - 'CMake*Presets.json'
       - 'vcpkg.json'
-      - '.github/workflows/tbe-30-green.yml'
+      - '.github/workflows/tbe-32-33-schema-boundaries.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tbe-descriptor-${{ github.head_ref || github.ref_name }}
+  group: tbe-schema-boundaries-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  descriptor-safety:
+  schema-boundaries:
     name: Exact-head ASan + UBSan
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -54,9 +56,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p "$RUNNER_TEMP/tbe30-evidence"
+          mkdir -p "$RUNNER_TEMP/tbe-schema-evidence"
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          git rev-parse HEAD | tee "$RUNNER_TEMP/tbe30-evidence/head.txt"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/head.txt"
           git diff --exit-code
 
       - name: Checkout pinned Salts
@@ -72,7 +74,7 @@ jobs:
         run: |
           set -euxo pipefail
           test "$(git -C salts rev-parse HEAD)" = c0e48acdb0aeec94199c1e6056c9f018f1e9f746
-          git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe30-evidence/salts-head.txt"
+          git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/salts-head.txt"
 
       - name: Checkout vcpkg at the manifest baseline
         uses: actions/checkout@v4
@@ -87,7 +89,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+          key: tbe-schema-vcpkg-x64-linux-b1b19307-v1
 
       - name: Prepare toolchain
         shell: bash
@@ -124,18 +126,13 @@ jobs:
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/configure.log"
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/configure.log"
           python3 - <<'PY'
           import json
           from pathlib import Path
           commands = json.loads(Path('build/linux-gcc-debug/compile_commands.json').read_text())
-          required = {'tbe_typed.c', 'test_tbe_typed_descriptor_safety.c',
-                      'test_tbe_typed_descriptor_boundary.c', 'test_tbe_typed_generated.c',
-                      'test_tbe_typed_optional_binary.c',
-                      'test_data_bind.c', 'test_tbe_compiler.c', 'schema_parser_dsl.c',
-                      'test_schema_boundaries.c', 'test_schema_boundary.c',
-                      'data_bind_cmeta.c', 'data_bind_cflow.c',
-                      'test_data_bind_cmeta.c', 'test_data_bind_cflow.c'}
+          required = {'schema_parser_dsl.c', 'test_schema_boundaries.c', 'test_schema_boundary.c'}
           found = set()
           for entry in commands:
               name = Path(entry['file']).name
@@ -147,49 +144,66 @@ jobs:
           assert found == required, (found, required)
           PY
 
-      - name: Build focused tests and generated consumer
+      - name: Verify host lemon dependency graph
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target test_tbe_typed_descriptor_safety \
-            test_tbe_typed_descriptor_boundary test_tbe_typed_generated \
-            test_tbe_typed_optional_binary test_tbe_typed -j2 \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/focused-build.log"
+          ninja -C build/linux-gcc-debug -t commands test_schema_boundaries \
+            | tee "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"
+          grep -F "$GITHUB_WORKSPACE/build/host-lemon/lemon -T" \
+            "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"
+          if grep -F "$GITHUB_WORKSPACE/build/linux-gcc-debug/bin/lemon -T" \
+              "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"; then
+            echo "sanitized target lemon is still wired into schema generation" >&2
+            exit 1
+          fi
 
-      - name: Run focused ASan and UBSan tests
+      - name: Build focused boundary tests
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(test_tbe_typed_descriptor_safety|test_tbe_typed_descriptor_boundary|test_tbe_typed_generated|test_tbe_typed_optional_binary|test_tbe_typed)$' \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/focused.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/focused.log"
+          cmake --build build/linux-gcc-debug --target \
+            test_schema_boundaries test_tbe_parser test_tbe_compiler_schema_boundary -j2 \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/focused-build.log"
 
-      - name: Build all TBE and DataBind targets
+      - name: Run focused parser ASan and UBSan tests
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target tbe/all -j2 \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
+          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+            -R '^(test_schema_boundaries|test_tbe_parser)$' \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/focused.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/focused.log"
 
-      - name: Run blocking schema-order and legacy fixture regressions
+      - name: Run compiler schema boundary ASan and UBSan test
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(test_data_bind|test_tbe_compiler|test_schema_boundaries|test_tbe_compiler_schema_boundary)$' \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/schema-order.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/schema-order.log"
+          ctest --test-dir build/linux-gcc-debug/tbe/tbe_compiler --no-tests=error \
+            -R '^test_tbe_compiler_schema_boundary$' \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.log"
 
-      # The pinned Core fixes salts#252; CMeta/CFlow and every other TBE target
-      # must now pass. Keep ODR and leak detection enabled and do not allow failure.
-      - name: Run blocking full TBE and DataBind runtime suite
+      - name: Build and run all schema regressions
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/tbe.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe.log"
+          cmake --build build/linux-gcc-debug --target \
+            test_tbe_parser \
+            test_schema_boundaries \
+            test_flags_bdd \
+            test_tbe_parser_bdd \
+            test_benchmark_schemas_bdd \
+            test_tbe_robustness \
+            test_optional_and_defaults \
+            test_enum_helpers \
+            test_enum_enhanced_functional \
+            test_enum_enhanced_simple_functional \
+            test_union_types_functional \
+            -j2 2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema-build.log"
+          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/schema.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema.log"
 
       - name: Verify committed source was not modified
         if: always()
@@ -204,11 +218,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tbe-descriptor-${{ github.run_id }}-${{ github.run_attempt }}
+          name: tbe-schema-boundaries-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 14
           path: |
-            ${{ runner.temp }}/tbe30-evidence/
+            ${{ runner.temp }}/tbe-schema-evidence/
             build/linux-gcc-debug/compile_commands.json
             build/linux-gcc-debug/CMakeCache.txt
-            build/linux-gcc-debug/Testing/Temporary/
-            build/linux-gcc-debug/tbe/Testing/Temporary/
+            build/linux-gcc-debug/tbe/schema/Testing/Temporary/
+            build/linux-gcc-debug/tbe/tbe_compiler/Testing/Temporary/

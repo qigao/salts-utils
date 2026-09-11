@@ -19,6 +19,7 @@
 %include {
 #include "schema_lexer.h"
 #include "schema_builtin_type.h"
+#include "schema_size.h"
 #include "schema_types.h"
 #include <stdio.h>
 #include <stdint.h>
@@ -84,6 +85,73 @@ static void grammar_oom(schema_parse_ctx_t *ctx) {
              "Out of memory building schema tree");
 }
 
+static int validate_type_name_supported(schema_parse_ctx_t *ctx, const char *type_name) {
+    if (type_name == NULL) {
+        grammar_oom(ctx);
+        return 0;
+    }
+    if (strcmp(type_name, "varint") == 0) {
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Unsupported type 'varint': TBE runtime/compiler support is not implemented");
+        ctx->error = 1;
+        return 0;
+    }
+    return 1;
+}
+
+static int validate_fixed_length(schema_parse_ctx_t *ctx,
+                                 const char *field_name,
+                                 const char *length_text) {
+    size_t ignored;
+
+    if (!is_numeric_literal(length_text)) {
+        return 1;
+    }
+
+    if (!schema_parse_fixed_layout_size(length_text, &ignored)) {
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Fixed field length '%s' for field '%s' exceeds the safe TBE layout range",
+                 length_text, field_name ? field_name : "<unnamed>");
+        ctx->error = 1;
+        return 0;
+    }
+    return 1;
+}
+
+static char *join_map_inner_types(schema_parse_ctx_t *ctx,
+                                  const char *key_type,
+                                  const char *value_type) {
+    size_t key_len;
+    size_t value_len;
+    size_t total_len;
+    char *joined;
+
+    if (key_type == NULL || value_type == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    key_len = strlen(key_type);
+    value_len = strlen(value_type);
+    if (value_len > SIZE_MAX - 2u || key_len > SIZE_MAX - value_len - 2u) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    total_len = key_len + value_len + 1u;
+    joined = (char *)malloc(total_len + 1u);
+    if (joined == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    memcpy(joined, key_type, key_len);
+    joined[key_len] = ',';
+    memcpy(joined + key_len + 1u, value_type, value_len);
+    joined[total_len] = '\0';
+    return joined;
+}
+
 static void add_string(schema_parse_ctx_t *ctx, Node *map, const char *name,
                        const char *value) {
     Node *node;
@@ -93,6 +161,27 @@ static void add_string(schema_parse_ctx_t *ctx, Node *map, const char *name,
         node_free(node);
         grammar_oom(ctx);
     }
+}
+
+static void add_string_slice(schema_parse_ctx_t *ctx, Node *map, const char *name,
+                             const char *value, size_t value_len) {
+    char *copy;
+
+    if (ctx->error) return;
+    if (value == NULL || value_len > SIZE_MAX - 1u) {
+        grammar_oom(ctx);
+        return;
+    }
+
+    copy = (char *)malloc(value_len + 1u);
+    if (copy == NULL) {
+        grammar_oom(ctx);
+        return;
+    }
+    memcpy(copy, value, value_len);
+    copy[value_len] = '\0';
+    add_string(ctx, map, name, copy);
+    free(copy);
 }
 
 static void add_true(schema_parse_ctx_t *ctx, Node *map, const char *name) {
@@ -188,11 +277,18 @@ static void begin_record(schema_parse_ctx_t *ctx, Node *list,
 
 static void begin_enum_like(schema_parse_ctx_t *ctx, const char *name,
                             const char *underlying_type, int is_flags) {
-    Node *node = create_node_map(NULL);
-    Node *items = create_node_list("items");
+    Node *node;
+    Node *items;
+
     ctx->cur_enum = NULL;
     ctx->cur_enum_items = NULL;
     ctx->next_enum_value = is_flags ? 1 : 0;
+    if (underlying_type != NULL && !validate_type_name_supported(ctx, underlying_type)) {
+        return;
+    }
+
+    node = create_node_map(NULL);
+    items = create_node_list("items");
     if (name == NULL || node == NULL || items == NULL) {
         node_free(node);
         node_free(items);
@@ -276,13 +372,26 @@ static int field_supported_in_tbe(const char *field_type,
 
 static int validate_field_layout(schema_parse_ctx_t *ctx,
                                  const char *field_type,
+                                 const char *field_name,
                                  int is_collection,
+                                 const char *collection_inner,
                                  int is_group_field,
                                  const char *length_field) {
     schema_field_section_t section;
 
     if (field_type == NULL) {
         grammar_oom(ctx);
+        return 0;
+    }
+    if (!validate_type_name_supported(ctx, field_type)) {
+        return 0;
+    }
+    if (collection_inner != NULL && collection_inner[0] != '\0' &&
+        strchr(collection_inner, ',') == NULL &&
+        !validate_type_name_supported(ctx, collection_inner)) {
+        return 0;
+    }
+    if (!validate_fixed_length(ctx, field_name, length_field)) {
         return 0;
     }
 
@@ -309,6 +418,13 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
 
     if (ctx->cur_record_kind == SCHEMA_RECORD_MESSAGE ||
         ctx->cur_record_kind == SCHEMA_RECORD_GROUP) {
+        if (section < ctx->cur_field_section) {
+            snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                     "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
+                     field_name ? field_name : "<unnamed>", field_type);
+            ctx->error = 1;
+            return 0;
+        }
         if (section > ctx->cur_field_section) {
             ctx->cur_field_section = section;
         }
@@ -337,10 +453,6 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
             add_string(ctx, field_map, "group_type", collection_inner);
             add_string(ctx, field_map, "inner_type", collection_inner);
         }
-    } else if (strcmp(field_type, "varint") == 0) {
-        add_string(ctx, field_map, "ctype", "VARINT");
-        add_true(ctx, field_map, "is_varint");
-        add_true(ctx, field_map, "is_variable_size");
     } else if (builtin_type != NULL &&
                (builtin_type->is_integer || builtin_type->is_float)) {
         size = (int)builtin_type->size;
@@ -415,17 +527,9 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
             map_value_type = strchr(collection_inner, ',');
             if (map_value_type != NULL) {
                 size_t key_len = (size_t)(map_value_type - collection_inner);
-                char key_type[128];
-                char value_type[128];
-
-                if (key_len < sizeof(key_type)) {
-                    memcpy(key_type, collection_inner, key_len);
-                    key_type[key_len] = '\0';
-                    add_string(ctx, field_map, "key_type", key_type);
-                }
-                snprintf(value_type, sizeof(value_type), "%s", map_value_type + 1);
-                add_string(ctx, field_map, "value_type", value_type);
-                add_string(ctx, field_map, "inner_type", value_type);
+                add_string_slice(ctx, field_map, "key_type", collection_inner, key_len);
+                add_string(ctx, field_map, "value_type", map_value_type + 1);
+                add_string(ctx, field_map, "inner_type", map_value_type + 1);
             }
         } else if (collection_inner && collection_inner[0]) {
             add_string(ctx, field_map, "inner_type", collection_inner);
@@ -467,7 +571,8 @@ static void add_field(schema_parse_ctx_t *ctx,
         node_free(attrs);
         return;
     }
-    if (!validate_field_layout(ctx, type_str, is_collection, is_group_field, len_field)) {
+    if (!validate_field_layout(ctx, type_str, name_str, is_collection, inner,
+                               is_group_field, len_field)) {
         node_free(attrs);
         return;
     }
@@ -958,16 +1063,24 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LT IDENT(K) COMMA I
     char *field_name = tok_strdup(N);
     char *key_type = tok_strdup(K);
     char *value_type = tok_strdup(V);
-    char map_inner[256];
+    char *map_inner = NULL;
     int is_optional = (Q == 1);
 
     if (key_type == NULL || value_type == NULL) {
         grammar_oom(ctx);
         node_free(A);
+    } else if (!validate_type_name_supported(ctx, key_type) ||
+               !validate_type_name_supported(ctx, value_type)) {
+        node_free(A);
     } else {
-        snprintf(map_inner, sizeof(map_inner), "%s,%s", key_type, value_type);
-        add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, NULL);
+        map_inner = join_map_inner_types(ctx, key_type, value_type);
+        if (map_inner != NULL) {
+            add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, NULL);
+        } else {
+            node_free(A);
+        }
     }
+    free(map_inner);
     free(type_name);
     free(field_name);
     free(key_type);

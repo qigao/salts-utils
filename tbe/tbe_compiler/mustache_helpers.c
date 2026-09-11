@@ -65,9 +65,9 @@ static MUSTACHE_TEMPLATE *get_partial(const char *name, size_t size,
 }
 
 static int out_verbatim(const char *output, size_t size, void *renderer_data) {
+    FILE *out_file = renderer_data ? (FILE *)renderer_data : stdout;
     if (size == 0) return 0;
     if (!output) return -1;
-    FILE *out_file = renderer_data ? (FILE *)renderer_data : stdout;
     return fwrite(output, 1, size, out_file) == size ? 0 : -1;
 }
 
