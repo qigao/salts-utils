@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config
+          sudo apt-get install -y ninja-build pkg-config nasm
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
