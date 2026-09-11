@@ -20,169 +20,32 @@ jobs:
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           source = Path('tbe/data_bind/data_bind.c')
           s = source.read_text()
           if '#include "cyaml.h"' not in s:
               s = s.replace('#include "dsv_filter.h"\n', '#include "dsv_filter.h"\n#include "cyaml.h"\n#include "cyaml_json_adapter.h"\n')
-
-          # Native CYaml SAX is shape-compatible with DataBind's validation-only handler.
           s = s.replace('turbo_yaml_sax_parser_t *yaml_sax;', 'cyaml_sax_parser_t *yaml_sax;')
-          s = s.replace('static const turbo_yaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};',
-                        'static const cyaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};')
+          s = s.replace('static const turbo_yaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};', 'static const cyaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};')
           s = s.replace('turbo_yaml_sax_parser_feed', 'cyaml_sax_parser_feed')
           s = s.replace('turbo_yaml_sax_parser_finish', 'cyaml_sax_parser_finish')
           s = s.replace('turbo_yaml_sax_parser_destroy', 'cyaml_sax_parser_destroy')
-          s = s.replace('turbo_yaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser)',
-                        'cyaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser, NULL)')
-
-          # cyaml_sax_parser_error returns a structured native error, so expose just its message
-          # to the format-neutral DataBind stream error surface.
-          err_anchor = '''static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, DataBindError *error,\n                                                 const char *operation) {'''
-          err_helper = '''static const char *data_bind_yaml_sax_error(const cyaml_sax_parser_t *parser) {\n  const cyaml_error_t *error = cyaml_sax_parser_error(parser);\n  return error != NULL && error->msg[0] != '\\0' ? error->msg : NULL;\n}\n\n''' + err_anchor
+          s = s.replace('turbo_yaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser)', 'cyaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser, NULL)')
+          err_anchor = 'static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, DataBindError *error,\n                                                 const char *operation) {'
+          err_helper = 'static const char *data_bind_yaml_sax_error(const cyaml_sax_parser_t *parser) {\n  const cyaml_error_t *error = cyaml_sax_parser_error(parser);\n  return error != NULL && error->msg[0] != \'\\0\' ? error->msg : NULL;\n}\n\n' + err_anchor
           if 'static const char *data_bind_yaml_sax_error' not in s:
               if err_anchor not in s:
                   raise SystemExit('stream error anchor missing')
               s = s.replace(err_anchor, err_helper, 1)
-          s = s.replace('message = turbo_yaml_sax_parser_error(parser->yaml_sax);',
-                        'message = data_bind_yaml_sax_error(parser->yaml_sax);')
-
+          s = s.replace('message = turbo_yaml_sax_parser_error(parser->yaml_sax);', 'message = data_bind_yaml_sax_error(parser->yaml_sax);')
           start = s.index('static DataBindStatus data_bind_parse_yaml_selected(')
           end = s.index('\nDataBindStatus data_bind_parse_yaml(', start)
-          native = r'''static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char *type_name,
-                                                    const char *yaml, size_t len,
-                                                    const char *yamlpath, int bind_all,
-                                                    const DataBindQueryLimits *query_limits,
-                                                    DataBindQueryDiagnostic *query_diagnostic,
-                                                    DataBindValue **out_value,
-                                                    DataBindError *error) {
-  cyaml_doc_t *doc = NULL;
-  cyaml_path_result_t matches = {0};
-  cyaml_node_t *root;
-  DataBindValue *result = NULL;
-  char error_path[256];
-  size_t count = 0;
-  size_t i;
-  int has_matches = 0;
-
-  if (out_value != NULL) *out_value = NULL;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || yaml == NULL ||
-      out_value == NULL) {
-    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG, "Invalid YAML bind arguments");
-  }
-  if (!bind_type_supported(codec->schema_root, type_name)) {
-    db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
-                        "Type not found: %s", type_name);
-  }
-  doc = cyaml_parse(yaml, len, NULL, NULL);
-  if (doc == NULL) {
-    db_error_format_path(error_path, sizeof(error_path), "yaml", NULL);
-    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "YAML parse failed");
-  }
-
-  root = cyaml_root(doc);
-  if (yamlpath != NULL && yamlpath[0] != '\0') {
-    qvm_limits_t native_limits;
-    qvm_diagnostic_t native_diagnostic;
-    if (!data_bind_query_limits_to_qvm(query_limits, &native_limits, query_diagnostic)) {
-      cyaml_free(doc);
-      db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, error_path, -1, -1,
-                          "Invalid YPATH query limits");
-    }
-    data_bind_qvm_diagnostic_init(&native_diagnostic);
-    matches = cyaml_path_query_ex(doc, NULL, yamlpath, &native_limits, &native_diagnostic);
-    has_matches = 1;
-    data_bind_query_diagnostic_from_qvm(query_diagnostic, &native_diagnostic,
-                                        TURBO_QUERY_OK, NULL);
-    if (matches.error != NULL) {
-      size_t error_pos = matches.error_pos;
-      char path_message[160];
-      snprintf(path_message, sizeof(path_message), "%s", matches.error);
-      cyaml_path_result_free(&matches);
-      cyaml_free(doc);
-      db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, data_bind_query_failure_status(query_diagnostic), error_path, -1,
-                          error_pos <= INT_MAX ? (int)error_pos : -1, "YPATH parse failed: %s",
-                          path_message);
-    }
-    count = matches.count;
-  } else if (bind_all && root != NULL && root->type == CYAML_SEQ) {
-    count = root->seq.count;
-  } else if (root != NULL) {
-    count = 1;
-  }
-
-  if (count == 0) {
-    if (has_matches) cyaml_path_result_free(&matches);
-    cyaml_free(doc);
-    db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                        "YAML selection matched no values");
-  }
-
-  if (bind_all) {
-    result = dbv_new(DATA_BIND_VALUE_LIST);
-    if (result == NULL) {
-      if (has_matches) cyaml_path_result_free(&matches);
-      cyaml_free(doc);
-      return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
-                          "Out of memory creating YAML result list");
-    }
-  }
-
-  for (i = 0; i < (bind_all ? count : 1); i++) {
-    cyaml_node_t *node;
-    json_value_t *json_value;
-    DataBindValue *bound;
-    if (has_matches) node = matches.nodes[i];
-    else if (bind_all && root->type == CYAML_SEQ) node = root->seq.items[i];
-    else node = root;
-
-    json_value = json_value_from_cyaml_node(doc, node);
-    if (json_value == NULL) {
-      data_bind_value_free(result);
-      if (has_matches) cyaml_path_result_free(&matches);
-      cyaml_free(doc);
-      db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                          "YAML value cannot be represented as JSON-compatible data");
-    }
-    bound = bind_json_typed_value(codec->schema_root, type_name, json_value);
-    data_bind_json_freep(&json_value);
-    if (bound == NULL) {
-      data_bind_value_free(result);
-      if (has_matches) cyaml_path_result_free(&matches);
-      cyaml_free(doc);
-      db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
-                          "YAML bind failed for type: %s", type_name);
-    }
-    if (!bind_all) {
-      result = bound;
-    } else if (!dbv_array_push(&result->data.array_val, bound)) {
-      data_bind_value_free(bound);
-      data_bind_value_free(result);
-      if (has_matches) cyaml_path_result_free(&matches);
-      cyaml_free(doc);
-      return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
-                          "Out of memory appending YAML result");
-    }
-  }
-
-  if (has_matches) cyaml_path_result_free(&matches);
-  cyaml_free(doc);
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
-}
-'''
+          native = base64.b64decode('c3RhdGljIERhdGFCaW5kU3RhdHVzIGRhdGFfYmluZF9wYXJzZV95YW1sX3NlbGVjdGVkKERhdGFCaW5kICpjb2RlYywgY29uc3QgY2hhciAqdHlwZV9uYW1lLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgY29uc3QgY2hhciAqeWFtbCwgc2l6ZV90IGxlbiwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnN0IGNoYXIgKnlhbWxwYXRoLCBpbnQgYmluZF9hbGwsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb25zdCBEYXRhQmluZFF1ZXJ5TGltaXRzICpxdWVyeV9saW1pdHMsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBEYXRhQmluZFF1ZXJ5RGlhZ25vc3RpYyAqcXVlcnlfZGlhZ25vc3RpYywKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIERhdGFCaW5kVmFsdWUgKipvdXRfdmFsdWUsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBEYXRhQmluZEVycm9yICplcnJvcikgewogIGN5YW1sX2RvY190ICpkb2MgPSBOVUxMOwogIGN5YW1sX3BhdGhfcmVzdWx0X3QgbWF0Y2hlcyA9IHswfTsKICBjeWFtbF9ub2RlX3QgKnJvb3Q7CiAgRGF0YUJpbmRWYWx1ZSAqcmVzdWx0ID0gTlVMTDsKICBjaGFyIGVycm9yX3BhdGhbMjU2XTsKICBzaXplX3QgY291bnQgPSAwOwogIHNpemVfdCBpOwogIGludCBoYXNfbWF0Y2hlcyA9IDA7CgogIGlmIChvdXRfdmFsdWUgIT0gTlVMTCkgKm91dF92YWx1ZSA9IE5VTEw7CiAgaWYgKGNvZGVjID09IE5VTEwgfHwgY29kZWMtPnNjaGVtYV9yb290ID09IE5VTEwgfHwgdHlwZV9uYW1lID09IE5VTEwgfHwgeWFtbCA9PSBOVUxMIHx8CiAgICAgIG91dF92YWx1ZSA9PSBOVUxMKSB7CiAgICByZXR1cm4gZGJfY29kZWNfZXJyb3IoY29kZWMsIGVycm9yLCBEQVRBX0JJTkRfRVJSX0lOVkFMSURfQVJHLCAiSW52YWxpZCBZQU1MIGJpbmQgYXJndW1lbnRzIik7CiAgfQogIGlmICghYmluZF90eXBlX3N1cHBvcnRlZChjb2RlYy0+c2NoZW1hX3Jvb3QsIHR5cGVfbmFtZSkpIHsKICAgIGRiX2Vycm9yX2Zvcm1hdF9wYXRoKGVycm9yX3BhdGgsIHNpemVvZihlcnJvcl9wYXRoKSwgInlhbWwiLCB5YW1scGF0aCk7CiAgICByZXR1cm4gZGJfZXJyb3Jfc2V0KGVycm9yLCBEQVRBX0JJTkRfRVJSX1RZUEVfTk9UX0ZPVU5ELCBlcnJvcl9wYXRoLCAtMSwgLTEsCiAgICAgICAgICAgICAgICAgICAgICAgICJUeXBlIG5vdCBmb3VuZDogJXMiLCB0eXBlX25hbWUpOwogIH0KICBkb2MgPSBjeWFtbF9wYXJzZSh5YW1sLCBsZW4sIE5VTEwsIE5VTEwpOwogIGlmIChkb2MgPT0gTlVMTCkgewogICAgZGJfZXJyb3JfZm9ybWF0X3BhdGgoZXJyb3JfcGF0aCwgc2l6ZW9mKGVycm9yX3BhdGgpLCAieWFtbCIsIE5VTEwpOwogICAgcmV0dXJuIGRiX2Vycm9yX3NldChlcnJvciwgREFUQV9CSU5EX0VSUl9QQVJTRSwgZXJyb3JfcGF0aCwgLTEsIC0xLCAiWUFNTCBwYXJzZSBmYWlsZWQiKTsKICB9CgogIHJvb3QgPSBjeWFtbF9yb290KGRvYyk7CiAgaWYgKHlhbWxwYXRoICE9IE5VTEwgJiYgeWFtbHBhdGhbMF0gIT0gJ1wwJykgewogICAgcXZtX2xpbWl0c190IG5hdGl2ZV9saW1pdHM7CiAgICBxdm1fZGlhZ25vc3RpY190IG5hdGl2ZV9kaWFnbm9zdGljOwogICAgaWYgKCFkYXRhX2JpbmRfcXVlcnlfbGltaXRzX3RvX3F2bShxdWVyeV9saW1pdHMsICZuYXRpdmVfbGltaXRzLCBxdWVyeV9kaWFnbm9zdGljKSkgewogICAgICBjeWFtbF9mcmVlKGRvYyk7CiAgICAgIGRiX2Vycm9yX2Zvcm1hdF9wYXRoKGVycm9yX3BhdGgsIHNpemVvZihlcnJvcl9wYXRoKSwgInlhbWwiLCB5YW1scGF0aCk7CiAgICAgIHJldHVybiBkYl9lcnJvcl9zZXQoZXJyb3IsIERBVEFfQklORF9FUlJfSU5WQUxJRF9BUkcsIGVycm9yX3BhdGgsIC0xLCAtMSwKICAgICAgICAgICAgICAgICAgICAgICAgICAiSW52YWxpZCBZUEFUSCBxdWVyeSBsaW1pdHMiKTsKICAgIH0KICAgIGRhdGFfYmluZF9xdm1fZGlhZ25vc3RpY19pbml0KCZuYXRpdmVfZGlhZ25vc3RpYyk7CiAgICBtYXRjaGVzID0gY3lhbWxfcGF0aF9xdWVyeV9leChkb2MsIE5VTEwsIHlhbWxwYXRoLCAmbmF0aXZlX2xpbWl0cywgJm5hdGl2ZV9kaWFnbm9zdGljKTsKICAgIGhhc19tYXRjaGVzID0gMTsKICAgIGRhdGFfYmluZF9xdWVyeV9kaWFnbm9zdGljX2Zyb21fcXZtKHF1ZXJ5X2RpYWdub3N0aWMsICZuYXRpdmVfZGlhZ25vc3RpYywKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFRVUkJPX1FVRVJZX09LLCBOVUxMKTsKICAgIGlmIChtYXRjaGVzLmVycm9yICE9IE5VTEwpIHsKICAgICAgc2l6ZV90IGVycm9yX3BvcyA9IG1hdGNoZXMuZXJyb3JfcG9zOwogICAgICBjaGFyIHBhdGhfbWVzc2FnZVsxNjBdOwogICAgICBzbnByaW50ZihwYXRoX21lc3NhZ2UsIHNpemVvZihwYXRoX21lc3NhZ2UpLCAiJXMiLCBtYXRjaGVzLmVycm9yKTsKICAgICAgY3lhbWxfcGF0aF9yZXN1bHRfZnJlZSgmbWF0Y2hlcyk7CiAgICAgIGN5YW1sX2ZyZWUoZG9jKTsKICAgICAgZGJfZXJyb3JfZm9ybWF0X3BhdGgoZXJyb3JfcGF0aCwgc2l6ZW9mKGVycm9yX3BhdGgpLCAieWFtbCIsIHlhbWxwYXRoKTsKICAgICAgcmV0dXJuIGRiX2Vycm9yX3NldChlcnJvciwgZGF0YV9iaW5kX3F1ZXJ5X2ZhaWx1cmVfc3RhdHVzKHF1ZXJ5X2RpYWdub3N0aWMpLCBlcnJvcl9wYXRoLCAtMSwKICAgICAgICAgICAgICAgICAgICAgICAgICBlcnJvcl9wb3MgPD0gSU5UX01BWCA/IChpbnQpZXJyb3JfcG9zIDogLTEsICJZUEFUSCBwYXJzZSBmYWlsZWQ6ICVzIiwKICAgICAgICAgICAgICAgICAgICAgICAgICBwYXRoX21lc3NhZ2UpOwogICAgfQogICAgY291bnQgPSBtYXRjaGVzLmNvdW50OwogIH0gZWxzZSBpZiAoYmluZF9hbGwgJiYgcm9vdCAhPSBOVUxMICYmIHJvb3QtPnR5cGUgPT0gQ1lBTUxfU0VRKSB7CiAgICBjb3VudCA9IHJvb3QtPnNlcS5jb3VudDsKICB9IGVsc2UgaWYgKHJvb3QgIT0gTlVMTCkgewogICAgY291bnQgPSAxOwogIH0KCiAgaWYgKGNvdW50ID09IDApIHsKICAgIGlmIChoYXNfbWF0Y2hlcykgY3lhbWxfcGF0aF9yZXN1bHRfZnJlZSgmbWF0Y2hlcyk7CiAgICBjeWFtbF9mcmVlKGRvYyk7CiAgICBkYl9lcnJvcl9mb3JtYXRfcGF0aChlcnJvcl9wYXRoLCBzaXplb2YoZXJyb3JfcGF0aCksICJ5YW1sIiwgeWFtbHBhdGgpOwogICAgcmV0dXJuIGRiX2Vycm9yX3NldChlcnJvciwgREFUQV9CSU5EX0VSUl9UWVBFX01JU01BVENILCBlcnJvcl9wYXRoLCAtMSwgLTEsCiAgICAgICAgICAgICAgICAgICAgICAgICJZQU1MIHNlbGVjdGlvbiBtYXRjaGVkIG5vIHZhbHVlcyIpOwogIH0KCiAgaWYgKGJpbmRfYWxsKSB7CiAgICByZXN1bHQgPSBkYnZfbmV3KERBVEFfQklORF9WQUxVRV9MSVNUKTsKICAgIGlmIChyZXN1bHQgPT0gTlVMTCkgewogICAgICBpZiAoaGFzX21hdGNoZXMpIGN5YW1sX3BhdGhfcmVzdWx0X2ZyZWUoJm1hdGNoZXMpOwogICAgICBjeWFtbF9mcmVlKGRvYyk7CiAgICAgIHJldHVybiBkYl9lcnJvcl9zZXQoZXJyb3IsIERBVEFfQklORF9FUlJfT09NLCAieWFtbCIsIC0xLCAtMSwKICAgICAgICAgICAgICAgICAgICAgICAgICAiT3V0IG9mIG1lbW9yeSBjcmVhdGluZyBZQU1MIHJlc3VsdCBsaXN0Iik7CiAgICB9CiAgfQoKICBmb3IgKGkgPSAwOyBpIDwgKGJpbmRfYWxsID8gY291bnQgOiAxKTsgaSsrKSB7CiAgICBjeWFtbF9ub2RlX3QgKm5vZGU7CiAgICBqc29uX3ZhbHVlX3QgKmpzb25fdmFsdWU7CiAgICBEYXRhQmluZFZhbHVlICpib3VuZDsKICAgIGlmIChoYXNfbWF0Y2hlcykgbm9kZSA9IG1hdGNoZXMubm9kZXNbaV07CiAgICBlbHNlIGlmIChiaW5kX2FsbCAmJiByb290LT50eXBlID09IENZQU1MX1NFUSkgbm9kZSA9IHJvb3QtPnNlcS5pdGVtc1tpXTsKICAgIGVsc2Ugbm9kZSA9IHJvb3Q7CgogICAganNvbl92YWx1ZSA9IGpzb25fdmFsdWVfZnJvbV9jeWFtbF9ub2RlKGRvYywgbm9kZSk7CiAgICBpZiAoanNvbl92YWx1ZSA9PSBOVUxMKSB7CiAgICAgIGRhdGFfYmluZF92YWx1ZV9mcmVlKHJlc3VsdCk7CiAgICAgIGlmIChoYXNfbWF0Y2hlcykgY3lhbWxfcGF0aF9yZXN1bHRfZnJlZSgmbWF0Y2hlcyk7CiAgICAgIGN5YW1sX2ZyZWUoZG9jKTsKICAgICAgZGJfZXJyb3JfZm9ybWF0X3BhdGgoZXJyb3JfcGF0aCwgc2l6ZW9mKGVycm9yX3BhdGgpLCAieWFtbCIsIHlhbWxwYXRoKTsKICAgICAgcmV0dXJuIGRiX2Vycm9yX3NldChlcnJvciwgREFUQV9CSU5EX0VSUl9UWVBFX01JU01BVENILCBlcnJvcl9wYXRoLCAtMSwgLTEsCiAgICAgICAgICAgICAgICAgICAgICAgICAgIllBTUwgdmFsdWUgY2Fubm90IGJlIHJlcHJlc2VudGVkIGFzIEpTT04tY29tcGF0aWJsZSBkYXRhIik7CiAgICB9CiAgICBib3VuZCA9IGJpbmRfanNvbl90eXBlZF92YWx1ZShjb2RlYy0+c2NoZW1hX3Jvb3QsIHR5cGVfbmFtZSwganNvbl92YWx1ZSk7CiAgICBkYXRhX2JpbmRfanNvbl9mcmVlcCgmanNvbl92YWx1ZSk7CiAgICBpZiAoYm91bmQgPT0gTlVMTCkgewogICAgICBkYXRhX2JpbmRfdmFsdWVfZnJlZShyZXN1bHQpOwogICAgICBpZiAoaGFzX21hdGNoZXMpIGN5YW1sX3BhdGhfcmVzdWx0X2ZyZWUoJm1hdGNoZXMpOwogICAgICBjeWFtbF9mcmVlKGRvYyk7CiAgICAgIGRiX2Vycm9yX2Zvcm1hdF9wYXRoKGVycm9yX3BhdGgsIHNpemVvZihlcnJvcl9wYXRoKSwgInlhbWwiLCB5YW1scGF0aCk7CiAgICAgIHJldHVybiBkYl9lcnJvcl9zZXQoZXJyb3IsIERBVEFfQklORF9FUlJfVFlQRV9NSVNNQVRDSCwgZXJyb3JfcGF0aCwgLTEsIC0xLAogICAgICAgICAgICAgICAgICAgICAgICAgICJZQU1MIGJpbmQgZmFpbGVkIGZvciB0eXBlOiAlcyIsIHR5cGVfbmFtZSk7CiAgICB9CiAgICBpZiAoIWJpbmRfYWxsKSB7CiAgICAgIHJlc3VsdCA9IGJvdW5kOwogICAgfSBlbHNlIGlmICghZGJ2X2FycmF5X3B1c2goJnJlc3VsdC0+ZGF0YS5hcnJheV92YWwsIGJvdW5kKSkgewogICAgICBkYXRhX2JpbmRfdmFsdWVfZnJlZShib3VuZCk7CiAgICAgIGRhdGFfYmluZF92YWx1ZV9mcmVlKHJlc3VsdCk7CiAgICAgIGlmIChoYXNfbWF0Y2hlcykgY3lhbWxfcGF0aF9yZXN1bHRfZnJlZSgmbWF0Y2hlcyk7CiAgICAgIGN5YW1sX2ZyZWUoZG9jKTsKICAgICAgcmV0dXJuIGRiX2Vycm9yX3NldChlcnJvciwgREFUQV9CSU5EX0VSUl9PT00sICJ5YW1sIiwgLTEsIC0xLAogICAgICAgICAgICAgICAgICAgICAgICAgICJPdXQgb2YgbWVtb3J5IGFwcGVuZGluZyBZQU1MIHJlc3VsdCIpOwogICAgfQogIH0KCiAgaWYgKGhhc19tYXRjaGVzKSBjeWFtbF9wYXRoX3Jlc3VsdF9mcmVlKCZtYXRjaGVzKTsKICBjeWFtbF9mcmVlKGRvYyk7CiAgKm91dF92YWx1ZSA9IHJlc3VsdDsKICBkYl9lcnJvcl9jbGVhcihlcnJvcik7CiAgcmV0dXJuIERBVEFfQklORF9PSzsKfQo=').decode()
           s = s[:start] + native + s[end:]
           source.write_text(s)
           assert 'turbo_yaml_' not in s
           assert 'turbo_parse_yaml' not in s
           assert 'turbo_free_yaml' not in s
-
           cmake = Path('tbe/data_bind/CMakeLists.txt')
           c = cmake.read_text()
           marker = '    Salts::CsvParser\n    Salts::JsonParser\n'
@@ -195,7 +58,6 @@ jobs:
           cmake.write_text(c)
           PY
           git diff --check
-          git diff -- tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
       - name: Commit YAML direct migration
         shell: bash
         run: |
@@ -203,8 +65,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
-          if git diff --cached --quiet; then
-            exit 0
-          fi
           git commit -m 'refactor: use salts CYaml directly'
           git push origin HEAD:fix/databind-direct-salts-parsers
