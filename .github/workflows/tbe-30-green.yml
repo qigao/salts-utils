@@ -5,6 +5,7 @@ on:
     branches: [main, fix/tbe-30-descriptor-layout-validation]
     paths:
       - 'tbe/**'
+      - 'tools/lemon/CMakeLists.txt'
       - 'cmake/**'
       - 'presets/**'
       - 'CMake*.txt'
@@ -16,6 +17,7 @@ on:
     branches: [main]
     paths:
       - 'tbe/**'
+      - 'tools/lemon/CMakeLists.txt'
       - 'cmake/**'
       - 'presets/**'
       - 'CMake*.txt'
@@ -90,6 +92,13 @@ jobs:
           sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
 
+      - name: Build the standalone host parser generator
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+
       - name: Build and install pinned Salts debug profile
         shell: bash
         working-directory: salts
@@ -107,6 +116,7 @@ jobs:
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/configure.log"
           python3 - <<'PY'
           import json
