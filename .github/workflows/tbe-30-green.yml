@@ -131,6 +131,7 @@ jobs:
           commands = json.loads(Path('build/linux-gcc-debug/compile_commands.json').read_text())
           required = {'tbe_typed.c', 'test_tbe_typed_descriptor_safety.c',
                       'test_tbe_typed_descriptor_boundary.c', 'test_tbe_typed_generated.c',
+                      'test_tbe_typed_optional_binary.c',
                       'test_data_bind.c', 'test_tbe_compiler.c', 'schema_parser_dsl.c',
                       'test_schema_boundaries.c', 'test_schema_boundary.c',
                       'data_bind_cmeta.c', 'data_bind_cflow.c',
@@ -151,7 +152,8 @@ jobs:
         run: |
           set -euxo pipefail
           cmake --build build/linux-gcc-debug --target test_tbe_typed_descriptor_safety \
-            test_tbe_typed_descriptor_boundary test_tbe_typed_generated test_tbe_typed -j2 \
+            test_tbe_typed_descriptor_boundary test_tbe_typed_generated \
+            test_tbe_typed_optional_binary test_tbe_typed -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/focused-build.log"
 
       - name: Run focused ASan and UBSan tests
@@ -159,7 +161,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(test_tbe_typed_descriptor_safety|test_tbe_typed_descriptor_boundary|test_tbe_typed_generated|test_tbe_typed)$' \
+            -R '^(test_tbe_typed_descriptor_safety|test_tbe_typed_descriptor_boundary|test_tbe_typed_generated|test_tbe_typed_optional_binary|test_tbe_typed)$' \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/focused.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/focused.log"
 
