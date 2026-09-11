@@ -1,0 +1,62 @@
+name: DataBind native parser contract
+
+on:
+  push:
+    branches: [main, refactor/databind-native-parsers]
+    paths: ['tbe/**', '.github/workflows/databind-native-parsers.yml']
+  pull_request:
+    branches: [main]
+    paths: ['tbe/**', '.github/workflows/databind-native-parsers.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databind-native-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  native-parser-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          path: salts
+          persist-credentials: false
+      - name: Preserve exact source evidence
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/native-parser-evidence"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD > "$RUNNER_TEMP/native-parser-evidence/head.txt"
+          git -C salts rev-parse HEAD > "$RUNNER_TEMP/native-parser-evidence/salts-head.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/native-parser-evidence/source.tar.gz"
+          git -C salts archive --format=tar.gz HEAD > "$RUNNER_TEMP/native-parser-evidence/salts-source.tar.gz"
+      - name: Reject parser compatibility surface
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tbe/data_bind/test/native_parser_contract.py 2>&1 | tee "$RUNNER_TEMP/native-parser-evidence/contract.log"
+      - name: Verify source unchanged
+        if: always()
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: databind-native-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          path: ${{ runner.temp }}/native-parser-evidence/
