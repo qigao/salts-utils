@@ -65,15 +65,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          ref: 011d12c5931f147fea7266ef89c92fc9882e5034
           path: salts
           persist-credentials: false
 
-      - name: Record verified CMeta dependency revision
+      - name: Record native parser dependency revision
         shell: bash
         run: |
           set -euxo pipefail
-          test "$(git -C salts rev-parse HEAD)" = c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          test "$(git -C salts rev-parse HEAD)" = 011d12c5931f147fea7266ef89c92fc9882e5034
           git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/salts-head.txt"
 
       - name: Checkout vcpkg at the manifest baseline
