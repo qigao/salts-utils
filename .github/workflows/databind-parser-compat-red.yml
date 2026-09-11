@@ -1,0 +1,16 @@
+name: databind parser compat guard
+on:
+  push:
+    branches: [fix/databind-direct-salts-parsers]
+  pull_request:
+    paths:
+      - 'tbe/data_bind/**'
+permissions:
+  contents: read
+jobs:
+  parser-compat-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require direct salts parser integration
+        run: cmake -DDATA_BIND_SOURCE_DIR="$GITHUB_WORKSPACE/tbe/data_bind" -P "$GITHUB_WORKSPACE/tbe/data_bind/test_no_parser_compat.cmake"
