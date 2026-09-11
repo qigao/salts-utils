@@ -1525,6 +1525,18 @@ spec("tbe_compiler") {
       node_free(root);
     }
 
+    it("renderer accepts empty output without reading a null buffer") {
+      MUSTACHE_RENDERER renderer = mustache_helpers_renderer();
+      check_equal(renderer.out_verbatim(NULL, 0, NULL), 0);
+      check_equal(renderer.out_escaped(NULL, 0, NULL), 0);
+    }
+
+    it("renderer rejects a null buffer for nonempty output") {
+      MUSTACHE_RENDERER renderer = mustache_helpers_renderer();
+      check_not_equal(renderer.out_verbatim(NULL, 1, NULL), 0);
+      check_not_equal(renderer.out_escaped(NULL, 1, NULL), 0);
+    }
+
     it("renderer should report file write failures") {
       char *path = tt_make_temp_file("tbe_mustache", ".tmp");
       FILE *read_only = NULL;
