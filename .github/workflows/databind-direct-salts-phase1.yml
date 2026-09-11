@@ -14,7 +14,7 @@ jobs:
         with:
           ref: fix/databind-direct-salts-parsers
           fetch-depth: 0
-      - name: Migrate DataBind JSONPath to salts QueryVM
+      - name: Migrate DataBind CSV and DSV filter to salts
         shell: bash
         run: |
           set -euxo pipefail
@@ -22,57 +22,69 @@ jobs:
           from pathlib import Path
           source = Path('tbe/data_bind/data_bind.c')
           s = source.read_text()
-          if '#include "query_vm.h"' not in s:
-              s = s.replace('#include "json_parser.h"\n', '#include "json_parser.h"\n#include "query_vm.h"\n')
-          anchor = '''static void data_bind_json_freep(json_value_t **value) {\n  if (value == NULL || *value == NULL) return;\n  json_free(*value);\n  *value = NULL;\n}\n'''
-          bridge = anchor + '''\nstatic void data_bind_qvm_diagnostic_init(qvm_diagnostic_t *diagnostic) {\n  memset(diagnostic, 0, sizeof(*diagnostic));\n  diagnostic->status = QVM_STATUS_OK;\n  diagnostic->instruction = QVM_NO_INSTRUCTION;\n  diagnostic->opcode = QVM_NO_OPCODE;\n  diagnostic->operand = QVM_NO_OPERAND;\n}\n\nstatic void data_bind_query_diagnostic_from_qvm(DataBindQueryDiagnostic *destination,\n                                                const qvm_diagnostic_t *source,\n                                                turbo_query_status_t fallback_status,\n                                                const char *fallback_message) {\n  size_t size;\n  if (destination == NULL || destination->size < sizeof(*destination)) return;\n  size = destination->size;\n  memset(destination, 0, sizeof(*destination));\n  destination->size = size;\n  destination->status = source ? (turbo_query_status_t)source->status : fallback_status;\n  destination->instruction = source ? source->instruction : QVM_NO_INSTRUCTION;\n  destination->opcode = source ? source->opcode : QVM_NO_OPCODE;\n  destination->operand = source ? source->operand : QVM_NO_OPERAND;\n  snprintf(destination->message, sizeof(destination->message), "%s",\n           source && source->message ? source->message\n                                     : (fallback_message ? fallback_message : ""));\n}\n\nstatic int data_bind_query_limits_to_qvm(const DataBindQueryLimits *source,\n                                         qvm_limits_t *destination,\n                                         DataBindQueryDiagnostic *diagnostic) {\n  if (destination == NULL) return 0;\n  if (source == NULL) {\n    *destination = qvm_default_limits();\n    return 1;\n  }\n  if (source->size < sizeof(*source) || source->max_instructions == 0 ||\n      source->max_operands == 0 || source->max_regexes == 0 || source->max_steps == 0) {\n    data_bind_query_diagnostic_from_qvm(diagnostic, NULL, TURBO_QUERY_INVALID_ARGUMENT,\n                                        "Invalid query limits");\n    return 0;\n  }\n  destination->max_instructions = source->max_instructions;\n  destination->max_operands = source->max_operands;\n  destination->max_regexes = source->max_regexes;\n  destination->max_steps = source->max_steps;\n  return 1;\n}\n\nstatic json_path_program_t *data_bind_json_path_compile_ex(\n    const char *expr, const DataBindQueryLimits *limits, DataBindQueryDiagnostic *diagnostic) {\n  qvm_limits_t native_limits;\n  qvm_diagnostic_t native_diagnostic;\n  json_path_program_t *program;\n  if (!data_bind_query_limits_to_qvm(limits, &native_limits, diagnostic)) return NULL;\n  data_bind_qvm_diagnostic_init(&native_diagnostic);\n  program = json_path_compile_ex(expr, &native_limits, &native_diagnostic);\n  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);\n  return program;\n}\n\nstatic json_value_t *data_bind_json_path_get_compiled_ex(\n    const json_value_t *root, const json_path_program_t *program,\n    DataBindQueryDiagnostic *diagnostic) {\n  qvm_diagnostic_t native_diagnostic;\n  json_value_t *value;\n  data_bind_qvm_diagnostic_init(&native_diagnostic);\n  value = json_path_get_compiled_ex(root, program, &native_diagnostic);\n  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);\n  return value;\n}\n\nstatic json_path_result_t *data_bind_json_path_query_compiled_ex(\n    const json_value_t *root, const json_path_program_t *program,\n    DataBindQueryDiagnostic *diagnostic) {\n  qvm_diagnostic_t native_diagnostic;\n  json_path_result_t *result;\n  data_bind_qvm_diagnostic_init(&native_diagnostic);\n  result = json_path_query_compiled_ex(root, program, &native_diagnostic);\n  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);\n  return result;\n}\n'''
-          if 'static void data_bind_qvm_diagnostic_init' not in s:
+          if '#include "csv_parser.h"' not in s:
+              s = s.replace('#include "query_vm.h"\n', '#include "query_vm.h"\n#include "csv_parser.h"\n#include "dsv_filter.h"\n')
+
+          anchor = '''static json_path_result_t *data_bind_json_path_query_compiled_ex(\n    const json_value_t *root, const json_path_program_t *program,\n    DataBindQueryDiagnostic *diagnostic) {\n  qvm_diagnostic_t native_diagnostic;\n  json_path_result_t *result;\n  data_bind_qvm_diagnostic_init(&native_diagnostic);\n  result = json_path_query_compiled_ex(root, program, &native_diagnostic);\n  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);\n  return result;\n}\n'''
+          bridge = anchor + '''\nstatic void data_bind_csv_freep(csv_doc_t **doc) {\n  if (doc == NULL || *doc == NULL) return;\n  csv_free(*doc);\n  *doc = NULL;\n}\n\nstatic bool data_bind_dsv_filter_compile_ex(\n    dsv_filter_t *filter, const char *expression, const DataBindQueryLimits *limits,\n    DataBindQueryDiagnostic *diagnostic) {\n  qvm_limits_t native_limits;\n  qvm_diagnostic_t native_diagnostic;\n  bool compiled;\n  if (!data_bind_query_limits_to_qvm(limits, &native_limits, diagnostic)) return false;\n  data_bind_qvm_diagnostic_init(&native_diagnostic);\n  compiled = dsv_filter_compile_ex(filter, expression, &native_limits, &native_diagnostic);\n  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);\n  return compiled;\n}\n\nstatic turbo_query_status_t data_bind_dsv_filter_query_diagnostic(\n    const dsv_filter_t *filter, DataBindQueryDiagnostic *diagnostic) {\n  const qvm_diagnostic_t *native = dsv_filter_qvm_diagnostic(filter);\n  if (native == NULL) {\n    data_bind_query_diagnostic_from_qvm(diagnostic, NULL, TURBO_QUERY_INVALID_ARGUMENT,\n                                        "Invalid CSV filter");\n    return TURBO_QUERY_INVALID_ARGUMENT;\n  }\n  data_bind_query_diagnostic_from_qvm(diagnostic, native,\n                                      (turbo_query_status_t)native->status, NULL);\n  return (turbo_query_status_t)native->status;\n}\n'''
+          if 'static void data_bind_csv_freep' not in s:
               if anchor not in s:
-                  raise SystemExit('JSON free helper anchor missing')
+                  raise SystemExit('JSONPath bridge anchor missing')
               s = s.replace(anchor, bridge, 1)
+
           replacements = {
-              'turbo_json_path_program_t': 'json_path_program_t',
-              'turbo_json_path_result_t': 'json_path_result_t',
-              'turbo_json_path_stream_t': 'json_path_stream_t',
-              'turbo_json_path_stream_handler_t': 'json_path_stream_handler_t',
-              'turbo_json_type_t': 'json_type_t',
-              'turbo_json_path_compile_ex': 'data_bind_json_path_compile_ex',
-              'turbo_json_path_get_compiled_ex': 'data_bind_json_path_get_compiled_ex',
-              'turbo_json_path_query_compiled_ex': 'data_bind_json_path_query_compiled_ex',
-              'turbo_json_path_compile': 'json_path_compile',
-              'turbo_json_path_get_compiled': 'json_path_get_compiled',
-              'turbo_json_path_query_compiled': 'json_path_query_compiled',
-              'turbo_json_path_program_free': 'json_path_program_free',
-              'turbo_json_path_result_size': 'json_path_result_size',
-              'turbo_json_path_result_get': 'json_path_result_get',
-              'turbo_json_path_result_free': 'json_path_result_free',
-              'turbo_json_path_stream_create': 'json_path_stream_create',
-              'turbo_json_path_stream_feed': 'json_path_stream_feed',
-              'turbo_json_path_stream_finish': 'json_path_stream_finish',
-              'turbo_json_path_stream_match_count': 'json_path_stream_match_count',
-              'turbo_json_path_stream_error': 'json_path_stream_error',
-              'turbo_json_path_stream_destroy': 'json_path_stream_destroy',
-              'turbo_json_path_error': 'json_path_get_error',
-              'turbo_json_path_query': 'json_path_query',
-              'turbo_json_path_get': 'json_path_get',
+              'turbo_csv_doc_t': 'csv_doc_t',
+              'turbo_csv_options_t': 'csv_options_t',
+              'turbo_dsv_filter_t': 'dsv_filter_t',
+              'turbo_csv_row_count': 'csv_row_count',
+              'turbo_csv_column_count': 'csv_column_count',
+              'turbo_csv_get': 'csv_get',
+              'turbo_csv_find_column': 'csv_find_column',
+              'turbo_free_csv': 'data_bind_csv_freep',
+              'turbo_dsv_filter_compile_ex': 'data_bind_dsv_filter_compile_ex',
+              'turbo_dsv_filter_query_diagnostic': 'data_bind_dsv_filter_query_diagnostic',
+              'turbo_dsv_filter_create': 'dsv_filter_create',
+              'turbo_dsv_filter_destroy': 'dsv_filter_destroy',
+              'turbo_dsv_filter_error': 'dsv_filter_error',
+              'turbo_dsv_filter_compile': 'dsv_filter_compile',
+              'turbo_dsv_filter_check_row': 'dsv_filter_check_row',
+              'turbo_dsv_filter_check_values': 'dsv_filter_check_values',
           }
           for old, new in replacements.items():
               s = s.replace(old, new)
+
+          # Convert the thin out-parameter parse wrapper into the native pointer-returning API.
+          s = s.replace('''if (turbo_parse_csv_opts((const uint8_t *)header_doc, header_doc_len, &opts,\n                           &parser->csv_filter_doc) != 0) {''',
+                        '''if ((parser->csv_filter_doc = csv_parse_opts(header_doc, header_doc_len, &opts)) == NULL) {''')
+          s = s.replace('''if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {''',
+                        '''if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {''')
+          s = s.replace('''if (turbo_parse_csv_opts((const uint8_t *)csv, len, &bind_opts, &bind_doc) != 0 ||\n      bind_doc == NULL) {''',
+                        '''if ((bind_doc = csv_parse_opts(csv, len, &bind_opts)) == NULL) {''')
+          s = s.replace('''if (turbo_parse_csv_opts((const uint8_t *)csv, len, &filter_opts, &filter_doc) != 0 ||\n      filter_doc == NULL) {''',
+                        '''if ((filter_doc = csv_parse_opts(csv, len, &filter_opts)) == NULL) {''')
+
           source.write_text(s)
-          assert 'turbo_json_path_' not in s
-          assert 'turbo_json_type_t' not in s
+          for forbidden in ('turbo_csv_', 'turbo_parse_csv', 'turbo_free_csv', 'turbo_dsv_filter_'):
+              assert forbidden not in s, forbidden
+
+          cmake = Path('tbe/data_bind/CMakeLists.txt')
+          c = cmake.read_text()
+          if '    Salts::CsvParser\n' not in c.split('target_link_libraries(\n  ${DATA_BIND_TARGET}',1)[1]:
+              c = c.replace('    ${DATA_BIND_PARSER_COMPAT_TARGET}\n    Salts::JsonParser\n',
+                            '    ${DATA_BIND_PARSER_COMPAT_TARGET}\n    Salts::CsvParser\n    Salts::JsonParser\n', 1)
+          cmake.write_text(c)
           PY
           git diff --check
-          git diff -- tbe/data_bind/data_bind.c
-      - name: Commit JSONPath direct migration
+          git diff -- tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
+      - name: Commit CSV direct migration
         shell: bash
         run: |
           set -euxo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tbe/data_bind/data_bind.c
+          git add tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'refactor: use salts JSONPath and QueryVM directly'
+          git commit -m 'refactor: use salts CSV and DSV filter directly'
           git push origin HEAD:fix/databind-direct-salts-parsers
