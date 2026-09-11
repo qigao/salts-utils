@@ -41,6 +41,64 @@ Replay(DATA_BIND_CMETA_REF_TYPES, DATA_BIND_CMETA_DEFINE_DESCRIPTOR)
 Replay(DATA_BIND_CMETA_REF_TYPES, DATA_BIND_CMETA_DEFINE_GETTER)
 #undef DATA_BIND_CMETA_DEFINE_GETTER
 
+DataBindStatus data_bind_cmeta_data_kind(DataBindValueKind value_kind,
+                                         cmeta_data_kind *out_kind) {
+  cmeta_data_kind data_kind;
+
+  if (out_kind == NULL) return DATA_BIND_ERR_INVALID_ARG;
+
+  switch (value_kind) {
+  case DATA_BIND_VALUE_OBJECT:
+    data_kind = CMETA_DATA_STRUCT;
+    break;
+  case DATA_BIND_VALUE_LIST:
+    data_kind = CMETA_DATA_SEQUENCE;
+    break;
+  case DATA_BIND_VALUE_SET:
+    data_kind = CMETA_DATA_SET;
+    break;
+  case DATA_BIND_VALUE_MAP:
+    data_kind = CMETA_DATA_MAP;
+    break;
+  case DATA_BIND_VALUE_INT:
+  case DATA_BIND_VALUE_INT64:
+    data_kind = CMETA_DATA_SINT;
+    break;
+  case DATA_BIND_VALUE_UINT64:
+    data_kind = CMETA_DATA_UINT;
+    break;
+  case DATA_BIND_VALUE_DOUBLE:
+    data_kind = CMETA_DATA_FLOAT;
+    break;
+  case DATA_BIND_VALUE_BOOL:
+    data_kind = CMETA_DATA_BOOL;
+    break;
+  case DATA_BIND_VALUE_STRING:
+    data_kind = CMETA_DATA_STRING;
+    break;
+  case DATA_BIND_VALUE_BYTES:
+    data_kind = CMETA_DATA_BYTES;
+    break;
+  case DATA_BIND_VALUE_UUID:
+  case DATA_BIND_VALUE_DATETIME:
+  case DATA_BIND_VALUE_DATE:
+  case DATA_BIND_VALUE_TIME:
+  case DATA_BIND_VALUE_DURATION:
+  case DATA_BIND_VALUE_DECIMAL:
+  case DATA_BIND_VALUE_BIGINT:
+  case DATA_BIND_VALUE_MONEY:
+    data_kind = CMETA_DATA_CUSTOM;
+    break;
+  case DATA_BIND_VALUE_NULL:
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  default:
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
+
+  *out_kind = data_kind;
+  return DATA_BIND_OK;
+}
+
 static size_t data_bind_cmeta_values_size(const void *object) {
   return data_bind_value_count((const DataBindValue *)object);
 }
