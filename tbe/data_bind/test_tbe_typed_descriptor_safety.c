@@ -50,6 +50,29 @@ spec("typed descriptor safety") {
     check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_ERR_SCHEMA);
   }
 
+  it("rejects owning host storage overlapping a scalar field") {
+    typedef union HostOwnerScalarOverlap {
+      tstr text;
+      uint64_t bits;
+    } HostOwnerScalarOverlap;
+
+    static const TbeTypedField fields[] = {
+        {.name = "text", .kind = TBE_TYPED_STRING, .wire_kind = TBE_TYPED_STRING,
+         .offset = offsetof(HostOwnerScalarOverlap, text)},
+        {.name = "bits", .kind = TBE_TYPED_U64, .wire_kind = TBE_TYPED_U64,
+         .offset = offsetof(HostOwnerScalarOverlap, bits)},
+    };
+    static const TbeTypedType type = {
+        .name = "HostOwnerScalarOverlap",
+        .size = sizeof(HostOwnerScalarOverlap),
+        .fields = fields,
+        .field_count = sizeof(fields) / sizeof(fields[0]),
+    };
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_ERR_SCHEMA);
+  }
+
   it("rejects a presence bitmap overlapping owning host storage") {
     typedef struct PresenceHostOverlap {
       tstr value;
@@ -98,6 +121,38 @@ spec("typed descriptor safety") {
     };
     static const TbeTypedType type = {
         .name = "MapOwner",
+        .size = sizeof(MapOwner),
+        .fields = fields,
+        .field_count = sizeof(fields) / sizeof(fields[0]),
+    };
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_ERR_SCHEMA);
+  }
+
+  it("rejects map key storage overlapping a scalar value") {
+    typedef union MapEntry {
+      tstr key;
+      uint32_t value;
+    } MapEntry;
+    typedef struct MapOwner {
+      vec_t entries;
+    } MapOwner;
+
+    static const TbeTypedField fields[] = {
+        {.name = "entries",
+         .kind = TBE_TYPED_MAP,
+         .wire_kind = TBE_TYPED_MAP,
+         .offset = offsetof(MapOwner, entries),
+         .element_size = sizeof(MapEntry),
+         .map_entry_size = sizeof(MapEntry),
+         .map_key_offset = offsetof(MapEntry, key),
+         .map_value_offset = offsetof(MapEntry, value),
+         .map_value_kind = TBE_TYPED_U32,
+         .map_value_wire_kind = TBE_TYPED_U32},
+    };
+    static const TbeTypedType type = {
+        .name = "MapOwnerScalarOverlap",
         .size = sizeof(MapOwner),
         .fields = fields,
         .field_count = sizeof(fields) / sizeof(fields[0]),
