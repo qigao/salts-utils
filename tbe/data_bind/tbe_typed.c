@@ -3,7 +3,7 @@
 #include "data_bind_internal.h"
 #include "fmt.h"
 #include "tbe_wire.h"
-#include "turbo_parser.h"
+#include <json_parser.h>
 
 #include <float.h>
 #include <limits.h>
@@ -474,7 +474,7 @@ DataBindStatus tbe_typed_from_value(const TbeTypedType *type, const DataBindValu
 static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind,
                                        const void *ptr, const char *path,
                                        DataBindError *error) {
-  if (kind == TBE_TYPED_BOOL) return turbo_json_create_bool(*(const uint8_t *)ptr != 0);
+  if (kind == TBE_TYPED_BOOL) return json_create_bool(*(const uint8_t *)ptr != 0);
   if (kind == TBE_TYPED_STRING) {
     tstr text = *(const tstr *)ptr;
     size_t len = text ? tstr_len(text) : 0;
@@ -483,12 +483,12 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed string is not valid UTF-8 JSON text");
       return NULL;
     }
-    return turbo_json_create_string_n(text ? text : "", len);
+    return json_create_string_n(text ? text : "", len);
   }
   if (kind == TBE_TYPED_UUID) {
     char text[SALTS_UUID_STRING_SIZE];
     if (salts_uuid_format((const salts_uuid_t *)ptr, text, sizeof(text)) != SALTS_OK) return NULL;
-    return turbo_json_create_string(text);
+    return json_create_string(text);
   }
   if (kind == TBE_TYPED_F32) {
     float value = *(const float *)ptr;
@@ -497,7 +497,7 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed float must be finite for JSON");
       return NULL;
     }
-    return turbo_json_create_number(value);
+    return json_create_number(value);
   }
   if (kind == TBE_TYPED_F64) {
     double value = *(const double *)ptr;
@@ -506,26 +506,26 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed double must be finite for JSON");
       return NULL;
     }
-    return turbo_json_create_number(value);
+    return json_create_number(value);
   }
   if (kind == TBE_TYPED_ENUM) kind = typed_enum_storage_kind(wire_kind);
   switch (kind) {
   case TBE_TYPED_I8:
-    return turbo_json_create_int64(*(const int8_t *)ptr);
+    return json_create_int64(*(const int8_t *)ptr);
   case TBE_TYPED_U8:
-    return turbo_json_create_int64(*(const uint8_t *)ptr);
+    return json_create_int64(*(const uint8_t *)ptr);
   case TBE_TYPED_I16:
-    return turbo_json_create_int64(*(const int16_t *)ptr);
+    return json_create_int64(*(const int16_t *)ptr);
   case TBE_TYPED_U16:
-    return turbo_json_create_int64(*(const uint16_t *)ptr);
+    return json_create_int64(*(const uint16_t *)ptr);
   case TBE_TYPED_I32:
-    return turbo_json_create_int64(*(const int32_t *)ptr);
+    return json_create_int64(*(const int32_t *)ptr);
   case TBE_TYPED_U32:
-    return turbo_json_create_int64(*(const uint32_t *)ptr);
+    return json_create_int64(*(const uint32_t *)ptr);
   case TBE_TYPED_I64:
-    return turbo_json_create_int64(*(const int64_t *)ptr);
+    return json_create_int64(*(const int64_t *)ptr);
   case TBE_TYPED_U64:
-    return turbo_json_create_uint64(*(const uint64_t *)ptr);
+    return json_create_uint64(*(const uint64_t *)ptr);
   default:
     return NULL;
   }
@@ -542,7 +542,7 @@ static json_value_t *typed_bytes_json(const uint8_t *data, size_t len, const cha
                 "Typed bytes are not valid UTF-8 JSON text");
     return NULL;
   }
-  return turbo_json_create_string_n((const char *)data, len);
+  return json_create_string_n((const char *)data, len);
 }
 
 static json_value_t *typed_one_json(TbeTypedKind kind, TbeTypedKind wire_kind,
@@ -565,7 +565,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     return NULL;
   }
   if (typed_validate_descriptor_at(type, 0u, error) != DATA_BIND_OK) return NULL;
-  root = turbo_json_create_object();
+  root = json_create_object();
   if (root == NULL) {
     typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating JSON object");
     return NULL;
@@ -592,7 +592,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
                field->kind == TBE_TYPED_SET) {
       const uint8_t *data;
       size_t count;
-      child = turbo_json_create_array();
+      child = json_create_array();
       if (field->kind == TBE_TYPED_FIXED_ARRAY) {
         data = (const uint8_t *)ptr;
         count = field->fixed_count;
@@ -605,14 +605,14 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
         json_value_t *item =
             typed_one_json(field->element_kind, field->element_wire_kind, field->object_type,
                            data + j * field->element_size, field->name, error);
-        if (item == NULL || !turbo_json_array_add_checked(child, item)) {
-          turbo_free_json(&item);
-          turbo_free_json(&child);
+        if (item == NULL || !json_array_add_checked(child, item)) {
+          (json_free(item), item = NULL);
+          (json_free(child), child = NULL);
         }
       }
     } else if (field->kind == TBE_TYPED_MAP) {
       const vec_t *vec = (const vec_t *)ptr;
-      child = turbo_json_create_object();
+      child = json_create_object();
       for (j = 0; child != NULL && j < vec->size; ++j) {
         const uint8_t *entry = (const uint8_t *)vec->data + j * field->map_entry_size;
         tstr key = *(const tstr *)(entry + field->map_key_offset);
@@ -622,24 +622,24 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
             (key != NULL && memchr(key, '\0', key_len) != NULL)) {
           typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
                       "Typed map key is not valid UTF-8 JSON text");
-          turbo_free_json(&child);
+          (json_free(child), child = NULL);
           break;
         }
         item = typed_one_json(
             field->map_value_kind, field->map_value_wire_kind, field->map_value_type,
             entry + field->map_value_offset, field->name, error);
-        if (item == NULL || !turbo_json_object_add_checked(child, key ? key : "", item)) {
-          turbo_free_json(&item);
-          turbo_free_json(&child);
+        if (item == NULL || !json_object_add_checked(child, key ? key : "", item)) {
+          (json_free(item), item = NULL);
+          (json_free(child), child = NULL);
         }
       }
     } else {
       child = typed_one_json(field->kind, field->wire_kind, field->object_type, ptr, field->name,
                              error);
     }
-    if (child == NULL || !turbo_json_object_add_checked(root, field->name, child)) {
-      turbo_free_json(&child);
-      turbo_free_json(&root);
+    if (child == NULL || !json_object_add_checked(root, field->name, child)) {
+      (json_free(child), child = NULL);
+      (json_free(root), root = NULL);
       typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
                   "Typed field cannot be represented as JSON");
       return NULL;
@@ -650,7 +650,11 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
   return root;
 }
 
-void tbe_typed_json_free(json_value_t **value) { turbo_free_json(value); }
+void tbe_typed_json_free(json_value_t **value) {
+  if (!value) return;
+  json_free(*value);
+  *value = NULL;
+}
 
 static int typed_scalar_kind_from_name(const char *name, TbeTypedKind *kind) {
   if (name == NULL || kind == NULL) return 0;
@@ -1391,7 +1395,7 @@ DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
     return DATA_BIND_ERR_TYPE_MISMATCH;
   }
   status = data_bind_object_from_json_value(codec, type_name, json, &bound, error);
-  turbo_free_json(&json);
+  (json_free(json), json = NULL);
   if (status != DATA_BIND_OK) return status;
   if (format == DATA_BIND_FORMAT_JSON)
     status = data_bind_object_serialize_json(codec, bound, out, out_len, error);

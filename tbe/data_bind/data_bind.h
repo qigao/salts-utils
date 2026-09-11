@@ -15,8 +15,11 @@
 #ifndef DATA_BIND_H
 #define DATA_BIND_H
 
-#include "turbo_parser_common.h"
-#include "turbo_parser_datetime.h"
+#include <query_vm.h>
+#include <stdbool.h>
+#include <time.h>
+#include <vstr.h>
+#include <datetime_parser.h>
 #include <salts_uuid.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -44,8 +47,8 @@ extern "C" {
 #endif
 
 typedef struct DataBind DataBind;
-/** DataBind-owned name for the legacy parser-compatible datetime layout. */
-typedef turbo_datetime_t DataBindDateTime;
+/** DataBind datetime uses the native Salts parser layout. */
+typedef datetime_t DataBindDateTime;
 /**
  * Immutable recursive dynamic node. Parse outputs own their root node; values
  * returned by object, field, list, map, and record accessors are borrowed.
@@ -235,11 +238,32 @@ typedef struct DataBindStreamLimits {
 } DataBindStreamLimits;
 
 /** Format-neutral query VM budgets copied into one stream handle. */
-typedef turbo_query_limits_t DataBindQueryLimits;
-typedef turbo_query_diagnostic_t DataBindQueryDiagnostic;
+typedef struct DataBindQueryLimits {
+  size_t size;
+  uint32_t max_instructions;
+  uint32_t max_operands;
+  uint32_t max_regexes;
+  uint32_t max_steps;
+} DataBindQueryLimits;
 
-#define DATA_BIND_QUERY_LIMITS_INIT TURBO_QUERY_LIMITS_INIT
-#define DATA_BIND_QUERY_DIAGNOSTIC_INIT TURBO_QUERY_DIAGNOSTIC_INIT
+#define DATA_BIND_QUERY_DIAGNOSTIC_MESSAGE_CAPACITY 160u
+/** Caller-owned native query diagnostic, independent of parser lifetime. */
+typedef struct DataBindQueryDiagnostic {
+  size_t size;
+  qvm_status_t status;
+  uint32_t instruction;
+  uint8_t opcode;
+  uint8_t reserved[3];
+  uint32_t operand;
+  char message[DATA_BIND_QUERY_DIAGNOSTIC_MESSAGE_CAPACITY];
+} DataBindQueryDiagnostic;
+
+#define DATA_BIND_QUERY_LIMITS_INIT \
+  {sizeof(DataBindQueryLimits), QVM_DEFAULT_MAX_INSTRUCTIONS, \
+   QVM_DEFAULT_MAX_OPERANDS, QVM_DEFAULT_MAX_REGEXES, QVM_DEFAULT_MAX_STEPS}
+#define DATA_BIND_QUERY_DIAGNOSTIC_INIT \
+  {sizeof(DataBindQueryDiagnostic), QVM_STATUS_OK, QVM_NO_INSTRUCTION, \
+   QVM_NO_OPCODE, {0, 0, 0}, QVM_NO_OPERAND, {0}}
 
 #define DATA_BIND_STREAM_LIMITS_INIT                                                        \
   {                                                                                         \

@@ -1,37 +1,4 @@
 set(DATA_BIND_TARGET data_bind)
-set(DATA_BIND_PARSER_COMPAT_TARGET data_bind_parser_compat)
-
-add_library(
-  ${DATA_BIND_PARSER_COMPAT_TARGET} STATIC
-  parser_compat/src/parser_compat.c)
-target_include_directories(
-  ${DATA_BIND_PARSER_COMPAT_TARGET}
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/parser_compat/include)
-target_link_libraries(
-  ${DATA_BIND_PARSER_COMPAT_TARGET}
-  PRIVATE
-    Salts::Core
-    Salts::CmdParser
-    Salts::CsvParser
-    Salts::CYaml
-    Salts::CYamlJsonAdapter
-    Salts::DateTimeParser
-    Salts::DotEnvParser
-    Salts::IniParser
-    Salts::JsonParser
-    Salts::LtvParser
-    Salts::ModbusParser
-    Salts::QueryVM
-    Salts::SoaParser
-    Salts::TLVParser
-    Salts::TomlParser
-    Salts::Toon
-    Salts::UriParser
-    Salts::XmlParser)
-set_target_properties(
-  ${DATA_BIND_PARSER_COMPAT_TARGET}
-  PROPERTIES FOLDER "tbe/data_bind/internal")
-
 add_library(
   ${DATA_BIND_TARGET} SHARED
   data_bind.c
@@ -45,7 +12,6 @@ target_include_directories(
   ${DATA_BIND_TARGET}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/parser_compat/include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/tbe/schema/include>
     $<INSTALL_INTERFACE:include>
   PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/tbe/schema/parser>)
@@ -53,11 +19,17 @@ target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
     monocypher
-    ${DATA_BIND_PARSER_COMPAT_TARGET}
+    Salts::JsonParser
+    Salts::CsvParser
+    Salts::XmlParser
+    Salts::CYaml
+    Salts::CYamlJsonAdapter
     Salts::TbeSchema
   PUBLIC
     Salts::Core
-    Salts::CSTL)
+    Salts::CSTL
+    Salts::DateTimeParser
+    Salts::QueryVM)
 cmake_config_target(
   ${DATA_BIND_TARGET}
   ALIAS Salts::DataBind
@@ -102,8 +74,6 @@ install(
     data_bind_cflow.h
     data_bind_cmeta.h
     tbe_typed.h
-    parser_compat/include/turbo_parser_common.h
-    parser_compat/include/turbo_parser_datetime.h
   DESTINATION include)
 
 set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)

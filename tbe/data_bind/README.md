@@ -16,7 +16,24 @@ DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造�
 ## 设计边界
 
 DataBind 是 SaltsUtils 自有的 schema、动态值和 typed conversion 运行时。它依赖
-SaltsUtils 的 TBE schema，并通过内部 compatibility 层消费基础 Salts 的具体格式解析能力。
+SaltsUtils 的 TBE schema，并直接消费基础 Salts 的具体格式解析器，不再构建或安装 parser compatibility 层。
+
+### 原生 parser 依赖与迁移
+
+格式解析直接链接 `Salts::JsonParser`、`Salts::CsvParser`、`Salts::XmlParser`、
+`Salts::CYaml` 和 `Salts::CYamlJsonAdapter`。公开 datetime 和查询预算/诊断分别依赖
+`Salts::DateTimeParser`、`Salts::QueryVM`，由 `Salts::DataBind` 的公开链接接口传递。
+
+`parser_compat/` 及其构建目标、头文件安装项已移除；不存在另一份 facade 或 fallback。
+调用方应包含 `data_bind.h`，datetime 使用原生 `datetime_t`（也可用 `DataBindDateTime`），
+查询状态使用 `QVM_STATUS_*`。不得继续包含 `turbo_parser*.h` 或使用 `turbo_*` parser 类型。
+`DataBindQueryLimits` 保留带 `size` 的版本化配置；`DataBindQueryDiagnostic` 保留错误消息的
+自有副本，不能直接用含借用消息指针的 `qvm_diagnostic_t` 替代它。
+
+JSON/CSV 文档、YAML 文档与选择结果、XML 文档与节点列表均由各自 Salts parser 创建和释放。
+DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于 `Salts::XmlParser`，
+不再由 DataBind 自行实现。流式回调、取消、预算和错误后的资源清理仍由现有回归测试约束。
+既有 `turbo_parser.data_bind.*.v1` CMeta 语义标识不是 parser API，保持不变以避免破坏类型身份。
 
 DataBind 2.5 只定义两条强类型路线：
 
@@ -57,7 +74,7 @@ JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前
 
 这个边界避免在 DataBind 中再维护一套不完整的“通用路径”语义。2.5 由四个 parser
 前端统一提供指令、operand、正则和执行步数预算；`DataBindStreamConfig.query_limits`
-只转发这些预算，并把 `TURBO_QUERY_RESOURCE_LIMIT` 映射为 `DATA_BIND_ERR_LIMIT`。
+只转发这些预算，并把 `QVM_STATUS_RESOURCE_LIMIT` 映射为 `DATA_BIND_ERR_LIMIT`。
 `data_bind_stream_query_diagnostic()` 可复制最后一次 VM 指令、opcode、operand 和消息。
 预算在 stream 创建/设置时复制，诊断由 stream 持有；不存在进程全局 DataBind 策略，
 也不允许 DataBind 绕过前端直接构造或执行 QVM 指令。
