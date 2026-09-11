@@ -691,13 +691,15 @@ suite("tbe_parser") {
       node_free(root);
     }
 
-    it("should parse message fields declared outside binary layout order") {
+    it("should reject message fields declared outside binary layout order") {
       const char *schema = "group Level { uint64 price; } "
                            "message Broken { string symbol; group<Level> bids; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      tbe_error_t err;
+      int rc = parse_schema(schema, strlen(schema), root, &err);
 
-      check_equal(rc, 0);
+      check_equal(rc, -1);
+      check_not_null(strstr(err.message, "order"));
       node_free(root);
     }
   }

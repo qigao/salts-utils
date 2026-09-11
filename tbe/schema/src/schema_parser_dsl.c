@@ -1,5 +1,6 @@
 #include "schema_parser_dsl.h"
 #include "schema_builtin_type.h"
+#include "schema_size.h"
 #include "schema_lexer.h"
 #include "schema_types.h"
 #include "schema_grammar_gen.h"
@@ -108,40 +109,7 @@ static int map_has_named_child(const Node *map, const char *name) {
 }
 
 static int parse_size_text(const char *text, size_t *out) {
-    char *end = NULL;
-    unsigned long long value;
-
-    if (!text || !out || text[0] == '\0') {
-        return 0;
-    }
-
-    value = strtoull(text, &end, 10);
-    if (!end || *end != '\0') {
-        return 0;
-    }
-
-    *out = (size_t)value;
-    return 1;
-}
-
-static int parse_size_text_strict(const char *text, size_t *out) {
-    char *end = NULL;
-    unsigned long long value;
-    if (!text || !out || text[0] == '\0') {
-        return 0;
-    }
-
-    errno = 0;
-    value = strtoull(text, &end, 10);
-    if (errno != 0 || !end || end == text || *end != '\0') {
-        return 0;
-    }
-    if (value > SIZE_MAX) {
-        return 0;
-    }
-
-    *out = (size_t)value;
-    return 1;
+    return schema_parse_fixed_layout_size(text, out);
 }
 
 static int annotate_result(int result) {
@@ -746,7 +714,7 @@ static int annotate_optional_fields(Node *root) {
                 if (original_block_size_str) {
                     size_t original_size;
                     size_t new_size;
-                    if (!parse_size_text_strict(original_block_size_str, &original_size)) return -1;
+                    if (!parse_size_text(original_block_size_str, &original_size)) return -1;
                     if (bitmap_bytes > SIZE_MAX - original_size) return -1;
                     new_size = original_size + bitmap_bytes;
                     char new_size_str[32];
@@ -764,7 +732,7 @@ static int annotate_optional_fields(Node *root) {
                         if (offset_str) {
                             size_t original_offset;
                             size_t new_offset;
-                            if (!parse_size_text_strict(offset_str, &original_offset)) return -1;
+                            if (!parse_size_text(offset_str, &original_offset)) return -1;
                             if (bitmap_bytes > SIZE_MAX - original_offset) return -1;
                             new_offset = original_offset + bitmap_bytes;
                             char new_offset_str[32];
