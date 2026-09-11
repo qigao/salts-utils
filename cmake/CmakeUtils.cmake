@@ -155,8 +155,6 @@ function(cmake_add_source VAR)
     set(ARG_PATTERNS "*.c" "*.cpp" "*.h" "*.hpp" "*.cc" "*.hh")
   endif()
 
-  file(${glob_mode} collected ${patterns})
-
   set(patterns)
   foreach(dir ${ARG_DIRS})
     foreach(pat ${ARG_PATTERNS})
