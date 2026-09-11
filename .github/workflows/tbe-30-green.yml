@@ -116,7 +116,12 @@ jobs:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: |
           set -euxo pipefail
-          cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON
+          # Salts is a pinned dependency here, not the sanitizer target. Its build
+          # runs host-side Lemon during generation, so keep that host tool outside
+          # ASan/UBSan and sanitize the salts-utils targets in the next step.
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/linux-gcc-debug --target install -j2
           sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
 
