@@ -19,14 +19,12 @@
 %include {
 #include "schema_lexer.h"
 #include "schema_builtin_type.h"
+#include "schema_size.h"
 #include "schema_types.h"
-#include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define SCHEMA_MAX_FIXED_LAYOUT_BYTES ((unsigned long long)PTRDIFF_MAX)
 
 static char *tok_strdup(schema_token_t t) {
     if (!t.value || t.length == 0) {
@@ -102,17 +100,13 @@ static int validate_type_name_supported(schema_parse_ctx_t *ctx, const char *typ
 }
 
 static int validate_fixed_length(schema_parse_ctx_t *ctx, const char *length_text) {
-    char *end = NULL;
-    unsigned long long value;
+    size_t ignored;
 
     if (!is_numeric_literal(length_text)) {
         return 1;
     }
 
-    errno = 0;
-    value = strtoull(length_text, &end, 10);
-    if (errno != 0 || end == length_text || end == NULL || *end != '\0' ||
-        value > (unsigned long long)SIZE_MAX || value > SCHEMA_MAX_FIXED_LAYOUT_BYTES) {
+    if (!schema_parse_fixed_layout_size(length_text, &ignored)) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
                  "Fixed field length exceeds the safe TBE layout range");
         ctx->error = 1;
@@ -136,7 +130,7 @@ static char *join_map_inner_types(schema_parse_ctx_t *ctx,
 
     key_len = strlen(key_type);
     value_len = strlen(value_type);
-    if (key_len > SIZE_MAX - value_len - 2u) {
+    if (value_len > SIZE_MAX - 2u || key_len > SIZE_MAX - value_len - 2u) {
         grammar_oom(ctx);
         return NULL;
     }
