@@ -16,6 +16,7 @@
 #include "tbe_wire.h"
 #include "turbo_parser.h"
 #include "json_parser.h"
+#include "query_vm.h"
 #include <salts_fs.h>
 #include <tstr.h>
 #include <salts_thread.h>
@@ -38,6 +39,87 @@ static void data_bind_json_freep(json_value_t **value) {
   if (value == NULL || *value == NULL) return;
   json_free(*value);
   *value = NULL;
+}
+
+static void data_bind_qvm_diagnostic_init(qvm_diagnostic_t *diagnostic) {
+  memset(diagnostic, 0, sizeof(*diagnostic));
+  diagnostic->status = QVM_STATUS_OK;
+  diagnostic->instruction = QVM_NO_INSTRUCTION;
+  diagnostic->opcode = QVM_NO_OPCODE;
+  diagnostic->operand = QVM_NO_OPERAND;
+}
+
+static void data_bind_query_diagnostic_from_qvm(DataBindQueryDiagnostic *destination,
+                                                const qvm_diagnostic_t *source,
+                                                turbo_query_status_t fallback_status,
+                                                const char *fallback_message) {
+  size_t size;
+  if (destination == NULL || destination->size < sizeof(*destination)) return;
+  size = destination->size;
+  memset(destination, 0, sizeof(*destination));
+  destination->size = size;
+  destination->status = source ? (turbo_query_status_t)source->status : fallback_status;
+  destination->instruction = source ? source->instruction : QVM_NO_INSTRUCTION;
+  destination->opcode = source ? source->opcode : QVM_NO_OPCODE;
+  destination->operand = source ? source->operand : QVM_NO_OPERAND;
+  snprintf(destination->message, sizeof(destination->message), "%s",
+           source && source->message ? source->message
+                                     : (fallback_message ? fallback_message : ""));
+}
+
+static int data_bind_query_limits_to_qvm(const DataBindQueryLimits *source,
+                                         qvm_limits_t *destination,
+                                         DataBindQueryDiagnostic *diagnostic) {
+  if (destination == NULL) return 0;
+  if (source == NULL) {
+    *destination = qvm_default_limits();
+    return 1;
+  }
+  if (source->size < sizeof(*source) || source->max_instructions == 0 ||
+      source->max_operands == 0 || source->max_regexes == 0 || source->max_steps == 0) {
+    data_bind_query_diagnostic_from_qvm(diagnostic, NULL, TURBO_QUERY_INVALID_ARGUMENT,
+                                        "Invalid query limits");
+    return 0;
+  }
+  destination->max_instructions = source->max_instructions;
+  destination->max_operands = source->max_operands;
+  destination->max_regexes = source->max_regexes;
+  destination->max_steps = source->max_steps;
+  return 1;
+}
+
+static json_path_program_t *data_bind_json_path_compile_ex(
+    const char *expr, const DataBindQueryLimits *limits, DataBindQueryDiagnostic *diagnostic) {
+  qvm_limits_t native_limits;
+  qvm_diagnostic_t native_diagnostic;
+  json_path_program_t *program;
+  if (!data_bind_query_limits_to_qvm(limits, &native_limits, diagnostic)) return NULL;
+  data_bind_qvm_diagnostic_init(&native_diagnostic);
+  program = json_path_compile_ex(expr, &native_limits, &native_diagnostic);
+  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);
+  return program;
+}
+
+static json_value_t *data_bind_json_path_get_compiled_ex(
+    const json_value_t *root, const json_path_program_t *program,
+    DataBindQueryDiagnostic *diagnostic) {
+  qvm_diagnostic_t native_diagnostic;
+  json_value_t *value;
+  data_bind_qvm_diagnostic_init(&native_diagnostic);
+  value = json_path_get_compiled_ex(root, program, &native_diagnostic);
+  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);
+  return value;
+}
+
+static json_path_result_t *data_bind_json_path_query_compiled_ex(
+    const json_value_t *root, const json_path_program_t *program,
+    DataBindQueryDiagnostic *diagnostic) {
+  qvm_diagnostic_t native_diagnostic;
+  json_path_result_t *result;
+  data_bind_qvm_diagnostic_init(&native_diagnostic);
+  result = json_path_query_compiled_ex(root, program, &native_diagnostic);
+  data_bind_query_diagnostic_from_qvm(diagnostic, &native_diagnostic, TURBO_QUERY_OK, NULL);
+  return result;
 }
 
 typedef enum data_bind_wire_type {
@@ -221,8 +303,8 @@ struct data_bind_stream_t {
   DataBindValue *csv_values;
   DataBindValue *stream_values;
   json_sax_parser_t *json_sax;
-  turbo_json_path_program_t *json_path_program;
-  turbo_json_path_stream_t *json_path_stream;
+  json_path_program_t *json_path_program;
+  json_path_stream_t *json_path_stream;
   json_value_t *json_match_value;
   turbo_yaml_sax_parser_t *yaml_sax;
   turbo_xml_sax_parser_t *xml_sax;
@@ -6139,7 +6221,7 @@ static const json_sax_handler_raw_t DATA_BIND_JSON_STREAM_HANDLER = {
     data_bind_stream_json_on_object_end,   data_bind_stream_json_on_array_start,
     data_bind_stream_json_on_array_end};
 
-static const turbo_json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER = {
+static const json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER = {
     data_bind_stream_json_path_match_start,
     data_bind_stream_json_path_match_end,
     {data_bind_stream_json_path_on_null,
@@ -6176,7 +6258,7 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
     if (parser->stream_error[0] != '\0') {
       message = parser->stream_error;
     } else if (parser->json_path_stream != NULL) {
-      message = turbo_json_path_stream_error(parser->json_path_stream);
+      message = json_path_stream_error(parser->json_path_stream);
       path = "json";
     } else if (parser->json_sax != NULL) {
       message = json_sax_parser_error(parser->json_sax);
@@ -6210,7 +6292,7 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
     return data_bind_stream_sax_error(parser, error, "stream feed");
   }
   if (parser->json_path_stream != NULL) {
-    if (turbo_json_path_stream_feed(parser->json_path_stream, data, len) != 0) {
+    if (json_path_stream_feed(parser->json_path_stream, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream feed");
     }
   } else if (parser->json_sax != NULL) {
@@ -6235,7 +6317,7 @@ static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
     return data_bind_stream_sax_error(parser, error, "stream finish");
   }
   if (parser->json_path_stream != NULL) {
-    if (turbo_json_path_stream_finish(parser->json_path_stream) != 0) {
+    if (json_path_stream_finish(parser->json_path_stream) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream finish");
     }
   } else if (parser->json_sax != NULL) {
@@ -6836,25 +6918,25 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
     if (parser->json_path_stream_mode != DATA_BIND_JSON_PATH_STREAM_NONE) {
       const char *path_error;
-      parser->json_path_program = turbo_json_path_compile(parser->path_or_expr);
+      parser->json_path_program = json_path_compile(parser->path_or_expr);
       if (parser->json_path_program == NULL) {
         parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
         data_bind_value_free(parser->stream_values);
         parser->stream_values = NULL;
       } else {
-        parser->json_path_stream = turbo_json_path_stream_create(
+        parser->json_path_stream = json_path_stream_create(
             parser->json_path_program, &DATA_BIND_JSON_PATH_STREAM_HANDLER, parser);
       }
       if (parser->json_path_program != NULL && parser->json_path_stream == NULL) {
-        path_error = turbo_json_path_stream_error(NULL);
+        path_error = json_path_stream_error(NULL);
         if (path_error != NULL && strstr(path_error, "not streamable") != NULL) {
-          turbo_json_path_program_free(parser->json_path_program);
+          json_path_program_free(parser->json_path_program);
           parser->json_path_program = NULL;
           parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
           data_bind_value_free(parser->stream_values);
           parser->stream_values = NULL;
         } else {
-          turbo_json_path_program_free(parser->json_path_program);
+          json_path_program_free(parser->json_path_program);
           data_bind_value_free(parser->stream_values);
           free(parser->path_or_expr);
           free(parser->type_name);
@@ -6875,7 +6957,7 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
     if (parser->json_path_stream == NULL && parser->json_sax == NULL) {
       data_bind_value_free(parser->stream_values);
-      turbo_json_path_program_free(parser->json_path_program);
+      json_path_program_free(parser->json_path_program);
       free(parser->path_or_expr);
       free(parser->type_name);
       free(parser);
@@ -7426,7 +7508,7 @@ DataBindStatus data_bind_stream_set_query_limits(
   parser->query_limits_configured = 1;
 
   if (parser->json_path_program != NULL && parser->path_or_expr != NULL) {
-    turbo_json_path_program_t *verified = turbo_json_path_compile_ex(
+    json_path_program_t *verified = data_bind_json_path_compile_ex(
         parser->path_or_expr, &parser->query_limits, &parser->query_diagnostic);
     if (verified == NULL) {
       DataBindStatus status = data_bind_query_failure_status(
@@ -7437,7 +7519,7 @@ DataBindStatus data_bind_stream_set_query_limits(
                               ? parser->query_diagnostic.message
                               : "query VM failure");
     }
-    turbo_json_path_program_free(verified);
+    json_path_program_free(verified);
     if (parser->json_path_stream != NULL &&
         (limits->max_instructions != TURBO_QUERY_DEFAULT_MAX_INSTRUCTIONS ||
          limits->max_operands != TURBO_QUERY_DEFAULT_MAX_OPERANDS ||
@@ -7448,7 +7530,7 @@ DataBindStatus data_bind_stream_set_query_limits(
       if (replacement == NULL)
         return db_error_set(parser->error, DATA_BIND_ERR_OOM, "jsonpath", -1,
                             -1, "Out of memory applying JSONPath query limits");
-      turbo_json_path_stream_destroy(parser->json_path_stream);
+      json_path_stream_destroy(parser->json_path_stream);
       parser->json_path_stream = NULL;
       parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
       data_bind_value_free(parser->stream_values);
@@ -7846,9 +7928,9 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   free(parser->csv_field_storage);
   if (parser->csv_filter != NULL) turbo_dsv_filter_destroy(parser->csv_filter);
   if (parser->json_path_stream != NULL)
-    turbo_json_path_stream_destroy(parser->json_path_stream);
+    json_path_stream_destroy(parser->json_path_stream);
   if (parser->json_path_program != NULL)
-    turbo_json_path_program_free(parser->json_path_program);
+    json_path_program_free(parser->json_path_program);
   if (parser->json_sax != NULL) json_sax_parser_destroy(parser->json_sax);
   if (parser->yaml_sax != NULL) turbo_yaml_sax_parser_destroy(parser->yaml_sax);
   if (parser->xml_sax != NULL) turbo_xml_sax_parser_destroy(parser->xml_sax);
@@ -7996,7 +8078,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     DataBindError *error) {
   json_value_t *root = NULL;
   json_value_t *selected;
-  turbo_json_path_program_t *program = NULL;
+  json_path_program_t *program = NULL;
   DataBindValue *result;
   char error_path[256];
   const char *path_error;
@@ -8016,10 +8098,10 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
-  program = turbo_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
+  program = data_bind_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
   if (program == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    path_error = turbo_json_path_error();
+    path_error = json_path_get_error();
     data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, query_status, error_path, -1, -1,
@@ -8028,9 +8110,9 @@ static DataBindStatus data_bind_parse_json_path_with_query(
                             ? query_diagnostic->message
                             : (path_error ? path_error : "invalid path"));
   }
-  selected = turbo_json_path_get_compiled_ex(root, program, query_diagnostic);
-  turbo_json_path_program_free(program);
-  path_error = turbo_json_path_error();
+  selected = data_bind_json_path_get_compiled_ex(root, program, query_diagnostic);
+  json_path_program_free(program);
+  path_error = json_path_get_error();
   if (selected == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
     data_bind_json_freep(&root);
@@ -8076,8 +8158,8 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
   json_value_t *root = NULL;
-  turbo_json_path_program_t *program = NULL;
-  turbo_json_path_result_t *matches = NULL;
+  json_path_program_t *program = NULL;
+  json_path_result_t *matches = NULL;
   DataBindValue *list;
   int program_compiled = 0;
   size_t i;
@@ -8099,13 +8181,13 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
-  program = turbo_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
+  program = data_bind_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
   if (program != NULL) {
     program_compiled = 1;
-    matches = turbo_json_path_query_compiled_ex(root, program, query_diagnostic);
+    matches = data_bind_json_path_query_compiled_ex(root, program, query_diagnostic);
   }
-  turbo_json_path_program_free(program);
-  path_error = turbo_json_path_error();
+  json_path_program_free(program);
+  path_error = json_path_get_error();
   if (matches == NULL && (!program_compiled || path_error != NULL)) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
     data_bind_json_freep(&root);
@@ -8118,7 +8200,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) {
-    if (matches != NULL) turbo_json_path_result_free(matches);
+    if (matches != NULL) json_path_result_free(matches);
     data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
@@ -8126,8 +8208,8 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   }
   if (matches != NULL) {
     DataBindStatus failure = DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < turbo_json_path_result_size(matches); i++) {
-      json_value_t *matched = turbo_json_path_result_get(matches, i);
+    for (i = 0; i < json_path_result_size(matches); i++) {
+      json_value_t *matched = json_path_result_get(matches, i);
       DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, matched);
       if (item == NULL) {
         data_bind_value_free(list);
@@ -8143,7 +8225,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
       }
     }
     if (list == NULL) {
-      turbo_json_path_result_free(matches);
+      json_path_result_free(matches);
       data_bind_json_freep(&root);
       db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
       if (failure == DATA_BIND_ERR_OOM)
@@ -8153,7 +8235,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
                           "JSONPath bind_all failed for type: %s", type_name);
     }
   }
-  if (matches != NULL) turbo_json_path_result_free(matches);
+  if (matches != NULL) json_path_result_free(matches);
   data_bind_json_freep(&root);
   *out_value = list;
   db_error_clear(error);
