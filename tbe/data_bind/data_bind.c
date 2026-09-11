@@ -299,7 +299,7 @@ struct DataBindValue {
       size_t len;
     } bytes_val;
     salts_uuid_t uuid_val;
-    turbo_datetime_t datetime_val;
+    datetime_t datetime_val;
     DataBindDate date_val;
     DataBindTime time_val;
     int64_t duration_ms;
@@ -764,7 +764,7 @@ static DataBindValue *dbv_uuid_text(const char *text) {
   return dbv_uuid_bytes(uuid.bytes);
 }
 
-static DataBindValue *dbv_datetime(turbo_datetime_t value) {
+static DataBindValue *dbv_datetime(datetime_t value) {
   DataBindValue *v = dbv_new(DATA_BIND_VALUE_DATETIME);
   if (v == NULL) return NULL;
   v->data.datetime_val = value;
@@ -772,8 +772,8 @@ static DataBindValue *dbv_datetime(turbo_datetime_t value) {
 }
 
 static DataBindValue *dbv_datetime_text(const char *text) {
-  turbo_datetime_t dt;
-  if (text == NULL || turbo_parse_datetime(text, strlen(text), &dt) != 0) return NULL;
+  datetime_t dt;
+  if (text == NULL || datetime_parse(text, strlen(text), &dt) != 0) return NULL;
   return dbv_datetime(dt);
 }
 
@@ -787,7 +787,7 @@ static int db_date_valid(int year, int month, int day) {
 }
 
 static int db_parse_date_text(const char *text, DataBindDate *out) {
-  turbo_datetime_t dt;
+  datetime_t dt;
   int year = 0, month = 0, day = 0, consumed = 0;
   if (text == NULL || out == NULL) return 0;
   if (sscanf(text, "%d-%d-%d%n", &year, &month, &day, &consumed) == 3 ||
@@ -798,7 +798,7 @@ static int db_parse_date_text(const char *text, DataBindDate *out) {
     out->day = day;
     return 1;
   }
-  if (turbo_parse_datetime(text, strlen(text), &dt) == 0) {
+  if (datetime_parse(text, strlen(text), &dt) == 0) {
     out->year = dt.year;
     out->month = dt.month;
     out->day = dt.day;
@@ -808,9 +808,9 @@ static int db_parse_date_text(const char *text, DataBindDate *out) {
 }
 
 static int db_parse_time_text(const char *text, DataBindTime *out) {
-  turbo_datetime_t dt;
+  datetime_t dt;
   if (text == NULL || out == NULL) return 0;
-  if (strchr(text, ':') == NULL || turbo_parse_datetime(text, strlen(text), &dt) != 0) return 0;
+  if (strchr(text, ':') == NULL || datetime_parse(text, strlen(text), &dt) != 0) return 0;
   if (dt.year != 0 || dt.month != 0 || dt.day != 0 || dt.has_tz || dt.hour < 0 || dt.hour > 23 ||
       dt.minute < 0 || dt.minute > 59 || dt.second < 0 || dt.second > 60 ||
       dt.millisecond < 0 || dt.millisecond > 999)
@@ -9263,7 +9263,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
     json = turbo_json_create_string(text);
     break;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = turbo_datetime_to_time(&value->data.datetime_val);
+    time_t timestamp = datetime_to_time(&value->data.datetime_val);
     if (timestamp == (time_t)-1 ||
         turbo_datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
@@ -9466,7 +9466,7 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_UUID:
     return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = turbo_datetime_to_time(&value->data.datetime_val);
+    time_t timestamp = datetime_to_time(&value->data.datetime_val);
     return timestamp != (time_t)-1 && turbo_datetime_format_rfc822(timestamp, text, size) >= 0;
   }
   case DATA_BIND_VALUE_DATE:
@@ -10116,7 +10116,7 @@ const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out
   return salts_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
-int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *out) {
+int data_bind_value_as_datetime(const DataBindValue *value, datetime_t *out) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL) return 0;
   *out = value->data.datetime_val;
   return 1;
@@ -10124,14 +10124,14 @@ int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *ou
 
 double data_bind_value_as_datetime_timestamp(const DataBindValue *value) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME) return -1.0;
-  return (double)turbo_datetime_to_time(&value->data.datetime_val);
+  return (double)datetime_to_time(&value->data.datetime_val);
 }
 
 const char *data_bind_value_as_datetime_string(const DataBindValue *value, char *out, size_t len) {
   time_t ts;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL || len < 32)
     return NULL;
-  ts = turbo_datetime_to_time(&value->data.datetime_val);
+  ts = datetime_to_time(&value->data.datetime_val);
   if (ts == (time_t)-1 || turbo_datetime_format_rfc822(ts, out, len) < 0) return NULL;
   return out;
 }
@@ -10346,7 +10346,7 @@ DataBindStatus data_bind_value_get_uuid(const DataBindValue *value,
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, turbo_datetime_t *out) {
+DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, datetime_t *out) {
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value->kind != DATA_BIND_VALUE_DATETIME) return DATA_BIND_ERR_TYPE_MISMATCH;

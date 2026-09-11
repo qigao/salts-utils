@@ -16,7 +16,7 @@
 #define DATA_BIND_H
 
 #include "turbo_parser_common.h"
-#include "turbo_parser_datetime.h"
+#include <datetime_parser.h>
 #include <salts_uuid.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -44,8 +44,8 @@ extern "C" {
 #endif
 
 typedef struct DataBind DataBind;
-/** DataBind-owned name for the legacy parser-compatible datetime layout. */
-typedef turbo_datetime_t DataBindDateTime;
+/** DataBind-owned public name for salts datetime_parser layout. */
+typedef datetime_t DataBindDateTime;
 /**
  * Immutable recursive dynamic node. Parse outputs own their root node; values
  * returned by object, field, list, map, and record accessors are borrowed.
