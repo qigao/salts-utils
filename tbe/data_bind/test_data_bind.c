@@ -1111,7 +1111,17 @@ suite("Data Bind") {
     given("a schema with var-data followed by fixed field") {
       write_schema("test_varstr_tail.tbe", "message Msg { string name; uint32 qty; }\n");
       DataBind *codec = data_bind_create("test_varstr_tail.tbe");
-      then("codec should support schema binding without requiring binary layout") {
+      then("codec creation should reject the invalid schema order") {
+        check_null(codec);
+      }
+      data_bind_free(codec);
+      remove("test_varstr_tail.tbe");
+    }
+
+    given("a schema with fixed field followed by var-data") {
+      write_schema("test_fixed_varstr_json.tbe", "message Msg { uint32 qty; string name; }\n");
+      DataBind *codec = data_bind_create("test_fixed_varstr_json.tbe");
+      then("JSON binding should follow field names rather than schema order") {
         check_not_null(codec);
         if (codec) {
           const char *json = "{\"name\":\"Turbo\",\"qty\":42}";
@@ -1125,7 +1135,7 @@ suite("Data Bind") {
         }
       }
       data_bind_free(codec);
-      remove("test_varstr_tail.tbe");
+      remove("test_fixed_varstr_json.tbe");
     }
   }
 

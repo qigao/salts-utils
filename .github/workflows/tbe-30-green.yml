@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      ASAN_OPTIONS: detect_leaks=1:detect_odr_violation=2:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
       - name: Checkout the exact committed source
@@ -63,9 +63,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: 9678f606ef5deea5161fb7ed11bbe6e1af2d1c2f
+          ref: c0e48acdb0aeec94199c1e6056c9f018f1e9f746
           path: salts
           persist-credentials: false
+
+      - name: Record verified CMeta dependency revision
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git -C salts rev-parse HEAD)" = c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe30-evidence/salts-head.txt"
 
       - name: Checkout vcpkg at the manifest baseline
         uses: actions/checkout@v4
@@ -123,7 +130,11 @@ jobs:
           from pathlib import Path
           commands = json.loads(Path('build/linux-gcc-debug/compile_commands.json').read_text())
           required = {'tbe_typed.c', 'test_tbe_typed_descriptor_safety.c',
-                      'test_tbe_typed_descriptor_boundary.c', 'test_tbe_typed_generated.c'}
+                      'test_tbe_typed_descriptor_boundary.c', 'test_tbe_typed_generated.c',
+                      'test_data_bind.c', 'test_tbe_compiler.c', 'schema_parser_dsl.c',
+                      'test_schema_boundaries.c', 'test_schema_boundary.c',
+                      'data_bind_cmeta.c', 'data_bind_cflow.c',
+                      'test_data_bind_cmeta.c', 'test_data_bind_cflow.c'}
           found = set()
           for entry in commands:
               name = Path(entry['file']).name
@@ -159,12 +170,18 @@ jobs:
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
 
-      # The broad runtime suite currently includes two independently tracked failures:
-      # qigao/salts-utils#39 (stale schemas after the strict #32 ordering contract) and
-      # qigao/salts#252 (CMeta duplicate linkage reported by ASan). Keep collecting the
-      # evidence without weakening the sanitizer settings or treating either as #30 behavior.
-      - name: Diagnostic broad TBE and DataBind runtime suite
-        continue-on-error: true
+      - name: Run blocking schema-order and legacy fixture regressions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug --no-tests=error \
+            -R '^(test_data_bind|test_tbe_compiler|test_schema_boundaries|test_tbe_compiler_schema_boundary)$' \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/schema-order.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/schema-order.log"
+
+      # The pinned Core fixes salts#252; CMeta/CFlow and every other TBE target
+      # must now pass. Keep ODR and leak detection enabled and do not allow failure.
+      - name: Run blocking full TBE and DataBind runtime suite
         shell: bash
         run: |
           set -euxo pipefail
