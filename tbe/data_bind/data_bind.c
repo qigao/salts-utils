@@ -15,6 +15,7 @@
 #include "tbe_error.h"
 #include "tbe_wire.h"
 #include "turbo_parser.h"
+#include "json_parser.h"
 #include <salts_fs.h>
 #include <tstr.h>
 #include <salts_thread.h>
@@ -32,6 +33,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void data_bind_json_freep(json_value_t **value) {
+  if (value == NULL || *value == NULL) return;
+  json_free(*value);
+  *value = NULL;
+}
 
 typedef enum data_bind_wire_type {
   DB_WIRE_UNDEFINED,
@@ -213,7 +220,7 @@ struct data_bind_stream_t {
   turbo_dsv_filter_t *csv_filter;
   DataBindValue *csv_values;
   DataBindValue *stream_values;
-  turbo_json_sax_parser_t *json_sax;
+  json_sax_parser_t *json_sax;
   turbo_json_path_program_t *json_path_program;
   turbo_json_path_stream_t *json_path_stream;
   json_value_t *json_match_value;
@@ -1558,7 +1565,7 @@ static json_value_t *json_field_value(Node *field, json_value_t *object) {
     const char *candidate = field_input_name_at(field, i);
     json_value_t *value;
     if (field_input_name_is_duplicate(field, i, candidate)) continue;
-    value = turbo_json_object_get(object, candidate);
+    value = json_object_get(object, candidate);
     if (value != NULL) return value;
   }
   return NULL;
@@ -2439,12 +2446,12 @@ static DataBindValue *json_integer_value(Node *schema_root, const char *type_nam
   const char *text = NULL;
   size_t len = 0;
   if (value == NULL) return NULL;
-  if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-    text = turbo_json_number_text(value, &len);
+  if (json_type(value) == JSON_NUMBER) {
+    text = json_number_text(value, &len);
     if (text == NULL) return NULL;
-  } else if (turbo_json_type(value) == TURBO_JSON_STRING) {
-    text = turbo_json_string(value);
-    len = turbo_json_string_len(value);
+  } else if (json_type(value) == JSON_STRING) {
+    text = json_string(value);
+    len = json_string_len(value);
   } else {
     return NULL;
   }
@@ -2458,11 +2465,11 @@ static DataBindValue *json_flags_value(Node *schema_root, const char *type_name,
   size_t i;
   DataBindValue *direct = json_integer_value(schema_root, type_name, value);
   if (direct != NULL) return direct;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY) return NULL;
-  for (i = 0; i < turbo_json_array_size(value); i++) {
+  if (value == NULL || json_type(value) != JSON_ARRAY) return NULL;
+  for (i = 0; i < json_array_size(value); i++) {
     uint64_t bits;
     DataBindValue *item =
-        json_flags_value(schema_root, type_name, turbo_json_array_get(value, i));
+        json_flags_value(schema_root, type_name, json_array_get(value, i));
     if (item == NULL || data_bind_value_get_uint64(item, &bits) != DATA_BIND_OK) {
       data_bind_value_free(item);
       return NULL;
@@ -2482,55 +2489,55 @@ static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
   if (is_flags_type(schema_root, type_name))
     return json_flags_value(schema_root, type_name, value);
   if (kind == DB_TEXT_INTEGER &&
-      (turbo_json_type(value) == TURBO_JSON_NUMBER ||
-       (turbo_json_type(value) == TURBO_JSON_STRING &&
+      (json_type(value) == JSON_NUMBER ||
+       (json_type(value) == JSON_STRING &&
         find_enum_record(schema_root, type_name) != NULL)))
     return json_integer_value(schema_root, type_name, value);
   switch (kind) {
   case DB_TEXT_STRING:
-    if (turbo_json_type(value) == TURBO_JSON_STRING) {
-      return dbv_string_n(turbo_json_string(value), turbo_json_string_len(value));
+    if (json_type(value) == JSON_STRING) {
+      return dbv_string_n(json_string(value), json_string_len(value));
     }
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      snprintf(number_buf, sizeof(number_buf), "%.17g", turbo_json_number(value));
+    if (json_type(value) == JSON_NUMBER) {
+      snprintf(number_buf, sizeof(number_buf), "%.17g", json_number(value));
       return dbv_string(number_buf);
     }
-    if (turbo_json_type(value) == TURBO_JSON_BOOL)
-      return dbv_string(turbo_json_bool(value) ? "true" : "false");
+    if (json_type(value) == JSON_BOOL)
+      return dbv_string(json_bool(value) ? "true" : "false");
     return NULL;
   case DB_TEXT_BYTES:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_bytes((const uint8_t *)turbo_json_string(value), turbo_json_string_len(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_bytes((const uint8_t *)json_string(value), json_string_len(value));
   case DB_TEXT_UUID:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_uuid_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_uuid_text(json_string(value));
   case DB_TEXT_DATETIME:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_datetime_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_datetime_text(json_string(value));
   case DB_TEXT_DATE:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_date_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_date_text(json_string(value));
   case DB_TEXT_TIME:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_time_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_time_text(json_string(value));
   case DB_TEXT_DURATION:
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER)
-      return dbv_duration((int64_t)turbo_json_number(value));
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_duration_text(turbo_json_string(value));
+    if (json_type(value) == JSON_NUMBER)
+      return dbv_duration((int64_t)json_number(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_duration_text(json_string(value));
   case DB_TEXT_DECIMAL:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_decimal_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      snprintf(decimal_buf, sizeof(decimal_buf), "%.17g", turbo_json_number(value));
+    if (json_type(value) == JSON_STRING)
+      return dbv_decimal_text(json_string(value));
+    if (json_type(value) == JSON_NUMBER) {
+      snprintf(decimal_buf, sizeof(decimal_buf), "%.17g", json_number(value));
       return dbv_decimal_text(decimal_buf);
     }
     return NULL;
   case DB_TEXT_BIGINT:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_bigint_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      double n = turbo_json_number(value);
+    if (json_type(value) == JSON_STRING)
+      return dbv_bigint_text(json_string(value));
+    if (json_type(value) == JSON_NUMBER) {
+      double n = json_number(value);
       if (!isfinite(n) || floor(n) != n || n < -9007199254740991.0 || n > 9007199254740991.0)
         return NULL;
       snprintf(bigint_buf, sizeof(bigint_buf), "%.0f", n);
@@ -2538,47 +2545,47 @@ static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
     }
     return NULL;
   case DB_TEXT_MONEY:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_money_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_OBJECT) {
-      json_value_t *amount_value = turbo_json_object_get(value, "amount");
-      json_value_t *currency_value = turbo_json_object_get(value, "currency");
+    if (json_type(value) == JSON_STRING)
+      return dbv_money_text(json_string(value));
+    if (json_type(value) == JSON_OBJECT) {
+      json_value_t *amount_value = json_object_get(value, "amount");
+      json_value_t *currency_value = json_object_get(value, "currency");
       DataBindMoney money;
       char amount_buf[64];
       if (amount_value == NULL || currency_value == NULL ||
-          turbo_json_type(currency_value) != TURBO_JSON_STRING ||
-          !db_validate_currency(turbo_json_string(currency_value)))
+          json_type(currency_value) != JSON_STRING ||
+          !db_validate_currency(json_string(currency_value)))
         return NULL;
-      if (turbo_json_type(amount_value) == TURBO_JSON_STRING) {
-        if (!db_parse_decimal_text(turbo_json_string(amount_value), &money.amount)) return NULL;
-      } else if (turbo_json_type(amount_value) == TURBO_JSON_NUMBER) {
-        snprintf(amount_buf, sizeof(amount_buf), "%.17g", turbo_json_number(amount_value));
+      if (json_type(amount_value) == JSON_STRING) {
+        if (!db_parse_decimal_text(json_string(amount_value), &money.amount)) return NULL;
+      } else if (json_type(amount_value) == JSON_NUMBER) {
+        snprintf(amount_buf, sizeof(amount_buf), "%.17g", json_number(amount_value));
         if (!db_parse_decimal_text(amount_buf, &money.amount)) return NULL;
       } else {
         return NULL;
       }
-      memcpy(money.currency, turbo_json_string(currency_value), 3);
+      memcpy(money.currency, json_string(currency_value), 3);
       money.currency[3] = '\0';
       return dbv_money(money);
     }
     return NULL;
   case DB_TEXT_BOOL:
-    if (turbo_json_type(value) == TURBO_JSON_BOOL) return dbv_bool(turbo_json_bool(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER)
-      return dbv_bool(turbo_json_number(value) != 0.0);
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_BOOL) return dbv_bool(json_bool(value));
+    if (json_type(value) == JSON_NUMBER)
+      return dbv_bool(json_number(value) != 0.0);
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   case DB_TEXT_INTEGER:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   case DB_TEXT_NUMBER:
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) return dbv_double(turbo_json_number(value));
-    if (turbo_json_type(value) == TURBO_JSON_BOOL)
-      return dbv_double(turbo_json_bool(value) ? 1.0 : 0.0);
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_NUMBER) return dbv_double(json_number(value));
+    if (json_type(value) == JSON_BOOL)
+      return dbv_double(json_bool(value) ? 1.0 : 0.0);
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   default:
     return NULL;
@@ -2618,20 +2625,20 @@ static DataBindValue *bind_json_array(Node *schema_root, Node *field, json_value
   DataBindValue *list;
   size_t expected = 0;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY || inner_type == NULL)
+  if (value == NULL || json_type(value) != JSON_ARRAY || inner_type == NULL)
     return NULL;
   if (parse_size_value(get_string_val(find_child(field, "length_field")), &expected) &&
-      turbo_json_array_size(value) != expected)
+      json_array_size(value) != expected)
     return NULL;
   list = dbv_new(list_kind);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, turbo_json_array_size(value))) {
+  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
     data_bind_value_free(list);
     return NULL;
   }
   scalar_kind = bind_type_kind(schema_root, inner_type);
-  for (i = 0; i < turbo_json_array_size(value); i++) {
-    json_value_t *item = turbo_json_array_get(value, i);
+  for (i = 0; i < json_array_size(value); i++) {
+    json_value_t *item = json_array_get(value, i);
     DataBindValue *bound;
     if (field_flag(field, "collection_element_is_composite") ||
         find_data_record(schema_root, inner_type) != NULL ||
@@ -2651,16 +2658,16 @@ static DataBindValue *bind_json_record_array(Node *schema_root, const char *type
                                              json_value_t *value) {
   DataBindValue *list;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY || type_name == NULL) return NULL;
+  if (value == NULL || json_type(value) != JSON_ARRAY || type_name == NULL) return NULL;
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, turbo_json_array_size(value))) {
+  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
     data_bind_value_free(list);
     return NULL;
   }
-  for (i = 0; i < turbo_json_array_size(value); i++) {
+  for (i = 0; i < json_array_size(value); i++) {
     DataBindValue *bound =
-        bind_json_typed_value(schema_root, type_name, turbo_json_array_get(value, i));
+        bind_json_typed_value(schema_root, type_name, json_array_get(value, i));
     if (bound == NULL || !dbv_array_push(&list->data.array_val, bound)) {
       data_bind_value_free(bound);
       data_bind_value_free(list);
@@ -2675,17 +2682,17 @@ static DataBindValue *bind_json_map(Node *schema_root, Node *field, json_value_t
   data_bind_text_kind_t value_kind = bind_type_kind(schema_root, value_type);
   DataBindValue *map;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_OBJECT || value_type == NULL)
+  if (value == NULL || json_type(value) != JSON_OBJECT || value_type == NULL)
     return NULL;
   map = dbv_new(DATA_BIND_VALUE_MAP);
   if (map == NULL) return NULL;
-  if (!dbv_map_reserve(map, turbo_json_object_size(value))) {
+  if (!dbv_map_reserve(map, json_object_size(value))) {
     data_bind_value_free(map);
     return NULL;
   }
-  for (i = 0; i < turbo_json_object_size(value); i++) {
-    const char *key = turbo_json_object_key(value, i);
-    json_value_t *item = turbo_json_object_value(value, i);
+  for (i = 0; i < json_object_size(value); i++) {
+    const char *key = json_object_key(value, i);
+    json_value_t *item = json_object_value(value, i);
     DataBindValue *bound;
     if (key == NULL || item == NULL) continue;
     if (find_data_record(schema_root, value_type) != NULL ||
@@ -2709,11 +2716,11 @@ static DataBindValue *bind_json_union(Node *schema_root, Node *union_node, json_
   DataBindValue *bound;
   DataBindValue *result;
   data_bind_text_kind_t scalar_kind;
-  if (union_node == NULL || object == NULL || turbo_json_type(object) != TURBO_JSON_OBJECT ||
-      turbo_json_object_size(object) != 1)
+  if (union_node == NULL || object == NULL || json_type(object) != JSON_OBJECT ||
+      json_object_size(object) != 1)
     return NULL;
-  variant_name = turbo_json_object_key(object, 0);
-  payload = turbo_json_object_value(object, 0);
+  variant_name = json_object_key(object, 0);
+  payload = json_object_value(object, 0);
   variant = union_variant_binding(union_node, variant_name);
   if (variant == NULL || payload == NULL) return NULL;
   variant_name = get_string_val(find_child(variant, "name"));
@@ -2740,7 +2747,7 @@ static DataBindValue *bind_json_object(Node *schema_root, Node *record, json_val
   DataBindValue *result;
   Node *fields;
   size_t i;
-  if (record == NULL || object == NULL || turbo_json_type(object) != TURBO_JSON_OBJECT) return NULL;
+  if (record == NULL || object == NULL || json_type(object) != JSON_OBJECT) return NULL;
   fields = fields_node_for_record(record);
   if (fields == NULL) return NULL;
   result = dbv_new(DATA_BIND_VALUE_OBJECT);
@@ -5576,7 +5583,7 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
   DataBindValue *item;
   if (parser == NULL || value == NULL) return -1;
   item = bind_json_typed_value(parser->codec->schema_root, parser->type_name, value);
-  turbo_free_json(&value);
+  data_bind_json_freep(&value);
   if (item == NULL) {
     data_bind_stream_error_msg(parser, "JSON stream item bind failed");
     return -1;
@@ -5641,14 +5648,14 @@ static int data_bind_stream_json_attach_value(data_bind_stream_t *parser, json_v
       data_bind_stream_error_msg(parser, "JSON stream object value without key");
       return -1;
     }
-    if (!turbo_json_object_add_checked(parent->value, parent->pending_key, value)) {
+    if (!json_object_add_checked(parent->value, parent->pending_key, value)) {
       data_bind_stream_error_msg(parser, "Out of memory appending JSON stream object value");
       return -1;
     }
     free(parent->pending_key);
     parent->pending_key = NULL;
   } else {
-    if (!turbo_json_array_add_checked(parent->value, value)) {
+    if (!json_array_add_checked(parent->value, value)) {
       data_bind_stream_error_msg(parser, "Out of memory appending JSON stream array value");
       return -1;
     }
@@ -5662,19 +5669,19 @@ static int data_bind_stream_json_scalar(data_bind_stream_t *parser, json_value_t
     return -1;
   }
   if (!parser->json_stream_active || parser->json_sax_depth == 0) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return 0;
   }
   if (parser->json_sax_depth == 1 || parser->json_frame_count > 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      data_bind_json_freep(&value);
       return -1;
     }
     if (parser->json_frame_count == 0) {
       return data_bind_stream_json_bind_value(parser, value);
     }
   } else {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
   }
   return 0;
 }
@@ -5687,16 +5694,16 @@ static int data_bind_stream_json_container_start(data_bind_stream_t *parser, jso
     return -1;
   }
   if (!parser->json_stream_active || parser->json_sax_depth == 0) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return 0;
   }
   if (parser->json_sax_depth != 1 && parser->json_frame_count == 0) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return 0;
   }
   if (data_bind_stream_json_frame_reserve(parser) != 0 ||
       data_bind_stream_json_attach_value(parser, value) != 0) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return -1;
   }
   frame = &parser->json_frames[parser->json_frame_count++];
@@ -5723,20 +5730,20 @@ static int data_bind_stream_json_container_end(data_bind_stream_t *parser, int i
 }
 
 static int data_bind_stream_json_on_null(void *ctx) {
-  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, turbo_json_create_null());
+  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, json_create_null());
 }
 
 static int data_bind_stream_json_on_bool(void *ctx, bool val) {
-  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, turbo_json_create_bool(val));
+  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, json_create_bool(val));
 }
 
 static int data_bind_stream_json_on_number_raw(void *ctx, const char *val, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  turbo_json_doc_t *value = NULL;
+  json_value_t *value = NULL;
   if (val == NULL || len == 0 ||
-      turbo_parse_json((const uint8_t *)val, len, &value) != 0 ||
-      turbo_json_type(value) != TURBO_JSON_NUMBER) {
-    turbo_free_json(&value);
+      (value = json_parse(val, len)) == NULL ||
+      json_type(value) != JSON_NUMBER) {
+    data_bind_json_freep(&value);
     data_bind_stream_error_msg(parser, "Failed to preserve exact JSON stream number");
     return -1;
   }
@@ -5750,7 +5757,7 @@ static int data_bind_stream_json_on_string(void *ctx, const char *val, size_t le
     data_bind_stream_error_msg((data_bind_stream_t *)ctx, "Out of memory copying JSON string");
     return -1;
   }
-  value = turbo_json_create_string(copy);
+  value = json_create_string(copy);
   free(copy);
   return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, value);
 }
@@ -5777,7 +5784,7 @@ static int data_bind_stream_json_on_object_start(void *ctx) {
   if (parser->json_sax_depth == 0) {
     parser->json_root_seen = 1;
   } else {
-    rc = data_bind_stream_json_container_start(parser, turbo_json_create_object(), 1);
+    rc = data_bind_stream_json_container_start(parser, json_create_object(), 1);
   }
   parser->json_sax_depth++;
   return rc;
@@ -5806,7 +5813,7 @@ static int data_bind_stream_json_on_array_start(void *ctx) {
       parser->capacity = 0;
     }
   } else {
-    rc = data_bind_stream_json_container_start(parser, turbo_json_create_array(), 0);
+    rc = data_bind_stream_json_container_start(parser, json_create_array(), 0);
   }
   parser->json_sax_depth++;
   return rc;
@@ -5825,7 +5832,7 @@ static int data_bind_stream_json_on_array_end(void *ctx) {
   return rc;
 }
 
-static int data_bind_stream_json_path_match_start(void *ctx, turbo_json_type_t type) {
+static int data_bind_stream_json_path_match_start(void *ctx, json_type_t type) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   (void)type;
   if (parser == NULL) return -1;
@@ -5849,18 +5856,18 @@ static int data_bind_stream_json_path_scalar(data_bind_stream_t *parser, json_va
     return -1;
   }
   if (parser == NULL || !parser->json_stream_active) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return 0;
   }
   if (parser->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      data_bind_json_freep(&value);
       return -1;
     }
   } else if (parser->json_match_value == NULL) {
     parser->json_match_value = value;
   } else {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root values");
     return -1;
   }
@@ -5875,22 +5882,22 @@ static int data_bind_stream_json_path_container_start(data_bind_stream_t *parser
     return -1;
   }
   if (parser == NULL || !parser->json_stream_active) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return 0;
   }
   if (data_bind_stream_json_frame_reserve(parser) != 0) {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     return -1;
   }
   if (parser->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      data_bind_json_freep(&value);
       return -1;
     }
   } else if (parser->json_match_value == NULL) {
     parser->json_match_value = value;
   } else {
-    turbo_free_json(&value);
+    data_bind_json_freep(&value);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root containers");
     return -1;
   }
@@ -5919,7 +5926,7 @@ static int data_bind_stream_json_path_container_end(data_bind_stream_t *parser, 
   return 0;
 }
 
-static int data_bind_stream_json_path_match_end(void *ctx, turbo_json_type_t type) {
+static int data_bind_stream_json_path_match_end(void *ctx, json_type_t type) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   json_value_t *matched;
   (void)type;
@@ -5937,21 +5944,21 @@ static int data_bind_stream_json_path_match_end(void *ctx, turbo_json_type_t typ
 
 static int data_bind_stream_json_path_on_null(void *ctx) {
   return data_bind_stream_json_path_scalar((data_bind_stream_t *)ctx,
-                                           turbo_json_create_null());
+                                           json_create_null());
 }
 
 static int data_bind_stream_json_path_on_bool(void *ctx, bool value) {
   return data_bind_stream_json_path_scalar((data_bind_stream_t *)ctx,
-                                           turbo_json_create_bool(value));
+                                           json_create_bool(value));
 }
 
 static int data_bind_stream_json_path_on_number(void *ctx, const char *value, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  turbo_json_doc_t *number = NULL;
+  json_value_t *number = NULL;
   if (value == NULL || len == 0 ||
-      turbo_parse_json((const uint8_t *)value, len, &number) != 0 ||
-      turbo_json_type(number) != TURBO_JSON_NUMBER) {
-    turbo_free_json(&number);
+      (number = json_parse(value, len)) == NULL ||
+      json_type(number) != JSON_NUMBER) {
+    data_bind_json_freep(&number);
     data_bind_stream_error_msg(parser, "Failed to preserve exact JSONPath stream number");
     return -1;
   }
@@ -5966,19 +5973,19 @@ static int data_bind_stream_json_path_on_string(void *ctx, const char *value, si
     data_bind_stream_error_msg(parser, "Out of memory copying JSONPath stream string");
     return -1;
   }
-  string = turbo_json_create_string(copy);
+  string = json_create_string(copy);
   free(copy);
   return data_bind_stream_json_path_scalar(parser, string);
 }
 
 static int data_bind_stream_json_path_on_object_start(void *ctx) {
   return data_bind_stream_json_path_container_start((data_bind_stream_t *)ctx,
-                                                    turbo_json_create_object(), 1);
+                                                    json_create_object(), 1);
 }
 
 static int data_bind_stream_json_path_on_array_start(void *ctx) {
   return data_bind_stream_json_path_container_start((data_bind_stream_t *)ctx,
-                                                    turbo_json_create_array(), 0);
+                                                    json_create_array(), 0);
 }
 
 static int data_bind_stream_json_path_on_object_end(void *ctx) {
@@ -6125,7 +6132,7 @@ static int data_bind_stream_xml_on_cdata(void *ctx, const char *text, size_t tex
   return 0;
 }
 
-static const turbo_json_sax_handler_raw_t DATA_BIND_JSON_STREAM_HANDLER = {
+static const json_sax_handler_raw_t DATA_BIND_JSON_STREAM_HANDLER = {
     data_bind_stream_json_on_null,         data_bind_stream_json_on_bool,
     data_bind_stream_json_on_number_raw,   data_bind_stream_json_on_string,
     data_bind_stream_json_on_object_start, data_bind_stream_json_on_object_key,
@@ -6157,7 +6164,7 @@ static const turbo_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
     NULL,
     NULL};
 
-static const turbo_json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
+static const json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
 static const turbo_yaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
 static const turbo_xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
 
@@ -6172,7 +6179,7 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
       message = turbo_json_path_stream_error(parser->json_path_stream);
       path = "json";
     } else if (parser->json_sax != NULL) {
-      message = turbo_json_sax_parser_error(parser->json_sax);
+      message = json_sax_parser_error(parser->json_sax);
       path = "json";
     } else if (parser->yaml_sax != NULL) {
       message = turbo_yaml_sax_parser_error(parser->yaml_sax);
@@ -6207,7 +6214,7 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
       return data_bind_stream_sax_error(parser, error, "JSONPath stream feed");
     }
   } else if (parser->json_sax != NULL) {
-    if (turbo_json_sax_parser_feed(parser->json_sax, data, len) != 0) {
+    if (json_sax_parser_feed(parser->json_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream feed");
     }
   } else if (parser->yaml_sax != NULL) {
@@ -6232,7 +6239,7 @@ static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
       return data_bind_stream_sax_error(parser, error, "JSONPath stream finish");
     }
   } else if (parser->json_sax != NULL) {
-    if (turbo_json_sax_parser_finish(parser->json_sax) != 0) {
+    if (json_sax_parser_finish(parser->json_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream finish");
     }
   } else if (parser->yaml_sax != NULL) {
@@ -6861,9 +6868,9 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
     if (parser->json_path_stream == NULL) {
       parser->json_sax = parser->json_stream_candidate
-                             ? turbo_json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
+                             ? json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
                                                                parser)
-                             : turbo_json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
+                             : json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
                                                            parser);
     }
     if (parser->json_path_stream == NULL && parser->json_sax == NULL) {
@@ -7436,7 +7443,7 @@ DataBindStatus data_bind_stream_set_query_limits(
          limits->max_operands != TURBO_QUERY_DEFAULT_MAX_OPERANDS ||
          limits->max_regexes != TURBO_QUERY_DEFAULT_MAX_REGEXES ||
          limits->max_steps != TURBO_QUERY_DEFAULT_MAX_STEPS)) {
-      turbo_json_sax_parser_t *replacement = turbo_json_sax_parser_create(
+      json_sax_parser_t *replacement = json_sax_parser_create(
           &DATA_BIND_JSON_SAX_VALIDATE_HANDLER, parser);
       if (replacement == NULL)
         return db_error_set(parser->error, DATA_BIND_ERR_OOM, "jsonpath", -1,
@@ -7842,14 +7849,14 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
     turbo_json_path_stream_destroy(parser->json_path_stream);
   if (parser->json_path_program != NULL)
     turbo_json_path_program_free(parser->json_path_program);
-  if (parser->json_sax != NULL) turbo_json_sax_parser_destroy(parser->json_sax);
+  if (parser->json_sax != NULL) json_sax_parser_destroy(parser->json_sax);
   if (parser->yaml_sax != NULL) turbo_yaml_sax_parser_destroy(parser->yaml_sax);
   if (parser->xml_sax != NULL) turbo_xml_sax_parser_destroy(parser->xml_sax);
   if (parser->json_match_value != NULL) {
-    turbo_free_json(&parser->json_match_value);
+    data_bind_json_freep(&parser->json_match_value);
   } else if (parser->json_frame_count != 0 && parser->json_frames[0].value != NULL) {
     json_value_t *partial = parser->json_frames[0].value;
-    turbo_free_json(&partial);
+    data_bind_json_freep(&partial);
   }
   for (i = 0; i < parser->json_frame_count; ++i) {
     free(parser->json_frames[i].pending_key);
@@ -7902,12 +7909,12 @@ DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, cons
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
   status = data_bind_json_root_to_value(codec, type_name, root, out_value, error);
-  turbo_free_json(&root);
+  data_bind_json_freep(&root);
   return status;
 }
 
@@ -7928,16 +7935,16 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list != NULL) {
-    if (turbo_json_type(root) == TURBO_JSON_ARRAY) {
-      for (i = 0; i < turbo_json_array_size(root); i++) {
+    if (json_type(root) == JSON_ARRAY) {
+      for (i = 0; i < json_array_size(root); i++) {
         DataBindValue *item =
-            bind_json_typed_value(codec->schema_root, type_name, turbo_json_array_get(root, i));
+            bind_json_typed_value(codec->schema_root, type_name, json_array_get(root, i));
         if (item == NULL) {
           data_bind_value_free(list);
           list = NULL;
@@ -7959,7 +7966,7 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
       }
     }
   }
-  turbo_free_json(&root);
+  data_bind_json_freep(&root);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", "$[]");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8005,7 +8012,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
@@ -8013,7 +8020,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
   if (program == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
     path_error = turbo_json_path_error();
-    turbo_free_json(&root);
+    data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, query_status, error_path, -1, -1,
                         "JSONPath compile failed: %s",
@@ -8026,7 +8033,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
   path_error = turbo_json_path_error();
   if (selected == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    turbo_free_json(&root);
+    data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     if (query_diagnostic && query_diagnostic->status != TURBO_QUERY_OK)
       return db_error_set(error, query_status, error_path, -1, -1,
@@ -8041,7 +8048,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
                         "JSONPath selected no value for type: %s", type_name);
   }
   result = bind_json_typed_value(codec->schema_root, type_name, selected);
-  turbo_free_json(&root);
+  data_bind_json_freep(&root);
   if (result == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8088,7 +8095,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
@@ -8101,7 +8108,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   path_error = turbo_json_path_error();
   if (matches == NULL && (!program_compiled || path_error != NULL)) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    turbo_free_json(&root);
+    data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, query_status, error_path, -1, -1,
                         "JSONPath query failed: %s",
@@ -8112,7 +8119,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) {
     if (matches != NULL) turbo_json_path_result_free(matches);
-    turbo_free_json(&root);
+    data_bind_json_freep(&root);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
                         "Out of memory binding JSONPath result");
@@ -8137,7 +8144,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     }
     if (list == NULL) {
       turbo_json_path_result_free(matches);
-      turbo_free_json(&root);
+      data_bind_json_freep(&root);
       db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
       if (failure == DATA_BIND_ERR_OOM)
         return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
@@ -8147,7 +8154,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     }
   }
   if (matches != NULL) turbo_json_path_result_free(matches);
-  turbo_free_json(&root);
+  data_bind_json_freep(&root);
   *out_value = list;
   db_error_clear(error);
   return DATA_BIND_OK;
@@ -8264,7 +8271,7 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
                           "YAML value cannot be represented as JSON-compatible data");
     }
     bound = bind_json_typed_value(codec->schema_root, type_name, json_value);
-    turbo_free_json(&json_value);
+    data_bind_json_freep(&json_value);
     if (bound == NULL) {
       data_bind_value_free(result);
       turbo_yaml_path_result_free(matches);
@@ -8671,15 +8678,15 @@ DataBindStatus data_bind_validate_json(DataBind *codec, const char *type_name, c
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "JSON parse failed");
   }
-  if (turbo_json_type(root) == TURBO_JSON_ARRAY) {
-    for (i = 0; i < turbo_json_array_size(root); i++) {
+  if (json_type(root) == JSON_ARRAY) {
+    for (i = 0; i < json_array_size(root); i++) {
       DataBindValue *item =
-          bind_json_typed_value(codec->schema_root, type_name, turbo_json_array_get(root, i));
+          bind_json_typed_value(codec->schema_root, type_name, json_array_get(root, i));
       if (item == NULL) {
-        turbo_free_json(&root);
+        data_bind_json_freep(&root);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "JSON validation failed for type: %s", type_name);
       }
@@ -8688,13 +8695,13 @@ DataBindStatus data_bind_validate_json(DataBind *codec, const char *type_name, c
   } else {
     DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, root);
     if (item == NULL) {
-      turbo_free_json(&root);
+      data_bind_json_freep(&root);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "JSON validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   }
-  turbo_free_json(&root);
+  data_bind_json_freep(&root);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
@@ -9216,26 +9223,26 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
 
   switch (value->kind) {
   case DATA_BIND_VALUE_NULL:
-    json = turbo_json_create_null();
+    json = json_create_null();
     break;
   case DATA_BIND_VALUE_INT:
-    json = turbo_json_create_int64(value->data.int_val);
+    json = json_create_int64(value->data.int_val);
     break;
   case DATA_BIND_VALUE_INT64:
-    json = turbo_json_create_int64(value->data.int64_val);
+    json = json_create_int64(value->data.int64_val);
     break;
   case DATA_BIND_VALUE_UINT64:
-    json = turbo_json_create_uint64(value->data.uint64_val);
+    json = json_create_uint64(value->data.uint64_val);
     break;
   case DATA_BIND_VALUE_DOUBLE:
     if (!isfinite(value->data.double_val)) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_number(value->data.double_val);
+    json = json_create_number(value->data.double_val);
     break;
   case DATA_BIND_VALUE_BOOL:
-    json = turbo_json_create_bool(value->data.bool_val != 0);
+    json = json_create_bool(value->data.bool_val != 0);
     break;
   case DATA_BIND_VALUE_STRING:
     if (value->data.string_val.ptr == NULL ||
@@ -9244,7 +9251,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string_n(value->data.string_val.ptr, value->data.string_val.len);
+    json = json_create_string_n(value->data.string_val.ptr, value->data.string_val.len);
     break;
   case DATA_BIND_VALUE_BYTES:
     if (!vstr_utf8_valid(
@@ -9252,7 +9259,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string_n((const char *)value->data.bytes_val.ptr,
+    json = json_create_string_n((const char *)value->data.bytes_val.ptr,
                                       value->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
@@ -9260,7 +9267,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_RUNTIME;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DATETIME: {
     time_t timestamp = datetime_to_time(&value->data.datetime_val);
@@ -9269,7 +9276,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   }
   case DATA_BIND_VALUE_DATE:
@@ -9277,31 +9284,31 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_TIME:
     if (!db_time_to_text(value->data.time_val, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DURATION:
     if (!db_duration_to_text(value->data.duration_ms, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DECIMAL:
     if (!db_decimal_to_text(value->data.decimal_val, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_BIGINT:
-    json = turbo_json_create_string(value->data.bigint_val.ptr);
+    json = json_create_string(value->data.bigint_val.ptr);
     break;
   case DATA_BIND_VALUE_MONEY: {
     json_value_t *amount;
@@ -9310,71 +9317,71 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_object();
-    amount = turbo_json_create_string(text);
-    currency = turbo_json_create_string(value->data.money_val.currency);
+    json = json_create_object();
+    amount = json_create_string(text);
+    currency = json_create_string(value->data.money_val.currency);
     if (json == NULL || amount == NULL || currency == NULL) {
-      turbo_free_json(&amount);
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+      data_bind_json_freep(&amount);
+      data_bind_json_freep(&currency);
+      data_bind_json_freep(&json);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
-    if (!turbo_json_object_add_checked(json, "amount", amount)) {
-      turbo_free_json(&amount);
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+    if (!json_object_add_checked(json, "amount", amount)) {
+      data_bind_json_freep(&amount);
+      data_bind_json_freep(&currency);
+      data_bind_json_freep(&json);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
     amount = NULL;
-    if (!turbo_json_object_add_checked(json, "currency", currency)) {
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+    if (!json_object_add_checked(json, "currency", currency)) {
+      data_bind_json_freep(&currency);
+      data_bind_json_freep(&json);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
     break;
   }
   case DATA_BIND_VALUE_OBJECT:
-    json = turbo_json_create_object();
+    json = json_create_object();
     for (i = 0; json != NULL && i < value->data.object_val.count; ++i) {
       json_value_t *child =
           data_bind_value_to_json(value->data.object_val.items[i].value, depth + 1, status);
       if (child == NULL ||
-          !turbo_json_object_add_checked(json, value->data.object_val.items[i].name, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+          !json_object_add_checked(json, value->data.object_val.items[i].name, child)) {
+        data_bind_json_freep(&child);
+        data_bind_json_freep(&json);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
     break;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
-    json = turbo_json_create_array();
+    json = json_create_array();
     for (i = 0; json != NULL && i < value->data.array_val.count; ++i) {
       json_value_t *child =
           data_bind_value_to_json(value->data.array_val.items[i], depth + 1, status);
-      if (child == NULL || !turbo_json_array_add_checked(json, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+      if (child == NULL || !json_array_add_checked(json, child)) {
+        data_bind_json_freep(&child);
+        data_bind_json_freep(&json);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
     break;
   case DATA_BIND_VALUE_MAP:
-    json = turbo_json_create_object();
+    json = json_create_object();
     for (i = 0; json != NULL && i < value->data.map_val.count; ++i) {
       const char *key = value->data.map_val.items[i].key;
       json_value_t *child =
           data_bind_value_to_json(value->data.map_val.items[i].value, depth + 1, status);
       if (key == NULL || !vstr_utf8_valid(vstr_from_cstr(key))) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+        data_bind_json_freep(&child);
+        data_bind_json_freep(&json);
         *status = DATA_BIND_ERR_TYPE_MISMATCH;
-      } else if (child == NULL || !turbo_json_object_add_checked(json, key, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+      } else if (child == NULL || !json_object_add_checked(json, key, child)) {
+        data_bind_json_freep(&child);
+        data_bind_json_freep(&json);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
@@ -9405,8 +9412,8 @@ static DataBindStatus data_bind_object_serialize_json_canonical(
                         status == DATA_BIND_ERR_TYPE_MISMATCH
                             ? "DataBind value cannot be represented as UTF-8 JSON"
                             : "Failed to construct JSON document");
-  *out_json = turbo_json_serialize(json, out_len);
-  turbo_free_json(&json);
+  *out_json = json_serialize(json, out_len);
+  data_bind_json_freep(&json);
   if (*out_json == NULL)
     return db_error_set(error, DATA_BIND_ERR_OOM, "json", -1, -1, "Out of memory serializing JSON");
   db_error_clear(error);
@@ -9429,7 +9436,7 @@ static DataBindStatus data_bind_object_serialize_yaml_canonical(
     return db_error_set(error, status, "yaml", -1, -1,
                         "DataBind value cannot be represented as YAML");
   yaml = turbo_yaml_from_json(json);
-  turbo_free_json(&json);
+  data_bind_json_freep(&json);
   if (!yaml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                         "Failed to construct YAML document");
@@ -9963,7 +9970,7 @@ DataBindStatus data_bind_object_write_csv(DataBind *codec, const DataBindObject 
                                 data_bind_object_serialize_csv);
 }
 
-void data_bind_serialized_free(char *data) { turbo_json_serialize_free(data); }
+void data_bind_serialized_free(char *data) { json_serialize_free(data); }
 
 void data_bind_binary_free(void *data) { free(data); }
 
