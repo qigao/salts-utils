@@ -143,6 +143,9 @@ cmake_add_test(test_tbe_typed
   SOURCES test_tbe_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+# Only the first test translation unit owns TinyTest's generated main.
+set_property(SOURCE test_tbe_typed_optional_edges.c APPEND
+  PROPERTY COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
 cmake_add_test(test_tbe_typed_optional_binary
   SOURCES test_tbe_typed_optional_binary.c test_tbe_typed_optional_edges.c
   LIBS ${DATA_BIND_TEST_LIBS}
