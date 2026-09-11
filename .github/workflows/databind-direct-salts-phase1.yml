@@ -1,0 +1,84 @@
+name: databind direct salts phase1
+on:
+  push:
+    branches: [fix/databind-direct-salts-parsers]
+    paths:
+      - '.github/workflows/databind-direct-salts-phase1.yml'
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/databind-direct-salts-parsers
+          fetch-depth: 0
+      - name: Migrate typed JSON and datetime directly to salts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          typed = Path('tbe/data_bind/tbe_typed.c')
+          s = typed.read_text()
+          assert '#include "turbo_parser.h"' in s
+          s = s.replace('#include "turbo_parser.h"', '#include "json_parser.h"')
+          replacements = {
+              'turbo_json_create_bool': 'json_create_bool',
+              'turbo_json_create_string_n': 'json_create_string_n',
+              'turbo_json_create_string': 'json_create_string',
+              'turbo_json_create_number': 'json_create_number',
+              'turbo_json_create_int64': 'json_create_int64',
+              'turbo_json_create_uint64': 'json_create_uint64',
+              'turbo_json_create_object': 'json_create_object',
+              'turbo_json_create_array': 'json_create_array',
+              'turbo_json_array_add_checked': 'json_array_add_checked',
+              'turbo_json_object_add_checked': 'json_object_add_checked',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          helper = '''\nstatic void typed_json_freep(json_value_t **value) {\n  if (value == NULL || *value == NULL) return;\n  json_free(*value);\n  *value = NULL;\n}\n'''
+          anchor = '#include <string.h>\n'
+          assert anchor in s
+          s = s.replace(anchor, anchor + helper, 1)
+          s = s.replace('turbo_free_json', 'typed_json_freep')
+          assert 'turbo_' not in s
+          typed.write_text(s)
+
+          header = Path('tbe/data_bind/data_bind.h')
+          s = header.read_text()
+          assert '#include "turbo_parser_datetime.h"' in s
+          s = s.replace('#include "turbo_parser_datetime.h"', '#include <datetime_parser.h>')
+          s = s.replace('/** DataBind-owned name for the legacy parser-compatible datetime layout. */\ntypedef turbo_datetime_t DataBindDateTime;',
+                        '/** DataBind-owned public name for salts datetime_parser layout. */\ntypedef datetime_t DataBindDateTime;')
+          header.write_text(s)
+
+          source = Path('tbe/data_bind/data_bind.c')
+          s = source.read_text()
+          s = s.replace('turbo_datetime_t', 'datetime_t')
+          s = s.replace('turbo_parse_datetime', 'datetime_parse')
+          source.write_text(s)
+
+          # This phase must remove datetime compatibility and all typed-JSON compatibility,
+          # while intentionally leaving format/query adapters for the next RED->GREEN cycle.
+          assert 'turbo_datetime_t' not in header.read_text()
+          assert 'turbo_parser_datetime.h' not in header.read_text()
+          assert 'turbo_datetime_t' not in source.read_text()
+          assert 'turbo_parse_datetime' not in source.read_text()
+          PY
+          git diff --check
+          git diff -- tbe/data_bind/tbe_typed.c tbe/data_bind/data_bind.h tbe/data_bind/data_bind.c
+      - name: Commit phase 1
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tbe/data_bind/tbe_typed.c tbe/data_bind/data_bind.h tbe/data_bind/data_bind.c
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'refactor: use salts JSON and datetime directly'
+          git push origin HEAD:fix/databind-direct-salts-parsers
