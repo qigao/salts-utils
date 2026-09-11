@@ -28,6 +28,7 @@ jobs:
         with:
           repository: microsoft/vcpkg
           path: vcpkg
+          fetch-depth: 0
 
       - name: Prepare toolchain
         shell: bash
