@@ -30,12 +30,18 @@ jobs:
           path: vcpkg
           fetch-depth: 0
 
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+
       - name: Prepare toolchain
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm
+          sudo apt-get install -y ninja-build pkg-config nasm re2c
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
