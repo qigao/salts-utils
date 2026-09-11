@@ -132,7 +132,8 @@ jobs:
           import json
           from pathlib import Path
           commands = json.loads(Path('build/linux-gcc-debug/compile_commands.json').read_text())
-          required = {'schema_parser_dsl.c', 'test_schema_boundaries.c', 'test_schema_boundary.c'}
+          required = {'schema_parser_dsl.c', 'schema_enum.c', 'test_schema_enum_conformance.c',
+                      'test_schema_boundaries.c', 'test_schema_boundary.c'}
           found = set()
           for entry in commands:
               name = Path(entry['file']).name
@@ -191,6 +192,7 @@ jobs:
           cmake --build build/linux-gcc-debug --target \
             test_tbe_parser \
             test_schema_boundaries \
+            test_schema_enum_conformance \
             test_flags_bdd \
             test_tbe_parser_bdd \
             test_benchmark_schemas_bdd \

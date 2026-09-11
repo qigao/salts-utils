@@ -191,7 +191,7 @@ TBE_GENERATED_API const tbe_schema_codec_v1_t *{{schema.schema_name}}_schema_cod
 typedef {{#c_underlying_type}}{{c_underlying_type}}{{/c_underlying_type}}{{^c_underlying_type}}int32_t{{/c_underlying_type}} {{enum_name}}_t;
 
 {{#items}}
-#define {{enum_name}}_{{name}} (({{enum_name}}_t)UINT64_C({{value}}))
+#define {{enum_name}}_{{name}} (({{enum_name}}_t){{{c_literal}}})
 {{/items}}
 
 /**
@@ -262,7 +262,7 @@ static inline {{enum_name}}_t {{enum_name}}_max(void) {
 typedef {{#c_underlying_type}}{{c_underlying_type}}{{/c_underlying_type}}{{^c_underlying_type}}uint32_t{{/c_underlying_type}} {{enum_name}}_t;
 
 {{#items}}
-#define {{enum_name}}_{{name}} (({{enum_name}}_t)UINT64_C({{value}}))
+#define {{enum_name}}_{{name}} (({{enum_name}}_t){{{c_literal}}})
 {{/items}}
 
 /**

@@ -11,7 +11,7 @@
 {{#enums}}
 enum class {{enum_name}} : {{cpp_underlying_type}} {
 {{#items}}
-    {{name}} = {{value}},
+    {{name}} = {{{c_literal}}},
 {{/items}}
 };
 
