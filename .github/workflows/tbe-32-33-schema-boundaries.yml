@@ -157,8 +157,19 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target tbe_schema -j2 \
-            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema-build.log"
+          cmake --build build/linux-gcc-debug --target \
+            test_tbe_parser \
+            test_schema_boundaries \
+            test_flags_bdd \
+            test_tbe_parser_bdd \
+            test_benchmark_schemas_bdd \
+            test_tbe_robustness \
+            test_optional_and_defaults \
+            test_enum_helpers \
+            test_enum_enhanced_functional \
+            test_enum_enhanced_simple_functional \
+            test_union_types_functional \
+            -j2 2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema-build.log"
           ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/schema.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema.log"
