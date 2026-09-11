@@ -80,6 +80,17 @@ static int typed_add_fits(size_t left, size_t right, size_t *total) {
   return 1;
 }
 
+static int typed_ranges_overlap(size_t left_offset, size_t left_size, size_t right_offset,
+                                size_t right_size) {
+  size_t left_end;
+  size_t right_end;
+  if (left_size == 0 || right_size == 0) return 0;
+  if (!typed_add_fits(left_offset, left_size, &left_end) ||
+      !typed_add_fits(right_offset, right_size, &right_end))
+    return 1;
+  return left_offset < right_end && right_offset < left_end;
+}
+
 static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, unsigned depth,
                                                    DataBindError *error);
 
@@ -791,6 +802,17 @@ static int typed_field_wire_extent(const TbeTypedField *field, size_t *extent) {
   return *extent != 0;
 }
 
+static int typed_kind_owns_storage(TbeTypedKind kind) {
+  return kind == TBE_TYPED_STRING || kind == TBE_TYPED_BYTES || kind == TBE_TYPED_OBJECT ||
+         kind == TBE_TYPED_LIST || kind == TBE_TYPED_SET || kind == TBE_TYPED_MAP;
+}
+
+static int typed_field_owns_storage(const TbeTypedField *field) {
+  if (field == NULL) return 0;
+  if (field->kind == TBE_TYPED_FIXED_ARRAY) return typed_kind_owns_storage(field->element_kind);
+  return typed_kind_owns_storage(field->kind);
+}
+
 static int typed_type_has_tail(const TbeTypedType *type) {
   size_t i;
   if (type == NULL) return 0;
@@ -814,6 +836,7 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t host_extent;
+    size_t j;
     const TbeTypedType *nested_type = NULL;
     if (field->name == NULL || !typed_field_host_extent(field, &host_extent) ||
         !typed_size_fits(field->offset, host_extent, type->size))
@@ -823,6 +846,22 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
         (type->presence_size == 0 || field->optional_bit / 8u >= type->presence_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                          "Typed optional bit exceeds the presence bitmap");
+    if (typed_field_owns_storage(field) && type->presence_size != 0 &&
+        typed_ranges_overlap(field->offset, host_extent, type->presence_offset,
+                             type->presence_size))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed owning field overlaps the presence bitmap");
+    for (j = 0; j < i; ++j) {
+      const TbeTypedField *previous = &type->fields[j];
+      size_t previous_extent;
+      if (!typed_field_owns_storage(field) && !typed_field_owns_storage(previous)) continue;
+      if (!typed_field_host_extent(previous, &previous_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, previous->name,
+                           "Typed field has invalid host storage");
+      if (typed_ranges_overlap(field->offset, host_extent, previous->offset, previous_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed host field storage overlaps owning storage");
+    }
     if (field->kind == TBE_TYPED_OBJECT) {
       nested_type = field->object_type;
     } else if (field->kind == TBE_TYPED_FIXED_ARRAY || field->kind == TBE_TYPED_LIST ||
@@ -847,6 +886,10 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
           !typed_size_fits(field->map_value_offset, value_extent, field->map_entry_size))
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                            "Typed map entry exceeds its host storage");
+      if (typed_ranges_overlap(field->map_key_offset, sizeof(tstr), field->map_value_offset,
+                               value_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed map key and value storage overlap");
       if (field->map_value_kind == TBE_TYPED_OBJECT) nested_type = field->map_value_type;
     }
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0 &&
@@ -894,14 +937,37 @@ static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigne
   size_t i;
   DataBindStatus status = typed_validate_descriptor_at(type, depth, error);
   if (status != DATA_BIND_OK) return status;
+  if (type->presence_size > type->fixed_block_size)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
+                       "Typed presence bitmap exceeds the fixed wire block");
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t wire_extent;
-    if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0 &&
-        (!typed_field_wire_extent(field, &wire_extent) ||
-         !typed_size_fits(field->wire_offset, wire_extent, type->fixed_block_size)))
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
-                         "Typed field exceeds the fixed wire block");
+    size_t j;
+    if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0) {
+      if (!typed_field_wire_extent(field, &wire_extent) ||
+          !typed_size_fits(field->wire_offset, wire_extent, type->fixed_block_size))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed field exceeds the fixed wire block");
+      if (field->wire_size != wire_extent)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed declared wire size does not match the field layout");
+      if (typed_ranges_overlap(field->wire_offset, wire_extent, 0u, type->presence_size))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed field overlaps the wire presence bitmap");
+      for (j = 0; j < i; ++j) {
+        const TbeTypedField *previous = &type->fields[j];
+        size_t previous_extent;
+        if ((previous->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
+        if (!typed_field_wire_extent(previous, &previous_extent))
+          return typed_error(error, DATA_BIND_ERR_SCHEMA, previous->name,
+                             "Typed field has invalid wire storage");
+        if (typed_ranges_overlap(field->wire_offset, wire_extent, previous->wire_offset,
+                                 previous_extent))
+          return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                             "Typed fixed wire fields overlap");
+      }
+    }
     if (field->kind == TBE_TYPED_OBJECT) {
       if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0 ||
           typed_type_has_tail(field->object_type))
