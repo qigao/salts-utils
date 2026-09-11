@@ -60,6 +60,7 @@ suite("schema_boundaries") {
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
+      check_not_null(strstr(err.message, "levels"));
       check_not_null(strstr(err.message, "order"));
       node_free(root);
     }
@@ -73,12 +74,36 @@ suite("schema_boundaries") {
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
+      check_not_null(strstr(err.message, "seq"));
+      check_not_null(strstr(err.message, "order"));
+      node_free(root);
+    }
+
+    it("rejects a fixed field after variable data") {
+      const char *schema = "message Broken { string symbol; uint32 seq; }";
+      Node *root = create_node_map("root");
+      tbe_error_t err;
+      int rc = parse_schema(schema, strlen(schema), root, &err);
+
+      check_equal(rc, -1);
+      check_not_null(strstr(err.message, "seq"));
       check_not_null(strstr(err.message, "order"));
       node_free(root);
     }
   }
 
   describe("fixed layout numeric boundaries") {
+    it("accepts a large representable fixed array length") {
+      const char *schema = "message Large { uint8[2147483647] values; }";
+      Node *root = create_node_map("root");
+      tbe_error_t err;
+      int rc = parse_schema(schema, strlen(schema), root, &err);
+
+      check_equal(rc, 0);
+      check_equal(err.code, TBE_OK);
+      node_free(root);
+    }
+
     it("rejects a fixed array length at SIZE_MAX-scale") {
       const char *schema = "message Huge { uint8[18446744073709551615] values; }";
       Node *root = create_node_map("root");
@@ -86,7 +111,8 @@ suite("schema_boundaries") {
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
-      check_not_null(strstr(err.message, "length"));
+      check_not_null(strstr(err.message, "18446744073709551615"));
+      check_not_null(strstr(err.message, "values"));
       node_free(root);
     }
 
@@ -97,7 +123,8 @@ suite("schema_boundaries") {
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
-      check_not_null(strstr(err.message, "length"));
+      check_not_null(strstr(err.message, "18446744073709551616"));
+      check_not_null(strstr(err.message, "values"));
       node_free(root);
     }
   }
@@ -111,6 +138,7 @@ suite("schema_boundaries") {
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
+      check_null(find_child(root, "messages"));
       node_free(root);
     }
 
@@ -122,6 +150,7 @@ suite("schema_boundaries") {
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
+      check_null(find_child(root, "messages"));
       node_free(root);
     }
 
@@ -133,6 +162,7 @@ suite("schema_boundaries") {
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
+      check_null(find_child(root, "enums"));
       node_free(root);
     }
   }
@@ -147,6 +177,7 @@ suite("schema_boundaries") {
       Node *field;
       Node *key_node;
       Node *value_node;
+      Node *inner_node;
       int written;
       int rc;
 
@@ -167,12 +198,14 @@ suite("schema_boundaries") {
       check_not_null(field);
       key_node = field ? find_child(field, "key_type") : NULL;
       value_node = field ? find_child(field, "value_type") : NULL;
+      inner_node = field ? find_child(field, "inner_type") : NULL;
       check_not_null(key_node);
       check_not_null(value_node);
-      if (key_node && value_node) {
+      check_not_null(inner_node);
+      if (key_node && value_node && inner_node) {
         check_equal(key_node->data.string_val, key_type);
         check_equal(value_node->data.string_val, value_type);
-        check_equal(find_child(field, "inner_type")->data.string_val, value_type);
+        check_equal(inner_node->data.string_val, value_type);
       }
 
       node_free(root);
