@@ -755,13 +755,15 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     const char *underlying = tbe_compiler_string_value(enum_node, "underlying_type");
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
 
+    tbe_compiler_set_string(enum_node, "go_underlying_type",
+                            tbe_compiler_go_scalar_type(underlying));
     tbe_compiler_set_string(enum_node, "cpp_underlying_type",
                             tbe_compiler_cpp_enum_underlying_type(underlying));
     tbe_compiler_set_string(enum_node, "rust_underlying_type",
                             tbe_compiler_rust_enum_underlying_type(underlying));
     tbe_compiler_set_string(enum_node, "rfl_underlying_type",
-                            tbe_compiler_rfl_scalar_type(
-                                (underlying && underlying[0]) ? underlying : "int32"));
+                            underlying && strcmp(underlying, "uint32") == 0 ? "long" :
+                                tbe_compiler_rfl_scalar_type(underlying));
     tbe_compiler_set_string(enum_node, "c_underlying_type",
                             tbe_compiler_c_enum_underlying_type(underlying, is_flags));
   }
@@ -1397,6 +1399,32 @@ cleanup:
   return res;
 }
 
+/* Reject target domains before touching any of the requested output paths. */
+static int tbe_compiler_validate_enum_backend(Node *root,
+                                             const tbe_compiler_options_t *options) {
+  Node *enums = tbe_compiler_find_child(root, "enums");
+  if (!enums || enums->type != NODE_LIST) return 1;
+  for (size_t i = 0; i < enums->data.list.count; ++i) {
+    Node *node = enums->data.list.items[i];
+    const char *storage = tbe_compiler_string_value(node, "underlying_type");
+    const char *name = tbe_compiler_string_value(node, "enum_name");
+    if (!storage || !tbe_compiler_integer_type(storage)) {
+      fprintf(stderr, "Missing canonical enum storage for %s\n", name ? name : "<unnamed>");
+      return 0;
+    }
+    if (options->lang_enum == TBE_COMPILER_LANG_TS &&
+        (strcmp(storage, "int64") == 0 || strcmp(storage, "uint64") == 0)) {
+      fprintf(stderr, "TypeScript numeric enum %s cannot preserve %s storage\n", name, storage);
+      return 0;
+    }
+    if (options->dsl_output_path && !tbe_compiler_has_child(node, "is_ordinal")) {
+      fprintf(stderr, "RulesForge enum %s requires sequential values starting at zero\n", name);
+      return 0;
+    }
+  }
+  return 1;
+}
+
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
   Node *database_ir = NULL;
@@ -1415,6 +1443,10 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
+  if (!tbe_compiler_validate_enum_backend(root, options)) {
+    status = 1;
+    goto cleanup;
+  }
 
   if (database_language) {
     tbe_database_schema_diagnostic_t diagnostic;

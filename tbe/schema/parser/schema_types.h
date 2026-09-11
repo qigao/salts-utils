@@ -39,7 +39,6 @@ typedef struct {
     Node *cur_enum_items; /**< current enum items list being built             */
     schema_record_kind_t cur_record_kind; /**< current declaration kind       */
     schema_field_section_t cur_field_section; /**< current field ordering state */
-    unsigned long long next_enum_value; /**< next implicit enum value        */
     int   error;
     int   error_line;     /**< line number of last error                       */
     int   error_column;   /**< column number of last error                     */

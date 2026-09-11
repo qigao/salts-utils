@@ -46,25 +46,6 @@ static char *tok_strdup(schema_token_t t) {
     return s;
 }
 
-static int tok_to_ull(schema_token_t t, unsigned long long *out) {
-    char *text = tok_strdup(t);
-    char *end = NULL;
-    unsigned long long value;
-    int ok;
-
-    if (text == NULL) return 0;
-    value = strtoull(text, &end, 0);
-    ok = (text[0] != '\0' && end && *end == '\0');
-
-    free(text);
-    if (!ok) {
-        return 0;
-    }
-
-    *out = value;
-    return 1;
-}
-
 static int is_numeric_literal(const char *text) {
     if (!text || !text[0]) {
         return 0;
@@ -282,7 +263,6 @@ static void begin_enum_like(schema_parse_ctx_t *ctx, const char *name,
 
     ctx->cur_enum = NULL;
     ctx->cur_enum_items = NULL;
-    ctx->next_enum_value = is_flags ? 1 : 0;
     if (underlying_type != NULL && !validate_type_name_supported(ctx, underlying_type)) {
         return;
     }
@@ -811,28 +791,21 @@ enum_header ::= ENUM IDENT(N) LT IDENT(T) GT LBRACE. {
 enum_body ::= enum_body enum_item.
 enum_body ::= .
 
-enum_item ::= IDENT(K) EQUALS NUMBER(V) SEMI. {
+enum_literal(A) ::= NUMBER(N). { A = N; }
+enum_literal(A) ::= DEFAULT_NUMBER(N). { A = N; }
+
+enum_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
     char *key = tok_strdup(K);
     char *value = tok_strdup(V);
-    unsigned long long next_value = 0;
-
     add_enum_item(ctx, key, value);
-    if (tok_to_ull(V, &next_value)) {
-        ctx->next_enum_value = next_value + 1;
-    }
-
     free(key);
     free(value);
 }
 
 enum_item ::= IDENT(K) SEMI. {
     char *key = tok_strdup(K);
-    char value_buf[32];
-
-    snprintf(value_buf, sizeof(value_buf), "%llu", ctx->next_enum_value);
-    add_enum_item(ctx, key, value_buf);
-    ctx->next_enum_value++;
-
+    /* Resolve omitted values only after the storage domain is known. */
+    add_enum_item(ctx, key, "");
     free(key);
 }
 
@@ -865,30 +838,17 @@ flags_header ::= FLAGS IDENT(N) LT IDENT(T) GT LBRACE. {
 flags_body ::= flags_body flags_item.
 flags_body ::= .
 
-flags_item ::= IDENT(K) EQUALS NUMBER(V) SEMI. {
+flags_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
     char *key = tok_strdup(K);
     char *value = tok_strdup(V);
-    unsigned long long next_value = 0;
-
     add_enum_item(ctx, key, value);
-    if (tok_to_ull(V, &next_value)) {
-        // For flags, next value is next power of 2
-        ctx->next_enum_value = next_value << 1;
-    }
-
     free(key);
     free(value);
 }
 
 flags_item ::= IDENT(K) SEMI. {
     char *key = tok_strdup(K);
-    char value_buf[32];
-
-    snprintf(value_buf, sizeof(value_buf), "%llu", ctx->next_enum_value);
-    add_enum_item(ctx, key, value_buf);
-    // Next power of 2
-    ctx->next_enum_value = ctx->next_enum_value << 1;
-
+    add_enum_item(ctx, key, "");
     free(key);
 }
 

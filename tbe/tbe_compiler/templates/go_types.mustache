@@ -1,7 +1,7 @@
-{{#schema}}package {{go_package_name}}{{/schema}}{{^schema}}package generated{{/schema}}
+package {{schema.go_package_name}}
 
 {{#enums}}
-type {{enum_name}} int32
+type {{enum_name}} {{go_underlying_type}}
 
 const (
 {{#items}}

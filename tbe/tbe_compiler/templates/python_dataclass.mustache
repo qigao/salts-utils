@@ -9,6 +9,7 @@ from enum import IntEnum
 {{#enums}}
 class {{enum_name}}(IntEnum):
     """
+    Wire storage: {{underlying_type}}; Python integers preserve exact values.
     Attributes: {{#attributes}}[ {{name}}: {{value}} ] {{/attributes}}
     """
 {{#items}}
