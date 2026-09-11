@@ -1,0 +1,70 @@
+name: TBE #30 descriptor layout validation
+
+on:
+  push:
+    branches:
+      - ci/tbe-30-descriptor-layout-validation
+
+permissions:
+  contents: read
+
+jobs:
+  descriptor-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout salts-utils validation tree
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Salts
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 9678f606ef5deea5161fb7ed11bbe6e1af2d1c2f
+          path: salts
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+
+      - name: Build and install Salts debug profile
+        shell: bash
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user
+          cmake --build build/linux-gcc-debug --target install -j2
+          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+
+      - name: Configure salts-utils developer profile
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user
+
+      - name: Build focused descriptor safety target
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target test_tbe_typed_descriptor_safety -j2
+
+      - name: Run focused descriptor safety test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug -R '^test_tbe_typed_descriptor_safety$' --output-on-failure
