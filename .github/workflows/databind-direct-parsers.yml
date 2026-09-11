@@ -1,0 +1,68 @@
+name: DataBind direct parsers
+
+on:
+  push:
+    branches: [main, refactor/databind-direct-salts-parsers]
+    paths: ['tbe/**', 'tests/databind_direct_parsers/**', '.github/workflows/databind-direct-parsers.yml']
+  pull_request:
+    branches: [main]
+    paths: ['tbe/**', 'tests/databind_direct_parsers/**', '.github/workflows/databind-direct-parsers.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databind-parsers-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  parser-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/databind-parsers"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD > "$RUNNER_TEMP/databind-parsers/head.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/databind-parsers/utils-source.tar.gz"
+      - name: Checkout the same Salts revision as the runtime gate
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          path: salts
+          persist-credentials: false
+      - name: Record native API source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git -C salts rev-parse HEAD > "$RUNNER_TEMP/databind-parsers/salts-head.txt"
+          git -C salts archive --format=tar.gz HEAD > "$RUNNER_TEMP/databind-parsers/salts-source.tar.gz"
+      - name: Reject parser facade dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tests/databind_direct_parsers/check_boundary.py -v \
+            2>&1 | tee "$RUNNER_TEMP/databind-parsers/boundary.log"
+      - name: Verify unchanged tracked sources
+        if: always()
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: databind-parsers-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          path: ${{ runner.temp }}/databind-parsers/
