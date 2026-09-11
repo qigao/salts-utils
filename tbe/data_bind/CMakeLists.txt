@@ -152,7 +152,9 @@ cmake_add_test(test_tbe_typed_descriptor_boundary
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
 
-if(BUILD_TESTING)
+# This fixture executes tbe_compiler during the build. Do not run a target-
+# platform executable on the build host when cross-compiling (e.g. Android).
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
   set(TBE_SAFETY_GENERATED_HEADER "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.h")
   set(TBE_SAFETY_GENERATED_SOURCE "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.c")
