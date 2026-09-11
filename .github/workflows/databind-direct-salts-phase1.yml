@@ -14,7 +14,7 @@ jobs:
         with:
           ref: fix/databind-direct-salts-parsers
           fetch-depth: 0
-      - name: Finish datetime direct migration
+      - name: Migrate DataBind JSON DOM and SAX to salts
         shell: bash
         run: |
           set -euxo pipefail
@@ -22,22 +22,86 @@ jobs:
           from pathlib import Path
           source = Path('tbe/data_bind/data_bind.c')
           s = source.read_text()
-          s = s.replace('turbo_datetime_format_rfc822', 'datetime_format_rfc822')
+          if '#include "json_parser.h"' not in s:
+              s = s.replace('#include "turbo_parser.h"\n', '#include "turbo_parser.h"\n#include "json_parser.h"\n')
+          marker = '#include <string.h>\n'
+          helper = '''#include <string.h>\n\nstatic void data_bind_json_freep(json_value_t **value) {\n  if (value == NULL || *value == NULL) return;\n  json_free(*value);\n  *value = NULL;\n}\n'''
+          if 'static void data_bind_json_freep' not in s:
+              s = s.replace(marker, helper, 1)
+          replacements = {
+              'turbo_json_doc_t': 'json_value_t',
+              'turbo_json_sax_parser_t': 'json_sax_parser_t',
+              'turbo_json_sax_handler_t': 'json_sax_handler_t',
+              'turbo_json_sax_handler_raw_t': 'json_sax_handler_raw_t',
+              'turbo_json_sax_parser_create_raw': 'json_sax_parser_create_raw',
+              'turbo_json_sax_parser_create': 'json_sax_parser_create',
+              'turbo_json_sax_parser_feed': 'json_sax_parser_feed',
+              'turbo_json_sax_parser_finish': 'json_sax_parser_finish',
+              'turbo_json_sax_parser_error': 'json_sax_parser_error',
+              'turbo_json_sax_parser_destroy': 'json_sax_parser_destroy',
+              'turbo_json_create_': 'json_create_',
+              'turbo_json_object_': 'json_object_',
+              'turbo_json_array_': 'json_array_',
+              'turbo_json_is_null': 'json_is_null',
+              'turbo_json_number_text': 'json_number_text',
+              'turbo_json_number': 'json_number',
+              'turbo_json_string_len': 'json_string_len',
+              'turbo_json_string': 'json_string',
+              'turbo_json_bool': 'json_bool',
+              'turbo_json_type': 'json_type',
+              'turbo_json_clone': 'json_clone',
+              'turbo_json_serialize_pretty_crlf': 'json_serialize_pretty_crlf',
+              'turbo_json_serialize_pretty': 'json_serialize_pretty',
+              'turbo_json_serialize_free': 'json_serialize_free',
+              'turbo_json_serialize': 'json_serialize',
+              'turbo_free_json': 'data_bind_json_freep',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          s = s.replace('turbo_parse_json((const uint8_t *)val, len, &value) != 0',
+                        '(value = json_parse(val, len)) == NULL')
+          s = s.replace('turbo_parse_json((const uint8_t *)value, len, &number) != 0',
+                        '(number = json_parse(value, len)) == NULL')
+          s = s.replace('turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL',
+                        '(root = json_parse(json, len)) == NULL')
+          for old, new in [('TURBO_JSON_NULL','JSON_NULL'),('TURBO_JSON_BOOL','JSON_BOOL'),
+                           ('TURBO_JSON_NUMBER','JSON_NUMBER'),('TURBO_JSON_STRING','JSON_STRING'),
+                           ('TURBO_JSON_ARRAY','JSON_ARRAY'),('TURBO_JSON_OBJECT','JSON_OBJECT')]:
+              s = s.replace(old, new)
           source.write_text(s)
-          assert 'turbo_datetime' not in source.read_text()
-          assert 'turbo_' not in Path('tbe/data_bind/tbe_typed.c').read_text()
+
+          cmake = Path('tbe/data_bind/CMakeLists.txt')
+          c = cmake.read_text()
+          needle = '    monocypher\n    ${DATA_BIND_PARSER_COMPAT_TARGET}\n    Salts::TbeSchema'
+          replacement = '    monocypher\n    ${DATA_BIND_PARSER_COMPAT_TARGET}\n    Salts::JsonParser\n    Salts::TbeSchema'
+          if '    Salts::JsonParser\n    Salts::TbeSchema' not in c:
+              if needle not in c:
+                  raise SystemExit('DataBind link block changed unexpectedly')
+              c = c.replace(needle, replacement, 1)
+          cmake.write_text(c)
+
+          assert 'turbo_parse_json' not in s
+          assert 'turbo_free_json' not in s
+          assert 'turbo_json_sax_parser_' not in s
+          assert 'turbo_json_create_' not in s
+          assert 'turbo_json_object_' not in s
+          assert 'turbo_json_array_' not in s
+          assert 'turbo_json_number(' not in s
+          assert 'turbo_json_string(' not in s
+          assert 'turbo_json_bool(' not in s
+          assert 'turbo_json_type(' not in s
           PY
           git diff --check
-          git diff -- tbe/data_bind/data_bind.c
-      - name: Commit phase 1 completion
+          git diff -- tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
+      - name: Commit JSON direct migration
         shell: bash
         run: |
           set -euxo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tbe/data_bind/data_bind.c
+          git add tbe/data_bind/data_bind.c tbe/data_bind/CMakeLists.txt
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'refactor: finish direct salts datetime migration'
+          git commit -m 'refactor: use salts JSON DOM and SAX directly'
           git push origin HEAD:fix/databind-direct-salts-parsers
