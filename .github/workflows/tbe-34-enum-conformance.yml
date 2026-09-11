@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: c0e48acdb0aeec94199c1e6056c9f018f1e9f746
+          ref: 011d12c5931f147fea7266ef89c92fc9882e5034
           path: salts
           persist-credentials: false
       - uses: actions/checkout@v4
