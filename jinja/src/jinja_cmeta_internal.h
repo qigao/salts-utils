@@ -224,46 +224,58 @@ typedef struct JINJA_CMETA_EXPRESSION_NODE {
   int has_else;
   int force_boolean;
   vstr loop_alias;
-  size_t source_offset;
 } JINJA_CMETA_EXPRESSION_NODE;
 
 #define JINJA_CMETA_MAX_PROGRAM_BYTES (2u * JINJA_CMETA_MAX_TEMPLATE_BYTES)
-#define JINJA_CMETA_MAX_EXPRESSION_STRING_BYTES JINJA_CMETA_MAX_PROGRAM_BYTES
 
-typedef struct JINJA_CMETA_CALL_ARGUMENT {
-  size_t value_node;
-  size_t name_offset;
-  size_t name_length;
-  int unpack_kind;
-} JINJA_CMETA_CALL_ARGUMENT;
+typedef enum JINJA_CMETA_OPCODE {
+  JINJA_CMETA_OP_TEXT,
+  JINJA_CMETA_OP_OUTPUT,
+  JINJA_CMETA_OP_TRANSLATE,
+  JINJA_CMETA_OP_EVALUATE,
+  JINJA_CMETA_OP_TEST,
+  JINJA_CMETA_OP_JUMP,
+  JINJA_CMETA_OP_FOR_BEGIN,
+  JINJA_CMETA_OP_FOR_NEXT,
+  JINJA_CMETA_OP_LOOP_CONTROL,
+  JINJA_CMETA_OP_AUTOESCAPE_BEGIN,
+  JINJA_CMETA_OP_AUTOESCAPE_END,
+  JINJA_CMETA_OP_ASSIGN,
+  JINJA_CMETA_OP_ASSIGN_ATTRIBUTE,
+  JINJA_CMETA_OP_UNPACK,
+  JINJA_CMETA_OP_FILTER_BEGIN,
+  JINJA_CMETA_OP_FILTER_END,
+  JINJA_CMETA_OP_CAPTURE_BEGIN,
+  JINJA_CMETA_OP_CAPTURE_END,
+  JINJA_CMETA_OP_WITH_BEGIN,
+  JINJA_CMETA_OP_SCOPE_BEGIN,
+  JINJA_CMETA_OP_SCOPE_END,
+  JINJA_CMETA_OP_FUNCTION,
+  JINJA_CMETA_OP_BLOCK,
+  JINJA_CMETA_OP_INCLUDE,
+  JINJA_CMETA_OP_IMPORT,
+  JINJA_CMETA_OP_FROM,
+  JINJA_CMETA_OP_EXTENDS,
+  JINJA_CMETA_OP_IMPORT_NAME,
+  JINJA_CMETA_OP_UNSUPPORTED_REFERENCE
+} JINJA_CMETA_OPCODE;
 
-typedef struct JINJA_CMETA_COLLECTION_ITEM {
-  size_t value_node;
-  int unpack_kind;
-} JINJA_CMETA_COLLECTION_ITEM;
-
-typedef struct JINJA_CMETA_PARAMETER {
-  size_t name_offset;
-  size_t name_length;
-  size_t default_expression;
-} JINJA_CMETA_PARAMETER;
-
-typedef struct JINJA_CMETA_FUNCTION {
-  size_t name_offset;
-  size_t name_length;
-  size_t first_parameter;
-  size_t parameter_count;
-  size_t body_begin;
-  size_t body_end;
-  size_t parent;
-  size_t call_expression;
-  int uses_caller;
-  int accepts_kwargs;
-  int accepts_varargs;
-  int is_block;
-  int scoped;
-  int required;
-} JINJA_CMETA_FUNCTION;
+typedef struct JINJA_CMETA_INSTRUCTION {
+  JINJA_CMETA_OPCODE opcode;
+  int with_context;
+  int ignore_missing;
+  size_t attribute_offset;
+  size_t offset;
+  size_t length;
+  size_t expression;
+  size_t filter_expression;
+  int recursive;
+  size_t target;
+  size_t end;
+  size_t source_offset;
+  size_t depth;
+  int flag;
+} JINJA_CMETA_INSTRUCTION;
 
 typedef struct JINJA_CMETA_TRANSLATION_BINDING {
   size_t name_offset;
@@ -272,59 +284,161 @@ typedef struct JINJA_CMETA_TRANSLATION_BINDING {
 } JINJA_CMETA_TRANSLATION_BINDING;
 
 typedef struct JINJA_CMETA_TRANSLATION {
+  size_t context_offset;
+  size_t context_length;
   size_t singular_offset;
   size_t singular_length;
   size_t plural_offset;
   size_t plural_length;
-  size_t context_offset;
-  size_t context_length;
   size_t first_binding;
   size_t binding_count;
-  int trimmed;
 } JINJA_CMETA_TRANSLATION;
 
-typedef enum JINJA_CMETA_OPCODE {
-  JINJA_CMETA_OP_TEXT = 1,
-  JINJA_CMETA_OP_OUTPUT,
-  JINJA_CMETA_OP_IF_FALSE,
-  JINJA_CMETA_OP_JUMP,
-  JINJA_CMETA_OP_FOR_BEGIN,
-  JINJA_CMETA_OP_FOR_NEXT,
-  JINJA_CMETA_OP_SCOPE_BEGIN,
-  JINJA_CMETA_OP_SCOPE_END,
-  JINJA_CMETA_OP_SET,
-  JINJA_CMETA_OP_SET_UNPACK,
-  JINJA_CMETA_OP_FILTER_BEGIN,
-  JINJA_CMETA_OP_FILTER_END,
-  JINJA_CMETA_OP_WITH_BEGIN,
-  JINJA_CMETA_OP_CAPTURE_BEGIN,
-  JINJA_CMETA_OP_CAPTURE_END,
-  JINJA_CMETA_OP_AUTOESCAPE_BEGIN,
-  JINJA_CMETA_OP_AUTOESCAPE_END,
-  JINJA_CMETA_OP_EVALUATE,
-  JINJA_CMETA_OP_FUNCTION,
-  JINJA_CMETA_OP_BLOCK,
-  JINJA_CMETA_OP_LOOP_CONTROL,
-  JINJA_CMETA_OP_TRANSLATE
-} JINJA_CMETA_OPCODE;
+typedef enum JINJA_CMETA_ARGUMENT_EXPANSION {
+  JINJA_CMETA_EXPAND_NONE, JINJA_CMETA_EXPAND_POSITIONAL, JINJA_CMETA_EXPAND_KEYWORD
+} JINJA_CMETA_ARGUMENT_EXPANSION;
 
-typedef struct JINJA_CMETA_INSTRUCTION {
-  JINJA_CMETA_OPCODE opcode;
-  size_t offset;
-  size_t length;
-  size_t target;
-  size_t end;
-  size_t else_target;
-  size_t collection_target;
-  size_t collection_count;
-  size_t expression;
-  size_t depth;
+typedef struct JINJA_CMETA_COLLECTION_ITEM {
+  size_t value_node;
+  vstr keyword;
+  JINJA_CMETA_ARGUMENT_EXPANSION expansion;
+} JINJA_CMETA_COLLECTION_ITEM;
+
+#define JINJA_CMETA_MAX_FUNCTIONS JINJA_CMETA_MAX_COMPILED_EXPRESSIONS
+#define JINJA_CMETA_MAX_PARAMETERS JINJA_CMETA_MAX_COMPILED_EXPRESSIONS
+
+typedef struct JINJA_CMETA_PARAMETER {
+  size_t name_offset;
+  size_t name_length;
+  size_t default_expression;
+} JINJA_CMETA_PARAMETER;
+
+typedef struct JINJA_CMETA_FUNCTION {
+  int is_block;
+  int scoped;
+  int required;
+  size_t scope;
+  size_t name_offset;
+  size_t name_length;
+  size_t first_parameter;
+  size_t parameter_count;
+  size_t parent;
+  size_t body_begin;
+  size_t body_end;
+  size_t call_expression;
+  int uses_caller;
+  int accepts_kwargs;
+  int accepts_varargs;
+} JINJA_CMETA_FUNCTION;
+
+#define JINJA_CMETA_MAX_LEXICAL_CELLS (JINJA_CMETA_MAX_BLOCK_DEPTH * JINJA_CMETA_MAX_COMPILED_EXPRESSIONS)
+
+typedef enum JINJA_CMETA_CELL_LOAD {
+  JINJA_CMETA_CELL_ARGUMENT, JINJA_CMETA_CELL_RESOLVE,
+  JINJA_CMETA_CELL_ALIAS, JINJA_CMETA_CELL_UNDEFINED
+} JINJA_CMETA_CELL_LOAD;
+
+typedef struct JINJA_CMETA_CELL {
+  size_t owner;
+  size_t level;
+  vstr name;
+  size_t slot;
+} JINJA_CMETA_CELL;
+
+typedef struct JINJA_CMETA_CELL_BINDING {
+  size_t cell;
+  JINJA_CMETA_CELL_LOAD load;
+  size_t source_cell;
+} JINJA_CMETA_CELL_BINDING;
+
+typedef enum JINJA_CMETA_SCOPE_PART {
+  JINJA_CMETA_SCOPE_BODY, JINJA_CMETA_SCOPE_TEST, JINJA_CMETA_SCOPE_ELSE
+} JINJA_CMETA_SCOPE_PART;
+
+typedef struct JINJA_CMETA_LEXICAL_SCOPE {
+  size_t parent;
+  /* Index of the scope introducing this function activation; root is zero. */
+  size_t owner;
+  size_t level;
   size_t source_offset;
-  int recursive;
-  int filtered;
-  int collection_unpack;
-  int flag;
-  char close_char;
-} JINJA_CMETA_INSTRUCTION;
+  JINJA_CMETA_SCOPE_PART part;
+  size_t first_binding;
+  size_t binding_count;
+  /* Aggregate slots of this activation owner, not just this lexical scope. */
+  size_t cell_count;
+} JINJA_CMETA_LEXICAL_SCOPE;
+
+/* Fourteen independently owned fields currently make up an artifact. Keep the
+ * allocation registry fixed and checked; named fields below are borrowed views. */
+enum { JINJA_CMETA_MAX_ARTIFACT_ALLOCATIONS = 16 };
+typedef struct JINJA_CMETA_ARTIFACT_ALLOCATION {
+  void *data;
+  size_t bytes;
+} JINJA_CMETA_ARTIFACT_ALLOCATION;
+
+struct JINJA_CMETA_TEMPLATE {
+  /* Construction-only accounting; immutable after publication. Capacity, not
+   * logical element counts, determines retained requested bytes. */
+  size_t source_bytes;
+  size_t retained_bytes;
+  JINJA_CMETA_STATUS allocation_status;
+  stl_allocator allocator;
+  JINJA_CMETA_ARTIFACT_ALLOCATION allocations[JINJA_CMETA_MAX_ARTIFACT_ALLOCATIONS];
+  size_t allocation_count;
+  size_t references;
+  JINJA_CMETA_ENV *env;
+  int autoescape;
+  JINJA_CMETA_UNDEFINED_POLICY undefined_policy;
+  /* Diagnostic identity is registry-owned; env is borrowed until release. */
+  vstr name;
+  JINJA_CMETA_CELL *cells;
+  size_t cell_count;
+  char *cell_strings;
+  JINJA_CMETA_CELL_BINDING *cell_bindings;
+  size_t cell_binding_count;
+  JINJA_CMETA_LEXICAL_SCOPE *lexical_scopes;
+  size_t lexical_scope_count;
+  JINJA_CMETA_FUNCTION *functions;
+  size_t function_count;
+  JINJA_CMETA_PARAMETER *parameters;
+  size_t parameter_count;
+  JINJA_CMETA_INSTRUCTION *instructions;
+  size_t instruction_count;
+  JINJA_CMETA_TRANSLATION *translations;
+  size_t translation_count;
+  JINJA_CMETA_TRANSLATION_BINDING *translation_bindings;
+  size_t translation_binding_count;
+  char *program_strings;
+  JINJA_CMETA_EXPRESSION_NODE *expressions;
+  size_t expression_count;
+  JINJA_CMETA_COMPARISON_STEP *comparison_steps;
+  size_t comparison_step_count;
+  JINJA_CMETA_COLLECTION_ITEM *collection_items;
+  size_t collection_item_count;
+  JINJA_CMETA_DICT_ENTRY *dict_entries;
+  size_t dict_entry_count;
+  char *expression_strings;
+  char newline_sequence[sizeof("\r\n")];
+};
+
+struct JINJA_TEMPLATE_TREE;
+struct JINJA_TEMPLATE_DELIMITERS;
+JINJA_CMETA_STATUS jinja_cmeta_compile_config(const JINJA_CMETA_COMPILE_OPTIONS *config,
+    struct JINJA_TEMPLATE_DELIMITERS *delimiters, JINJA_CMETA_ERROR *error);
+/* Compile-owned phase: on failure the owner must release the unpublished template.
+ * Source/tree remain immutable until return. No runtime activation is allocated. */
+JINJA_CMETA_STATUS jinja_cmeta_build_layout(vstr source, const struct JINJA_TEMPLATE_TREE *tree,
+    JINJA_CMETA_TEMPLATE *templ, JINJA_CMETA_ERROR *error);
+
+JINJA_CMETA_TEMPLATE *jinja_cmeta_compile_with_environment(vstr source,
+    const JINJA_CMETA_COMPILE_OPTIONS *options, const JINJA_CMETA_ENV *env,
+    JINJA_CMETA_ERROR *error);
+
+void jinja_cmeta_error_clear(JINJA_CMETA_ERROR *error);
+void jinja_cmeta_error_name(JINJA_CMETA_ERROR *error, vstr name);
+int jinja_builtin_filter_kind(vstr name, JINJA_CMETA_EXPRESSION_KIND *kind);
+int jinja_builtin_test_kind(vstr name, JINJA_CMETA_TEST_KIND *kind);
+void jinja_cmeta_error_set(JINJA_CMETA_ERROR *error, JINJA_CMETA_STATUS status, size_t offset,
+                           const char *message);
 
 #endif
