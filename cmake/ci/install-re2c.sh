@@ -44,6 +44,21 @@ if [[ "$actual_version" != "re2c $version" ]]; then
 fi
 printf '%s\n' "$actual_version"
 
+# Record installed data identity before the strict check; never alter the files.
+python3 - "$prefix/share/re2c/stdlib" <<'PYDATA'
+from pathlib import Path
+import hashlib
+import sys
+for name in ("unicode_categories.re", "unicode_properties.re"):
+    data = (Path(sys.argv[1]) / name).read_bytes()
+    lf = data.replace(b"\r\n", b"\n")
+    blob = b"blob " + str(len(data)).encode() + b"\0" + data
+    print(name, "bytes", len(data), "git-blob", hashlib.sha1(blob).hexdigest())
+    print("  raw-sha256", hashlib.sha256(data).hexdigest())
+    print("  LF-sha256", hashlib.sha256(lf).hexdigest())
+    print("  CRLF-sha256", hashlib.sha256(lf.replace(b"\n", b"\r\n")).hexdigest())
+PYDATA
+
 # Keep these aligned with FindTools.cmake; a binary-only install is insufficient.
 printf '%s  %s\n' \
   56562ef44b0adef04258f59f8b6cd83d3936f7438f0d8162b5c0ccf30c05cf9f \
