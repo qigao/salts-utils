@@ -2,6 +2,7 @@
 #define TBE_SCHEMA_CMETA_H
 
 #include <cmeta/data.h>
+#include <cmeta/type_identity.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +26,19 @@ const cmeta_data_desc *schema_cmeta_builtin_data(const char *name);
  * a concrete CSTL implementation.
  */
 int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind);
+
+/**
+ * Build a borrowed CMeta generic type application from a canonical constructor
+ * and semantic argument identities.
+ *
+ * The caller owns the constructor and argument storage, which must outlive the
+ * returned identity. Invalid applications return zero without modifying
+ * *out_identity. This helper never creates a schema-private generic identity.
+ */
+int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,
+                                  const cmeta_generic_desc *constructor,
+                                  const cmeta_type_identity *const *args,
+                                  size_t arity);
 
 /**
  * Build a borrowed, allocation-free CMeta struct data descriptor.
