@@ -80,6 +80,9 @@ if(TARGET test_schema_cmeta)
     test/test_schema_cmeta_profiles.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
   target_link_libraries(test_schema_cmeta PRIVATE Salts::CBind)
+  add_test(NAME test_schema_cmeta_profile_contract
+    COMMAND "${CMAKE_COMMAND}" -P
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_schema_cmeta_profile_contract.cmake")
 endif()
 
 cmake_add_executable(verify_fixes

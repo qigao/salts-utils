@@ -178,6 +178,8 @@ suite("schema_cmeta_production_profiles") {
                     matches = matches && profile_text_is(field, "host_type", item->host) &&
                               profile_text_is(field, "wire_reader", item->reader) &&
                               profile_text_is(field, "is_numeric", "1");
+                } else {
+                    matches = matches && profile_child(field, "is_numeric") == NULL;
                 }
                 matches = matches &&
                     ((profile_child(field, "is_integer") != NULL) ==
