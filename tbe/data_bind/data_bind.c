@@ -439,7 +439,7 @@ static const type_meta_t *find_type_meta(const char *type) {
         g_type_metas[i].name = src->name;
         g_type_metas[i].size = (int)src->size;
         g_type_metas[i].wire_type = db_wire_type_from_reader(src->wire_reader);
-        g_type_metas[i].is_float = src->is_float;
+        g_type_metas[i].is_float = src->data->kind == CMETA_DATA_FLOAT;
         g_type_metas[i].is_64 =
             (g_type_metas[i].wire_type == DB_WIRE_U64 || g_type_metas[i].wire_type == DB_WIRE_I64);
       }

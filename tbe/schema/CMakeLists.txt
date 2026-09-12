@@ -58,6 +58,7 @@ set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
         test_schema_boundaries
+        test_schema_cmeta
         test_schema_enum_conformance
         test_flags_bdd
         test_tbe_parser_bdd
@@ -71,10 +72,23 @@ foreach(test_name
     FOLDER "tbe/schema/tests")
 endforeach()
 
+# Keep CBind on the integration test only, not the schema library export.
+if(TARGET test_schema_cmeta)
+  target_sources(test_schema_cmeta PRIVATE
+    test/test_schema_cmeta_buffer.c test/test_schema_cmeta_profiles.c)
+  set_source_files_properties(test/test_schema_cmeta_buffer.c
+    test/test_schema_cmeta_profiles.c
+    PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
+  target_link_libraries(test_schema_cmeta PRIVATE Salts::CBind)
+  add_test(NAME test_schema_cmeta_profile_contract
+    COMMAND "${CMAKE_COMMAND}" -P
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_schema_cmeta_profile_contract.cmake")
+endif()
+
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
   LIBS Salts::TbeSchema
-  FOLDER "tbe/schema/tests")
+  FOLDER tbe/schema/tests)
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件

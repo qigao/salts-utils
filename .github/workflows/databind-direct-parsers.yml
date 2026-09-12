@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: 011d12c5931f147fea7266ef89c92fc9882e5034
+          ref: 66b42c06bc812e73f4cbf12fc7a0b2b9408f401f
           path: salts
           persist-credentials: false
       - name: Record native API source

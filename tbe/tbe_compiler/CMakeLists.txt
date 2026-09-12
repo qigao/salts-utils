@@ -73,3 +73,8 @@ cmake_add_test(test_tbe_compiler_schema_boundary
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler_schema_boundary
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+if(TARGET test_tbe_compiler_schema_boundary)
+  target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
+  set_source_files_properties(test_scalar_projection.c
+    PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
+endif()

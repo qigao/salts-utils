@@ -4,6 +4,8 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
+#include "schema_cmeta.h"
+#include <salts_cmeta_fixed_width.h>
 #include "tbe_error.h"
 #include "salts_fs.h"
 #include "salts_uuid.h"
@@ -259,77 +261,63 @@ static int tbe_compiler_c_identifier_valid(const char *identifier) {
   return 1;
 }
 
-typedef enum tbe_compiler_integer_kind {
-  TBE_COMPILER_I8,
-  TBE_COMPILER_U8,
-  TBE_COMPILER_I16,
-  TBE_COMPILER_U16,
-  TBE_COMPILER_I32,
-  TBE_COMPILER_U32,
-  TBE_COMPILER_I64,
-  TBE_COMPILER_U64
-} tbe_compiler_integer_kind_t;
-
-typedef struct tbe_compiler_integer_alias {
-  const char *name;
-  tbe_compiler_integer_kind_t kind;
-} tbe_compiler_integer_alias_t;
-
-typedef struct tbe_compiler_integer_type {
+/* Backend spellings are compiler metadata. Scalar aliases and native identity
+ * are resolved through the same canonical descriptors as parser/runtime. */
+typedef struct tbe_compiler_scalar_projection {
+  const cmeta_data_desc *data;
   const char *c_type;
   const char *cpp_type;
   const char *go_type;
   const char *rust_type;
+  const char *ts_type;
+  const char *python_type;
+  const char *rfl_type;
   const char *typed_kind;
-} tbe_compiler_integer_type_t;
+} tbe_compiler_scalar_projection_t;
 
-static const tbe_compiler_integer_alias_t TBE_COMPILER_INTEGER_ALIASES[] = {
-    {"int8_t", TBE_COMPILER_I8},   {"int8", TBE_COMPILER_I8},
-    {"i8", TBE_COMPILER_I8},       {"uint8_t", TBE_COMPILER_U8},
-    {"uint8", TBE_COMPILER_U8},    {"u8", TBE_COMPILER_U8},
-    {"byte", TBE_COMPILER_U8},     {"int16_t", TBE_COMPILER_I16},
-    {"int16", TBE_COMPILER_I16},   {"i16", TBE_COMPILER_I16},
-    {"uint16_t", TBE_COMPILER_U16}, {"uint16", TBE_COMPILER_U16},
-    {"u16", TBE_COMPILER_U16},     {"int32_t", TBE_COMPILER_I32},
-    {"int32", TBE_COMPILER_I32},   {"i32", TBE_COMPILER_I32},
-    {"uint32_t", TBE_COMPILER_U32}, {"uint32", TBE_COMPILER_U32},
-    {"u32", TBE_COMPILER_U32},     {"int64_t", TBE_COMPILER_I64},
-    {"int64", TBE_COMPILER_I64},   {"i64", TBE_COMPILER_I64},
-    {"uint64_t", TBE_COMPILER_U64}, {"uint64", TBE_COMPILER_U64},
-    {"u64", TBE_COMPILER_U64},
+static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL"},
+    {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8"},
+    {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8"},
+    {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16"},
+    {&salts_uint16_cmeta_data, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "TBE_TYPED_U16"},
+    {&salts_int32_cmeta_data, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "TBE_TYPED_I32"},
+    {&salts_uint32_cmeta_data, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "TBE_TYPED_U32"},
+    {&salts_int64_cmeta_data, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "TBE_TYPED_I64"},
+    {&salts_uint64_cmeta_data, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "TBE_TYPED_U64"},
+    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "TBE_TYPED_F32"},
+    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "TBE_TYPED_F64"},
 };
 
-static const tbe_compiler_integer_type_t TBE_COMPILER_INTEGER_TYPES[] = {
-    {"int8_t", "std::int8_t", "int8", "i8", "TBE_TYPED_I8"},
-    {"uint8_t", "std::uint8_t", "uint8", "u8", "TBE_TYPED_U8"},
-    {"int16_t", "std::int16_t", "int16", "i16", "TBE_TYPED_I16"},
-    {"uint16_t", "std::uint16_t", "uint16", "u16", "TBE_TYPED_U16"},
-    {"int32_t", "std::int32_t", "int32", "i32", "TBE_TYPED_I32"},
-    {"uint32_t", "std::uint32_t", "uint32", "u32", "TBE_TYPED_U32"},
-    {"int64_t", "std::int64_t", "int64", "i64", "TBE_TYPED_I64"},
-    {"uint64_t", "std::uint64_t", "uint64", "u64", "TBE_TYPED_U64"},
-};
-
-static const tbe_compiler_integer_type_t *tbe_compiler_integer_type(const char *type) {
+static const tbe_compiler_scalar_projection_t *tbe_compiler_scalar_projection(const char *type) {
+  const cmeta_data_desc *data = schema_cmeta_builtin_data(type);
   size_t i;
-  if (!type) return NULL;
-  for (i = 0; i < sizeof(TBE_COMPILER_INTEGER_ALIASES) /
-                          sizeof(TBE_COMPILER_INTEGER_ALIASES[0]);
+  if (!cmeta_data_desc_valid(data)) return NULL;
+  for (i = 0; i < sizeof(TBE_COMPILER_SCALAR_PROJECTIONS) /
+                          sizeof(TBE_COMPILER_SCALAR_PROJECTIONS[0]);
        ++i) {
-    if (strcmp(type, TBE_COMPILER_INTEGER_ALIASES[i].name) == 0)
-      return &TBE_COMPILER_INTEGER_TYPES[TBE_COMPILER_INTEGER_ALIASES[i].kind];
+    const tbe_compiler_scalar_projection_t *projection = &TBE_COMPILER_SCALAR_PROJECTIONS[i];
+    if (data->kind == projection->data->kind &&
+        cmeta_type_identity_equal(data->storage_type->identity,
+                                  projection->data->storage_type->identity))
+      return projection;
   }
   return NULL;
 }
 
+static const tbe_compiler_scalar_projection_t *tbe_compiler_integer_type(const char *type) {
+  const tbe_compiler_scalar_projection_t *projection = tbe_compiler_scalar_projection(type);
+  return projection != NULL &&
+                 (projection->data->kind == CMETA_DATA_SINT ||
+                  projection->data->kind == CMETA_DATA_UINT)
+             ? projection : NULL;
+}
+
 static const char *tbe_compiler_cpp_scalar_type(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "std::any";
-  if (strcmp(type, "bool") == 0) return "bool";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type) return integer_type->cpp_type;
-  if (strcmp(type, "float") == 0) return "float";
-  if (strcmp(type, "double") == 0) return "double";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->cpp_type;
   if (strcmp(type, "string") == 0) return "std::string";
   if (strcmp(type, "bytes") == 0) return "std::vector<std::uint8_t>";
   if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
@@ -337,13 +325,10 @@ static const char *tbe_compiler_cpp_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_go_scalar_type(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "any";
-  if (strcmp(type, "bool") == 0) return "bool";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type) return integer_type->go_type;
-  if (strcmp(type, "float") == 0) return "float32";
-  if (strcmp(type, "double") == 0) return "float64";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->go_type;
   if (strcmp(type, "string") == 0) return "string";
   if (strcmp(type, "bytes") == 0) return "[]byte";
   if (strcmp(type, "uuid") == 0) return "[16]byte";
@@ -351,12 +336,10 @@ static const char *tbe_compiler_go_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_ts_scalar_type(const char *type) {
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "unknown";
-  if (strcmp(type, "bool") == 0) return "boolean";
-  if (tbe_compiler_integer_type(type) != NULL ||
-      strcmp(type, "float") == 0 || strcmp(type, "double") == 0) {
-    return "number";
-  }
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->ts_type;
   if (strcmp(type, "string") == 0) return "string";
   if (strcmp(type, "bytes") == 0) return "Uint8Array";
   if (strcmp(type, "uuid") == 0) return "string";
@@ -364,10 +347,10 @@ static const char *tbe_compiler_ts_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_python_scalar_type(const char *type) {
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "Any";
-  if (strcmp(type, "bool") == 0) return "bool";
-  if (tbe_compiler_integer_type(type) != NULL) return "int";
-  if (strcmp(type, "float") == 0 || strcmp(type, "double") == 0) return "float";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->python_type;
   if (strcmp(type, "string") == 0) return "str";
   if (strcmp(type, "bytes") == 0) return "bytes";
   if (strcmp(type, "uuid") == 0) return "str";
@@ -375,13 +358,10 @@ static const char *tbe_compiler_python_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_rust_scalar_type(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "()";
-  if (strcmp(type, "bool") == 0) return "bool";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type) return integer_type->rust_type;
-  if (strcmp(type, "float") == 0) return "f32";
-  if (strcmp(type, "double") == 0) return "f64";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->rust_type;
   if (strcmp(type, "string") == 0) return "String";
   if (strcmp(type, "bytes") == 0) return "Vec<u8>";
   if (strcmp(type, "uuid") == 0) return "[u8; 16]";
@@ -389,13 +369,10 @@ static const char *tbe_compiler_rust_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_rfl_scalar_type(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return "Object";
-  if (strcmp(type, "bool") == 0) return "boolean";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type == &TBE_COMPILER_INTEGER_TYPES[TBE_COMPILER_I64]) return "long";
-  if (integer_type == &TBE_COMPILER_INTEGER_TYPES[TBE_COMPILER_U64]) return "uint64";
-  if (integer_type != NULL) return "int";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->rfl_type;
   if (strcmp(type, "string") == 0) return "String";
   if (strcmp(type, "bytes") == 0) return "Bytes";
   if (strcmp(type, "uuid") == 0) return "UUID";
@@ -403,25 +380,19 @@ static const char *tbe_compiler_rfl_scalar_type(const char *type) {
 }
 
 static const char *tbe_compiler_typed_kind(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return NULL;
-  if (strcmp(type, "bool") == 0) return "TBE_TYPED_BOOL";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type) return integer_type->typed_kind;
-  if (strcmp(type, "float") == 0) return "TBE_TYPED_F32";
-  if (strcmp(type, "double") == 0) return "TBE_TYPED_F64";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->typed_kind;
   if (strcmp(type, "uuid") == 0) return "TBE_TYPED_UUID";
   return NULL;
 }
 
 static const char *tbe_compiler_typed_c_scalar(const char *type) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *projection;
   if (!type) return NULL;
-  if (strcmp(type, "bool") == 0) return "uint8_t";
-  integer_type = tbe_compiler_integer_type(type);
-  if (integer_type) return integer_type->c_type;
-  if (strcmp(type, "float") == 0) return "float";
-  if (strcmp(type, "double") == 0) return "double";
+  projection = tbe_compiler_scalar_projection(type);
+  if (projection) return projection->c_type;
   if (strcmp(type, "uuid") == 0) return "salts_uuid_t";
   return NULL;
 }
@@ -737,7 +708,7 @@ static void tbe_compiler_annotate_record_list_types(Node *root, const char *list
 }
 
 static const char *tbe_compiler_c_enum_underlying_type(const char *type, int is_flags) {
-  const tbe_compiler_integer_type_t *integer_type;
+  const tbe_compiler_scalar_projection_t *integer_type;
   const char *fallback = is_flags ? "uint32_t" : "int32_t";
 
   if (!type || !type[0]) return fallback;

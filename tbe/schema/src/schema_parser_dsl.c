@@ -838,6 +838,8 @@ static int annotate_optional_fields(Node *root) {
                         // 添加类型推断
                         const char *default_value = map_find_string_value(field, "default_value");
                         const char *field_type = map_find_string_value(field, "type");
+                        const schema_builtin_type_info_t *default_type =
+                            schema_builtin_type_find(field_type);
                         
                         if (default_value && field_type) {
                             if (strcmp(field_type, "string") == 0) {
@@ -847,8 +849,10 @@ static int annotate_optional_fields(Node *root) {
                                     node_free(default_fields_list);
                                     return -1;
                                 }
-                            } else if (strstr(field_type, "uint") || strstr(field_type, "int") || 
-                                     strstr(field_type, "float") || strstr(field_type, "double")) {
+                            } else if (default_type != NULL &&
+                                       (default_type->data->kind == CMETA_DATA_SINT ||
+                                        default_type->data->kind == CMETA_DATA_UINT ||
+                                        default_type->data->kind == CMETA_DATA_FLOAT)) {
                                 if (annotate_add_true(default_field, "is_numeric") != 0) {
                                     node_free(default_field);
                                     node_free(optional_fields_list);
