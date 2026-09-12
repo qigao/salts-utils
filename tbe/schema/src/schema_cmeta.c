@@ -132,7 +132,7 @@ int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,
 int schema_cmeta_struct_data(cmeta_data_desc *out_data,
                              cmeta_data_struct_shape *out_shape,
                              const char *stable_id,
-                             const char *stable_display_name,
+                             const char *display_name,
                              const cmeta_type_desc *storage_type,
                              const cmeta_struct_desc *layout,
                              const cmeta_data_field_desc *fields,
@@ -141,7 +141,7 @@ int schema_cmeta_struct_data(cmeta_data_desc *out_data,
     cmeta_data_desc data;
 
     if (out_data == NULL || out_shape == NULL ||
-        !schema_cmeta_nonempty(stable_id) || !schema_cmeta_nonempty(stable_display_name) ||
+        !schema_cmeta_nonempty(stable_id) || !schema_cmeta_nonempty(display_name) ||
         storage_type == NULL || layout == NULL)
         return 0;
 
@@ -151,7 +151,7 @@ int schema_cmeta_struct_data(cmeta_data_desc *out_data,
     data.struct_size = sizeof(data);
     data.abi_version = CMETA_DATA_DESC_ABI_VERSION;
     data.stable_id = stable_id;
-    data.display_name = stable_display_name;
+    data.display_name = display_name;
     data.kind = CMETA_DATA_STRUCT;
     data.storage_type = storage_type;
     data.shape = &shape;
