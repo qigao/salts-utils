@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 #include "platform.h"
-#include "salts_vstr.h"
+#include "vstr.h"
 
 #ifndef MUSTACHE_API
   #if defined(_WIN32) && defined(MUSTACHE_BUILD_DLL)

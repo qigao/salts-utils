@@ -1,0 +1,230 @@
+name: TBE schema boundaries
+
+on:
+  push:
+    branches: [main, fix/tbe-32-33-schema-boundaries]
+    paths:
+      - 'tbe/schema/**'
+      - 'tbe/tbe_compiler/**'
+      - 'tools/lemon/**'
+      - 'cmake/**'
+      - 'presets/**'
+      - 'CMake*.txt'
+      - 'CMake*.cmake'
+      - 'CMake*Presets.json'
+      - 'vcpkg.json'
+      - '.github/workflows/tbe-32-33-schema-boundaries.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tbe/schema/**'
+      - 'tbe/tbe_compiler/**'
+      - 'tools/lemon/**'
+      - 'cmake/**'
+      - 'presets/**'
+      - 'CMake*.txt'
+      - 'CMake*.cmake'
+      - 'CMake*Presets.json'
+      - 'vcpkg.json'
+      - '.github/workflows/tbe-32-33-schema-boundaries.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tbe-schema-boundaries-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  schema-boundaries:
+    name: Exact-head ASan + UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ASAN_OPTIONS: detect_leaks=1:detect_odr_violation=2:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Checkout the exact committed source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Record and verify source identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/tbe-schema-evidence"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/head.txt"
+          git diff --exit-code
+
+      - name: Checkout pinned Salts
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 011d12c5931f147fea7266ef89c92fc9882e5034
+          path: salts
+          persist-credentials: false
+
+      - name: Record native parser dependency revision
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git -C salts rev-parse HEAD)" = 011d12c5931f147fea7266ef89c92fc9882e5034
+          git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/salts-head.txt"
+
+      - name: Checkout vcpkg at the manifest baseline
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: tbe-schema-vcpkg-x64-linux-b1b19307-v1
+
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm re2c
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+
+      - name: Build the standalone host parser generator
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+
+      - name: Build and install pinned Salts debug profile
+        shell: bash
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user
+          cmake --build build/linux-gcc-debug --target install -j2
+          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+
+      - name: Configure developer preset with both sanitizers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/configure.log"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          commands = json.loads(Path('build/linux-gcc-debug/compile_commands.json').read_text())
+          required = {'schema_parser_dsl.c', 'schema_enum.c', 'test_schema_enum_conformance.c',
+                      'test_schema_boundaries.c', 'test_schema_boundary.c'}
+          found = set()
+          for entry in commands:
+              name = Path(entry['file']).name
+              if name in required:
+                  command = entry.get('command', ' '.join(entry.get('arguments', [])))
+                  assert '-fsanitize=address' in command, command
+                  assert '-fsanitize=undefined' in command, command
+                  found.add(name)
+          assert found == required, (found, required)
+          PY
+
+      - name: Verify host lemon dependency graph
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ninja -C build/linux-gcc-debug -t commands test_schema_boundaries \
+            | tee "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"
+          grep -F "$GITHUB_WORKSPACE/build/host-lemon/lemon -T" \
+            "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"
+          if grep -F "$GITHUB_WORKSPACE/build/linux-gcc-debug/bin/lemon -T" \
+              "$RUNNER_TEMP/tbe-schema-evidence/parser-commands.log"; then
+            echo "sanitized target lemon is still wired into schema generation" >&2
+            exit 1
+          fi
+
+      - name: Build focused boundary tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target \
+            test_schema_boundaries test_tbe_parser test_tbe_compiler_schema_boundary -j2 \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/focused-build.log"
+
+      - name: Run focused parser ASan and UBSan tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+            -R '^(test_schema_boundaries|test_tbe_parser)$' \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/focused.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/focused.log"
+
+      - name: Run compiler schema boundary ASan and UBSan test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug/tbe/tbe_compiler --no-tests=error \
+            -R '^test_tbe_compiler_schema_boundary$' \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.log"
+
+      - name: Build and run all schema regressions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target \
+            test_tbe_parser \
+            test_schema_boundaries \
+            test_schema_enum_conformance \
+            test_flags_bdd \
+            test_tbe_parser_bdd \
+            test_benchmark_schemas_bdd \
+            test_tbe_robustness \
+            test_optional_and_defaults \
+            test_enum_helpers \
+            test_enum_enhanced_functional \
+            test_enum_enhanced_simple_functional \
+            test_union_types_functional \
+            -j2 2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema-build.log"
+          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+            --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/schema.xml" \
+            2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema.log"
+
+      - name: Verify committed source was not modified
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git diff --exit-code
+
+      - name: Upload exact-head verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbe-schema-boundaries-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/tbe-schema-evidence/
+            build/linux-gcc-debug/compile_commands.json
+            build/linux-gcc-debug/CMakeCache.txt
+            build/linux-gcc-debug/tbe/schema/Testing/Temporary/
+            build/linux-gcc-debug/tbe/tbe_compiler/Testing/Temporary/

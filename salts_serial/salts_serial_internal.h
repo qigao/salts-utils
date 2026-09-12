@@ -26,7 +26,7 @@
 #define SALTS_SERIAL_INTERNAL_H
 
 #include "salts_serial.h"
-#include "salts_str.h"
+#include "tstr.h"
 #include <cstl.h>
 
 #include <stdint.h>

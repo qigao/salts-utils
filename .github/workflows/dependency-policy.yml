@@ -1,0 +1,28 @@
+name: dependency-policy
+
+on:
+  pull_request:
+    paths:
+      - "vcpkg.json"
+      - "tests/dependency_manifest_test.py"
+      - ".github/workflows/dependency-policy.yml"
+  push:
+    branches:
+      - "work/boringssl-migration"
+    paths:
+      - "vcpkg.json"
+      - "tests/dependency_manifest_test.py"
+      - ".github/workflows/dependency-policy.yml"
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Verify crypto dependency policy
+        run: python tests/dependency_manifest_test.py
+      - name: Verify vcpkg manifest resolves
+        run: "$VCPKG_ROOT/vcpkg" install --x-manifest-root="$GITHUB_WORKSPACE" --triplet x64-linux --dry-run

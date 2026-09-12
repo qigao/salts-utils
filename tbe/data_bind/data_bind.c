@@ -14,9 +14,15 @@
 #include "tbe_typed.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
-#include "turbo_parser.h"
+#include <json_parser.h>
+#include <csv_parser.h>
+#include <dsv_filter.h>
+#include <cyaml.h>
+#include <cyaml_json_adapter.h>
+#include <xml_parser/xml_parser.h>
+#include <xml_parser/xml_sax.h>
 #include <salts_fs.h>
-#include <salts_str.h>
+#include <tstr.h>
 #include <salts_thread.h>
 #include <salts_uuid.h>
 #include <cstl.h>
@@ -32,6 +38,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* DataBind owns diagnostics after the native query/program has been released. */
+static void db_query_diagnostic_copy(DataBindQueryDiagnostic *out,
+                                     const qvm_diagnostic_t *native) {
+  size_t size;
+  if (!out || out->size < sizeof(*out) || !native) return;
+  size = out->size;
+  *out = (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
+  out->size = size;
+  out->status = native->status;
+  out->instruction = native->instruction;
+  out->opcode = native->opcode;
+  out->operand = native->operand;
+  snprintf(out->message, sizeof(out->message), "%s", native->message ? native->message : "");
+}
+
+static qvm_limits_t db_query_native_limits(const DataBindQueryLimits *limits) {
+  if (!limits) return qvm_default_limits();
+  return (qvm_limits_t){limits->max_instructions, limits->max_operands,
+                        limits->max_regexes, limits->max_steps};
+}
 
 typedef enum data_bind_wire_type {
   DB_WIRE_UNDEFINED,
@@ -209,16 +236,16 @@ struct data_bind_stream_t {
   char **csv_field_storage;
   size_t csv_field_count;
   size_t csv_fields_capacity;
-  turbo_csv_doc_t *csv_filter_doc;
-  turbo_dsv_filter_t *csv_filter;
+  csv_doc_t *csv_filter_doc;
+  dsv_filter_t *csv_filter;
   DataBindValue *csv_values;
   DataBindValue *stream_values;
-  turbo_json_sax_parser_t *json_sax;
-  turbo_json_path_program_t *json_path_program;
-  turbo_json_path_stream_t *json_path_stream;
+  json_sax_parser_t *json_sax;
+  json_path_program_t *json_path_program;
+  json_path_stream_t *json_path_stream;
   json_value_t *json_match_value;
-  turbo_yaml_sax_parser_t *yaml_sax;
-  turbo_xml_sax_parser_t *xml_sax;
+  cyaml_sax_parser_t *yaml_sax;
+  salts_xml_sax_parser_t *xml_sax;
   data_bind_json_stream_frame_t *json_frames;
   size_t json_frame_count;
   size_t json_frame_capacity;
@@ -299,7 +326,7 @@ struct DataBindValue {
       size_t len;
     } bytes_val;
     salts_uuid_t uuid_val;
-    turbo_datetime_t datetime_val;
+    datetime_t datetime_val;
     DataBindDate date_val;
     DataBindTime time_val;
     int64_t duration_ms;
@@ -764,7 +791,7 @@ static DataBindValue *dbv_uuid_text(const char *text) {
   return dbv_uuid_bytes(uuid.bytes);
 }
 
-static DataBindValue *dbv_datetime(turbo_datetime_t value) {
+static DataBindValue *dbv_datetime(datetime_t value) {
   DataBindValue *v = dbv_new(DATA_BIND_VALUE_DATETIME);
   if (v == NULL) return NULL;
   v->data.datetime_val = value;
@@ -772,8 +799,8 @@ static DataBindValue *dbv_datetime(turbo_datetime_t value) {
 }
 
 static DataBindValue *dbv_datetime_text(const char *text) {
-  turbo_datetime_t dt;
-  if (text == NULL || turbo_parse_datetime(text, strlen(text), &dt) != 0) return NULL;
+  datetime_t dt;
+  if (text == NULL || datetime_parse(text, strlen(text), &dt) != 0) return NULL;
   return dbv_datetime(dt);
 }
 
@@ -787,7 +814,7 @@ static int db_date_valid(int year, int month, int day) {
 }
 
 static int db_parse_date_text(const char *text, DataBindDate *out) {
-  turbo_datetime_t dt;
+  datetime_t dt;
   int year = 0, month = 0, day = 0, consumed = 0;
   if (text == NULL || out == NULL) return 0;
   if (sscanf(text, "%d-%d-%d%n", &year, &month, &day, &consumed) == 3 ||
@@ -798,7 +825,7 @@ static int db_parse_date_text(const char *text, DataBindDate *out) {
     out->day = day;
     return 1;
   }
-  if (turbo_parse_datetime(text, strlen(text), &dt) == 0) {
+  if (datetime_parse(text, strlen(text), &dt) == 0) {
     out->year = dt.year;
     out->month = dt.month;
     out->day = dt.day;
@@ -808,9 +835,9 @@ static int db_parse_date_text(const char *text, DataBindDate *out) {
 }
 
 static int db_parse_time_text(const char *text, DataBindTime *out) {
-  turbo_datetime_t dt;
+  datetime_t dt;
   if (text == NULL || out == NULL) return 0;
-  if (strchr(text, ':') == NULL || turbo_parse_datetime(text, strlen(text), &dt) != 0) return 0;
+  if (strchr(text, ':') == NULL || datetime_parse(text, strlen(text), &dt) != 0) return 0;
   if (dt.year != 0 || dt.month != 0 || dt.day != 0 || dt.has_tz || dt.hour < 0 || dt.hour > 23 ||
       dt.minute < 0 || dt.minute > 59 || dt.second < 0 || dt.second > 60 ||
       dt.millisecond < 0 || dt.millisecond > 999)
@@ -1558,7 +1585,7 @@ static json_value_t *json_field_value(Node *field, json_value_t *object) {
     const char *candidate = field_input_name_at(field, i);
     json_value_t *value;
     if (field_input_name_is_duplicate(field, i, candidate)) continue;
-    value = turbo_json_object_get(object, candidate);
+    value = json_object_get(object, candidate);
     if (value != NULL) return value;
   }
   return NULL;
@@ -2439,12 +2466,12 @@ static DataBindValue *json_integer_value(Node *schema_root, const char *type_nam
   const char *text = NULL;
   size_t len = 0;
   if (value == NULL) return NULL;
-  if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-    text = turbo_json_number_text(value, &len);
+  if (json_type(value) == JSON_NUMBER) {
+    text = json_number_text(value, &len);
     if (text == NULL) return NULL;
-  } else if (turbo_json_type(value) == TURBO_JSON_STRING) {
-    text = turbo_json_string(value);
-    len = turbo_json_string_len(value);
+  } else if (json_type(value) == JSON_STRING) {
+    text = json_string(value);
+    len = json_string_len(value);
   } else {
     return NULL;
   }
@@ -2458,11 +2485,11 @@ static DataBindValue *json_flags_value(Node *schema_root, const char *type_name,
   size_t i;
   DataBindValue *direct = json_integer_value(schema_root, type_name, value);
   if (direct != NULL) return direct;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY) return NULL;
-  for (i = 0; i < turbo_json_array_size(value); i++) {
+  if (value == NULL || json_type(value) != JSON_ARRAY) return NULL;
+  for (i = 0; i < json_array_size(value); i++) {
     uint64_t bits;
     DataBindValue *item =
-        json_flags_value(schema_root, type_name, turbo_json_array_get(value, i));
+        json_flags_value(schema_root, type_name, json_array_get(value, i));
     if (item == NULL || data_bind_value_get_uint64(item, &bits) != DATA_BIND_OK) {
       data_bind_value_free(item);
       return NULL;
@@ -2482,55 +2509,55 @@ static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
   if (is_flags_type(schema_root, type_name))
     return json_flags_value(schema_root, type_name, value);
   if (kind == DB_TEXT_INTEGER &&
-      (turbo_json_type(value) == TURBO_JSON_NUMBER ||
-       (turbo_json_type(value) == TURBO_JSON_STRING &&
+      (json_type(value) == JSON_NUMBER ||
+       (json_type(value) == JSON_STRING &&
         find_enum_record(schema_root, type_name) != NULL)))
     return json_integer_value(schema_root, type_name, value);
   switch (kind) {
   case DB_TEXT_STRING:
-    if (turbo_json_type(value) == TURBO_JSON_STRING) {
-      return dbv_string_n(turbo_json_string(value), turbo_json_string_len(value));
+    if (json_type(value) == JSON_STRING) {
+      return dbv_string_n(json_string(value), json_string_len(value));
     }
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      snprintf(number_buf, sizeof(number_buf), "%.17g", turbo_json_number(value));
+    if (json_type(value) == JSON_NUMBER) {
+      snprintf(number_buf, sizeof(number_buf), "%.17g", json_number(value));
       return dbv_string(number_buf);
     }
-    if (turbo_json_type(value) == TURBO_JSON_BOOL)
-      return dbv_string(turbo_json_bool(value) ? "true" : "false");
+    if (json_type(value) == JSON_BOOL)
+      return dbv_string(json_bool(value) ? "true" : "false");
     return NULL;
   case DB_TEXT_BYTES:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_bytes((const uint8_t *)turbo_json_string(value), turbo_json_string_len(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_bytes((const uint8_t *)json_string(value), json_string_len(value));
   case DB_TEXT_UUID:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_uuid_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_uuid_text(json_string(value));
   case DB_TEXT_DATETIME:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_datetime_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_datetime_text(json_string(value));
   case DB_TEXT_DATE:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_date_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_date_text(json_string(value));
   case DB_TEXT_TIME:
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_time_text(turbo_json_string(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_time_text(json_string(value));
   case DB_TEXT_DURATION:
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER)
-      return dbv_duration((int64_t)turbo_json_number(value));
-    if (turbo_json_type(value) != TURBO_JSON_STRING) return NULL;
-    return dbv_duration_text(turbo_json_string(value));
+    if (json_type(value) == JSON_NUMBER)
+      return dbv_duration((int64_t)json_number(value));
+    if (json_type(value) != JSON_STRING) return NULL;
+    return dbv_duration_text(json_string(value));
   case DB_TEXT_DECIMAL:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_decimal_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      snprintf(decimal_buf, sizeof(decimal_buf), "%.17g", turbo_json_number(value));
+    if (json_type(value) == JSON_STRING)
+      return dbv_decimal_text(json_string(value));
+    if (json_type(value) == JSON_NUMBER) {
+      snprintf(decimal_buf, sizeof(decimal_buf), "%.17g", json_number(value));
       return dbv_decimal_text(decimal_buf);
     }
     return NULL;
   case DB_TEXT_BIGINT:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_bigint_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) {
-      double n = turbo_json_number(value);
+    if (json_type(value) == JSON_STRING)
+      return dbv_bigint_text(json_string(value));
+    if (json_type(value) == JSON_NUMBER) {
+      double n = json_number(value);
       if (!isfinite(n) || floor(n) != n || n < -9007199254740991.0 || n > 9007199254740991.0)
         return NULL;
       snprintf(bigint_buf, sizeof(bigint_buf), "%.0f", n);
@@ -2538,47 +2565,47 @@ static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
     }
     return NULL;
   case DB_TEXT_MONEY:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return dbv_money_text(turbo_json_string(value));
-    if (turbo_json_type(value) == TURBO_JSON_OBJECT) {
-      json_value_t *amount_value = turbo_json_object_get(value, "amount");
-      json_value_t *currency_value = turbo_json_object_get(value, "currency");
+    if (json_type(value) == JSON_STRING)
+      return dbv_money_text(json_string(value));
+    if (json_type(value) == JSON_OBJECT) {
+      json_value_t *amount_value = json_object_get(value, "amount");
+      json_value_t *currency_value = json_object_get(value, "currency");
       DataBindMoney money;
       char amount_buf[64];
       if (amount_value == NULL || currency_value == NULL ||
-          turbo_json_type(currency_value) != TURBO_JSON_STRING ||
-          !db_validate_currency(turbo_json_string(currency_value)))
+          json_type(currency_value) != JSON_STRING ||
+          !db_validate_currency(json_string(currency_value)))
         return NULL;
-      if (turbo_json_type(amount_value) == TURBO_JSON_STRING) {
-        if (!db_parse_decimal_text(turbo_json_string(amount_value), &money.amount)) return NULL;
-      } else if (turbo_json_type(amount_value) == TURBO_JSON_NUMBER) {
-        snprintf(amount_buf, sizeof(amount_buf), "%.17g", turbo_json_number(amount_value));
+      if (json_type(amount_value) == JSON_STRING) {
+        if (!db_parse_decimal_text(json_string(amount_value), &money.amount)) return NULL;
+      } else if (json_type(amount_value) == JSON_NUMBER) {
+        snprintf(amount_buf, sizeof(amount_buf), "%.17g", json_number(amount_value));
         if (!db_parse_decimal_text(amount_buf, &money.amount)) return NULL;
       } else {
         return NULL;
       }
-      memcpy(money.currency, turbo_json_string(currency_value), 3);
+      memcpy(money.currency, json_string(currency_value), 3);
       money.currency[3] = '\0';
       return dbv_money(money);
     }
     return NULL;
   case DB_TEXT_BOOL:
-    if (turbo_json_type(value) == TURBO_JSON_BOOL) return dbv_bool(turbo_json_bool(value));
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER)
-      return dbv_bool(turbo_json_number(value) != 0.0);
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_BOOL) return dbv_bool(json_bool(value));
+    if (json_type(value) == JSON_NUMBER)
+      return dbv_bool(json_number(value) != 0.0);
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   case DB_TEXT_INTEGER:
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   case DB_TEXT_NUMBER:
-    if (turbo_json_type(value) == TURBO_JSON_NUMBER) return dbv_double(turbo_json_number(value));
-    if (turbo_json_type(value) == TURBO_JSON_BOOL)
-      return dbv_double(turbo_json_bool(value) ? 1.0 : 0.0);
-    if (turbo_json_type(value) == TURBO_JSON_STRING)
-      return bind_text_scalar(schema_root, type_name, kind, turbo_json_string(value));
+    if (json_type(value) == JSON_NUMBER) return dbv_double(json_number(value));
+    if (json_type(value) == JSON_BOOL)
+      return dbv_double(json_bool(value) ? 1.0 : 0.0);
+    if (json_type(value) == JSON_STRING)
+      return bind_text_scalar(schema_root, type_name, kind, json_string(value));
     return NULL;
   default:
     return NULL;
@@ -2618,20 +2645,20 @@ static DataBindValue *bind_json_array(Node *schema_root, Node *field, json_value
   DataBindValue *list;
   size_t expected = 0;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY || inner_type == NULL)
+  if (value == NULL || json_type(value) != JSON_ARRAY || inner_type == NULL)
     return NULL;
   if (parse_size_value(get_string_val(find_child(field, "length_field")), &expected) &&
-      turbo_json_array_size(value) != expected)
+      json_array_size(value) != expected)
     return NULL;
   list = dbv_new(list_kind);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, turbo_json_array_size(value))) {
+  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
     data_bind_value_free(list);
     return NULL;
   }
   scalar_kind = bind_type_kind(schema_root, inner_type);
-  for (i = 0; i < turbo_json_array_size(value); i++) {
-    json_value_t *item = turbo_json_array_get(value, i);
+  for (i = 0; i < json_array_size(value); i++) {
+    json_value_t *item = json_array_get(value, i);
     DataBindValue *bound;
     if (field_flag(field, "collection_element_is_composite") ||
         find_data_record(schema_root, inner_type) != NULL ||
@@ -2651,16 +2678,16 @@ static DataBindValue *bind_json_record_array(Node *schema_root, const char *type
                                              json_value_t *value) {
   DataBindValue *list;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_ARRAY || type_name == NULL) return NULL;
+  if (value == NULL || json_type(value) != JSON_ARRAY || type_name == NULL) return NULL;
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, turbo_json_array_size(value))) {
+  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
     data_bind_value_free(list);
     return NULL;
   }
-  for (i = 0; i < turbo_json_array_size(value); i++) {
+  for (i = 0; i < json_array_size(value); i++) {
     DataBindValue *bound =
-        bind_json_typed_value(schema_root, type_name, turbo_json_array_get(value, i));
+        bind_json_typed_value(schema_root, type_name, json_array_get(value, i));
     if (bound == NULL || !dbv_array_push(&list->data.array_val, bound)) {
       data_bind_value_free(bound);
       data_bind_value_free(list);
@@ -2675,17 +2702,17 @@ static DataBindValue *bind_json_map(Node *schema_root, Node *field, json_value_t
   data_bind_text_kind_t value_kind = bind_type_kind(schema_root, value_type);
   DataBindValue *map;
   size_t i;
-  if (value == NULL || turbo_json_type(value) != TURBO_JSON_OBJECT || value_type == NULL)
+  if (value == NULL || json_type(value) != JSON_OBJECT || value_type == NULL)
     return NULL;
   map = dbv_new(DATA_BIND_VALUE_MAP);
   if (map == NULL) return NULL;
-  if (!dbv_map_reserve(map, turbo_json_object_size(value))) {
+  if (!dbv_map_reserve(map, json_object_size(value))) {
     data_bind_value_free(map);
     return NULL;
   }
-  for (i = 0; i < turbo_json_object_size(value); i++) {
-    const char *key = turbo_json_object_key(value, i);
-    json_value_t *item = turbo_json_object_value(value, i);
+  for (i = 0; i < json_object_size(value); i++) {
+    const char *key = json_object_key(value, i);
+    json_value_t *item = json_object_value(value, i);
     DataBindValue *bound;
     if (key == NULL || item == NULL) continue;
     if (find_data_record(schema_root, value_type) != NULL ||
@@ -2709,11 +2736,11 @@ static DataBindValue *bind_json_union(Node *schema_root, Node *union_node, json_
   DataBindValue *bound;
   DataBindValue *result;
   data_bind_text_kind_t scalar_kind;
-  if (union_node == NULL || object == NULL || turbo_json_type(object) != TURBO_JSON_OBJECT ||
-      turbo_json_object_size(object) != 1)
+  if (union_node == NULL || object == NULL || json_type(object) != JSON_OBJECT ||
+      json_object_size(object) != 1)
     return NULL;
-  variant_name = turbo_json_object_key(object, 0);
-  payload = turbo_json_object_value(object, 0);
+  variant_name = json_object_key(object, 0);
+  payload = json_object_value(object, 0);
   variant = union_variant_binding(union_node, variant_name);
   if (variant == NULL || payload == NULL) return NULL;
   variant_name = get_string_val(find_child(variant, "name"));
@@ -2740,7 +2767,7 @@ static DataBindValue *bind_json_object(Node *schema_root, Node *record, json_val
   DataBindValue *result;
   Node *fields;
   size_t i;
-  if (record == NULL || object == NULL || turbo_json_type(object) != TURBO_JSON_OBJECT) return NULL;
+  if (record == NULL || object == NULL || json_type(object) != JSON_OBJECT) return NULL;
   fields = fields_node_for_record(record);
   if (fields == NULL) return NULL;
   result = dbv_new(DATA_BIND_VALUE_OBJECT);
@@ -2835,22 +2862,36 @@ static int xml_children_path(char *out, size_t out_size, const char *prefix) {
   return written > 0 && (size_t)written < out_size;
 }
 
-static int xml_path_exists(turbo_xml_doc_t *doc, const char *path) {
-  return doc != NULL && path != NULL && turbo_xml_xpath_count(doc, path) > 0;
+static int xml_path_exists(const salts_xml_document *doc, const char *path) {
+  salts_xml_node_list nodes = {0};
+  int found;
+  if (!doc || !path) return 0;
+  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    salts_xml_node_list_destroy(&nodes);
+    return 0;
+  }
+  found = salts_xml_node_list_size(&nodes) != 0;
+  salts_xml_node_list_destroy(&nodes);
+  return found;
 }
 
-static const char *xml_path_text(turbo_xml_doc_t *doc, const char *path) {
-  turbo_xml_xpath_node_t *node;
-  const char *text;
-  if (doc == NULL || path == NULL) return NULL;
-  node = turbo_xml_xpath_get(doc, path);
-  if (node == NULL) return NULL;
-  text = turbo_xml_xpath_node_text(node);
-  if (text != NULL) return text;
-  return turbo_xml_xpath_text(doc, path);
+static const char *xml_path_text(const salts_xml_document *doc, const char *path) {
+  salts_xml_node_list nodes = {0};
+  const char *text = NULL;
+  if (!doc || !path) return NULL;
+  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) == QVM_STATUS_OK &&
+      salts_xml_node_list_size(&nodes) != 0) {
+    salts_xml_node node = salts_xml_node_list_at(&nodes, 0);
+    text = salts_xml_node_text_view(node).data;
+    /* An existing empty element binds as an empty string, not a missing field. */
+    if (!text && salts_xml_node_type(node) == SALTS_XML_ELEMENT) text = "";
+  }
+  /* The selected list owns no node/text; text remains borrowed from doc. */
+  salts_xml_node_list_destroy(&nodes);
+  return text;
 }
 
-static int xml_field_path(turbo_xml_doc_t *doc, const char *prefix, const char *name, char *out,
+static int xml_field_path(const salts_xml_document *doc, const char *prefix, const char *name, char *out,
                           size_t out_size) {
   char child[256], attr[256];
   if (!xml_join_path(child, sizeof(child), prefix, name)) return 0;
@@ -2866,7 +2907,7 @@ static int xml_field_path(turbo_xml_doc_t *doc, const char *prefix, const char *
   return 0;
 }
 
-static int xml_field_binding_path(Node *field, turbo_xml_doc_t *doc, const char *prefix, char *out,
+static int xml_field_binding_path(Node *field, const salts_xml_document *doc, const char *prefix, char *out,
                                   size_t out_size) {
   size_t i;
   for (i = 0; i < field_input_name_count(field); ++i) {
@@ -2878,10 +2919,10 @@ static int xml_field_binding_path(Node *field, turbo_xml_doc_t *doc, const char 
 }
 
 static DataBindValue *bind_xml_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_xml_doc_t *doc, const char *path);
+                                           const salts_xml_document *doc, const char *path);
 
 static DataBindValue *bind_xml_scalar_at_path(Node *schema_root, const char *type_name,
-                                              data_bind_text_kind_t kind, turbo_xml_doc_t *doc,
+                                              data_bind_text_kind_t kind, const salts_xml_document *doc,
                                               const char *path) {
   const char *text;
   if (doc == NULL || path == NULL || kind == DB_TEXT_UNSUPPORTED) return NULL;
@@ -2890,33 +2931,36 @@ static DataBindValue *bind_xml_scalar_at_path(Node *schema_root, const char *typ
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
-static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, turbo_xml_doc_t *doc,
+static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, const salts_xml_document *doc,
                                             const char *path, DataBindValueKind list_kind) {
   const char *inner_type = get_string_val(find_child(field, "inner_type"));
   data_bind_text_kind_t scalar_kind = bind_type_kind(schema_root, inner_type);
   DataBindValue *list;
-  turbo_xml_list_t nodes;
+  salts_xml_node_list nodes = {0};
   size_t count = 0;
   int fixed_count;
   if (schema_root == NULL || field == NULL || doc == NULL || path == NULL || inner_type == NULL)
     return NULL;
   fixed_count = parse_size_value(get_string_val(find_child(field, "length_field")), &count);
-  turbo_xml_xpath_query(doc, path, &nodes);
-  if (fixed_count && (size_t)nodes.len != count) {
-    turbo_xml_list_free(&nodes);
+  if (salts_xml_document_xpath_query(doc, path, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    salts_xml_node_list_destroy(&nodes);
+    return NULL;
+  }
+  if (fixed_count && (size_t)nodes.size != count) {
+    salts_xml_node_list_destroy(&nodes);
     return NULL;
   }
   list = dbv_new(list_kind);
   if (list == NULL) {
-    turbo_xml_list_free(&nodes);
+    salts_xml_node_list_destroy(&nodes);
     return NULL;
   }
-  for (int i = 0; i < nodes.len; i++) {
+  for (size_t i = 0; i < nodes.size; i++) {
     char item_path[320];
     DataBindValue *item;
-    if (snprintf(item_path, sizeof(item_path), "%s[%d]", path, i + 1) >= (int)sizeof(item_path)) {
+    if (snprintf(item_path, sizeof(item_path), "%s[%zu]", path, i + 1) >= (int)sizeof(item_path)) {
       data_bind_value_free(list);
-      turbo_xml_list_free(&nodes);
+      salts_xml_node_list_destroy(&nodes);
       return NULL;
     }
     if (field_flag(field, "collection_element_is_composite") ||
@@ -2927,11 +2971,11 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, turb
     if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
       data_bind_value_free(item);
       data_bind_value_free(list);
-      turbo_xml_list_free(&nodes);
+      salts_xml_node_list_destroy(&nodes);
       return NULL;
     }
   }
-  turbo_xml_list_free(&nodes);
+  salts_xml_node_list_destroy(&nodes);
   if (data_bind_value_count(list) == 0) {
     data_bind_value_free(list);
     return NULL;
@@ -2939,29 +2983,33 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, turb
   return list;
 }
 
-static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, turbo_xml_doc_t *doc,
+static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const salts_xml_document *doc,
                                            const char *path) {
   const char *value_type = get_string_val(find_child(field, "value_type"));
   DataBindValue *map;
-  turbo_xml_list_t nodes;
+  salts_xml_node_list nodes = {0};
   char children[256];
   if (schema_root == NULL || field == NULL || doc == NULL || path == NULL || value_type == NULL)
     return NULL;
   if (!xml_children_path(children, sizeof(children), path)) return NULL;
-  turbo_xml_xpath_query(doc, children, &nodes);
-  map = dbv_new(DATA_BIND_VALUE_MAP);
-  if (map == NULL) {
-    turbo_xml_list_free(&nodes);
+  if (salts_xml_document_xpath_query(doc, children, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+    salts_xml_node_list_destroy(&nodes);
     return NULL;
   }
-  turbo_xml_for(node, &nodes) {
-    const char *key = turbo_xml_xpath_node_name((const turbo_xml_xpath_node_t *)node);
+  map = dbv_new(DATA_BIND_VALUE_MAP);
+  if (map == NULL) {
+    salts_xml_node_list_destroy(&nodes);
+    return NULL;
+  }
+  for (size_t i = 0; i < salts_xml_node_list_size(&nodes); ++i) {
+    salts_xml_node node = salts_xml_node_list_at(&nodes, i);
+    const char *key = salts_xml_node_display_name(node).data;
     DataBindValue *item;
     char item_path[320];
     if (key == NULL || dbv_map_has_key(map, key)) continue;
     if (!xml_join_path(item_path, sizeof(item_path), path, key)) {
       data_bind_value_free(map);
-      turbo_xml_list_free(&nodes);
+      salts_xml_node_list_destroy(&nodes);
       return NULL;
     }
     if (find_data_record(schema_root, value_type) != NULL ||
@@ -2974,16 +3022,16 @@ static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, turbo
       if (!dbv_map_set(map, key, item)) {
         data_bind_value_free(item);
         data_bind_value_free(map);
-        turbo_xml_list_free(&nodes);
+        salts_xml_node_list_destroy(&nodes);
         return NULL;
       }
-    } else if (!db_text_is_empty(turbo_xml_xpath_node_text((const turbo_xml_xpath_node_t *)node))) {
+    } else if (!db_text_is_empty(salts_xml_node_text_view(node).data)) {
       data_bind_value_free(map);
-      turbo_xml_list_free(&nodes);
+      salts_xml_node_list_destroy(&nodes);
       return NULL;
     }
   }
-  turbo_xml_list_free(&nodes);
+  salts_xml_node_list_destroy(&nodes);
   if (data_bind_value_count(map) == 0) {
     data_bind_value_free(map);
     return NULL;
@@ -2992,7 +3040,7 @@ static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, turbo
 }
 
 static DataBindValue *bind_xml_union_at_path(Node *schema_root, Node *union_node,
-                                             turbo_xml_doc_t *doc, const char *path) {
+                                             const salts_xml_document *doc, const char *path) {
   Node *fields = fields_node_for_record(union_node);
   DataBindValue *result;
   int matches = 0;
@@ -3030,7 +3078,7 @@ static DataBindValue *bind_xml_union_at_path(Node *schema_root, Node *union_node
   return result;
 }
 
-static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, turbo_xml_doc_t *doc,
+static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, const salts_xml_document *doc,
                                               const char *path) {
   Node *fields = fields_node_for_record(record);
   DataBindValue *result;
@@ -3084,7 +3132,7 @@ static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, t
 }
 
 static DataBindValue *bind_xml_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_xml_doc_t *doc, const char *path) {
+                                           const salts_xml_document *doc, const char *path) {
   Node *record = find_data_record(schema_root, type_name);
   Node *union_node = find_union_record(schema_root, type_name);
   data_bind_text_kind_t kind = bind_type_kind(schema_root, type_name);
@@ -3195,25 +3243,25 @@ static void csv_sanitize_path(const char *path, char *out, size_t out_size) {
   out[w] = '\0';
 }
 
-static int csv_find_named_column(turbo_csv_doc_t *doc, const char *name, size_t *out_col) {
+static int csv_find_named_column(csv_doc_t *doc, const char *name, size_t *out_col) {
   char typed_name[256];
   size_t col;
   if (doc == NULL || name == NULL || out_col == NULL) return 0;
-  col = turbo_csv_find_column(doc, name);
-  if (col < turbo_csv_column_count(doc)) {
+  col = csv_find_column(doc, name);
+  if (col < csv_column_count(doc)) {
     *out_col = col;
     return 1;
   }
   if (snprintf(typed_name, sizeof(typed_name), "%s_n", name) < (int)sizeof(typed_name)) {
-    col = turbo_csv_find_column(doc, typed_name);
-    if (col < turbo_csv_column_count(doc)) {
+    col = csv_find_column(doc, typed_name);
+    if (col < csv_column_count(doc)) {
       *out_col = col;
       return 1;
     }
   }
   if (snprintf(typed_name, sizeof(typed_name), "%s_s", name) < (int)sizeof(typed_name)) {
-    col = turbo_csv_find_column(doc, typed_name);
-    if (col < turbo_csv_column_count(doc)) {
+    col = csv_find_column(doc, typed_name);
+    if (col < csv_column_count(doc)) {
       *out_col = col;
       return 1;
     }
@@ -3221,7 +3269,7 @@ static int csv_find_named_column(turbo_csv_doc_t *doc, const char *name, size_t 
   return 0;
 }
 
-static int csv_find_path_column(turbo_csv_doc_t *doc, const char *path, size_t *out_col) {
+static int csv_find_path_column(csv_doc_t *doc, const char *path, size_t *out_col) {
   char sanitized[256];
   if (csv_find_named_column(doc, path, out_col)) return 1;
   csv_sanitize_path(path, sanitized, sizeof(sanitized));
@@ -3361,14 +3409,14 @@ static int csv_header_matches_path(const char *header, const char *path) {
   return 0;
 }
 
-static int csv_row_has_nonempty_path(turbo_csv_doc_t *doc, size_t row,
+static int csv_row_has_nonempty_path(csv_doc_t *doc, size_t row,
                                      const data_bind_csv_headers_t *headers, const char *path) {
   size_t i;
-  if (doc == NULL || headers == NULL || path == NULL || row >= turbo_csv_row_count(doc)) return 0;
+  if (doc == NULL || headers == NULL || path == NULL || row >= csv_row_count(doc)) return 0;
   for (i = 0; i < headers->count; i++) {
     const char *text;
     if (!csv_header_matches_path(headers->names[i], path)) continue;
-    text = turbo_csv_get(doc, row, i);
+    text = csv_get(doc, row, i);
     if (!db_text_is_empty(text)) return 1;
   }
   return 0;
@@ -3399,35 +3447,35 @@ static int csv_header_map_key(const char *header, const char *path, char *key, s
 }
 
 static DataBindValue *bind_csv_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_csv_doc_t *doc, size_t row,
+                                           csv_doc_t *doc, size_t row,
                                            const data_bind_csv_headers_t *headers,
                                            const char *path);
 
 static DataBindValue *bind_csv_scalar_at_path(Node *schema_root, const char *type_name,
-                                              data_bind_text_kind_t kind, turbo_csv_doc_t *doc,
+                                              data_bind_text_kind_t kind, csv_doc_t *doc,
                                               size_t row, const char *path) {
   size_t col = 0;
   const char *text;
   if (doc == NULL || path == NULL || kind == DB_TEXT_UNSUPPORTED) return NULL;
   if (!csv_find_path_column(doc, path, &col)) return NULL;
-  text = turbo_csv_get(doc, row, col);
+  text = csv_get(doc, row, col);
   if (text == NULL) return NULL;
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
 static DataBindValue *bind_csv_scalar_value(Node *schema_root, const char *type_name,
-                                            data_bind_text_kind_t kind, turbo_csv_doc_t *doc,
+                                            data_bind_text_kind_t kind, csv_doc_t *doc,
                                             size_t row) {
   size_t col = 0;
   const char *text;
-  if (doc == NULL || row >= turbo_csv_row_count(doc) || kind == DB_TEXT_UNSUPPORTED) return NULL;
+  if (doc == NULL || row >= csv_row_count(doc) || kind == DB_TEXT_UNSUPPORTED) return NULL;
   if (!csv_find_path_column(doc, "value", &col)) col = 0;
-  text = turbo_csv_get(doc, row, col);
+  text = csv_get(doc, row, col);
   if (text == NULL) return NULL;
   return bind_text_scalar(schema_root, type_name, kind, text);
 }
 
-static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, csv_doc_t *doc,
                                            size_t row, const data_bind_csv_headers_t *headers,
                                            const char *path) {
   const char *value_type = get_string_val(find_child(field, "value_type"));
@@ -3467,7 +3515,7 @@ static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, turbo
   return map;
 }
 
-static DataBindValue *bind_csv_list_at_path(Node *schema_root, Node *field, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_list_at_path(Node *schema_root, Node *field, csv_doc_t *doc,
                                             size_t row, const data_bind_csv_headers_t *headers,
                                             const char *path, DataBindValueKind list_kind) {
   const char *inner_type = get_string_val(find_child(field, "inner_type"));
@@ -3520,7 +3568,7 @@ fail_indexes:
 }
 
 static DataBindValue *bind_csv_union_at_path(Node *schema_root, Node *union_node,
-                                             turbo_csv_doc_t *doc, size_t row,
+                                             csv_doc_t *doc, size_t row,
                                              const data_bind_csv_headers_t *headers,
                                              const char *path) {
   Node *fields = fields_node_for_record(union_node);
@@ -3558,13 +3606,13 @@ static DataBindValue *bind_csv_union_at_path(Node *schema_root, Node *union_node
   return result;
 }
 
-static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, turbo_csv_doc_t *doc,
+static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, csv_doc_t *doc,
                                               size_t row, const data_bind_csv_headers_t *headers,
                                               const char *prefix) {
   Node *fields = fields_node_for_record(record);
   DataBindValue *result;
   size_t i;
-  if (fields == NULL || doc == NULL || row >= turbo_csv_row_count(doc)) return NULL;
+  if (fields == NULL || doc == NULL || row >= csv_row_count(doc)) return NULL;
   if (prefix != NULL && prefix[0] != '\0' && !csv_headers_have_path(headers, prefix)) return NULL;
   result = dbv_new(DATA_BIND_VALUE_OBJECT);
   if (result == NULL) return NULL;
@@ -3616,7 +3664,7 @@ static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, t
 }
 
 static DataBindValue *bind_csv_typed_value(Node *schema_root, const char *type_name,
-                                           turbo_csv_doc_t *doc, size_t row,
+                                           csv_doc_t *doc, size_t row,
                                            const data_bind_csv_headers_t *headers,
                                            const char *path) {
   Node *record = find_data_record(schema_root, type_name);
@@ -5576,7 +5624,7 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
   DataBindValue *item;
   if (parser == NULL || value == NULL) return -1;
   item = bind_json_typed_value(parser->codec->schema_root, parser->type_name, value);
-  turbo_free_json(&value);
+  (json_free(value), value = NULL);
   if (item == NULL) {
     data_bind_stream_error_msg(parser, "JSON stream item bind failed");
     return -1;
@@ -5641,14 +5689,14 @@ static int data_bind_stream_json_attach_value(data_bind_stream_t *parser, json_v
       data_bind_stream_error_msg(parser, "JSON stream object value without key");
       return -1;
     }
-    if (!turbo_json_object_add_checked(parent->value, parent->pending_key, value)) {
+    if (!json_object_add_checked(parent->value, parent->pending_key, value)) {
       data_bind_stream_error_msg(parser, "Out of memory appending JSON stream object value");
       return -1;
     }
     free(parent->pending_key);
     parent->pending_key = NULL;
   } else {
-    if (!turbo_json_array_add_checked(parent->value, value)) {
+    if (!json_array_add_checked(parent->value, value)) {
       data_bind_stream_error_msg(parser, "Out of memory appending JSON stream array value");
       return -1;
     }
@@ -5662,19 +5710,19 @@ static int data_bind_stream_json_scalar(data_bind_stream_t *parser, json_value_t
     return -1;
   }
   if (!parser->json_stream_active || parser->json_sax_depth == 0) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return 0;
   }
   if (parser->json_sax_depth == 1 || parser->json_frame_count > 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      (json_free(value), value = NULL);
       return -1;
     }
     if (parser->json_frame_count == 0) {
       return data_bind_stream_json_bind_value(parser, value);
     }
   } else {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
   }
   return 0;
 }
@@ -5687,16 +5735,16 @@ static int data_bind_stream_json_container_start(data_bind_stream_t *parser, jso
     return -1;
   }
   if (!parser->json_stream_active || parser->json_sax_depth == 0) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return 0;
   }
   if (parser->json_sax_depth != 1 && parser->json_frame_count == 0) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return 0;
   }
   if (data_bind_stream_json_frame_reserve(parser) != 0 ||
       data_bind_stream_json_attach_value(parser, value) != 0) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return -1;
   }
   frame = &parser->json_frames[parser->json_frame_count++];
@@ -5723,20 +5771,20 @@ static int data_bind_stream_json_container_end(data_bind_stream_t *parser, int i
 }
 
 static int data_bind_stream_json_on_null(void *ctx) {
-  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, turbo_json_create_null());
+  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, json_create_null());
 }
 
 static int data_bind_stream_json_on_bool(void *ctx, bool val) {
-  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, turbo_json_create_bool(val));
+  return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, json_create_bool(val));
 }
 
 static int data_bind_stream_json_on_number_raw(void *ctx, const char *val, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  turbo_json_doc_t *value = NULL;
+  json_value_t *value = NULL;
   if (val == NULL || len == 0 ||
-      turbo_parse_json((const uint8_t *)val, len, &value) != 0 ||
-      turbo_json_type(value) != TURBO_JSON_NUMBER) {
-    turbo_free_json(&value);
+      (value = json_parse(val, len)) == NULL ||
+      json_type(value) != JSON_NUMBER) {
+    (json_free(value), value = NULL);
     data_bind_stream_error_msg(parser, "Failed to preserve exact JSON stream number");
     return -1;
   }
@@ -5750,7 +5798,7 @@ static int data_bind_stream_json_on_string(void *ctx, const char *val, size_t le
     data_bind_stream_error_msg((data_bind_stream_t *)ctx, "Out of memory copying JSON string");
     return -1;
   }
-  value = turbo_json_create_string(copy);
+  value = json_create_string(copy);
   free(copy);
   return data_bind_stream_json_scalar((data_bind_stream_t *)ctx, value);
 }
@@ -5777,7 +5825,7 @@ static int data_bind_stream_json_on_object_start(void *ctx) {
   if (parser->json_sax_depth == 0) {
     parser->json_root_seen = 1;
   } else {
-    rc = data_bind_stream_json_container_start(parser, turbo_json_create_object(), 1);
+    rc = data_bind_stream_json_container_start(parser, json_create_object(), 1);
   }
   parser->json_sax_depth++;
   return rc;
@@ -5806,7 +5854,7 @@ static int data_bind_stream_json_on_array_start(void *ctx) {
       parser->capacity = 0;
     }
   } else {
-    rc = data_bind_stream_json_container_start(parser, turbo_json_create_array(), 0);
+    rc = data_bind_stream_json_container_start(parser, json_create_array(), 0);
   }
   parser->json_sax_depth++;
   return rc;
@@ -5825,7 +5873,7 @@ static int data_bind_stream_json_on_array_end(void *ctx) {
   return rc;
 }
 
-static int data_bind_stream_json_path_match_start(void *ctx, turbo_json_type_t type) {
+static int data_bind_stream_json_path_match_start(void *ctx, json_type_t type) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   (void)type;
   if (parser == NULL) return -1;
@@ -5849,18 +5897,18 @@ static int data_bind_stream_json_path_scalar(data_bind_stream_t *parser, json_va
     return -1;
   }
   if (parser == NULL || !parser->json_stream_active) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return 0;
   }
   if (parser->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      (json_free(value), value = NULL);
       return -1;
     }
   } else if (parser->json_match_value == NULL) {
     parser->json_match_value = value;
   } else {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root values");
     return -1;
   }
@@ -5875,22 +5923,22 @@ static int data_bind_stream_json_path_container_start(data_bind_stream_t *parser
     return -1;
   }
   if (parser == NULL || !parser->json_stream_active) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return 0;
   }
   if (data_bind_stream_json_frame_reserve(parser) != 0) {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     return -1;
   }
   if (parser->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
-      turbo_free_json(&value);
+      (json_free(value), value = NULL);
       return -1;
     }
   } else if (parser->json_match_value == NULL) {
     parser->json_match_value = value;
   } else {
-    turbo_free_json(&value);
+    (json_free(value), value = NULL);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root containers");
     return -1;
   }
@@ -5919,7 +5967,7 @@ static int data_bind_stream_json_path_container_end(data_bind_stream_t *parser, 
   return 0;
 }
 
-static int data_bind_stream_json_path_match_end(void *ctx, turbo_json_type_t type) {
+static int data_bind_stream_json_path_match_end(void *ctx, json_type_t type) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   json_value_t *matched;
   (void)type;
@@ -5937,21 +5985,21 @@ static int data_bind_stream_json_path_match_end(void *ctx, turbo_json_type_t typ
 
 static int data_bind_stream_json_path_on_null(void *ctx) {
   return data_bind_stream_json_path_scalar((data_bind_stream_t *)ctx,
-                                           turbo_json_create_null());
+                                           json_create_null());
 }
 
 static int data_bind_stream_json_path_on_bool(void *ctx, bool value) {
   return data_bind_stream_json_path_scalar((data_bind_stream_t *)ctx,
-                                           turbo_json_create_bool(value));
+                                           json_create_bool(value));
 }
 
 static int data_bind_stream_json_path_on_number(void *ctx, const char *value, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  turbo_json_doc_t *number = NULL;
+  json_value_t *number = NULL;
   if (value == NULL || len == 0 ||
-      turbo_parse_json((const uint8_t *)value, len, &number) != 0 ||
-      turbo_json_type(number) != TURBO_JSON_NUMBER) {
-    turbo_free_json(&number);
+      (number = json_parse(value, len)) == NULL ||
+      json_type(number) != JSON_NUMBER) {
+    (json_free(number), number = NULL);
     data_bind_stream_error_msg(parser, "Failed to preserve exact JSONPath stream number");
     return -1;
   }
@@ -5966,19 +6014,19 @@ static int data_bind_stream_json_path_on_string(void *ctx, const char *value, si
     data_bind_stream_error_msg(parser, "Out of memory copying JSONPath stream string");
     return -1;
   }
-  string = turbo_json_create_string(copy);
+  string = json_create_string(copy);
   free(copy);
   return data_bind_stream_json_path_scalar(parser, string);
 }
 
 static int data_bind_stream_json_path_on_object_start(void *ctx) {
   return data_bind_stream_json_path_container_start((data_bind_stream_t *)ctx,
-                                                    turbo_json_create_object(), 1);
+                                                    json_create_object(), 1);
 }
 
 static int data_bind_stream_json_path_on_array_start(void *ctx) {
   return data_bind_stream_json_path_container_start((data_bind_stream_t *)ctx,
-                                                    turbo_json_create_array(), 0);
+                                                    json_create_array(), 0);
 }
 
 static int data_bind_stream_json_path_on_object_end(void *ctx) {
@@ -6014,17 +6062,16 @@ static int data_bind_stream_xml_close_start(data_bind_stream_t *parser) {
 }
 
 static int data_bind_stream_xml_bind_capture(data_bind_stream_t *parser) {
-  turbo_xml_doc_t *doc = NULL;
+  salts_xml_document doc = {0};
   DataBindValue *item;
   if (parser == NULL || parser->xml_capture == NULL) return -1;
-  if (turbo_parse_xml((const uint8_t *)parser->xml_capture, tstr_len(parser->xml_capture), &doc) !=
-          0 ||
-      doc == NULL) {
+  if (salts_xml_parse(&doc, parser->xml_capture, tstr_len(parser->xml_capture),
+                      NULL, NULL) != SALTS_XML_OK) {
     data_bind_stream_error_msg(parser, "XML stream item parse failed");
     return -1;
   }
-  item = bind_xml_typed_value(parser->codec->schema_root, parser->type_name, doc, "/*");
-  turbo_free_xml(&doc);
+  item = bind_xml_typed_value(parser->codec->schema_root, parser->type_name, &doc, "/*");
+  salts_xml_document_destroy(&doc);
   if (item == NULL) {
     data_bind_stream_error_msg(parser, "XML stream item bind failed");
     return -1;
@@ -6125,14 +6172,14 @@ static int data_bind_stream_xml_on_cdata(void *ctx, const char *text, size_t tex
   return 0;
 }
 
-static const turbo_json_sax_handler_raw_t DATA_BIND_JSON_STREAM_HANDLER = {
+static const json_sax_handler_raw_t DATA_BIND_JSON_STREAM_HANDLER = {
     data_bind_stream_json_on_null,         data_bind_stream_json_on_bool,
     data_bind_stream_json_on_number_raw,   data_bind_stream_json_on_string,
     data_bind_stream_json_on_object_start, data_bind_stream_json_on_object_key,
     data_bind_stream_json_on_object_end,   data_bind_stream_json_on_array_start,
     data_bind_stream_json_on_array_end};
 
-static const turbo_json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER = {
+static const json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER = {
     data_bind_stream_json_path_match_start,
     data_bind_stream_json_path_match_end,
     {data_bind_stream_json_path_on_null,
@@ -6145,7 +6192,7 @@ static const turbo_json_path_stream_handler_t DATA_BIND_JSON_PATH_STREAM_HANDLER
      data_bind_stream_json_path_on_array_start,
      data_bind_stream_json_path_on_array_end}};
 
-static const turbo_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
+static const salts_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
     NULL,
     NULL,
     data_bind_stream_xml_on_element_start,
@@ -6157,9 +6204,9 @@ static const turbo_xml_sax_handler_t DATA_BIND_XML_STREAM_HANDLER = {
     NULL,
     NULL};
 
-static const turbo_json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
-static const turbo_yaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
-static const turbo_xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
+static const json_sax_handler_t DATA_BIND_JSON_SAX_VALIDATE_HANDLER = {0};
+static const cyaml_sax_handler_t DATA_BIND_YAML_SAX_VALIDATE_HANDLER = {0};
+static const salts_xml_sax_handler_t DATA_BIND_XML_SAX_VALIDATE_HANDLER = {0};
 
 static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, DataBindError *error,
                                                  const char *operation) {
@@ -6169,16 +6216,17 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
     if (parser->stream_error[0] != '\0') {
       message = parser->stream_error;
     } else if (parser->json_path_stream != NULL) {
-      message = turbo_json_path_stream_error(parser->json_path_stream);
+      message = json_path_stream_error(parser->json_path_stream);
       path = "json";
     } else if (parser->json_sax != NULL) {
-      message = turbo_json_sax_parser_error(parser->json_sax);
+      message = json_sax_parser_error(parser->json_sax);
       path = "json";
     } else if (parser->yaml_sax != NULL) {
-      message = turbo_yaml_sax_parser_error(parser->yaml_sax);
+      const cyaml_error_t *native_error = cyaml_sax_parser_error(parser->yaml_sax);
+      message = native_error ? native_error->msg : NULL;
       path = "yaml";
     } else if (parser->xml_sax != NULL) {
-      message = turbo_xml_sax_parser_error(parser->xml_sax);
+      message = salts_xml_sax_parser_error(parser->xml_sax);
       path = "xml";
     }
     parser->sax_failed = 1;
@@ -6203,19 +6251,19 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
     return data_bind_stream_sax_error(parser, error, "stream feed");
   }
   if (parser->json_path_stream != NULL) {
-    if (turbo_json_path_stream_feed(parser->json_path_stream, data, len) != 0) {
+    if (json_path_stream_feed(parser->json_path_stream, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream feed");
     }
   } else if (parser->json_sax != NULL) {
-    if (turbo_json_sax_parser_feed(parser->json_sax, data, len) != 0) {
+    if (json_sax_parser_feed(parser->json_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream feed");
     }
   } else if (parser->yaml_sax != NULL) {
-    if (turbo_yaml_sax_parser_feed(parser->yaml_sax, data, len) != 0) {
+    if (cyaml_sax_parser_feed(parser->yaml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream feed");
     }
   } else if (parser->xml_sax != NULL) {
-    if (turbo_xml_sax_parser_feed(parser->xml_sax, data, len) != 0) {
+    if (salts_xml_sax_parser_feed(parser->xml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream feed");
     }
   }
@@ -6228,19 +6276,19 @@ static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
     return data_bind_stream_sax_error(parser, error, "stream finish");
   }
   if (parser->json_path_stream != NULL) {
-    if (turbo_json_path_stream_finish(parser->json_path_stream) != 0) {
+    if (json_path_stream_finish(parser->json_path_stream) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream finish");
     }
   } else if (parser->json_sax != NULL) {
-    if (turbo_json_sax_parser_finish(parser->json_sax) != 0) {
+    if (json_sax_parser_finish(parser->json_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream finish");
     }
   } else if (parser->yaml_sax != NULL) {
-    if (turbo_yaml_sax_parser_finish(parser->yaml_sax) != 0) {
+    if (cyaml_sax_parser_finish(parser->yaml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream finish");
     }
   } else if (parser->xml_sax != NULL) {
-    if (turbo_xml_sax_parser_finish(parser->xml_sax) != 0) {
+    if (salts_xml_sax_parser_finish(parser->xml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream finish");
     }
   }
@@ -6352,14 +6400,18 @@ static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
 
 static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *parser,
                                                           DataBindError *error) {
+  qvm_limits_t native_limits;
+  qvm_diagnostic_t native_diagnostic = {0};
   char *header_doc = NULL;
   size_t header_doc_len;
-  turbo_csv_options_t opts = {false, ',', '"', true};
+  csv_options_t opts = {false, ',', '"', true};
   int compiled;
 
   if (parser == NULL || parser->path_or_expr == NULL || parser->csv_filter != NULL)
     return DATA_BIND_OK;
 
+  native_limits = db_query_native_limits(
+      parser->query_limits_configured ? &parser->query_limits : NULL);
   header_doc_len = parser->csv_header_len + 1;
   header_doc = (char *)malloc(header_doc_len + 1);
   if (header_doc == NULL) {
@@ -6371,8 +6423,7 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
   header_doc[parser->csv_header_len] = '\n';
   header_doc[header_doc_len] = '\0';
 
-  if (turbo_parse_csv_opts((const uint8_t *)header_doc, header_doc_len, &opts,
-                           &parser->csv_filter_doc) != 0) {
+  if ((parser->csv_filter_doc = csv_parse_opts(header_doc, header_doc_len, &opts)) == NULL) {
     free(header_doc);
     parser->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1,
@@ -6385,18 +6436,14 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
                         "Failed to parse CSVPath stream header");
   }
 
-  parser->csv_filter = turbo_dsv_filter_create(parser->csv_filter_doc, 0);
+  parser->csv_filter = dsv_filter_create(parser->csv_filter_doc, 0);
   compiled = parser->csv_filter != NULL &&
-             (parser->query_limits_configured
-                  ? turbo_dsv_filter_compile_ex(parser->csv_filter,
-                                                parser->path_or_expr,
-                                                &parser->query_limits,
-                                                &parser->query_diagnostic)
-                  : turbo_dsv_filter_compile(parser->csv_filter,
-                                             parser->path_or_expr));
+             dsv_filter_compile_ex(parser->csv_filter, parser->path_or_expr,
+                                   &native_limits, &native_diagnostic);
+  db_query_diagnostic_copy(&parser->query_diagnostic, &native_diagnostic);
   if (!compiled) {
     const char *filter_error = parser->csv_filter != NULL
-                                   ? turbo_dsv_filter_error(parser->csv_filter)
+                                   ? dsv_filter_error(parser->csv_filter)
                                    : "Failed to create CSVPath filter";
     parser->csv_failed = 1;
     {
@@ -6446,15 +6493,17 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
       status = data_bind_stream_csv_compile_filter(parser, error);
       if (status != DATA_BIND_OK) return status;
     }
-    match = turbo_dsv_filter_check_values(parser->csv_filter, parser->csv_fields,
+    match = dsv_filter_check_values(parser->csv_filter, parser->csv_fields,
                                           parser->csv_field_count);
     if (match < 0) {
-      turbo_query_status_t query_status = turbo_dsv_filter_query_diagnostic(
-          parser->csv_filter, &parser->query_diagnostic);
+      const qvm_diagnostic_t *native_diagnostic = dsv_filter_qvm_diagnostic(parser->csv_filter);
+      qvm_status_t query_status = native_diagnostic ? native_diagnostic->status
+                                                   : QVM_STATUS_INVALID_ARGUMENT;
+      db_query_diagnostic_copy(&parser->query_diagnostic, native_diagnostic);
       parser->csv_failed = 1;
-      if (query_status == TURBO_QUERY_RESOURCE_LIMIT) parser->limit_failed = 1;
+      if (query_status == QVM_STATUS_RESOURCE_LIMIT) parser->limit_failed = 1;
       return db_error_set(error,
-                          query_status == TURBO_QUERY_RESOURCE_LIMIT
+                          query_status == QVM_STATUS_RESOURCE_LIMIT
                               ? DATA_BIND_ERR_LIMIT
                               : DATA_BIND_ERR_PARSE,
                           "csvpath", -1, -1,
@@ -6829,25 +6878,25 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
     if (parser->json_path_stream_mode != DATA_BIND_JSON_PATH_STREAM_NONE) {
       const char *path_error;
-      parser->json_path_program = turbo_json_path_compile(parser->path_or_expr);
+      parser->json_path_program = json_path_compile(parser->path_or_expr);
       if (parser->json_path_program == NULL) {
         parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
         data_bind_value_free(parser->stream_values);
         parser->stream_values = NULL;
       } else {
-        parser->json_path_stream = turbo_json_path_stream_create(
+        parser->json_path_stream = json_path_stream_create(
             parser->json_path_program, &DATA_BIND_JSON_PATH_STREAM_HANDLER, parser);
       }
       if (parser->json_path_program != NULL && parser->json_path_stream == NULL) {
-        path_error = turbo_json_path_stream_error(NULL);
+        path_error = json_path_stream_error(NULL);
         if (path_error != NULL && strstr(path_error, "not streamable") != NULL) {
-          turbo_json_path_program_free(parser->json_path_program);
+          json_path_program_free(parser->json_path_program);
           parser->json_path_program = NULL;
           parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
           data_bind_value_free(parser->stream_values);
           parser->stream_values = NULL;
         } else {
-          turbo_json_path_program_free(parser->json_path_program);
+          json_path_program_free(parser->json_path_program);
           data_bind_value_free(parser->stream_values);
           free(parser->path_or_expr);
           free(parser->type_name);
@@ -6861,14 +6910,14 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
     if (parser->json_path_stream == NULL) {
       parser->json_sax = parser->json_stream_candidate
-                             ? turbo_json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
+                             ? json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
                                                                parser)
-                             : turbo_json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
+                             : json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
                                                            parser);
     }
     if (parser->json_path_stream == NULL && parser->json_sax == NULL) {
       data_bind_value_free(parser->stream_values);
-      turbo_json_path_program_free(parser->json_path_program);
+      json_path_program_free(parser->json_path_program);
       free(parser->path_or_expr);
       free(parser->type_name);
       free(parser);
@@ -6878,7 +6927,7 @@ static data_bind_stream_t *data_bind_stream_create_common(
     }
   } else if (finish_fn == data_bind_stream_buffered_finish) {
     parser->yaml_sax =
-        turbo_yaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser);
+        cyaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser, NULL);
     if (parser->yaml_sax == NULL) {
       free(parser->path_or_expr);
       free(parser->type_name);
@@ -6905,10 +6954,10 @@ static data_bind_stream_t *data_bind_stream_create_common(
         return NULL;
       }
     }
-    parser->xml_sax = turbo_xml_sax_parser_create(parser->xml_stream_candidate
+    parser->xml_sax = salts_xml_sax_parser_create(parser->xml_stream_candidate
                                                       ? &DATA_BIND_XML_STREAM_HANDLER
                                                       : &DATA_BIND_XML_SAX_VALIDATE_HANDLER,
-                                                  parser);
+                                                  parser, parser->limits.max_input_bytes);
     if (parser->xml_sax == NULL) {
       free(parser->xml_stream_target);
       tstr_free(parser->xml_capture);
@@ -7393,6 +7442,12 @@ DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
                         "data_bind_stream_set_limits", -1, -1,
                         "Valid stream limits must be set before first feed");
   }
+  if (parser->xml_sax != NULL &&
+      salts_xml_sax_parser_set_buffer_limit(parser->xml_sax, limits->max_input_bytes) != 0) {
+    return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG,
+                        "data_bind_stream_set_limits", -1, -1,
+                        "XML parser limits cannot change after parsing starts");
+  }
   parser->limits = *limits;
   parser->limits.size = sizeof(parser->limits);
   parser->limit_failed = 0;
@@ -7419,8 +7474,11 @@ DataBindStatus data_bind_stream_set_query_limits(
   parser->query_limits_configured = 1;
 
   if (parser->json_path_program != NULL && parser->path_or_expr != NULL) {
-    turbo_json_path_program_t *verified = turbo_json_path_compile_ex(
-        parser->path_or_expr, &parser->query_limits, &parser->query_diagnostic);
+    qvm_limits_t native_limits = db_query_native_limits(&parser->query_limits);
+    qvm_diagnostic_t native_diagnostic = {0};
+    json_path_program_t *verified = json_path_compile_ex(
+        parser->path_or_expr, &native_limits, &native_diagnostic);
+    db_query_diagnostic_copy(&parser->query_diagnostic, &native_diagnostic);
     if (verified == NULL) {
       DataBindStatus status = data_bind_query_failure_status(
           &parser->query_diagnostic);
@@ -7430,18 +7488,18 @@ DataBindStatus data_bind_stream_set_query_limits(
                               ? parser->query_diagnostic.message
                               : "query VM failure");
     }
-    turbo_json_path_program_free(verified);
+    json_path_program_free(verified);
     if (parser->json_path_stream != NULL &&
-        (limits->max_instructions != TURBO_QUERY_DEFAULT_MAX_INSTRUCTIONS ||
-         limits->max_operands != TURBO_QUERY_DEFAULT_MAX_OPERANDS ||
-         limits->max_regexes != TURBO_QUERY_DEFAULT_MAX_REGEXES ||
-         limits->max_steps != TURBO_QUERY_DEFAULT_MAX_STEPS)) {
-      turbo_json_sax_parser_t *replacement = turbo_json_sax_parser_create(
+        (limits->max_instructions != QVM_DEFAULT_MAX_INSTRUCTIONS ||
+         limits->max_operands != QVM_DEFAULT_MAX_OPERANDS ||
+         limits->max_regexes != QVM_DEFAULT_MAX_REGEXES ||
+         limits->max_steps != QVM_DEFAULT_MAX_STEPS)) {
+      json_sax_parser_t *replacement = json_sax_parser_create(
           &DATA_BIND_JSON_SAX_VALIDATE_HANDLER, parser);
       if (replacement == NULL)
         return db_error_set(parser->error, DATA_BIND_ERR_OOM, "jsonpath", -1,
                             -1, "Out of memory applying JSONPath query limits");
-      turbo_json_path_stream_destroy(parser->json_path_stream);
+      json_path_stream_destroy(parser->json_path_stream);
       parser->json_path_stream = NULL;
       parser->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
       data_bind_value_free(parser->stream_values);
@@ -7837,19 +7895,19 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   free(parser->csv_field);
   free(parser->csv_fields);
   free(parser->csv_field_storage);
-  if (parser->csv_filter != NULL) turbo_dsv_filter_destroy(parser->csv_filter);
+  if (parser->csv_filter != NULL) dsv_filter_destroy(parser->csv_filter);
   if (parser->json_path_stream != NULL)
-    turbo_json_path_stream_destroy(parser->json_path_stream);
+    json_path_stream_destroy(parser->json_path_stream);
   if (parser->json_path_program != NULL)
-    turbo_json_path_program_free(parser->json_path_program);
-  if (parser->json_sax != NULL) turbo_json_sax_parser_destroy(parser->json_sax);
-  if (parser->yaml_sax != NULL) turbo_yaml_sax_parser_destroy(parser->yaml_sax);
-  if (parser->xml_sax != NULL) turbo_xml_sax_parser_destroy(parser->xml_sax);
+    json_path_program_free(parser->json_path_program);
+  if (parser->json_sax != NULL) json_sax_parser_destroy(parser->json_sax);
+  if (parser->yaml_sax != NULL) cyaml_sax_parser_destroy(parser->yaml_sax);
+  if (parser->xml_sax != NULL) salts_xml_sax_parser_destroy(parser->xml_sax);
   if (parser->json_match_value != NULL) {
-    turbo_free_json(&parser->json_match_value);
+    (json_free(parser->json_match_value), parser->json_match_value = NULL);
   } else if (parser->json_frame_count != 0 && parser->json_frames[0].value != NULL) {
     json_value_t *partial = parser->json_frames[0].value;
-    turbo_free_json(&partial);
+    (json_free(partial), partial = NULL);
   }
   for (i = 0; i < parser->json_frame_count; ++i) {
     free(parser->json_frames[i].pending_key);
@@ -7859,8 +7917,8 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   tstr_free(parser->xml_capture);
   data_bind_value_free(parser->stream_values);
   if (parser->csv_filter_doc != NULL) {
-    turbo_csv_doc_t *doc = parser->csv_filter_doc;
-    turbo_free_csv(&doc);
+    csv_doc_t *doc = parser->csv_filter_doc;
+    (csv_free(doc), doc = NULL);
   }
   data_bind_value_free(parser->csv_values);
   data_bind_value_free(parser->internal_out_value);
@@ -7902,12 +7960,12 @@ DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, cons
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
   status = data_bind_json_root_to_value(codec, type_name, root, out_value, error);
-  turbo_free_json(&root);
+  (json_free(root), root = NULL);
   return status;
 }
 
@@ -7928,16 +7986,16 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list != NULL) {
-    if (turbo_json_type(root) == TURBO_JSON_ARRAY) {
-      for (i = 0; i < turbo_json_array_size(root); i++) {
+    if (json_type(root) == JSON_ARRAY) {
+      for (i = 0; i < json_array_size(root); i++) {
         DataBindValue *item =
-            bind_json_typed_value(codec->schema_root, type_name, turbo_json_array_get(root, i));
+            bind_json_typed_value(codec->schema_root, type_name, json_array_get(root, i));
         if (item == NULL) {
           data_bind_value_free(list);
           list = NULL;
@@ -7959,7 +8017,7 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
       }
     }
   }
-  turbo_free_json(&root);
+  (json_free(root), root = NULL);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", "$[]");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -7973,11 +8031,11 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
 static DataBindStatus data_bind_query_failure_status(
     const DataBindQueryDiagnostic *diagnostic) {
   if (!diagnostic) return DATA_BIND_ERR_PARSE;
-  if (diagnostic->status == TURBO_QUERY_RESOURCE_LIMIT)
+  if (diagnostic->status == QVM_STATUS_RESOURCE_LIMIT)
     return DATA_BIND_ERR_LIMIT;
-  if (diagnostic->status == TURBO_QUERY_NO_MEMORY)
+  if (diagnostic->status == QVM_STATUS_NO_MEMORY)
     return DATA_BIND_ERR_OOM;
-  if (diagnostic->status == TURBO_QUERY_INVALID_ARGUMENT)
+  if (diagnostic->status == QVM_STATUS_INVALID_ARGUMENT)
     return DATA_BIND_ERR_INVALID_ARG;
   return DATA_BIND_ERR_PARSE;
 }
@@ -7987,9 +8045,11 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     const char *jsonpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
+  qvm_limits_t native_limits = db_query_native_limits(query_limits);
+  qvm_diagnostic_t native_diagnostic = {0};
   json_value_t *root = NULL;
   json_value_t *selected;
-  turbo_json_path_program_t *program = NULL;
+  json_path_program_t *program = NULL;
   DataBindValue *result;
   char error_path[256];
   const char *path_error;
@@ -8005,15 +8065,16 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
-  program = turbo_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
+  program = json_path_compile_ex(jsonpath, &native_limits, &native_diagnostic);
+  db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
   if (program == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    path_error = turbo_json_path_error();
-    turbo_free_json(&root);
+    path_error = json_path_get_error();
+    (json_free(root), root = NULL);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, query_status, error_path, -1, -1,
                         "JSONPath compile failed: %s",
@@ -8021,14 +8082,15 @@ static DataBindStatus data_bind_parse_json_path_with_query(
                             ? query_diagnostic->message
                             : (path_error ? path_error : "invalid path"));
   }
-  selected = turbo_json_path_get_compiled_ex(root, program, query_diagnostic);
-  turbo_json_path_program_free(program);
-  path_error = turbo_json_path_error();
+  selected = json_path_get_compiled_ex(root, program, &native_diagnostic);
+  db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
+  json_path_program_free(program);
+  path_error = json_path_get_error();
   if (selected == NULL) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    turbo_free_json(&root);
+    (json_free(root), root = NULL);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    if (query_diagnostic && query_diagnostic->status != TURBO_QUERY_OK)
+    if (query_diagnostic && query_diagnostic->status != QVM_STATUS_OK)
       return db_error_set(error, query_status, error_path, -1, -1,
                           "JSONPath query failed: %s",
                           query_diagnostic->message[0]
@@ -8041,7 +8103,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
                         "JSONPath selected no value for type: %s", type_name);
   }
   result = bind_json_typed_value(codec->schema_root, type_name, selected);
-  turbo_free_json(&root);
+  (json_free(root), root = NULL);
   if (result == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8068,9 +8130,11 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     const char *jsonpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
+  qvm_limits_t native_limits = db_query_native_limits(query_limits);
+  qvm_diagnostic_t native_diagnostic = {0};
   json_value_t *root = NULL;
-  turbo_json_path_program_t *program = NULL;
-  turbo_json_path_result_t *matches = NULL;
+  json_path_program_t *program = NULL;
+  json_path_result_t *matches = NULL;
   DataBindValue *list;
   int program_compiled = 0;
   size_t i;
@@ -8088,20 +8152,22 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "json", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "JSON parse failed");
   }
-  program = turbo_json_path_compile_ex(jsonpath, query_limits, query_diagnostic);
+  program = json_path_compile_ex(jsonpath, &native_limits, &native_diagnostic);
+  db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
   if (program != NULL) {
     program_compiled = 1;
-    matches = turbo_json_path_query_compiled_ex(root, program, query_diagnostic);
+    matches = json_path_query_compiled_ex(root, program, &native_diagnostic);
+    db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
   }
-  turbo_json_path_program_free(program);
-  path_error = turbo_json_path_error();
+  json_path_program_free(program);
+  path_error = json_path_get_error();
   if (matches == NULL && (!program_compiled || path_error != NULL)) {
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
-    turbo_free_json(&root);
+    (json_free(root), root = NULL);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, query_status, error_path, -1, -1,
                         "JSONPath query failed: %s",
@@ -8111,16 +8177,16 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) {
-    if (matches != NULL) turbo_json_path_result_free(matches);
-    turbo_free_json(&root);
+    if (matches != NULL) json_path_result_free(matches);
+    (json_free(root), root = NULL);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
     return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
                         "Out of memory binding JSONPath result");
   }
   if (matches != NULL) {
     DataBindStatus failure = DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < turbo_json_path_result_size(matches); i++) {
-      json_value_t *matched = turbo_json_path_result_get(matches, i);
+    for (i = 0; i < json_path_result_size(matches); i++) {
+      json_value_t *matched = json_path_result_get(matches, i);
       DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, matched);
       if (item == NULL) {
         data_bind_value_free(list);
@@ -8136,8 +8202,8 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
       }
     }
     if (list == NULL) {
-      turbo_json_path_result_free(matches);
-      turbo_free_json(&root);
+      json_path_result_free(matches);
+      (json_free(root), root = NULL);
       db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
       if (failure == DATA_BIND_ERR_OOM)
         return db_error_set(error, DATA_BIND_ERR_OOM, error_path, -1, -1,
@@ -8146,8 +8212,8 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
                           "JSONPath bind_all failed for type: %s", type_name);
     }
   }
-  if (matches != NULL) turbo_json_path_result_free(matches);
-  turbo_free_json(&root);
+  if (matches != NULL) json_path_result_free(matches);
+  (json_free(root), root = NULL);
   *out_value = list;
   db_error_clear(error);
   return DATA_BIND_OK;
@@ -8172,9 +8238,10 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
                                                     DataBindQueryDiagnostic *query_diagnostic,
                                                     DataBindValue **out_value,
                                                     DataBindError *error) {
-  turbo_yaml_doc_t *doc = NULL;
-  turbo_yaml_path_result_t *matches = NULL;
-  turbo_yaml_node_t *root;
+  cyaml_doc_t *doc = NULL;
+  cyaml_path_result_t matches = {0};
+  int has_path = yamlpath != NULL && yamlpath[0] != '\0';
+  cyaml_node_t *root;
   DataBindValue *result = NULL;
   char error_path[256];
   size_t count = 0;
@@ -8190,46 +8257,39 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_yaml((const uint8_t *)yaml, len, &doc) != 0 || doc == NULL) {
+  if ((doc = cyaml_parse(yaml, len, NULL, NULL)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "yaml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "YAML parse failed");
   }
 
-  root = turbo_yaml_root(doc);
-  if (yamlpath != NULL && yamlpath[0] != '\0') {
-    matches = turbo_yaml_path_query_ex(doc, NULL, yamlpath, query_limits,
-                                       query_diagnostic);
-    if (matches == NULL) {
-      turbo_free_yaml(&doc);
-      db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
-      return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
-                          error_path, -1, -1, "Unable to execute YPATH: %s",
-                          query_diagnostic && query_diagnostic->message[0]
-                              ? query_diagnostic->message
-                              : "out of memory");
-    }
-    if (turbo_yaml_path_result_error(matches) != NULL) {
-      const char *path_error = turbo_yaml_path_result_error(matches);
-      size_t error_pos = turbo_yaml_path_result_error_pos(matches);
-      char path_message[160];
-      snprintf(path_message, sizeof(path_message), "%s", path_error);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+  root = cyaml_root(doc);
+  if (has_path) {
+    qvm_limits_t native_limits = db_query_native_limits(query_limits);
+    qvm_diagnostic_t native_diagnostic = {0};
+    matches = cyaml_path_query_ex(doc, NULL, yamlpath, &native_limits, &native_diagnostic);
+    db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
+    if (matches.error != NULL || native_diagnostic.status != QVM_STATUS_OK) {
+      uint32_t error_pos = matches.error_pos;
+      char path_message[DATA_BIND_QUERY_DIAGNOSTIC_MESSAGE_CAPACITY];
+      snprintf(path_message, sizeof(path_message), "%s", matches.error ? matches.error :
+               (native_diagnostic.message ? native_diagnostic.message : "query failed"));
+      cyaml_path_result_free(&matches);
+      cyaml_free(doc);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, data_bind_query_failure_status(query_diagnostic), error_path, -1,
-                          error_pos <= INT_MAX ? (int)error_pos : -1, "YPATH parse failed: %s",
-                          path_message);
+                          error_pos <= INT_MAX ? (int)error_pos : -1,
+                          "YPATH parse failed: %s", path_message);
     }
-    count = turbo_yaml_path_result_size(matches);
-  } else if (bind_all && turbo_yaml_node_type(root) == TURBO_YAML_NODE_SEQUENCE) {
-    count = turbo_yaml_sequence_size(root);
+    count = matches.count;
+  } else if (bind_all && root != NULL && root->type == CYAML_SEQ) {
+    count = cyaml_seq_len(root);
   } else if (root != NULL) {
     count = 1;
   }
 
   if (count == 0) {
-    turbo_yaml_path_result_free(matches);
-    turbo_free_yaml(&doc);
+    cyaml_path_result_free(&matches);
+    (cyaml_free(doc), doc = NULL);
     db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "YAML selection matched no values");
@@ -8238,37 +8298,37 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
   if (bind_all) {
     result = dbv_new(DATA_BIND_VALUE_LIST);
     if (result == NULL) {
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      cyaml_path_result_free(&matches);
+      (cyaml_free(doc), doc = NULL);
       return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                           "Out of memory creating YAML result list");
     }
   }
 
   for (i = 0; i < (bind_all ? count : 1); i++) {
-    turbo_yaml_node_t *node;
+    cyaml_node_t *node;
     json_value_t *json_value;
     DataBindValue *bound;
-    if (matches != NULL) node = turbo_yaml_path_result_get(matches, i);
-    else if (bind_all && turbo_yaml_node_type(root) == TURBO_YAML_NODE_SEQUENCE)
-      node = turbo_yaml_sequence_get(root, i);
+    if (has_path) node = matches.nodes[i];
+    else if (bind_all && root != NULL && root->type == CYAML_SEQ)
+      node = cyaml_seq_get(root, i);
     else node = root;
 
-    json_value = turbo_yaml_node_to_json(doc, node);
+    json_value = json_value_from_cyaml_node(doc, node);
     if (json_value == NULL) {
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      cyaml_path_result_free(&matches);
+      (cyaml_free(doc), doc = NULL);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                           "YAML value cannot be represented as JSON-compatible data");
     }
     bound = bind_json_typed_value(codec->schema_root, type_name, json_value);
-    turbo_free_json(&json_value);
+    (json_free(json_value), json_value = NULL);
     if (bound == NULL) {
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      cyaml_path_result_free(&matches);
+      (cyaml_free(doc), doc = NULL);
       db_error_format_path(error_path, sizeof(error_path), "yaml", yamlpath);
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                           "YAML bind failed for type: %s", type_name);
@@ -8278,15 +8338,15 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     } else if (!dbv_array_push(&result->data.array_val, bound)) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
-      turbo_yaml_path_result_free(matches);
-      turbo_free_yaml(&doc);
+      cyaml_path_result_free(&matches);
+      (cyaml_free(doc), doc = NULL);
       return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                           "Out of memory appending YAML result");
     }
   }
 
-  turbo_yaml_path_result_free(matches);
-  turbo_free_yaml(&doc);
+  cyaml_path_result_free(&matches);
+  (cyaml_free(doc), doc = NULL);
   *out_value = result;
   db_error_clear(error);
   return DATA_BIND_OK;
@@ -8326,9 +8386,9 @@ DataBindStatus data_bind_parse_yaml_path_all(DataBind *codec, const char *type_n
 DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const char *csv,
                                    size_t len, size_t row, DataBindValue **out_value,
                                    DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   DataBindValue *result = NULL;
   char error_path[128];
   if (out_value != NULL) *out_value = NULL;
@@ -8340,14 +8400,14 @@ DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
   if (csv_parse_header_names(csv, len, &headers))
     result = bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  (csv_free(doc), doc = NULL);
   if (result == NULL) {
     snprintf(error_path, sizeof(error_path), "csv: row %zu", row);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, (int)row, -1,
@@ -8361,9 +8421,9 @@ DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const
 DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, const char *csv,
                                        size_t len, DataBindValue **out_value,
                                        DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   DataBindValue *list = NULL;
   size_t row;
   char error_path[128];
@@ -8377,14 +8437,14 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
   if (csv_parse_header_names(csv, len, &headers)) {
     list = dbv_new(DATA_BIND_VALUE_LIST);
     if (list != NULL) {
-      for (row = 0; row < turbo_csv_row_count(doc); row++) {
+      for (row = 0; row < csv_row_count(doc); row++) {
         DataBindValue *item =
             bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
         if (item == NULL) {
@@ -8402,7 +8462,7 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
     }
   }
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  (csv_free(doc), doc = NULL);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", "multiple rows");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8418,12 +8478,14 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
     const char *csvpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
-  turbo_csv_doc_t *bind_doc = NULL;
-  turbo_csv_doc_t *filter_doc = NULL;
-  turbo_dsv_filter_t *filter = NULL;
+  qvm_limits_t native_limits = db_query_native_limits(query_limits);
+  qvm_diagnostic_t native_diagnostic = {0};
+  csv_doc_t *bind_doc = NULL;
+  csv_doc_t *filter_doc = NULL;
+  dsv_filter_t *filter = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t bind_opts = {true, ',', '"', true};
-  turbo_csv_options_t filter_opts = {false, ',', '"', true};
+  csv_options_t bind_opts = {true, ',', '"', true};
+  csv_options_t filter_opts = {false, ',', '"', true};
   DataBindValue *list = NULL;
   size_t raw_row;
   char error_path[256];
@@ -8439,35 +8501,32 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &bind_opts, &bind_doc) != 0 ||
-      bind_doc == NULL) {
+  if ((bind_doc = csv_parse_opts(csv, len, &bind_opts)) == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSV parse failed");
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &filter_opts, &filter_doc) != 0 ||
-      filter_doc == NULL) {
-    turbo_free_csv(&bind_doc);
+  if ((filter_doc = csv_parse_opts(csv, len, &filter_opts)) == NULL) {
+    (csv_free(bind_doc), bind_doc = NULL);
     db_error_format_path(error_path, sizeof(error_path), "csv", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "CSVPath parse failed");
   }
   if (!csv_parse_header_names(csv, len, &headers)) {
-    turbo_free_csv(&filter_doc);
-    turbo_free_csv(&bind_doc);
+    (csv_free(filter_doc), filter_doc = NULL);
+    (csv_free(bind_doc), bind_doc = NULL);
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV header parse failed");
   }
-  filter = turbo_dsv_filter_create(filter_doc, 0);
+  filter = dsv_filter_create(filter_doc, 0);
   if (filter == NULL ||
-      !(query_limits ? turbo_dsv_filter_compile_ex(filter, csvpath, query_limits,
-                                                   query_diagnostic)
-                     : turbo_dsv_filter_compile(filter, csvpath))) {
-    const char *filter_error = turbo_dsv_filter_error(filter);
+      !dsv_filter_compile_ex(filter, csvpath, &native_limits, &native_diagnostic)) {
+    db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
+    const char *filter_error = dsv_filter_error(filter);
     char filter_msg[128];
     snprintf(filter_msg, sizeof(filter_msg), "%s",
              filter_error != NULL && filter_error[0] != '\0' ? filter_error : "invalid filter");
-    if (filter != NULL) turbo_dsv_filter_destroy(filter);
+    if (filter != NULL) dsv_filter_destroy(filter);
     csv_headers_free(&headers);
-    turbo_free_csv(&filter_doc);
-    turbo_free_csv(&bind_doc);
+    (csv_free(filter_doc), filter_doc = NULL);
+    (csv_free(bind_doc), bind_doc = NULL);
     db_error_format_path(error_path, sizeof(error_path), "csv", csvpath);
     return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
                         error_path, -1, -1,
@@ -8475,14 +8534,17 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list != NULL) {
-    for (raw_row = 1; raw_row < turbo_csv_row_count(filter_doc); raw_row++) {
-      int match = turbo_dsv_filter_check_row(filter, raw_row);
+    db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
+    for (raw_row = 1; raw_row < csv_row_count(filter_doc); raw_row++) {
+      int match = dsv_filter_check_row(filter, raw_row);
       if (match < 0) {
-        turbo_query_status_t query_status =
-            turbo_dsv_filter_query_diagnostic(filter, query_diagnostic);
+        const qvm_diagnostic_t *filter_diagnostic = dsv_filter_qvm_diagnostic(filter);
+        qvm_status_t query_status = filter_diagnostic ? filter_diagnostic->status
+                                                    : QVM_STATUS_INVALID_ARGUMENT;
+        db_query_diagnostic_copy(query_diagnostic, filter_diagnostic);
         data_bind_value_free(list);
         list = NULL;
-        failure = query_status == TURBO_QUERY_RESOURCE_LIMIT ? DATA_BIND_ERR_LIMIT
+        failure = query_status == QVM_STATUS_RESOURCE_LIMIT ? DATA_BIND_ERR_LIMIT
                                                              : DATA_BIND_ERR_PARSE;
         failure_msg = "CSVPath evaluation failed";
         break;
@@ -8511,10 +8573,10 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
       }
     }
   }
-  turbo_dsv_filter_destroy(filter);
+  dsv_filter_destroy(filter);
   csv_headers_free(&headers);
-  turbo_free_csv(&filter_doc);
-  turbo_free_csv(&bind_doc);
+  (csv_free(filter_doc), filter_doc = NULL);
+  (csv_free(bind_doc), bind_doc = NULL);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "csv", csvpath);
     return db_error_set(error, failure != DATA_BIND_OK ? failure : DATA_BIND_ERR_TYPE_MISMATCH,
@@ -8537,7 +8599,7 @@ DataBindStatus data_bind_parse_csv_path(DataBind *codec, const char *type_name,
 
 DataBindStatus data_bind_parse_xml(DataBind *codec, const char *type_name, const char *xml,
                                    size_t len, DataBindValue **out_value, DataBindError *error) {
-  turbo_xml_doc_t *doc = NULL;
+  salts_xml_document doc = {0};
   DataBindValue *result = NULL;
   char error_path[128];
   if (out_value != NULL) *out_value = NULL;
@@ -8549,12 +8611,12 @@ DataBindStatus data_bind_parse_xml(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_xml((const uint8_t *)xml, len, &doc) != 0 || doc == NULL) {
+  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     db_error_format_path(error_path, sizeof(error_path), "xml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "XML parse failed");
   }
-  result = bind_xml_typed_value(codec->schema_root, type_name, doc, "/*");
-  turbo_free_xml(&doc);
+  result = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
+  salts_xml_document_destroy(&doc);
   if (result == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "xml", "/*");
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
@@ -8570,7 +8632,9 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
     const char *xmlpath, const DataBindQueryLimits *query_limits,
     DataBindQueryDiagnostic *query_diagnostic, DataBindValue **out_value,
     DataBindError *error) {
-  turbo_xml_doc_t *doc = NULL;
+  qvm_limits_t native_limits = db_query_native_limits(query_limits);
+  qvm_diagnostic_t native_diagnostic = {0};
+  salts_xml_document doc = {0};
   DataBindValue *list = NULL;
   char error_path[256];
   if (out_value != NULL) *out_value = NULL;
@@ -8583,29 +8647,29 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
                         "Type not found: %s", type_name);
   }
-  if (turbo_parse_xml((const uint8_t *)xml, len, &doc) != 0 || doc == NULL) {
+  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     db_error_format_path(error_path, sizeof(error_path), "xml", NULL);
     return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1, "XML parse failed");
   }
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list != NULL) {
     if (xmlpath == NULL || xmlpath[0] == '\0') {
-      DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, doc, "/*");
+      DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
       if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
         data_bind_value_free(item);
         data_bind_value_free(list);
         list = NULL;
       }
     } else {
-      turbo_xml_list_t nodes;
-      int index = 0;
-      turbo_query_status_t query_status = query_limits
-          ? turbo_xml_xpath_query_ex(doc, xmlpath, &nodes, query_limits,
-                                     query_diagnostic)
-          : (turbo_xml_xpath_query(doc, xmlpath, &nodes), TURBO_QUERY_OK);
-      if (query_status != TURBO_QUERY_OK) {
+      salts_xml_node_list nodes = {0};
+      size_t index = 0;
+      qvm_status_t query_status = salts_xml_document_xpath_query(
+          &doc, xmlpath, &nodes, &native_limits, &native_diagnostic);
+      db_query_diagnostic_copy(query_diagnostic, &native_diagnostic);
+      if (query_status != QVM_STATUS_OK) {
+        salts_xml_node_list_destroy(&nodes);
         data_bind_value_free(list);
-        turbo_free_xml(&doc);
+        salts_xml_document_destroy(&doc);
         db_error_format_path(error_path, sizeof(error_path), "xml", xmlpath);
         return db_error_set(error, data_bind_query_failure_status(query_diagnostic),
                             error_path, -1, -1, "XPath query failed: %s",
@@ -8613,16 +8677,16 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
                                 ? query_diagnostic->message
                                 : "query VM failure");
       }
-      for (index = 0; index < nodes.len; index++) {
+      for (index = 0; index < nodes.size; index++) {
         char item_path[320];
         DataBindValue *item;
-        if (snprintf(item_path, sizeof(item_path), "%s[%d]", xmlpath, index + 1) >=
+        if (snprintf(item_path, sizeof(item_path), "%s[%zu]", xmlpath, index + 1) >=
             (int)sizeof(item_path)) {
           data_bind_value_free(list);
           list = NULL;
           break;
         }
-        item = bind_xml_typed_value(codec->schema_root, type_name, doc, item_path);
+        item = bind_xml_typed_value(codec->schema_root, type_name, &doc, item_path);
         if (item == NULL) {
           data_bind_value_free(list);
           list = NULL;
@@ -8635,10 +8699,10 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
           break;
         }
       }
-      turbo_xml_list_free(&nodes);
+      salts_xml_node_list_destroy(&nodes);
     }
   }
-  turbo_free_xml(&doc);
+  salts_xml_document_destroy(&doc);
   if (list == NULL) {
     db_error_format_path(error_path, sizeof(error_path), "xml",
                          xmlpath != NULL && xmlpath[0] != '\0' ? xmlpath : "/*");
@@ -8671,15 +8735,15 @@ DataBindStatus data_bind_validate_json(DataBind *codec, const char *type_name, c
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (turbo_parse_json((const uint8_t *)json, len, &root) != 0 || root == NULL) {
+  if ((root = json_parse(json, len)) == NULL) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "JSON parse failed");
   }
-  if (turbo_json_type(root) == TURBO_JSON_ARRAY) {
-    for (i = 0; i < turbo_json_array_size(root); i++) {
+  if (json_type(root) == JSON_ARRAY) {
+    for (i = 0; i < json_array_size(root); i++) {
       DataBindValue *item =
-          bind_json_typed_value(codec->schema_root, type_name, turbo_json_array_get(root, i));
+          bind_json_typed_value(codec->schema_root, type_name, json_array_get(root, i));
       if (item == NULL) {
-        turbo_free_json(&root);
+        (json_free(root), root = NULL);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "JSON validation failed for type: %s", type_name);
       }
@@ -8688,13 +8752,13 @@ DataBindStatus data_bind_validate_json(DataBind *codec, const char *type_name, c
   } else {
     DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, root);
     if (item == NULL) {
-      turbo_free_json(&root);
+      (json_free(root), root = NULL);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "JSON validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   }
-  turbo_free_json(&root);
+  (json_free(root), root = NULL);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
@@ -8733,9 +8797,9 @@ DataBindStatus data_bind_validate_yaml_path(DataBind *codec, const char *type_na
 
 DataBindStatus data_bind_validate_csv(DataBind *codec, const char *type_name, const char *csv,
                                       size_t len, DataBindError *error) {
-  turbo_csv_doc_t *doc = NULL;
+  csv_doc_t *doc = NULL;
   data_bind_csv_headers_t headers = {0};
-  turbo_csv_options_t opts = {true, ',', '"', true};
+  csv_options_t opts = {true, ',', '"', true};
   size_t row;
   if (codec == NULL || codec->schema_root == NULL || type_name == NULL || csv == NULL)
     return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
@@ -8744,26 +8808,26 @@ DataBindStatus data_bind_validate_csv(DataBind *codec, const char *type_name, co
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (turbo_parse_csv_opts((const uint8_t *)csv, len, &opts, &doc) != 0 || doc == NULL) {
+  if ((doc = csv_parse_opts(csv, len, &opts)) == NULL) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV parse failed");
   }
   if (!csv_parse_header_names(csv, len, &headers)) {
-    turbo_free_csv(&doc);
+    (csv_free(doc), doc = NULL);
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "CSV header parse failed");
   }
-  for (row = 0; row < turbo_csv_row_count(doc); row++) {
+  for (row = 0; row < csv_row_count(doc); row++) {
     DataBindValue *item =
         bind_csv_typed_value(codec->schema_root, type_name, doc, row, &headers, "");
     if (item == NULL) {
       csv_headers_free(&headers);
-      turbo_free_csv(&doc);
+      (csv_free(doc), doc = NULL);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "CSV validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   }
   csv_headers_free(&headers);
-  turbo_free_csv(&doc);
+  (csv_free(doc), doc = NULL);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
@@ -8779,7 +8843,7 @@ DataBindStatus data_bind_validate_csv_path(DataBind *codec, const char *type_nam
 
 DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_name, const char *xml,
                                            size_t len, const char *xmlpath, DataBindError *error) {
-  turbo_xml_doc_t *doc = NULL;
+  salts_xml_document doc = {0};
   if (codec == NULL || codec->schema_root == NULL || type_name == NULL || xml == NULL)
     return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
                           "Invalid XML validate arguments");
@@ -8787,43 +8851,47 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
     return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_NOT_FOUND, "Type not found: %s",
                           type_name);
   }
-  if (turbo_parse_xml((const uint8_t *)xml, len, &doc) != 0 || doc == NULL) {
+  if (salts_xml_parse(&doc, xml, len, NULL, NULL) != SALTS_XML_OK) {
     return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "XML parse failed");
   }
   if (xmlpath == NULL || xmlpath[0] == '\0') {
-    DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, doc, "/*");
+    DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
     if (item == NULL) {
-      turbo_free_xml(&doc);
+      salts_xml_document_destroy(&doc);
       return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                             "XML validation failed for type: %s", type_name);
     }
     data_bind_value_free(item);
   } else {
-    turbo_xml_list_t nodes;
-    int index;
-    turbo_xml_xpath_query(doc, xmlpath, &nodes);
-    for (index = 0; index < nodes.len; index++) {
+    salts_xml_node_list nodes = {0};
+    size_t index;
+    if (salts_xml_document_xpath_query(&doc, xmlpath, &nodes, NULL, NULL) != QVM_STATUS_OK) {
+      salts_xml_node_list_destroy(&nodes);
+      salts_xml_document_destroy(&doc);
+      return db_codec_error(codec, error, DATA_BIND_ERR_PARSE, "Invalid XMLPath expression");
+    }
+    for (index = 0; index < nodes.size; index++) {
       char item_path[320];
       DataBindValue *item;
-      if (snprintf(item_path, sizeof(item_path), "%s[%d]", xmlpath, index + 1) >=
+      if (snprintf(item_path, sizeof(item_path), "%s[%zu]", xmlpath, index + 1) >=
           (int)sizeof(item_path)) {
-        turbo_xml_list_free(&nodes);
-        turbo_free_xml(&doc);
+        salts_xml_node_list_destroy(&nodes);
+        salts_xml_document_destroy(&doc);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "XML validation path is too long");
       }
-      item = bind_xml_typed_value(codec->schema_root, type_name, doc, item_path);
+      item = bind_xml_typed_value(codec->schema_root, type_name, &doc, item_path);
       if (item == NULL) {
-        turbo_xml_list_free(&nodes);
-        turbo_free_xml(&doc);
+        salts_xml_node_list_destroy(&nodes);
+        salts_xml_document_destroy(&doc);
         return db_codec_error(codec, error, DATA_BIND_ERR_TYPE_MISMATCH,
                               "XML validation failed for type: %s", type_name);
       }
       data_bind_value_free(item);
     }
-    turbo_xml_list_free(&nodes);
+    salts_xml_node_list_destroy(&nodes);
   }
-  turbo_free_xml(&doc);
+  salts_xml_document_destroy(&doc);
   db_error_clear(error);
   return DATA_BIND_OK;
 }
@@ -9216,26 +9284,26 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
 
   switch (value->kind) {
   case DATA_BIND_VALUE_NULL:
-    json = turbo_json_create_null();
+    json = json_create_null();
     break;
   case DATA_BIND_VALUE_INT:
-    json = turbo_json_create_int64(value->data.int_val);
+    json = json_create_int64(value->data.int_val);
     break;
   case DATA_BIND_VALUE_INT64:
-    json = turbo_json_create_int64(value->data.int64_val);
+    json = json_create_int64(value->data.int64_val);
     break;
   case DATA_BIND_VALUE_UINT64:
-    json = turbo_json_create_uint64(value->data.uint64_val);
+    json = json_create_uint64(value->data.uint64_val);
     break;
   case DATA_BIND_VALUE_DOUBLE:
     if (!isfinite(value->data.double_val)) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_number(value->data.double_val);
+    json = json_create_number(value->data.double_val);
     break;
   case DATA_BIND_VALUE_BOOL:
-    json = turbo_json_create_bool(value->data.bool_val != 0);
+    json = json_create_bool(value->data.bool_val != 0);
     break;
   case DATA_BIND_VALUE_STRING:
     if (value->data.string_val.ptr == NULL ||
@@ -9244,7 +9312,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string_n(value->data.string_val.ptr, value->data.string_val.len);
+    json = json_create_string_n(value->data.string_val.ptr, value->data.string_val.len);
     break;
   case DATA_BIND_VALUE_BYTES:
     if (!vstr_utf8_valid(
@@ -9252,7 +9320,7 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string_n((const char *)value->data.bytes_val.ptr,
+    json = json_create_string_n((const char *)value->data.bytes_val.ptr,
                                       value->data.bytes_val.len);
     break;
   case DATA_BIND_VALUE_UUID:
@@ -9260,16 +9328,16 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_RUNTIME;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = turbo_datetime_to_time(&value->data.datetime_val);
+    time_t timestamp = datetime_to_time(&value->data.datetime_val);
     if (timestamp == (time_t)-1 ||
-        turbo_datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
+        datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   }
   case DATA_BIND_VALUE_DATE:
@@ -9277,31 +9345,31 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_TIME:
     if (!db_time_to_text(value->data.time_val, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DURATION:
     if (!db_duration_to_text(value->data.duration_ms, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DECIMAL:
     if (!db_decimal_to_text(value->data.decimal_val, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_string(text);
+    json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_BIGINT:
-    json = turbo_json_create_string(value->data.bigint_val.ptr);
+    json = json_create_string(value->data.bigint_val.ptr);
     break;
   case DATA_BIND_VALUE_MONEY: {
     json_value_t *amount;
@@ -9310,71 +9378,71 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
-    json = turbo_json_create_object();
-    amount = turbo_json_create_string(text);
-    currency = turbo_json_create_string(value->data.money_val.currency);
+    json = json_create_object();
+    amount = json_create_string(text);
+    currency = json_create_string(value->data.money_val.currency);
     if (json == NULL || amount == NULL || currency == NULL) {
-      turbo_free_json(&amount);
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+      (json_free(amount), amount = NULL);
+      (json_free(currency), currency = NULL);
+      (json_free(json), json = NULL);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
-    if (!turbo_json_object_add_checked(json, "amount", amount)) {
-      turbo_free_json(&amount);
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+    if (!json_object_add_checked(json, "amount", amount)) {
+      (json_free(amount), amount = NULL);
+      (json_free(currency), currency = NULL);
+      (json_free(json), json = NULL);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
     amount = NULL;
-    if (!turbo_json_object_add_checked(json, "currency", currency)) {
-      turbo_free_json(&currency);
-      turbo_free_json(&json);
+    if (!json_object_add_checked(json, "currency", currency)) {
+      (json_free(currency), currency = NULL);
+      (json_free(json), json = NULL);
       *status = DATA_BIND_ERR_OOM;
       return NULL;
     }
     break;
   }
   case DATA_BIND_VALUE_OBJECT:
-    json = turbo_json_create_object();
+    json = json_create_object();
     for (i = 0; json != NULL && i < value->data.object_val.count; ++i) {
       json_value_t *child =
           data_bind_value_to_json(value->data.object_val.items[i].value, depth + 1, status);
       if (child == NULL ||
-          !turbo_json_object_add_checked(json, value->data.object_val.items[i].name, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+          !json_object_add_checked(json, value->data.object_val.items[i].name, child)) {
+        (json_free(child), child = NULL);
+        (json_free(json), json = NULL);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
     break;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
-    json = turbo_json_create_array();
+    json = json_create_array();
     for (i = 0; json != NULL && i < value->data.array_val.count; ++i) {
       json_value_t *child =
           data_bind_value_to_json(value->data.array_val.items[i], depth + 1, status);
-      if (child == NULL || !turbo_json_array_add_checked(json, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+      if (child == NULL || !json_array_add_checked(json, child)) {
+        (json_free(child), child = NULL);
+        (json_free(json), json = NULL);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
     break;
   case DATA_BIND_VALUE_MAP:
-    json = turbo_json_create_object();
+    json = json_create_object();
     for (i = 0; json != NULL && i < value->data.map_val.count; ++i) {
       const char *key = value->data.map_val.items[i].key;
       json_value_t *child =
           data_bind_value_to_json(value->data.map_val.items[i].value, depth + 1, status);
       if (key == NULL || !vstr_utf8_valid(vstr_from_cstr(key))) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+        (json_free(child), child = NULL);
+        (json_free(json), json = NULL);
         *status = DATA_BIND_ERR_TYPE_MISMATCH;
-      } else if (child == NULL || !turbo_json_object_add_checked(json, key, child)) {
-        turbo_free_json(&child);
-        turbo_free_json(&json);
+      } else if (child == NULL || !json_object_add_checked(json, key, child)) {
+        (json_free(child), child = NULL);
+        (json_free(json), json = NULL);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
       }
     }
@@ -9405,8 +9473,8 @@ static DataBindStatus data_bind_object_serialize_json_canonical(
                         status == DATA_BIND_ERR_TYPE_MISMATCH
                             ? "DataBind value cannot be represented as UTF-8 JSON"
                             : "Failed to construct JSON document");
-  *out_json = turbo_json_serialize(json, out_len);
-  turbo_free_json(&json);
+  *out_json = json_serialize(json, out_len);
+  (json_free(json), json = NULL);
   if (*out_json == NULL)
     return db_error_set(error, DATA_BIND_ERR_OOM, "json", -1, -1, "Out of memory serializing JSON");
   db_error_clear(error);
@@ -9417,7 +9485,7 @@ static DataBindStatus data_bind_object_serialize_yaml_canonical(
     const DataBindObject *object, char **out_yaml, size_t *out_len, DataBindError *error) {
   DataBindStatus status = DATA_BIND_OK;
   json_value_t *json;
-  turbo_yaml_doc_t *yaml;
+  cyaml_doc_t *yaml;
 
   if (out_yaml != NULL) *out_yaml = NULL;
   if (out_len != NULL) *out_len = 0;
@@ -9428,13 +9496,13 @@ static DataBindStatus data_bind_object_serialize_yaml_canonical(
   if (!json)
     return db_error_set(error, status, "yaml", -1, -1,
                         "DataBind value cannot be represented as YAML");
-  yaml = turbo_yaml_from_json(json);
-  turbo_free_json(&json);
+  yaml = cyaml_doc_from_json_value(json);
+  (json_free(json), json = NULL);
   if (!yaml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                         "Failed to construct YAML document");
-  *out_yaml = turbo_yaml_serialize(yaml, out_len);
-  turbo_free_yaml(&yaml);
+  *out_yaml = cyaml_emit(yaml, NULL, out_len);
+  (cyaml_free(yaml), yaml = NULL);
   if (!*out_yaml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "yaml", -1, -1,
                         "Failed to serialize YAML document");
@@ -9466,8 +9534,8 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_UUID:
     return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = turbo_datetime_to_time(&value->data.datetime_val);
-    return timestamp != (time_t)-1 && turbo_datetime_format_rfc822(timestamp, text, size) >= 0;
+    time_t timestamp = datetime_to_time(&value->data.datetime_val);
+    return timestamp != (time_t)-1 && datetime_format_rfc822(timestamp, text, size) >= 0;
   }
   case DATA_BIND_VALUE_DATE:
     return db_date_to_text(value->data.date_val, text, size);
@@ -9486,59 +9554,62 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   }
 }
 
-static int data_bind_value_to_xml(const DataBindValue *value, turbo_xml_node_t *node,
+static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node node,
                                   unsigned depth) {
   char text[128];
   size_t i;
-  if (!value || !node || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
+  if (!value || !node.impl || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
   switch (value->kind) {
   case DATA_BIND_VALUE_STRING:
     return value->data.string_val.ptr &&
            memchr(value->data.string_val.ptr, '\0', value->data.string_val.len) == NULL &&
            vstr_utf8_valid(
                vstr_from_buf(value->data.string_val.ptr, value->data.string_val.len)) &&
-           turbo_xml_set_text(node, value->data.string_val.ptr) == 0;
+           salts_xml_node_set_text(node, value->data.string_val.ptr) == 0;
   case DATA_BIND_VALUE_BYTES:
     if (memchr(value->data.bytes_val.ptr, '\0', value->data.bytes_val.len)) return 0;
     if (value->data.bytes_val.len >= sizeof(text)) return 0;
     memcpy(text, value->data.bytes_val.ptr, value->data.bytes_val.len);
     text[value->data.bytes_val.len] = '\0';
     return vstr_utf8_valid(vstr_from_buf(text, value->data.bytes_val.len)) &&
-           turbo_xml_set_text(node, text) == 0;
+           salts_xml_node_set_text(node, text) == 0;
   case DATA_BIND_VALUE_BIGINT:
-    return value->data.bigint_val.ptr && turbo_xml_set_text(node, value->data.bigint_val.ptr) == 0;
+    return value->data.bigint_val.ptr && salts_xml_node_set_text(node, value->data.bigint_val.ptr) == 0;
   case DATA_BIND_VALUE_OBJECT:
     for (i = 0; i < value->data.object_val.count; ++i) {
       const char *name = value->data.object_val.items[i].name;
       const DataBindValue *child_value = value->data.object_val.items[i].value;
       if (child_value->kind == DATA_BIND_VALUE_LIST || child_value->kind == DATA_BIND_VALUE_SET) {
         for (size_t j = 0; j < child_value->data.array_val.count; ++j) {
-          turbo_xml_node_t *child = turbo_xml_add_element(node, name);
-          if (!child ||
+          salts_xml_node child = {0};
+        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
+          if (!child.impl ||
               !data_bind_value_to_xml(child_value->data.array_val.items[j], child, depth + 1))
             return 0;
         }
       } else {
-        turbo_xml_node_t *child = turbo_xml_add_element(node, name);
-        if (!child || !data_bind_value_to_xml(child_value, child, depth + 1)) return 0;
+        salts_xml_node child = {0};
+        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
+        if (!child.impl || !data_bind_value_to_xml(child_value, child, depth + 1)) return 0;
       }
     }
     return 1;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
     for (i = 0; i < value->data.array_val.count; ++i) {
-      turbo_xml_node_t *child = turbo_xml_add_element(node, "item");
-      if (!child || !data_bind_value_to_xml(value->data.array_val.items[i], child, depth + 1))
+      salts_xml_node child = {0};
+      if (salts_xml_node_add_element(node, "item", &child) != SALTS_XML_OK) return 0;
+      if (!child.impl || !data_bind_value_to_xml(value->data.array_val.items[i], child, depth + 1))
         return 0;
     }
     return 1;
   case DATA_BIND_VALUE_MAP:
     for (i = 0; i < value->data.map_val.count; ++i) {
       const char *key = value->data.map_val.items[i].key;
-      turbo_xml_node_t *child;
+      salts_xml_node child;
       if (!data_bind_xml_name_valid(key)) return 0;
-      child = turbo_xml_add_element(node, key);
-      if (!child || !data_bind_value_to_xml(value->data.map_val.items[i].value, child, depth + 1))
+      if (salts_xml_node_add_element(node, key, &child) != SALTS_XML_OK) return 0;
+      if (!child.impl || !data_bind_value_to_xml(value->data.map_val.items[i].value, child, depth + 1))
         return 0;
     }
     return 1;
@@ -9546,29 +9617,32 @@ static int data_bind_value_to_xml(const DataBindValue *value, turbo_xml_node_t *
     return 0;
   default:
     return data_bind_standard_scalar_text(value, text, sizeof(text)) &&
-           turbo_xml_set_text(node, text) == 0;
+           salts_xml_node_set_text(node, text) == 0;
   }
 }
 
 static DataBindStatus data_bind_object_serialize_xml_canonical(
     const DataBindObject *object, char **out_xml, size_t *out_len, DataBindError *error) {
-  turbo_xml_doc_t *xml;
-  turbo_xml_node_t *root;
+  salts_xml_document xml = {0};
+  salts_xml_node root = {0};
   if (out_xml != NULL) *out_xml = NULL;
   if (out_len != NULL) *out_len = 0;
   if (!object || !object->value || !object->type_name || !out_xml ||
       !data_bind_xml_name_valid(object->type_name))
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid XML serialize arguments");
-  xml = turbo_xml_create_document(object->type_name);
-  root = turbo_xml_root_element(xml);
-  if (!xml || !root || !data_bind_value_to_xml(object->value, root, 0)) {
-    turbo_free_xml(&xml);
+  if (salts_xml_document_create(&xml, object->type_name) != SALTS_XML_OK) {
+    return db_error_set(error, DATA_BIND_ERR_OOM, "xml", -1, -1,
+                        "Unable to create XML document");
+  }
+  root = salts_xml_document_root(&xml);
+  if (!root.impl || !data_bind_value_to_xml(object->value, root, 0)) {
+    salts_xml_document_destroy(&xml);
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, "xml", -1, -1,
                         "DataBind value cannot be represented as XML");
   }
-  *out_xml = turbo_xml_serialize(xml, out_len);
-  turbo_free_xml(&xml);
+  *out_xml = salts_xml_document_serialize(&xml, out_len);
+  salts_xml_document_destroy(&xml);
   if (!*out_xml)
     return db_error_set(error, DATA_BIND_ERR_OOM, "xml", -1, -1,
                         "Failed to serialize XML document");
@@ -9963,7 +10037,7 @@ DataBindStatus data_bind_object_write_csv(DataBind *codec, const DataBindObject 
                                 data_bind_object_serialize_csv);
 }
 
-void data_bind_serialized_free(char *data) { turbo_json_serialize_free(data); }
+void data_bind_serialized_free(char *data) { json_serialize_free(data); }
 
 void data_bind_binary_free(void *data) { free(data); }
 
@@ -10116,7 +10190,7 @@ const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out
   return salts_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
-int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *out) {
+int data_bind_value_as_datetime(const DataBindValue *value, datetime_t *out) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL) return 0;
   *out = value->data.datetime_val;
   return 1;
@@ -10124,15 +10198,15 @@ int data_bind_value_as_datetime(const DataBindValue *value, turbo_datetime_t *ou
 
 double data_bind_value_as_datetime_timestamp(const DataBindValue *value) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME) return -1.0;
-  return (double)turbo_datetime_to_time(&value->data.datetime_val);
+  return (double)datetime_to_time(&value->data.datetime_val);
 }
 
 const char *data_bind_value_as_datetime_string(const DataBindValue *value, char *out, size_t len) {
   time_t ts;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL || len < 32)
     return NULL;
-  ts = turbo_datetime_to_time(&value->data.datetime_val);
-  if (ts == (time_t)-1 || turbo_datetime_format_rfc822(ts, out, len) < 0) return NULL;
+  ts = datetime_to_time(&value->data.datetime_val);
+  if (ts == (time_t)-1 || datetime_format_rfc822(ts, out, len) < 0) return NULL;
   return out;
 }
 
@@ -10346,7 +10420,7 @@ DataBindStatus data_bind_value_get_uuid(const DataBindValue *value,
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, turbo_datetime_t *out) {
+DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, datetime_t *out) {
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value->kind != DATA_BIND_VALUE_DATETIME) return DATA_BIND_ERR_TYPE_MISMATCH;

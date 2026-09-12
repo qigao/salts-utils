@@ -578,14 +578,14 @@ spec("tbe_compiler") {
           "enum Role <uint16> { User = 0; Admin = 1; }"
           "[db_table(user_account)] message User {"
           "  [db_column(user_id), db_primary_key(1), db_generated(identity)] int64 id;"
-          "  [db_unique(1)] string email;"
-          "  optional string display_name;"
           "  optional uint32 login_count default 0;"
           "  Role role;"
+          "  [db_unique(1)] string email;"
+          "  optional string display_name;"
           "}"
           "[db_table(membership)] message Membership {"
-          "  [db_primary_key(2)] string tenant;"
           "  [db_primary_key(1)] int32 user_id;"
+          "  [db_primary_key(2)] string tenant;"
           "}";
       tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
       Node *database_ir = build_database_ir_from_schema(
@@ -616,13 +616,13 @@ spec("tbe_compiler") {
                   "INTEGER");
       check_equal(find_child(database_ir_column(user_table, 0), "sql_constraints")->data.string_val,
                   "NOT NULL PRIMARY KEY AUTOINCREMENT");
-      check_equal(find_child(database_ir_column(user_table, 1), "sql_constraints")->data.string_val,
+      check_equal(find_child(database_ir_column(user_table, 3), "sql_constraints")->data.string_val,
                   "NOT NULL UNIQUE");
-      check_equal(find_child(database_ir_column(user_table, 2), "sql_constraints")->data.string_val,
+      check_equal(find_child(database_ir_column(user_table, 4), "sql_constraints")->data.string_val,
                   "");
-      check_contains(find_child(database_ir_column(user_table, 3), "sql_constraints")->data.string_val,
+      check_contains(find_child(database_ir_column(user_table, 1), "sql_constraints")->data.string_val,
                      "DEFAULT 0");
-      check_equal(find_child(database_ir_column(user_table, 4), "sql_type")->data.string_val,
+      check_equal(find_child(database_ir_column(user_table, 2), "sql_type")->data.string_val,
                   "INTEGER");
 
       primary_keys = find_child(membership_table, "db_primary_key_columns");
@@ -663,7 +663,7 @@ spec("tbe_compiler") {
           " db_check(ck_total_sqlite, sqlite, \"total_cents >= 0\"),"
           " db_check(ck_total_postgresql, postgresql, \"total_cents >= 0\")"
           "] message Order {"
-          " int64 user_id; int32 tenant; string order_number; int64 total_cents;"
+          " int64 user_id; int32 tenant; int64 total_cents; string order_number;"
           "}";
       const tbe_database_dialect_t dialects[] = {
           TBE_DATABASE_DIALECT_SQLITE, TBE_DATABASE_DIALECT_POSTGRESQL};
@@ -809,19 +809,19 @@ spec("tbe_compiler") {
           "[db_table(types)] message Types {"
           " bool bool_value; int8 i8_value; uint8 u8_value; int16 i16_value;"
           " uint16 u16_value; int32 i32_value; uint32 u32_value; int64 i64_value;"
-          " uint64 u64_value; float f32_value; double f64_value; string text_value;"
-          " bytes payload_value; bytes(16) digest_value; uuid uuid_value; Kind kind_value;"
+          " uint64 u64_value; float f32_value; double f64_value;"
+          " bytes(16) digest_value; uuid uuid_value; Kind kind_value;"
           " u8 alias_u8_value; uint16_t alias_u16_value; u32 alias_u32_value;"
-          " uint64_t alias_u64_value;"
+          " uint64_t alias_u64_value; string text_value; bytes payload_value;"
           "}";
       const char *sqlite_types[] = {
           "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER", "INTEGER",
-          "INTEGER", "TEXT", "REAL", "REAL", "TEXT", "BLOB", "BLOB", "TEXT", "INTEGER",
-          "INTEGER", "INTEGER", "INTEGER", "TEXT"};
+          "INTEGER", "TEXT", "REAL", "REAL", "BLOB", "TEXT", "INTEGER", "INTEGER",
+          "INTEGER", "INTEGER", "TEXT", "TEXT", "BLOB"};
       const char *postgresql_types[] = {
           "boolean", "smallint", "smallint", "smallint", "integer", "integer", "bigint",
-          "bigint", "numeric(20,0)", "real", "double precision", "text", "bytea", "bytea",
-          "uuid", "integer", "smallint", "integer", "bigint", "numeric(20,0)"};
+          "bigint", "numeric(20,0)", "real", "double precision", "bytea", "uuid", "integer",
+          "smallint", "integer", "bigint", "numeric(20,0)", "text", "bytea"};
       const char *sqlite_constraints[] = {
           "NOT NULL CHECK (\"bool_value\" IS NULL OR (typeof(\"bool_value\") = 'integer' AND \"bool_value\" IN (0, 1)))",
           "NOT NULL CHECK (\"u8_value\" IS NULL OR (typeof(\"u8_value\") = 'integer' AND \"u8_value\" BETWEEN 0 AND 255))",
@@ -847,7 +847,7 @@ spec("tbe_compiler") {
           TBE_DATABASE_DIALECT_SQLITE, TBE_DATABASE_DIALECT_POSTGRESQL};
       const char *const *expected_types[] = {sqlite_types, postgresql_types};
       const char *const *expected_constraints[] = {sqlite_constraints, postgresql_constraints};
-      const size_t constraint_columns[] = {0, 2, 4, 6, 8, 15, 16, 17, 18, 19};
+      const size_t constraint_columns[] = {0, 2, 4, 6, 8, 13, 14, 15, 16, 17};
 
       for (size_t dialect_index = 0; dialect_index < 2; ++dialect_index) {
         tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
@@ -961,9 +961,9 @@ spec("tbe_compiler") {
           "[db_table(defaults), custom(kept)] message Defaults {"
           " bool enabled default true; int8 signed_value default 127;"
           " uint8 unsigned_value default 255; float ratio default 1;"
-          " string label default \"O'Reilly\"; State state default Active;"
-          " uint8 hexadecimal_value default 0xFF;"
+          " State state default Active; uint8 hexadecimal_value default 0xFF;"
           " uint64 exact_value default 18446744073709551615;"
+          " string label default \"O'Reilly\";"
           "}";
       const char *invalid_schemas[] = {
           "[db_table(invalid)] message Invalid { int32 accepted; bool value default 1; }",
@@ -992,13 +992,13 @@ spec("tbe_compiler") {
                       "NOT NULL DEFAULT 255 CHECK (\"unsigned_value\" IS NULL OR (typeof(\"unsigned_value\") = 'integer' AND \"unsigned_value\" BETWEEN 0 AND 255))");
           check_equal(find_child(database_ir_column(table, 3), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT 1");
-          check_equal(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 'O''Reilly'");
-          check_equal(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 7 CHECK (\"state\" IS NULL OR (typeof(\"state\") = 'integer' AND \"state\" BETWEEN 0 AND 255))");
-          check_equal(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
-                      "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" IS NULL OR (typeof(\"hexadecimal_value\") = 'integer' AND \"hexadecimal_value\" BETWEEN 0 AND 255))");
           check_equal(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 'O''Reilly'");
+          check_equal(find_child(database_ir_column(table, 4), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 7 CHECK (\"state\" IS NULL OR (typeof(\"state\") = 'integer' AND \"state\" BETWEEN 0 AND 255))");
+          check_equal(find_child(database_ir_column(table, 5), "sql_constraints")->data.string_val,
+                      "NOT NULL DEFAULT 255 CHECK (\"hexadecimal_value\" IS NULL OR (typeof(\"hexadecimal_value\") = 'integer' AND \"hexadecimal_value\" BETWEEN 0 AND 255))");
+          check_equal(find_child(database_ir_column(table, 6), "sql_constraints")->data.string_val,
                       "NOT NULL DEFAULT '18446744073709551615' CHECK (\"exact_value\" IS NULL OR (typeof(\"exact_value\") = 'text' AND length(CAST(\"exact_value\" AS BLOB)) = length(\"exact_value\") AND length(\"exact_value\") BETWEEN 1 AND 20 AND \"exact_value\" NOT GLOB '*[^0-9]*' AND (\"exact_value\" = '0' OR substr(\"exact_value\", 1, 1) <> '0') AND (length(\"exact_value\") < 20 OR \"exact_value\" <= '18446744073709551615')))");
         }
         tbe_database_schema_destroy(database_ir);
@@ -1251,7 +1251,7 @@ spec("tbe_compiler") {
           " int8 signed_min default 0; int8 signed_max default 127; int16 signed_max16 default 32767;"
           " int32 signed_max32 default 2147483647; int64 signed_max64 default 9223372036854775807;"
           " uint8 unsigned_min default 0; uint64 unsigned_max default 18446744073709551615;"
-          " float decimal default 125; string quoted default \"D'Arcy\"; State state default Active;"
+          " float decimal default 125; State state default Active; string quoted default \"D'Arcy\";"
           "}";
       static const database_failure_case_t invalid_cases[] = {
           {"rejects signed default above its maximum",
@@ -1301,9 +1301,9 @@ spec("tbe_compiler") {
                          "DEFAULT 18446744073709551615");
           check_contains(find_child(database_ir_column(table, 7), "sql_constraints")->data.string_val,
                          "DEFAULT 125");
-          check_contains(find_child(database_ir_column(table, 8), "sql_constraints")->data.string_val,
-                         "DEFAULT E'D''Arcy'");
           check_contains(find_child(database_ir_column(table, 9), "sql_constraints")->data.string_val,
+                         "DEFAULT E'D''Arcy'");
+          check_contains(find_child(database_ir_column(table, 8), "sql_constraints")->data.string_val,
                          "DEFAULT 255");
         }
         tbe_database_schema_destroy(database_ir);
@@ -1804,7 +1804,7 @@ spec("tbe_compiler") {
       static const char *const schemas[] = {
           "enum Invalid { Value = 1.25; }",
           "enum Invalid { Value = 1e3; }",
-          "enum Invalid { Value = -1; }",
+          "enum Invalid <uint32> { Value = -1; }",
           "flags Invalid { Value = 1.25; }",
           "flags Invalid { Value = 1e3; }",
           "flags Invalid { Value = -1; }",
@@ -1939,9 +1939,9 @@ spec("tbe_compiler") {
       const char *schema =
           "[db_table(\"User Records\")] message User {"
           " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
+          " optional uint32 login_count default 0;"
           " [db_column(select), db_unique(1)] string email;"
           " optional string display_name;"
-          " optional uint32 login_count default 0;"
           "}"
           "[db_table(Membership)] message Membership {"
           " [db_column(tenant), db_primary_key(2)] uint16 tenant_id;"
@@ -1953,9 +1953,9 @@ spec("tbe_compiler") {
           "BEGIN;\n"
           "CREATE TABLE \"User Records\" (\n"
           "  \"User Id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,\n"
+          "  \"login_count\" INTEGER DEFAULT 0 CHECK (\"login_count\" IS NULL OR (typeof(\"login_count\") = 'integer' AND \"login_count\" BETWEEN 0 AND 4294967295)),\n"
           "  \"select\" TEXT NOT NULL UNIQUE,\n"
-          "  \"display_name\" TEXT,\n"
-          "  \"login_count\" INTEGER DEFAULT 0 CHECK (\"login_count\" IS NULL OR (typeof(\"login_count\") = 'integer' AND \"login_count\" BETWEEN 0 AND 4294967295))\n"
+          "  \"display_name\" TEXT\n"
           ");\n"
           "CREATE TABLE \"Membership\" (\n"
           "  \"tenant\" INTEGER NOT NULL CHECK (\"tenant\" IS NULL OR (typeof(\"tenant\") = 'integer' AND \"tenant\" BETWEEN 0 AND 65535)),\n"
@@ -1993,9 +1993,9 @@ spec("tbe_compiler") {
       const char *schema =
           "[db_table(\"User Records\")] message User {"
           " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
+          " optional uint32 login_count default 0;"
           " [db_column(select), db_unique(1)] string email;"
           " optional string display_name;"
-          " optional uint32 login_count default 0;"
           "}"
           "[db_table(Membership)] message Membership {"
           " [db_column(tenant), db_primary_key(2)] uint16 tenant_id;"
@@ -2007,9 +2007,9 @@ spec("tbe_compiler") {
           "BEGIN;\n"
           "CREATE TABLE \"User Records\" (\n"
           "  \"User Id\" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
+          "  \"login_count\" bigint DEFAULT 0 CHECK (\"login_count\" BETWEEN 0 AND 4294967295),\n"
           "  \"select\" text NOT NULL UNIQUE,\n"
-          "  \"display_name\" text,\n"
-          "  \"login_count\" bigint DEFAULT 0 CHECK (\"login_count\" BETWEEN 0 AND 4294967295)\n"
+          "  \"display_name\" text\n"
           ");\n"
           "CREATE TABLE \"Membership\" (\n"
           "  \"tenant\" integer NOT NULL CHECK (\"tenant\" BETWEEN 0 AND 65535),\n"
@@ -2061,7 +2061,7 @@ spec("tbe_compiler") {
           " db_check(ck_total, sqlite, \"total_cents >= 0\"),"
           " db_check(ck_total, postgresql, \"total_cents >= 0\")"
           "] message Order {"
-          " int64 user_id; int32 tenant; string order_number; int64 total_cents;"
+          " int64 user_id; int32 tenant; int64 total_cents; string order_number;"
           "}"
           "[db_table(users)] message User {"
           " [db_primary_key(1)] int64 id; [db_primary_key(2)] int32 tenant;"
@@ -2071,8 +2071,8 @@ spec("tbe_compiler") {
           "CREATE TABLE \"orders\" (\n"
           "  \"user_id\" INTEGER NOT NULL,\n"
           "  \"tenant\" INTEGER NOT NULL,\n"
-          "  \"order_number\" TEXT NOT NULL,\n"
-          "  \"total_cents\" INTEGER NOT NULL\n"
+          "  \"total_cents\" INTEGER NOT NULL,\n"
+          "  \"order_number\" TEXT NOT NULL\n"
           ", CONSTRAINT \"ck_total\" CHECK (total_cents >= 0)\n"
           ", CONSTRAINT \"fk_orders_user\" FOREIGN KEY (\"user_id\", \"tenant\") "
           "REFERENCES \"users\" (\"id\", \"tenant\") ON DELETE CASCADE\n"
@@ -2091,8 +2091,8 @@ spec("tbe_compiler") {
           "CREATE TABLE \"orders\" (\n"
           "  \"user_id\" bigint NOT NULL,\n"
           "  \"tenant\" integer NOT NULL,\n"
-          "  \"order_number\" text NOT NULL,\n"
-          "  \"total_cents\" bigint NOT NULL\n"
+          "  \"total_cents\" bigint NOT NULL,\n"
+          "  \"order_number\" text NOT NULL\n"
           ", CONSTRAINT \"ck_total\" CHECK (total_cents >= 0)\n"
           ");\n"
           "CREATE TABLE \"users\" (\n"
@@ -2349,8 +2349,8 @@ spec("tbe_compiler") {
       const char *schema =
           "[db_table(alpha)] message Alpha {"
           " [db_primary_key(1)] int64 a1;"
-          " optional string a2;"
           " [db_primary_key(2)] uint16 a3;"
+          " optional string a2;"
           "}"
           "[db_table(beta)] message Beta {"
           " [db_primary_key(1)] string b1;"
@@ -2364,7 +2364,7 @@ spec("tbe_compiler") {
           "{{/db_primary_key_columns}};{{/has_composite_primary_key}}"
           "{{#has_next_table}}|{{/has_next_table}}{{/db_tables}}";
       const char *expected =
-          "T=\"alpha\"[\"a1\"C,\"a2\",\"a3\"C]PK=\"a1\"+\"a3\";|"
+          "T=\"alpha\"[\"a1\"C,\"a3\"C,\"a2\"]PK=\"a1\"+\"a3\";|"
           "T=\"beta\"[\"b1\"C]";
       tbe_compiler_options_t options = {
           .schema_path = schema_path,
@@ -2636,7 +2636,7 @@ spec("tbe_compiler") {
       const char *dsl_path = "test_tbe_compiler_rfl.rfl";
       const char *schema =
           "schema Market;"
-          "enum Side <uint8> { Buy = 1; Sell = 2; }"
+          "enum Side <uint8> { Buy = 0; Sell = 1; }"
           "composite Header { uint32 seq; }"
           "group Level { uint64 price; uint32 qty; }"
           "message Book { Header header; bytes(16) digest; uuid request_id; "

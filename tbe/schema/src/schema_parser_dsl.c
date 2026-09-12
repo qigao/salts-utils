@@ -1,5 +1,7 @@
 #include "schema_parser_dsl.h"
 #include "schema_builtin_type.h"
+#include "schema_size.h"
+#include "schema_enum.h"
 #include "schema_lexer.h"
 #include "schema_types.h"
 #include "schema_grammar_gen.h"
@@ -108,40 +110,7 @@ static int map_has_named_child(const Node *map, const char *name) {
 }
 
 static int parse_size_text(const char *text, size_t *out) {
-    char *end = NULL;
-    unsigned long long value;
-
-    if (!text || !out || text[0] == '\0') {
-        return 0;
-    }
-
-    value = strtoull(text, &end, 10);
-    if (!end || *end != '\0') {
-        return 0;
-    }
-
-    *out = (size_t)value;
-    return 1;
-}
-
-static int parse_size_text_strict(const char *text, size_t *out) {
-    char *end = NULL;
-    unsigned long long value;
-    if (!text || !out || text[0] == '\0') {
-        return 0;
-    }
-
-    errno = 0;
-    value = strtoull(text, &end, 10);
-    if (errno != 0 || !end || end == text || *end != '\0') {
-        return 0;
-    }
-    if (value > SIZE_MAX) {
-        return 0;
-    }
-
-    *out = (size_t)value;
-    return 1;
+    return schema_parse_fixed_layout_size(text, out);
 }
 
 static int annotate_result(int result) {
@@ -746,7 +715,7 @@ static int annotate_optional_fields(Node *root) {
                 if (original_block_size_str) {
                     size_t original_size;
                     size_t new_size;
-                    if (!parse_size_text_strict(original_block_size_str, &original_size)) return -1;
+                    if (!parse_size_text(original_block_size_str, &original_size)) return -1;
                     if (bitmap_bytes > SIZE_MAX - original_size) return -1;
                     new_size = original_size + bitmap_bytes;
                     char new_size_str[32];
@@ -764,7 +733,7 @@ static int annotate_optional_fields(Node *root) {
                         if (offset_str) {
                             size_t original_offset;
                             size_t new_offset;
-                            if (!parse_size_text_strict(offset_str, &original_offset)) return -1;
+                            if (!parse_size_text(offset_str, &original_offset)) return -1;
                             if (bitmap_bytes > SIZE_MAX - original_offset) return -1;
                             new_offset = original_offset + bitmap_bytes;
                             char new_offset_str[32];
@@ -941,17 +910,6 @@ static int annotate_optional_fields(Node *root) {
     return 0;
 }
 
-static int parse_enum_u64(const char *text, uint64_t *out) {
-    char *end = NULL;
-    unsigned long long value;
-    if (!text || !out || text[0] == '\0') return 0;
-    errno = 0;
-    value = strtoull(text, &end, 0);
-    if (errno != 0 || end == text || !end || *end != '\0') return 0;
-    *out = (uint64_t)value;
-    return 1;
-}
-
 static int annotate_enum_helpers(Node *root) {
     Node *enums = map_find_named_child(root, "enums");
     if (!enums || enums->type != NODE_LIST) {
@@ -977,57 +935,7 @@ static int annotate_enum_helpers(Node *root) {
             if (annotate_add_true(last_item, "last") != 0) return -1;
         }
 
-        // 找出最小值和最大值
-        uint64_t min_val = UINT64_MAX;
-        uint64_t max_val = 0;
-        int has_value = 0;
-        
-        for (size_t j = 0; j < items->data.list.count; ++j) {
-            Node *item = items->data.list.items[j];
-            const char *value_str = map_find_string_value(item, "value");
-            
-            if (value_str) {
-                uint64_t val;
-                if (!parse_enum_u64(value_str, &val)) continue;
-                if (val < min_val) min_val = val;
-                if (val > max_val) max_val = val;
-                has_value = 1;
-            }
-        }
 
-        // 添加最小值和最大值
-        if (has_value) {
-            const char *enum_name = map_find_string_value(enum_node, "enum_name");
-            
-            // 找到对应的枚举项名称
-            const char *min_name = NULL;
-            const char *max_name = NULL;
-            
-            for (size_t j = 0; j < items->data.list.count; ++j) {
-                Node *item = items->data.list.items[j];
-                const char *value_str = map_find_string_value(item, "value");
-                const char *name_str = map_find_string_value(item, "name");
-                
-                if (value_str && name_str) {
-                    uint64_t val;
-                    if (!parse_enum_u64(value_str, &val)) continue;
-                    if (val == min_val) min_name = name_str;
-                    if (val == max_val) max_name = name_str;
-                }
-            }
-            
-            if (min_name && max_name && enum_name) {
-                char min_value[128];
-                char max_value[128];
-                snprintf(min_value, sizeof(min_value), "%s_%s", enum_name, min_name);
-                snprintf(max_value, sizeof(max_value), "%s_%s", enum_name, max_name);
-                
-                if (annotate_add_string(enum_node, "min_value", min_value) != 0 ||
-                    annotate_add_string(enum_node, "max_value", max_value) != 0) {
-                    return -1;
-                }
-            }
-        }
     }
     return 0;
 }
@@ -1322,7 +1230,6 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     ctx.cur_enum_items = NULL;
     ctx.cur_record_kind = SCHEMA_RECORD_COMPOSITE;
     ctx.cur_field_section = SCHEMA_FIELD_SECTION_FIXED;
-    ctx.next_enum_value = 0;
     ctx.error        = 0;
 
     schema_lexer_t lexer;
@@ -1463,6 +1370,11 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
 
     Node *parsed = parse_schema_raw(text, len, err);
     if (!parsed) {
+        return -1;
+    }
+
+    if (schema_validate_enums(parsed, err) != 0) {
+        node_free(parsed);
         return -1;
     }
 

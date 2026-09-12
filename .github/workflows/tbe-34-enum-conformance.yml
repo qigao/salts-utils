@@ -1,0 +1,123 @@
+name: TBE enum conformance
+
+on:
+  push:
+    branches: [main, fix/tbe-34-enum-conformance]
+    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+  pull_request:
+    branches: [main]
+    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tbe-enums-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  enum-conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ASAN_OPTIONS: detect_leaks=1:detect_odr_violation=2:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/enum-evidence"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/head.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/enum-evidence/source.tar.gz"
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: 011d12c5931f147fea7266ef89c92fc9882e5034
+          path: salts
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Toolchain and host generator
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm re2c
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+      - name: Install pinned Core
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
+          cmake --preset linux-dev-user
+          cmake --build build/linux-gcc-debug --target install -j2
+          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+      - name: Build production compiler and complete TBE tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake --build build/linux-gcc-debug --target tbe/all -j2
+          cp build/linux-gcc-debug/compile_commands.json "$RUNNER_TEMP/enum-evidence/"
+          tar -czf "$RUNNER_TEMP/enum-evidence/parser-tools.tar.gz" \
+            build/linux-gcc-debug/tbe/schema/schema_lexer_gen.c \
+            build/linux-gcc-debug/tbe/schema/schema_grammar_gen.h
+      - name: Run complete TBE suite
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error --output-on-failure \
+            --output-junit "$RUNNER_TEMP/enum-evidence/tbe.xml"
+      - name: Compile and execute generated enum consumers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tbe/tbe_compiler/test/enum_conformance.py \
+            --compiler build/linux-gcc-debug/bin/tbe_compiler \
+            --source "$GITHUB_WORKSPACE" --salts-include /opt/salts/debug/include \
+            2>&1 | tee "$RUNNER_TEMP/enum-evidence/enum-conformance.log"
+      - name: Verify unchanged source
+        if: always()
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tbe-enums-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/enum-evidence/
+            build/linux-gcc-debug/tbe/Testing/Temporary/

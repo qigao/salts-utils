@@ -27,6 +27,9 @@ target_include_directories(
   PRIVATE ../src ${SALTS_PLAYBACK_MINIAUDIO_INCLUDE_DIR})
 target_link_libraries(
   playback_null_test_impl PRIVATE Salts::Concurrency Salts::Platform)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(playback_null_test_impl PRIVATE m)
+endif()
 
 cmake_add_test(
   playback_lifecycle_test

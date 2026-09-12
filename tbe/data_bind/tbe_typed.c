@@ -3,7 +3,7 @@
 #include "data_bind_internal.h"
 #include "fmt.h"
 #include "tbe_wire.h"
-#include "turbo_parser.h"
+#include <json_parser.h>
 
 #include <float.h>
 #include <limits.h>
@@ -78,6 +78,17 @@ static int typed_add_fits(size_t left, size_t right, size_t *total) {
   if (total == NULL || right > SIZE_MAX - left) return 0;
   *total = left + right;
   return 1;
+}
+
+static int typed_ranges_overlap(size_t left_offset, size_t left_size, size_t right_offset,
+                                size_t right_size) {
+  size_t left_end;
+  size_t right_end;
+  if (left_size == 0 || right_size == 0) return 0;
+  if (!typed_add_fits(left_offset, left_size, &left_end) ||
+      !typed_add_fits(right_offset, right_size, &right_end))
+    return 1;
+  return left_offset < right_end && right_offset < left_end;
 }
 
 static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, unsigned depth,
@@ -463,7 +474,7 @@ DataBindStatus tbe_typed_from_value(const TbeTypedType *type, const DataBindValu
 static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind,
                                        const void *ptr, const char *path,
                                        DataBindError *error) {
-  if (kind == TBE_TYPED_BOOL) return turbo_json_create_bool(*(const uint8_t *)ptr != 0);
+  if (kind == TBE_TYPED_BOOL) return json_create_bool(*(const uint8_t *)ptr != 0);
   if (kind == TBE_TYPED_STRING) {
     tstr text = *(const tstr *)ptr;
     size_t len = text ? tstr_len(text) : 0;
@@ -472,12 +483,12 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed string is not valid UTF-8 JSON text");
       return NULL;
     }
-    return turbo_json_create_string_n(text ? text : "", len);
+    return json_create_string_n(text ? text : "", len);
   }
   if (kind == TBE_TYPED_UUID) {
     char text[SALTS_UUID_STRING_SIZE];
     if (salts_uuid_format((const salts_uuid_t *)ptr, text, sizeof(text)) != SALTS_OK) return NULL;
-    return turbo_json_create_string(text);
+    return json_create_string(text);
   }
   if (kind == TBE_TYPED_F32) {
     float value = *(const float *)ptr;
@@ -486,7 +497,7 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed float must be finite for JSON");
       return NULL;
     }
-    return turbo_json_create_number(value);
+    return json_create_number(value);
   }
   if (kind == TBE_TYPED_F64) {
     double value = *(const double *)ptr;
@@ -495,26 +506,26 @@ static json_value_t *typed_scalar_json(TbeTypedKind kind, TbeTypedKind wire_kind
                   "Typed double must be finite for JSON");
       return NULL;
     }
-    return turbo_json_create_number(value);
+    return json_create_number(value);
   }
   if (kind == TBE_TYPED_ENUM) kind = typed_enum_storage_kind(wire_kind);
   switch (kind) {
   case TBE_TYPED_I8:
-    return turbo_json_create_int64(*(const int8_t *)ptr);
+    return json_create_int64(*(const int8_t *)ptr);
   case TBE_TYPED_U8:
-    return turbo_json_create_int64(*(const uint8_t *)ptr);
+    return json_create_int64(*(const uint8_t *)ptr);
   case TBE_TYPED_I16:
-    return turbo_json_create_int64(*(const int16_t *)ptr);
+    return json_create_int64(*(const int16_t *)ptr);
   case TBE_TYPED_U16:
-    return turbo_json_create_int64(*(const uint16_t *)ptr);
+    return json_create_int64(*(const uint16_t *)ptr);
   case TBE_TYPED_I32:
-    return turbo_json_create_int64(*(const int32_t *)ptr);
+    return json_create_int64(*(const int32_t *)ptr);
   case TBE_TYPED_U32:
-    return turbo_json_create_int64(*(const uint32_t *)ptr);
+    return json_create_int64(*(const uint32_t *)ptr);
   case TBE_TYPED_I64:
-    return turbo_json_create_int64(*(const int64_t *)ptr);
+    return json_create_int64(*(const int64_t *)ptr);
   case TBE_TYPED_U64:
-    return turbo_json_create_uint64(*(const uint64_t *)ptr);
+    return json_create_uint64(*(const uint64_t *)ptr);
   default:
     return NULL;
   }
@@ -531,7 +542,7 @@ static json_value_t *typed_bytes_json(const uint8_t *data, size_t len, const cha
                 "Typed bytes are not valid UTF-8 JSON text");
     return NULL;
   }
-  return turbo_json_create_string_n((const char *)data, len);
+  return json_create_string_n((const char *)data, len);
 }
 
 static json_value_t *typed_one_json(TbeTypedKind kind, TbeTypedKind wire_kind,
@@ -554,7 +565,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     return NULL;
   }
   if (typed_validate_descriptor_at(type, 0u, error) != DATA_BIND_OK) return NULL;
-  root = turbo_json_create_object();
+  root = json_create_object();
   if (root == NULL) {
     typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating JSON object");
     return NULL;
@@ -581,7 +592,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
                field->kind == TBE_TYPED_SET) {
       const uint8_t *data;
       size_t count;
-      child = turbo_json_create_array();
+      child = json_create_array();
       if (field->kind == TBE_TYPED_FIXED_ARRAY) {
         data = (const uint8_t *)ptr;
         count = field->fixed_count;
@@ -594,14 +605,14 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
         json_value_t *item =
             typed_one_json(field->element_kind, field->element_wire_kind, field->object_type,
                            data + j * field->element_size, field->name, error);
-        if (item == NULL || !turbo_json_array_add_checked(child, item)) {
-          turbo_free_json(&item);
-          turbo_free_json(&child);
+        if (item == NULL || !json_array_add_checked(child, item)) {
+          (json_free(item), item = NULL);
+          (json_free(child), child = NULL);
         }
       }
     } else if (field->kind == TBE_TYPED_MAP) {
       const vec_t *vec = (const vec_t *)ptr;
-      child = turbo_json_create_object();
+      child = json_create_object();
       for (j = 0; child != NULL && j < vec->size; ++j) {
         const uint8_t *entry = (const uint8_t *)vec->data + j * field->map_entry_size;
         tstr key = *(const tstr *)(entry + field->map_key_offset);
@@ -611,24 +622,24 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
             (key != NULL && memchr(key, '\0', key_len) != NULL)) {
           typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
                       "Typed map key is not valid UTF-8 JSON text");
-          turbo_free_json(&child);
+          (json_free(child), child = NULL);
           break;
         }
         item = typed_one_json(
             field->map_value_kind, field->map_value_wire_kind, field->map_value_type,
             entry + field->map_value_offset, field->name, error);
-        if (item == NULL || !turbo_json_object_add_checked(child, key ? key : "", item)) {
-          turbo_free_json(&item);
-          turbo_free_json(&child);
+        if (item == NULL || !json_object_add_checked(child, key ? key : "", item)) {
+          (json_free(item), item = NULL);
+          (json_free(child), child = NULL);
         }
       }
     } else {
       child = typed_one_json(field->kind, field->wire_kind, field->object_type, ptr, field->name,
                              error);
     }
-    if (child == NULL || !turbo_json_object_add_checked(root, field->name, child)) {
-      turbo_free_json(&child);
-      turbo_free_json(&root);
+    if (child == NULL || !json_object_add_checked(root, field->name, child)) {
+      (json_free(child), child = NULL);
+      (json_free(root), root = NULL);
       typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
                   "Typed field cannot be represented as JSON");
       return NULL;
@@ -639,7 +650,11 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
   return root;
 }
 
-void tbe_typed_json_free(json_value_t **value) { turbo_free_json(value); }
+void tbe_typed_json_free(json_value_t **value) {
+  if (!value) return;
+  json_free(*value);
+  *value = NULL;
+}
 
 static int typed_scalar_kind_from_name(const char *name, TbeTypedKind *kind) {
   if (name == NULL || kind == NULL) return 0;
@@ -791,6 +806,17 @@ static int typed_field_wire_extent(const TbeTypedField *field, size_t *extent) {
   return *extent != 0;
 }
 
+static int typed_kind_owns_storage(TbeTypedKind kind) {
+  return kind == TBE_TYPED_STRING || kind == TBE_TYPED_BYTES || kind == TBE_TYPED_OBJECT ||
+         kind == TBE_TYPED_LIST || kind == TBE_TYPED_SET || kind == TBE_TYPED_MAP;
+}
+
+static int typed_field_owns_storage(const TbeTypedField *field) {
+  if (field == NULL) return 0;
+  if (field->kind == TBE_TYPED_FIXED_ARRAY) return typed_kind_owns_storage(field->element_kind);
+  return typed_kind_owns_storage(field->kind);
+}
+
 static int typed_type_has_tail(const TbeTypedType *type) {
   size_t i;
   if (type == NULL) return 0;
@@ -814,6 +840,7 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t host_extent;
+    size_t j;
     const TbeTypedType *nested_type = NULL;
     if (field->name == NULL || !typed_field_host_extent(field, &host_extent) ||
         !typed_size_fits(field->offset, host_extent, type->size))
@@ -823,6 +850,22 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
         (type->presence_size == 0 || field->optional_bit / 8u >= type->presence_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                          "Typed optional bit exceeds the presence bitmap");
+    if (typed_field_owns_storage(field) && type->presence_size != 0 &&
+        typed_ranges_overlap(field->offset, host_extent, type->presence_offset,
+                             type->presence_size))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed owning field overlaps the presence bitmap");
+    for (j = 0; j < i; ++j) {
+      const TbeTypedField *previous = &type->fields[j];
+      size_t previous_extent;
+      if (!typed_field_owns_storage(field) && !typed_field_owns_storage(previous)) continue;
+      if (!typed_field_host_extent(previous, &previous_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, previous->name,
+                           "Typed field has invalid host storage");
+      if (typed_ranges_overlap(field->offset, host_extent, previous->offset, previous_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed host field storage overlaps owning storage");
+    }
     if (field->kind == TBE_TYPED_OBJECT) {
       nested_type = field->object_type;
     } else if (field->kind == TBE_TYPED_FIXED_ARRAY || field->kind == TBE_TYPED_LIST ||
@@ -847,6 +890,10 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
           !typed_size_fits(field->map_value_offset, value_extent, field->map_entry_size))
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                            "Typed map entry exceeds its host storage");
+      if (typed_ranges_overlap(field->map_key_offset, sizeof(tstr), field->map_value_offset,
+                               value_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed map key and value storage overlap");
       if (field->map_value_kind == TBE_TYPED_OBJECT) nested_type = field->map_value_type;
     }
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0 &&
@@ -894,14 +941,37 @@ static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigne
   size_t i;
   DataBindStatus status = typed_validate_descriptor_at(type, depth, error);
   if (status != DATA_BIND_OK) return status;
+  if (type->presence_size > type->fixed_block_size)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
+                       "Typed presence bitmap exceeds the fixed wire block");
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t wire_extent;
-    if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0 &&
-        (!typed_field_wire_extent(field, &wire_extent) ||
-         !typed_size_fits(field->wire_offset, wire_extent, type->fixed_block_size)))
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
-                         "Typed field exceeds the fixed wire block");
+    size_t j;
+    if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0) {
+      if (!typed_field_wire_extent(field, &wire_extent) ||
+          !typed_size_fits(field->wire_offset, wire_extent, type->fixed_block_size))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed field exceeds the fixed wire block");
+      if (field->wire_size != wire_extent)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed declared wire size does not match the field layout");
+      if (typed_ranges_overlap(field->wire_offset, wire_extent, 0u, type->presence_size))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed field overlaps the wire presence bitmap");
+      for (j = 0; j < i; ++j) {
+        const TbeTypedField *previous = &type->fields[j];
+        size_t previous_extent;
+        if ((previous->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
+        if (!typed_field_wire_extent(previous, &previous_extent))
+          return typed_error(error, DATA_BIND_ERR_SCHEMA, previous->name,
+                             "Typed field has invalid wire storage");
+        if (typed_ranges_overlap(field->wire_offset, wire_extent, previous->wire_offset,
+                                 previous_extent))
+          return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                             "Typed fixed wire fields overlap");
+      }
+    }
     if (field->kind == TBE_TYPED_OBJECT) {
       if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0 ||
           typed_type_has_tail(field->object_type))
@@ -1325,7 +1395,7 @@ DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
     return DATA_BIND_ERR_TYPE_MISMATCH;
   }
   status = data_bind_object_from_json_value(codec, type_name, json, &bound, error);
-  turbo_free_json(&json);
+  (json_free(json), json = NULL);
   if (status != DATA_BIND_OK) return status;
   if (format == DATA_BIND_FORMAT_JSON)
     status = data_bind_object_serialize_json(codec, bound, out, out_len, error);
@@ -1367,24 +1437,28 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
+      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
       size_t payload_size;
       size_t field_size;
       if (field->object_type == NULL || field->object_type->fixed_block_size > UINT16_MAX ||
-          vec->size > UINT16_MAX || (vec->size != 0 && vec->data == NULL)) {
+          count > UINT16_MAX || (count != 0 && vec->data == NULL)) {
         *supported = 0;
         return 0;
       }
-      if (!typed_multiply_fits(vec->size, field->object_type->fixed_block_size, &payload_size) ||
+      if (!typed_multiply_fits(count, field->object_type->fixed_block_size, &payload_size) ||
           !typed_add_fits(sizeof(uint16_t) * 2u, payload_size, &field_size) ||
           !typed_add_fits(total, field_size, &total)) {
         *supported = 0;
         return 0;
       }
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
-      size_t len = field->kind == TBE_TYPED_STRING
-                       ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
-                       : ((const vec_t *)ptr)->size;
+      size_t len = 0u;
       size_t field_size;
+      if (typed_optional_present(type, object, field)) {
+        len = field->kind == TBE_TYPED_STRING
+                  ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
+                  : ((const vec_t *)ptr)->size;
+      }
       if ((field->kind == TBE_TYPED_BYTES && len != 0 &&
            ((const vec_t *)ptr)->data == NULL) ||
           len > UINT32_MAX || !typed_add_fits(sizeof(uint32_t), len, &field_size) ||
@@ -1459,6 +1533,7 @@ static int typed_write_fixed(const TbeTypedType *type, const void *object, uint8
     const uint8_t *src = (const uint8_t *)object + field->offset;
     size_t j;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
+    if (!typed_optional_present(type, object, field)) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       if (!typed_write_fixed(field->object_type, src, dst + field->wire_offset,
                              size - field->wire_offset))
@@ -1526,12 +1601,13 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
+      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
       size_t j;
       tbe_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
-      tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)vec->size);
+      tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
       cursor += 4u;
-      for (j = 0; j < vec->size; ++j) {
+      for (j = 0; j < count; ++j) {
         if (!typed_write_fixed(field->object_type,
                                (const uint8_t *)vec->data + j * field->element_size,
                                output + cursor, total - cursor)) {
@@ -1543,7 +1619,10 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       const void *bytes;
       size_t len;
-      if (field->kind == TBE_TYPED_STRING) {
+      if (!typed_optional_present(type, object, field)) {
+        bytes = NULL;
+        len = 0u;
+      } else if (field->kind == TBE_TYPED_STRING) {
         tstr text = *(const tstr *)ptr;
         bytes = text ? text : "";
         len = text ? tstr_len(text) : 0;

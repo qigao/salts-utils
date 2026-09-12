@@ -2042,7 +2042,7 @@ spec("data_bind public API") {
     check_not_null(codec);
 
     if (codec) {
-      turbo_datetime_t dt;
+      datetime_t dt;
       DataBindDate date;
       DataBindTime time;
       int64_t span_ms = 0;
@@ -2631,7 +2631,7 @@ spec("data_bind public API") {
       check_null(value);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic),
                    DATA_BIND_OK);
-      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
       check(strstr(diagnostic.message, "limit") != NULL);
       data_bind_stream_destroy(stream);
       stream = NULL;
@@ -2646,7 +2646,7 @@ spec("data_bind public API") {
       check_equal(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
       check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2659,7 +2659,7 @@ spec("data_bind public API") {
       const char *csv = "id_n\n1\n";
       check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2673,7 +2673,7 @@ spec("data_bind public API") {
       check_equal(data_bind_stream_feed(stream, xml, strlen(xml)), DATA_BIND_OK);
       check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, TURBO_QUERY_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
     }
     data_bind_free(codec);

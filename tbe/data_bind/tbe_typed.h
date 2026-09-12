@@ -2,7 +2,7 @@
 #define TBE_TYPED_H
 
 #include "data_bind.h"
-#include <salts_str.h>
+#include <tstr.h>
 #include <cstl.h>
 
 #include <stdbool.h>
@@ -112,6 +112,17 @@ enum {
 
 typedef struct TbeTypedType TbeTypedType;
 
+/**
+ * Host and wire layout supplied by a typed descriptor.
+ *
+ * Owning host fields (strings, vectors, maps, objects, and owning fixed arrays)
+ * must not overlap any other field storage, and must not overlap the host
+ * presence bitmap. Map key/value storage must be disjoint. For binary fields,
+ * the wire presence bitmap occupies [0, presence_size), fixed wire ranges must
+ * be pairwise disjoint from it and from each other, and wire_size must exactly
+ * match the extent derived from the field kind. Invalid layouts are rejected
+ * as DATA_BIND_ERR_SCHEMA before direct binary access.
+ */
 typedef struct TbeTypedField {
   const char *name;
   TbeTypedKind kind;
@@ -129,7 +140,7 @@ typedef struct TbeTypedField {
   TbeTypedKind map_value_wire_kind;
   const TbeTypedType *map_value_type;
   size_t wire_offset;
-  size_t wire_size;
+  size_t wire_size; /* Exact derived extent when TBE_TYPED_FIELD_WIRE_OFFSET is set. */
   unsigned optional_bit;
   unsigned flags;
 } TbeTypedField;
@@ -426,7 +437,11 @@ DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize(
     const void *object, DataBindFormat format, char **out, size_t *out_len,
     DataBindError *error);
 
-/** Serialize an owning object into its schema binary wire representation. */
+/**
+ * Serialize an owning object into its schema binary wire representation.
+ * Optional presence bits are authoritative: absent fixed fields are zeroed,
+ * absent variable data has zero length, and absent groups have zero entries.
+ */
 DATA_BIND_API DataBindStatus tbe_typed_serialize_binary(const TbeTypedType *type,
                                                         const void *object, uint8_t **out,
                                                         size_t *out_len, DataBindError *error);
@@ -435,7 +450,8 @@ DATA_BIND_API DataBindStatus tbe_typed_serialize_binary(const TbeTypedType *type
  * Serialize binary wire bytes into caller-owned storage without allocating the
  * output buffer. out_len receives the required size even when capacity is too
  * small, in which case DATA_BIND_ERR_BUFFER_TOO_SMALL is returned. Passing
- * output=NULL and capacity=0 performs a size query without writing bytes.
+ * output=NULL and capacity=0 performs a size query without writing bytes. The
+ * size query and writer both use the optional presence rules above.
  */
 DATA_BIND_API DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type,
                                                              const void *object, uint8_t *output,

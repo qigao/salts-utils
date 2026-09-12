@@ -202,7 +202,7 @@ suite("optional_fields_and_defaults") {
             static const char *const schemas[] = {
                 "enum Invalid { Value = 1.25; }",
                 "enum Invalid { Value = 1e3; }",
-                "enum Invalid { Value = -1; }",
+                "enum Invalid <uint32> { Value = -1; }",
                 "flags Invalid { Value = 1.25; }",
                 "flags Invalid { Value = 1e3; }",
                 "flags Invalid { Value = -1; }",
