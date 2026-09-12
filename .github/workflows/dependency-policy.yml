@@ -25,4 +25,5 @@ jobs:
       - name: Verify crypto dependency policy
         run: python tests/dependency_manifest_test.py
       - name: Verify vcpkg manifest resolves
-        run: "$VCPKG_ROOT/vcpkg" install --x-manifest-root="$GITHUB_WORKSPACE" --triplet x64-linux --dry-run
+        run: |
+          "$VCPKG_ROOT/vcpkg" install --x-manifest-root="$GITHUB_WORKSPACE" --triplet x64-linux --dry-run
