@@ -198,6 +198,7 @@ typedef struct JINJA_PROGRAM_BUILDER {
 typedef struct JINJA_EXPRESSION_BUILDER {
   vstr newline_sequence;
   JINJA_CMETA_EXPRESSION_NODE nodes[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS];
+  size_t source_offsets[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS];
   JINJA_CMETA_COMPARISON_STEP comparison_steps[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS];
   JINJA_CMETA_COLLECTION_ITEM collection_items[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS];
   JINJA_CMETA_DICT_ENTRY dict_entries[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS];
@@ -288,6 +289,7 @@ static JINJA_CMETA_STATUS jinja_expression_builder_reserve(JINJA_EXPRESSION_BUIL
     return JINJA_CMETA_ERR_CAPACITY;
   builder->nodes[index] = (JINJA_CMETA_EXPRESSION_NODE){0};
   builder->nodes[index].kind = kind;
+  builder->source_offsets[index] = 0u;
   builder->count = index + 1u;
   *node = &builder->nodes[index];
   *name = vstr_from_buf(builder->names[index], (size_t)written);
@@ -2212,14 +2214,20 @@ static JINJA_CMETA_STATUS jinja_compile_function_expression(vstr source, JINJA_E
                          "unable to allocate function expression parser");
     return JINJA_CMETA_ERR_OUT_OF_MEMORY;
   }
+  const size_t first_expression = expressions->count;
   size_t offset = 0u;
   vstr name, input = vstr_from_buf(source.data + span.offset, span.length);
   JINJA_CMETA_STATUS status = jinja_function_parse_status(
       jinja_expression_parse_tree(input, tree, &offset));
   if (status == JINJA_CMETA_OK)
     status = jinja_compile_expression_tree(input, tree, frames, depth, 0, expressions, &name);
-  if (status == JINJA_CMETA_OK) *result = expressions->count - 1u;
-  else jinja_cmeta_error_set(error, status, span.offset + offset, "unable to lower function expression");
+  if (status == JINJA_CMETA_OK) {
+    for (size_t i = first_expression; i < expressions->count; ++i)
+      expressions->source_offsets[i] = span.offset;
+    *result = expressions->count - 1u;
+  } else {
+    jinja_cmeta_error_set(error, status, span.offset + offset, "unable to lower function expression");
+  }
   free(tree);
   return status;
 }
@@ -3345,18 +3353,20 @@ JINJA_CMETA_STATUS jinja_cmeta_compile_config(const JINJA_CMETA_COMPILE_OPTIONS 
 }
 
 static JINJA_CMETA_STATUS jinja_validate_registered_extensions(
-    const JINJA_CMETA_TEMPLATE *templ, const JINJA_CMETA_ENV *env, JINJA_CMETA_ERROR *error) {
+    const JINJA_CMETA_TEMPLATE *templ, const JINJA_CMETA_ENV *env,
+    const size_t source_offsets[JINJA_CMETA_MAX_COMPILED_EXPRESSIONS],
+    JINJA_CMETA_ERROR *error) {
   for (size_t i = 0u; i < templ->expression_count; ++i) {
     const JINJA_CMETA_EXPRESSION_NODE *node = &templ->expressions[i];
     if (node->kind == JINJA_CMETA_EXPRESSION_HOST_FILTER &&
         (env == NULL || jinja_cmeta_env_find_filter(env, node->path) == NULL)) {
-      jinja_cmeta_error_set(error, JINJA_CMETA_ERR_UNSUPPORTED, 0u,
+      jinja_cmeta_error_set(error, JINJA_CMETA_ERR_UNSUPPORTED, source_offsets[i],
           "filter is not registered in the template environment");
       return JINJA_CMETA_ERR_UNSUPPORTED;
     }
     if (node->kind == JINJA_CMETA_EXPRESSION_TEST && node->test == JINJA_CMETA_TEST_HOST &&
         (env == NULL || jinja_cmeta_env_find_test(env, node->path) == NULL)) {
-      jinja_cmeta_error_set(error, JINJA_CMETA_ERR_UNSUPPORTED, 0u,
+      jinja_cmeta_error_set(error, JINJA_CMETA_ERR_UNSUPPORTED, source_offsets[i],
           "test is not registered in the template environment");
       return JINJA_CMETA_ERR_UNSUPPORTED;
     }
@@ -3709,7 +3719,7 @@ JINJA_CMETA_TEMPLATE *jinja_cmeta_compile_with_environment(vstr source,
   JinjaTranslationBindings_destroy(&program.translation_bindings);
   tstr_free(program.strings);
   tstr_free(pending_text);
-  if (jinja_validate_registered_extensions(templ, env, error) != JINJA_CMETA_OK) {
+  if (jinja_validate_registered_extensions(templ, env, expressions.source_offsets, error) != JINJA_CMETA_OK) {
     jinja_cmeta_release(templ);
     return NULL;
   }
