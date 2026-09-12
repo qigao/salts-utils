@@ -6,37 +6,56 @@
 #include <salts_cmeta_fixed_width.h>
 
 #include <stddef.h>
+#include <stdint.h>
+#include <string.h>
 
-/* RED contract for semantic/schema-shape lowering. */
-extern int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind);
+static void check_fixed_width_descriptor(const char *name,
+                                         const char *stable_id,
+                                         cmeta_data_kind kind,
+                                         uint8_t bits) {
+  const cmeta_data_desc *data = schema_cmeta_builtin_data(name);
+
+  check_true(data != NULL);
+  if (data == NULL) return;
+
+  check_equal(data->struct_size, sizeof(cmeta_data_desc));
+  check_equal(data->abi_version, CMETA_DATA_DESC_ABI_VERSION);
+  check_true(data->stable_id != NULL);
+  if (data->stable_id != NULL) check_true(strcmp(data->stable_id, stable_id) == 0);
+  check_equal(data->kind, kind);
+  check_true(data->storage_type != NULL);
+  check_true(data->shape != NULL);
+  if (data->shape != NULL)
+    check_equal(((const cmeta_data_integer_shape *)data->shape)->bits, bits);
+}
 
 suite("schema_cmeta") {
   describe("canonical builtin scalar lowering") {
-    it("maps signed integer aliases to exact-width Core descriptors") {
-      check_equal(schema_cmeta_builtin_data("int8"), &salts_int8_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("i8"), &salts_int8_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("int16"), &salts_int16_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("i16"), &salts_int16_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("int32"), &salts_int32_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("i32"), &salts_int32_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("int64"), &salts_int64_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("i64"), &salts_int64_cmeta_data);
+    it("maps signed integer aliases to exact-width Core descriptor semantics") {
+      check_fixed_width_descriptor("int8", "salts.int8.data", CMETA_DATA_SINT, 8u);
+      check_fixed_width_descriptor("i8", "salts.int8.data", CMETA_DATA_SINT, 8u);
+      check_fixed_width_descriptor("int16", "salts.int16.data", CMETA_DATA_SINT, 16u);
+      check_fixed_width_descriptor("i16", "salts.int16.data", CMETA_DATA_SINT, 16u);
+      check_fixed_width_descriptor("int32", "salts.int32.data", CMETA_DATA_SINT, 32u);
+      check_fixed_width_descriptor("i32", "salts.int32.data", CMETA_DATA_SINT, 32u);
+      check_fixed_width_descriptor("int64", "salts.int64.data", CMETA_DATA_SINT, 64u);
+      check_fixed_width_descriptor("i64", "salts.int64.data", CMETA_DATA_SINT, 64u);
     }
 
-    it("maps unsigned integer aliases to exact-width Core descriptors") {
-      check_equal(schema_cmeta_builtin_data("uint8"), &salts_uint8_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("u8"), &salts_uint8_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("byte"), &salts_uint8_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("uint16"), &salts_uint16_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("u16"), &salts_uint16_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("uint32"), &salts_uint32_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("u32"), &salts_uint32_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("uint64"), &salts_uint64_cmeta_data);
-      check_equal(schema_cmeta_builtin_data("u64"), &salts_uint64_cmeta_data);
+    it("maps unsigned integer aliases to exact-width Core descriptor semantics") {
+      check_fixed_width_descriptor("uint8", "salts.uint8.data", CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("u8", "salts.uint8.data", CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("byte", "salts.uint8.data", CMETA_DATA_UINT, 8u);
+      check_fixed_width_descriptor("uint16", "salts.uint16.data", CMETA_DATA_UINT, 16u);
+      check_fixed_width_descriptor("u16", "salts.uint16.data", CMETA_DATA_UINT, 16u);
+      check_fixed_width_descriptor("uint32", "salts.uint32.data", CMETA_DATA_UINT, 32u);
+      check_fixed_width_descriptor("u32", "salts.uint32.data", CMETA_DATA_UINT, 32u);
+      check_fixed_width_descriptor("uint64", "salts.uint64.data", CMETA_DATA_UINT, 64u);
+      check_fixed_width_descriptor("u64", "salts.uint64.data", CMETA_DATA_UINT, 64u);
     }
 
     it("maps uuid to the process-wide canonical Core descriptor") {
-      check_equal(schema_cmeta_builtin_data("uuid"), &salts_uuid_cmeta_data);
+      check_true(schema_cmeta_builtin_data("uuid") == &salts_uuid_cmeta_data);
       check_true(salts_uuid_cmeta_data_valid(schema_cmeta_builtin_data("uuid")));
     }
 
