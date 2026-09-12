@@ -75,6 +75,8 @@ endforeach()
 # Keep CBind on the integration test only, not the schema library export.
 if(TARGET test_schema_cmeta)
   target_sources(test_schema_cmeta PRIVATE test/test_schema_cmeta_buffer.c)
+  set_source_files_properties(test/test_schema_cmeta_buffer.c
+    PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
   target_link_libraries(test_schema_cmeta PRIVATE Salts::CBind)
 endif()
 
