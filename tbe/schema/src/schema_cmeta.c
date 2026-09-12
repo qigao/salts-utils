@@ -101,6 +101,29 @@ int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
     return 0;
 }
 
+int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,
+                                  const cmeta_generic_desc *constructor,
+                                  const cmeta_type_identity *const *args,
+                                  size_t arity) {
+    cmeta_type_identity identity;
+
+    if (out_identity == NULL ||
+        !cmeta_type_application_valid(constructor, args, arity))
+        return 0;
+
+    identity.form = CMETA_TYPE_APPLY;
+    identity.stable_atom_id = NULL;
+    identity.constructor = constructor;
+    identity.base = NULL;
+    identity.args = args;
+    identity.arity = arity;
+
+    if (!cmeta_type_identity_valid(&identity)) return 0;
+
+    *out_identity = identity;
+    return 1;
+}
+
 int schema_cmeta_struct_data(cmeta_data_desc *out_data,
                              cmeta_data_struct_shape *out_shape,
                              const char *stable_id,
