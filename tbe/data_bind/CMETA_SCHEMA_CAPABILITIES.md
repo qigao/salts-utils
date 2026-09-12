@@ -24,7 +24,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | `bytes` | `CMETA_DATA_BYTES` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
 | `uuid` | custom canonical data descriptor | `salts_uuid_cmeta_data` | descriptor helper | Use Salts canonical UUID descriptor; do not manufacture a DataBind UUID descriptor. |
 | message / record | `CMETA_DATA_STRUCT` | schema-lowered `cmeta_data_struct_shape` + native/dynamic storage descriptor | target | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
-| enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | target | Flags require explicit schema/wire semantics; structural enum identity belongs to CMeta. |
+| enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | production integer-domain normalization; enum graph pending | The parser consumes canonical integer descriptors for underlying width/signedness. Flags wire semantics stay in schema; native enum metadata/adapter lowering remains pending. |
 | union / oneof | `CMETA_DATA_VARIANT` | CMeta variant descriptor/adapter | gated | Enable only after the schema discriminator/wire representation is frozen. CMeta data-level Variant support exists even though higher-level CMeta DSL syntax may remain intentionally limited. |
 | sequence (`list`, repeated, array-like semantic sequence) | `CMETA_DATA_SEQUENCE` | CMeta container descriptor + CSTL/container provider | target | Schema expresses sequence semantics, not concrete `Vec`/`List`/`Deque` storage. |
 | `set` | `CMETA_DATA_SET` | CMeta container descriptor + CSTL/container provider | target | Concrete ordered/hash storage is a native profile concern. |
@@ -38,6 +38,18 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
 
 The scalar helper regression coverage is in `tbe/schema/test/test_schema_cmeta.c`: exact-width integer aliases and UUID, canonical bool storage, float/f32 and double/f64 storage and bit widths, descriptor/kind agreement, invalid names, and the string/bytes storage-selection boundary. These helper tests do not close the production migration gates below.
+
+## Production enum/flags normalization
+
+The real `parse_schema` path calls `schema_validate_enums` before publishing a replacement schema root. That validator resolves the declared integer name through `schema_cmeta_builtin_data`, validates the descriptor with CMeta, and derives signedness from `data.kind` and width from `cmeta_data_integer_shape.bits`. It no longer reads the parser builtin table's `size`/`is_unsigned`/`is_integer` fields for enum normalization or range checks.
+
+Wire reader names, host-language spellings, declaration order, flags progression and literal/duplicate rules remain schema concerns. A canonical descriptor is borrowed, not copied or freed; no native enum object or callback is created. Unsupported noninteger descriptors and storage-unselected semantics still produce the existing semantic diagnostic before replacing the caller's root.
+
+`schema_cmeta_data_kind` now obtains builtin scalar kinds from those same descriptors. The remaining name-to-kind entries classify only semantics without a builtin storage descriptor; they do not select a storage profile. The accepted name domain and reject-without-publish behavior are unchanged.
+
+`tbe/schema/test/test_schema_enum_conformance.c` exercises the actual parser for all 25 integer aliases: exact signed/unsigned limits, enum and flags declaration order, adjacent out-of-domain rejection, noninteger rejection, and preservation of an existing enum/message graph after a later enum fails. Independent decimal literals prevent the range oracle from repeating the implementation's width arithmetic.
+
+This is production use of the canonical integer descriptors, not complete lowering of native enum metadata, object fields, buffers, containers or DataBind structural reflection. The parser still owns wire-layout metadata; it must not infer native tstr/vstr storage from a wire size. The remaining #45 gates stay open.
 
 ## Internal buffer lowering
 

@@ -1,12 +1,12 @@
 #include "schema_enum.h"
-#include "schema_builtin_type.h"
+#include "schema_cmeta.h"
 
 #include <fmt.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum { ENUM_DECIMAL_CAPACITY = 32, ENUM_LITERAL_CAPACITY = 80, ENUM_BITS_PER_BYTE = 8 };
+enum { ENUM_DECIMAL_CAPACITY = 32, ENUM_LITERAL_CAPACITY = 80 };
 
 typedef struct enum_number {
     uint64_t magnitude;
@@ -98,9 +98,10 @@ static int enum_next_number(enum_number_t previous, int is_flags, enum_number_t 
     return 1;
 }
 
-static int enum_number_fits(enum_number_t value, const schema_builtin_type_info_t *type) {
-    unsigned bits = (unsigned)type->size * ENUM_BITS_PER_BYTE;
-    if (type->is_unsigned) {
+/* The caller has validated the canonical integer descriptor once per enum. */
+static int enum_number_fits(enum_number_t value, const cmeta_data_desc *type) {
+    unsigned bits = ((const cmeta_data_integer_shape *)type->shape)->bits;
+    if (type->kind == CMETA_DATA_UINT) {
         uint64_t limit = bits == 64u ? UINT64_MAX : (UINT64_C(1) << bits) - 1u;
         return !value.negative && value.magnitude <= limit;
     }
@@ -154,15 +155,16 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     const char *name = enum_string(owner, "enum_name");
     const int is_flags = enum_child(owner, "is_flags") != NULL;
     const char *declared = enum_string(owner, "underlying_type");
-    const schema_builtin_type_info_t *type =
-        schema_builtin_type_find(declared ? declared : (is_flags ? "uint32" : "int32"));
+    const cmeta_data_desc *type =
+        schema_cmeta_builtin_data(declared ? declared : (is_flags ? "uint32" : "int32"));
     Node *items = enum_child(owner, "items");
     enum_entry_t *entries = NULL;
     enum_number_t previous = {0, 0};
     int ordinal = 1;
     int status = -1;
     char canonical[ENUM_DECIMAL_CAPACITY];
-    if (!type || !type->is_integer) {
+    if (!cmeta_data_desc_valid(type) ||
+        (type->kind != CMETA_DATA_SINT && type->kind != CMETA_DATA_UINT)) {
         return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name,
                          "underlying type must be an 8/16/32/64-bit integer");
     }
@@ -172,8 +174,9 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     size_t count = items->data.list.count;
     if (count > SIZE_MAX / sizeof(*entries) || !(entries = malloc(count * sizeof(*entries))))
         goto oom;
-    fmt(canonical, sizeof(canonical), "{}int{}", type->is_unsigned ? "u" : "",
-        type->size * ENUM_BITS_PER_BYTE);
+    /* Wire spelling is schema metadata; integer identity and width are CMeta's. */
+    fmt(canonical, sizeof(canonical), "{}int{}", type->kind == CMETA_DATA_UINT ? "u" : "",
+        (unsigned)((const cmeta_data_integer_shape *)type->shape)->bits);
     if (enum_set_string(owner, "underlying_type", canonical) != 0) goto oom;
     for (size_t i = 0; i < count; ++i) {
         Node *item = items->data.list.items[i];
