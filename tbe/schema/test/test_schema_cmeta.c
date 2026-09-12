@@ -9,6 +9,22 @@
 #include <stdint.h>
 #include <string.h>
 
+/* RED contract for structural descriptor lowering. */
+extern int schema_cmeta_struct_data(cmeta_data_desc *out_data,
+                                    cmeta_data_struct_shape *out_shape,
+                                    const char *stable_id,
+                                    const char *display_name,
+                                    const cmeta_type_desc *storage_type,
+                                    const cmeta_struct_desc *layout,
+                                    const cmeta_data_field_desc *fields,
+                                    size_t field_count);
+extern int schema_cmeta_enum_data(cmeta_data_desc *out_data,
+                                  cmeta_data_enum_shape *out_shape,
+                                  const char *stable_id,
+                                  const char *display_name,
+                                  const cmeta_type_desc *storage_type,
+                                  const cmeta_enum_desc *meta);
+
 static void check_fixed_width_descriptor(const char *name,
                                          const char *stable_id,
                                          cmeta_data_kind kind,
@@ -114,6 +130,79 @@ suite("schema_cmeta") {
       check_false(schema_cmeta_data_kind(NULL, &kind));
       check_equal(kind, CMETA_DATA_MAP);
       check_false(schema_cmeta_data_kind("bool", NULL));
+    }
+  }
+
+  describe("canonical structural descriptor lowering") {
+    it("builds a CMeta struct descriptor from structural metadata only") {
+      static const cmeta_field_desc layout_fields[] = {
+        {"id", "int", 0u, sizeof(int), CMETA_ALIGNOF(int), &cmeta_type_int, NULL}
+      };
+      static const cmeta_struct_desc layout = {
+        "Order", sizeof(int), CMETA_ALIGNOF(int), layout_fields, 1u
+      };
+      static const cmeta_data_field_desc fields[] = {
+        {"schema.Order.id", "id", 0u, &cmeta_data_int}
+      };
+      cmeta_data_struct_shape shape = {0};
+      cmeta_data_desc data = {0};
+
+      check_true(schema_cmeta_struct_data(&data, &shape,
+                                         "schema.Order", "Order",
+                                         &cmeta_type_int, &layout,
+                                         fields, 1u));
+      check_equal(data.kind, CMETA_DATA_STRUCT);
+      check_true(strcmp(data.stable_id, "schema.Order") == 0);
+      check_true(data.storage_type == &cmeta_type_int);
+      check_true(data.shape == &shape);
+      check_true(shape.layout == &layout);
+      check_true(shape.fields == fields);
+      check_equal(shape.field_count, 1u);
+      check_true(cmeta_data_desc_valid(&data));
+    }
+
+    it("builds a CMeta enum descriptor without schema wire metadata") {
+      static const cmeta_enum_item_desc items[] = {
+        {1, "ORDER_OPEN", "open"}, {2, "ORDER_CLOSED", "closed"}
+      };
+      static const cmeta_enum_desc meta = {"OrderState", items, 2u};
+      cmeta_data_enum_shape shape = {0};
+      cmeta_data_desc data = {0};
+
+      check_true(schema_cmeta_enum_data(&data, &shape,
+                                       "schema.OrderState", "OrderState",
+                                       &cmeta_type_int, &meta));
+      check_equal(data.kind, CMETA_DATA_ENUM);
+      check_true(strcmp(data.stable_id, "schema.OrderState") == 0);
+      check_true(data.storage_type == &cmeta_type_int);
+      check_true(data.shape == &shape);
+      check_true(shape.meta == &meta);
+      check_true(cmeta_data_desc_valid(&data));
+    }
+
+    it("rejects incomplete structural inputs without publishing outputs") {
+      cmeta_data_desc data = {sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+                              "sentinel", "sentinel", CMETA_DATA_BOOL,
+                              &cmeta_type_int, NULL, NULL, NULL, NULL};
+      cmeta_data_desc original = data;
+      cmeta_data_struct_shape struct_shape = {NULL, NULL, 7u};
+      cmeta_data_struct_shape original_struct_shape = struct_shape;
+      cmeta_data_enum_shape enum_shape = {NULL};
+      cmeta_data_enum_shape original_enum_shape = enum_shape;
+
+      check_false(schema_cmeta_struct_data(&data, &struct_shape,
+                                          NULL, "Order", &cmeta_type_int,
+                                          NULL, NULL, 0u));
+      check_true(memcmp(&data, &original, sizeof(data)) == 0);
+      check_true(memcmp(&struct_shape, &original_struct_shape,
+                        sizeof(struct_shape)) == 0);
+
+      check_false(schema_cmeta_enum_data(&data, &enum_shape,
+                                        "schema.OrderState", "OrderState",
+                                        &cmeta_type_int, NULL));
+      check_true(memcmp(&data, &original, sizeof(data)) == 0);
+      check_true(memcmp(&enum_shape, &original_enum_shape,
+                        sizeof(enum_shape)) == 0);
     }
   }
 }
