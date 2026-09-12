@@ -16,10 +16,10 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 
 | Schema / DataBind family | Canonical CMeta data semantic | Storage/type source | Status | Notes |
 | --- | --- | --- | --- | --- |
-| `bool` | `CMETA_DATA_BOOL` | `cmeta_data_bool` / `cmeta_type_bool` | descriptor helper | Reuses canonical CMeta boolean storage; no DataBind-private descriptor. |
-| signed integers | `CMETA_DATA_SINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Schema width lowers to the exact 8/16/32/64-bit descriptor; never use platform `long` for schema `int64`. |
-| unsigned integers | `CMETA_DATA_UINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Width is part of the native storage contract. |
-| `float` / `f32`, `double` / `f64` | `CMETA_DATA_FLOAT` | `cmeta_data_float` / `cmeta_data_double` | descriptor helper | Aliases reuse the corresponding canonical CMeta storage type and 32/64-bit float shape. |
+| `bool` | `CMETA_DATA_BOOL` | `cmeta_data_bool` / `cmeta_type_bool` | descriptor helper; shared wire profile | Reuses canonical CMeta boolean storage; no DataBind-private descriptor. |
+| signed integers | `CMETA_DATA_SINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper; shared wire profile | Schema width lowers to the exact 8/16/32/64-bit descriptor; never use platform `long` for schema `int64`. |
+| unsigned integers | `CMETA_DATA_UINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper; shared wire profile | Width is part of the native storage contract. |
+| `float` / `f32`, `double` / `f64` | `CMETA_DATA_FLOAT` | `cmeta_data_float` / `cmeta_data_double` | descriptor helper; shared wire profile | Aliases reuse the corresponding canonical CMeta storage type and 32/64-bit float shape. |
 | `string` | `CMETA_DATA_STRING` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
 | `bytes` | `CMETA_DATA_BYTES` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
 | `uuid` | domain classification: `CMETA_DATA_CUSTOM`; canonical adapter: `CMETA_DATA_STRING` | `salts_uuid_cmeta_data` | descriptor helper; classification convergence pending | Native storage identity is `salts.uuid`. STRING describes the UUID text adapter, not generic string storage; do not manufacture a DataBind UUID descriptor. |
@@ -39,6 +39,14 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 
 The scalar helper regression coverage is in `tbe/schema/test/test_schema_cmeta.c`: exact-width integer aliases and UUID, canonical bool storage, float/f32 and double/f64 storage and bit widths, descriptor/kind agreement, invalid names, and the string/bytes storage-selection boundary. These helper tests do not close the production migration gates below.
 
+## Production shared scalar profiles
+
+The existing `schema_builtin_type_find` entry point, consumed by the grammar and DataBind runtime, resolves all 30 accepted scalar spellings through `schema_cmeta_builtin_data`. Its table now holds 11 canonical wire profiles, selected by CMeta data kind and semantic native type identity rather than descriptor addresses or a second alias table. Each profile borrows its immutable canonical descriptor. The internal profile name is canonical; the parsed field's original type spelling remains schema metadata.
+
+Wire octets, reader names and host-language projections remain explicit schema rules, not native `sizeof`. In particular, BOOL retains its one-octet `u8`/`uint8_t` wire projection without acquiring UINT semantics. A valid UUID text adapter does not imply a numeric wire profile. Unknown names, UUID and storage-unselected STRING/BYTES return no scalar profile, with no alternate lookup or storage fallback. The existing UUID domain classifier and enum implementation are unchanged.
+
+`tbe/schema/test/test_schema_cmeta_profiles.c` checks the 30 aliases, canonical native identity/kind, exact wire projections, BOOL/byte separation, unsupported names, and the real `parse_schema` path's spelling, offsets, fixed widths and numeric annotations. The existing `is_integer`/`is_unsigned`/`is_float` fields remain for current grammar/runtime consumers and are checked against CMeta by this regression. Removing those fields and deriving classifications directly at all consumers is a remaining #45 step, not a completed migration. This shared profile selection does not complete structural reflection, buffers, containers or generated/native binding convergence.
+
 ## Production enum/flags normalization
 
 The real `parse_schema` path calls `schema_validate_enums` before publishing a replacement schema root. That validator resolves the declared integer name through `schema_cmeta_builtin_data`, validates the descriptor with CMeta, and derives signedness from `data.kind` and width from `cmeta_data_integer_shape.bits`. It no longer reads the parser builtin table's `size`/`is_unsigned`/`is_integer` fields for enum normalization or range checks.
@@ -55,7 +63,7 @@ This is production use of the canonical integer descriptors, not complete loweri
 
 `schema_cmeta_buffer_data` in `tbe/schema/src/schema_cmeta_buffer.h` is an internal, non-installed builder for #45. The caller supplies STRING/BYTES semantics and a complete storage type, buffer shape and adapter. CMeta validates semantic type identity, exact layout, callbacks and ownership agreement before the caller-owned descriptor is published. Invalid inputs and custom ownership return zero without changing the output. No new type/ownership enum, allocator, buffer callback or fallback is introduced.
 
-The descriptor borrows all input metadata; names, type, shape and ops must remain immutable and outlive its use. Construction allocates no buffer and invokes no provider callback. Runtime storage remains governed by its provider:
+The descriptor borrows all input metadata; names, type, shape and ops must remain immutable and outlive its use. Construction allocates no buffer and invokes no provider callbacks. Runtime storage remains governed by its provider:
 
 | Explicit profile | Storage provider | Runtime lifetime |
 | --- | --- | --- |
