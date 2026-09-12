@@ -1,0 +1,44 @@
+name: Set up pinned re2c
+description: Build re2c 4.6 and its Unicode standard library for salts-utils
+runs:
+  using: composite
+  steps:
+    - name: Checkout re2c 4.6
+      uses: actions/checkout@v4
+      with:
+        repository: skvadrik/re2c
+        ref: e485c5d572ab8a9f895b2a3c98e5239bf59254c8
+        path: .ci-re2c
+        persist-credentials: false
+    - name: Build and record the pinned host tool
+      shell: bash
+      run: |
+        set -euxo pipefail
+        source="$GITHUB_WORKSPACE/.ci-re2c"
+        build="$RUNNER_TEMP/re2c-build"
+        prefix="$RUNNER_TEMP/re2c-4.6"
+        evidence="$RUNNER_TEMP/re2c-evidence"
+        mkdir -p "$evidence"
+        test "$(git -C "$source" rev-parse HEAD)" = e485c5d572ab8a9f895b2a3c98e5239bf59254c8
+        git -C "$source" rev-parse HEAD > "$evidence/source-head.txt"
+        # Use upstream bootstrap files; no system re2c or Bison regeneration.
+        options=(-DRE2C_REBUILD_LEXERS=OFF -DRE2C_REBUILD_PARSERS=OFF
+                 -DRE2C_REBUILD_SYNTAX=OFF -DRE2C_REBUILD_DOCS=OFF
+                 -DRE2C_BUILD_TESTS=OFF)
+        for language in RE2D RE2GO RE2HS RE2JAVA RE2JS RE2OCAML RE2PY RE2RUST RE2SWIFT RE2V RE2ZIG; do
+          options+=("-DRE2C_BUILD_${language}=OFF")
+        done
+        cmake -S "$source" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX="$prefix" "${options[@]}" \
+          2>&1 | tee "$evidence/configure.log"
+        cmake --build "$build" --target install -j2 \
+          2>&1 | tee "$evidence/build-install.log"
+        "$prefix/bin/re2c" --version | tee "$evidence/version.txt"
+        test "$(cat "$evidence/version.txt")" = 're2c 4.6'
+        sha256sum "$prefix/share/re2c/stdlib/unicode_categories.re" \
+          "$prefix/share/re2c/stdlib/unicode_properties.re" \
+          | tee "$evidence/unicode-sha256.txt"
+        # Explicit paths keep the older pinned Core's toolchain independent.
+        # FindTools.cmake still validates both installed Unicode data hashes.
+        echo "RE2C_EXECUTABLE=$prefix/bin/re2c" >> "$GITHUB_ENV"
+        echo "RE2C_STDLIB_DIR=$prefix/share/re2c/stdlib" >> "$GITHUB_ENV"

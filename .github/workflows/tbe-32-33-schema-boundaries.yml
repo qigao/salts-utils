@@ -14,6 +14,7 @@ on:
       - 'CMake*Presets.json'
       - 'vcpkg.json'
       - '.github/workflows/tbe-32-33-schema-boundaries.yml'
+      - '.github/actions/setup-re2c/**'
   pull_request:
     branches: [main]
     paths:
@@ -27,6 +28,7 @@ on:
       - 'CMake*Presets.json'
       - 'vcpkg.json'
       - '.github/workflows/tbe-32-33-schema-boundaries.yml'
+      - '.github/actions/setup-re2c/**'
   workflow_dispatch:
 
 permissions:
@@ -120,12 +122,17 @@ jobs:
           cmake --build build/linux-gcc-debug --target install -j2
           sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
 
+      - name: Set up re2c 4.6 for salts-utils
+        uses: ./.github/actions/setup-re2c
+
       - name: Configure developer preset with both sanitizers
         shell: bash
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DRE2C_EXECUTABLE="$RE2C_EXECUTABLE" \
+            -DRE2C_STDLIB_DIR="$RE2C_STDLIB_DIR" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/configure.log"
           python3 - <<'PY'
@@ -224,6 +231,7 @@ jobs:
           name: tbe-schema-boundaries-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 14
           path: |
+            ${{ runner.temp }}/re2c-evidence/
             ${{ runner.temp }}/tbe-schema-evidence/
             build/linux-gcc-debug/compile_commands.json
             build/linux-gcc-debug/CMakeCache.txt

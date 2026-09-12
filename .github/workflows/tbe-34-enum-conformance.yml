@@ -3,10 +3,10 @@ name: TBE enum conformance
 on:
   push:
     branches: [main, fix/tbe-34-enum-conformance]
-    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml', '.github/actions/setup-re2c/**']
   pull_request:
     branches: [main]
-    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml', '.github/actions/setup-re2c/**']
   workflow_dispatch:
 
 permissions:
@@ -81,12 +81,17 @@ jobs:
           cmake --preset linux-dev-user
           cmake --build build/linux-gcc-debug --target install -j2
           sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+      - name: Set up re2c 4.6 for salts-utils
+        uses: ./.github/actions/setup-re2c
+
       - name: Build production compiler and complete TBE tests
         shell: bash
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DRE2C_EXECUTABLE="$RE2C_EXECUTABLE" \
+            -DRE2C_STDLIB_DIR="$RE2C_STDLIB_DIR" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/configure.log"
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \
@@ -121,5 +126,6 @@ jobs:
           name: tbe-enums-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 14
           path: |
+            ${{ runner.temp }}/re2c-evidence/
             ${{ runner.temp }}/enum-evidence/
             build/linux-gcc-debug/tbe/Testing/Temporary/
