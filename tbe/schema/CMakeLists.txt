@@ -58,6 +58,7 @@ set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
         test_schema_boundaries
+        test_schema_cmeta
         test_schema_enum_conformance
         test_flags_bdd
         test_tbe_parser_bdd
@@ -74,7 +75,7 @@ endforeach()
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
   LIBS Salts::TbeSchema
-  FOLDER "tbe/schema/tests")
+  FOLDER tbe/schema/tests)
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件
