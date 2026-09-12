@@ -417,6 +417,7 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
                            int is_collection, const char *collection_inner,
                            const char *length_field, int is_group_field) {
     const schema_builtin_type_info_t *builtin_type = schema_builtin_type_find(field_type);
+    const cmeta_data_desc *builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
     int size = 0;
     int is_numeric = 0;
     int is_unsigned = 0;
@@ -433,11 +434,13 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
             add_string(ctx, field_map, "group_type", collection_inner);
             add_string(ctx, field_map, "inner_type", collection_inner);
         }
-    } else if (builtin_type != NULL &&
-               (builtin_type->is_integer || builtin_type->is_float)) {
+    } else if (builtin_data != NULL &&
+               (builtin_data->kind == CMETA_DATA_SINT ||
+                builtin_data->kind == CMETA_DATA_UINT ||
+                builtin_data->kind == CMETA_DATA_FLOAT)) {
         size = (int)builtin_type->size;
         is_numeric = 1;
-        is_unsigned = builtin_type->is_unsigned;
+        is_unsigned = builtin_data->kind == CMETA_DATA_UINT;
         host_type = builtin_type->host_type;
         wire_reader = builtin_type->wire_reader;
     } else if (strcmp(field_type, "uuid") == 0) {
@@ -473,9 +476,11 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
         add_true(ctx, field_map, "is_fixed_size");
     }
 
-    if (!is_group_field && builtin_type != NULL && builtin_type->is_integer) {
+    if (!is_group_field && builtin_data != NULL &&
+        (builtin_data->kind == CMETA_DATA_SINT || builtin_data->kind == CMETA_DATA_UINT)) {
         add_true(ctx, field_map, "is_integer");
-    } else if (!is_group_field && builtin_type != NULL && builtin_type->is_float) {
+    } else if (!is_group_field && builtin_data != NULL &&
+               builtin_data->kind == CMETA_DATA_FLOAT) {
         add_true(ctx, field_map, "is_float");
     } else if (!is_group_field && strcmp(field_type, "bytes") == 0) {
         add_string(ctx, field_map, "ctype", "BYTES");

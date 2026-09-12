@@ -88,7 +88,7 @@ suite("schema_cmeta_production_profiles") {
             const cmeta_data_desc *canonical = schema_cmeta_builtin_data(item->canonical);
             const cmeta_data_desc *profile;
             check_not_null(info);
-            profile = schema_cmeta_builtin_data(info->name);
+            profile = info->data;
             check_true(cmeta_data_desc_valid(alias));
             check_true(cmeta_data_desc_valid(canonical));
             check_true(cmeta_data_desc_valid(profile));
@@ -98,10 +98,9 @@ suite("schema_cmeta_production_profiles") {
                                                  canonical->storage_type->identity));
             check_true(cmeta_type_identity_equal(profile->storage_type->identity,
                                                  canonical->storage_type->identity));
-            check_equal(info->is_integer,
-                        item->kind == CMETA_DATA_SINT || item->kind == CMETA_DATA_UINT);
-            check_equal(info->is_unsigned, item->kind == CMETA_DATA_UINT);
-            check_equal(info->is_float, item->kind == CMETA_DATA_FLOAT);
+            check_equal(profile->storage_type->size, canonical->storage_type->size);
+            check_equal(profile->storage_type->align, canonical->storage_type->align);
+            check_equal(strcmp(profile->stable_id, canonical->stable_id), 0);
         }
     }
 
