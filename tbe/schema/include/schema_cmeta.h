@@ -26,6 +26,37 @@ const cmeta_data_desc *schema_cmeta_builtin_data(const char *name);
  */
 int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind);
 
+/**
+ * Build a borrowed, allocation-free CMeta struct data descriptor.
+ *
+ * Structural identity/layout lives in CMeta. Schema-only metadata such as wire
+ * names, aliases, validation and fingerprinting is intentionally not embedded in
+ * this descriptor. All input metadata must outlive the returned descriptor.
+ * Invalid inputs return zero without modifying either output.
+ */
+int schema_cmeta_struct_data(cmeta_data_desc *out_data,
+                             cmeta_data_struct_shape *out_shape,
+                             const char *stable_id,
+                             const char *display_name,
+                             const cmeta_type_desc *storage_type,
+                             const cmeta_struct_desc *layout,
+                             const cmeta_data_field_desc *fields,
+                             size_t field_count);
+
+/**
+ * Build a borrowed, allocation-free CMeta enum data descriptor.
+ *
+ * Enum structural identity lives in CMeta; schema wire aliases/annotations stay
+ * in the schema overlay. All input metadata must outlive the returned
+ * descriptor. Invalid inputs return zero without modifying either output.
+ */
+int schema_cmeta_enum_data(cmeta_data_desc *out_data,
+                           cmeta_data_enum_shape *out_shape,
+                           const char *stable_id,
+                           const char *display_name,
+                           const cmeta_type_desc *storage_type,
+                           const cmeta_enum_desc *meta);
+
 #ifdef __cplusplus
 }
 #endif
