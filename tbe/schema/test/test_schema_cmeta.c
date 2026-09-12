@@ -9,28 +9,6 @@
 #include <stdint.h>
 #include <string.h>
 
-/* RED contract for structural descriptor lowering. */
-extern int schema_cmeta_struct_data(cmeta_data_desc *out_data,
-                                    cmeta_data_struct_shape *out_shape,
-                                    const char *stable_id,
-                                    const char *display_name,
-                                    const cmeta_type_desc *storage_type,
-                                    const cmeta_struct_desc *layout,
-                                    const cmeta_data_field_desc *fields,
-                                    size_t field_count);
-extern int schema_cmeta_enum_data(cmeta_data_desc *out_data,
-                                  cmeta_data_enum_shape *out_shape,
-                                  const char *stable_id,
-                                  const char *display_name,
-                                  const cmeta_type_desc *storage_type,
-                                  const cmeta_enum_desc *meta);
-
-/* RED contract for canonical finite-generic semantic lowering. */
-extern int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,
-                                         const char *semantic,
-                                         const cmeta_type_identity *const *args,
-                                         size_t arity);
-
 static void check_fixed_width_descriptor(const char *name,
                                          const char *stable_id,
                                          cmeta_data_kind kind,
@@ -225,42 +203,129 @@ suite("schema_cmeta") {
       cmeta_type_identity pair_identity = {0};
       cmeta_type_identity tuple_identity = {0};
 
-      check_true(schema_cmeta_generic_identity(&option_identity, "optional",
+      check_true(schema_cmeta_generic_identity(&option_identity,
+                                               &cmeta_option_generic_desc,
                                                option_args, 1u));
       check_true(cmeta_type_identity_valid(&option_identity));
+      check_equal(option_identity.form, CMETA_TYPE_APPLY);
+      check_true(option_identity.constructor == &cmeta_option_generic_desc);
+      check_true(option_identity.args == option_args); /* borrowed storage */
       check_true(strcmp(option_identity.constructor->stable_id, "cmeta.Option") == 0);
       check_equal(option_identity.arity, 1u);
       check_true(cmeta_type_identity_equal(option_identity.args[0], &atom_a));
 
-      check_true(schema_cmeta_generic_identity(&pair_identity, "pair",
+      check_true(schema_cmeta_generic_identity(&pair_identity,
+                                               &cmeta_pair_generic_desc,
                                                pair_args, 2u));
       check_true(cmeta_type_identity_valid(&pair_identity));
+      check_equal(pair_identity.form, CMETA_TYPE_APPLY);
+      check_true(pair_identity.constructor == &cmeta_pair_generic_desc);
+      check_true(pair_identity.args == pair_args);
       check_true(strcmp(pair_identity.constructor->stable_id, "cmeta.Pair") == 0);
       check_equal(pair_identity.arity, 2u);
 
-      check_true(schema_cmeta_generic_identity(&tuple_identity, "tuple",
+      check_true(schema_cmeta_generic_identity(&tuple_identity,
+                                               &cmeta_tuple_generic_desc,
                                                tuple_args, 3u));
       check_true(cmeta_type_identity_valid(&tuple_identity));
+      check_equal(tuple_identity.form, CMETA_TYPE_APPLY);
+      check_true(tuple_identity.constructor == &cmeta_tuple_generic_desc);
+      check_true(tuple_identity.args == tuple_args);
       check_true(strcmp(tuple_identity.constructor->stable_id, "cmeta.Tuple") == 0);
       check_equal(tuple_identity.arity, 3u);
     }
 
-    it("rejects unsupported generic semantics and invalid arity without publishing output") {
+    it("compares nested applications by semantic identity rather than argument address") {
+      const cmeta_type_identity atom_a = CMETA_TYPE_ID_ATOM_INIT("schema.A");
+      const cmeta_type_identity atom_a_copy = CMETA_TYPE_ID_ATOM_INIT("schema.A");
+      const cmeta_type_identity atom_b = CMETA_TYPE_ID_ATOM_INIT("schema.B");
+      const cmeta_type_identity *option_args[] = {&atom_a};
+      const cmeta_type_identity *option_copy_args[] = {&atom_a_copy};
+      cmeta_type_identity option_identity = {0};
+      const cmeta_type_identity option_copy =
+          CMETA_TYPE_ID_APPLY_INIT(&cmeta_option_generic_desc, option_copy_args);
+      const cmeta_type_identity *pair_args[] = {&option_identity, &atom_b};
+      const cmeta_type_identity *pair_copy_args[] = {&option_copy, &atom_b};
+      const cmeta_type_identity *reversed_args[] = {&atom_b, &option_copy};
+      const cmeta_type_identity expected =
+          CMETA_TYPE_ID_APPLY_INIT(&cmeta_pair_generic_desc, pair_copy_args);
+      const cmeta_type_identity reversed =
+          CMETA_TYPE_ID_APPLY_INIT(&cmeta_pair_generic_desc, reversed_args);
+      cmeta_type_identity identity = {0};
+
+      check_true(schema_cmeta_generic_identity(&option_identity,
+                                               &cmeta_option_generic_desc,
+                                               option_args, 1u));
+      check_true(schema_cmeta_generic_identity(&identity, &cmeta_pair_generic_desc,
+                                               pair_args, 2u));
+      check_true(cmeta_type_identity_valid(&identity));
+      check_true(cmeta_type_identity_equal(&identity, &expected));
+      check_false(cmeta_type_identity_equal(&identity, &reversed));
+    }
+
+    it("enforces the canonical tuple upper arity bound") {
+      const cmeta_type_identity atom = CMETA_TYPE_ID_ATOM_INIT("schema.Value");
+      const cmeta_type_identity *args[17];
+      cmeta_type_identity identity = {0};
+      cmeta_type_identity original;
+      size_t i;
+      for (i = 0; i < sizeof(args) / sizeof(args[0]); ++i) args[i] = &atom;
+
+      check_true(schema_cmeta_generic_identity(&identity, &cmeta_tuple_generic_desc,
+                                               args, 16u));
+      check_true(cmeta_type_identity_valid(&identity));
+      check_equal(identity.arity, 16u);
+      original = identity;
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_tuple_generic_desc,
+                                                args, 17u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+    }
+
+    it("rejects invalid constructors arguments and arity without publishing output") {
       static const cmeta_type_identity atom =
           CMETA_TYPE_ID_ATOM_INIT("schema.Value");
       const cmeta_type_identity *one_arg[] = {&atom};
       cmeta_type_identity identity = CMETA_TYPE_ID_ATOM_INIT("sentinel.identity");
       cmeta_type_identity original = identity;
+      cmeta_generic_desc invalid_constructor = cmeta_option_generic_desc;
+      const cmeta_type_identity invalid_atom = CMETA_TYPE_ID_ATOM_INIT("");
+      const cmeta_type_identity *null_arg[] = {NULL};
+      const cmeta_type_identity *invalid_arg[] = {&invalid_atom};
+      const cmeta_type_identity *two_args[] = {&atom, &atom};
+      invalid_constructor.stable_id = "";
 
-      check_false(schema_cmeta_generic_identity(&identity, "result", one_arg, 1u));
+      check_false(schema_cmeta_generic_identity(&identity, NULL, one_arg, 1u));
       check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
-      check_false(schema_cmeta_generic_identity(&identity, "pair", one_arg, 1u));
+      check_false(schema_cmeta_generic_identity(&identity, &invalid_constructor,
+                                               one_arg, 1u));
       check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
-      check_false(schema_cmeta_generic_identity(&identity, "tuple", one_arg, 1u));
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_option_generic_desc,
+                                               null_arg, 1u));
       check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
-      check_false(schema_cmeta_generic_identity(&identity, "optional", NULL, 1u));
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_option_generic_desc,
+                                               invalid_arg, 1u));
       check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
-      check_false(schema_cmeta_generic_identity(NULL, "optional", one_arg, 1u));
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_option_generic_desc,
+                                               NULL, 0u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_option_generic_desc,
+                                               two_args, 2u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_result_generic_desc,
+                                               one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_pair_generic_desc,
+                                               one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_tuple_generic_desc,
+                                               one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, &cmeta_option_generic_desc,
+                                               NULL, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(NULL, &cmeta_option_generic_desc,
+                                               one_arg, 1u));
     }
   }
 }
