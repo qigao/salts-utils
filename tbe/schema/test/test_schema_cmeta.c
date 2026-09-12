@@ -25,6 +25,12 @@ extern int schema_cmeta_enum_data(cmeta_data_desc *out_data,
                                   const cmeta_type_desc *storage_type,
                                   const cmeta_enum_desc *meta);
 
+/* RED contract for canonical finite-generic semantic lowering. */
+extern int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,
+                                         const char *semantic,
+                                         const cmeta_type_identity *const *args,
+                                         size_t arity);
+
 static void check_fixed_width_descriptor(const char *name,
                                          const char *stable_id,
                                          cmeta_data_kind kind,
@@ -203,6 +209,58 @@ suite("schema_cmeta") {
       check_true(memcmp(&data, &original, sizeof(data)) == 0);
       check_true(memcmp(&enum_shape, &original_enum_shape,
                         sizeof(enum_shape)) == 0);
+    }
+  }
+
+  describe("canonical value generic lowering") {
+    it("lowers option pair and tuple through CMeta semantic applications") {
+      static const cmeta_type_identity atom_a =
+          CMETA_TYPE_ID_ATOM_INIT("schema.A");
+      static const cmeta_type_identity atom_b =
+          CMETA_TYPE_ID_ATOM_INIT("schema.B");
+      const cmeta_type_identity *option_args[] = {&atom_a};
+      const cmeta_type_identity *pair_args[] = {&atom_a, &atom_b};
+      const cmeta_type_identity *tuple_args[] = {&atom_a, &atom_b, &atom_a};
+      cmeta_type_identity option_identity = {0};
+      cmeta_type_identity pair_identity = {0};
+      cmeta_type_identity tuple_identity = {0};
+
+      check_true(schema_cmeta_generic_identity(&option_identity, "optional",
+                                               option_args, 1u));
+      check_true(cmeta_type_identity_valid(&option_identity));
+      check_true(strcmp(option_identity.constructor->stable_id, "cmeta.Option") == 0);
+      check_equal(option_identity.arity, 1u);
+      check_true(cmeta_type_identity_equal(option_identity.args[0], &atom_a));
+
+      check_true(schema_cmeta_generic_identity(&pair_identity, "pair",
+                                               pair_args, 2u));
+      check_true(cmeta_type_identity_valid(&pair_identity));
+      check_true(strcmp(pair_identity.constructor->stable_id, "cmeta.Pair") == 0);
+      check_equal(pair_identity.arity, 2u);
+
+      check_true(schema_cmeta_generic_identity(&tuple_identity, "tuple",
+                                               tuple_args, 3u));
+      check_true(cmeta_type_identity_valid(&tuple_identity));
+      check_true(strcmp(tuple_identity.constructor->stable_id, "cmeta.Tuple") == 0);
+      check_equal(tuple_identity.arity, 3u);
+    }
+
+    it("rejects unsupported generic semantics and invalid arity without publishing output") {
+      static const cmeta_type_identity atom =
+          CMETA_TYPE_ID_ATOM_INIT("schema.Value");
+      const cmeta_type_identity *one_arg[] = {&atom};
+      cmeta_type_identity identity = CMETA_TYPE_ID_ATOM_INIT("sentinel.identity");
+      cmeta_type_identity original = identity;
+
+      check_false(schema_cmeta_generic_identity(&identity, "result", one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, "pair", one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, "tuple", one_arg, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(&identity, "optional", NULL, 1u));
+      check_true(memcmp(&identity, &original, sizeof(identity)) == 0);
+      check_false(schema_cmeta_generic_identity(NULL, "optional", one_arg, 1u));
     }
   }
 }
