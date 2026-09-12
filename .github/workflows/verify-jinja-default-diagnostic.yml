@@ -1,0 +1,90 @@
+name: Verify Jinja default diagnostic
+on:
+  push:
+    branches: [fix/ci-re2c-4.6]
+    paths: ['jinja/**', '.github/workflows/verify-jinja-default-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  jinja:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ASAN_OPTIONS: detect_leaks=1:detect_odr_violation=2:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: d8b3583ceb2f557638a9b2e70487089bc4d2f39f
+          path: salts
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          path: vcpkg
+          persist-credentials: false
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/jinja-diagnostic-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/jinja-diagnostic-evidence/head.txt"
+          test "$(git -C salts rev-parse HEAD)" = d8b3583ceb2f557638a9b2e70487089bc4d2f39f
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+      - name: Install re2c 4.6
+        shell: bash
+        run: bash cmake/ci/install-re2c.sh
+      - name: Install pinned Core
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/linux-gcc-debug --target install -j2
+          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+      - name: Configure sanitized Utils
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Run native lowering regression
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target test_jinja_native_functions_lowering -j2
+          ctest --test-dir build/linux-gcc-debug/jinja --no-tests=error \
+            -R '^test_jinja_native_functions_lowering$' --output-on-failure \
+            --output-junit "$RUNNER_TEMP/jinja-diagnostic-evidence/lowering.xml"
+      - name: Run complete Jinja suite
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target jinja/all -j2
+          ctest --test-dir build/linux-gcc-debug/jinja --no-tests=error --output-on-failure \
+            --output-junit "$RUNNER_TEMP/jinja-diagnostic-evidence/jinja.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jinja-default-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/jinja-diagnostic-evidence/
+            build/linux-gcc-debug/jinja/Testing/Temporary/
