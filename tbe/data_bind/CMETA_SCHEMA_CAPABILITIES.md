@@ -20,8 +20,8 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | signed integers | `CMETA_DATA_SINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Schema width lowers to the exact 8/16/32/64-bit descriptor; never use platform `long` for schema `int64`. |
 | unsigned integers | `CMETA_DATA_UINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Width is part of the native storage contract. |
 | `float` / `f32`, `double` / `f64` | `CMETA_DATA_FLOAT` | `cmeta_data_float` / `cmeta_data_double` | descriptor helper | Aliases reuse the corresponding canonical CMeta storage type and 32/64-bit float shape. |
-| `string` | `CMETA_DATA_STRING` | storage-specific CMeta buffer adapter required | kind only; storage lowering pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
-| `bytes` | `CMETA_DATA_BYTES` | storage-specific CMeta buffer adapter required | kind only; storage lowering pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
+| `string` | `CMETA_DATA_STRING` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
+| `bytes` | `CMETA_DATA_BYTES` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
 | `uuid` | custom canonical data descriptor | `salts_uuid_cmeta_data` | descriptor helper | Use Salts canonical UUID descriptor; do not manufacture a DataBind UUID descriptor. |
 | message / record | `CMETA_DATA_STRUCT` | schema-lowered `cmeta_data_struct_shape` + native/dynamic storage descriptor | target | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
 | enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | target | Flags require explicit schema/wire semantics; structural enum identity belongs to CMeta. |
@@ -38,6 +38,23 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
 
 The scalar helper regression coverage is in `tbe/schema/test/test_schema_cmeta.c`: exact-width integer aliases and UUID, canonical bool storage, float/f32 and double/f64 storage and bit widths, descriptor/kind agreement, invalid names, and the string/bytes storage-selection boundary. These helper tests do not close the production migration gates below.
+
+## Internal buffer lowering
+
+`schema_cmeta_buffer_data` in `tbe/schema/src/schema_cmeta_buffer.h` is an internal, non-installed builder for #45. The caller supplies STRING/BYTES semantics and a complete storage type, buffer shape and adapter. CMeta validates semantic type identity, exact layout, callbacks and ownership agreement before the caller-owned descriptor is published. Invalid inputs and custom ownership return zero without changing the output. No new type/ownership enum, allocator, buffer callback or fallback is introduced.
+
+The descriptor borrows all input metadata; names, type, shape and ops must remain immutable and outlive its use. Construction allocates no buffer and invokes no provider callback. Runtime storage remains governed by its provider:
+
+| Explicit profile | Storage provider | Runtime lifetime |
+| --- | --- | --- |
+| STRING or BYTES, owned | `salts_tstr_cmeta_buffer_ops` | NULL zero state; assignment copies exact bytes, including NUL; restore frees and resets. |
+| STRING or BYTES, borrowed | `salts_vstr_cmeta_buffer_ops` | `{NULL, 0}` zero state; assignment borrows without extending source lifetime; restore clears without freeing source bytes. |
+
+CBind accepts borrowed input only under its stable-view contract; a transient view is rejected, never converted to owned storage. Buffer byte quotas and semantic-zero rollback remain CBind/CMeta responsibilities. A read view expires when its provider storage changes or is released; borrowed source bytes must remain alive throughout use.
+
+`tbe/schema/test/test_schema_cmeta_buffer.c` exercises both semantics with both providers through real CBind decode, metadata-copy identity, invalid mappings, embedded NUL, empty values, byte limits, occupied destinations and owned-field rollback after borrowed-field failure. It runs within `test_schema_cmeta`; only that test target links CBind. The schema library's dependency/export closure is unchanged.
+
+This is a descriptor-building and CBind-consumption foundation, not production schema graph integration, generated/runtime mapping convergence, typed encoding or dynamic-storage replacement. Name-only `schema_cmeta_builtin_data("string"/"bytes")` still returns NULL. Public API review and the remaining #45 gates are not bypassed by this private helper.
 
 ## DataBindValueKind compatibility mapping
 

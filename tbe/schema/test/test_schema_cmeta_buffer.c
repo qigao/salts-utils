@@ -1,20 +1,12 @@
 #include "tinytest.h"
 #include "schema_cmeta.h"
+#include "../src/schema_cmeta_buffer.h"
 
 #include <cbind/cbind.h>
 #include <salts_cmeta_data.h>
 
 #include <stddef.h>
 #include <string.h>
-
-/* Test-first declaration; the implementation belongs to the private schema layer. */
-int schema_cmeta_buffer_data(cmeta_data_desc *out_data,
-                             const char *stable_id,
-                             const char *display_name,
-                             cmeta_data_kind kind,
-                             const cmeta_type_desc *storage_type,
-                             const cmeta_data_buffer_shape *shape,
-                             const cmeta_data_buffer_ops *ops);
 
 #define COUNT_OF(items_) (sizeof(items_) / sizeof((items_)[0]))
 #define SLICE_TOKEN(kind_, data_, size_, flags_) \
