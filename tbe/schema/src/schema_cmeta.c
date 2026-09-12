@@ -73,6 +73,10 @@ static const schema_cmeta_kind_entry_t SCHEMA_CMETA_KINDS[] = {
     {"map", CMETA_DATA_MAP},
 };
 
+static int schema_cmeta_nonempty(const char *text) {
+    return text != NULL && text[0] != '\0';
+}
+
 const cmeta_data_desc *schema_cmeta_builtin_data(const char *name) {
     size_t i;
 
@@ -95,4 +99,76 @@ int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
         }
     }
     return 0;
+}
+
+int schema_cmeta_struct_data(cmeta_data_desc *out_data,
+                             cmeta_data_struct_shape *out_shape,
+                             const char *stable_id,
+                             const char *display_name,
+                             const cmeta_type_desc *storage_type,
+                             const cmeta_struct_desc *layout,
+                             const cmeta_data_field_desc *fields,
+                             size_t field_count) {
+    cmeta_data_struct_shape shape;
+    cmeta_data_desc data;
+
+    if (out_data == NULL || out_shape == NULL ||
+        !schema_cmeta_nonempty(stable_id) || !schema_cmeta_nonempty(display_name) ||
+        storage_type == NULL || layout == NULL)
+        return 0;
+
+    shape.layout = layout;
+    shape.fields = fields;
+    shape.field_count = field_count;
+    data.struct_size = sizeof(data);
+    data.abi_version = CMETA_DATA_DESC_ABI_VERSION;
+    data.stable_id = stable_id;
+    data.display_name = display_name;
+    data.kind = CMETA_DATA_STRUCT;
+    data.storage_type = storage_type;
+    data.shape = &shape;
+    data.buffer_ops = NULL;
+    data.enum_ops = NULL;
+    data.variant_ops = NULL;
+
+    if (!cmeta_data_desc_valid(&data)) return 0;
+
+    *out_shape = shape;
+    data.shape = out_shape;
+    *out_data = data;
+    return 1;
+}
+
+int schema_cmeta_enum_data(cmeta_data_desc *out_data,
+                           cmeta_data_enum_shape *out_shape,
+                           const char *stable_id,
+                           const char *display_name,
+                           const cmeta_type_desc *storage_type,
+                           const cmeta_enum_desc *meta) {
+    cmeta_data_enum_shape shape;
+    cmeta_data_desc data;
+
+    if (out_data == NULL || out_shape == NULL ||
+        !schema_cmeta_nonempty(stable_id) || !schema_cmeta_nonempty(display_name) ||
+        storage_type == NULL || meta == NULL)
+        return 0;
+
+    shape.meta = meta;
+    data.struct_size = sizeof(data);
+    data.abi_version = CMETA_DATA_DESC_ABI_VERSION;
+    data.stable_id = stable_id;
+    data.display_name = display_name;
+    data.kind = CMETA_DATA_ENUM;
+    data.storage_type = storage_type;
+    data.shape = &shape;
+    data.buffer_ops = NULL;
+    data.enum_ops = NULL;
+    data.variant_ops = NULL;
+
+    if (!cmeta_data_desc_valid(&data)) return 0;
+
+    *out_shape = shape;
+    data.shape = out_shape;
+    *out_data = data;
+    return 1;
 }
