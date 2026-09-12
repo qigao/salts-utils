@@ -53,11 +53,21 @@ static const schema_cmeta_builtin_entry_t SCHEMA_CMETA_BUILTINS[] = {
 
 #undef SCHEMA_CMETA_ENTRY
 
-/* These names classify storage-independent semantics only. Builtin scalar
- * kinds come from the same provider descriptors used by production consumers. */
-static const schema_cmeta_kind_entry_t SCHEMA_CMETA_KIND_ONLY[] = {
+static const schema_cmeta_kind_entry_t SCHEMA_CMETA_KINDS[] = {
+    {"bool", CMETA_DATA_BOOL},
+    {"int8_t", CMETA_DATA_SINT}, {"int8", CMETA_DATA_SINT}, {"i8", CMETA_DATA_SINT},
+    {"int16_t", CMETA_DATA_SINT}, {"int16", CMETA_DATA_SINT}, {"i16", CMETA_DATA_SINT},
+    {"int32_t", CMETA_DATA_SINT}, {"int32", CMETA_DATA_SINT}, {"i32", CMETA_DATA_SINT},
+    {"int64_t", CMETA_DATA_SINT}, {"int64", CMETA_DATA_SINT}, {"i64", CMETA_DATA_SINT},
+    {"uint8_t", CMETA_DATA_UINT}, {"uint8", CMETA_DATA_UINT}, {"u8", CMETA_DATA_UINT},
+    {"byte", CMETA_DATA_UINT},
+    {"uint16_t", CMETA_DATA_UINT}, {"uint16", CMETA_DATA_UINT}, {"u16", CMETA_DATA_UINT},
+    {"uint32_t", CMETA_DATA_UINT}, {"uint32", CMETA_DATA_UINT}, {"u32", CMETA_DATA_UINT},
+    {"uint64_t", CMETA_DATA_UINT}, {"uint64", CMETA_DATA_UINT}, {"u64", CMETA_DATA_UINT},
+    {"float", CMETA_DATA_FLOAT}, {"f32", CMETA_DATA_FLOAT},
+    {"double", CMETA_DATA_FLOAT}, {"f64", CMETA_DATA_FLOAT},
     {"string", CMETA_DATA_STRING}, {"bytes", CMETA_DATA_BYTES},
-    {"datetime", CMETA_DATA_CUSTOM},
+    {"uuid", CMETA_DATA_CUSTOM}, {"datetime", CMETA_DATA_CUSTOM},
     {"date", CMETA_DATA_CUSTOM}, {"time", CMETA_DATA_CUSTOM},
     {"duration", CMETA_DATA_CUSTOM}, {"decimal", CMETA_DATA_CUSTOM},
     {"bigint", CMETA_DATA_CUSTOM}, {"money", CMETA_DATA_CUSTOM},
@@ -84,18 +94,12 @@ const cmeta_data_desc *schema_cmeta_builtin_data(const char *name) {
 }
 
 int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
-    const cmeta_data_desc *data;
     size_t i;
 
     if (semantic == NULL || out_kind == NULL) return 0;
-    data = schema_cmeta_builtin_data(semantic);
-    if (data != NULL) {
-        *out_kind = data->kind;
-        return 1;
-    }
-    for (i = 0; i < sizeof(SCHEMA_CMETA_KIND_ONLY) / sizeof(SCHEMA_CMETA_KIND_ONLY[0]); ++i) {
-        if (strcmp(semantic, SCHEMA_CMETA_KIND_ONLY[i].name) == 0) {
-            *out_kind = SCHEMA_CMETA_KIND_ONLY[i].kind;
+    for (i = 0; i < sizeof(SCHEMA_CMETA_KINDS) / sizeof(SCHEMA_CMETA_KINDS[0]); ++i) {
+        if (strcmp(semantic, SCHEMA_CMETA_KINDS[i].name) == 0) {
+            *out_kind = SCHEMA_CMETA_KINDS[i].kind;
             return 1;
         }
     }

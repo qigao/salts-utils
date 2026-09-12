@@ -22,7 +22,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | `float` / `f32`, `double` / `f64` | `CMETA_DATA_FLOAT` | `cmeta_data_float` / `cmeta_data_double` | descriptor helper | Aliases reuse the corresponding canonical CMeta storage type and 32/64-bit float shape. |
 | `string` | `CMETA_DATA_STRING` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
 | `bytes` | `CMETA_DATA_BYTES` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
-| `uuid` | custom canonical data descriptor | `salts_uuid_cmeta_data` | descriptor helper | Use Salts canonical UUID descriptor; do not manufacture a DataBind UUID descriptor. |
+| `uuid` | domain classification: `CMETA_DATA_CUSTOM`; canonical adapter: `CMETA_DATA_STRING` | `salts_uuid_cmeta_data` | descriptor helper; classification convergence pending | Native storage identity is `salts.uuid`. STRING describes the UUID text adapter, not generic string storage; do not manufacture a DataBind UUID descriptor. |
 | message / record | `CMETA_DATA_STRUCT` | schema-lowered `cmeta_data_struct_shape` + native/dynamic storage descriptor | target | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
 | enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | production integer-domain normalization; enum graph pending | The parser consumes canonical integer descriptors for underlying width/signedness. Flags wire semantics stay in schema; native enum metadata/adapter lowering remains pending. |
 | union / oneof | `CMETA_DATA_VARIANT` | CMeta variant descriptor/adapter | gated | Enable only after the schema discriminator/wire representation is frozen. CMeta data-level Variant support exists even though higher-level CMeta DSL syntax may remain intentionally limited. |
@@ -45,7 +45,7 @@ The real `parse_schema` path calls `schema_validate_enums` before publishing a r
 
 Wire reader names, host-language spellings, declaration order, flags progression and literal/duplicate rules remain schema concerns. A canonical descriptor is borrowed, not copied or freed; no native enum object or callback is created. Unsupported noninteger descriptors and storage-unselected semantics still produce the existing semantic diagnostic before replacing the caller's root.
 
-`schema_cmeta_data_kind` now obtains builtin scalar kinds from those same descriptors. The remaining name-to-kind entries classify only semantics without a builtin storage descriptor; they do not select a storage profile. The accepted name domain and reject-without-publish behavior are unchanged.
+The name-level semantic classifier is unchanged by this slice. In particular, `schema_cmeta_data_kind("uuid")` classifies the domain scalar as `CMETA_DATA_CUSTOM`, while Core's canonical UUID descriptor uses `CMETA_DATA_STRING` for its text adapter over fixed UUID storage. Classification convergence remains tracked by #45: an unconditional copy of `data.kind` would conflate these contracts. No UUID-specific fallback or alternate storage descriptor is added.
 
 `tbe/schema/test/test_schema_enum_conformance.c` exercises the actual parser for all 25 integer aliases: exact signed/unsigned limits, enum and flags declaration order, adjacent out-of-domain rejection, noninteger rejection, and preservation of an existing enum/message graph after a later enum fails. Independent decimal literals prevent the range oracle from repeating the implementation's width arithmetic.
 
@@ -84,7 +84,7 @@ DOUBLE   -> CMETA_DATA_FLOAT
 BOOL     -> CMETA_DATA_BOOL
 STRING   -> CMETA_DATA_STRING
 BYTES    -> CMETA_DATA_BYTES
-UUID     -> CMETA_DATA_CUSTOM (canonical Salts UUID descriptor at descriptor level)
+UUID     -> CMETA_DATA_CUSTOM (domain classification; canonical UUID text adapter uses CMETA_DATA_STRING)
 DATETIME -> CMETA_DATA_CUSTOM
 DATE     -> CMETA_DATA_CUSTOM
 TIME     -> CMETA_DATA_CUSTOM
