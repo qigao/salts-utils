@@ -47,6 +47,14 @@ Wire octets, reader names and host-language projections remain explicit schema r
 
 `tbe/schema/test/test_schema_cmeta_profiles.c` checks the 30 aliases, canonical native identity/kind, exact wire projections, BOOL/byte separation, unsupported names, and the real `parse_schema` path's spelling, offsets, fixed widths and numeric annotations. The shared profile no longer stores `is_integer`/`is_unsigned`/`is_float`. Grammar numeric annotations and DataBind runtime metadata initialization derive those properties from the borrowed descriptor's `kind`; runtime metadata remains a derived cache, not another independent type classifier. The profile test consumes the returned descriptor directly and checks its kind, semantic native identity, layout and stable data identity. Wire annotations and the separate UUID domain classifier retain their existing semantics. This shared profile selection does not complete structural reflection, buffers, containers or generated/native binding convergence.
 
+## Production compiler scalar projections
+
+`compiler_core.c` resolves builtin scalar names through `schema_cmeta_builtin_data`, matching canonical data kind and semantic native identity to 11 backend projection records. Its former integer-kind enum and 25-entry alias table are removed. These records store only emitted C/C++/Go/TypeScript/Python/Rust/RFL spellings and the existing typed-binding tag; they do not define an alternate runtime type identity. Enum storage lookup accepts only SINT/UINT projections.
+
+The actual parser-to-compiler annotation path now treats `f32` as `float` and `f64` as `double`, including list/set elements and map values, while leaving the schema's original `type` spelling and wire layout unchanged. BOOL retains its existing backend-specific representation, including `uint8_t` storage for generated C, without becoming UINT. UUID and string/bytes retain their existing explicit backend mappings; no buffer ownership is inferred.
+
+`tbe/tbe_compiler/test_scalar_projection.c` covers all 25 integer aliases, independent floating backend expectations, source spelling, typed metadata and collection-element projections through `parse_schema` followed by `tbe_compiler_annotate_language_types`. Annotation conformance is not by itself proof that every generated language consumer compiles or that all container/struct storage has migrated to CMeta. Generated native descriptors and the full structural reflection graph remain separate #45 gates.
+
 ## Production enum/flags normalization
 
 The real `parse_schema` path calls `schema_validate_enums` before publishing a replacement schema root. That validator resolves the declared integer name through `schema_cmeta_builtin_data`, validates the descriptor with CMeta, and derives signedness from `data.kind` and width from `cmeta_data_integer_shape.bits`. It no longer reads the parser builtin table's `size`/`is_unsigned`/`is_integer` fields for enum normalization or range checks.
