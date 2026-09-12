@@ -1,6 +1,6 @@
 # DataBind / TBE schema to CMeta capability matrix
 
-Status: design baseline for #45. This document is normative for the DataBind convergence work; implementation must not add a second DataBind-private type universe where CMeta already provides the structural/data semantic.
+Status: incremental implementation for #45. This document is normative for the DataBind convergence work; implementation must not add a second DataBind-private type universe where CMeta already provides the structural/data semantic. Production schema/reflection graph migration remains incomplete.
 
 ## Ownership rule
 
@@ -12,15 +12,17 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 
 ## Current lowering matrix
 
+`descriptor helper` means `schema_cmeta_builtin_data` resolves the listed names to an immutable, provider-owned descriptor; callers borrow it and must not free it. This status does **not** mean the production schema/reflection graph, generated binding, or dynamic storage path has migrated. `kind only` means classification is available but a concrete storage descriptor has not been selected: successful `schema_cmeta_data_kind` is not evidence of descriptor lowering.
+
 | Schema / DataBind family | Canonical CMeta data semantic | Storage/type source | Status | Notes |
 | --- | --- | --- | --- | --- |
-| `bool` | `CMETA_DATA_BOOL` | CMeta bool descriptor | supported | No DataBind-private boolean kind is needed beyond compatibility APIs. |
-| signed integers | `CMETA_DATA_SINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | supported substrate | Schema width must lower to the exact 8/16/32/64-bit descriptor; never use platform `long` for schema `int64`. |
-| unsigned integers | `CMETA_DATA_UINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | supported substrate | Width is part of the native storage contract. |
-| floating point | `CMETA_DATA_FLOAT` | CMeta float/double descriptors | supported substrate | Schema float width must remain explicit. |
-| `string` | `CMETA_DATA_STRING` | storage-specific CMeta buffer adapter | supported substrate | Ownership/borrowed lifetime belongs to the storage adapter, not schema. |
-| `bytes` | `CMETA_DATA_BYTES` | storage-specific CMeta buffer adapter | supported substrate | Same ownership rule as string. |
-| `uuid` | string-like custom canonical data descriptor | `salts_uuid_cmeta_data` | supported substrate | Use Salts canonical UUID descriptor; do not manufacture a DataBind UUID descriptor. |
+| `bool` | `CMETA_DATA_BOOL` | `cmeta_data_bool` / `cmeta_type_bool` | descriptor helper | Reuses canonical CMeta boolean storage; no DataBind-private descriptor. |
+| signed integers | `CMETA_DATA_SINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Schema width lowers to the exact 8/16/32/64-bit descriptor; never use platform `long` for schema `int64`. |
+| unsigned integers | `CMETA_DATA_UINT` | `salts_cmeta_fixed_width.h` exact-width descriptors | descriptor helper | Width is part of the native storage contract. |
+| `float` / `f32`, `double` / `f64` | `CMETA_DATA_FLOAT` | `cmeta_data_float` / `cmeta_data_double` | descriptor helper | Aliases reuse the corresponding canonical CMeta storage type and 32/64-bit float shape. |
+| `string` | `CMETA_DATA_STRING` | storage-specific CMeta buffer adapter required | kind only; storage lowering pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
+| `bytes` | `CMETA_DATA_BYTES` | storage-specific CMeta buffer adapter required | kind only; storage lowering pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
+| `uuid` | custom canonical data descriptor | `salts_uuid_cmeta_data` | descriptor helper | Use Salts canonical UUID descriptor; do not manufacture a DataBind UUID descriptor. |
 | message / record | `CMETA_DATA_STRUCT` | schema-lowered `cmeta_data_struct_shape` + native/dynamic storage descriptor | target | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
 | enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | target | Flags require explicit schema/wire semantics; structural enum identity belongs to CMeta. |
 | union / oneof | `CMETA_DATA_VARIANT` | CMeta variant descriptor/adapter | gated | Enable only after the schema discriminator/wire representation is frozen. CMeta data-level Variant support exists even though higher-level CMeta DSL syntax may remain intentionally limited. |
@@ -34,6 +36,8 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | datetime/date/time/duration | custom schema scalar over CMeta data/storage descriptor | Salts temporal storage descriptors when available | gap | Today these exist as DataBind value kinds. Convergence must define canonical CMeta descriptors instead of preserving permanent DataBind-only identities. |
 | decimal/money/bigint | custom schema scalar over CMeta data/storage descriptor | canonical numeric/domain descriptor required | gap | Do not map these to platform integers/floats by approximation. |
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
+
+The scalar helper regression coverage is in `tbe/schema/test/test_schema_cmeta.c`: exact-width integer aliases and UUID, canonical bool storage, float/f32 and double/f64 storage and bit widths, descriptor/kind agreement, invalid names, and the string/bytes storage-selection boundary. These helper tests do not close the production migration gates below.
 
 ## DataBindValueKind compatibility mapping
 

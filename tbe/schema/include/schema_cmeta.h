@@ -13,9 +13,14 @@ extern "C" {
  * descriptor. Returns NULL when the name is not a builtin with a canonical
  * descriptor.
  *
- * Integer aliases always resolve to exact-width descriptors. UUID resolves to
- * the process-wide salts_uuid_cmeta_data descriptor. No DataBind-private
- * descriptor is created by this API.
+ * Integer aliases always resolve to exact-width descriptors. bool uses CMeta's
+ * native boolean descriptor; float/f32 and double/f64 use its respective native
+ * float/double storage and 32/64-bit shapes. UUID resolves to the process-wide
+ * salts_uuid_cmeta_data descriptor. No DataBind-private descriptor is created.
+ * The returned descriptor is immutable provider-owned storage; do not free it.
+ *
+ * string and bytes require an explicit storage/ownership choice and return NULL
+ * here. Successful kind classification does not imply descriptor availability.
  */
 const cmeta_data_desc *schema_cmeta_builtin_data(const char *name);
 
