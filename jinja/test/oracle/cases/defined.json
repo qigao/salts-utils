@@ -1,0 +1,11 @@
+[
+  {
+    "name": "defined_undefined_none_and_is_not",
+    "template": "{{ missing is defined }}|{{ missing is undefined }}|{{ none is defined }}|{{ none is undefined }}|{{ none is none }}|{{ missing is not none }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "False|True|True|False|True|True"
+    }
+  }
+]

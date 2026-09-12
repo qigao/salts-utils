@@ -1,0 +1,12 @@
+[
+  {
+    "name": "mixed_scalar_ordering_is_runtime_error",
+    "template": "{{ '1' < 1 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

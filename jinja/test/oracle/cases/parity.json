@@ -1,0 +1,18 @@
+[
+  {
+    "name": "parity_tests_accept_signed_floats_and_booleans",
+    "template": "{{ -3 is odd }}|{{ -4 is even }}|{{ -3.0 is odd }}|{{ -1.5 is odd }}|{{ true is odd }}|{{ false is even }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|False|True|True"
+    }
+  },
+  {
+    "name": "parity_tests_reject_nonfinite_matches",
+    "template": "{{ 1e400 is odd }}|{{ 1e400 is even }}|{{ (1e400-1e400) is odd }}|{{ (1e400-1e400) is even }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False|False"
+    }
+  }
+]

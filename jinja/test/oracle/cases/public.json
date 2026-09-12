@@ -1,0 +1,19 @@
+[
+  {
+    "name": "public_with_loop_store_before_read",
+    "template": "{% for i in [1] %}{% with loop=3 %}{{false and loop.cycle(7)}}{{false and loop.changed(7)}}{% endwith %}{{loop.cycle(7)}}{{loop.changed(7)}}{% endfor %}",
+    "expected": {
+      "status": "error",
+      "category": "undefined",
+      "type": "UndefinedError"
+    }
+  },
+  {
+    "name": "public_with_loop_read_before_store",
+    "template": "{% for i in [1] %}{{loop.index}}{% with loop=3 %}{{false and loop.cycle(7)}}{{false and loop.changed(7)}}{% endwith %}{{loop.cycle(7)}}{{loop.changed(7)}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "1FalseFalse7True"
+    }
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "name": "constant_slice_float_bound_folds_to_undefined",
+    "template": "{{ [0,1,2][1.0:] }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": ""
+    }
+  }
+]

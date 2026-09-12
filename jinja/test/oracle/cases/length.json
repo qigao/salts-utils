@@ -1,0 +1,15 @@
+[
+  {
+    "name": "length_filters_in_interpolation_and_conditions",
+    "template": "{{ 'A中😀é'|length }}|{{ [1,2]|count }}|{{ {'a':1,'a':2}|length }}|{{ range(7)|length }}|{% if user.name|length == 3 %}yes{% endif %}|{{ missing|length }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "5|2|1|7|yes|0"
+    }
+  }
+]

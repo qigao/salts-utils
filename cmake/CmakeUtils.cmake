@@ -52,7 +52,7 @@ endfunction()
 function(cmake_add_grammar TARGET_NAME)
   set(options LEXER_DEPENDS_ON_GRAMMAR)
   set(oneValueArgs LEXER_RE GRAMMAR_Y FOLDER LEXER_OUTPUT)
-  set(multiValueArgs LEXER_DEPENDS)
+  set(multiValueArgs LEXER_DEPENDS LEXER_OPTIONS)
   cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   string(TOLOWER "${TARGET_NAME}" target_name_lower)
 
@@ -87,7 +87,7 @@ function(cmake_add_grammar TARGET_NAME)
     endif()
     add_custom_command(
       OUTPUT ${LEXER_GEN}
-      COMMAND ${RE2C_EXECUTABLE} -o ${LEXER_GEN} ${ARG_LEXER_RE}
+      COMMAND ${RE2C_EXECUTABLE} ${ARG_LEXER_OPTIONS} -o ${LEXER_GEN} ${ARG_LEXER_RE}
       DEPENDS ${lexer_depends}
       COMMENT "Generating ${TARGET_NAME} lexer with re2c"
       VERBATIM)

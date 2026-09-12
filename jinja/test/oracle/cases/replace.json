@@ -1,0 +1,106 @@
+[
+  {
+    "name": "replace_nonoverlap",
+    "template": "{{'aaaaa'|replace('aa','x')}}|{{'aaaaa'|replace('aa','x',1)}}",
+    "expected": {
+      "status": "ok",
+      "output": "xxa|xaaa"
+    }
+  },
+  {
+    "name": "replace_empty_unicode_boundaries",
+    "template": "{{'甲😀乙'|replace('','-',2)}}|{{''|replace('','x')}}",
+    "expected": {
+      "status": "ok",
+      "output": "-甲-😀乙|x"
+    }
+  },
+  {
+    "name": "replace_keyword_and_boolean_count",
+    "template": "{{'aba'|replace(new='X',old='a',count=none)}}|{{'aaa'|replace('a','b',false)}}|{{'aaa'|replace('a','b',true)}}",
+    "expected": {
+      "status": "ok",
+      "output": "XbX|aaa|baa"
+    }
+  },
+  {
+    "name": "replace_negative_count",
+    "template": "{{'aaa'|replace('a','b',-2)}}|{{'甲乙甲'|replace('甲','😀')}}",
+    "expected": {
+      "status": "ok",
+      "output": "bbb|😀乙😀"
+    }
+  },
+  {
+    "name": "replace_string_conversion",
+    "template": "{{none|replace('None',true)}}|{{12321|replace(2,none)}}|{{missing|replace('','x')}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|1None3None1|x"
+    }
+  },
+  {
+    "name": "replace_autoescape_off_drops_markup",
+    "template": "{% set r='<'|safe|replace('<','>') %}{{r}}|{{r is escaped}}",
+    "expected": {
+      "status": "ok",
+      "output": ">|False"
+    }
+  },
+  {
+    "name": "replace_ordinary_autoescape",
+    "template": "{% autoescape true %}{% set r='<'|replace('<','>') %}{{r}}|{{r is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "&gt;|False"
+    }
+  },
+  {
+    "name": "replace_safe_input",
+    "template": "{% autoescape true %}{% set r='<'|safe|replace('<','>') %}{{r}}|{{r is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "&gt;|True"
+    }
+  },
+  {
+    "name": "replace_safe_new_promotes_input",
+    "template": "{% autoescape true %}{% set r='<'|replace('<','>'|safe) %}{{r}}|{{r is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "&lt;|True"
+    }
+  },
+  {
+    "name": "replace_safe_old_promotes_input",
+    "template": "{% autoescape true %}{% set r='<'|replace('&lt;'|safe,'>') %}{{r}}|{{r is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "&gt;|True"
+    }
+  },
+  {
+    "name": "replace_safe_all",
+    "template": "{% autoescape true %}{% set r='<'|safe|replace('<'|safe,'>'|safe) %}{{r}}|{{r is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": ">|True"
+    }
+  },
+  {
+    "name": "replace_zero_count_and_deletion",
+    "template": "{% set r='甲😀乙'|replace('','-',0) %}{{r}}|{{'aaaa'|replace('aa','')}}",
+    "expected": {
+      "status": "ok",
+      "output": "甲😀乙|"
+    }
+  },
+  {
+    "name": "replace_chained_and_filter_block",
+    "template": "{% set r='a'|replace('a','b')|replace('b','<') %}{{r}}|{% filter replace('a','<') %}a{% endfilter %}",
+    "expected": {
+      "status": "ok",
+      "output": "<|<"
+    }
+  }
+]

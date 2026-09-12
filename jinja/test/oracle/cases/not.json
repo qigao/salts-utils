@@ -1,0 +1,13 @@
+[
+  {
+    "name": "not_before_parenthesis",
+    "template": "{% if not(active) %}inactive{% else %}active{% endif %}",
+    "context": {
+      "active": false
+    },
+    "expected": {
+      "status": "ok",
+      "output": "inactive"
+    }
+  }
+]

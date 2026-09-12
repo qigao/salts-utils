@@ -1,0 +1,50 @@
+[
+  {
+    "name": "shorthand_test_contextual_names",
+    "template": "{{ missing is equalto in }}|{{ missing is equalto if }}|{{ missing is equalto not }}|{{ missing is not equalto in }}|{{ missing is equalto in in [True] }}|{{ missing is equalto not in [True] }}|{{ missing is defined and true }}|{{ missing is defined or true }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|False|True|True|False|True"
+    }
+  },
+  {
+    "name": "shorthand_test_keyword_binding_postfix",
+    "template": "{% for in in [41] %}{{ 41 is eq in }}|{{ 42 is eq in }}{% endfor %}|{% for if in [user] %}{{ 42 is eq if.age }}{% endfor %}|{% for not in [{'age':42}] %}{{ 42 is eq not \t\n['age'] }}|{{ 41 is eq not.age }}{% endfor %}|{{ true or (missing is eq not.absent) }}",
+    "context": {
+      "user": {
+        "age": 42
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|True|False|True"
+    }
+  },
+  {
+    "name": "shorthand_test_if_is_argument_not_conditional",
+    "template": "{{ missing is defined if true else false }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "shorthand_test_not_name_arity",
+    "template": "{{ missing is defined not }}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "shorthand_test_not_name_undefined_postfix",
+    "template": "{{ missing is eq not['absent'] }}",
+    "expected": {
+      "status": "error",
+      "category": "undefined",
+      "type": "UndefinedError"
+    }
+  }
+]

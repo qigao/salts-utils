@@ -1,0 +1,27 @@
+{
+  "version": 6,
+  "include": ["../../../CMakeUserPresets.json"],
+  "configurePresets": [
+    {
+      "name": "installed-win-release-user",
+      "inherits": "win-release-user",
+      "binaryDir": "${sourceDir}/../../../build/jinja-install-consumer",
+      "environment": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/../../../vcpkg_installed",
+        "SALTS_UTILS_ROOT": "$env{PKG_ROOT}/salts-utils/release",
+        "PATH": "$env{SALTS_UTILS_ROOT}/bin${pathListSep}$env{SALTS_ROOT}/bin${pathListSep}$env{VCPKG_INSTALLED_DIR}/x64-windows/bin${pathListSep}$penv{PATH}"
+      },
+      "cacheVariables": {
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/../../..",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/../../../vcpkg-ports",
+        "PKG_CONFIG_EXECUTABLE": "$env{VCPKG_INSTALLED_DIR}/x64-windows/tools/pkgconf/pkgconf.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "installed-win-release-user", "configurePreset": "installed-win-release-user" }
+  ],
+  "testPresets": [
+    { "name": "installed-win-release-user", "configurePreset": "installed-win-release-user", "output": { "outputOnFailure": true } }
+  ]
+}

@@ -1,0 +1,64 @@
+[
+  {
+    "name": "logical_operators_return_selected_operand",
+    "template": "{{ 0 or 5 }}|{{ 'left' and 'right' }}|{{ '' or user.name }}|{{ user.name and user.age }}|{{ active and true }}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 37
+      },
+      "active": true
+    },
+    "expected": {
+      "status": "ok",
+      "output": "5|right|Ada|37|True"
+    }
+  },
+  {
+    "name": "logical_operator_precedence_and_grouping",
+    "template": "{{ false or true and false }}|{{ (false or true) and true }}|{{ not (false or true) }}|{{ not false and false or true }}|{{ not not user.name and 'yes' }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|True|False|True|yes"
+    }
+  },
+  {
+    "name": "logical_short_circuit_and_undefined",
+    "template": "{{ false and ('1' < 1) }}|{{ true or ('1' < 1) }}|{{ missing or 'fallback' }}|{{ missing and 'x' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "False|True|fallback|"
+    }
+  },
+  {
+    "name": "logical_conditions_resolve_loop_and_parent_scope",
+    "template": "{% for item in users %}{% if item.age >= 40 and user.age == 37 %}{{ item.name }}{% endif %}{% endfor %}|{% if users or active %}once{% endif %}",
+    "context": {
+      "user": {
+        "name": "root",
+        "age": 37
+      },
+      "active": false,
+      "users": [
+        {
+          "name": "Ada",
+          "age": 37
+        },
+        {
+          "name": "Lin",
+          "age": 42
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "Lin|once"
+    }
+  }
+]

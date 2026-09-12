@@ -1,0 +1,79 @@
+[
+  {
+    "name": "sequence_scalar_membership",
+    "template": "{{ 37 in ages }}|{{ 9 not in ages }}|{{ 'Ada' in names }}|{{ 'Max' in names }}|{{ 1 in empty }}",
+    "context": {
+      "ages": [
+        21,
+        37,
+        42
+      ],
+      "names": [
+        "Ada",
+        "Lin"
+      ],
+      "empty": []
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|False|False"
+    }
+  },
+  {
+    "name": "sequence_and_iterable_classification",
+    "template": "{{ missing is sequence }}|{{ missing is iterable }}|{{ user is sequence }}|{{ user is iterable }}|{{ user.name is sequence }}|{{ user.name is iterable }}|{{ 1 is sequence }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|True|False"
+    }
+  },
+  {
+    "name": "sequence_item_lookup_indices_and_chaining",
+    "template": "{{ users[0]['name'] }}|{{ users[-1]['name'] }}|{{ users[index]['age'] }}|{{ users[false]['name'] }}|<{{ users[9] }}>",
+    "context": {
+      "users": [
+        {
+          "name": "Ada",
+          "age": 37
+        },
+        {
+          "name": "Lin",
+          "age": 42
+        }
+      ],
+      "index": 1
+    },
+    "expected": {
+      "status": "ok",
+      "output": "Ada|Lin|42|Ada|<>"
+    }
+  },
+  {
+    "name": "sequence_slice_defaults_negative_bounds_and_steps",
+    "template": "{{ [0,1,2,3,4][1:4:2] }}|{{ (0,1,2,3)[::-1] }}|{{ [0,1,2][-99:99] }}|{{ [0,1,2][2:1] }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "[1, 3]|(3, 2, 1, 0)|[0, 1, 2]|[]"
+    }
+  },
+  {
+    "name": "sequence_condition_does_not_iterate_the_branch",
+    "template": "{% if users %}yes{% else %}no{% endif %}",
+    "context": {
+      "users": [
+        1,
+        2
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "yes"
+    }
+  }
+]

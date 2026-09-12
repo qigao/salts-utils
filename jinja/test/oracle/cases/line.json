@@ -1,0 +1,11 @@
+[
+  {
+    "name": "line_continuation_string_reference",
+    "template": "{{ 'a\\\nb' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "ab"
+    }
+  }
+]

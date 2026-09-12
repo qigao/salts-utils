@@ -1,0 +1,50 @@
+[
+  {
+    "name": "for_over_logical_sequence_expression",
+    "template": "{% for item in users or users %}[{{ item.name }}]{% else %}empty{% endfor %}",
+    "context": {
+      "users": [
+        {
+          "name": "Ada"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "[Ada][Lin]"
+    }
+  },
+  {
+    "name": "for_over_grouped_conditional_sequence_expression",
+    "template": "{% for item in (users if active else users) %}{{ item.name }}{% else %}empty{% endfor %}",
+    "context": {
+      "active": false,
+      "users": [
+        {
+          "name": "Ada"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "AdaLin"
+    }
+  },
+  {
+    "name": "for_expression_empty_else_branch",
+    "template": "{% for item in users or users %}{{ item.name }}{% else %}empty{% endfor %}",
+    "context": {
+      "users": []
+    },
+    "expected": {
+      "status": "ok",
+      "output": "empty"
+    }
+  }
+]

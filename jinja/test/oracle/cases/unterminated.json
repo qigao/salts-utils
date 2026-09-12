@@ -1,0 +1,12 @@
+[
+  {
+    "name": "unterminated_string_literal_is_syntax",
+    "template": "{{ 'open }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

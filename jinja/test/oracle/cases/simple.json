@@ -1,0 +1,11 @@
+[
+  {
+    "name": "simple_string_escape_set",
+    "template": "{{ '\\a\\b\\f\\r\\v\\\\\\'\\\"' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "\u0007\b\f\r\u000b\\'\""
+    }
+  }
+]

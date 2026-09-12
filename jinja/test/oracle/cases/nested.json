@@ -1,0 +1,69 @@
+[
+  {
+    "name": "nested_comparisons_and_chain_precedence",
+    "template": "{{ (user.age == 37) == true }}|{{ (missing == absent) == true }}|{{ (1 < 2) == (3 > 2) }}|{{ (1 < 2) < (2 < 1) }}|{{ not (1 < 2 < 3) }}",
+    "context": {
+      "user": {
+        "age": 37
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|False|False"
+    }
+  },
+  {
+    "name": "nested_loop_metadata_uses_nearest_loop",
+    "template": "{% for outer in [1, 2] %}O{{ loop.index }}:{% for inner in ['a', 'b'] %}{{ loop.index }}{{ inner }}{% endfor %};{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "O1:1a2b;O2:1a2b;"
+    }
+  },
+  {
+    "name": "nested_loop_neighbor_items_use_nearest_loop_and_restore_outer_loop",
+    "template": "{% for outer in [1, 2] %}O{{ outer }}({% for inner in ['a', 'b'] %}{{ loop.previtem }}>{{ inner }}>{{ loop.nextitem }};{% endfor %})[{{ loop.previtem }}>{{ outer }}>{{ loop.nextitem }}]{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "O1(>a>b;a>b>;)[>1>2]O2(>a>b;a>b>;)[1>2>]"
+    }
+  },
+  {
+    "name": "nested_loop_changed_state_is_isolated_and_outer_state_restored",
+    "template": "{% for outer in [1, 1] %}O{{ loop.changed(outer) }}:{% for inner in [1, 1, 2] %}{{ loop.changed(inner) }}{% endfor %}:{{ loop.changed(outer) }};{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "OTrue:TrueFalseTrue:False;OFalse:TrueFalseTrue:False;"
+    }
+  },
+  {
+    "name": "nested_collection_loop_preserves_outer_list_binding",
+    "template": "{% for outer in [[10]] %}{% for inner in outer %}{{ outer|length }}:{{ inner }}{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "1:10"
+    }
+  },
+  {
+    "name": "nested_collection_loop_preserves_outer_tuple_binding",
+    "template": "{% for outer in [(10,)] %}{% for inner in outer %}{{ outer|length }}:{{ inner }}{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "1:10"
+    }
+  },
+  {
+    "name": "nested_collection_loop_preserves_outer_dict_binding",
+    "template": "{% for outer in [{'a':10}] %}{% for inner in outer %}{{ outer|length }}:{{ inner }}{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "1:a"
+    }
+  }
+]

@@ -1,0 +1,88 @@
+[
+  {
+    "name": "list_literal_repr_and_nesting",
+    "template": "{{ [] | safe }}|{{ [1, True, None, 'Ada'] | safe }}|{{ [1, [2, 3],] | safe }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "[]|[1, True, None, 'Ada']|[1, [2, 3]]"
+    }
+  },
+  {
+    "name": "list_literal_truth_lookup_membership_and_equality",
+    "template": "{% if [] %}bad{% else %}empty{% endif %}|{% if [0] %}nonempty{% endif %}|{{ [10, 20][-1] }}|<{{ [10][4] }}>|{{ 2 in [1, 2, 3] }}|{{ 4 not in [1, 2, 3] }}|{{ [1, 2] == [1, 2] }}|{{ [1] != [2] }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "empty|nonempty|20|<>|True|True|True|True"
+    }
+  },
+  {
+    "name": "list_literal_tests_and_iteration",
+    "template": "{{ [] is sequence }}|{{ [1] is iterable }}|{{ [1] is mapping }}|{% for item in [user.name, users[1].name, 3] %}[{{ item }}]{% else %}empty{% endfor %}|{% for item in [] %}bad{% else %}empty{% endfor %}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      },
+      "users": [
+        {
+          "name": "A"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|False|[Ada][Lin][3]|empty"
+    }
+  },
+  {
+    "name": "list_lookup_evaluates_all_call_items_before_selection",
+    "template": "{% for item in [1] %}{{ [loop.changed(item), loop.changed(item)][0] }}:{{ loop.changed(item) }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True:False"
+    }
+  },
+  {
+    "name": "list_truthiness_still_evaluates_call_items",
+    "template": "{% for item in [1] %}{% if [loop.changed(item)] %}Y{% endif %}{{ loop.changed(item) }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "YFalse"
+    }
+  },
+  {
+    "name": "list_comparison_evaluates_items_before_length_check",
+    "template": "{% for item in [1] %}{{ [loop.changed(item)] == [] }}:{{ loop.changed(item) }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "False:False"
+    }
+  },
+  {
+    "name": "list_lookup_keeps_source_order_across_different_call_values",
+    "template": "{% for item in [1] %}{{ [loop.changed(item), loop.changed(item + 1)][0] }}:{{ loop.changed(item + 1) }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True:False"
+    }
+  },
+  {
+    "name": "list_filter_materializes_supported_iterables",
+    "template": "{{ (1,2)|list }}|{{ range(3)|list }}|{{ ('中😀'|list)[1] }}|{{ {'a':1,'b':2,'a':3}|list|length }}|{{ missing|list }}|{{ users|list }}",
+    "context": {
+      "users": []
+    },
+    "expected": {
+      "status": "ok",
+      "output": "[1, 2]|[0, 1, 2]|😀|2|[]|[]"
+    }
+  }
+]

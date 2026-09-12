@@ -1,0 +1,252 @@
+[
+  {
+    "name": "items_unique_keys_final_values_and_empty_inputs",
+    "template": "{% for pair in {'a':1,'b':2,'a':3}|items %}{{ pair[0] }}={{ pair[1] }};{% endfor %}|{{ {}|items|list }}|{{ missing|items|list }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a=3;b=2;|[]|[]"
+    }
+  },
+  {
+    "name": "items_generator_truth_and_type_are_not_list_semantics",
+    "template": "{{ {}|items is iterable }}|{{ {}|items is sequence }}|{{ {}|items is mapping }}|{% if {}|items %}truthy{% endif %}|{{ missing|items is defined }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|False|truthy|True"
+    }
+  },
+  {
+    "name": "items_defers_invalid_input_until_consumption",
+    "template": "{{ 1|items is iterable }}|{% if 1|items %}truthy{% endif %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|truthy"
+    }
+  },
+  {
+    "name": "items_invalid_input_fails_when_list_consumes_it",
+    "template": "{{ 1|items|list }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "items_generator_has_no_length",
+    "template": "{{ {}|items|length }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "items_generator_has_no_last_without_materialization",
+    "template": "{{ {'a':1}|items|last }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "items_generator_is_not_indexable",
+    "template": "{{ (dict_value|items)[0] is undefined }}",
+    "context": {
+      "dict_value": {
+        "a": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "items_yields_tuples_and_first_consumes_one",
+    "template": "{% set pairs = {'a':1,'b':2}|items %}{{ pairs|first }}|{{ pairs|list }}|{{ pairs|list }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "('a', 1)|[('b', 2)]|[]"
+    }
+  },
+  {
+    "name": "items_aliases_share_one_cursor",
+    "template": "{% set pairs = {'a':1,'b':2}|items %}{% set alias = pairs %}{{ alias|first }}|{{ pairs|first }}|{{ alias|first is undefined }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "('a', 1)|('b', 2)|True"
+    }
+  },
+  {
+    "name": "items_empty_loop_else_differs_from_truthiness",
+    "template": "{% if {}|items %}truthy{% endif %}|{% for pair in {}|items %}unexpected{% else %}empty{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "truthy|empty"
+    }
+  },
+  {
+    "name": "items_cursor_shared_through_collection_value_without_set",
+    "template": "{% for pairs in [{'a':1,'b':2}|items] %}{{ pairs|first }}|{{ pairs|first }}|{{ pairs|list }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "('a', 1)|('b', 2)|[]"
+    }
+  },
+  {
+    "name": "items_loop_neighbors_and_length_keep_every_pair",
+    "template": "{% for pair in {'a':1,'b':2}|items %}{{ loop.index }}/{{ loop.length }}:{{ loop.previtem|default('-') }}:{{ pair }}:{{ loop.nextitem|default('-') }};{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "1/2:-:('a', 1):('b', 2);2/2:('a', 1):('b', 2):-;"
+    }
+  },
+  {
+    "name": "items_loop_else_uses_original_entry_decision",
+    "template": "{% for pairs in [{'a':1,'b':2,'c':3}|items] %}{% for pair in pairs %}{{ pair[0] }}:{{ pairs|first|safe }};{% else %}empty{% endfor %}|{{ pairs|list }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a:('b', 2);c:;|[]"
+    }
+  },
+  {
+    "name": "items_loop_nextitem_advances_source_but_keeps_cached_item",
+    "template": "{% for pairs in [{'a':1,'b':2,'c':3}|items] %}{% for pair in pairs %}{{ pair[0] }}:{{ loop.nextitem|safe }}:{{ pairs|first|safe }};{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a:('b', 2):('c', 3);b::;"
+    }
+  },
+  {
+    "name": "items_loop_length_drains_source_into_loop_cache",
+    "template": "{% for pairs in [{'a':1,'b':2}|items] %}{% for pair in pairs %}{{ loop.length }}:{{ pair[0] }}:{{ pairs|list }};{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "2:a:[];2:b:[];"
+    }
+  },
+  {
+    "name": "items_filtered_loop_else_retains_entry_decision",
+    "template": "{% for pairs in [{'a':1,'b':2}|items] %}{{ pairs|first|safe }}|{% for pair in pairs|default %}{{ pair[0] }}{% else %}empty{% endfor %}|{{ pairs|list }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "('a', 1)|b|[]"
+    }
+  },
+  {
+    "name": "items_separate_plain_alias_loops_do_not_replay_consumed_source",
+    "template": "{% for pairs in [{'a':1}|items] %}{% for p in pairs %}{{ p[0] }}{% else %}E{% endfor %}|{% for q in pairs %}{{ q[0] }}{% else %}E{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a|E"
+    }
+  },
+  {
+    "name": "items_identity_comparisons_do_not_consume",
+    "template": "{% for pairs in [{'a':1}|items] %}{{ pairs == pairs }}|{{ pairs != pairs }}|{{ pairs == ({}|items) }}|{{ pairs == 1 }}|{{ pairs|first|safe }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|False|False|('a', 1)"
+    }
+  },
+  {
+    "name": "items_membership_consumes_through_match",
+    "template": "{% for pairs in [{'a':1,'b':2,'c':3}|items] %}{{ ('b',2) in pairs }}|{{ pairs|first|safe }}|{{ ('b',2) not in pairs }}|{{ pairs|list }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|('c', 3)|True|[]"
+    }
+  },
+  {
+    "name": "items_membership_miss_exhausts_and_preserves_tuple_type",
+    "template": "{% for pairs in [{'a':1}|items] %}{{ ['a',1] in pairs }}|{{ pairs|list }}{% endfor %}|{{ 1 in (missing|items) }}|{{ ('a',1) in ({'a':2}|items) }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "False|[]|False|False"
+    }
+  },
+  {
+    "name": "items_identity_as_collection_member_and_dictionary_key",
+    "template": "{% for pairs in [{}|items] %}{{ pairs in [pairs] }}|{{ pairs in range(3) }}|{{ pairs in {pairs:1} }}|{{ [pairs] == [pairs] }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|True"
+    }
+  },
+  {
+    "name": "items_identity_of_invalid_source_is_still_nonconsuming",
+    "template": "{% for pairs in [1|items] %}{{ pairs == pairs }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "items_ordering_is_not_supported_upstream",
+    "template": "{{ ({}|items) < ({}|items) }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "items_membership_consumes_invalid_source_and_fails",
+    "template": "{{ 1 in (1|items) }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "items_condition_decision_and_changed_do_not_repeat_consumption",
+    "template": "{% for pairs in [{'a':1,'b':2}|items] %}{{ loop.changed(pairs) }}|{% if ('a',1) in pairs %}yes{% else %}no{% endif %}|{{ pairs|first|safe }}|{{ loop.changed(pairs) }}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|yes|('b', 2)|False"
+    }
+  },
+  {
+    "name": "items_membership_in_sequence_of_mapping_values",
+    "template": "{% for pairs in [{}|items] %}{{ pairs in users }}|{{ pairs not in users }}{% endfor %}",
+    "context": {
+      "users": [
+        {
+          "name": "Ada",
+          "age": 37
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  }
+]

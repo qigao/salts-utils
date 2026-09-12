@@ -1,0 +1,17 @@
+[
+  {
+    "name": "include_from_dict_loader",
+    "templates": {
+      "page.jinja": "before:{% include 'item.jinja' %}:after",
+      "item.jinja": "{{ value }}"
+    },
+    "entry": "page.jinja",
+    "context": {
+      "value": "included"
+    },
+    "expected": {
+      "status": "ok",
+      "output": "before:included:after"
+    }
+  }
+]

@@ -1,0 +1,111 @@
+[
+  {
+    "name": "slice_explicit_negative_one_stop_differs_from_omitted_stop",
+    "template": "{{ [0,1,2][::-1] }}|{{ [0,1,2][:-1:-1] }}|{{ [0,1,2][None:None:None] }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "[2, 1, 0]|[]|[0, 1, 2]"
+    }
+  },
+  {
+    "name": "slice_zero_step_is_runtime_error",
+    "template": "{{ [0,1,2][::0] }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "ValueError"
+    }
+  },
+  {
+    "name": "slice_columns",
+    "template": "{{range(7)|slice(slices=3)|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[0, 1, 2], [3, 4], [5, 6]]"
+    }
+  },
+  {
+    "name": "slice_fill_divisible",
+    "template": "{{range(4)|slice(2,0)|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[0, 1, 0], [2, 3, 0]]"
+    }
+  },
+  {
+    "name": "slice_empty_columns",
+    "template": "{{[]|slice(3)|list}}|{{[]|slice(2,'x')|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[], [], []]|[['x'], ['x']]"
+    }
+  },
+  {
+    "name": "slice_unicode",
+    "template": "{{'中a🙂'|slice(2)|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[['中', 'a'], ['🙂']]"
+    }
+  },
+  {
+    "name": "slice_alias_materialization",
+    "template": "{% set g={'a':1,'b':2,'c':3}|items %}{% set s=g|slice(2) %}{{s|first}}|{{g|list}}|{{s|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[('a', 1), ('b', 2)]|[]|[[('c', 3)]]"
+    }
+  },
+  {
+    "name": "slice_lazy_invalid",
+    "template": "{% set s=42|slice(0) %}{{s is iterable}}",
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "slice_negative_consumes",
+    "template": "{% set g={'a':1,'b':2}|items %}{{g|slice(-1)|list}}|{{g|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[]|[]"
+    }
+  },
+  {
+    "name": "slice_nested_batch",
+    "template": "{{range(5)|slice(2)|batch(1)|list}}|{{range(4)|batch(2)|slice(2)|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[[0, 1, 2]], [[3, 4]]]|[[[0, 1]], [[2, 3]]]"
+    }
+  },
+  {
+    "name": "slice_expansion_identity",
+    "template": "{% set n=namespace(x=1) %}{% set rows=[]|slice(*[2],**{'fill_with':n})|list %}{% set n.x=7 %}{{rows[0][0].x}}|{{rows[1][0].x}}",
+    "expected": {
+      "status": "ok",
+      "output": "7|7"
+    }
+  },
+  {
+    "name": "slice_invalid_input_large_columns_list",
+    "template": "{{42|slice(1000000)|list}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "slice_invalid_input_large_columns_first",
+    "template": "{{42|slice(1000000)|first}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

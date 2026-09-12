@@ -1,0 +1,235 @@
+[
+  {
+    "name": "macro_runtime_default_parameter_scope",
+    "template": "{% macro f(a=b,b=2) %}{{a}}:{{b}}{% endmacro %}{{f()}}|{{f(b=3)}}",
+    "expected": {
+      "status": "ok",
+      "output": ":2|3:3"
+    }
+  },
+  {
+    "name": "macro_runtime_lexical_late_write",
+    "template": "{% set x='outer' %}{% macro f() %}{{x}}{% endmacro %}{% with x='caller' %}{{f()}}{% endwith %}{% set x='later' %}|{{f()}}",
+    "expected": {
+      "status": "ok",
+      "output": "outer|later"
+    }
+  },
+  {
+    "name": "macro_runtime_sibling_loop_cell",
+    "template": "{% set ns=namespace(f=none) %}{% for x in [1,2] %}{% macro f() %}{{x}}{% endmacro %}{% set ns.f=f %}{% endfor %}{% for x in [9] %}{{ns.f()}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "9"
+    }
+  },
+  {
+    "name": "macro_runtime_recursive_call",
+    "template": "{% macro f(n) %}{{n}}{% if n %}{{f(n-1)}}{% endif %}{% endmacro %}{{f(2)}}",
+    "expected": {
+      "status": "ok",
+      "output": "210"
+    }
+  },
+  {
+    "name": "macro_runtime_caller_parameter",
+    "template": "{% macro wrap() %}[{{caller('Ada')}}]{% endmacro %}{% call(name) wrap() %}Hi {{name}}{% endcall %}",
+    "expected": {
+      "status": "ok",
+      "output": "[Hi Ada]"
+    }
+  },
+  {
+    "name": "macro_duplicate_parameters_rejected_by_generated_signature",
+    "template": "{% macro f(a,a) %}{{a}}{% endmacro %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "SyntaxError"
+    }
+  },
+  {
+    "name": "macro_defaults_reference_prior_parameter",
+    "template": "{% macro f(a,b=a+1) %}{{a}}|{{b}}{% endmacro %}{{f(3)}}|{{f(3,b=9)}}",
+    "expected": {
+      "status": "ok",
+      "output": "3|4|3|9"
+    }
+  },
+  {
+    "name": "macro_defaults_evaluated_per_call",
+    "template": "{% set x=1 %}{% macro f(a=x) %}{{a}}{% endmacro %}{{f()}}{% set x=2 %}{{f()}}",
+    "expected": {
+      "status": "ok",
+      "output": "12"
+    }
+  },
+  {
+    "name": "macro_lexical_scope_not_call_scope",
+    "template": "{% set x=1 %}{% macro f() %}{{x}}{% endmacro %}{% with x=2 %}{{f()}}{% endwith %}",
+    "expected": {
+      "status": "ok",
+      "output": "1"
+    }
+  },
+  {
+    "name": "macro_block_exit_clears_captured_local_cell",
+    "template": "{% set ns=namespace() %}{% with x=7 %}{% macro f() %}{{x}}{% endmacro %}{% set ns.f=f %}{% endwith %}{{ns.f()}}",
+    "expected": {
+      "status": "ok",
+      "output": "missing"
+    }
+  },
+  {
+    "name": "macro_alias_and_recursion",
+    "template": "{% macro f(n) %}{{n}}{% if n>0 %}{{f(n-1)}}{% endif %}{% endmacro %}{% set alias=f %}{{alias(2)}}",
+    "expected": {
+      "status": "ok",
+      "output": "210"
+    }
+  },
+  {
+    "name": "macro_missing_argument_undefined",
+    "template": "{% macro f(a) %}{{a is undefined}}:{{a}}{% endmacro %}{{f()}}",
+    "expected": {
+      "status": "ok",
+      "output": "True:"
+    }
+  },
+  {
+    "name": "macro_explicit_undefined_does_not_trigger_default",
+    "template": "{% macro f(a=7) %}{{a is undefined}}:{{a}}{% endmacro %}{{f(missing)}}",
+    "expected": {
+      "status": "ok",
+      "output": "True:"
+    }
+  },
+  {
+    "name": "macro_varargs_kwargs_capture",
+    "template": "{% macro f(a) %}{{a}}|{{varargs}}|{{kwargs}}{% endmacro %}{{f(1,2,3,x=4)}}",
+    "expected": {
+      "status": "ok",
+      "output": "1|(2, 3)|{'x': 4}"
+    }
+  },
+  {
+    "name": "macro_positional_keyword_collision_captured",
+    "template": "{% macro f(a) %}{{a}}|{{kwargs}}{% endmacro %}{{f(1,a=2)}}",
+    "expected": {
+      "status": "ok",
+      "output": "1|{'a': 2}"
+    }
+  },
+  {
+    "name": "macro_positional_keyword_collision_without_catchall",
+    "template": "{% macro f(a) %}{{a}}{% endmacro %}{{f(1,a=2)}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "macro_declared_varargs_is_not_catchall",
+    "template": "{% macro f(varargs) %}{{varargs}}{% endmacro %}{{f(1,2)}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "macro_caller_arguments",
+    "template": "{% macro f() %}[{{caller(3)}}]{% endmacro %}{% call(x) f() %}{{x+1}}{% endcall %}",
+    "expected": {
+      "status": "ok",
+      "output": "[4]"
+    }
+  },
+  {
+    "name": "macro_metadata_flags",
+    "template": "{% macro f(a,b=2) %}{{varargs}}{{kwargs}}{{caller()}}{% endmacro %}{{f.name}}|{{f.arguments}}|{{f.catch_varargs}}|{{f.catch_kwargs}}|{{f.caller}}",
+    "expected": {
+      "status": "ok",
+      "output": "f|('a', 'b')|True|True|True"
+    }
+  },
+  {
+    "name": "macro_calltime_safety_and_definition_body_escaping",
+    "template": "{% macro f(x) %}{{x}}{% endmacro %}{% autoescape true %}{{f('<')}}|{{f('<') is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "<|True"
+    }
+  },
+  {
+    "name": "macro_body_assignment_is_local",
+    "template": "{% set x=1 %}{% macro f() %}{% set x=2 %}{{x}}{% endmacro %}{{f()}}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "21"
+    }
+  },
+  {
+    "name": "macro_required_parameter_after_default_rejected",
+    "template": "{% macro f(a=1,b) %}x{% endmacro %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "macro_forward_default_parameter_hides_host_name",
+    "template": "{% macro f(a=b,b=2) %}{{a}}|{{b}}{% endmacro %}{{f()}}",
+    "context": {
+      "b": 9
+    },
+    "expected": {
+      "status": "ok",
+      "output": "|2"
+    }
+  },
+  {
+    "name": "macro_self_default_parameter_hides_host_name",
+    "template": "{% macro f(a=a) %}{{a is undefined}}{% endmacro %}{{f()}}",
+    "context": {
+      "a": 9
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "macro_forward_default_reads_supplied_parameter",
+    "template": "{% macro f(a=b,b=2) %}{{a}}|{{b}}{% endmacro %}{{f(b=3)}}",
+    "context": {
+      "b": 9
+    },
+    "expected": {
+      "status": "ok",
+      "output": "3|3"
+    }
+  },
+  {
+    "name": "macro_nonparameter_default_resolves_host_name",
+    "template": "{% macro f(a=x) %}{{a}}{% endmacro %}{{f()}}",
+    "context": {
+      "x": 9
+    },
+    "expected": {
+      "status": "ok",
+      "output": "9"
+    }
+  },
+  {
+    "name": "macro_trailing_signature_comma_rejected",
+    "template": "{% macro f(a,) %}{{a}}{% endmacro %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

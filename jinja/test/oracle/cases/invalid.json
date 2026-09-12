@@ -1,0 +1,51 @@
+[
+  {
+    "name": "invalid_string_membership_type_is_runtime_error",
+    "template": "{{ 1 in user.name }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "invalid_integer_arithmetic_type_is_runtime_error",
+    "template": "{{ 'x' - 1 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "invalid_float_literal_is_syntax",
+    "template": "{{ 1. }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "invalid_defined_item_lookup_returns_default_undefined",
+    "template": "<{{ 1[0] }}>|<{{ users[1.0] }}>|<{{ text['x'] }}>",
+    "context": {
+      "users": [
+        1,
+        2
+      ],
+      "text": "Ada"
+    },
+    "expected": {
+      "status": "ok",
+      "output": "<>|<>|<>"
+    }
+  }
+]

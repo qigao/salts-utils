@@ -1,0 +1,128 @@
+[
+  {
+    "name": "composition_include_context_isolation",
+    "templates": {
+      "main": "{% set x='outer' %}{% include 'child' %}|{{x}}",
+      "child": "{{x}}{% set x='inner' %}:{{x}}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "outer:inner|outer"
+    }
+  },
+  {
+    "name": "composition_include_without_context",
+    "templates": {
+      "main": "{% set x='outer' %}{% include 'child' without context %}",
+      "child": "{{x}}|{{host}}"
+    },
+    "entry": "main",
+    "context": {
+      "host": "root"
+    },
+    "expected": {
+      "status": "ok",
+      "output": "|"
+    }
+  },
+  {
+    "name": "composition_include_ignore_missing_lookup",
+    "templates": {
+      "main": "A{% include ['missing','child'] ignore missing %}B",
+      "child": "C"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "ACB"
+    }
+  },
+  {
+    "name": "composition_include_ignore_missing_nested",
+    "templates": {
+      "main": "{% include 'child' ignore missing %}",
+      "child": "{% include 'missing' %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "error",
+      "category": "loader",
+      "type": "TemplateNotFound"
+    }
+  },
+  {
+    "name": "composition_include_candidates_syntax",
+    "templates": {
+      "main": "{% include ['bad','good'] ignore missing %}",
+      "bad": "{% if %}",
+      "good": "G"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "composition_import_context_isolation",
+    "templates": {
+      "main": "{% set x='outer' %}{% import 'lib' as a %}{% import 'lib' as b with context %}{{a.f()}}|{{b.f()}}",
+      "lib": "{% macro f() %}{{x}}{% endmacro %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "|outer"
+    }
+  },
+  {
+    "name": "composition_import_uncached_identity",
+    "templates": {
+      "main": "{% import 'lib' as a %}{% import 'lib' as b %}{{a is sameas b}}",
+      "lib": "{% macro f() %}F{% endmacro %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "False"
+    }
+  },
+  {
+    "name": "composition_from_missing_is_undefined",
+    "templates": {
+      "main": "{% from 'lib' import absent %}{{absent is undefined}}",
+      "lib": "{% set present=1 %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "composition_macro_defining_template",
+    "templates": {
+      "main": "{% macro f() %}main{% endmacro %}{% import 'lib' as m %}{{m.f()}}|{{f()}}",
+      "lib": "{% macro f() %}lib{% endmacro %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "lib|main"
+    }
+  },
+  {
+    "name": "composition_include_terminating_recursion",
+    "templates": {
+      "main": "{% set n=2 %}{% include 'child' %}",
+      "child": "{{n}}{% if n %}{% set n=n-1 %}{% include 'child' %}{% endif %}"
+    },
+    "entry": "main",
+    "expected": {
+      "status": "ok",
+      "output": "210"
+    }
+  }
+]

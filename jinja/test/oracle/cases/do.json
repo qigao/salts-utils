@@ -1,0 +1,90 @@
+[
+  {
+    "name": "do_requires_explicit_extension_in_reference_environment",
+    "template": "{% do 1 %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "do_ignored_tuple_and_undefined",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "A{% do 1, 'text', none, missing %}B",
+    "expected": {
+      "status": "ok",
+      "output": "AB"
+    }
+  },
+  {
+    "name": "do_whitespace_control_and_parenthesized_expression",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "A \n{%- do(namespace(x=1)) -%}\n B",
+    "expected": {
+      "status": "ok",
+      "output": "AB"
+    }
+  },
+  {
+    "name": "do_consumes_iterator",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "{% set xs={'a':1,'b':2}|items %}{% do xs|first %}{{xs|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[('b', 2)]"
+    }
+  },
+  {
+    "name": "do_short_circuits_iterator_consumption",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "{% set xs={'a':1}|items %}{% do false and xs|list %}{{xs|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[('a', 1)]"
+    }
+  },
+  {
+    "name": "do_retains_loop_changed_state",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "{% for x in [1,2] %}{% do loop.changed(x) %}{{loop.changed(x)}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "FalseFalse"
+    }
+  },
+  {
+    "name": "do_does_not_suppress_division_failure",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "{% do 1,1/0 %}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "ZeroDivisionError"
+    }
+  },
+  {
+    "name": "do_rejects_empty_expression",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "template": "{% do %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

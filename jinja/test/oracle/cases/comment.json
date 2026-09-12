@@ -1,0 +1,10 @@
+[
+  {
+    "name": "comment_quotes_do_not_hide_comment_close",
+    "template": "{# ' #}X",
+    "expected": {
+      "status": "ok",
+      "output": "X"
+    }
+  }
+]

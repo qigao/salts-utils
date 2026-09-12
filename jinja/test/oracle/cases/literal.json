@@ -1,0 +1,29 @@
+[
+  {
+    "name": "literal_comparison_precedence",
+    "template": "{{ not 1 == 2 }}|{{ not (1 == 2) }}|{{ (not 1) == false }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "literal_comparisons_in_conditions",
+    "template": "{% if 2 >= 1 %}yes{% else %}no{% endif %}|{% if true < false %}bad{% else %}ok{% endif %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "yes|ok"
+    }
+  },
+  {
+    "name": "literal_newline_string_reference",
+    "template": "{{ 'a\nb' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a\nb"
+    }
+  }
+]

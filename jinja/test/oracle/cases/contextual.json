@@ -1,0 +1,10 @@
+[
+  {
+    "name": "contextual_keyword_names_and_operators",
+    "template": "{{ and|default('a') }}{{ or|default('o') }}{{ in|default('i') }}{{ if|default('f') }}{{ else|default('e') }}{{ is|default('s') }}|{{ true and false }}|{{ false or true }}|{{ not in }}|{{ 1 not in [2] }}|{{ true and and is undefined }}",
+    "expected": {
+      "status": "ok",
+      "output": "aoifes|False|True|True|True|True"
+    }
+  }
+]

@@ -1,0 +1,52 @@
+[
+  {
+    "name": "builtin_filter_query",
+    "template": "{{'batch' is filter}}|{{'slice' is filter}}|{{'d' is filter}}|{{'not_a_filter' is not filter}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True"
+    }
+  },
+  {
+    "name": "builtin_test_query",
+    "template": "{{'filter' is test}}|{{'test' is test}}|{{'eq' is test}}|{{'==' is test}}|{{'not_a_test' is test}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|False"
+    }
+  },
+  {
+    "name": "builtin_query_types",
+    "template": "{{none is filter}}|{{42 is test}}|{{missing is filter}}|{{('x',) is test}}",
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False|False"
+    }
+  },
+  {
+    "name": "builtin_query_dynamic",
+    "template": "{% set n='len'~'gth' %}{{n is filter(*[],**{})}}|{{('in'|safe) is test}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "builtin_query_unhashable",
+    "template": "{{[] is filter}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "builtin_query_extra_argument",
+    "template": "{{'eq' is test(1)}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

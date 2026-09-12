@@ -1,0 +1,133 @@
+[
+  {
+    "name": "test_expand_numeric",
+    "template": "{{6 is divisibleby(*[3])}}|{{6 is not divisibleby(**{'num':4})}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "test_expand_membership_comparison",
+    "template": "{{2 is in(**{'seq':[1,2]})}}|{{2 is eq(*[2],**{})}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "test_expand_empty",
+    "template": "{{missing is undefined(*[],**{})}}|{{'Ada' is string(*[])}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "test_expand_iterator",
+    "template": "{% set it=[3]|reverse %}{{6 is divisibleby(*it)}}|{{it|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|[]"
+    }
+  },
+  {
+    "name": "test_precedence_and_unary_binding",
+    "template": "{{ -1 is integer }}|{{ not 1 is integer }}|{{ (1 + 2) is integer }}|{{ 1 + (true is integer) }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|1"
+    }
+  },
+  {
+    "name": "test_arguments_respect_outer_short_circuit",
+    "template": "{{ false and 3 is divisibleby(0) }}|{{ true or 3 is odd(1) }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  },
+  {
+    "name": "test_positional_after_keyword",
+    "template": "{{ 12 is divisibleby(num=3,3) }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "test_reserved_keyword_short_circuit",
+    "template": "{{ false and (12 is divisibleby(none=3)) }}|{{ true or (12 is divisibleby(and=3)) }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  },
+  {
+    "name": "test_reserved_unknown_keyword",
+    "template": "{{ 12 is divisibleby(none=3) }}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "test_shorthand_postfix_chains",
+    "template": "{{ 6 is divisibleby [3][0] }}|{{ 2 is in range(3) }}|{{ 3 is in [1,2,3][1:] }}|{{ 6 is divisibleby {'n':3}.n }}|{{ 1 is eq range(4).count(2) }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True"
+    }
+  },
+  {
+    "name": "test_shorthand_operator_boundary",
+    "template": "{{ 6 is divisibleby [3][0] + 1 }}|{{ 2 is eq [2][0] == true }}|{{ 2 is in range(3) and true }}",
+    "expected": {
+      "status": "ok",
+      "output": "2|True|True"
+    }
+  },
+  {
+    "name": "test_shorthand_lookup_short_circuit",
+    "template": "{{ false and 1 is eq missing[0] }}|{{ 6 is divisibleby(-3) }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  },
+  {
+    "name": "test_result_filter_chain",
+    "template": "{{ 3 is odd|string|length }}|{{ 3 is not even|string }}|{{ 3 is odd|string|center(width=6) }}",
+    "expected": {
+      "status": "ok",
+      "output": "4|True| True "
+    }
+  },
+  {
+    "name": "test_result_filter_argument_boundary",
+    "template": "{{ 1 is eq 1|string }}|{{ 1 is eq (1|string) }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False"
+    }
+  },
+  {
+    "name": "test_result_filter_autoescape",
+    "template": "{% autoescape true %}{{ 1 is eq(2)|default('<no>',true) }}|{{ 1 is eq(2)|default('<no>',true)|safe }}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "&lt;no&gt;|<no>"
+    }
+  },
+  {
+    "name": "test_result_filter_short_circuit",
+    "template": "{{ false and 3 is odd|length }}|{{ true or 3 is odd|length }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  }
+]

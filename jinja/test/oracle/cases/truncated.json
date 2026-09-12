@@ -1,0 +1,12 @@
+[
+  {
+    "name": "truncated_hex_string_escape_is_syntax",
+    "template": "{{ '\\x4' }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

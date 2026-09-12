@@ -1,0 +1,68 @@
+[
+  {
+    "name": "conditional_branch",
+    "template": "{% if active %}active{% elif user.age %}aged{% else %}empty{% endif %}",
+    "context": {
+      "active": false,
+      "user": {
+        "age": 37
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "aged"
+    }
+  },
+  {
+    "name": "conditional_expression_values_and_precedence",
+    "template": "{{ 'yes' if true else 'no' }}|{{ 1 if false else 2 }}|{{ false or 'a' if true else 'b' }}|{{ 1 == 1 if true else false }}|{{ (1 if true else 2) + 3 }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "yes|2|a|True|4"
+    }
+  },
+  {
+    "name": "conditional_expression_nesting_and_omitted_else",
+    "template": "<{{ 'x' if false }}>|{{ ('x' if false) == missing }}|{{ 'a' if false else 'b' if false else 'c' }}|<{{ 1 if false if true else 4 }}>|{{ 1 if true if false else 4 }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "<>|True|c|<>|4"
+    }
+  },
+  {
+    "name": "conditional_expression_runtime_scope",
+    "template": "{{ user.name if active else 'off' }}|{% for item in users %}{{ item.name if item.age > user.age else user.name }}|{% endfor %}{% if (users if active else false) %}nonempty{% else %}empty{% endif %}",
+    "context": {
+      "user": {
+        "name": "root",
+        "age": 37
+      },
+      "active": true,
+      "users": [
+        {
+          "name": "Ada",
+          "age": 37
+        },
+        {
+          "name": "Lin",
+          "age": 42
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "root|root|Lin|nonempty"
+    }
+  },
+  {
+    "name": "conditional_expression_short_circuit",
+    "template": "{{ 'ok' if true else 1 // 0 }}|{{ 1 // 0 if false else 'fallback' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "ok|fallback"
+    }
+  }
+]

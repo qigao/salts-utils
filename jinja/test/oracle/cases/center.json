@@ -1,0 +1,21 @@
+[
+  {
+    "name": "center_scalar_width_and_padding_parity",
+    "template": "[{{ 'ab'|center(5) }}]|[{{ 'a'|center(width=4) }}]|[{{ '\\u4f60'|center(3) }}]|{{ 'e\\u0301'|center(3)|length }}|{{ 'x'|center|length }}|{{ 12|center(-1) }}|[{{ missing|center(true) }}]",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "[  ab ]|[ a  ]|[ 你 ]|3|80|12|[ ]"
+    }
+  },
+  {
+    "name": "center_rejects_even_integral_float_width",
+    "template": "{{ 'a'|center(1.0) }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

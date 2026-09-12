@@ -1,0 +1,30 @@
+[
+  {
+    "name": "bare_conditional_expression_in_if_is_syntax",
+    "template": "{% if true if true else false %}x{% endif %}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "bare_consecutive_tests_remain_syntax_errors",
+    "template": "{{ 1 is integer() is true is boolean }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "bare_test_chain_checks_syntax_before_unknown_name",
+    "template": "{{ 1 is integer is unknown_test }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

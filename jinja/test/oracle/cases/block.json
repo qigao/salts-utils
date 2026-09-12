@@ -1,0 +1,189 @@
+[
+  {
+    "name": "block_colon_invalid_assignment",
+    "template": "{% set x=1: %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_with",
+    "template": "{% with x=1: %}{% endwith %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_print",
+    "template": "{% print 1: %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_do",
+    "template": "{% do 1: %}",
+    "extensions": [
+      "jinja2.ext.do"
+    ],
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_double",
+    "template": "{% if true:: %}{% endif %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_missing_iterable",
+    "template": "{% for x in: %}{% endfor %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_else_argument",
+    "template": "{% if true %}{% else 1: %}{% endif %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_invalid_end",
+    "template": "{% if true %}{% endif: %}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "block_colon_if",
+    "template": "{% if true: %}X{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "X"
+    }
+  },
+  {
+    "name": "block_colon_elif",
+    "template": "{% if false %}A{% elif true: %}B{% else %}C{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "B"
+    }
+  },
+  {
+    "name": "block_colon_else",
+    "template": "{% if false %}A{% else: %}B{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "B"
+    }
+  },
+  {
+    "name": "block_colon_for",
+    "template": "{% for x in [1,2,3] if x is odd: %}{{x}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "13"
+    }
+  },
+  {
+    "name": "block_colon_for_else",
+    "template": "{% for x in []: %}X{% else: %}empty{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "empty"
+    }
+  },
+  {
+    "name": "block_colon_recursive",
+    "template": "{% for x in [[1],[]] recursive: %}{% if x is iterable: %}{{loop(x)}}{% else: %}{{x}}{% endif %}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "1"
+    }
+  },
+  {
+    "name": "block_colon_autoescape",
+    "template": "{% autoescape true: %}{{'<x>'}}{% endautoescape %}{{'<y>'}}",
+    "expected": {
+      "status": "ok",
+      "output": "&lt;x&gt;<y>"
+    }
+  },
+  {
+    "name": "block_colon_filter",
+    "template": "{% filter trim: %} X {% endfilter %}",
+    "expected": {
+      "status": "ok",
+      "output": "X"
+    }
+  },
+  {
+    "name": "block_colon_capture",
+    "template": "{% set x | trim: %} X {% endset %}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "X"
+    }
+  },
+  {
+    "name": "block_colon_nested_function",
+    "template": "{% macro wrap(): %}[{{caller()}}]{% endmacro %}{% call wrap(): %}{% if true: %}X{% endif %}{% endcall %}",
+    "expected": {
+      "status": "ok",
+      "output": "[X]"
+    }
+  },
+  {
+    "name": "block_colon_inner_colons",
+    "template": "{% if {'x:':[1,2]}['x:'][1:]: %}{{'a:b'}}{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "a:b"
+    }
+  },
+  {
+    "name": "block_colon_unicode_space",
+    "template": "{% if true : %}X{% else : %}Y{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "X"
+    }
+  },
+  {
+    "name": "block_colon_raw_comment",
+    "template": "A{# if false: #}{% raw %}{% if false: %}{% endraw %}B{% if true: %}C{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "A{% if false: %}BC"
+    }
+  },
+  {
+    "name": "block_colon_trim",
+    "template": "A \n{%- if true: -%} X {%- else: -%} Y {%- endif -%}\n Z",
+    "expected": {
+      "status": "ok",
+      "output": "AXZ"
+    }
+  }
+]

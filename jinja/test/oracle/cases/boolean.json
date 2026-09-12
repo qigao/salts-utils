@@ -1,0 +1,59 @@
+[
+  {
+    "name": "boolean_condition_literals",
+    "template": "{% if true %}true{% else %}bad{% endif %}:{% if false %}bad{% else %}false{% endif %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "true:false"
+    }
+  },
+  {
+    "name": "boolean_condition_scope",
+    "template": "{% if false %}bad{% elif true %}{{ user.name }}{% endif %}:{% for item in users %}{% if true %}{{ item.name }}{% endif %}{% endfor %}",
+    "context": {
+      "user": {
+        "name": "root"
+      },
+      "users": [
+        {
+          "name": "Ada"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "root:AdaLin"
+    }
+  },
+  {
+    "name": "boolean_literal_interpolation",
+    "template": "{{ true }}|{{ false }}|{{ not(false) }}|{{ (true) | safe }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|True"
+    }
+  },
+  {
+    "name": "boolean_and_integer_literal_comparisons",
+    "template": "{{ 1 == 1 }}|{{ 1 != 1 }}|{{ 2 > 1 }}|{{ 1 > 1 }}|{{ 2 >= 1 }}|{{ 1 >= 1 }}|{{ 1 < 2 }}|{{ 1 < 1 }}|{{ 1 <= 2 }}|{{ 1 <= 1 }}|{{ true == 1 }}|{{ false < 1 }}|{{ true > false }}|{{ false >= 0 }}|{{ -1 < 0 }}|{{ -9223372036854775808 < 9223372036854775807 }}|{{ -1 < false }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|False|True|True|True|False|True|True|True|True|True|True|True|True|True"
+    }
+  },
+  {
+    "name": "boolean_integer_number_tests",
+    "template": "{{ true is boolean }}|{{ false is false }}|{{ true is true }}|{{ true is number }}|{{ true is integer }}|{{ 1 is integer }}|{{ 1 is number }}|{{ 1 is not boolean }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|False|True|True|True"
+    }
+  }
+]

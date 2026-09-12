@@ -1,0 +1,12 @@
+[
+  {
+    "name": "emoji_identifier_is_syntax",
+    "template": "{{ 😀 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

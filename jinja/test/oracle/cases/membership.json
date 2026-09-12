@@ -1,0 +1,35 @@
+[
+  {
+    "name": "membership_test_and_seq_keyword",
+    "template": "{{ 1 is in([1,2]) }}|{{ 3 is not in(seq=[1,2]) }}|{{ 'a' is in({'a':2}) }}|{{ 4 is in(range(0,6,2)) }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True"
+    }
+  },
+  {
+    "name": "membership_default_undefined_is_empty",
+    "template": "{{ 1 in missing }}|{{ missing not in missing }}|{{ 1 is in(missing) }}|{{ missing is not in(seq=missing) }}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True|False|True"
+    }
+  },
+  {
+    "name": "membership_test_consumes_items_iterator",
+    "template": "{% for pairs in [{'a':1,'b':2,'c':3}|items] %}{{ ('b',2) is in(seq=pairs) }}|{{ pairs|first }}|{{ ('b',2) is not in(pairs) }}|{{ pairs|list }}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "True|('c', 3)|True|[]"
+    }
+  },
+  {
+    "name": "membership_test_rejects_nonstring_string_needle",
+    "template": "{{ 1 is in('1') }}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

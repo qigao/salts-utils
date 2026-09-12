@@ -1,0 +1,524 @@
+[
+  {
+    "name": "sameas_replace_equal_distinct_parameters",
+    "template": "{% set a='abc' %}{{a|replace('ab','ab'|safe) is sameas(a)}}|{{a|replace('ab'|safe,'ab') is sameas(a)}}|{{a|replace(user.name,'ab') is sameas(a)}}|{{a|replace('ab',user.name) is sameas(a)}}",
+    "context": {
+      "user": {
+        "name": "ab",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False|False"
+    }
+  },
+  {
+    "name": "sameas_replace_shared_parameter",
+    "template": "{% set a='abc' %}{% set x=user.name %}{{a|replace(x,x) is sameas(a)}}|{% set x=x|safe %}{{a|replace(x,x) is sameas(a)}}",
+    "context": {
+      "user": {
+        "name": "ab",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|False"
+    }
+  },
+  {
+    "name": "sameas_replace_plain_no_match",
+    "template": "{% set a='abcΩ' %}{{a|replace('x','y') is sameas(a)}}|{% autoescape true %}{{a|replace('x','y') is sameas(a)}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_replace_plain_identical",
+    "template": "{% set a='abcΩ' %}{{a|replace('Ω','Ω') is sameas(a)}}|{{a|replace('','') is sameas(a)}}|{% autoescape true %}{{a|replace('a','a') is sameas(a)}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "sameas_replace_markup_zero_count",
+    "template": "{% set a='<abc>'|safe %}{% set b=a|replace('x','y',0) %}{{b is sameas(a)}}|{{b is escaped}}|{% autoescape true %}{% set b=a|replace('x','y',0) %}{{b is sameas(a)}}|{{b is escaped}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False|True"
+    }
+  },
+  {
+    "name": "sameas_replace_markup_noop",
+    "template": "{% set a='abcΩ'|safe %}{{a|replace('x','y') is sameas(a)}}|{{a|replace('Ω','Ω') is sameas(a)}}|{% autoescape true %}{{a|replace('x','y') is sameas(a)}}|{{a|replace('Ω','Ω') is sameas(a)}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False|False"
+    }
+  },
+  {
+    "name": "sameas_singletons",
+    "template": "{{none is sameas none}}|{{true is sameas true}}|{{false is sameas false}}|{{true is sameas 1}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|False"
+    }
+  },
+  {
+    "name": "sameas_list_alias",
+    "template": "{% set a=[1] %}{% set b=a %}{{a is sameas b}}|{{a is sameas [1]}}|{{a == [1]}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True"
+    }
+  },
+  {
+    "name": "sameas_empty_containers",
+    "template": "{% set a=[] %}{% set b={} %}{{a is sameas a}}|{{a is sameas []}}|{{b is sameas b}}|{{b is sameas {}}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True|False"
+    }
+  },
+  {
+    "name": "sameas_undefined",
+    "template": "{% set a=missing %}{{a is sameas a}}|{{missing is sameas missing}}|{{a is sameas missing}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|False"
+    }
+  },
+  {
+    "name": "sameas_range",
+    "template": "{% set a=range(3) %}{{a is sameas a}}|{{a is sameas range(3)}}|{{a == range(3)}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True"
+    }
+  },
+  {
+    "name": "sameas_bound_method",
+    "template": "{% set a=range(3) %}{% set f=a.count %}{{f is sameas f}}|{{a.count is sameas a.count}}|{{f == a.count}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True"
+    }
+  },
+  {
+    "name": "sameas_namespace",
+    "template": "{% set a=namespace(x=1) %}{% set b=a %}{{a is sameas b}}|{{a is sameas namespace(x=1)}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False"
+    }
+  },
+  {
+    "name": "sameas_iterator",
+    "template": "{% set a=[1,2]|batch(1) %}{% set b=a %}{{a is sameas b}}|{{a is sameas ([1,2]|batch(1))}}|{{b|first}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|[1]"
+    }
+  },
+  {
+    "name": "sameas_macro",
+    "template": "{% macro m() %}x{% endmacro %}{% set alias=m %}{{m is sameas alias}}",
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_binding",
+    "template": "{{none is sameas(other=none)}}|{{false is not sameas true}}|{{true is sameas(*[true],**{})}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "sameas_copy_and_element",
+    "template": "{% set a=[[]] %}{{a[0] is sameas(a[0])}}|{{a is sameas(a|list)}}|{{a[0] is sameas((a|list)[0])}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True"
+    }
+  },
+  {
+    "name": "sameas_missing_argument",
+    "template": "{{none is sameas}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "sameas_extra_argument",
+    "template": "{{none is sameas(none,none)}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "sameas_scalar_alias",
+    "template": "{% set a=1000+user.age %}{% set b=a %}{{a is sameas b}}|{{a is sameas(a+0)}}",
+    "context": {
+      "user": {
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|False"
+    }
+  },
+  {
+    "name": "sameas_safe_conversion",
+    "template": "{% set a=user.name %}{% set b=a|safe %}{{a is sameas b}}|{{b is sameas(b|string)}}|{{b is sameas(b|safe)}}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|True|False"
+    }
+  },
+  {
+    "name": "sameas_loop_identity",
+    "template": "{% set a=[[],{}] %}{% for x in a %}{{x is sameas(a[loop.index0])}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "TrueTrue"
+    }
+  },
+  {
+    "name": "sameas_batch_neighbor_identity",
+    "template": "{% set a=[1,2]|batch(1) %}{% set n=namespace(v=none) %}{% for x in a %}{% if not loop.first %}{{x is sameas(n.v)}}{% endif %}{% set n.v=loop.nextitem %}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_macro_argument_identity",
+    "template": "{% macro m(x,y=x) %}{{x is sameas y}}{% endmacro %}{% set a=[] %}{{m(a)}}|{{m(a,a)}}|{{m(a,[])}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True|False"
+    }
+  },
+  {
+    "name": "sameas_singleton_literals",
+    "template": "{{1 is sameas 1}}|{{2.5 is sameas 2.5}}|{{'abc' is sameas 'abc'}}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|False"
+    }
+  },
+  {
+    "name": "sameas_undefined_iteration",
+    "template": "{% set a=[missing] %}{% for x in a %}{{x is undefined}}|{{x is sameas(a[0])}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_none_iteration",
+    "template": "{% for x in [none] %}{{x is none}}|{{x is sameas none}}{% endfor %}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_host_small_integer",
+    "template": "{{user.age is sameas 1}}|{{user.age is sameas user.age}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_builtin_identity",
+    "template": "{{dict is sameas dict}}|{{namespace is sameas namespace}}|{{range is sameas range}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "sameas_short_circuit",
+    "template": "{{false and (none is sameas(1/0))}}|{{[] if false else (none is sameas none)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|True"
+    }
+  },
+  {
+    "name": "sameas_slice_identity",
+    "template": "{% set a=[1,2] %}{% set t=(1,2) %}{% set s=user.name %}{{a is sameas(a[:])}}|{{t is sameas(t[:])}}|{{s is sameas(s[:])}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|True|True"
+    }
+  },
+  {
+    "name": "sameas_trim_identity",
+    "template": "{% set s=user.name %}{{s is sameas(s|trim)}}|{{s is sameas(s|center(1))}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_unknown_keyword",
+    "template": "{{none is sameas(value=none)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "sameas_duplicate_argument",
+    "template": "{{none is sameas(none,other=none)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "sameas_host_string_conversion",
+    "template": "{{user.name is sameas(user.name|string)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_generated_characters",
+    "template": "{% set a='Ωβ'|list %}{{a[0] is sameas(a[0])}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_generated_dict_key",
+    "template": "{% set d=dict(abcdefgh=1) %}{% set k=d|list|first %}{{k is sameas(d|list|first)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_macro_metadata",
+    "template": "{% macro m(foo,bar) %}{% endmacro %}{{m.arguments is sameas(m.arguments)}}|{{m.arguments[0] is sameas(m.arguments[0])}}|{{m.name is sameas(m.name)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "sameas_numeric_passthrough",
+    "template": "{% set a=1000+user.age %}{{a is sameas(a|abs)}}|{{a is sameas(+a)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_tuple_passthrough",
+    "template": "{% set a=(user.age,) %}{{a is sameas(a*1)}}|{{a is sameas(a+())}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True"
+    }
+  },
+  {
+    "name": "sameas_markup_center",
+    "template": "{% set a=user.name|safe %}{{a is sameas(a|center(1))}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False"
+    }
+  },
+  {
+    "name": "sameas_constant_reexecution",
+    "template": "{% set n=namespace(v=none) %}{% for x in [1,2] %}{% set a=1000 %}{% if not loop.first %}{{a is sameas(n.v)}}{% endif %}{% set n.v=a %}{% endfor %}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_sum_result",
+    "template": "{% set a=1000+user.age %}{% set b=[1]|sum(start=a) %}{{a}}|{{b}}|{{a is sameas b}}|{{a is sameas([]|sum(start=a))}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "1001|1002|False|False"
+    }
+  },
+  {
+    "name": "sameas_plain_string_passthrough",
+    "template": "{% set a=user.name %}{{a is sameas(a*1)}}|{{a is sameas(a+'')}}|{{a is sameas([a]|join)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True"
+    }
+  },
+  {
+    "name": "sameas_markup_string_creation",
+    "template": "{% set a=user.name|safe %}{{a is sameas(a*1)}}|{{a is sameas(a+'')}}|{{a is sameas([a]|join)}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "False|False|False"
+    }
+  },
+  {
+    "name": "sameas_batch_elements",
+    "template": "{% set a='Ωβ'|batch(2)|first %}{{a[0] is sameas(a[0])}}",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 1
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True"
+    }
+  },
+  {
+    "name": "sameas_empty_sum_identity",
+    "template": "{% set a=1.5 %}{% set b=[] %}{{a is sameas([]|sum(start=a))}}|{{b is sameas([]|sum(start=b))}}|{{true is sameas([]|sum(start=true))}}",
+    "expected": {
+      "status": "ok",
+      "output": "False|True|True"
+    }
+  }
+]

@@ -1,0 +1,28 @@
+[
+  {
+    "name": "escaped_string_literal_reference",
+    "template": "{{ 'a\\nb' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "a\nb"
+    }
+  },
+  {
+    "name": "escaped_quote_and_filter_separator",
+    "template": "{{ 'Ada\\'s | value' }}|{{ \"a\\\"b\" }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "Ada's | value|a\"b"
+    }
+  },
+  {
+    "name": "escaped_latin1_and_nonbmp_reference_spelling",
+    "template": "{{ '\\é' }}|{{ '\\😀' }}",
+    "expected": {
+      "status": "ok",
+      "output": "\\xe9|\\U0001f600"
+    }
+  }
+]

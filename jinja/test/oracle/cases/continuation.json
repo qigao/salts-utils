@@ -1,0 +1,10 @@
+[
+  {
+    "name": "continuation_only_string_is_empty",
+    "template": "{{ '\\\n' }}|{{ '\\\r\n' == '' }}",
+    "expected": {
+      "status": "ok",
+      "output": "|True"
+    }
+  }
+]

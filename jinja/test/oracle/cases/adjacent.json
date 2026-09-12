@@ -1,0 +1,45 @@
+[
+  {
+    "name": "adjacent_literals_postfix_and_escape_boundary",
+    "template": "{{ 'hello' \" world\" }}|{{ 'ab' 'cd'|length }}|{{ 'ab''cd'[2] }}|{{ '\\1' '23'|length }}|{{ not '' '' }}|{% autoescape true %}{{ '<' '>' }}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "hello world|4|c|3|True|&lt;&gt;"
+    }
+  },
+  {
+    "name": "adjacent_literals_collections_comparison",
+    "template": "{{ '\\x41' 'B' == 'AB' }}|{{ '\\1' '23' == '\\123' }}|{{ ['a' 'b', '' ''][0] }}|{{ {'a' 'b':7}['ab'] }}|{{ '\\u4e2d'\r\n'\\U0001f600'|length }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|ab|7|2"
+    }
+  },
+  {
+    "name": "adjacent_literals_syntax_boundary_0",
+    "template": "{{ '\\x4' '1' }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "adjacent_literals_syntax_boundary_1",
+    "template": "{{ 'ok' '\\u12' '34' }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  },
+  {
+    "name": "adjacent_literals_syntax_boundary_2",
+    "template": "{{ ('a') 'b' }}",
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

@@ -1,0 +1,87 @@
+[
+  {
+    "name": "string_literal_comparison_operators",
+    "template": "{{ 'a' == \"a\" }}|{{ 'a' != 'b' }}|{{ 'a' < 'b' }}|{{ 'a' <= 'a' }}|{{ 'b' > 'a' }}|{{ 'b' >= 'b' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|True"
+    }
+  },
+  {
+    "name": "string_membership_precedence_and_chain",
+    "template": "{{ 'da' in user.name }}|{{ 'x' not in user.name }}|{{ not 'x' in user.name }}|{{ 'A' in user.name == 'Ada' }}|{{ '\\u00e9' in 'caf\\u00e9' }}|{{ 'A' in user.name and 'yes' }}|{% for item in users %}{% if item.name in user.name %}{{ item.name }}{% endif %}{% endfor %}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      },
+      "users": [
+        {
+          "name": "Ada"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|yes|Ada"
+    }
+  },
+  {
+    "name": "string_literal_truthiness",
+    "template": "{% if '' %}bad{% else %}empty{% endif %}:{% if 'x' %}text{% else %}bad{% endif %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "empty:text"
+    }
+  },
+  {
+    "name": "string_addition_and_unicode_slice",
+    "template": "{{ user.name + '中😀' }}|{{ ('a' + 'bc')[::-1] }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "Ada中😀|cba"
+    }
+  },
+  {
+    "name": "string_addition_rejects_implicit_numeric_conversion",
+    "template": "{{ 'a' + 1 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "string_repeat_rejects_float_count",
+    "template": "{{ 'a' * 2.0 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "string_filter_expression_composition",
+    "template": "{{ 123|string|length }}|{{ none|string }}|{{ missing|string|length }}|{{ ([1,true]|string)[::-1] }}|{{ user.age|string }}",
+    "context": {
+      "user": {
+        "age": 37
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "3|None|0|]eurT ,1[|37"
+    }
+  }
+]

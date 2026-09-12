@@ -1,0 +1,20 @@
+[
+  {
+    "name": "chained_comparison_values_and_operators",
+    "template": "{{ 1 < 2 < 3 }}|{{ 3 > 2 > 1 }}|{{ 1 < 2 > 3 }}|{{ 1 == true == 1 }}|{{ 'a' < 'b' < 'c' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|True|False|True|True"
+    }
+  },
+  {
+    "name": "chained_comparison_short_circuits_later_error",
+    "template": "{{ 3 < 2 < ('1' < 1) }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "False"
+    }
+  }
+]

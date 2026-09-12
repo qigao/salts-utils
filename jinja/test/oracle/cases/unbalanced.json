@@ -1,0 +1,16 @@
+[
+  {
+    "name": "unbalanced_interpolation_parenthesis_is_syntax",
+    "template": "{{ (user.name }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "error",
+      "category": "syntax",
+      "type": "TemplateSyntaxError"
+    }
+  }
+]

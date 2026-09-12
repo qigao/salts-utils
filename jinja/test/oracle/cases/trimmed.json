@@ -1,0 +1,15 @@
+[
+  {
+    "name": "trimmed_comment_does_not_reparse_joined_literal_delimiters",
+    "template": "{ {#- gap #}{ user.name }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "{{ user.name }}"
+    }
+  }
+]

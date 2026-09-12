@@ -1,0 +1,24 @@
+[
+  {
+    "name": "explicit_escape",
+    "template": "{{ user.name | e }}",
+    "context": {
+      "user": {
+        "name": "<Ada>"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "&lt;Ada&gt;"
+    }
+  },
+  {
+    "name": "explicit_escape_string_literal",
+    "template": "{{ '<Ada>&' | e }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "&lt;Ada&gt;&amp;"
+    }
+  }
+]

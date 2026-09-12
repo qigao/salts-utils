@@ -1,0 +1,30 @@
+[
+  {
+    "name": "float_literals_and_python_rendering",
+    "template": "{{ 1_000 }}|{{ 1.0 }}|{{ 0.1 }}|{{ 1e3 }}|{{ 1_000.25 }}|{{ 1e15 }}|{{ 1e16 }}|{{ 1e-4 }}|{{ 1e-5 }}|{{ -0.0 }}|{{ 5e-324 }}|{{ 2.2250738585072014e-308 }}|{{ 1.7976931348623157e308 }}|{{ 1e309 }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "1000|1.0|0.1|1000.0|1000.25|1000000000000000.0|1e+16|0.0001|1e-05|-0.0|5e-324|2.2250738585072014e-308|1.7976931348623157e+308|inf"
+    }
+  },
+  {
+    "name": "float_comparison_truthiness_and_tests",
+    "template": "{{ 1.5 == 1.5 }}|{{ 1.5 != 2 }}|{{ 1.5 < 2 }}|{{ 2 <= 2.0 }}|{{ 3 > 2.5 }}|{{ 3.0 >= 3 }}|{{ 9223372036854775807 < 9.223372036854776e18 }}|{{ 9223372036854775807 == 9.223372036854776e18 }}|{{ 0.0 and 'bad' or 'zero' }}|{{ 0.5 and 'yes' }}|{{ (4 / 2) is float }}|{{ 1.0 is number }}|{{ 1.0 is integer }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|True|True|False|zero|yes|True|True|False"
+    }
+  },
+  {
+    "name": "float_zero_division_is_runtime_error",
+    "template": "{{ 1.0 / 0 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "ZeroDivisionError"
+    }
+  }
+]

@@ -1,0 +1,226 @@
+[
+  {
+    "name": "repr_cycle_reentry_frame_edge",
+    "template": "{%set n=namespace(y=0)%}{%for j in range(32)%}{%set n.y=[n.y]%}{%endfor%}{%macro pred(i)%}{%if i==2%}{%set n.s=n.y|string%}{%endif%}Y{%endmacro%}{%for i in [1,2] if pred(i)%}{%set n.x=loop%}{%for j in range(32)%}{%set n.x=[n.x]%}{%endfor%}{%set rendered%}{{n.x}}{%endset%}{{rendered|length}};{%endfor%}|{{n.s|length}}",
+    "expected": {
+      "status": "ok",
+      "output": "81;81;|65"
+    }
+  },
+  {
+    "name": "repr_cycle_reentry_marker_at_capacity",
+    "template": "{%set n=namespace()%}{%macro pred(i)%}{%if i==2%}{%set n.s=[n.x]|string%}{%endif%}Y{%endmacro%}{%for i in [1,2] if pred(i)%}{%set n.x=loop%}{%for j in range(63)%}{%set n.x=[n.x]%}{%endfor%}{%set rendered%}{{n.x}}{%endset%}{{rendered|length}};{%endfor%}|{{n.s}}|{{[1]}}",
+    "expected": {
+      "status": "ok",
+      "output": "143;143;|[[...]]|[1]"
+    }
+  },
+  {
+    "name": "repr_reentry_temporary_string_isolation",
+    "template": "{%set n=namespace()%}{%macro pred(i)%}{%if i==2%}{%set n.s=123|string%}{%endif%}Y{%endmacro%}{%for i in [1,2] if pred(i)%}{{loop|string}};{%endfor%}|{{n.s}}",
+    "expected": {
+      "status": "ok",
+      "output": "<LoopContext 1/2>;<LoopContext 2/2>;|123"
+    }
+  },
+  {
+    "name": "repr_cycle_list",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_tuple",
+    "template": "{% set n=namespace() %}{% set x=(n,) %}{% set n.x=x %}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "(<Namespace {'x': (...)}>,)"
+    }
+  },
+  {
+    "name": "repr_cycle_dict",
+    "template": "{% set n=namespace() %}{% set x={'n':n} %}{% set n.x=x %}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'n': <Namespace {'x': {...}}>}"
+    }
+  },
+  {
+    "name": "repr_cycle_mixed",
+    "template": "{%set n=namespace()%}{%set x={'n':[(n,)]}%}{%set n.x=x%}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'n': [(<Namespace {'x': {...}}>,)]}"
+    }
+  },
+  {
+    "name": "repr_cycle_sibling_aliases",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{[x,x]}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[<Namespace {'x': [...]}>], [<Namespace {'x': [...]}>]]"
+    }
+  },
+  {
+    "name": "repr_cycle_namespace_root",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{n}}",
+    "expected": {
+      "status": "ok",
+      "output": "<Namespace {'x': [<Namespace {...}>]}>"
+    }
+  },
+  {
+    "name": "repr_cycle_shallow_list_copy",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [<Namespace {...}>]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_list_slice",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x[:]}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [<Namespace {...}>]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_list_repeat",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x*1}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [<Namespace {...}>]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_tuple_slice",
+    "template": "{% set n=namespace() %}{% set x=(n,) %}{% set n.x=x %}{{x[:]}}",
+    "expected": {
+      "status": "ok",
+      "output": "(<Namespace {'x': (...)}>,)"
+    }
+  },
+  {
+    "name": "repr_cycle_dict_copy",
+    "template": "{% set n=namespace() %}{% set x={'n':n} %}{% set n.x=x %}{{dict(x)}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'n': <Namespace {'x': {'n': <Namespace {...}>}}>}"
+    }
+  },
+  {
+    "name": "repr_cycle_key_tuple",
+    "template": "{% set n=namespace() %}{% set x=(n,) %}{% set n.x=x %}{{{x:1}}}",
+    "expected": {
+      "status": "ok",
+      "output": "{(<Namespace {'x': (...)}>,): 1}"
+    }
+  },
+  {
+    "name": "repr_cycle_string",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x|string}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_concat",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{'A'~x~'B'}}",
+    "expected": {
+      "status": "ok",
+      "output": "A[<Namespace {'x': [...]}>]B"
+    }
+  },
+  {
+    "name": "repr_cycle_join",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{[x,x]|join('|')}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]|[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_capture",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{% set text %}{{x}}{% endset %}{{text}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_macro",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{% macro f(y) %}{{y}}{% endmacro %}{{f(x)}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_loop",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{% for y in [x,x] %}{{y}};{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>];[<Namespace {'x': [...]}>];"
+    }
+  },
+  {
+    "name": "repr_cycle_after_namespace",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{n}}|{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "<Namespace {'x': [<Namespace {...}>]}>|[<Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_after_mutation",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{{x}}{% set n.x=0 %}|{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>]|[<Namespace {'x': 0}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_escape",
+    "template": "{% set n=namespace() %}{% set x=[n] %}{% set n.x=x %}{% autoescape true %}{{x}}|{{x|string}}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "[&lt;Namespace {&#39;x&#39;: [...]}&gt;]|[&lt;Namespace {&#39;x&#39;: [...]}&gt;]"
+    }
+  },
+  {
+    "name": "repr_cycle_multiple_namespaces",
+    "template": "{% set a=namespace() %}{% set b=namespace() %}{% set x=[a,b] %}{% set a.x=x %}{% set b.x=x %}{{x}}",
+    "expected": {
+      "status": "ok",
+      "output": "[<Namespace {'x': [...]}>, <Namespace {'x': [...]}>]"
+    }
+  },
+  {
+    "name": "repr_cycle_unshared_equal",
+    "template": "{% set x=[1] %}{% set y=[1] %}{{[x,y,x]}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[1], [1], [1]]"
+    }
+  },
+  {
+    "name": "repr_cycle_empty_containers",
+    "template": "{{[[],[],(),(),{},{}]}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[], [], (), (), {}, {}]"
+    }
+  },
+  {
+    "name": "repr_cycle_acyclic_depth_edge",
+    "template": "{% set n=namespace(x=0) %}{% for i in range(63) %}{% set n.x=[n.x] %}{% endfor %}{{n.x}}",
+    "expected": {
+      "status": "ok",
+      "output": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    }
+  }
+]

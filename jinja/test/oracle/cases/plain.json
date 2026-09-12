@@ -1,0 +1,11 @@
+[
+  {
+    "name": "plain_string_literals",
+    "template": "{{ 'Ada' }}|{{ \"Lin\" }}|{{ '' }}|{{ '<Ada>' | safe }}|{{ '你好' }}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "Ada|Lin||<Ada>|你好"
+    }
+  }
+]

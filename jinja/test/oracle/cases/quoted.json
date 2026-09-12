@@ -1,0 +1,18 @@
+[
+  {
+    "name": "quoted_variable_close_is_string_content",
+    "template": "{{ '}}' }}",
+    "expected": {
+      "status": "ok",
+      "output": "}}"
+    }
+  },
+  {
+    "name": "quoted_statement_close_is_string_content",
+    "template": "{% if '%}' == '%}' %}yes{% endif %}",
+    "expected": {
+      "status": "ok",
+      "output": "yes"
+    }
+  }
+]

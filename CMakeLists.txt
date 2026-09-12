@@ -81,6 +81,8 @@ if(SALTS_UTILS_ENABLE_CFLOW_USB)
 endif()
 add_subdirectory(cron)
 add_subdirectory(mustache)
+add_subdirectory(unicode)
+add_subdirectory(jinja)
 add_subdirectory(tbe)
 
 # Package Configuration

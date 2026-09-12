@@ -1,0 +1,58 @@
+[
+  {
+    "name": "with_initializers_read_outer_scope",
+    "template": "{% set a=8 %}{% with a=1,b=a %}{{a}}|{{b}}{% endwith %}|{{a}}",
+    "expected": {
+      "status": "ok",
+      "output": "1|8|8"
+    }
+  },
+  {
+    "name": "with_empty_scope_is_local",
+    "template": "{% with %}{% set x=1 %}{{x}}{% endwith %}{{x is undefined}}",
+    "expected": {
+      "status": "ok",
+      "output": "1True"
+    }
+  },
+  {
+    "name": "with_nested_scope_restoration",
+    "template": "{% set a=8 %}{% with a=1 %}{% with a=2,b=a %}{{a}}{{b}}{% endwith %}{{a}}{% endwith %}{{a}}",
+    "expected": {
+      "status": "ok",
+      "output": "2118"
+    }
+  },
+  {
+    "name": "with_tuple_and_string_delimiters",
+    "template": "{% with a,a=(1,2),b='x,y=z' %}{{a}}{{b}}{% endwith %}",
+    "expected": {
+      "status": "ok",
+      "output": "2x,y=z"
+    }
+  },
+  {
+    "name": "with_loop_name_shadowing",
+    "template": "{% for i in [1] %}{% with i=2,loop=3 %}{{i}}{{loop}}{% endwith %}{{i}}{% endfor %}",
+    "expected": {
+      "status": "ok",
+      "output": "231"
+    }
+  },
+  {
+    "name": "with_namespace_shared_identity",
+    "template": "{% set ns=namespace(x=1) %}{% with alias=ns %}{% set alias.x=2 %}{% endwith %}{{ns.x}}",
+    "expected": {
+      "status": "ok",
+      "output": "2"
+    }
+  },
+  {
+    "name": "with_capture_autoescape_safety",
+    "template": "{% autoescape true %}{% with a='<'|safe,b='>' %}{% set text %}{{a}}{{b}}{% endset %}{{text}}{% endwith %}{% endautoescape %}",
+    "expected": {
+      "status": "ok",
+      "output": "<&gt;"
+    }
+  }
+]

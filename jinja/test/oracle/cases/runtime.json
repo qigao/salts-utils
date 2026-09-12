@@ -1,0 +1,102 @@
+[
+  {
+    "name": "runtime_scalar_comparison_operators",
+    "template": "{{ user.age == 37 }}|{{ user.age != 0 }}|{{ user.age < 38 }}|{{ user.age <= 37 }}|{{ user.age > 36 }}|{{ user.age >= 37 }}|{{ active == true }}|{{ user.name == 'Ada' }}|{{ user.name < 'Bee' }}|{{ user.age == user.age }}",
+    "context": {
+      "user": {
+        "age": 37,
+        "name": "Ada"
+      },
+      "active": true
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|True|True|True|True|True"
+    }
+  },
+  {
+    "name": "runtime_comparison_scope_undefined_and_mixed_equality",
+    "template": "{% if user.age >= 37 %}adult{% else %}minor{% endif %}|{{ not user.age == 0 }}|{% for item in users %}{% if item.age >= 40 %}{{ item.name }}{% endif %}{% if user.age == 37 %}!{% endif %}{% endfor %}|{{ missing == 1 }}|{{ missing != 1 }}|{{ missing == absent }}|{{ missing != absent }}|{{ '1' == 1 }}|{{ '1' != 1 }}",
+    "context": {
+      "user": {
+        "age": 37,
+        "name": "root"
+      },
+      "users": [
+        {
+          "age": 37,
+          "name": "Ada"
+        },
+        {
+          "age": 42,
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "adult|True|!Lin!|False|True|True|False|False|True"
+    }
+  },
+  {
+    "name": "runtime_chained_comparison_condition_and_undefined",
+    "template": "{{ 36 < user.age <= 37 }}|{% if 30 < user.age < 40 %}adult{% else %}other{% endif %}|{{ missing == absent == missing }}|{% for item in users %}{% if 30 < item.age < 40 %}{{ item.name }}{% endif %}{% endfor %}",
+    "context": {
+      "user": {
+        "age": 37
+      },
+      "users": [
+        {
+          "age": 37,
+          "name": "Ada"
+        },
+        {
+          "age": 42,
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|adult|True|Ada"
+    }
+  },
+  {
+    "name": "runtime_integer_arithmetic_composition",
+    "template": "{{ user.age + 5 }}|{{ user.age * 2 }}|{{ active + 2 }}|{{ user.age - 7 == 30 }}|{% if user.age // 10 == 3 %}yes{% endif %}",
+    "context": {
+      "user": {
+        "age": 37
+      },
+      "active": true
+    },
+    "expected": {
+      "status": "ok",
+      "output": "42|74|3|True|yes"
+    }
+  },
+  {
+    "name": "runtime_scalar_container_and_loop_tests",
+    "template": "{{ user.name is string }}|{{ user.age is integer }}|{{ active is boolean }}|{{ value is float }}|{{ value is number }}|{{ value is integer }}|{{ users is sequence }}|{{ user is mapping }}|{% for item in users %}{{ item.name is string }}{% endfor %}",
+    "context": {
+      "user": {
+        "name": "root",
+        "age": 37
+      },
+      "active": true,
+      "value": 1.5,
+      "users": [
+        {
+          "name": "Ada"
+        },
+        {
+          "name": "Lin"
+        }
+      ]
+    },
+    "expected": {
+      "status": "ok",
+      "output": "True|True|True|True|True|False|True|True|TrueTrue"
+    }
+  }
+]

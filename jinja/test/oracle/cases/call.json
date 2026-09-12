@@ -1,0 +1,142 @@
+[
+  {
+    "name": "call_expand_reserved_keyword_merge",
+    "template": "{{dict(if=1,**{'if':2})}}|{{dict(if=0,x=1,**{'x':2})}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'if': 2}|{'if': 0, 'x': 2}"
+    }
+  },
+  {
+    "name": "call_expand_dictionary_duplicate_keys",
+    "template": "{{dict(**{'x':1,'x':2,'y':3})}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'x': 2, 'y': 3}"
+    }
+  },
+  {
+    "name": "call_expand_range",
+    "template": "{{range(*[1,5,2])|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[1, 3]"
+    }
+  },
+  {
+    "name": "call_expand_tuple_range",
+    "template": "{{range(*(3,))|list}}|{{range(*range(1,4))|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[0, 1, 2]|[1]"
+    }
+  },
+  {
+    "name": "call_expand_alias_method",
+    "template": "{% set f=range %}{{[f][0](*[3])|join}}|{{range(4).count(*[2])}}",
+    "expected": {
+      "status": "ok",
+      "output": "012|1"
+    }
+  },
+  {
+    "name": "call_expand_unicode_empty_keywords",
+    "template": "{{dict(**{'名称':2,'':3})}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'名称': 2, '': 3}"
+    }
+  },
+  {
+    "name": "call_expand_keyword_before_star",
+    "template": "{{dict(x=1,*[{'x':2}],**{'y':3})}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'x': 1, 'y': 3}"
+    }
+  },
+  {
+    "name": "call_expand_namespace_empty",
+    "template": "{% set n=namespace(**{'x':4}) %}{{n.x}}|{{dict(*[])}}",
+    "expected": {
+      "status": "ok",
+      "output": "4|{}"
+    }
+  },
+  {
+    "name": "call_expand_nested",
+    "template": "{{range(*[range(*[2])|length])|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "[0, 1]"
+    }
+  },
+  {
+    "name": "call_expand_undefined_empty_mapping",
+    "template": "{{dict(*missing)}}|{{range(2,**{})|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "{}|[0, 1]"
+    }
+  },
+  {
+    "name": "call_expand_iterator_order",
+    "template": "{% set it=[1,2]|reverse %}{{dict(x=it|list,*[{'y':it|first}])}}|{{it|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'y': 2, 'x': [1]}|[]"
+    }
+  },
+  {
+    "name": "call_expand_iterator_pairs",
+    "template": "{% set it=[['a',1],['b',2]]|reverse %}{{dict(*[it])}}|{{it|list}}",
+    "expected": {
+      "status": "ok",
+      "output": "{'b': 2, 'a': 1}|[]"
+    }
+  },
+  {
+    "name": "call_expand_duplicate_keyword",
+    "template": "{{dict(x=1,**{'x':2})}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "call_expand_nonstring_keyword",
+    "template": "{{dict(**{1:2})}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "call_expand_noniterable",
+    "template": "{{dict(*none)}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "call_expand_nonmapping",
+    "template": "{{dict(**[])}}",
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "call_keyword_short_circuit",
+    "template": "{{ true or range(stop=3,) }}|{{ false and range(3).count(value=1) }}|{{ true or 1 is eq range(stop=3) }}",
+    "expected": {
+      "status": "ok",
+      "output": "True|False|True"
+    }
+  }
+]

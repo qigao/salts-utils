@@ -1,0 +1,57 @@
+[
+  {
+    "name": "collection_iteration_reads_stable_call_results",
+    "template": "{% for outer in [1] %}{% for inner in [loop.changed(outer), loop.changed(outer)] %}{{ inner }}{{ inner }}{% endfor %}{% endfor %}",
+    "context": {},
+    "expected": {
+      "status": "ok",
+      "output": "TrueTrueFalseFalse"
+    }
+  },
+  {
+    "name": "collection_addition_preserves_type_and_order",
+    "template": "{{ [1,2] + [3] }}|{{ (1,) + (2,3) }}|{{ ([] + [user])[0].name }}|{{ ([1] + [2,3])[::-1] }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "[1, 2, 3]|(1, 2, 3)|Ada|[3, 2, 1]"
+    }
+  },
+  {
+    "name": "collection_addition_rejects_list_tuple_mix",
+    "template": "{{ [1] + (2,) }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  },
+  {
+    "name": "collection_repeat_bidirectional_integer_counts",
+    "template": "{{ [1,2] * 2 }}|{{ 3 * (1,) }}|{{ [1] * -1 }}|{{ () * 9223372036854775807 }}|{{ ([user] * true)[0].name }}",
+    "context": {
+      "user": {
+        "name": "Ada"
+      }
+    },
+    "expected": {
+      "status": "ok",
+      "output": "[1, 2, 1, 2]|(1, 1, 1)|[]|()|Ada"
+    }
+  },
+  {
+    "name": "collection_repeat_rejects_float_count",
+    "template": "{{ [1] * 2.0 }}",
+    "context": {},
+    "expected": {
+      "status": "error",
+      "category": "runtime",
+      "type": "TypeError"
+    }
+  }
+]

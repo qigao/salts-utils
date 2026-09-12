@@ -1,0 +1,17 @@
+[
+  {
+    "name": "struct_item_lookup_literal_and_dynamic_keys",
+    "template": "{{ user['name'] }}|{{ user[key] }}|<{{ user['missing'] }}>|<{{ user[0] }}>",
+    "context": {
+      "user": {
+        "name": "Ada",
+        "age": 37
+      },
+      "key": "age"
+    },
+    "expected": {
+      "status": "ok",
+      "output": "Ada|37|<>|<>"
+    }
+  }
+]
