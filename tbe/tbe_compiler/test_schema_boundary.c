@@ -1,8 +1,10 @@
 #include "compiler_core.h"
 #include "tinytest.h"
+#include "schema_parser_dsl.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int write_text_file(const char *path, const char *text) {
@@ -73,5 +75,110 @@ spec("tbe_compiler_schema_boundary") {
     }
 
     remove(schema_path);
+  }
+}
+
+
+/* #45: these exercise the production parser and default C template, not a
+ * second type classifier implemented by the test. */
+static Node *default_child(Node *parent, const char *name) {
+  size_t i;
+  if (parent == NULL || parent->type != NODE_MAP) return NULL;
+  for (i = 0; i < parent->data.map.count; ++i) {
+    Node *child = parent->data.map.items[i];
+    if (child != NULL && child->name != NULL && strcmp(child->name, name) == 0)
+      return child;
+  }
+  return NULL;
+}
+
+static int default_text_is(Node *parent, const char *name, const char *expected) {
+  Node *child = default_child(parent, name);
+  return child != NULL && child->type == NODE_STRING &&
+         child->data.string_val != NULL && strcmp(child->data.string_val, expected) == 0;
+}
+
+static size_t default_occurrences(const char *text, const char *needle) {
+  size_t count = 0;
+  size_t length = strlen(needle);
+  while ((text = strstr(text, needle)) != NULL) {
+    ++count;
+    text += length;
+  }
+  return count;
+}
+
+spec("tbe_compiler_default_type_identity") {
+  it("does not classify enum or flags defaults by substrings in their declared names") {
+    static const char *const names[] = {"Paint", "uintMode", "floatMode", "doubleMode"};
+    static const char *const declarations[] = {"enum", "flags"};
+    enum { SCHEMA_CAPACITY = 256 };
+    size_t i, j;
+    for (j = 0; j < sizeof(declarations) / sizeof(declarations[0]); ++j) {
+      for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+        char schema[SCHEMA_CAPACITY];
+        Node *root = create_node_map("root");
+        Node *messages, *defaults, *field = NULL;
+        int matched = 0;
+        int count = snprintf(schema, sizeof(schema),
+            "%s %s <uint8> { On=1; } message Settings { optional %s mode default On; }",
+            declarations[j], names[i], names[i]);
+        int status;
+        check_not_null(root);
+        check_true(count > 0 && (size_t)count < sizeof(schema));
+        status = parse_schema(schema, (size_t)count, root, NULL);
+        messages = default_child(root, "messages");
+        if (messages != NULL && messages->type == NODE_LIST && messages->data.list.count == 1u) {
+          defaults = default_child(messages->data.list.items[0], "default_value_fields");
+          if (defaults != NULL && defaults->type == NODE_LIST && defaults->data.list.count == 1u)
+            field = defaults->data.list.items[0];
+        }
+        if (field != NULL) {
+          matched = default_text_is(field, "type", names[i]) &&
+                    default_text_is(field, "enum_name", names[i]) &&
+                    default_text_is(field, "default_value", "On") &&
+                    default_child(field, "is_enum_ref") != NULL &&
+                    default_child(field, "is_numeric") == NULL &&
+                    default_child(field, "is_boolean") == NULL &&
+                    default_child(field, "is_string") == NULL;
+        }
+        node_free(root);
+        info("declaration=%s name=%s", declarations[j], names[i]);
+        check_equal(status, 0);
+        check_true(matched);
+      }
+    }
+  }
+
+  it("emits exactly one qualified enum default macro from the real C template") {
+    static const char schema_path[] = "test_default_identity.schema";
+    static const char output_path[] = "test_default_identity.h";
+    static const char schema[] =
+        "enum Paint <uint8> { Red=1; } "
+        "message Settings { optional Paint color default Red; }";
+    tbe_compiler_options_t options = {
+        .schema_path = schema_path,
+        .output_path = output_path,
+        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+        .lang_enum = TBE_COMPILER_LANG_C,
+    };
+    char *output;
+    int status, qualified = 0;
+    size_t definitions = 0;
+    remove(schema_path);
+    remove(output_path);
+    check_equal(write_text_file(schema_path, schema), 0);
+    status = tbe_compiler_run(&options);
+    output = tbe_compiler_read_file(output_path);
+    if (output != NULL) {
+      definitions = default_occurrences(output, "#define Settings_color_DEFAULT ");
+      qualified = strstr(output, "#define Settings_color_DEFAULT Paint_Red") != NULL;
+    }
+    free(output);
+    remove(schema_path);
+    remove(output_path);
+    check_equal(status, 0);
+    check_true(qualified);
+    check_equal(definitions, (size_t)1u);
   }
 }
