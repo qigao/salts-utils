@@ -29,6 +29,27 @@ static void check_fixed_width_descriptor(const char *name,
     check_equal(((const cmeta_data_integer_shape *)data->shape)->bits, bits);
 }
 
+static void check_float_descriptor(const char *name,
+                                   const cmeta_data_desc *canonical,
+                                   const cmeta_type_desc *storage_type,
+                                   uint8_t bits) {
+  const cmeta_data_desc *data = schema_cmeta_builtin_data(name);
+  cmeta_data_kind kind = CMETA_DATA_BOOL;
+
+  check_true(data != NULL);
+  if (data == NULL) return;
+
+  check_true(data == canonical);
+  check_true(cmeta_data_desc_valid(data));
+  check_equal(data->kind, CMETA_DATA_FLOAT);
+  check_true(data->storage_type == storage_type);
+  check_true(data->shape != NULL);
+  if (data->shape != NULL)
+    check_equal(((const cmeta_data_float_shape *)data->shape)->bits, bits);
+  check_true(schema_cmeta_data_kind(name, &kind));
+  check_equal(kind, data->kind);
+}
+
 suite("schema_cmeta") {
   describe("canonical builtin scalar lowering") {
     it("maps signed integer aliases to exact-width Core descriptor semantics") {
@@ -54,6 +75,32 @@ suite("schema_cmeta") {
       check_fixed_width_descriptor("u64", "salts.uint64.data", CMETA_DATA_UINT, 64u);
     }
 
+    it("maps bool to the canonical CMeta boolean storage descriptor") {
+      const cmeta_data_desc *data = schema_cmeta_builtin_data("bool");
+      cmeta_data_kind kind = CMETA_DATA_FLOAT;
+
+      check_true(data != NULL);
+      if (data != NULL) {
+        check_true(data == &cmeta_data_bool);
+        check_true(cmeta_data_desc_valid(data));
+        check_equal(data->kind, CMETA_DATA_BOOL);
+        check_true(data->storage_type == &cmeta_type_bool);
+        check_null(data->shape);
+        check_true(schema_cmeta_data_kind("bool", &kind));
+        check_equal(kind, data->kind);
+      }
+    }
+
+    it("maps float and f32 to canonical 32-bit CMeta storage") {
+      check_float_descriptor("float", &cmeta_data_float, &cmeta_type_float, 32u);
+      check_float_descriptor("f32", &cmeta_data_float, &cmeta_type_float, 32u);
+    }
+
+    it("maps double and f64 to canonical 64-bit CMeta storage") {
+      check_float_descriptor("double", &cmeta_data_double, &cmeta_type_double, 64u);
+      check_float_descriptor("f64", &cmeta_data_double, &cmeta_type_double, 64u);
+    }
+
     it("maps uuid to the process-wide canonical Core descriptor") {
       check_true(schema_cmeta_builtin_data("uuid") == &salts_uuid_cmeta_data);
       check_true(salts_uuid_cmeta_data_valid(schema_cmeta_builtin_data("uuid")));
@@ -63,6 +110,17 @@ suite("schema_cmeta") {
       check_null(schema_cmeta_builtin_data("varint"));
       check_null(schema_cmeta_builtin_data("not-a-type"));
       check_null(schema_cmeta_builtin_data(NULL));
+    }
+
+    it("does not choose string or bytes storage from kind classification") {
+      cmeta_data_kind kind = CMETA_DATA_BOOL;
+
+      check_true(schema_cmeta_data_kind("string", &kind));
+      check_equal(kind, CMETA_DATA_STRING);
+      check_null(schema_cmeta_builtin_data("string"));
+      check_true(schema_cmeta_data_kind("bytes", &kind));
+      check_equal(kind, CMETA_DATA_BYTES);
+      check_null(schema_cmeta_builtin_data("bytes"));
     }
   }
 
