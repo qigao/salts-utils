@@ -72,6 +72,12 @@ foreach(test_name
     FOLDER "tbe/schema/tests")
 endforeach()
 
+# Keep CBind on the integration test only, not the schema library export.
+if(TARGET test_schema_cmeta)
+  target_sources(test_schema_cmeta PRIVATE test/test_schema_cmeta_buffer.c)
+  target_link_libraries(test_schema_cmeta PRIVATE Salts::CBind)
+endif()
+
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
   LIBS Salts::TbeSchema
