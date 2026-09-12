@@ -18,6 +18,14 @@ extern "C" {
  */
 const cmeta_data_desc *schema_cmeta_builtin_data(const char *name);
 
+/**
+ * Resolve a schema scalar/structural semantic to its canonical CMeta data kind.
+ * Returns non-zero on success. Unsupported/invalid semantics return zero and do
+ * not modify *out_kind. Container semantics describe shape only and never select
+ * a concrete CSTL implementation.
+ */
+int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind);
+
 #ifdef __cplusplus
 }
 #endif
