@@ -63,12 +63,15 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm re2c
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
           cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/host-lemon --target lemon -j2
+      - name: Install pinned re2c 4.6 and Unicode data
+        shell: bash
+        run: bash cmake/ci/install-re2c.sh
       - name: Install pinned Core
         working-directory: salts
         env:
