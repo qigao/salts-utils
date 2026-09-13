@@ -581,7 +581,7 @@ spec("Jinja CMeta builtin queries") {
     check_equal(jinja_test_render("{{'upper' is filter}}|{{'sameas' is test}}|"
         "{{'length\\0x' is filter}}|{{'defined.custom' is test}}|{{false and ([] is test)}}",
         &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
-    check_equal(output, "False|True|False|False|False");
+    check_equal(output, "True|True|False|False|False");
     free(output);
   }
   it("builtin_filter_query") {

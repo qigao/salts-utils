@@ -5818,32 +5818,34 @@ static JINJA_CMETA_STATUS jinja_sort_value(JINJA_CMETA_PROVIDER *provider,
     JINJA_CMETA_VALUE *operand, const JINJA_CMETA_VALUE *reverse_value,
     const JINJA_CMETA_VALUE *case_value, const JINJA_CMETA_VALUE *attribute,
     JINJA_CMETA_VALUE *result) {
-  JINJA_CMETA_VALUE *parts, list;
+  JINJA_CMETA_VALUE *parts = NULL, list;
   size_t part_count, key_count, slots_per_item;
   int reverse = 0, case_sensitive = 0;
   JINJA_CMETA_STATUS status = jinja_sort_attribute_parts(provider, attribute, &parts, &part_count);
-  if (status != JINJA_CMETA_OK) return status;
+  if (status != JINJA_CMETA_OK) goto cleanup;
   if (reverse_value != NULL) {
     status = jinja_value_truthy(provider, reverse_value, &reverse);
-    if (status != JINJA_CMETA_OK) return status;
+    if (status != JINJA_CMETA_OK) goto cleanup;
   }
   if (case_value != NULL) {
     status = jinja_value_truthy(provider, case_value, &case_sensitive);
-    if (status != JINJA_CMETA_OK) return status;
+    if (status != JINJA_CMETA_OK) goto cleanup;
   }
   status = jinja_materialize_list(provider, operand, &list);
-  if (status != JINJA_CMETA_OK) return status;
+  if (status != JINJA_CMETA_OK) goto cleanup;
   key_count = part_count == 0u ? 1u : part_count;
   if (list.collection_item_count == 0u) {
     *result = list;
-    return JINJA_CMETA_OK;
+    goto cleanup;
   }
   slots_per_item = key_count + 1u;
   if (list.collection_item_count >
-      (provider->shared.values.limit - provider->shared.collection_value_count) / slots_per_item)
-    return JINJA_CMETA_ERR_CAPACITY;
+      (provider->shared.values.limit - provider->shared.collection_value_count) / slots_per_item) {
+    status = JINJA_CMETA_ERR_CAPACITY;
+    goto cleanup;
+  }
   status = jinja_ensure_collection_storage(provider, list.collection_item_count * slots_per_item);
-  if (status != JINJA_CMETA_OK) return status;
+  if (status != JINJA_CMETA_OK) goto cleanup;
   JINJA_CMETA_VALUE *sorted = jinja_cmeta_values_at(&provider->shared.values,
       provider->shared.collection_value_count);
   JINJA_CMETA_VALUE *keys = sorted + list.collection_item_count;
@@ -5852,7 +5854,7 @@ static JINJA_CMETA_STATUS jinja_sort_value(JINJA_CMETA_PROVIDER *provider,
     sorted[i] = list.collection_values[i];
     status = jinja_sort_key(provider, parts, part_count, case_sensitive, &sorted[i],
         keys + i * key_count);
-    if (status != JINJA_CMETA_OK) return status;
+    if (status != JINJA_CMETA_OK) goto cleanup;
   }
   for (size_t i = 1u; i < list.collection_item_count; ++i) {
     size_t cursor = i;
@@ -5871,11 +5873,13 @@ static JINJA_CMETA_STATUS jinja_sort_value(JINJA_CMETA_PROVIDER *provider,
       }
       --cursor;
     }
-    if (status != JINJA_CMETA_OK) return status;
+    if (status != JINJA_CMETA_OK) goto cleanup;
   }
   *result = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_LIST,
       .collection_item_count = list.collection_item_count, .collection_values = sorted};
-  return JINJA_CMETA_OK;
+cleanup:
+  jinja_cmeta_memory_drop(parts);
+  return status;
 }
 
 static JINJA_CMETA_STATUS jinja_dictsort_value(JINJA_CMETA_PROVIDER *provider,
@@ -6534,8 +6538,11 @@ static JINJA_CMETA_STATUS jinja_json_dict(JINJA_CMETA_PROVIDER *provider,
       if (status == JINJA_CMETA_OK) ++used;
     }
   }
-  if (status != JINJA_CMETA_OK) return status;
-  if (used != count) return JINJA_CMETA_ERR_RENDER;
+  if (status != JINJA_CMETA_OK) goto cleanup;
+  if (used != count) {
+    status = JINJA_CMETA_ERR_RENDER;
+    goto cleanup;
+  }
   for (size_t i = 1u; i < count; ++i) {
     size_t cursor = i;
     while (cursor != 0u) {
@@ -6547,7 +6554,7 @@ static JINJA_CMETA_STATUS jinja_json_dict(JINJA_CMETA_PROVIDER *provider,
       entries[cursor - 1u] = swap;
       --cursor;
     }
-    if (status != JINJA_CMETA_OK) return status;
+    if (status != JINJA_CMETA_OK) goto cleanup;
   }
   status = jinja_json_write(provider, "{", 1u);
   for (size_t i = 0u; status == JINJA_CMETA_OK && i < count; ++i) {
@@ -6562,6 +6569,8 @@ static JINJA_CMETA_STATUS jinja_json_dict(JINJA_CMETA_PROVIDER *provider,
   if (status == JINJA_CMETA_OK && pretty && count != 0u)
     status = jinja_json_indent(provider, indent, depth);
   if (status == JINJA_CMETA_OK) status = jinja_json_write(provider, "}", 1u);
+cleanup:
+  jinja_cmeta_memory_drop(entries);
   return status;
 }
 

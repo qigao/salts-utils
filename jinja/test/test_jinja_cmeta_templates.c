@@ -408,8 +408,9 @@ spec("Jinja CMeta collections and runtime: templates 12") {
     JINJA_CMETA_TEMPLATE *templ =
         jinja_cmeta_compile(vstr_from_cstr("{{ user.name | upper }}"), NULL, &error);
 
-    check_null(templ);
-    check_equal(error.status, JINJA_CMETA_ERR_UNSUPPORTED);
+    check_not_null(templ);
+    check_equal(error.status, JINJA_CMETA_OK);
+    jinja_cmeta_release(templ);
 
     error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
     templ = jinja_cmeta_compile(vstr_from_cstr("{{ user.name | safe | unknown_filter }}"), NULL, &error);

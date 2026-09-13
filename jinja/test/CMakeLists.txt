@@ -45,6 +45,7 @@ set_tests_properties(test_jinja_cmeta_header_cpp PROPERTIES LABELS "jinja;cmeta;
 # Compile-only public runtime header check; it has no runtime test entry point.
 add_library(test_jinja_runtime_header_cpp OBJECT test_jinja_runtime_header_cpp.cpp)
 target_include_directories(test_jinja_runtime_header_cpp PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_jinja_runtime_header_cpp PRIVATE Salts::JinjaCMeta)
 set_target_properties(test_jinja_runtime_header_cpp PROPERTIES FOLDER "jinja/tests")
 
 # Compile private parser sources directly; no test-only symbols enter the public DLL API.
