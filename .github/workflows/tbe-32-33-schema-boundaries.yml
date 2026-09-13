@@ -197,6 +197,8 @@ jobs:
             test_tbe_parser \
             test_schema_boundaries \
             test_schema_cmeta \
+            test_schema_cmeta_fields \
+            test_schema_cmeta_public_cpp \
             test_schema_enum_conformance \
             test_flags_bdd \
             test_tbe_parser_bdd \
