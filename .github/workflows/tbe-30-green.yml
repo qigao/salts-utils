@@ -211,6 +211,7 @@ jobs:
         shell: bash
         env:
           SALTS_ROOT: /opt/salts/debug
+          LD_LIBRARY_PATH: ${{ runner.temp }}/utils-native-installed/lib:/opt/salts/debug/lib
         run: |
           set -euxo pipefail
           cmake --build build/linux-gcc-debug --target install -j2 \
