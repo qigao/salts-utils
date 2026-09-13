@@ -1,6 +1,7 @@
 #include "tinytest.h"
 #include "tbe_typed_internal.h"
 #include <salts_cmeta_fixed_width.h>
+#include <salts_cmeta_data.h>
 #include <string.h>
 
 /* Include the real generated implementation to inspect internal metadata.
@@ -99,9 +100,87 @@ spec("generated native CMeta graph") {
       check_equal(field.default_value, "9");
       check_equal(field.name, "count");
       check_equal(field.offset, 14u);
+      /* Mutation: runtime reflection diverges from the actual generated graph,
+       * or uses addresses rather than semantic identity for copied scalars. */
+      check_true(field.has_cmeta_kind);
+      check_equal(field.cmeta_kind, CMETA_DATA_SINT);
+      {
+        const cmeta_data_struct_shape *shape = data->shape;
+        cmeta_type_desc copied = *shape->fields[2].value->storage_type;
+        cmeta_type_identity identity = *copied.identity;
+        copied.identity = &identity;
+        check_true(field.cmeta_data != NULL);
+        check_true(cmeta_type_equal(field.cmeta_data->storage_type, &copied));
+        check_equal(field.cmeta_data->stable_id, shape->fields[2].value->stable_id);
+        check_true(data_bind_schema_field_at(codec, "Sample", 0u, &field));
+        check_equal(field.cmeta_kind, shape->fields[0].value->kind);
+        check_equal(field.cmeta_kind, CMETA_DATA_STRUCT);
+        check_null(field.cmeta_data);
+        check_true(data_bind_schema_field_at(codec, "Sample", 1u, &field));
+        check_equal(field.cmeta_kind, shape->fields[1].value->kind);
+        check_equal(field.cmeta_kind, CMETA_DATA_ENUM);
+        check_null(field.cmeta_data);
+      }
       data_bind_free(codec);
     }
 #endif
   }
 #endif
+  /* Mutations: drop the record recursion bound, publish uint8_t BOOL as bool,
+   * or cast the uint64 enum domain into signed CMeta enum metadata. These use
+   * actual generated C types/getters, not reconstructed native descriptors. */
+  it("accepts the maximum native record depth and rejects the next level atomically") {
+    const cmeta_data_desc *data = NULL;
+    const cmeta_data_desc *published;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(Depth32_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    published = data;
+    check_equal(Depth33_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == published);
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_equal(error.path, "Depth0");
+    check_not_null(strstr(error.message, "CMeta"));
+  }
+  it("does not publish generated uint8 boolean storage as canonical native bool") {
+    const cmeta_data_desc *data = &salts_int32_cmeta_data;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check(_Generic(((BoolStorage_t *)0)->value, uint8_t: 1, default: 0));
+    check_equal(BoolStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == &salts_int32_cmeta_data);
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_equal(error.path, "BoolStorage");
+    check_not_null(strstr(error.message, "CMeta"));
+  }
+  it("rejects an unsigned 64-bit enum domain without truncating native constants") {
+    const cmeta_data_desc *data = &salts_int32_cmeta_data;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(sizeof(WideDomain_t), sizeof(uint64_t));
+    check(WideDomain_Maximum == UINT64_MAX);
+    check_equal(WideEnumStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == &salts_int32_cmeta_data);
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_equal(error.path, "value");
+    check_not_null(strstr(error.message, "CMeta"));
+  }
+  /* Mutation: the compiler omits the existing UUID provider solely because
+   * UUID is a CUSTOM schema domain rather than a numeric scalar projection. */
+  it("publishes the canonical UUID text adapter over actual generated UUID storage") {
+    const cmeta_data_desc *data = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    check_equal(UuidStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    if (data) {
+      const cmeta_data_struct_shape *shape = data->shape;
+      const cmeta_data_desc *uuid = shape->fields[0].value;
+      cmeta_type_desc copied = salts_uuid_cmeta_type;
+      cmeta_type_identity identity = *copied.identity;
+      copied.identity = &identity;
+      check(salts_uuid_cmeta_data_valid(uuid));
+      check_equal(uuid->kind, CMETA_DATA_STRING);
+      check(cmeta_type_equal(uuid->storage_type, &copied));
+      check_equal(uuid->storage_type->size, sizeof(((UuidStorage_t *)0)->value));
+      check_equal(uuid->stable_id, "salts.uuid.data");
+    }
+  }
 }

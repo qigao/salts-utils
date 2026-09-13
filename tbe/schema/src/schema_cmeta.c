@@ -54,18 +54,6 @@ static const schema_cmeta_builtin_entry_t SCHEMA_CMETA_BUILTINS[] = {
 #undef SCHEMA_CMETA_ENTRY
 
 static const schema_cmeta_kind_entry_t SCHEMA_CMETA_KINDS[] = {
-    {"bool", CMETA_DATA_BOOL},
-    {"int8_t", CMETA_DATA_SINT}, {"int8", CMETA_DATA_SINT}, {"i8", CMETA_DATA_SINT},
-    {"int16_t", CMETA_DATA_SINT}, {"int16", CMETA_DATA_SINT}, {"i16", CMETA_DATA_SINT},
-    {"int32_t", CMETA_DATA_SINT}, {"int32", CMETA_DATA_SINT}, {"i32", CMETA_DATA_SINT},
-    {"int64_t", CMETA_DATA_SINT}, {"int64", CMETA_DATA_SINT}, {"i64", CMETA_DATA_SINT},
-    {"uint8_t", CMETA_DATA_UINT}, {"uint8", CMETA_DATA_UINT}, {"u8", CMETA_DATA_UINT},
-    {"byte", CMETA_DATA_UINT},
-    {"uint16_t", CMETA_DATA_UINT}, {"uint16", CMETA_DATA_UINT}, {"u16", CMETA_DATA_UINT},
-    {"uint32_t", CMETA_DATA_UINT}, {"uint32", CMETA_DATA_UINT}, {"u32", CMETA_DATA_UINT},
-    {"uint64_t", CMETA_DATA_UINT}, {"uint64", CMETA_DATA_UINT}, {"u64", CMETA_DATA_UINT},
-    {"float", CMETA_DATA_FLOAT}, {"f32", CMETA_DATA_FLOAT},
-    {"double", CMETA_DATA_FLOAT}, {"f64", CMETA_DATA_FLOAT},
     {"string", CMETA_DATA_STRING}, {"bytes", CMETA_DATA_BYTES},
     {"uuid", CMETA_DATA_CUSTOM}, {"datetime", CMETA_DATA_CUSTOM},
     {"date", CMETA_DATA_CUSTOM}, {"time", CMETA_DATA_CUSTOM},
@@ -95,6 +83,7 @@ const cmeta_data_desc *schema_cmeta_builtin_data(const char *name) {
 
 int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
     size_t i;
+    const cmeta_data_desc *data;
 
     if (semantic == NULL || out_kind == NULL) return 0;
     for (i = 0; i < sizeof(SCHEMA_CMETA_KINDS) / sizeof(SCHEMA_CMETA_KINDS[0]); ++i) {
@@ -103,7 +92,104 @@ int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
             return 1;
         }
     }
+    /* Domain/wire semantics above are distinct from adapter kind (UUID).
+     * All ordinary scalar aliases derive kind from their canonical descriptor. */
+    data = schema_cmeta_builtin_data(semantic);
+    if (data != NULL) {
+        *out_kind = data->kind;
+        return 1;
+    }
     return 0;
+}
+
+static const Node *schema_cmeta_child(const Node *map, const char *name) {
+    size_t i;
+    if (map == NULL || map->type != NODE_MAP) return NULL;
+    for (i = 0; i < map->data.map.count; ++i) {
+        const Node *child = map->data.map.items[i];
+        if (child != NULL && child->name != NULL && strcmp(child->name, name) == 0)
+            return child;
+    }
+    return NULL;
+}
+
+static const char *schema_cmeta_text(const Node *map, const char *name) {
+    const Node *node = schema_cmeta_child(map, name);
+    return node != NULL && node->type == NODE_STRING ? node->data.string_val : NULL;
+}
+
+static int schema_cmeta_flag(const Node *field, const char *name) {
+    const char *value = schema_cmeta_text(field, name);
+    return value != NULL && strcmp(value, "1") == 0;
+}
+
+static const char *schema_cmeta_named_semantic(const Node *root, const char *name) {
+    static const struct { const char *list; const char *semantic; } declarations[] = {
+        {"composites", "composite"}, {"messages", "message"}, {"groups", "group"},
+        {"enums", "enum"}, {"unions", "union"}
+    };
+    size_t i, j;
+    if (name == NULL) return NULL;
+    for (i = 0; i < sizeof(declarations) / sizeof(declarations[0]); ++i) {
+        const Node *list = schema_cmeta_child(root, declarations[i].list);
+        if (list == NULL || list->type != NODE_LIST) continue;
+        for (j = 0; j < list->data.list.count; ++j) {
+            const char *candidate = schema_cmeta_text(list->data.list.items[j], "name");
+            if (candidate != NULL && strcmp(candidate, name) == 0)
+                return declarations[i].semantic;
+        }
+    }
+    return NULL;
+}
+
+int schema_cmeta_field_resolve(const Node *root, const Node *field,
+                               schema_cmeta_field_type *out) {
+    schema_cmeta_field_type result;
+    const char *semantic, *declared;
+    const char *sequence_label = "list";
+    if (root == NULL || root->type != NODE_MAP || field == NULL ||
+        field->type != NODE_MAP || out == NULL) return 0;
+    declared = schema_cmeta_text(field, "type");
+    semantic = schema_cmeta_named_semantic(root, declared);
+    if (semantic == NULL) semantic = declared;
+    if (schema_cmeta_flag(field, "is_group_field")) {
+        semantic = "list";
+        sequence_label = "group";
+    } else if (schema_cmeta_flag(field, "is_map")) semantic = "map";
+    else if (schema_cmeta_flag(field, "is_set")) semantic = "set";
+    else if (schema_cmeta_flag(field, "is_list")) semantic = "list";
+    else if (schema_cmeta_flag(field, "is_collection")) {
+        semantic = "list";
+        sequence_label = "array";
+    }
+    if (!schema_cmeta_data_kind(semantic, &result.kind)) return 0;
+    result.data = schema_cmeta_builtin_data(semantic);
+    switch (result.kind) {
+        case CMETA_DATA_BOOL: case CMETA_DATA_SINT:
+        case CMETA_DATA_UINT: case CMETA_DATA_FLOAT:
+            result.schema_kind = "scalar"; break;
+        case CMETA_DATA_SEQUENCE:
+            result.data = &cmeta_data_sequence;
+            result.schema_kind = sequence_label; break;
+        case CMETA_DATA_SET:
+            result.data = &cmeta_data_set;
+            result.schema_kind = "set"; break;
+        case CMETA_DATA_MAP:
+            result.data = &cmeta_data_map;
+            result.schema_kind = "map"; break;
+        case CMETA_DATA_STRING: result.schema_kind = "string"; break;
+        case CMETA_DATA_BYTES: result.schema_kind = "bytes"; break;
+        case CMETA_DATA_ENUM: result.schema_kind = "enum"; break;
+        case CMETA_DATA_VARIANT: result.schema_kind = "union"; break;
+        case CMETA_DATA_STRUCT:
+            result.schema_kind = strcmp(semantic, "composite") == 0 ? "composite" :
+                                 strcmp(semantic, "group") == 0 ? "group" : "message";
+            break;
+        case CMETA_DATA_CUSTOM: result.schema_kind = "custom"; break;
+        default: return 0;
+    }
+    *out = result;
+    return 1;
 }
 
 int schema_cmeta_generic_identity(cmeta_type_identity *out_identity,

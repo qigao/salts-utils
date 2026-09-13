@@ -134,6 +134,7 @@ static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
  * permits normal generated consumers to use the runtime seam without an
  * uninstalled header or changes to TbeTypedDescriptor's public ABI. */
 #include <salts_cmeta_fixed_width.h>
+#include <salts_cmeta_data.h>
 #define TBE_GENERATED_CMETA_GRAPH 1
 DATA_BIND_API DataBindStatus tbe_typed_cmeta_graph_validate(
     const TbeTypedType *, const cmeta_data_desc *, DataBindError *);

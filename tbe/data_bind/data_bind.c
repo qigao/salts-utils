@@ -10,6 +10,7 @@
 #include "node_tree.h"
 #include "re.h"
 #include "schema_builtin_type.h"
+#include "schema_cmeta.h"
 #include "schema_parser_dsl.h"
 #include "tbe_typed.h"
 #include "tbe_error.h"
@@ -3847,29 +3848,13 @@ static int fill_schema_type(Node *record, const char *list_name, DataBindSchemaT
   return name != NULL;
 }
 
-static const char *schema_field_kind(Node *schema_root, Node *field) {
-  const char *field_type = get_string_val(find_child(field, "type"));
-  if (field_flag(field, "is_group_field")) return "group";
-  if (field_flag(field, "is_map")) return "map";
-  if (field_flag(field, "is_set")) return "set";
-  if (field_flag(field, "is_list")) return "list";
-  if (field_flag(field, "is_collection")) return "array";
-  if (field_flag(field, "is_enum_ref") ||
-      (field_type != NULL && find_named_record(schema_root, "enums", field_type) != NULL))
-    return "enum";
-  if (field_type != NULL && find_named_record(schema_root, "unions", field_type) != NULL)
-    return "union";
-  if (field_flag(field, "is_composite_ref")) return "composite";
-  if (field_flag(field, "is_string")) return "string";
-  if (field_flag(field, "is_bytes")) return "bytes";
-  if (field_flag(field, "is_numeric") || find_type_meta(field_type) != NULL) return "scalar";
-  return field_type != NULL ? "custom" : "unknown";
-}
-
 static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField *out) {
   size_t out_size;
   const char *name;
+  schema_cmeta_field_type semantic;
+  int resolved;
   if (schema_root == NULL || field == NULL || out == NULL) return 0;
+  resolved = schema_cmeta_field_resolve(schema_root, field, &semantic);
   out_size = db_reflect_out_size(out->size, sizeof(*out));
   memset(out, 0, out_size);
   name = get_string_val(find_child(field, "name"));
@@ -3877,7 +3862,8 @@ static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, name, name);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, type,
                  get_string_val(find_child(field, "type")));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, kind, schema_field_kind(schema_root, field));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, kind,
+                 resolved ? semantic.schema_kind : "unknown");
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, inner_type,
                  get_string_val(find_child(field, "inner_type")));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, group_type,
@@ -3895,17 +3881,18 @@ static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, default_value,
                  get_string_val(find_child(field, "default_value")));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_collection,
-                 field_flag(field, "is_collection"));
+                 resolved && cmeta_data_kind_is_container(semantic.kind) &&
+                 strcmp(semantic.schema_kind, "group") != 0);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_composite,
-                 field_flag(field, "is_composite_ref"));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_group, field_flag(field, "is_group_field"));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_map, field_flag(field, "is_map"));
-  if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, is_enum),
-                           sizeof(out->is_enum))) {
-    const char *type = get_string_val(find_child(field, "type"));
-    out->is_enum = field_flag(field, "is_enum_ref") ||
-                   (type != NULL && find_named_record(schema_root, "enums", type) != NULL);
-  }
+                 resolved && semantic.kind == CMETA_DATA_STRUCT &&
+                 strcmp(semantic.schema_kind, "composite") == 0);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_group,
+                 resolved && semantic.kind == CMETA_DATA_SEQUENCE &&
+                 strcmp(semantic.schema_kind, "group") == 0);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_map,
+                 resolved && semantic.kind == CMETA_DATA_MAP);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_enum,
+                 resolved && semantic.kind == CMETA_DATA_ENUM);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_variable_size,
                  field_flag(field, "is_variable_size"));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_fixed_size,
@@ -3930,6 +3917,11 @@ static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField
         get_string_val(find_child(field, "field_size_bytes")), &out->field_size_bytes);
   }
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, format, field_format(field));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_cmeta_kind, resolved);
+  if (resolved) {
+    DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_kind, semantic.kind);
+    DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_data, semantic.data);
+  }
   return name != NULL;
 }
 
@@ -10563,6 +10555,39 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
     return 0;
   }
   return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
+}
+
+DataBindStatus data_bind_schema_field_cmeta_data(DataBind *codec, const char *type_name,
+                                                size_t index,
+                                                const cmeta_data_desc **out_data,
+                                                DataBindError *error) {
+  Node *record, *fields, *field;
+  schema_cmeta_field_type semantic;
+  const char *name, *declared;
+  char path[260];
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || out_data == NULL)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+                        "Invalid CMeta field descriptor query");
+  record = find_schema_record(codec->schema_root, type_name);
+  if (record == NULL)
+    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
+                        "CMeta schema type not found");
+  fields = fields_node_for_record(record);
+  if (fields == NULL || index >= fields->data.list.count)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+                        "CMeta schema field index is out of range");
+  field = fields->data.list.items[index];
+  name = get_string_val(find_child(field, "name"));
+  declared = get_string_val(find_child(field, "type"));
+  snprintf(path, sizeof(path), "%s.%s", type_name, name != NULL ? name : "<unnamed>");
+  if (!schema_cmeta_field_resolve(codec->schema_root, field, &semantic) ||
+      semantic.data == NULL || semantic.data->storage_type == NULL)
+    return db_error_set(error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
+                        "CMeta storage descriptor unresolved or gated for schema type '%s'",
+                        declared != NULL ? declared : "<unknown>");
+  db_error_clear(error);
+  *out_data = semantic.data;
+  return DATA_BIND_OK;
 }
 
 size_t data_bind_schema_enum_count(DataBind *codec) {

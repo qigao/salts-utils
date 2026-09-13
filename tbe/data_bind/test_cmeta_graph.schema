@@ -5,3 +5,61 @@ message Sample { Point point; State state; [name("wire_count"), alias("old_count
 message Unsupported { int32 good; string bad; }
 message OptionalStorage { optional int32 value; }
 message UnsupportedNested { Unsupported child; }
+
+flags Permission <uint8> { Read = 1; Write = 2; }
+enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }
+message FlagStorage { Permission value; }
+message BoolStorage { bool value; }
+message WideEnumStorage { WideDomain value; }
+message UuidStorage { uuid value; }
+message BytesStorage { bytes value; }
+message ListStorage { list<int32> value; }
+message SetStorage { set<int32> value; }
+message MapStorage { map<string,int32> value; }
+message Scalars {
+    int8_t s8a; int8 s8b; i8 s8c;
+    int16_t s16a; int16 s16b; i16 s16c;
+    int32_t s32a; int32 s32b; i32 s32c;
+    int64_t s64a; int64 s64b; i64 s64c;
+    uint8_t u8a; uint8 u8b; u8 u8c; byte octet;
+    uint16_t u16a; uint16 u16b; u16 u16c;
+    uint32_t u32a; uint32 u32b; u32 u32c;
+    uint64_t u64a; uint64 u64b; u64 u64c;
+    float f32a; f32 f32b; double f64a; f64 f64b;
+}
+
+// Adjacent native-record depth boundary: Depth32 succeeds, Depth33 rejects.
+composite Depth0 { int32 value; }
+composite Depth1 { Depth0 child; }
+composite Depth2 { Depth1 child; }
+composite Depth3 { Depth2 child; }
+composite Depth4 { Depth3 child; }
+composite Depth5 { Depth4 child; }
+composite Depth6 { Depth5 child; }
+composite Depth7 { Depth6 child; }
+composite Depth8 { Depth7 child; }
+composite Depth9 { Depth8 child; }
+composite Depth10 { Depth9 child; }
+composite Depth11 { Depth10 child; }
+composite Depth12 { Depth11 child; }
+composite Depth13 { Depth12 child; }
+composite Depth14 { Depth13 child; }
+composite Depth15 { Depth14 child; }
+composite Depth16 { Depth15 child; }
+composite Depth17 { Depth16 child; }
+composite Depth18 { Depth17 child; }
+composite Depth19 { Depth18 child; }
+composite Depth20 { Depth19 child; }
+composite Depth21 { Depth20 child; }
+composite Depth22 { Depth21 child; }
+composite Depth23 { Depth22 child; }
+composite Depth24 { Depth23 child; }
+composite Depth25 { Depth24 child; }
+composite Depth26 { Depth25 child; }
+composite Depth27 { Depth26 child; }
+composite Depth28 { Depth27 child; }
+composite Depth29 { Depth28 child; }
+composite Depth30 { Depth29 child; }
+composite Depth31 { Depth30 child; }
+composite Depth32 { Depth31 child; }
+composite Depth33 { Depth32 child; }

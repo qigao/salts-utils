@@ -90,9 +90,27 @@ cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_cmeta_reflection
+  SOURCES test_data_bind_cmeta_reflection.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_cmeta_public
+  SOURCES test_data_bind_cmeta_public.c
+  LIBS Salts::DataBind
+  FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_cmeta_public_cpp
+  SOURCES test_data_bind_cmeta_public_cpp.cpp
+  LIBS Salts::DataBind
+  FOLDER "tbe/data_bind/tests")
+set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
+  LIBS Salts::DataBindCMeta Salts::TinyTest
+  FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_cmeta_kind
+  SOURCES test_data_bind_cmeta_kind.c
   LIBS Salts::DataBindCMeta Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
 
@@ -196,13 +214,23 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_dependencies(tbe_cmeta_graph_public_fixture tbe_cmeta_graph_generation)
   set_target_properties(tbe_cmeta_graph_public_fixture PROPERTIES FOLDER "tbe/data_bind/tests")
 
+  cmake_add_test(test_tbe_cmeta_acceptance
+    SOURCES test_tbe_cmeta_acceptance.c
+    LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema Salts::TinyTest
+    FOLDER "tbe/data_bind/tests")
+  add_test(NAME test_tbe_cmeta_cli_gates
+    COMMAND ${CMAKE_COMMAND}
+      "-DTBE_COMPILER=$<TARGET_FILE:tbe_compiler>"
+      "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
+
   cmake_add_test(test_tbe_typed_cmeta_public
     SOURCES test_tbe_typed_cmeta_public.c
-    LIBS tbe_cmeta_graph_public_fixture
+    LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema
     FOLDER "tbe/data_bind/tests")
   cmake_add_test(test_tbe_typed_cmeta_public_cpp
     SOURCES test_tbe_typed_cmeta_public_cpp.cpp
-    LIBS tbe_cmeta_graph_public_fixture
+    LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema
     FOLDER "tbe/data_bind/tests")
   set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)

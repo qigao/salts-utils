@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Dynamic node tree for Mustache data binding.
  *
@@ -67,5 +71,9 @@ int map_add(Node *map, Node *item);
 
 /** Recursively free a node and all its children. */
 void node_free(Node *node);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* NODE_TREE_H */

@@ -1036,7 +1036,9 @@ static DataBindStatus typed_cmeta_validate_record(const TbeTypedType *overlay,
 DataBindStatus tbe_typed_cmeta_graph_validate(const TbeTypedType *type,
                                               const cmeta_data_desc *data,
                                               DataBindError *error) {
-  return typed_cmeta_validate_record(type, data, 0u, error);
+  DataBindStatus status = typed_cmeta_validate_record(type, data, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  return typed_error(error, DATA_BIND_OK, NULL, NULL);
 }
 
 static DataBindStatus typed_descriptor_boundary(const TbeTypedDescriptor *descriptor,
