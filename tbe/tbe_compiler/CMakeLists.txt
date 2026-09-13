@@ -71,6 +71,12 @@ cmake_add_test(test_tbe_compiler_schema_boundary
   LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
+cmake_add_test(test_tbe_compiler_cmeta_fields
+  SOURCES test_cmeta_field_projection.c compiler_core.c database_schema.c mustache_helpers.c
+  LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
+  FOLDER "tbe/tbe_compiler")
+target_include_directories(test_tbe_compiler_cmeta_fields
+  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 target_include_directories(test_tbe_compiler_schema_boundary
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
 if(TARGET test_tbe_compiler_schema_boundary)

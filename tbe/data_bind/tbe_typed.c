@@ -983,6 +983,64 @@ DataBindStatus tbe_typed_validate_descriptor(const TbeTypedType *type, DataBindE
   return typed_validate_descriptor_at(type, 0u, error);
 }
 
+static DataBindStatus typed_cmeta_validate_record(const TbeTypedType *overlay,
+                                                  const cmeta_data_desc *data,
+                                                  unsigned depth, DataBindError *error) {
+  const cmeta_data_struct_shape *shape;
+  size_t i;
+  if (overlay == NULL || depth > 32u || !cmeta_data_desc_valid(data) ||
+      data->kind != CMETA_DATA_STRUCT)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, overlay ? overlay->name : NULL,
+                       "Native CMeta record graph is unavailable");
+  shape = (const cmeta_data_struct_shape *)data->shape;
+  if (overlay->presence_size != 0u || data->storage_type->size != overlay->size ||
+      shape->layout->size != overlay->size ||
+      shape->layout->align != data->storage_type->align ||
+      shape->field_count != overlay->field_count ||
+      shape->layout->field_count != shape->field_count ||
+      (overlay->field_count != 0u && overlay->fields == NULL))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, overlay->name,
+                       "CMeta native layout disagrees with the typed overlay");
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *field = cmeta_data_struct_field(shape, i);
+    const cmeta_field_desc *layout = cmeta_struct_find_field(shape->layout, field->name);
+    const cmeta_data_desc *value = field->value;
+    const TbeTypedField *wire = &overlay->fields[i];
+    TbeTypedKind kind;
+    if (layout == NULL || !cmeta_data_desc_valid(value) ||
+        (wire->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u ||
+        field->offset != wire->offset ||
+        !cmeta_type_equal(layout->type, value->storage_type) ||
+        layout->size != value->storage_type->size ||
+        layout->align != value->storage_type->align ||
+        !typed_size_fits(field->offset, layout->size, overlay->size) ||
+        field->offset % layout->align != 0u)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
+                         "Field has no canonical native CMeta storage");
+    if (value->kind == CMETA_DATA_STRUCT && wire->kind == TBE_TYPED_OBJECT) {
+      DataBindStatus status = typed_cmeta_validate_record(wire->object_type, value, depth + 1u, error);
+      if (status != DATA_BIND_OK) return status;
+    } else if (value->kind == CMETA_DATA_ENUM && wire->kind == TBE_TYPED_ENUM) {
+      if (!typed_is_integer(wire->wire_kind) ||
+          value->storage_type->size != typed_kind_size(wire->wire_kind))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
+                           "Native enum storage disagrees with its wire width");
+    } else if (!tbe_typed_kind_from_cmeta_data(value, &kind) || kind != wire->kind) {
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
+                         "Unsupported CMeta native field mapping");
+    }
+  }
+  return DATA_BIND_OK;
+}
+
+DataBindStatus tbe_typed_cmeta_graph_validate(const TbeTypedType *type,
+                                              const cmeta_data_desc *data,
+                                              DataBindError *error) {
+  DataBindStatus status = typed_cmeta_validate_record(type, data, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  return typed_error(error, DATA_BIND_OK, NULL, NULL);
+}
+
 static DataBindStatus typed_descriptor_boundary(const TbeTypedDescriptor *descriptor,
                                                 DataBindError *error) {
   const size_t required_size =

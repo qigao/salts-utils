@@ -3,6 +3,7 @@
 
 #include <cmeta/data.h>
 #include <cmeta/type_identity.h>
+#include "node_tree.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,29 @@ const cmeta_data_desc *schema_cmeta_builtin_data(const char *name);
  * a concrete CSTL implementation.
  */
 int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind);
+
+#define SCHEMA_CMETA_FIELD_RESOLUTION 1
+
+/** Borrowed semantic view, not a native field layout or a second type identity.
+ * data may be NULL; canonical container descriptors have no storage/shape.
+ * schema_kind is the schema presentation label (e.g. composite versus message).
+ */
+typedef struct schema_cmeta_field_type {
+    cmeta_data_kind kind;
+    const cmeta_data_desc *data;
+    const char *schema_kind;
+} schema_cmeta_field_type;
+
+/** Resolve one parsed field using the shared schema/CMeta mapping.
+ * Returns zero for invalid/unknown semantics, leaving *out unchanged.
+ * Successful classification of a gated or storage-unresolved kind does not
+ * imply native binding support. Optional/default/wire layout never selects
+ * storage or constructs Option. UUID retains CUSTOM domain classification and
+ * its canonical STRING text-adapter descriptor. All returned metadata is
+ * immutable, provider-owned static storage; no allocation or callbacks occur.
+ */
+int schema_cmeta_field_resolve(const Node *root, const Node *field,
+                               schema_cmeta_field_type *out);
 
 /**
  * Build a borrowed CMeta generic type application from a canonical constructor

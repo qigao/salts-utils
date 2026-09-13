@@ -16,6 +16,7 @@
 #define DATA_BIND_H
 
 #include <query_vm.h>
+#include <cmeta/data.h>
 #include <stdbool.h>
 #include <time.h>
 #include <vstr.h>
@@ -359,7 +360,17 @@ typedef struct DataBindSchemaField {
   size_t field_size_bytes;
   int has_field_size_bytes;
   const char *format;
+  /** Canonical semantic view, appended to the original size-prefixed layout.
+   * cmeta_data borrows immutable provider-owned static metadata. Kind-only
+   * containers have no storage or element shape. Optional/default metadata
+   * never constructs Option; UUID's CUSTOM domain uses a STRING text adapter.
+   */
+  int has_cmeta_kind;
+  cmeta_data_kind cmeta_kind;
+  const cmeta_data_desc *cmeta_data;
 } DataBindSchemaField;
+
+#define DATA_BIND_SCHEMA_CMETA_REFLECTION 1
 
 typedef struct DataBindSchemaEnumItem {
   size_t size;
@@ -1271,6 +1282,22 @@ DATA_BIND_API size_t data_bind_schema_field_count(DataBind *codec, const char *t
  */
 DATA_BIND_API int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
                                             DataBindSchemaField *out);
+
+/** Query canonical storage for a field value type, not DataBindValue/generated
+ * field layout. Use field_at for kind-only information. Optional presence stays
+ * schema overlay; buffer/container ownership and Option are never inferred.
+ *
+ * On DATA_BIND_OK, out_data borrows immutable provider-owned static metadata;
+ * do not free it. Unknown/gated or storage-unresolved mappings return
+ * DATA_BIND_ERR_SCHEMA with Type.field context. Missing types return
+ * DATA_BIND_ERR_TYPE_NOT_FOUND; invalid arguments/index return
+ * DATA_BIND_ERR_INVALID_ARG. Failures leave *out_data unchanged. Reads allocate
+ * nothing and invoke no callbacks. Do not free the codec concurrently; callers
+ * synchronize their own output/error storage.
+ */
+DATA_BIND_API DataBindStatus data_bind_schema_field_cmeta_data(
+    DataBind *codec, const char *type_name, size_t index,
+    const cmeta_data_desc **out_data, DataBindError *error);
 
 /**
  * @brief Return the number of enum/flags declarations.

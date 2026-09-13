@@ -59,6 +59,7 @@ foreach(test_name
         test_tbe_parser
         test_schema_boundaries
         test_schema_cmeta
+        test_schema_cmeta_fields
         test_schema_enum_conformance
         test_flags_bdd
         test_tbe_parser_bdd
@@ -71,6 +72,15 @@ foreach(test_name
     LIBS ${TBE_SCHEMA_TEST_LIBS}
     FOLDER "tbe/schema/tests")
 endforeach()
+
+cmake_add_test(test_schema_cmeta_public_cpp
+  SOURCES test/test_schema_cmeta_public_cpp.cpp
+  LIBS Salts::TbeSchema
+  FOLDER "tbe/schema/tests")
+if(TARGET test_schema_cmeta_public_cpp)
+  set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+endif()
 
 # Keep CBind on the integration test only, not the schema library export.
 if(TARGET test_schema_cmeta)
