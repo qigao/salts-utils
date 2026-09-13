@@ -1,4 +1,4 @@
-name: Verify Jinja default diagnostic
+name: Verify Jinja repaired regressions
 on:
   push:
     branches: [fix/ci-re2c-4.6]
@@ -65,7 +65,7 @@ jobs:
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      - name: Run native lowering regression
+      - name: Run original diagnostic regression
         shell: bash
         run: |
           set -euxo pipefail
@@ -73,6 +73,15 @@ jobs:
           ctest --test-dir build/linux-gcc-debug/jinja --no-tests=error \
             -R '^test_jinja_native_functions_lowering$' --output-on-failure \
             --output-junit "$RUNNER_TEMP/jinja-diagnostic-evidence/lowering.xml"
+      - name: Run repaired regression cases
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target \
+            test_jinja_cmeta_predicates test_jinja_cmeta_filters test_jinja_cmeta_templates -j2
+          ctest --test-dir build/linux-gcc-debug/jinja --no-tests=error \
+            -R '^test_jinja_cmeta_(predicates|filters|templates)$' --output-on-failure \
+            --output-junit "$RUNNER_TEMP/jinja-diagnostic-evidence/repaired.xml"
       - name: Run complete Jinja suite
         shell: bash
         run: |
