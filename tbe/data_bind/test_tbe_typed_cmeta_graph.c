@@ -3,8 +3,9 @@
 #include <salts_cmeta_fixed_width.h>
 #include <string.h>
 
-/* Include the real generated implementation: the migration seam is deliberately
- * private and does not extend the installed generated header/descriptor ABI. */
+/* Include the real generated implementation to inspect internal metadata.
+ * The central descriptor ABI is unchanged and the private validator is not
+ * installed; the generated public header exposes per-record graph getters. */
 #include "cmeta_graph_generated.c"
 
 spec("generated native CMeta graph") {

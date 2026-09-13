@@ -173,12 +173,39 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
             --source-output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
     DEPENDS tbe_compiler "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
     VERBATIM)
+  add_custom_target(tbe_cmeta_graph_generation
+    DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
+            "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c")
   cmake_add_test(test_tbe_typed_cmeta_graph
     SOURCES test_tbe_typed_cmeta_graph.c
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_CMETA_GRAPH_DIR}"
     FOLDER "tbe/data_bind/tests")
+  add_dependencies(test_tbe_typed_cmeta_graph tbe_cmeta_graph_generation)
+
+  # Compile the real CLI-generated implementation once as C. Neither public
+  # consumer includes it or the private runtime validation header.
+  add_library(tbe_cmeta_graph_public_fixture STATIC
+    "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
+    "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h")
+  set_source_files_properties("${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
+    PROPERTIES LANGUAGE C)
+  target_link_libraries(tbe_cmeta_graph_public_fixture PUBLIC Salts::DataBind)
+  target_include_directories(tbe_cmeta_graph_public_fixture PUBLIC "${TBE_CMETA_GRAPH_DIR}")
+  add_dependencies(tbe_cmeta_graph_public_fixture tbe_cmeta_graph_generation)
+  set_target_properties(tbe_cmeta_graph_public_fixture PROPERTIES FOLDER "tbe/data_bind/tests")
+
+  cmake_add_test(test_tbe_typed_cmeta_public
+    SOURCES test_tbe_typed_cmeta_public.c
+    LIBS tbe_cmeta_graph_public_fixture
+    FOLDER "tbe/data_bind/tests")
+  cmake_add_test(test_tbe_typed_cmeta_public_cpp
+    SOURCES test_tbe_typed_cmeta_public_cpp.cpp
+    LIBS tbe_cmeta_graph_public_fixture
+    FOLDER "tbe/data_bind/tests")
+  set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 endif()
 
 cmake_add_benchmark(benchmark_data_bind_pool
