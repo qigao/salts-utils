@@ -177,7 +177,7 @@ struct cmeta_data_desc;
 /** Borrow immutable native scalar/struct/enum metadata with static lifetime.
  * Unsupported storage returns DATA_BIND_ERR_SCHEMA without changing *out.
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
- * This graph seam does not imply native CBind decode or encode support. */
+ * This graph seam does not itself promise native decode/encode behavior. */
 {{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
 {{/composites}}
 {{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
