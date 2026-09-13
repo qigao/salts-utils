@@ -73,6 +73,11 @@ foreach(test_name
     FOLDER "tbe/schema/tests")
 endforeach()
 
+add_test(NAME test_databind_only_dependency_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test/test_databind_only_dependency_contract.cmake")
+
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
   LIBS Salts::TbeSchema
