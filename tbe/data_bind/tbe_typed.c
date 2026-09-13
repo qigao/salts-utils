@@ -1,9 +1,10 @@
-#include "tbe_typed.h"
+#include "tbe_typed_internal.h"
 
 #include "data_bind_internal.h"
 #include "fmt.h"
 #include "tbe_wire.h"
 #include <json_parser.h>
+#include <salts_cmeta_data.h>
 
 #include <float.h>
 #include <limits.h>
@@ -11,6 +12,71 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct TbeTypedCMetaKindMapping {
+  const cmeta_data_desc *data;
+  TbeTypedKind kind;
+} TbeTypedCMetaKindMapping;
+
+static const TbeTypedCMetaKindMapping typed_cmeta_kind_mappings[] = {
+    {&cmeta_data_bool, TBE_TYPED_BOOL},
+    {&salts_int8_cmeta_data, TBE_TYPED_I8},
+    {&salts_uint8_cmeta_data, TBE_TYPED_U8},
+    {&salts_int16_cmeta_data, TBE_TYPED_I16},
+    {&salts_uint16_cmeta_data, TBE_TYPED_U16},
+    {&salts_int32_cmeta_data, TBE_TYPED_I32},
+    {&salts_uint32_cmeta_data, TBE_TYPED_U32},
+    {&salts_int64_cmeta_data, TBE_TYPED_I64},
+    {&salts_uint64_cmeta_data, TBE_TYPED_U64},
+    {&cmeta_data_float, TBE_TYPED_F32},
+    {&cmeta_data_double, TBE_TYPED_F64},
+};
+
+static int typed_cmeta_shape_matches(const cmeta_data_desc *data,
+                                     const cmeta_data_desc *canonical) {
+  if (data->kind == CMETA_DATA_SINT || data->kind == CMETA_DATA_UINT) {
+    const cmeta_data_integer_shape *actual =
+        (const cmeta_data_integer_shape *)data->shape;
+    const cmeta_data_integer_shape *expected =
+        (const cmeta_data_integer_shape *)canonical->shape;
+    return actual->bits == expected->bits;
+  }
+  if (data->kind == CMETA_DATA_FLOAT) {
+    const cmeta_data_float_shape *actual =
+        (const cmeta_data_float_shape *)data->shape;
+    const cmeta_data_float_shape *expected =
+        (const cmeta_data_float_shape *)canonical->shape;
+    return actual->bits == expected->bits;
+  }
+  return data->kind == CMETA_DATA_BOOL;
+}
+
+static int typed_cmeta_scalar_matches(const cmeta_data_desc *data,
+                                      const cmeta_data_desc *canonical) {
+  const cmeta_type_desc *actual = data->storage_type;
+  const cmeta_type_desc *expected = canonical->storage_type;
+  return data->kind == canonical->kind && cmeta_type_equal(actual, expected) &&
+         actual->kind == expected->kind && actual->size == expected->size &&
+         actual->align == expected->align && typed_cmeta_shape_matches(data, canonical);
+}
+
+int tbe_typed_kind_from_cmeta_data(const cmeta_data_desc *data,
+                                   TbeTypedKind *out_kind) {
+  size_t i;
+  if (out_kind == NULL || !cmeta_data_desc_valid(data)) return 0;
+  if (salts_uuid_cmeta_data_valid(data)) {
+    *out_kind = TBE_TYPED_UUID;
+    return 1;
+  }
+  for (i = 0u;
+       i < sizeof(typed_cmeta_kind_mappings) / sizeof(typed_cmeta_kind_mappings[0]); ++i) {
+    if (typed_cmeta_scalar_matches(data, typed_cmeta_kind_mappings[i].data)) {
+      *out_kind = typed_cmeta_kind_mappings[i].kind;
+      return 1;
+    }
+  }
+  return 0;
+}
 
 static DataBindStatus typed_error(DataBindError *error, DataBindStatus status, const char *path,
                                   const char *message) {

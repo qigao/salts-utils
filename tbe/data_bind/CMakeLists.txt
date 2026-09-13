@@ -86,6 +86,10 @@ cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_schema_reflection_contract
+  SOURCES test_data_bind_schema_reflection_contract.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
@@ -111,6 +115,10 @@ cmake_add_test(test_data_bind_pool
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_tbe_typed
   SOURCES test_tbe_typed.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_tbe_typed_cmeta_mapping
+  SOURCES test_tbe_typed_cmeta_mapping.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
 # Only the first test translation unit owns TinyTest's generated main.
