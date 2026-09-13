@@ -1,0 +1,7 @@
+schema Graph;
+enum State <int16> { Idle = 0; Ready = 7; }
+composite Point { int32 x; double y; }
+message Sample { Point point; State state; [name("wire_count"), alias("old_count")] int32 count default 9; }
+message Unsupported { int32 good; string bad; }
+message OptionalStorage { optional int32 value; }
+message UnsupportedNested { Unsupported child; }

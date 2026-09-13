@@ -162,6 +162,23 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_SAFETY_GENERATED_DIR}"
     FOLDER "tbe/data_bind/tests")
+  set(TBE_CMETA_GRAPH_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmeta_graph_generated")
+  add_custom_command(
+    OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
+           "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CMETA_GRAPH_DIR}"
+    COMMAND $<TARGET_FILE:tbe_compiler>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
+            --lang c --output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
+            --source-output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
+    DEPENDS tbe_compiler "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
+    VERBATIM)
+  cmake_add_test(test_tbe_typed_cmeta_graph
+    SOURCES test_tbe_typed_cmeta_graph.c
+            "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${TBE_CMETA_GRAPH_DIR}"
+    FOLDER "tbe/data_bind/tests")
 endif()
 
 cmake_add_benchmark(benchmark_data_bind_pool
