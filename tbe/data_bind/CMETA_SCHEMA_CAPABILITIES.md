@@ -23,8 +23,8 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | `string` | `CMETA_DATA_STRING` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL. Ownership/borrowed lifetime must be selected explicitly by the storage adapter, not inferred from schema kind. |
 | `bytes` | `CMETA_DATA_BYTES` | explicit CMeta type/shape/ops | internal buffer builder; production integration pending | Builtin descriptor lookup returns NULL; no implicit owning or borrowed storage selection. |
 | `uuid` | domain classification: `CMETA_DATA_CUSTOM`; canonical adapter: `CMETA_DATA_STRING` | `salts_uuid_cmeta_data` | descriptor helper; classification convergence pending | Native storage identity is `salts.uuid`. STRING describes the UUID text adapter, not generic string storage; do not manufacture a DataBind UUID descriptor. |
-| message / record | `CMETA_DATA_STRUCT` | schema-lowered `cmeta_data_struct_shape` + native/dynamic storage descriptor | target | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
-| enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | production integer-domain normalization; enum graph pending | The parser consumes canonical integer descriptors for underlying width/signedness. Flags wire semantics stay in schema; native enum metadata/adapter lowering remains pending. |
+| message / record | `CMETA_DATA_STRUCT` | generated native `cmeta_data_struct_shape` + C storage descriptor | generated native graph seam; dynamic storage pending | Structural fields come from CMeta; aliases/wire names remain schema overlay metadata. |
+| enum / flags | `CMETA_DATA_ENUM` | CMeta enum metadata + enum storage adapter | production integer-domain normalization and generated native metadata; adapter pending | The parser consumes canonical integer descriptors for underlying width/signedness. Flags wire semantics stay in schema; native enum storage operations remain pending. |
 | union / oneof | `CMETA_DATA_VARIANT` | CMeta variant descriptor/adapter | gated | Enable only after the schema discriminator/wire representation is frozen. CMeta data-level Variant support exists even though higher-level CMeta DSL syntax may remain intentionally limited. |
 | sequence (`list`, repeated, array-like semantic sequence) | `CMETA_DATA_SEQUENCE` | CMeta container descriptor + CSTL/container provider | target | Schema expresses sequence semantics, not concrete `Vec`/`List`/`Deque` storage. |
 | `set` | `CMETA_DATA_SET` | CMeta container descriptor + CSTL/container provider | target | Concrete ordered/hash storage is a native profile concern. |
@@ -66,6 +66,40 @@ The name-level semantic classifier is unchanged by this slice. In particular, `s
 `tbe/schema/test/test_schema_enum_conformance.c` exercises the actual parser for all 25 integer aliases: exact signed/unsigned limits, enum and flags declaration order, adjacent out-of-domain rejection, noninteger rejection, and preservation of an existing enum/message graph after a later enum fails. Independent decimal literals prevent the range oracle from repeating the implementation's width arithmetic.
 
 This is production use of the canonical integer descriptors, not complete lowering of native enum metadata, object fields, buffers, containers or DataBind structural reflection. The parser still owns wire-layout metadata; it must not infer native tstr/vstr storage from a wire size. The remaining #45 gates stay open.
+
+## Generated native struct/enum graph seam
+
+Normal generated C headers now declare a per-record `Record_cmeta_data` getter.
+The generated source contains immutable CMeta native type, struct layout/data
+field and enum metadata. Sizes, alignments, offsets and enum values are compiled
+from the actual generated C types and constants. Scalar symbol projections reuse
+the canonical compiler scalar profiles; no runtime name/kind table is added.
+Generated native atom identities use `tbe.native.<schema>.<C-type>`; copies compare
+by CMeta semantic identity rather than descriptor addresses.
+
+The getter calls the shared `tbe_typed_cmeta_graph_validate` runtime seam before
+publishing its borrowed, static-lifetime descriptor. That seam walks CMeta fields,
+checks native layout and semantic scalar identity against the typed wire overlay,
+and recursively validates nested records. Unsupported fields (including nested
+ones) return `DATA_BIND_ERR_SCHEMA` with a type/field diagnostic and leave the
+output unchanged. It does not invoke an alternate binding engine. The central
+`TbeTypedDescriptor` public ABI is unchanged; the internal validator declaration
+is not installed, and generated source requires only installed headers.
+
+Wire names and aliases, defaults, optional/presence flags, wire offsets and
+fingerprints remain exclusively in the schema/typed overlay. Optional storage,
+buffers, fixed arrays, collections and variants are not lowered by this seam.
+The existing generated C BOOL field uses `uint8_t`, so its graph request is also
+rejected rather than misidentifying that storage as native CMeta `bool`. Enum
+metadata has an `int64_t` value domain; unsigned 64-bit enum domains are gated.
+Enum reflection here does not supply CBind enum storage operations or complete
+native binding migration. Existing serialization entry points are unchanged.
+
+`test_tbe_typed_cmeta_graph` is built from the real compiler CLI/schema fixture and
+generated C output. It checks nested struct/enum metadata, native padding versus
+wire layout, copied semantic identities, invalid layout/scalar mismatches,
+unsupported publication atomicity, and the runtime default/wire overlay. This is
+an incremental production graph seam, not closure of all #45 migration gates.
 
 ## Internal buffer lowering
 

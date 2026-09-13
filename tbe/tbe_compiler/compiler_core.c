@@ -273,20 +273,24 @@ typedef struct tbe_compiler_scalar_projection {
   const char *python_type;
   const char *rfl_type;
   const char *typed_kind;
+  const char *native_data_symbol;
+  const char *native_type_symbol;
 } tbe_compiler_scalar_projection_t;
 
+/* Native symbol spellings project the same canonical records into generated C.
+ * BOOL is intentionally absent: generated C currently stores it as uint8_t. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL"},
-    {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8"},
-    {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8"},
-    {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16"},
-    {&salts_uint16_cmeta_data, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "TBE_TYPED_U16"},
-    {&salts_int32_cmeta_data, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "TBE_TYPED_I32"},
-    {&salts_uint32_cmeta_data, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "TBE_TYPED_U32"},
-    {&salts_int64_cmeta_data, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "TBE_TYPED_I64"},
-    {&salts_uint64_cmeta_data, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "TBE_TYPED_U64"},
-    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "TBE_TYPED_F32"},
-    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "TBE_TYPED_F64"},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", NULL, NULL},
+    {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8", "salts_int8_cmeta_data", "salts_int8_cmeta_type"},
+    {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8", "salts_uint8_cmeta_data", "salts_uint8_cmeta_type"},
+    {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16", "salts_int16_cmeta_data", "salts_int16_cmeta_type"},
+    {&salts_uint16_cmeta_data, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "TBE_TYPED_U16", "salts_uint16_cmeta_data", "salts_uint16_cmeta_type"},
+    {&salts_int32_cmeta_data, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "TBE_TYPED_I32", "salts_int32_cmeta_data", "salts_int32_cmeta_type"},
+    {&salts_uint32_cmeta_data, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "TBE_TYPED_U32", "salts_uint32_cmeta_data", "salts_uint32_cmeta_type"},
+    {&salts_int64_cmeta_data, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "TBE_TYPED_I64", "salts_int64_cmeta_data", "salts_int64_cmeta_type"},
+    {&salts_uint64_cmeta_data, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "TBE_TYPED_U64", "salts_uint64_cmeta_data", "salts_uint64_cmeta_type"},
+    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "TBE_TYPED_F32", "cmeta_data_float", "cmeta_type_float"},
+    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "TBE_TYPED_F64", "cmeta_data_double", "cmeta_type_double"},
 };
 
 static const tbe_compiler_scalar_projection_t *tbe_compiler_scalar_projection(const char *type) {
@@ -645,6 +649,21 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field) {
     return;
   }
   snprintf(declaration, sizeof(declaration), "%s %s;", c_type, c_name);
+  {
+    const tbe_compiler_scalar_projection_t *scalar = tbe_compiler_scalar_projection(type);
+    char symbol[256];
+    if (scalar && scalar->native_data_symbol) {
+      tbe_compiler_set_string(field, "native_data_symbol", scalar->native_data_symbol);
+      tbe_compiler_set_string(field, "native_type_symbol", scalar->native_type_symbol);
+      tbe_compiler_set_string(field, "native_c_type", c_type);
+    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0 || strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+      snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", type);
+      tbe_compiler_set_string(field, "native_data_symbol", symbol);
+      snprintf(symbol, sizeof(symbol), "%s_CMETA_TYPE", type);
+      tbe_compiler_set_string(field, "native_type_symbol", symbol);
+      tbe_compiler_set_string(field, "native_c_type", c_type);
+    }
+  }
   tbe_compiler_set_string(field, "typed_kind", kind);
   tbe_compiler_set_string(field, "typed_wire_kind",
                           tbe_compiler_typed_wire_kind(root, type, kind));
@@ -725,6 +744,13 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     Node *enum_node = enums->data.list.items[i];
     const char *underlying = tbe_compiler_string_value(enum_node, "underlying_type");
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
+    const tbe_compiler_scalar_projection_t *storage = tbe_compiler_integer_type(underlying);
+
+    /* CMeta enum metadata has an int64_t value domain. Do not truncate an
+     * unsigned 64-bit domain to publish a native enum graph. */
+    if (storage && !(storage->data->kind == CMETA_DATA_UINT &&
+        ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
+      tbe_compiler_set_string(enum_node, "native_enum_supported", "1");
 
     tbe_compiler_set_string(enum_node, "go_underlying_type",
                             tbe_compiler_go_scalar_type(underlying));

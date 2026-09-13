@@ -130,6 +130,191 @@ static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE);
 {{/messages}}
 
+/* #45: native graph metadata is immutable and borrowed. This declaration
+ * permits normal generated consumers to use the runtime seam without an
+ * uninstalled header or changes to TbeTypedDescriptor's public ABI. */
+#include <salts_cmeta_fixed_width.h>
+#define TBE_GENERATED_CMETA_GRAPH 1
+DATA_BIND_API DataBindStatus tbe_typed_cmeta_graph_validate(
+    const TbeTypedType *, const cmeta_data_desc *, DataBindError *);
+
+{{#composites}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
+static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/composites}}
+{{#groups}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
+static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/groups}}
+{{#messages}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
+static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/messages}}
+{{#enums}}
+static const cmeta_type_identity {{enum_name}}_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{enum_name}}_t");
+static const cmeta_type_desc {{enum_name}}_CMETA_TYPE = {
+    "{{enum_name}}_t", sizeof({{enum_name}}_t), TBE_TYPED_ALIGNOF({{enum_name}}_t),
+    CMETA_T_INTEGER, NULL, NULL, &{{enum_name}}_CMETA_ID
+};
+{{#native_enum_supported}}
+static const cmeta_enum_item_desc {{enum_name}}_CMETA_ITEMS[] = {
+{{#items}}    { (int64_t){{enum_name}}_{{name}}, "{{name}}", "{{name}}" },
+{{/items}}};
+static const cmeta_enum_desc {{enum_name}}_CMETA_ENUM = {
+    "{{enum_name}}_t", {{enum_name}}_CMETA_ITEMS,
+    sizeof({{enum_name}}_CMETA_ITEMS) / sizeof({{enum_name}}_CMETA_ITEMS[0])
+};
+static const cmeta_data_enum_shape {{enum_name}}_CMETA_SHAPE = {
+    &{{enum_name}}_CMETA_ENUM
+};
+static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
+    CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_SHAPE,
+    NULL, NULL, NULL
+};
+{{/native_enum_supported}}
+{{^native_enum_supported}}
+static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {0};
+{{/native_enum_supported}}
+{{/enums}}
+
+{{#composites}}
+static const cmeta_type_identity {{name}}_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
+static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
+};
+static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+{{#fields}}
+    { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
+      sizeof((({{owner_name}}_t *)0)->{{c_name}}),
+      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      NULL },
+{{/fields}}};
+static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    {{name}}_CMETA_LAYOUT_FIELDS,
+    sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
+};
+static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+{{#fields}}
+    { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+      "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
+      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+{{/fields}}};
+static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
+    &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
+    sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
+};
+static const cmeta_data_desc {{name}}_CMETA_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+};
+
+DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    DataBindStatus status;
+    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
+    if (status != DATA_BIND_OK) return status;
+    *out = &{{name}}_CMETA_DATA;
+    return DATA_BIND_OK;
+}
+{{/composites}}
+
+{{#groups}}
+static const cmeta_type_identity {{name}}_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
+static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
+};
+static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+{{#fields}}
+    { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
+      sizeof((({{owner_name}}_t *)0)->{{c_name}}),
+      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      NULL },
+{{/fields}}};
+static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    {{name}}_CMETA_LAYOUT_FIELDS,
+    sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
+};
+static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+{{#fields}}
+    { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+      "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
+      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+{{/fields}}};
+static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
+    &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
+    sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
+};
+static const cmeta_data_desc {{name}}_CMETA_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+};
+
+DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    DataBindStatus status;
+    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
+    if (status != DATA_BIND_OK) return status;
+    *out = &{{name}}_CMETA_DATA;
+    return DATA_BIND_OK;
+}
+{{/groups}}
+
+{{#messages}}
+static const cmeta_type_identity {{name}}_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
+static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
+};
+static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+{{#fields}}
+    { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
+      sizeof((({{owner_name}}_t *)0)->{{c_name}}),
+      {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
+      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      NULL },
+{{/fields}}};
+static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
+    "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
+    {{name}}_CMETA_LAYOUT_FIELDS,
+    sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
+};
+static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+{{#fields}}
+    { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+      "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
+      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+{{/fields}}};
+static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
+    &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
+    sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
+};
+static const cmeta_data_desc {{name}}_CMETA_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+};
+
+DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    DataBindStatus status;
+    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
+    if (status != DATA_BIND_OK) return status;
+    *out = &{{name}}_CMETA_DATA;
+    return DATA_BIND_OK;
+}
+{{/messages}}
+
 #define TBE_TYPED_DEFINE_RECORD(name) \
     void name##_init(name##_t *object) { \
         if (object) (void)tbe_typed_init(&name##_TYPED_TYPE, object, NULL); \

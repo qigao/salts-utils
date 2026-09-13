@@ -173,6 +173,17 @@ extern "C" {
 /* Schema {{schema.schema_name}} {{schema.schema_attributes_rendered}} */
 enum { {{schema.schema_name}}_WIRE_BIG_ENDIAN = {{schema.schema_wire_big_endian_value}} };
 {{#typed_source_enabled}}
+struct cmeta_data_desc;
+/** Borrow immutable native scalar/struct/enum metadata with static lifetime.
+ * Unsupported storage returns DATA_BIND_ERR_SCHEMA without changing *out.
+ * Wire/default/presence/fingerprint metadata stays in the schema overlay.
+ * This graph seam does not imply native CBind decode or encode support. */
+{{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{/composites}}
+{{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{/groups}}
+{{#messages}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{/messages}}
 TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
 TBE_GENERATED_API const char *{{schema.schema_name}}_schema_text(void);
 TBE_GENERATED_API const tbe_schema_codec_v1_t *{{schema.schema_name}}_schema_codec(void);
