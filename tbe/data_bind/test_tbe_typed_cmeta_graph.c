@@ -40,7 +40,7 @@ spec("generated native CMeta graph") {
       check_equal(shape->fields[1].value->storage_type->size, sizeof(State_t));
       check_equal(state->meta->count, 2u);
       check_equal(state->meta->items[1].value, 7);
-      check_str_equal(state->meta->items[1].name, "Ready");
+      check_str_equal(state->meta->items[1].symbol, "Ready");
       check_str_equal(shape->fields[2].name, "count");
       check_true(cmeta_data_struct_find_field(shape, "wire_count") == NULL);
       check_true(cmeta_data_struct_find_field(shape, "old_count") == NULL);
