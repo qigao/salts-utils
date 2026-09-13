@@ -1,7 +1,8 @@
 # DataBind 2.5
 
-DataBind 由 SaltsUtils 构建、测试、安装并导出为 `Salts::DataBind`。基础 Salts 的
-`Salts::CBind` 是另一套原生 C 描述符绑定接口，不是 DataBind 的 ABI 兼容别名。
+DataBind 由 SaltsUtils 构建、测试、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的
+数据绑定引擎。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在其他
+binder、fallback 或 compatibility route。
 
 DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
@@ -17,6 +18,21 @@ DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造�
 
 DataBind 是 SaltsUtils 自有的 schema、动态值和 typed conversion 运行时。它依赖
 SaltsUtils 的 TBE schema，并直接消费基础 Salts 的具体格式解析器，不再构建或安装 parser compatibility 层。
+
+规范所有权边界为：
+
+```text
+CMeta: native structure and semantic type graph
+schema overlay: external names, presence/defaults, wire layout and validation
+DataBind: native/dynamic conversion, rollback and format orchestration
+CSTL: concrete container storage
+CSerde/parsers: format tokens and mechanics
+```
+
+Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
+metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
+overlay-only. DataBind 不复制结构类型事实，CSTL 不决定 schema，CSerde 与各 parser 也不执行
+对象绑定。
 
 ### 原生 parser 依赖与迁移
 
@@ -42,7 +58,8 @@ DataBind 2.5 只定义两条强类型路线：
    bind、序列化和反序列化。
 
 动态 `DataBindObject` 是两条路线共用的格式中间层和宿主程序集成入口，不是
-第三套 schema 契约。schema 始终是字段类型、wire layout 和外部名称的唯一事实源。
+第三套 schema 契约。字段结构和语义类型以 CMeta 为准；wire layout、外部名称、presence、
+defaults、validation 与 fingerprint 只存在于 schema overlay。
 
 ### 公开 API 分层
 
