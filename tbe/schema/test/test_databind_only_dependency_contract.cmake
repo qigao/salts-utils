@@ -13,9 +13,11 @@ file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
   "${PROJECT_SOURCE_DIR}/*.mustache")
 
 foreach(FILE_PATH IN LISTS POLICY_FILES)
+  file(RELATIVE_PATH RELATIVE_FILE_PATH "${PROJECT_SOURCE_DIR}" "${FILE_PATH}")
   if(FILE_PATH STREQUAL CMAKE_CURRENT_LIST_FILE OR
-     FILE_PATH MATCHES "(^|/)(build[^/]*|install|bin|out|cmake-build-[^/]*|\\.vcpkg_installed|vcpkg_installed|conan-cache)/" OR
-     FILE_PATH MATCHES "/docs/superpowers/")
+     RELATIVE_FILE_PATH MATCHES "^(salts|vcpkg)/" OR
+     RELATIVE_FILE_PATH MATCHES "(^|/)(build[^/]*|install|bin|out|cmake-build-[^/]*|\\.vcpkg_installed|vcpkg_installed|conan-cache)/" OR
+     RELATIVE_FILE_PATH MATCHES "^docs/superpowers/")
     continue()
   endif()
   file(READ "${FILE_PATH}" CONTENT)
