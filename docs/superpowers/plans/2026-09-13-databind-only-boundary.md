@@ -29,7 +29,7 @@
 
 **Interfaces:**
 - Consumes: the checked-out SaltsUtils source tree at `PROJECT_SOURCE_DIR`.
-- Produces: CTest `test_databind_only_dependency_contract`, which rejects active `.c`, `.h`, `.cpp`, `.hpp`, `.mustache`, `CMakeLists.txt` and `.cmake` references to the duplicate binder API/target while excluding itself, build output and planning history.
+- Produces: CTest `test_databind_only_dependency_contract`, which rejects active `.c`, `.h`, `.cpp`, `.hpp`, `.mustache`, `CMakeLists.txt` and `.cmake` references to the duplicate binder API/target while excluding itself, build output, planning history and the exact top-level CI dependency checkouts `salts/` and `vcpkg/`.
 
 - [ ] **Step 1: Write the failing contract test**
 
@@ -49,10 +49,11 @@ file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
   "${PROJECT_SOURCE_DIR}/*.mustache")
 
 foreach(FILE_PATH IN LISTS POLICY_FILES)
+  file(RELATIVE_PATH RELATIVE_FILE_PATH "${PROJECT_SOURCE_DIR}" "${FILE_PATH}")
   if(FILE_PATH STREQUAL CMAKE_CURRENT_LIST_FILE OR
-     FILE_PATH MATCHES "/build/" OR
-     FILE_PATH MATCHES "/\\.worktrees/" OR
-     FILE_PATH MATCHES "/docs/superpowers/")
+     RELATIVE_FILE_PATH MATCHES "^(salts|vcpkg)/" OR
+     RELATIVE_FILE_PATH MATCHES "(^|/)(build[^/]*|install|bin|out|cmake-build-[^/]*|\\.vcpkg_installed|vcpkg_installed|conan-cache)/" OR
+     RELATIVE_FILE_PATH MATCHES "^docs/superpowers/")
     continue()
   endif()
   file(READ "${FILE_PATH}" CONTENT)
