@@ -40,8 +40,8 @@ spec("generated native CMeta graph") {
       check_equal(shape->fields[1].value->storage_type->size, sizeof(State_t));
       check_equal(state->meta->count, 2u);
       check_equal(state->meta->items[1].value, 7);
-      check_str_equal(state->meta->items[1].symbol, "Ready");
-      check_str_equal(shape->fields[2].name, "count");
+      check_equal(state->meta->items[1].symbol, "Ready");
+      check_equal(shape->fields[2].name, "count");
       check_true(cmeta_data_struct_find_field(shape, "wire_count") == NULL);
       check_true(cmeta_data_struct_find_field(shape, "old_count") == NULL);
       check_true(cmeta_type_equal(copy.storage_type, data->storage_type));
@@ -95,8 +95,8 @@ spec("generated native CMeta graph") {
       check_equal(tbe_typed_validate_schema(codec, "Sample", &Sample_TYPED_TYPE, &error), DATA_BIND_OK);
       check_true(data_bind_schema_field_at(codec, "Sample", 2u, &field));
       check_true(field.has_default);
-      check_str_equal(field.default_value, "9");
-      check_str_equal(field.name, "count");
+      check_equal(field.default_value, "9");
+      check_equal(field.name, "count");
       check_equal(field.offset, 14u);
       data_bind_free(codec);
     }
