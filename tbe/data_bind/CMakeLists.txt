@@ -86,6 +86,10 @@ cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_schema_reflection_contract
+  SOURCES test_data_bind_schema_reflection_contract.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
