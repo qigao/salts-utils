@@ -83,10 +83,8 @@ spec("generated native CMeta graph") {
     check_equal(Unsupported_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
     check(data == sentinel);
     check(error.path[0] != '\0');
-    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_OK);
-    check_not_null(data);
-    check_equal(data->kind, CMETA_DATA_STRUCT);
-    sentinel = data;
+    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
+    check(data == sentinel);
     check_equal(UnsupportedNested_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
     check(data == sentinel);
   }
