@@ -90,7 +90,7 @@ int main(void) {
         shape->fields[0].value == NULL)
       return 12;
     enum_data = shape->fields[0].value;
-    if (cmeta_data_enum_ops_of(enum_data) == NULL ||
+    if (cmeta_data_enum_bits_ops_of(enum_data) == NULL ||
         cmeta_data_enum_assign_bits(enum_data, &value,
                                     UINT64_C(1) | UINT64_C(2)) != CMETA_OK ||
         cmeta_data_enum_read_bits(enum_data, &value, &bits) != CMETA_OK ||
@@ -119,7 +119,7 @@ int main(void) {
     enum_data = shape->fields[0].value;
     if (enum_data->kind != CMETA_DATA_ENUM ||
         enum_data->storage_type->size != sizeof(uint64_t) ||
-        cmeta_data_enum_ops_of(enum_data) == NULL ||
+        cmeta_data_enum_bits_ops_of(enum_data) == NULL ||
         cmeta_data_enum_assign_bits(enum_data, &object.value,
                                     UINT64_MAX) != CMETA_OK ||
         tbe_typed_descriptor_serialize_binary_into(

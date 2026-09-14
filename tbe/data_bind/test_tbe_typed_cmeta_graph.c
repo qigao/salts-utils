@@ -29,7 +29,8 @@ spec("generated native CMeta graph") {
     if (data && descriptor) {
       const cmeta_data_struct_shape *shape = data->shape;
       const cmeta_data_struct_shape *point = shape->fields[0].value->shape;
-      const cmeta_data_enum_shape *state = shape->fields[1].value->shape;
+      const cmeta_data_enum_bits_ops *state =
+          cmeta_data_enum_bits_ops_of(shape->fields[1].value);
       TbeTypedDescriptor descriptor_copy = *descriptor;
       cmeta_data_desc copy = *data;
       cmeta_type_desc storage_copy = *data->storage_type;
@@ -51,10 +52,13 @@ spec("generated native CMeta graph") {
                              salts_int32_cmeta_data.storage_type));
       check_equal(shape->fields[1].value->kind, CMETA_DATA_ENUM);
       check_equal(shape->fields[1].value->storage_type->size, sizeof(State_t));
-      check_not_null(cmeta_data_enum_ops_of(shape->fields[1].value));
-      check_equal(state->meta->count, 2u);
-      check_equal(state->meta->items[1].value, 7);
-      check_equal(state->meta->items[1].symbol, "Ready");
+      check_not_null(state);
+      if (!state) return;
+      check_null(shape->fields[1].value->shape);
+      check_null(shape->fields[1].value->enum_ops);
+      check_equal(state->domain->count, 2u);
+      check_equal(state->domain->items[1].bits, 7u);
+      check_equal(state->domain->items[1].symbol, "Ready");
       check_equal(shape->fields[2].name, "count");
       check_null(cmeta_data_struct_find_field(shape, "wire_count"));
       check_null(cmeta_data_struct_find_field(shape, "old_count"));
@@ -360,7 +364,7 @@ spec("generated native CMeta graph") {
     Signed8Domain_t signed8_storage = 0;
     Unsigned8Domain_t unsigned8_storage = 0;
     Signed64Domain_t signed64_storage = 0;
-    int64_t value = 0;
+    uint64_t value = 0;
     DataBindError error = DATA_BIND_ERROR_INIT;
 
     check_equal(Signed8Storage_cmeta_data(&signed8, &error), DATA_BIND_OK);
@@ -401,24 +405,35 @@ spec("generated native CMeta graph") {
     check_equal(signed8_value->storage_type->size, sizeof(int8_t));
     check_equal(unsigned8_value->storage_type->size, sizeof(uint8_t));
     check_equal(signed64_value->storage_type->size, sizeof(int64_t));
-    check_not_null(cmeta_data_enum_ops_of(signed8_value));
-    check_not_null(cmeta_data_enum_ops_of(unsigned8_value));
-    check_not_null(cmeta_data_enum_ops_of(signed64_value));
-    check_equal(cmeta_data_enum_assign(signed8_value, &signed8_storage,
-                                       INT8_MIN), CMETA_OK);
-    check_equal(cmeta_data_enum_read(signed8_value, &signed8_storage, &value),
+    check_not_null(cmeta_data_enum_bits_ops_of(signed8_value));
+    check_not_null(cmeta_data_enum_bits_ops_of(unsigned8_value));
+    check_not_null(cmeta_data_enum_bits_ops_of(signed64_value));
+    if (!cmeta_data_enum_bits_ops_of(signed8_value) ||
+        !cmeta_data_enum_bits_ops_of(unsigned8_value) ||
+        !cmeta_data_enum_bits_ops_of(signed64_value)) return;
+    check_equal(signed8_value->enum_bits_ops->domain->signedness, CMETA_ENUM_SIGNED);
+    check_equal(signed8_value->enum_bits_ops->domain->bits, 8u);
+    check_equal(unsigned8_value->enum_bits_ops->domain->signedness, CMETA_ENUM_UNSIGNED);
+    check_equal(unsigned8_value->enum_bits_ops->domain->bits, 8u);
+    check_equal(signed64_value->enum_bits_ops->domain->signedness, CMETA_ENUM_SIGNED);
+    check_equal(signed64_value->enum_bits_ops->domain->bits, 64u);
+    check_equal(cmeta_data_enum_assign_bits(signed8_value, &signed8_storage,
+                                            UINT64_C(128)), CMETA_OK);
+    check_equal(cmeta_data_enum_read_bits(signed8_value, &signed8_storage, &value),
                 CMETA_OK);
-    check_equal(value, INT8_MIN);
-    check_equal(cmeta_data_enum_assign(unsigned8_value, &unsigned8_storage,
+    check_equal(value, UINT64_C(128));
+    check_equal(signed8_storage, INT8_MIN);
+    check_equal(cmeta_data_enum_assign_bits(unsigned8_value, &unsigned8_storage,
                                        UINT8_MAX), CMETA_OK);
-    check_equal(cmeta_data_enum_read(unsigned8_value, &unsigned8_storage, &value),
+    check_equal(cmeta_data_enum_read_bits(unsigned8_value, &unsigned8_storage, &value),
                 CMETA_OK);
     check_equal(value, UINT8_MAX);
-    check_equal(cmeta_data_enum_assign(signed64_value, &signed64_storage,
-                                       INT64_MIN), CMETA_OK);
-    check_equal(cmeta_data_enum_read(signed64_value, &signed64_storage, &value),
+    check_equal(cmeta_data_enum_assign_bits(signed64_value, &signed64_storage,
+                                            UINT64_C(1) << 63), CMETA_OK);
+    check_equal(cmeta_data_enum_read_bits(signed64_value, &signed64_storage, &value),
                 CMETA_OK);
-    check_equal(value, INT64_MIN);
+    check_equal(value, UINT64_C(1) << 63);
+    check_equal(signed64_storage, INT64_MIN);
   }
 
   it("round-trips UINT64_MAX through canonical bits and descriptor binary APIs") {
@@ -453,7 +468,7 @@ spec("generated native CMeta graph") {
     if (!enum_data) return;
     check_equal(enum_data->kind, CMETA_DATA_ENUM);
     check_equal(enum_data->storage_type->size, sizeof(uint64_t));
-    check_not_null(cmeta_data_enum_ops_of(enum_data));
+    check_not_null(cmeta_data_enum_bits_ops_of(enum_data));
 
     check_equal(tbe_typed_descriptor_init(descriptor, &object, &error),
                 DATA_BIND_OK);
@@ -560,7 +575,7 @@ spec("generated native CMeta graph") {
     enum_data = shape->fields[0].value;
     check_not_null(enum_data);
     if (!enum_data) return;
-    check_not_null(cmeta_data_enum_ops_of(enum_data));
+    check_not_null(cmeta_data_enum_bits_ops_of(enum_data));
     check_equal(cmeta_data_enum_assign_bits(
                     enum_data, &object.value,
                     UINT64_C(1) | UINT64_C(2)),
@@ -569,7 +584,7 @@ spec("generated native CMeta graph") {
                 CMETA_OK);
     check_equal(bits, UINT64_C(3));
     check_equal(object.value, Permission_Read | Permission_Write);
-    check_equal(cmeta_data_enum_restore_zero(enum_data, &object.value),
+    check_equal(cmeta_data_enum_bits_restore_zero(enum_data, &object.value),
                 CMETA_OK);
     before = object;
     check_equal(cmeta_data_enum_assign_bits(enum_data, &object.value,
