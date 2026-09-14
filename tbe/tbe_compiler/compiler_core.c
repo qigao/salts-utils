@@ -714,10 +714,10 @@ static void tbe_compiler_annotate_native_requirement(
   if (!root || !field || !semantic) return;
   type = tbe_compiler_string_value(field, "type");
 
-  if (tbe_compiler_has_child(field, "is_optional")) {
-    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
-  } else if (cmeta_data_kind_is_container(semantic->kind)) {
+  if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
+  } else if (tbe_compiler_has_child(field, "is_optional")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
   } else if (semantic->kind == CMETA_DATA_STRING ||
              (semantic->kind == CMETA_DATA_BYTES &&
               !tbe_compiler_has_child(field, "is_fixed_size")) ||
