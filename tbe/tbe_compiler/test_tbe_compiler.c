@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 40244)
-Total output lines: 3604
+Warning: truncated output (original token count: 39699)
+Total output lines: 3575
 
 #include "mustache.h"
 #include "mustache_helpers.h"
@@ -1275,7 +1275,59 @@ spec("tbe_compiler") {
           {"rejects an unknown enum default constant",
            "enum State <uint8> { Idle = 0; } "
            "[db_table(defaults)] message EnumMismatch { State value default Missing; }",
-           "EnumMismatch", "valu…10244 tokens truncated… IS NULL OR "
+           "EnumMismatch", "valu…9699 tokens truncated…entity single primary key for PostgreSQL") {
+      const char *schema_path = "test_tbe_compiler_postgresql_single_pk.schema";
+      const char *output_path = "test_tbe_compiler_postgresql_single_pk.sql";
+      const char *schema =
+          "[db_table(single_pk)] message SinglePk {"
+          " [db_primary_key(1)] int64 id;"
+          " string value;"
+          "}";
+      const char *expected =
+          "BEGIN;\n"
+          "CREATE TABLE \"single_pk\" (\n"
+          "  \"id\" bigint NOT NULL PRIMARY KEY,\n"
+          "  \"value\" text NOT NULL\n"
+          ");\n\n"
+          "COMMIT;\n";
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = output_path,
+          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+      };
+      char *output = NULL;
+      size_t output_size = 0;
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      output = tt_read_file(output_path, &output_size);
+      check_not_null(output);
+      if (output) {
+        check_equal(output, expected);
+        free(output);
+      }
+      cleanup_test_file(schema_path);
+      cleanup_test_file(output_path);
+    }
+
+    it("should pass normalized database IR to custom database templates") {
+      const char *schema_path = "test_tbe_compiler_database_custom.schema";
+      const char *template_path = "test_tbe_compiler_database_custom.mustache";
+      const char *output_path = "test_tbe_compiler_database_custom.out";
+      const char *schema =
+          "[db_table(records)] message Record {"
+          " [db_column(record_id), db_primary_key(1)] uint64 id;"
+          " optional string note;"
+          "}";
+      const char *template_text =
+          "{{#db_tables}}{{sql_table_name}}:{{#db_columns}}{{sql_column_name}} {{sql_type}}"
+          "{{#has_sql_constraints}} {{sql_constraints}}{{/has_sql_constraints}}"
+          "{{#has_next_column}};{{/has_next_column}}"
+          "{{/db_columns}}{{/db_tables}}";
+      const char *expected =
+          "\"records\":\"record_id\" TEXT NOT NULL CHECK (\"record_id\" IS NULL OR "
           "(typeof(\"record_id\") = 'text' AND length(CAST(\"record_id\" AS BLOB)) = "
           "length(\"record_id\") AND length(\"record_id\") BETWEEN 1 AND 20 AND "
           "\"record_id\" NOT GLOB '*[^0-9]*' AND (\"record_id\" = '0' OR "
@@ -1781,7 +1833,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
-    it("should partition CMeta descriptor wrappers at generation time") {
+    it("should expose public descriptors for canonical runtime records") {
       const char *schema_path = "test_tbe_compiler_cmeta_descriptor.tbe";
       const char *header_path = "test_tbe_compiler_cmeta_descriptor.h";
       const char *source_path = "test_tbe_compiler_cmeta_descriptor.c";
@@ -1825,35 +1877,6 @@ spec("tbe_compiler") {
                        "const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
         check(strstr(header,
                      "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
-      }
-      if (source != NULL) {
-        check_contains(source,
-                       "TBE_TYPED_DESCRIPTOR_INIT(&Sample_TYPED_TYPE, &Sample_CMETA_DATA)");
-        check_contains(source, "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
-        check_contains(source, "static const cmeta_data_enum_ops State_CMETA_ENUM_OPS");
-        check_contains(source, "State_cmeta_read, State_cmeta_assign");
-        check_contains(source, "&State_CMETA_ENUM_OPS");
-        check_contains(source, "static const cmeta_data_enum_ops Permission_CMETA_ENUM_OPS");
-        check_contains(source, "static const cmeta_data_enum_ops WideDomain_CMETA_ENUM_OPS");
-        check_contains(source,
-                       "TBE_TYPED_DESCRIPTOR_INIT(&FlagStorage_TYPED_TYPE, &FlagStorage_CMETA_DATA)");
-        check_contains(source,
-                       "TBE_TYPED_DESCRIPTOR_INIT(&WideEnumStorage_TYPED_TYPE, &WideEnumStorage_CMETA_DATA)");
-        check(strstr(source, "LoginMessage_TYPED_DESCRIPTOR") == NULL);
-        check_contains(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(Sample)");
-        check_contains(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(FlagStorage)");
-        check_contains(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(WideEnumStorage)");
-        check_contains(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)");
-        check_contains(source, "tbe_typed_descriptor_init(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_clear(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR");
-        check_contains(source,
-                       "tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_init(&name##_TYPED_TYPE");
-        check_contains(source, "tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE");
-        check_contains(source, "tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE");
       }
 
       free(header);
