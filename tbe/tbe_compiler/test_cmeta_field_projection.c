@@ -347,7 +347,7 @@ suite("compiler_cmeta_field_projection") {
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
             "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
-            "MapStorage", "OptionalStorage", "FlagStorage", "WideStorage",
+            "MapStorage", "OptionalStorage",
             "UnsupportedNested", "Cycle"
         };
         Node *root = create_node_map("root");
@@ -467,8 +467,14 @@ suite("compiler_cmeta_field_projection") {
         perms = field_projection_record(root, "enums", "Perms");
         wide = field_projection_record(root, "enums", "Wide");
         check_not_null(field_projection_child(state, "typed_cmeta_runtime_supported"));
-        check_null(field_projection_child(perms, "typed_cmeta_runtime_supported"));
-        check_null(field_projection_child(wide, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(perms, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(wide, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FlagStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "WideStorage"),
+            "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "Depth32"),
             "typed_cmeta_runtime_supported"));
@@ -503,7 +509,7 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "UuidStorage"),
             "typed_cmeta_runtime_supported"));
-        check_null(field_projection_child(
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
             "cmeta_graph_supported"));
         check_null(field_projection_child(
