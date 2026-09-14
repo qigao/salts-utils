@@ -174,32 +174,6 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("keeps colliding owner and field spellings as distinct fixed providers") {
-    const TbeTypedDescriptor *left = A_B_typed_descriptor();
-    const TbeTypedDescriptor *right = A_typed_descriptor();
-    const cmeta_data_struct_shape *left_shape =
-        left ? (const cmeta_data_struct_shape *)left->native_data->shape : NULL;
-    const cmeta_data_struct_shape *right_shape =
-        right ? (const cmeta_data_struct_shape *)right->native_data->shape : NULL;
-    const cmeta_data_desc *left_bytes;
-    const cmeta_data_desc *right_bytes;
-
-    check_not_null(left_shape);
-    check_not_null(right_shape);
-    if (!left_shape || !right_shape || left_shape->field_count != 1u ||
-        right_shape->field_count != 1u)
-      return;
-    left_bytes = left_shape->fields[0].value;
-    right_bytes = right_shape->fields[0].value;
-    check_not_null(left_bytes);
-    check_not_null(right_bytes);
-    if (!left_bytes || !right_bytes) return;
-    check(left_bytes != right_bytes);
-    check(strcmp(left_bytes->stable_id, right_bytes->stable_id) != 0);
-    check_not_null(cmeta_data_fixed_ops_of(left_bytes));
-    check_not_null(cmeta_data_fixed_ops_of(right_bytes));
-  }
-
   it("requires exact canonical providers for generated fixed values") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","

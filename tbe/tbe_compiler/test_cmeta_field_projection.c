@@ -254,6 +254,11 @@ suite("compiler_cmeta_field_projection") {
     }
 
     it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
+        /* A real generated TU cannot isolate this namespace: the older public
+         * wire API already maps both A_B.C and A.B_C to A_B_C_* before the
+         * provider source is compiled. Keep this compiler-metadata regression
+         * scoped to the new private provider namespace; public API mangling is
+         * a separate generator ABI decision. */
         Node *root = create_node_map("root");
         Node *left = field_projection_add_record(root, "messages", "A_B");
         Node *right = field_projection_add_record(root, "messages", "A");
