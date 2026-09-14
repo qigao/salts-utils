@@ -135,18 +135,110 @@ suite("real generated and runtime CMeta acceptance") {
     if (!codec) return;
     check_equal(Sample_cmeta_data(&sample, &error), DATA_BIND_OK);
     check_equal(FlagStorage_cmeta_data(&flags, &error), DATA_BIND_OK);
+    check_not_null(sample);
+    check_not_null(flags);
     if (sample && flags) {
       const cmeta_data_struct_shape *shape = sample->shape;
-      const cmeta_data_enum_shape *state = shape->fields[1].value->shape;
-      const cmeta_data_enum_shape *permission = ((const cmeta_data_struct_shape *)flags->shape)->fields[0].value->shape;
+      const cmeta_data_struct_shape *flag_shape = flags->shape;
+      const cmeta_data_desc *state_data;
+      const cmeta_data_desc *permission_data;
+      const cmeta_data_enum_bits_ops *state_ops;
+      const cmeta_data_enum_bits_ops *permission_ops;
+      const cmeta_enum_domain *state;
+      const cmeta_enum_domain *permission;
+      const TbeTypedDescriptor *sample_descriptor = Sample_typed_descriptor();
+      const TbeTypedDescriptor *flag_descriptor = FlagStorage_typed_descriptor();
+      State_t state_value = 0;
+      Permission_t permission_value = 0;
+      uint64_t bits = 0u;
       DataBindSchemaEnumItem item = DATA_BIND_SCHEMA_ENUM_ITEM_INIT;
       cmeta_type_identity identity = CMETA_TYPE_ID_ATOM_INIT("tbe.native.Graph.Point_t");
+      check_not_null(sample_descriptor);
+      check_not_null(flag_descriptor);
+      check_not_null(shape);
+      check_not_null(flag_shape);
+      if (!sample_descriptor || !flag_descriptor || !shape || !flag_shape) {
+        data_bind_free(codec);
+        return;
+      }
+      check(sample_descriptor->native_data == sample);
+      check(flag_descriptor->native_data == flags);
+      check_equal(tbe_typed_descriptor_validate(sample_descriptor, &error), DATA_BIND_OK);
+      check_equal(tbe_typed_descriptor_validate(flag_descriptor, &error), DATA_BIND_OK);
+      check_equal(shape->field_count, 3u);
+      check_equal(flag_shape->field_count, 1u);
+      check_not_null(shape->fields);
+      check_not_null(flag_shape->fields);
+      if (shape->field_count != 3u || flag_shape->field_count != 1u ||
+          !shape->fields || !flag_shape->fields) {
+        data_bind_free(codec);
+        return;
+      }
+      state_data = shape->fields[1].value;
+      permission_data = flag_shape->fields[0].value;
+      check_not_null(shape->fields[0].value);
+      check_not_null(state_data);
+      check_not_null(permission_data);
+      if (!shape->fields[0].value || !state_data || !permission_data) {
+        data_bind_free(codec);
+        return;
+      }
+      check_not_null(shape->fields[0].value->storage_type);
+      if (!shape->fields[0].value->storage_type) {
+        data_bind_free(codec);
+        return;
+      }
       check(cmeta_type_identity_equal(shape->fields[0].value->storage_type->identity, &identity));
-      check_equal(state->meta->items[1].value, 7);
-      check_equal(permission->meta->count, 2u);
-      check_equal(permission->meta->items[1].value, 2);
+      check_null(state_data->shape);
+      check_null(state_data->enum_ops);
+      check_null(permission_data->shape);
+      check_null(permission_data->enum_ops);
+      state_ops = cmeta_data_enum_bits_ops_of(state_data);
+      permission_ops = cmeta_data_enum_bits_ops_of(permission_data);
+      check_not_null(state_ops);
+      check_not_null(permission_ops);
+      if (!state_ops || !permission_ops) {
+        data_bind_free(codec);
+        return;
+      }
+      state = state_ops->domain;
+      permission = permission_ops->domain;
+      check_not_null(state);
+      check_not_null(permission);
+      if (!state || !permission) {
+        data_bind_free(codec);
+        return;
+      }
+      check_equal(state->signedness, CMETA_ENUM_SIGNED);
+      check_equal(state->bits, 16u);
+      check_equal(state->kind, CMETA_ENUM_ORDINARY);
+      check_equal(state->declared_mask, 0u);
+      check_equal(permission->signedness, CMETA_ENUM_UNSIGNED);
+      check_equal(permission->bits, 8u);
+      check_equal(permission->kind, CMETA_ENUM_FLAGS);
+      check_equal(permission->declared_mask, 3u);
+      check_equal(state->count, 2u);
+      check_equal(permission->count, 2u);
+      check_not_null(state->items);
+      check_not_null(permission->items);
+      if (state->count != 2u || permission->count != 2u ||
+          !state->items || !permission->items) {
+        data_bind_free(codec);
+        return;
+      }
+      check_equal(state->items[1].bits, 7u);
+      check_equal(permission->items[1].bits, 2u);
+      check_equal(cmeta_data_enum_assign_bits(state_data, &state_value, 7u), CMETA_OK);
+      check_equal(cmeta_data_enum_read_bits(state_data, &state_value, &bits), CMETA_OK);
+      check_equal(bits, 7u);
+      check_equal(state_value, State_Ready);
+      check_equal(cmeta_data_enum_assign_bits(permission_data, &permission_value,
+                                              UINT64_C(1) | UINT64_C(2)), CMETA_OK);
+      check_equal(cmeta_data_enum_read_bits(permission_data, &permission_value, &bits), CMETA_OK);
+      check_equal(bits, 3u);
+      check_equal(permission_value, Permission_Read | Permission_Write);
       check(data_bind_schema_enum_item_at(codec, "Permission", 1, &item));
-      check_equal(item.name, permission->meta->items[1].symbol);
+      check_equal(item.name, permission->items[1].symbol);
       check_equal(item.value, "2");
     }
     for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
@@ -200,7 +292,7 @@ suite("real generated and runtime CMeta acceptance") {
     data_bind_free(codec);
   }
 
-  it("does not confuse optional base values or BOOL wire octets with native slot storage") {
+  it("keeps optional values gated and distinguishes Bool8 native storage") {
     DataBind *codec = acceptance_codec();
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -222,9 +314,26 @@ suite("real generated and runtime CMeta acceptance") {
     check_equal(data_bind_schema_field_cmeta_data(codec, "BoolStorage", 0, &base, &error), DATA_BIND_OK);
     same_value_type(base, &cmeta_data_bool);
     out = base;
-    check_equal(BoolStorage_cmeta_data(&out, &error), DATA_BIND_ERR_SCHEMA);
-    check(out == base);
-    check_equal(error.path, "BoolStorage");
+    check_equal(BoolStorage_cmeta_data(&out, &error), DATA_BIND_OK);
+    check_not_null(out);
+    if (out) {
+      const cmeta_data_struct_shape *shape =
+          (const cmeta_data_struct_shape *)out->shape;
+      check_not_null(shape);
+      if (shape && shape->field_count == 1u) {
+        const cmeta_data_desc *native_bool = shape->fields[0].value;
+        check_not_null(native_bool);
+        if (!native_bool) {
+          data_bind_free(codec);
+          return;
+        }
+        check_equal(native_bool->kind, CMETA_DATA_BOOL);
+        check(cmeta_type_equal(native_bool->storage_type,
+                               &salts_bool8_cmeta_type));
+        check(!cmeta_type_equal(native_bool->storage_type,
+                                cmeta_data_bool.storage_type));
+      }
+    }
     unresolved_field(codec, "WideEnumStorage", 0, "WideEnumStorage.value");
     data_bind_free(codec);
   }

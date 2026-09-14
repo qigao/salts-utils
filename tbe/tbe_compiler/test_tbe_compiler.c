@@ -2763,15 +2763,19 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
-    it("should partition CMeta descriptor wrappers at generation time") {
+    it("should expose public descriptors for canonical runtime records") {
       const char *schema_path = "test_tbe_compiler_cmeta_descriptor.tbe";
       const char *header_path = "test_tbe_compiler_cmeta_descriptor.h";
       const char *source_path = "test_tbe_compiler_cmeta_descriptor.c";
       const char *schema =
           "schema DescriptorGraph;"
           "enum State <uint8> { Idle = 0; Ready = 7; }"
+          "flags Permission <uint8> { Read = 1; Write = 2; }"
+          "enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }"
           "composite Point { int32 x; double y; }"
           "message Sample { Point point; State state; uint32 count; }"
+          "message FlagStorage { Permission value; }"
+          "message WideEnumStorage { WideDomain value; }"
           "message LoginMessage { string user; }";
       size_t header_size = 0;
       size_t source_size = 0;
@@ -2797,29 +2801,12 @@ spec("tbe_compiler") {
       if (header != NULL) {
         check_contains(header,
                        "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
+        check_contains(header,
+                       "const TbeTypedDescriptor *FlagStorage_typed_descriptor(void)");
+        check_contains(header,
+                       "const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
         check(strstr(header,
                      "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
-      }
-      if (source != NULL) {
-        check_contains(source,
-                       "TBE_TYPED_DESCRIPTOR_INIT(&Sample_TYPED_TYPE, &Sample_CMETA_DATA)");
-        check_contains(source, "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
-        check_contains(source, "static const cmeta_data_enum_ops State_CMETA_ENUM_OPS");
-        check_contains(source, "State_cmeta_read, State_cmeta_assign");
-        check_contains(source, "&State_CMETA_ENUM_OPS");
-        check(strstr(source, "LoginMessage_TYPED_DESCRIPTOR") == NULL);
-        check_contains(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(Sample)");
-        check_contains(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)");
-        check_contains(source, "tbe_typed_descriptor_init(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_clear(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR");
-        check_contains(source,
-                       "tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR");
-        check_contains(source, "tbe_typed_init(&name##_TYPED_TYPE");
-        check_contains(source, "tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE");
-        check_contains(source, "tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE");
       }
 
       free(header);

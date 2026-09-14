@@ -5,6 +5,46 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef enum ExpectedRuntimeRequirement {
+    EXPECT_EXPLICIT_ADAPTER,
+    EXPECT_BOUNDED_ADAPTER,
+    EXPECT_LIFECYCLE,
+    EXPECT_OVERLAY_PRESENCE,
+    EXPECT_DEFERRED_CONTAINER
+} ExpectedRuntimeRequirement;
+
+typedef struct ExpectedRuntimeCapability {
+    const char *schema;
+    const char *generated_storage;
+    cmeta_data_kind semantic_kind;
+    ExpectedRuntimeRequirement requirement;
+} ExpectedRuntimeCapability;
+
+static const ExpectedRuntimeCapability EXPECTED[] = {
+    { "bool", "uint8_t", CMETA_DATA_BOOL, EXPECT_EXPLICIT_ADAPTER },
+    { "uuid", "salts_uuid_t", CMETA_DATA_CUSTOM, EXPECT_EXPLICIT_ADAPTER },
+    { "bytes[16]", "uint8_t[16]", CMETA_DATA_BYTES, EXPECT_BOUNDED_ADAPTER },
+    { "string", "tstr", CMETA_DATA_STRING, EXPECT_LIFECYCLE },
+    { "bytes", "tbe_bytes_t", CMETA_DATA_BYTES, EXPECT_LIFECYCLE },
+    { "optional int32", "presence + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_PRESENCE },
+    { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
+};
+
+static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
+    switch (requirement) {
+        case EXPECT_EXPLICIT_ADAPTER:
+        case EXPECT_BOUNDED_ADAPTER:
+            return "fixed_value";
+        case EXPECT_LIFECYCLE:
+            return "owned_lifecycle";
+        case EXPECT_OVERLAY_PRESENCE:
+            return "overlay_presence";
+        case EXPECT_DEFERRED_CONTAINER:
+            return "deferred_container";
+    }
+    return NULL;
+}
+
 static Node *field_projection_child(Node *node, const char *name) {
     size_t i;
     for (i = 0; node && i < node->data.map.count; ++i)
@@ -132,11 +172,182 @@ suite("compiler_cmeta_field_projection") {
         }
     }
 
+    it("publishes installed fixed providers and keeps remaining capabilities deferred") {
+        static const char *const names[] = {
+            "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
+            "BytesStorage", "OptionalStorage", "ListStorage"};
+        static const char *const types[] = {
+            "bool", "uuid", "bytes", "string", "bytes", "int32", "list"};
+        Node *root = create_node_map("root");
+        size_t i;
+
+        check_not_null(root);
+        if (!root) return;
+        for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
+            Node *record = field_projection_add_record(root, "messages", names[i]);
+            Node *field = field_projection_add_field(record, names[i], "value", types[i]);
+            check_not_null(field);
+            if (!field) continue;
+            if (EXPECTED[i].requirement == EXPECT_BOUNDED_ADAPTER) {
+                check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+                check_equal(map_add(field, create_node_string("size_bytes", "16")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE) {
+                check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
+                check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+            }
+        }
+
+        tbe_compiler_annotate_language_types(root);
+
+        for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
+            Node *record = field_projection_record(root, "messages", names[i]);
+            Node *fields = field_projection_child(record, "fields");
+            Node *field = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
+                              ? fields->data.list.items[0]
+                              : NULL;
+            const char *kind = field_projection_text(field, "cmeta_kind");
+            info("schema=%s storage=%s", EXPECTED[i].schema,
+                 EXPECTED[i].generated_storage);
+            check_not_null(field);
+            check_not_null(kind);
+            if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
+            check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                        expected_native_requirement(EXPECTED[i].requirement));
+            if (i < 3u)
+                check_not_null(field_projection_child(
+                    record, "typed_cmeta_runtime_supported"));
+            else
+                check_null(field_projection_child(
+                    record, "typed_cmeta_runtime_supported"));
+        }
+
+        node_free(root);
+    }
+
+    it("keeps optional containers deferred to the container provider boundary") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalListStorage");
+        field = field_projection_add_field(record, "OptionalListStorage", "value", "list");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+
+        tbe_compiler_annotate_language_types(root);
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_text(field, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
+    it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
+        /* A real generated TU cannot isolate this namespace: the older public
+         * wire API already maps both A_B.C and A.B_C to A_B_C_* before the
+         * provider source is compiled. Keep this compiler-metadata regression
+         * scoped to the new private provider namespace; public API mangling is
+         * a separate generator ABI decision. */
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_record(root, "messages", "A_B");
+        Node *right = field_projection_add_record(root, "messages", "A");
+        Node *left_field = field_projection_add_field(left, "A_B", "C", "bytes");
+        Node *right_field = field_projection_add_field(right, "A", "B_C", "bytes");
+        const char *left_symbol;
+        const char *right_symbol;
+
+        check_not_null(left_field);
+        check_not_null(right_field);
+        if (!left_field || !right_field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(left_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(left_field, create_node_string("size_bytes", "4")), 0);
+        check_equal(map_add(right_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(right_field, create_node_string("size_bytes", "4")), 0);
+
+        tbe_compiler_annotate_language_types(root);
+        left_symbol = field_projection_text(left_field, "native_fixed_bytes_name");
+        right_symbol = field_projection_text(right_field, "native_fixed_bytes_name");
+        check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
+        check_equal(right_symbol, "tbe_fixed_bytes_1_A_3_B_C");
+        check(strcmp(left_symbol, right_symbol) != 0);
+        check_not_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
+    it("injects enum symbols without sharing the public item macro namespace") {
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_enum(root, "A_B", "uint16", 0);
+        Node *right = field_projection_add_enum(root, "AB", "uint16", 0);
+        Node *record = field_projection_add_record(root, "messages", "Symbols");
+        Node *field = field_projection_add_field(record, "Symbols", "value", "A_B");
+        Node *long_enum;
+        Node *long_field;
+        char long_name[241];
+        const char *left_symbol;
+        const char *right_symbol;
+        const char *long_symbol;
+        const char *long_data;
+        memset(long_name, 'A', sizeof(long_name) - 1u);
+        long_name[sizeof(long_name) - 1u] = '\0';
+        long_enum = field_projection_add_enum(root, long_name, "uint16", 0);
+        long_field = field_projection_add_field(record, "Symbols", "long_value", long_name);
+        check_not_null(left);
+        check_not_null(right);
+        check_not_null(field);
+        check_not_null(long_enum);
+        check_not_null(long_field);
+        if (!left || !right || !field || !long_enum || !long_field) {
+            node_free(root);
+            return;
+        }
+        tbe_compiler_annotate_language_types(root);
+        left_symbol = field_projection_text(left, "native_enum_symbol");
+        right_symbol = field_projection_text(right, "native_enum_symbol");
+        long_symbol = field_projection_text(long_enum, "native_enum_symbol");
+        long_data = field_projection_text(long_field, "native_data_symbol");
+        check_not_null(left_symbol);
+        check_not_null(right_symbol);
+        check_not_null(long_symbol);
+        check_not_null(long_data);
+        if (left_symbol && right_symbol && long_symbol && long_data) {
+            check_equal(left_symbol, "tbeCmetaEnum3x415f42");
+            check_equal(right_symbol, "tbeCmetaEnum2x4142");
+            check(strcmp(left_symbol, right_symbol) != 0);
+            check_null(strchr(left_symbol, '_'));
+            check_null(strchr(right_symbol, '_'));
+            check_equal(field_projection_text(field, "native_data_symbol"),
+                        "tbeCmetaEnum3x415f42Data");
+            check_equal(field_projection_text(field, "native_type_symbol"),
+                        "tbeCmetaEnum3x415f42Type");
+            check_equal(strlen(long_symbol), strlen("tbeCmetaEnum240x") + 480u);
+            check_equal(strlen(long_data), strlen(long_symbol) + 4u);
+            check_equal(strncmp(long_data, long_symbol, strlen(long_symbol)), 0);
+            check_equal(long_data + strlen(long_symbol), "Data");
+            check_null(strchr(long_data, '_'));
+            check_not_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+        }
+        node_free(root);
+    }
+
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
-            "BoolStorage", "TextStorage", "BytesStorage", "FixedBytesStorage",
-            "FixedArrayStorage", "UuidStorage", "ListStorage", "SetStorage",
-            "MapStorage", "OptionalStorage", "FlagStorage", "WideStorage",
+            "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
+            "MapStorage", "OptionalStorage",
             "UnsupportedNested", "Cycle"
         };
         Node *root = create_node_map("root");
@@ -256,8 +467,14 @@ suite("compiler_cmeta_field_projection") {
         perms = field_projection_record(root, "enums", "Perms");
         wide = field_projection_record(root, "enums", "Wide");
         check_not_null(field_projection_child(state, "typed_cmeta_runtime_supported"));
-        check_null(field_projection_child(perms, "typed_cmeta_runtime_supported"));
-        check_null(field_projection_child(wide, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(perms, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(wide, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FlagStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "WideStorage"),
+            "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "Depth32"),
             "typed_cmeta_runtime_supported"));
@@ -278,12 +495,21 @@ suite("compiler_cmeta_field_projection") {
             field_projection_record(root, "messages", "UuidStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "Depth32"),
-            "cmeta_graph_supported"));
-        check_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
             "cmeta_graph_supported"));
-        check_null(field_projection_child(
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth32"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "BoolStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FixedBytesStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "UuidStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
             "cmeta_graph_supported"));
         check_null(field_projection_child(

@@ -980,8 +980,12 @@ static int typed_native_scalar_supported(const cmeta_data_desc *data) {
     if (typed_cmeta_scalar_matches(data, typed_cmeta_kind_mappings[i].data))
       return 1;
   }
-  return data != NULL && data->kind == CMETA_DATA_ENUM &&
-         cmeta_data_enum_ops_of(data) != NULL;
+  if (data != NULL && data->kind == CMETA_DATA_ENUM)
+    return cmeta_data_enum_bits_ops_of(data) != NULL;
+  if (data == NULL || cmeta_data_fixed_ops_of(data) == NULL)
+    return 0;
+  return typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) ||
+         salts_uuid_cmeta_data_valid(data) || data->kind == CMETA_DATA_BYTES;
 }
 
 static DataBindStatus typed_native_path(char *out, size_t capacity,
@@ -1082,9 +1086,16 @@ static DataBindStatus typed_native_record_preflight(
           field_path, NULL, error);
       if (status != DATA_BIND_OK) return status;
     } else {
+      size_t fixed_extent;
       if (!cmeta_data_desc_valid(value) || !typed_native_scalar_supported(value))
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
                            "Native CMeta field kind is outside this runtime slice");
+      if (cmeta_data_fixed_ops_of(value) != NULL &&
+          (cmeta_data_fixed_extent(value, &fixed_extent) != CMETA_OK ||
+           fixed_extent != value->storage_type->size ||
+           layout_field->size != fixed_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Fixed provider extent disagrees with native storage");
     }
   }
   if (!cmeta_data_desc_valid(data))
@@ -1124,9 +1135,15 @@ static DataBindStatus typed_native_init_value(const cmeta_data_desc *data,
   if (data == NULL || storage == NULL || data->storage_type == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
                        "Invalid canonical native storage");
+  if (cmeta_data_fixed_ops_of(data) != NULL) {
+    if (cmeta_data_fixed_restore_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed provider did not establish semantic zero");
+    return DATA_BIND_OK;
+  }
   memset(storage, 0, data->storage_type->size);
   if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "Enum provider did not establish semantic zero");
     return DATA_BIND_OK;
@@ -1156,8 +1173,14 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data,
   if (data == NULL || storage == NULL || data->storage_type == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
                        "Invalid canonical native storage");
+  if (cmeta_data_fixed_ops_of(data) != NULL) {
+    if (cmeta_data_fixed_restore_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed provider did not restore semantic zero");
+    return DATA_BIND_OK;
+  }
   if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "Enum provider did not restore semantic zero");
   } else if (data->kind == CMETA_DATA_STRUCT) {
@@ -1180,20 +1203,99 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data,
   return DATA_BIND_OK;
 }
 
+/* Numeric wire/text adaptation only; native storage and membership belong to
+ * the canonical provider. Negative canonical bits are width-local. */
+static DataBindStatus typed_native_enum_assign_number(
+    const cmeta_data_desc *data, int input_signed, int64_t signed_value,
+    uint64_t unsigned_value, void *storage, const char *path,
+    DataBindError *error) {
+  const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+  uint64_t mask = UINT64_MAX >> (64u - domain->bits);
+  uint64_t bits;
+  if (domain->signedness == CMETA_ENUM_SIGNED) {
+    int64_t maximum = (int64_t)(mask >> 1u);
+    if (input_signed) {
+      if (signed_value < -maximum - 1 || signed_value > maximum) goto range;
+      bits = (uint64_t)signed_value & mask;
+    } else {
+      if (unsigned_value > (uint64_t)maximum) goto range;
+      bits = unsigned_value;
+    }
+  } else {
+    if (input_signed && signed_value < 0) goto range;
+    bits = input_signed ? (uint64_t)signed_value : unsigned_value;
+    if (bits > mask) goto range;
+  }
+  if (cmeta_data_enum_assign_bits(data, storage, bits) == CMETA_OK)
+    return DATA_BIND_OK;
+range:
+  return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                     "Enum value is outside the canonical CMeta domain");
+}
+
+static int64_t typed_native_enum_signed_value(const cmeta_enum_domain *domain,
+                                              uint64_t bits) {
+  uint64_t mask = UINT64_MAX >> (64u - domain->bits);
+  if ((bits & (UINT64_C(1) << (domain->bits - 1u))) != 0u)
+    return -1 - (int64_t)(mask - bits);
+  return (int64_t)bits;
+}
+
 static DataBindStatus typed_native_from_scalar(
     const cmeta_data_desc *data, const DataBindValue *value, void *storage,
     const char *path, DataBindError *error) {
   int64_t signed_value;
   uint64_t unsigned_value;
   double floating_value;
-  if (data->kind == CMETA_DATA_ENUM) {
-    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
+  if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data)) {
+    int bool_value;
+    uint8_t candidate;
+    if (data_bind_value_get_bool(value, &bool_value) != DATA_BIND_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Expected declared enum value");
-    if (cmeta_data_enum_assign(data, storage, signed_value) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Enum value is not declared by canonical CMeta");
+                         "Expected Boolean value");
+    candidate = bool_value ? 1u : 0u;
+    if (cmeta_data_fixed_copy(data, storage, &candidate, sizeof(candidate)) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Bool provider could not copy canonical storage");
     return DATA_BIND_OK;
+  }
+  if (salts_uuid_cmeta_data_valid(data)) {
+    salts_uuid_t candidate = { {0} };
+    if (data_bind_value_get_uuid(value, candidate.bytes) != DATA_BIND_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Expected UUID value");
+    if (cmeta_data_fixed_copy(data, storage, &candidate, sizeof(candidate)) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "UUID provider could not copy canonical storage");
+    return DATA_BIND_OK;
+  }
+  if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
+    const uint8_t *bytes;
+    size_t size;
+    size_t extent;
+    if (data_bind_value_get_bytes(value, &bytes, &size) != DATA_BIND_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Expected fixed bytes value");
+    if (cmeta_data_fixed_extent(data, &extent) != CMETA_OK || size != extent)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Fixed bytes value has the wrong extent");
+    if (cmeta_data_fixed_copy(data, storage, bytes, size) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed bytes provider could not copy canonical storage");
+    return DATA_BIND_OK;
+  }
+  if (data->kind == CMETA_DATA_ENUM) {
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    if (domain->signedness == CMETA_ENUM_SIGNED) {
+      if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
+        goto range_error;
+      return typed_native_enum_assign_number(data, 1, signed_value, 0u,
+                                              storage, path, error);
+    }
+    if (data_bind_value_get_uint64(value, &unsigned_value) != DATA_BIND_OK)
+      goto range_error;
+    return typed_native_enum_assign_number(data, 0, 0, unsigned_value,
+                                            storage, path, error);
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data)) {
     if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
@@ -1336,13 +1438,65 @@ static json_value_t *typed_native_to_json(
     return root;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
-    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK) {
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    uint64_t bits;
+    if (cmeta_data_enum_read_bits(data, storage, &bits) != CMETA_OK) {
       typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                   "Canonical enum provider could not read storage");
       return NULL;
     }
-    return json_create_int64(value);
+    return domain->signedness == CMETA_ENUM_SIGNED
+               ? json_create_int64(typed_native_enum_signed_value(domain, bits))
+               : json_create_uint64(bits);
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data)) {
+    uint8_t candidate = 0u;
+    if (cmeta_data_fixed_copy(data, &candidate, storage,
+                              data->storage_type->size) != CMETA_OK) {
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Canonical Bool provider rejected native storage");
+      return NULL;
+    }
+    return json_create_bool(candidate != 0u);
+  }
+  if (salts_uuid_cmeta_data_valid(data)) {
+    salts_uuid_t candidate = { {0} };
+    char text[SALTS_UUID_STRING_SIZE];
+    if (cmeta_data_fixed_copy(data, &candidate, storage,
+                              data->storage_type->size) != CMETA_OK ||
+        salts_uuid_format(&candidate, text, sizeof(text)) != SALTS_OK) {
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Canonical UUID provider rejected native storage");
+      return NULL;
+    }
+    return json_create_string(text);
+  }
+  if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
+    size_t extent;
+    void *candidate;
+    json_value_t *json;
+    if (cmeta_data_fixed_extent(data, &extent) != CMETA_OK) {
+      typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                  "Fixed bytes provider has no exact extent");
+      return NULL;
+    }
+    candidate = calloc(1u, extent);
+    if (candidate == NULL) {
+      typed_error(error, DATA_BIND_ERR_OOM, path,
+                  "Out of memory validating fixed bytes storage");
+      return NULL;
+    }
+    if (cmeta_data_fixed_copy(data, candidate, storage, extent) != CMETA_OK) {
+      (void)cmeta_data_fixed_restore_zero(data, candidate);
+      free(candidate);
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Fixed bytes provider rejected native storage");
+      return NULL;
+    }
+    json = typed_bytes_json((const uint8_t *)candidate, extent, path, error);
+    (void)cmeta_data_fixed_restore_zero(data, candidate);
+    free(candidate);
+    return json;
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data))
     return json_create_int64(*(const int8_t *)storage);
@@ -1584,12 +1738,29 @@ static int typed_native_schema_field_matches(
   }
   if (native->kind == CMETA_DATA_ENUM) {
     DataBindSchemaType enum_type = DATA_BIND_SCHEMA_TYPE_INIT;
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(native)->domain;
     TbeTypedKind underlying;
     return typed_nonempty(schema->type) &&
            data_bind_schema_find_type(codec, schema->type, &enum_type) &&
-           enum_type.kind == DATA_BIND_SCHEMA_ENUM &&
+           enum_type.kind == (domain->kind == CMETA_ENUM_FLAGS
+                                  ? DATA_BIND_SCHEMA_FLAGS
+                                  : DATA_BIND_SCHEMA_ENUM) &&
            typed_scalar_kind_from_name(enum_type.underlying_type, &underlying) &&
            underlying == wire->wire_kind;
+  }
+  if (typed_cmeta_scalar_matches(native, &salts_bool8_cmeta_data))
+    return typed_nonempty(schema->type) && strcmp(schema->type, "bool") == 0 &&
+           wire->wire_kind == TBE_TYPED_BOOL;
+  if (salts_uuid_cmeta_data_valid(native))
+    return typed_nonempty(schema->type) && strcmp(schema->type, "uuid") == 0 &&
+           wire->wire_kind == TBE_TYPED_UUID;
+  if (native->kind == CMETA_DATA_BYTES &&
+      cmeta_data_fixed_ops_of(native) != NULL) {
+    size_t extent;
+    return typed_nonempty(schema->type) && strcmp(schema->type, "bytes") == 0 &&
+           schema->is_fixed_size && schema->has_size_bytes &&
+           cmeta_data_fixed_extent(native, &extent) == CMETA_OK &&
+           extent == schema->size_bytes && wire->wire_kind == TBE_TYPED_FIXED_BYTES;
   }
   {
     TbeTypedKind schema_kind;
@@ -1937,6 +2108,8 @@ static int typed_native_wire_extent(const cmeta_data_desc *data,
     *extent = wire->nested_overlay->fixed_block_size;
     return *extent != 0u;
   }
+  if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL)
+    return cmeta_data_fixed_extent(data, extent) == CMETA_OK && *extent != 0u;
   *extent = typed_kind_size(wire->wire_kind);
   return *extent != 0u;
 }
@@ -1990,24 +2163,52 @@ static DataBindStatus typed_native_read_wire_scalar(
     const cmeta_data_desc *data, TbeTypedKind wire_kind,
     const uint8_t *source, int big_endian, void *storage,
     const char *path, DataBindError *error) {
+  if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
+    size_t extent;
+    if (wire_kind != TBE_TYPED_FIXED_BYTES ||
+        cmeta_data_fixed_extent(data, &extent) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed bytes wire storage disagrees with canonical CMeta");
+    if (cmeta_data_fixed_copy(data, storage, source, extent) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed bytes provider rejected wire storage");
+    return DATA_BIND_OK;
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) &&
+      wire_kind == TBE_TYPED_BOOL) {
+    uint8_t candidate = (uint8_t)(tbe_wire_read_u8(source, big_endian) != 0u);
+    if (cmeta_data_fixed_copy(data, storage, &candidate, sizeof(candidate)) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Bool provider rejected wire storage");
+    return DATA_BIND_OK;
+  }
+  if (salts_uuid_cmeta_data_valid(data) && wire_kind == TBE_TYPED_UUID) {
+    salts_uuid_t candidate = { {0} };
+    memcpy(candidate.bytes, source, SALTS_UUID_SIZE);
+    if (cmeta_data_fixed_copy(data, storage, &candidate, sizeof(candidate)) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "UUID provider rejected wire storage");
+    return DATA_BIND_OK;
+  }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
+    int64_t signed_value = 0;
+    uint64_t unsigned_value = 0u;
+    int input_signed = 0;
     switch (wire_kind) {
-    case TBE_TYPED_I8: value = tbe_wire_read_i8(source, big_endian); break;
-    case TBE_TYPED_U8: value = tbe_wire_read_u8(source, big_endian); break;
-    case TBE_TYPED_I16: value = tbe_wire_read_i16(source, big_endian); break;
-    case TBE_TYPED_U16: value = tbe_wire_read_u16(source, big_endian); break;
-    case TBE_TYPED_I32: value = tbe_wire_read_i32(source, big_endian); break;
-    case TBE_TYPED_U32: value = tbe_wire_read_u32(source, big_endian); break;
-    case TBE_TYPED_I64: value = tbe_wire_read_i64(source, big_endian); break;
+    case TBE_TYPED_I8: input_signed = 1; signed_value = tbe_wire_read_i8(source, big_endian); break;
+    case TBE_TYPED_U8: unsigned_value = tbe_wire_read_u8(source, big_endian); break;
+    case TBE_TYPED_I16: input_signed = 1; signed_value = tbe_wire_read_i16(source, big_endian); break;
+    case TBE_TYPED_U16: unsigned_value = tbe_wire_read_u16(source, big_endian); break;
+    case TBE_TYPED_I32: input_signed = 1; signed_value = tbe_wire_read_i32(source, big_endian); break;
+    case TBE_TYPED_U32: unsigned_value = tbe_wire_read_u32(source, big_endian); break;
+    case TBE_TYPED_I64: input_signed = 1; signed_value = tbe_wire_read_i64(source, big_endian); break;
+    case TBE_TYPED_U64: unsigned_value = tbe_wire_read_u64(source, big_endian); break;
     default:
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum wire kind exceeds the signed CMeta domain");
+                         "Enum wire kind is not an integer");
     }
-    if (cmeta_data_enum_assign(data, storage, value) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Wire enum value is not declared by canonical CMeta");
-    return DATA_BIND_OK;
+    return typed_native_enum_assign_number(data, input_signed, signed_value,
+                                            unsigned_value, storage, path, error);
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) &&
       wire_kind == TBE_TYPED_I8)
@@ -2078,35 +2279,82 @@ static DataBindStatus typed_native_write_wire_scalar(
     const cmeta_data_desc *data, TbeTypedKind wire_kind, uint8_t *destination,
     int big_endian, const void *storage, const char *path,
     DataBindError *error) {
+  if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
+    size_t extent;
+    void *candidate;
+    cmeta_status copy_status;
+    if (wire_kind != TBE_TYPED_FIXED_BYTES ||
+        cmeta_data_fixed_extent(data, &extent) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Fixed bytes wire storage disagrees with canonical CMeta");
+    candidate = calloc(1u, extent);
+    if (candidate == NULL)
+      return typed_error(error, DATA_BIND_ERR_OOM, path,
+                         "Out of memory validating fixed bytes storage");
+    copy_status = cmeta_data_fixed_copy(data, candidate, storage, extent);
+    if (copy_status == CMETA_OK) memcpy(destination, candidate, extent);
+    (void)cmeta_data_fixed_restore_zero(data, candidate);
+    free(candidate);
+    return copy_status == CMETA_OK
+               ? DATA_BIND_OK
+               : typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                             "Fixed bytes provider rejected native storage");
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) &&
+      wire_kind == TBE_TYPED_BOOL) {
+    uint8_t candidate = 0u;
+    if (cmeta_data_fixed_copy(data, &candidate, storage,
+                              data->storage_type->size) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Bool provider rejected native storage");
+    tbe_wire_write_u8(destination, big_endian, candidate);
+    return DATA_BIND_OK;
+  }
+  if (salts_uuid_cmeta_data_valid(data) && wire_kind == TBE_TYPED_UUID) {
+    salts_uuid_t candidate = { {0} };
+    if (cmeta_data_fixed_copy(data, &candidate, storage,
+                              data->storage_type->size) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "UUID provider rejected native storage");
+    memcpy(destination, candidate.bytes, SALTS_UUID_SIZE);
+    return DATA_BIND_OK;
+  }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
-    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK)
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    uint64_t bits;
+    uint64_t wire_mask;
+    unsigned wire_bits;
+    int wire_signed;
+    if (cmeta_data_enum_read_bits(data, storage, &bits) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                          "Canonical enum provider could not read storage");
     switch (wire_kind) {
-    case TBE_TYPED_I8:
-      if (value < INT8_MIN || value > INT8_MAX) goto enum_range;
-      tbe_wire_write_i8(destination, big_endian, (int8_t)value); break;
-    case TBE_TYPED_U8:
-      if (value < 0 || value > UINT8_MAX) goto enum_range;
-      tbe_wire_write_u8(destination, big_endian, (uint8_t)value); break;
-    case TBE_TYPED_I16:
-      if (value < INT16_MIN || value > INT16_MAX) goto enum_range;
-      tbe_wire_write_i16(destination, big_endian, (int16_t)value); break;
-    case TBE_TYPED_U16:
-      if (value < 0 || value > UINT16_MAX) goto enum_range;
-      tbe_wire_write_u16(destination, big_endian, (uint16_t)value); break;
-    case TBE_TYPED_I32:
-      if (value < INT32_MIN || value > INT32_MAX) goto enum_range;
-      tbe_wire_write_i32(destination, big_endian, (int32_t)value); break;
-    case TBE_TYPED_U32:
-      if (value < 0 || (uint64_t)value > UINT32_MAX) goto enum_range;
-      tbe_wire_write_u32(destination, big_endian, (uint32_t)value); break;
-    case TBE_TYPED_I64:
-      tbe_wire_write_i64(destination, big_endian, value); break;
+    case TBE_TYPED_I8: wire_bits = 8u; wire_signed = 1; break;
+    case TBE_TYPED_U8: wire_bits = 8u; wire_signed = 0; break;
+    case TBE_TYPED_I16: wire_bits = 16u; wire_signed = 1; break;
+    case TBE_TYPED_U16: wire_bits = 16u; wire_signed = 0; break;
+    case TBE_TYPED_I32: wire_bits = 32u; wire_signed = 1; break;
+    case TBE_TYPED_U32: wire_bits = 32u; wire_signed = 0; break;
+    case TBE_TYPED_I64: wire_bits = 64u; wire_signed = 1; break;
+    case TBE_TYPED_U64: wire_bits = 64u; wire_signed = 0; break;
     default:
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum wire kind exceeds the signed CMeta domain");
+                         "Enum wire kind is not an integer");
+    }
+    wire_mask = UINT64_MAX >> (64u - wire_bits);
+    if (domain->signedness == CMETA_ENUM_SIGNED &&
+        (bits & (UINT64_C(1) << (domain->bits - 1u))) != 0u) {
+      uint64_t magnitude = (UINT64_MAX >> (64u - domain->bits)) - bits + 1u;
+      if (!wire_signed || magnitude > (wire_mask >> 1u) + 1u) goto enum_range;
+      bits = ~(magnitude - 1u) & wire_mask;
+    } else if (bits > (wire_signed ? wire_mask >> 1u : wire_mask)) {
+      goto enum_range;
+    }
+    switch (wire_bits) {
+    case 8u: tbe_wire_write_u8(destination, big_endian, (uint8_t)bits); break;
+    case 16u: tbe_wire_write_u16(destination, big_endian, (uint16_t)bits); break;
+    case 32u: tbe_wire_write_u32(destination, big_endian, (uint32_t)bits); break;
+    case 64u: tbe_wire_write_u64(destination, big_endian, bits); break;
     }
     return DATA_BIND_OK;
 enum_range:
@@ -2371,6 +2619,7 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(
     const TbeTypedDescriptor *descriptor, const void *object, uint8_t *output,
     size_t capacity, size_t *out_len, DataBindError *error) {
   TypedNativeRecord native;
+  uint8_t *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
   if (out_len != NULL) *out_len = 0u;
@@ -2385,11 +2634,18 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(
     return typed_error(error, DATA_BIND_ERR_BUFFER_TOO_SMALL,
                        native.overlay->name,
                        "Canonical binary output buffer is too small");
-  memset(output, 0, native.overlay->fixed_block_size);
-  status = typed_native_write_fixed(native.data, native.overlay, object, output,
+  temporary = (uint8_t *)calloc(1u, native.overlay->fixed_block_size);
+  if (temporary == NULL)
+    return typed_error(error, DATA_BIND_ERR_OOM, native.overlay->name,
+                       "Out of memory staging canonical binary output");
+  status = typed_native_write_fixed(native.data, native.overlay, object, temporary,
                                     native.overlay->name, error);
-  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL)
-                                : status;
+  if (status == DATA_BIND_OK) {
+    memcpy(output, temporary, native.overlay->fixed_block_size);
+    status = typed_error(error, DATA_BIND_OK, NULL, NULL);
+  }
+  free(temporary);
+  return status;
 }
 
 static size_t typed_binary_size(const TbeTypedType *type, const void *object, int *supported) {

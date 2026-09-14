@@ -106,6 +106,43 @@ class EnumConformance(unittest.TestCase):
     def test_signed_boundaries(self):
         self.check_widths(True)
 
+    def test_typed_canonical_enum_provider_compilation(self):
+        schemas, records = [], []
+        for bits in (8, 16, 32, 64):
+            for signed in (False, True):
+                name = ('Signed' if signed else 'Unsigned') + str(bits)
+                storage = ('int' if signed else 'uint') + str(bits)
+                low = -(1 << (bits - 1)) if signed else 0
+                high = (1 << (bits - 1 if signed else bits)) - 1
+                schemas.append(f'enum {name} <{storage}> {{ Low={low}; High={high}; }}')
+                records.append(name + 'Storage')
+                schemas.append(f'message {records[-1]} {{ {name} value; }}')
+            name = 'Flags' + str(bits)
+            schemas.append(f'flags {name} <uint{bits}> {{ Low=1; High={1 << (bits - 1)}; }}')
+            records.append(name + 'Storage')
+            schemas.append(f'message {records[-1]} {{ {name} value; }}')
+        self.generate('\n'.join(schemas), 'c')
+        generated = self.path / 'types.c'
+        result = self.run_command([
+            ARGS.compiler, self.path / 'input.schema', '--lang', 'c',
+            '--output', self.path / 'types.h', '--source-output', generated])
+        self.assertEqual(result.returncode, 0, result.stdout)
+        consumer = self.path / 'consumer.c'
+        consumer.write_text('#include "types.h"\n'
+                            f'const TbeTypedDescriptor *descriptors[{len(records)}];\n'
+                            'void load_descriptors(void) {\n' +
+                            '\n'.join(f'descriptors[{i}] = {name}_typed_descriptor();'
+                                      for i, name in enumerate(records)) + '\n}\n')
+        for source in (generated, consumer):
+            result = self.run_command([
+                'cc', '-std=c11', '-Werror=implicit-function-declaration',
+                '-I' + str(ARGS.source / 'tbe/schema/include'),
+                '-I' + str(ARGS.source / 'tbe/data_bind'),
+                '-I' + str(ARGS.salts_include / 'query_vm'),
+                '-I' + str(ARGS.salts_include), '-c', source,
+                '-o', source.with_suffix('.o')])
+            self.assertEqual(result.returncode, 0, result.stdout)
+
     def test_alias_policy(self):
         for kind in ('enum', 'flags'):
             for values in ('A=1; B=1;', 'A=1; B=0x01;', 'A=1; B=01;', 'A=0; B; C=1;', 'A=1; A=2;'):

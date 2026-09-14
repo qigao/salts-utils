@@ -278,10 +278,34 @@ typedef struct tbe_compiler_scalar_projection {
   const char *native_type_symbol;
 } tbe_compiler_scalar_projection_t;
 
-/* Native symbol spellings project the same canonical records into generated C.
- * BOOL is intentionally absent: generated C currently stores it as uint8_t. */
+typedef enum tbe_compiler_native_requirement {
+  TBE_COMPILER_NATIVE_FIXED_VALUE,
+  TBE_COMPILER_NATIVE_ENUM_DOMAIN,
+  TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
+  TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
+  TBE_COMPILER_NATIVE_DEFERRED_CONTAINER
+} tbe_compiler_native_requirement_t;
+
+static const char *tbe_compiler_native_requirement_name(
+    tbe_compiler_native_requirement_t requirement) {
+  switch (requirement) {
+    case TBE_COMPILER_NATIVE_FIXED_VALUE:
+      return "fixed_value";
+    case TBE_COMPILER_NATIVE_ENUM_DOMAIN:
+      return "enum_domain";
+    case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
+      return "owned_lifecycle";
+    case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
+      return "overlay_presence";
+    case TBE_COMPILER_NATIVE_DEFERRED_CONTAINER:
+      return "deferred_container";
+  }
+  return NULL;
+}
+
+/* Native symbol spellings project the same canonical records into generated C. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", NULL, NULL},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
     {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8", "salts_int8_cmeta_data", "salts_int8_cmeta_type"},
     {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8", "salts_uint8_cmeta_data", "salts_uint8_cmeta_type"},
     {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16", "salts_int16_cmeta_data", "salts_int16_cmeta_type"},
@@ -530,6 +554,45 @@ static void tbe_compiler_field_type(Node *field,
   snprintf(out, out_size, "%s", scalar_mapper(type));
 }
 
+/* Every public enum item/typedef/wrapper contains an underscore. These private
+ * identifiers contain none, so even adversarial legal item names cannot be
+ * macros for them. Length-delimited hex is injective across enum identifiers;
+ * dynamic sizing also prevents long names from aliasing through truncation. */
+static int tbe_compiler_set_enum_symbol(Node *target, const char *key,
+                                         const char *name, const char *role) {
+  static const char prefix[] = "tbeCmetaEnum";
+  static const char hex[] = "0123456789abcdef";
+  const size_t extra = sizeof(prefix) + 3u * sizeof(size_t) + 1u + strlen(role);
+  size_t length;
+  size_t capacity;
+  size_t offset;
+  size_t i;
+  int written;
+  int status;
+  char *symbol;
+  if (name == NULL) return -1;
+  length = strlen(name);
+  if (length > (SIZE_MAX - extra) / 2u) return -1;
+  capacity = extra + 2u * length;
+  symbol = (char *)malloc(capacity);
+  if (symbol == NULL) return -1;
+  written = snprintf(symbol, capacity, "%s%zux", prefix, length);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return -1;
+  }
+  offset = (size_t)written;
+  for (i = 0u; i < length; ++i) {
+    unsigned char byte = (unsigned char)name[i];
+    symbol[offset++] = hex[byte >> 4u];
+    symbol[offset++] = hex[byte & 15u];
+  }
+  memcpy(symbol + offset, role, strlen(role) + 1u);
+  status = tbe_compiler_set_string(target, key, symbol);
+  free(symbol);
+  return status;
+}
+
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                              const schema_cmeta_field_type *semantic) {
   const char *name = tbe_compiler_string_value(field, "name");
@@ -566,10 +629,39 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   if (semantic && semantic->kind == CMETA_DATA_BYTES) {
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "size_bytes");
+      char base[768];
+      char symbol[800];
+      int written;
       snprintf(declaration, sizeof(declaration), "uint8_t %s[%s];", c_name,
                count ? count : "0");
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_BYTES");
+      tbe_compiler_set_string(field, "typed_wire_kind", "TBE_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
+      written = snprintf(base, sizeof(base), "tbe_fixed_bytes_%zu_%s_%zu_%s",
+                         strlen(owner), owner, strlen(c_name), c_name);
+      if (written < 0 || (size_t)written >= sizeof(base)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
+      tbe_compiler_set_string(field, "native_fixed_bytes_name", base);
+      written = snprintf(symbol, sizeof(symbol), "%s_storage", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
+      tbe_compiler_set_string(field, "native_c_type", symbol);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_data", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
+      tbe_compiler_set_string(field, "native_data_symbol", symbol);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_type", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
+      tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
       snprintf(declaration, sizeof(declaration), "tbe_bytes_t %s;", c_name);
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_BYTES");
@@ -666,7 +758,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_data_symbol", "salts_uuid_cmeta_data");
       tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
       tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0 || strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+    } else if (strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+      if (tbe_compiler_set_enum_symbol(field, "native_data_symbol", type, "Data") == 0 &&
+          tbe_compiler_set_enum_symbol(field, "native_type_symbol", type, "Type") == 0)
+        tbe_compiler_set_string(field, "native_c_type", c_type);
+    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0) {
       snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", type);
       tbe_compiler_set_string(field, "native_data_symbol", symbol);
       snprintf(symbol, sizeof(symbol), "%s_CMETA_TYPE", type);
@@ -679,6 +775,43 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                           tbe_compiler_typed_wire_kind(root, type, kind));
   if (descriptor[0]) tbe_compiler_set_string(field, "typed_object_descriptor", descriptor);
   tbe_compiler_set_string(field, "typed_declaration", declaration);
+}
+
+static void tbe_compiler_annotate_native_requirement(
+    Node *root, Node *field, const schema_cmeta_field_type *semantic) {
+  const char *type;
+  tbe_compiler_native_requirement_t requirement;
+
+  if (!root || !field || !semantic) return;
+  type = tbe_compiler_string_value(field, "type");
+
+  if (cmeta_data_kind_is_container(semantic->kind)) {
+    requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
+  } else if (tbe_compiler_has_child(field, "is_optional")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
+  } else if (semantic->kind == CMETA_DATA_STRING ||
+             (semantic->kind == CMETA_DATA_BYTES &&
+              !tbe_compiler_has_child(field, "is_fixed_size")) ||
+             (semantic->kind == CMETA_DATA_CUSTOM &&
+              !salts_uuid_cmeta_data_valid(semantic->data))) {
+    requirement = TBE_COMPILER_NATIVE_OWNED_LIFECYCLE;
+  } else if (type && tbe_compiler_find_record(root, "enums", type)) {
+    requirement = TBE_COMPILER_NATIVE_ENUM_DOMAIN;
+  } else if (semantic->kind == CMETA_DATA_BOOL ||
+             semantic->kind == CMETA_DATA_SINT ||
+             semantic->kind == CMETA_DATA_UINT ||
+             semantic->kind == CMETA_DATA_FLOAT ||
+             (semantic->kind == CMETA_DATA_BYTES &&
+              tbe_compiler_has_child(field, "is_fixed_size")) ||
+             salts_uuid_cmeta_data_valid(semantic->data)) {
+    requirement = TBE_COMPILER_NATIVE_FIXED_VALUE;
+  } else {
+    return;
+  }
+
+  tbe_compiler_set_string(
+      field, "cmeta_native_requirement",
+      tbe_compiler_native_requirement_name(requirement));
 }
 
 static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
@@ -730,6 +863,7 @@ static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
                           "Map<", ", ", ">", type_buf, sizeof(type_buf));
   tbe_compiler_set_string(field, "rfl_type", type_buf);
   tbe_compiler_annotate_typed_field(root, field, semantic);
+  tbe_compiler_annotate_native_requirement(root, field, semantic);
 }
 
 static void tbe_compiler_annotate_record_list_types(Node *root, const char *list_name) {
@@ -767,15 +901,22 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
     const tbe_compiler_scalar_projection_t *storage = tbe_compiler_integer_type(underlying);
 
-    /* CMeta enum metadata has an int64_t value domain. Do not truncate an
-     * unsigned 64-bit domain to publish a native enum graph. */
-    if (storage && !(storage->data->kind == CMETA_DATA_UINT &&
-        ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
+    if (tbe_compiler_set_enum_symbol(enum_node, "native_enum_symbol",
+          tbe_compiler_string_value(enum_node, "enum_name"), "") != 0)
+      continue;
+    if (storage) {
+      char bits[4];
+      snprintf(bits, sizeof(bits), "%u",
+               ((const cmeta_data_integer_shape *)storage->data->shape)->bits);
+      tbe_compiler_set_string(enum_node, "native_enum_bits", bits);
+      tbe_compiler_set_string(enum_node, "native_enum_signedness",
+          storage->data->kind == CMETA_DATA_SINT ? "CMETA_ENUM_SIGNED"
+                                                 : "CMETA_ENUM_UNSIGNED");
+      if (storage->data->kind == CMETA_DATA_SINT)
+        tbe_compiler_set_string(enum_node, "native_enum_signed", "1");
       tbe_compiler_set_string(enum_node, "native_enum_supported", "1");
-    if (storage && !is_flags &&
-        !(storage->data->kind == CMETA_DATA_UINT &&
-          ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
       tbe_compiler_set_string(enum_node, "typed_cmeta_runtime_supported", "1");
+    }
 
     tbe_compiler_set_string(enum_node, "go_underlying_type",
                             tbe_compiler_go_scalar_type(underlying));
@@ -863,12 +1004,23 @@ static int tbe_compiler_cmeta_classify_record(
     if (scalar) {
       if (!scalar->native_data_symbol || !scalar->native_type_symbol)
         goto unsupported;
-      if (context->runtime && scalar->data->kind != CMETA_DATA_SINT &&
+      if (context->runtime && scalar->data->kind != CMETA_DATA_BOOL &&
+          scalar->data->kind != CMETA_DATA_SINT &&
           scalar->data->kind != CMETA_DATA_UINT &&
           scalar->data->kind != CMETA_DATA_FLOAT)
         goto unsupported;
       continue;
     }
+
+    if (context->runtime &&
+        tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
+        strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
+               "fixed_value") == 0 &&
+        tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
+         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+      continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);
     if (target) {

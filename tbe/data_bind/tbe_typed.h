@@ -160,7 +160,11 @@ struct TbeTypedType {
 
 enum { TBE_TYPED_DESCRIPTOR_ABI_VERSION = 2 };
 
-/** Versioned boundary for descriptors compiled separately from DataBind. */
+/** Versioned boundary for descriptors compiled separately from DataBind.
+ * Native enum fields require Core's canonical enum_bits_ops/domain; their
+ * signedness, width and membership are never inferred from the wire overlay.
+ * The overlay controls external naming, wire layout and schema validation.
+ */
 typedef struct TbeTypedDescriptor {
   size_t struct_size;
   uint32_t abi_version;

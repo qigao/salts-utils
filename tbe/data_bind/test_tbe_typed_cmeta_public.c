@@ -18,6 +18,37 @@ int main(void) {
     return 1;
   }
   sentinel = data;
+  {
+    const TbeTypedDescriptor *descriptor = EnumSymbolStorage_typed_descriptor();
+    const cmeta_data_struct_shape *shape;
+    const cmeta_data_desc *value_data;
+    EnumSymbolStorage_t object = {0};
+    const EnumSymbols_t items[] = {
+        EnumSymbols_CMETA_DOMAIN, EnumSymbols_CMETA_ENUM_OPS,
+        EnumSymbols_CMETA_BITS_OPS, EnumSymbols_CMETA_DATA, EnumSymbols_CMETA_TYPE,
+        EnumSymbols_CMETA_ID, EnumSymbols_CMETA_ITEMS, EnumSymbols_cmeta_is_zero,
+        EnumSymbols_cmeta_read, EnumSymbols_cmeta_assign, EnumSymbols_cmeta_restore_zero};
+    size_t i;
+    if (!descriptor || tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+      return 30;
+    shape = (const cmeta_data_struct_shape *)descriptor->native_data->shape;
+    if (!shape || shape->field_count != 1u || !shape->fields || !shape->fields[0].value)
+      return 31;
+    value_data = shape->fields[0].value;
+    for (i = 0u; i < sizeof(items) / sizeof(items[0]); ++i) {
+      uint64_t bits = 0u;
+      uint8_t wire[2] = {0};
+      size_t wire_len = 0u;
+      if (cmeta_data_enum_bits_restore_zero(value_data, &object.value) != CMETA_OK ||
+          cmeta_data_enum_assign_bits(value_data, &object.value, items[i]) != CMETA_OK ||
+          cmeta_data_enum_read_bits(value_data, &object.value, &bits) != CMETA_OK ||
+          bits != i + 1u || object.value != items[i] ||
+          EnumSymbolStorage_to_bin_into(&object, wire, sizeof(wire), &wire_len,
+                                        &error) != DATA_BIND_OK ||
+          wire_len != 2u || wire[0] != i + 1u || wire[1] != 0u)
+        return 32;
+    }
+  }
   if (Unsupported_cmeta_data(&data, &error) != DATA_BIND_ERR_SCHEMA) {
     fputs("unsupported public graph request did not fail\n", stderr);
     return 2;
@@ -73,13 +104,92 @@ int main(void) {
         !cmeta_type_equal(field->value->storage_type, &salts_uint64_cmeta_type))
       return 10;
   }
-  if (FlagStorage_cmeta_data(&data, &error) != DATA_BIND_OK || data == NULL)
-    return 11;
   {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    const cmeta_data_enum_shape *flags = (const cmeta_data_enum_shape *)shape->fields[0].value->shape;
-    if (flags->meta->count != 2u || flags->meta->items[1].value != 2)
+    const TbeTypedDescriptor *descriptor = FlagStorage_typed_descriptor();
+    const cmeta_data_struct_shape *shape;
+    const cmeta_data_desc *root;
+    const cmeta_data_desc *enum_data;
+    Permission_t value = 0;
+    uint64_t bits = 0u;
+    if (descriptor == NULL ||
+        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+      return 11;
+    root = descriptor->native_data;
+    if (root == NULL || root->shape == NULL) return 12;
+    shape = (const cmeta_data_struct_shape *)root->shape;
+    if (shape->field_count != 1u || shape->fields == NULL ||
+        shape->fields[0].value == NULL)
       return 12;
+    enum_data = shape->fields[0].value;
+    if (cmeta_data_enum_bits_ops_of(enum_data) == NULL ||
+        cmeta_data_enum_assign_bits(enum_data, &value,
+                                    UINT64_C(1) | UINT64_C(2)) != CMETA_OK ||
+        cmeta_data_enum_read_bits(enum_data, &value, &bits) != CMETA_OK ||
+        bits != UINT64_C(3))
+      return 12;
+  }
+  {
+    const TbeTypedDescriptor *descriptor = WideEnumStorage_typed_descriptor();
+    DataBind *codec = NULL;
+    int failed;
+    const cmeta_data_struct_shape *shape;
+    const cmeta_data_desc *root;
+    const cmeta_data_desc *enum_data;
+    WideEnumStorage_t object = {0};
+    WideEnumStorage_t decoded = {0};
+    uint8_t wire[sizeof(uint64_t)] = {0};
+    size_t wire_len = 0u;
+    uint64_t bits = 0u;
+    if (descriptor == NULL ||
+        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+      return 28;
+    root = descriptor->native_data;
+    if (root == NULL || root->shape == NULL) return 29;
+    shape = (const cmeta_data_struct_shape *)root->shape;
+    if (shape->field_count != 1u || shape->fields == NULL ||
+        shape->fields[0].value == NULL)
+      return 29;
+    enum_data = shape->fields[0].value;
+    if (Graph_codec_create(&codec, &error) != DATA_BIND_OK || codec == NULL)
+      return 29;
+    failed = enum_data->kind != CMETA_DATA_ENUM ||
+        enum_data->storage_type->size != sizeof(uint64_t) ||
+        cmeta_data_enum_bits_ops_of(enum_data) == NULL ||
+        cmeta_data_enum_assign_bits(enum_data, &object.value,
+                                    UINT64_MAX) != CMETA_OK ||
+        tbe_typed_descriptor_serialize_binary_into(
+            descriptor, &object, wire, sizeof(wire), &wire_len,
+            &error) != DATA_BIND_OK ||
+        wire_len != sizeof(wire) ||
+        tbe_typed_descriptor_parse(
+            codec, "WideEnumStorage", descriptor, DATA_BIND_FORMAT_BINARY,
+            wire, wire_len, 0u, &decoded, &error) != DATA_BIND_OK ||
+        cmeta_data_enum_read_bits(enum_data, &decoded.value,
+                                  &bits) != CMETA_OK ||
+        bits != UINT64_MAX || decoded.value != UINT64_MAX;
+    data_bind_free(codec);
+    if (failed) return 29;
+  }
+  {
+    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
+    const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
+    const cmeta_data_struct_shape *shape =
+        fixed ? (const cmeta_data_struct_shape *)fixed->shape : NULL;
+    size_t extent = 0u;
+    if (descriptor == NULL ||
+        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
+        shape == NULL || shape->field_count != 3u)
+      return 26;
+    if (shape->fields[0].value->kind != CMETA_DATA_BOOL ||
+        shape->fields[0].value->storage_type->size !=
+            sizeof(((FixedValues_t *)0)->enabled) ||
+        !salts_uuid_cmeta_data_valid(shape->fields[1].value) ||
+        shape->fields[2].value->kind != CMETA_DATA_BYTES ||
+        shape->fields[2].value->storage_type->size !=
+            sizeof(((FixedValues_t *)0)->digest) ||
+        cmeta_data_fixed_extent(shape->fields[2].value, &extent) != CMETA_OK ||
+        extent != sizeof(((FixedValues_t *)0)->digest))
+      return 27;
   }
   {
     static const char json[] =
