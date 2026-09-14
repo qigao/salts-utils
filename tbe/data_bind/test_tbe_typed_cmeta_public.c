@@ -84,7 +84,8 @@ int main(void) {
   {
     const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
     const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
-    const cmeta_data_struct_shape *shape = fixed ? fixed->shape : NULL;
+    const cmeta_data_struct_shape *shape =
+        fixed ? (const cmeta_data_struct_shape *)fixed->shape : NULL;
     if (descriptor == NULL ||
         tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
         shape == NULL || shape->field_count != 3u)
