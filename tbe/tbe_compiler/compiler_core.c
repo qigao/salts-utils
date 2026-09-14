@@ -590,19 +590,38 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   if (semantic && semantic->kind == CMETA_DATA_BYTES) {
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "size_bytes");
-      char symbol[256];
+      char base[768];
+      char symbol[800];
+      int written;
       snprintf(declaration, sizeof(declaration), "uint8_t %s[%s];", c_name,
                count ? count : "0");
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_wire_kind", "TBE_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
-      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes", owner, c_name);
-      tbe_compiler_set_string(field, "native_fixed_bytes_name", symbol);
-      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_storage", owner, c_name);
+      written = snprintf(base, sizeof(base), "tbe_fixed_bytes_%zu_%s_%zu_%s",
+                         strlen(owner), owner, strlen(c_name), c_name);
+      if (written < 0 || (size_t)written >= sizeof(base)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
+      tbe_compiler_set_string(field, "native_fixed_bytes_name", base);
+      written = snprintf(symbol, sizeof(symbol), "%s_storage", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
       tbe_compiler_set_string(field, "native_c_type", symbol);
-      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_cmeta_data", owner, c_name);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_data", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
       tbe_compiler_set_string(field, "native_data_symbol", symbol);
-      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_cmeta_type", owner, c_name);
+      written = snprintf(symbol, sizeof(symbol), "%s_cmeta_type", base);
+      if (written < 0 || (size_t)written >= sizeof(symbol)) {
+        tbe_compiler_set_string(field, "typed_declaration", declaration);
+        return;
+      }
       tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
       snprintf(declaration, sizeof(declaration), "tbe_bytes_t %s;", c_name);

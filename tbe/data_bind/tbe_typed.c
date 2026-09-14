@@ -1428,12 +1428,30 @@ static json_value_t *typed_native_to_json(
   }
   if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
     size_t extent;
+    void *candidate;
+    json_value_t *json;
     if (cmeta_data_fixed_extent(data, &extent) != CMETA_OK) {
       typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                   "Fixed bytes provider has no exact extent");
       return NULL;
     }
-    return typed_bytes_json((const uint8_t *)storage, extent, path, error);
+    candidate = calloc(1u, extent);
+    if (candidate == NULL) {
+      typed_error(error, DATA_BIND_ERR_OOM, path,
+                  "Out of memory validating fixed bytes storage");
+      return NULL;
+    }
+    if (cmeta_data_fixed_copy(data, candidate, storage, extent) != CMETA_OK) {
+      (void)cmeta_data_fixed_restore_zero(data, candidate);
+      free(candidate);
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Fixed bytes provider rejected native storage");
+      return NULL;
+    }
+    json = typed_bytes_json((const uint8_t *)candidate, extent, path, error);
+    (void)cmeta_data_fixed_restore_zero(data, candidate);
+    free(candidate);
+    return json;
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data))
     return json_create_int64(*(const int8_t *)storage);
@@ -2545,6 +2563,7 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(
     const TbeTypedDescriptor *descriptor, const void *object, uint8_t *output,
     size_t capacity, size_t *out_len, DataBindError *error) {
   TypedNativeRecord native;
+  uint8_t *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
   if (out_len != NULL) *out_len = 0u;
@@ -2559,11 +2578,18 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(
     return typed_error(error, DATA_BIND_ERR_BUFFER_TOO_SMALL,
                        native.overlay->name,
                        "Canonical binary output buffer is too small");
-  memset(output, 0, native.overlay->fixed_block_size);
-  status = typed_native_write_fixed(native.data, native.overlay, object, output,
+  temporary = (uint8_t *)calloc(1u, native.overlay->fixed_block_size);
+  if (temporary == NULL)
+    return typed_error(error, DATA_BIND_ERR_OOM, native.overlay->name,
+                       "Out of memory staging canonical binary output");
+  status = typed_native_write_fixed(native.data, native.overlay, object, temporary,
                                     native.overlay->name, error);
-  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL)
-                                : status;
+  if (status == DATA_BIND_OK) {
+    memcpy(output, temporary, native.overlay->fixed_block_size);
+    status = typed_error(error, DATA_BIND_OK, NULL, NULL);
+  }
+  free(temporary);
+  return status;
 }
 
 static size_t typed_binary_size(const TbeTypedType *type, const void *object, int *supported) {
