@@ -145,18 +145,33 @@ spec("generated native CMeta graph") {
     check_not_null(strstr(error.message, "CMeta"));
   }
 
-  it("does not publish generated uint8 boolean storage as native bool") {
+  it("publishes generated uint8 boolean storage through canonical Bool8") {
     const cmeta_data_desc *data = &salts_int32_cmeta_data;
+    const cmeta_data_desc *native_bool;
+    const cmeta_data_struct_shape *shape;
     DataBindError error = DATA_BIND_ERROR_INIT;
     check(_Generic(((BoolStorage_t *)0)->value, uint8_t: 1, default: 0));
-    check_equal(BoolStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == &salts_int32_cmeta_data);
+    check_equal(BoolStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    if (!data) return;
+    shape = (const cmeta_data_struct_shape *)data->shape;
+    check_not_null(shape);
+    if (!shape || shape->field_count != 1u) return;
+    native_bool = shape->fields[0].value;
+    check_not_null(native_bool);
+    if (!native_bool) return;
+    check_equal(native_bool->kind, CMETA_DATA_BOOL);
+    check(cmeta_type_equal(native_bool->storage_type,
+                           &salts_bool8_cmeta_type));
+    check_not_null(cmeta_data_fixed_ops_of(native_bool));
+    check(!cmeta_type_equal(native_bool->storage_type,
+                            cmeta_data_bool.storage_type));
   }
 
   it("requires exact canonical providers for generated fixed values") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
-        "\"digest\":\"AAECAwQFBgcICQoLDA0ODw==\"}";
+        "\"digest\":\"0123456789abcdef\"}";
     const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
     const cmeta_data_desc *native = descriptor ? descriptor->native_data : NULL;
     const cmeta_data_struct_shape *shape = native ? native->shape : NULL;
@@ -210,8 +225,8 @@ spec("generated native CMeta graph") {
     check_equal(destination.enabled, 1u);
     for (index = 0u; index < sizeof(destination.id.bytes); ++index)
       check_equal(destination.id.bytes[index], 0u);
-    for (index = 0u; index < sizeof(destination.digest); ++index)
-      check_equal(destination.digest[index], index);
+    check_equal(memcmp(destination.digest, "0123456789abcdef",
+                       sizeof(destination.digest)), 0);
 
     memset(&destination, 0xa5, sizeof(destination));
     before = destination;

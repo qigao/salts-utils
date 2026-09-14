@@ -200,7 +200,7 @@ suite("real generated and runtime CMeta acceptance") {
     data_bind_free(codec);
   }
 
-  it("does not confuse optional base values or BOOL wire octets with native slot storage") {
+  it("keeps optional values gated and distinguishes Bool8 native storage") {
     DataBind *codec = acceptance_codec();
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -222,9 +222,26 @@ suite("real generated and runtime CMeta acceptance") {
     check_equal(data_bind_schema_field_cmeta_data(codec, "BoolStorage", 0, &base, &error), DATA_BIND_OK);
     same_value_type(base, &cmeta_data_bool);
     out = base;
-    check_equal(BoolStorage_cmeta_data(&out, &error), DATA_BIND_ERR_SCHEMA);
-    check(out == base);
-    check_equal(error.path, "BoolStorage");
+    check_equal(BoolStorage_cmeta_data(&out, &error), DATA_BIND_OK);
+    check_not_null(out);
+    if (out) {
+      const cmeta_data_struct_shape *shape =
+          (const cmeta_data_struct_shape *)out->shape;
+      check_not_null(shape);
+      if (shape && shape->field_count == 1u) {
+        const cmeta_data_desc *native_bool = shape->fields[0].value;
+        check_not_null(native_bool);
+        if (!native_bool) {
+          data_bind_free(codec);
+          return;
+        }
+        check_equal(native_bool->kind, CMETA_DATA_BOOL);
+        check(cmeta_type_equal(native_bool->storage_type,
+                               &salts_bool8_cmeta_type));
+        check(!cmeta_type_equal(native_bool->storage_type,
+                                cmeta_data_bool.storage_type));
+      }
+    }
     unresolved_field(codec, "WideEnumStorage", 0, "WideEnumStorage.value");
     data_bind_free(codec);
   }
