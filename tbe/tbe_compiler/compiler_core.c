@@ -856,8 +856,7 @@ static int tbe_compiler_cmeta_classify_record(
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
         tbe_compiler_has_child(field, "is_map") ||
-        tbe_compiler_has_child(field, "is_group_field") ||
-        tbe_compiler_has_child(field, "is_fixed_size"))
+        tbe_compiler_has_child(field, "is_group_field"))
       goto unsupported;
 
     scalar = tbe_compiler_scalar_projection(type);

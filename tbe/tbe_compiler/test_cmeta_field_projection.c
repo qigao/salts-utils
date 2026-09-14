@@ -156,13 +156,19 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_add_enum(root, "Wide", "uint64", 0));
 
         record = field_projection_add_record(root, "composites", "Point");
-        check_not_null(field_projection_add_field(record, "Point", "x", "int32"));
-        check_not_null(field_projection_add_field(record, "Point", "y", "double"));
+        field = field_projection_add_field(record, "Point", "x", "int32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
+        field = field_projection_add_field(record, "Point", "y", "double");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
         record = field_projection_add_record(root, "composites", "Header");
         check_not_null(field_projection_add_field(record, "Header", "state", "State"));
         check_not_null(field_projection_add_field(record, "Header", "point", "Point"));
         record = field_projection_add_record(root, "messages", "Sample");
-        check_not_null(field_projection_add_field(record, "Sample", "count", "uint32"));
+        field = field_projection_add_field(record, "Sample", "count", "uint32");
+        check_not_null(field);
+        check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
         check_not_null(field_projection_add_field(record, "Sample", "header", "Header"));
 
 #define ADD_UNSUPPORTED_RECORD(NAME, TYPE) \
@@ -215,7 +221,9 @@ suite("compiler_cmeta_field_projection") {
             snprintf(name, sizeof(name), "Depth%u", (unsigned)i);
             record = field_projection_add_record(root, "messages", name);
             if (i == 0u) {
-                check_not_null(field_projection_add_field(record, name, "value", "int32"));
+                field = field_projection_add_field(record, name, "value", "int32");
+                check_not_null(field);
+                check_equal(map_add(field, create_node_string("is_fixed_size", "1")), 0);
             } else {
                 snprintf(child, sizeof(child), "Depth%u", (unsigned)(i - 1u));
                 check_not_null(field_projection_add_field(record, name, "value", child));
