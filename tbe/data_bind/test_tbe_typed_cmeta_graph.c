@@ -153,6 +153,92 @@ spec("generated native CMeta graph") {
     check(data == &salts_int32_cmeta_data);
   }
 
+  it("requires exact canonical providers for generated fixed values") {
+    static const char json[] =
+        "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
+        "\"digest\":\"AAECAwQFBgcICQoLDA0ODw==\"}";
+    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
+    const cmeta_data_desc *native = descriptor ? descriptor->native_data : NULL;
+    const cmeta_data_struct_shape *shape = native ? native->shape : NULL;
+    const cmeta_struct_desc *layout = shape ? shape->layout : NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    FixedValues_t destination;
+    FixedValues_t before;
+    size_t index;
+
+    check_not_null(descriptor);
+    check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_OK);
+    check_not_null(shape);
+    check_not_null(layout);
+    if (!descriptor || !shape || !layout || shape->field_count != 3u) return;
+
+    check_equal(shape->fields[0].value->kind, CMETA_DATA_BOOL);
+    check_equal(shape->fields[0].value->storage_type->size,
+                sizeof(((FixedValues_t *)0)->enabled));
+    check_equal(shape->fields[0].value->storage_type->align,
+                _Alignof(uint8_t));
+    check(salts_uuid_cmeta_data_valid(shape->fields[1].value));
+    check_equal(shape->fields[1].value->storage_type->size,
+                sizeof(((FixedValues_t *)0)->id));
+    check_equal(shape->fields[1].value->storage_type->align,
+                _Alignof(salts_uuid_t));
+    check_equal(shape->fields[2].value->kind, CMETA_DATA_BYTES);
+    check_equal(shape->fields[2].value->storage_type->size,
+                sizeof(((FixedValues_t *)0)->digest));
+    check_equal(layout->fields[2].size,
+                sizeof(((FixedValues_t *)0)->digest));
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    if (!codec) return;
+    memset(&destination, 0, sizeof(destination));
+    check_equal(tbe_typed_descriptor_parse(
+                    codec, "FixedValues", descriptor, DATA_BIND_FORMAT_JSON,
+                    json, strlen(json), 0u, &destination, &error),
+                DATA_BIND_OK);
+    check_equal(destination.enabled, 1u);
+    for (index = 0u; index < sizeof(destination.id.bytes); ++index)
+      check_equal(destination.id.bytes[index], 0u);
+    for (index = 0u; index < sizeof(destination.digest); ++index)
+      check_equal(destination.digest[index], index);
+
+    memset(&destination, 0xa5, sizeof(destination));
+    before = destination;
+
+    for (index = 0u; index < 3u; ++index) {
+      TbeTypedDescriptor altered_descriptor = *descriptor;
+      cmeta_data_desc altered_root = *native;
+      cmeta_data_struct_shape altered_shape = *shape;
+      cmeta_data_field_desc altered_fields[3];
+      cmeta_data_desc altered_value = *shape->fields[index].value;
+      cmeta_type_desc altered_storage = *altered_value.storage_type;
+      DataBindStatus status;
+
+      memcpy(altered_fields, shape->fields, sizeof(altered_fields));
+      if (index == 0u)
+        altered_storage.size += 1u;
+      else if (index == 1u)
+        altered_storage.align += 1u;
+      else
+        altered_storage.size -= 1u;
+      altered_value.storage_type = &altered_storage;
+      altered_fields[index].value = &altered_value;
+      altered_shape.fields = altered_fields;
+      altered_root.shape = &altered_shape;
+      altered_descriptor.native_data = &altered_root;
+
+      status = tbe_typed_descriptor_parse(
+          codec, "FixedValues", &altered_descriptor, DATA_BIND_FORMAT_JSON,
+          json, strlen(json), 0u, &destination, &error);
+      check_equal(status, DATA_BIND_ERR_SCHEMA);
+      check_not_null(strstr(error.path, index == 0u ? "FixedValues.enabled" :
+                                        index == 1u ? "FixedValues.id" :
+                                                      "FixedValues.digest"));
+      check_equal(memcmp(&destination, &before, sizeof(destination)), 0);
+    }
+    data_bind_free(codec);
+  }
+
   it("rejects a uint64 enum domain without truncating constants") {
     const cmeta_data_desc *data = &salts_int32_cmeta_data;
     DataBindError error = DATA_BIND_ERROR_INIT;

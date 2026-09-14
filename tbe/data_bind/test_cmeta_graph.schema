@@ -10,6 +10,7 @@ flags Permission <uint8> { Read = 1; Write = 2; }
 enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }
 message FlagStorage { Permission value; }
 message BoolStorage { bool value; }
+message FixedValues { bool enabled; uuid id; bytes(16) digest; }
 message WideEnumStorage { WideDomain value; }
 message UuidStorage { uuid value; }
 message BytesStorage { bytes value; }

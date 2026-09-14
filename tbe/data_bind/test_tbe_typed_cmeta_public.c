@@ -82,6 +82,23 @@ int main(void) {
       return 12;
   }
   {
+    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
+    const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
+    const cmeta_data_struct_shape *shape = fixed ? fixed->shape : NULL;
+    if (descriptor == NULL ||
+        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
+        shape == NULL || shape->field_count != 3u)
+      return 26;
+    if (shape->fields[0].value->kind != CMETA_DATA_BOOL ||
+        shape->fields[0].value->storage_type->size !=
+            sizeof(((FixedValues_t *)0)->enabled) ||
+        !salts_uuid_cmeta_data_valid(shape->fields[1].value) ||
+        shape->fields[2].value->kind != CMETA_DATA_BYTES ||
+        shape->fields[2].value->storage_type->size !=
+            sizeof(((FixedValues_t *)0)->digest))
+      return 27;
+  }
+  {
     static const char json[] =
         "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
     const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
