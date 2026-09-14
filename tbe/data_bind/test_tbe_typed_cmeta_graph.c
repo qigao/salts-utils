@@ -165,6 +165,7 @@ spec("generated native CMeta graph") {
     DataBind *codec = NULL;
     FixedValues_t destination;
     FixedValues_t before;
+    size_t fixed_extent = 0u;
     size_t index;
 
     check_not_null(descriptor);
@@ -178,16 +179,26 @@ spec("generated native CMeta graph") {
                 sizeof(((FixedValues_t *)0)->enabled));
     check_equal(shape->fields[0].value->storage_type->align,
                 _Alignof(uint8_t));
+    check_not_null(cmeta_data_fixed_ops_of(shape->fields[0].value));
+    check_equal(cmeta_data_fixed_extent(shape->fields[0].value, &fixed_extent),
+                CMETA_OK);
+    check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->enabled));
     check(salts_uuid_cmeta_data_valid(shape->fields[1].value));
     check_equal(shape->fields[1].value->storage_type->size,
                 sizeof(((FixedValues_t *)0)->id));
     check_equal(shape->fields[1].value->storage_type->align,
                 _Alignof(salts_uuid_t));
+    check_equal(cmeta_data_fixed_extent(shape->fields[1].value, &fixed_extent),
+                CMETA_OK);
+    check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->id));
     check_equal(shape->fields[2].value->kind, CMETA_DATA_BYTES);
     check_equal(shape->fields[2].value->storage_type->size,
                 sizeof(((FixedValues_t *)0)->digest));
     check_equal(layout->fields[2].size,
                 sizeof(((FixedValues_t *)0)->digest));
+    check_equal(cmeta_data_fixed_extent(shape->fields[2].value, &fixed_extent),
+                CMETA_OK);
+    check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->digest));
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     if (!codec) return;

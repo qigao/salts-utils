@@ -86,6 +86,7 @@ int main(void) {
     const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
     const cmeta_data_struct_shape *shape =
         fixed ? (const cmeta_data_struct_shape *)fixed->shape : NULL;
+    size_t extent = 0u;
     if (descriptor == NULL ||
         tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
         shape == NULL || shape->field_count != 3u)
@@ -96,7 +97,9 @@ int main(void) {
         !salts_uuid_cmeta_data_valid(shape->fields[1].value) ||
         shape->fields[2].value->kind != CMETA_DATA_BYTES ||
         shape->fields[2].value->storage_type->size !=
-            sizeof(((FixedValues_t *)0)->digest))
+            sizeof(((FixedValues_t *)0)->digest) ||
+        cmeta_data_fixed_extent(shape->fields[2].value, &extent) != CMETA_OK ||
+        extent != sizeof(((FixedValues_t *)0)->digest))
       return 27;
   }
   {

@@ -172,7 +172,7 @@ suite("compiler_cmeta_field_projection") {
         }
     }
 
-    it("classifies the remaining runtime capability matrix without publishing it") {
+    it("publishes installed fixed providers and keeps remaining capabilities deferred") {
         static const char *const names[] = {
             "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
             "BytesStorage", "OptionalStorage", "ListStorage"};
@@ -215,8 +215,12 @@ suite("compiler_cmeta_field_projection") {
             if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
             check_equal(field_projection_text(field, "cmeta_native_requirement"),
                         expected_native_requirement(EXPECTED[i].requirement));
-            check_null(field_projection_child(record,
-                                               "typed_cmeta_runtime_supported"));
+            if (i < 3u)
+                check_not_null(field_projection_child(
+                    record, "typed_cmeta_runtime_supported"));
+            else
+                check_null(field_projection_child(
+                    record, "typed_cmeta_runtime_supported"));
         }
 
         node_free(root);
@@ -251,8 +255,7 @@ suite("compiler_cmeta_field_projection") {
 
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
-            "BoolStorage", "TextStorage", "BytesStorage", "FixedBytesStorage",
-            "FixedArrayStorage", "UuidStorage", "ListStorage", "SetStorage",
+            "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
             "MapStorage", "OptionalStorage", "FlagStorage", "WideStorage",
             "UnsupportedNested", "Cycle"
         };
@@ -395,11 +398,20 @@ suite("compiler_cmeta_field_projection") {
             field_projection_record(root, "messages", "UuidStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
-            field_projection_record(root, "messages", "Depth32"),
-            "cmeta_graph_supported"));
-        check_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
             "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "Depth32"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "BoolStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "FixedBytesStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "UuidStorage"),
+            "typed_cmeta_runtime_supported"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
             "cmeta_graph_supported"));

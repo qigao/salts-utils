@@ -146,6 +146,27 @@ static const cmeta_data_desc {{name}}_CMETA_DATA;
 {{#messages}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
 static const cmeta_data_desc {{name}}_CMETA_DATA;
 {{/messages}}
+{{#composites}}{{#fields}}{{#native_fixed_bytes_name}}
+typedef uint8_t {{native_c_type}}[{{typed_fixed_count}}];
+CMETA_DEFINE_FIXED_BYTES({{native_fixed_bytes_name}}, {{native_c_type}},
+                         sizeof({{native_c_type}}),
+                         "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+                         "{{owner_name}}_t.{{c_name}}");
+{{/native_fixed_bytes_name}}{{/fields}}{{/composites}}
+{{#groups}}{{#fields}}{{#native_fixed_bytes_name}}
+typedef uint8_t {{native_c_type}}[{{typed_fixed_count}}];
+CMETA_DEFINE_FIXED_BYTES({{native_fixed_bytes_name}}, {{native_c_type}},
+                         sizeof({{native_c_type}}),
+                         "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+                         "{{owner_name}}_t.{{c_name}}");
+{{/native_fixed_bytes_name}}{{/fields}}{{/groups}}
+{{#messages}}{{#fields}}{{#native_fixed_bytes_name}}
+typedef uint8_t {{native_c_type}}[{{typed_fixed_count}}];
+CMETA_DEFINE_FIXED_BYTES({{native_fixed_bytes_name}}, {{native_c_type}},
+                         sizeof({{native_c_type}}),
+                         "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
+                         "{{owner_name}}_t.{{c_name}}");
+{{/native_fixed_bytes_name}}{{/fields}}{{/messages}}
 {{#enums}}
 static const cmeta_type_identity {{enum_name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{enum_name}}_t");
@@ -192,7 +213,7 @@ static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
     CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_SHAPE,
-    NULL, {{#typed_cmeta_runtime_supported}}&{{enum_name}}_CMETA_ENUM_OPS{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}, NULL
+    NULL, {{#typed_cmeta_runtime_supported}}&{{enum_name}}_CMETA_ENUM_OPS{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}, NULL, NULL
 };
 {{/native_enum_supported}}
 {{^native_enum_supported}}
@@ -233,7 +254,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
@@ -294,7 +315,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
@@ -355,7 +376,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =

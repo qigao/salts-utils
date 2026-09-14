@@ -303,10 +303,9 @@ static const char *tbe_compiler_native_requirement_name(
   return NULL;
 }
 
-/* Native symbol spellings project the same canonical records into generated C.
- * BOOL is intentionally absent: generated C currently stores it as uint8_t. */
+/* Native symbol spellings project the same canonical records into generated C. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", NULL, NULL},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
     {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8", "salts_int8_cmeta_data", "salts_int8_cmeta_type"},
     {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8", "salts_uint8_cmeta_data", "salts_uint8_cmeta_type"},
     {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16", "salts_int16_cmeta_data", "salts_int16_cmeta_type"},
@@ -591,10 +590,20 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   if (semantic && semantic->kind == CMETA_DATA_BYTES) {
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "size_bytes");
+      char symbol[256];
       snprintf(declaration, sizeof(declaration), "uint8_t %s[%s];", c_name,
                count ? count : "0");
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_BYTES");
+      tbe_compiler_set_string(field, "typed_wire_kind", "TBE_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
+      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes", owner, c_name);
+      tbe_compiler_set_string(field, "native_fixed_bytes_name", symbol);
+      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_storage", owner, c_name);
+      tbe_compiler_set_string(field, "native_c_type", symbol);
+      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_cmeta_data", owner, c_name);
+      tbe_compiler_set_string(field, "native_data_symbol", symbol);
+      snprintf(symbol, sizeof(symbol), "%s_%s_cmeta_bytes_cmeta_type", owner, c_name);
+      tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
       snprintf(declaration, sizeof(declaration), "tbe_bytes_t %s;", c_name);
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_BYTES");
@@ -926,12 +935,23 @@ static int tbe_compiler_cmeta_classify_record(
     if (scalar) {
       if (!scalar->native_data_symbol || !scalar->native_type_symbol)
         goto unsupported;
-      if (context->runtime && scalar->data->kind != CMETA_DATA_SINT &&
+      if (context->runtime && scalar->data->kind != CMETA_DATA_BOOL &&
+          scalar->data->kind != CMETA_DATA_SINT &&
           scalar->data->kind != CMETA_DATA_UINT &&
           scalar->data->kind != CMETA_DATA_FLOAT)
         goto unsupported;
       continue;
     }
+
+    if (context->runtime &&
+        tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
+        strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
+               "fixed_value") == 0 &&
+        tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
+         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+      continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);
     if (target) {

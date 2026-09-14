@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: d8b3583ceb2f557638a9b2e70487089bc4d2f39f
+          ref: c168ee0c96fe12052c3f68f8b0c79d7ea9c494af
           path: salts
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          test "$(git rev-parse HEAD)" = d8b3583ceb2f557638a9b2e70487089bc4d2f39f
+          test "$(git rev-parse HEAD)" = c168ee0c96fe12052c3f68f8b0c79d7ea9c494af
           git rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
           cmake --preset linux-dev-user
           cmake --build build/linux-gcc-debug --target install -j2

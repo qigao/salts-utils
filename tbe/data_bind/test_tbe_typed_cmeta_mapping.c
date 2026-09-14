@@ -11,6 +11,8 @@ typedef union ScalarStorage {
   int64_t signed_value;
   uint64_t unsigned_value;
   double floating_value;
+  salts_uuid_t uuid_value;
+  uint8_t fixed_value[16];
 } ScalarStorage;
 
 typedef struct DeferredNativeDomain {
@@ -84,10 +86,9 @@ spec("TBE typed canonical scalar matching") {
     expect_scalar(&data);
   }
 
-  it("rejects deferred native values and kind-only containers") {
+  it("accepts canonical fixed providers and rejects native Bool/container impostors") {
     static const DeferredNativeDomain deferred[] = {
         {"bool", &cmeta_data_bool, CMETA_DATA_BOOL},
-        {"uuid", &salts_uuid_cmeta_data, CMETA_DATA_CUSTOM},
     };
     static const cmeta_data_kind containers[] = {
         CMETA_DATA_SEQUENCE, CMETA_DATA_SET, CMETA_DATA_MAP};
@@ -103,6 +104,8 @@ spec("TBE typed canonical scalar matching") {
       check_equal(scalar_descriptor_status(deferred[i].data),
                   DATA_BIND_ERR_SCHEMA);
     }
+    expect_scalar(&salts_bool8_cmeta_data);
+    expect_scalar(&salts_uuid_cmeta_data);
     for (i = 0; i < sizeof(containers) / sizeof(containers[0]); ++i) {
       cmeta_data_desc malformed = salts_int32_cmeta_data;
       malformed.kind = containers[i];
