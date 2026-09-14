@@ -121,6 +121,30 @@ delegates after failure, or constructs a graphless descriptor.
 | STRING/BYTES/fixed buffer/UUID/custom | deferred | lifecycle/adapter contract required | wire policy |
 | Sequence/set/map | deferred to #46 | CMeta range plus CSTL provider required | container wire policy |
 
+The completion contract assigns `cmeta_native_requirement` to each candidate
+leaf so later provider slices consume one executable classification instead of
+inferring support from a language projection. These requirement annotations
+describe what is missing; they are not DataBind-owned operation contracts and
+do not by themselves enable `typed_cmeta_runtime_supported`.
+
+| Schema form | Generated C storage | Schema semantic kind | Compiler requirement | Runtime status | Provider/rejection boundary |
+| --- | --- | --- | --- | --- | --- |
+| `bool` | `uint8_t` | `CMETA_DATA_BOOL` | `fixed_value` | deferred | Requires an explicit octet-backed canonical CMeta adapter; `_Bool` metadata cannot describe this slot. |
+| `uuid` | `salts_uuid_t` | `CMETA_DATA_CUSTOM` | `fixed_value` | deferred | Requires an explicit exact-storage canonical CMeta adapter; the existing STRING descriptor is the UUID text adapter. |
+| `bytes[16]` | `uint8_t[16]` | `CMETA_DATA_BYTES` | `fixed_value` | deferred | Requires a bounded canonical CMeta byte-array adapter whose extent matches the generated slot. |
+| `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
+| `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
+| optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
+| `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred to #46 | Requires the native-container/CSTL provider contract; list, set and map remain rejected in #47. |
+
+Only `fixed_value` integer/F32/F64 providers and the currently supported
+`enum_domain` subset are installed at this checkpoint. The executable
+characterization requires a record to be published only when every transitive
+field requirement has an installed canonical CMeta provider. In particular,
+all deferred rows above lack
+`typed_cmeta_runtime_supported`, and sequence, set and map records remain on
+the raw/deferred route.
+
 For supported rows, native size, alignment, semantic kind, field order, native
 name and native offset come only from CMeta. The overlay supplies external names,
 aliases, defaults, validation, presence policy and wire layout. Descriptor code

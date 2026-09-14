@@ -5,12 +5,19 @@
 #include <salts_cmeta_fixed_width.h>
 
 #include <stdint.h>
+#include <string.h>
 
 typedef union ScalarStorage {
   int64_t signed_value;
   uint64_t unsigned_value;
   double floating_value;
 } ScalarStorage;
+
+typedef struct DeferredNativeDomain {
+  const char *schema;
+  const cmeta_data_desc *data;
+  cmeta_data_kind semantic_kind;
+} DeferredNativeDomain;
 
 static const cmeta_type_identity SCALAR_RECORD_ID =
     CMETA_TYPE_ID_ATOM_INIT("test.ScalarStorage");
@@ -77,15 +84,30 @@ spec("TBE typed canonical scalar matching") {
     expect_scalar(&data);
   }
 
-  it("rejects deferred and malformed native domains") {
-    cmeta_data_desc malformed = salts_int32_cmeta_data;
-    malformed.kind = CMETA_DATA_SEQUENCE;
+  it("rejects deferred native values and kind-only containers") {
+    static const DeferredNativeDomain deferred[] = {
+        {"bool", &cmeta_data_bool, CMETA_DATA_BOOL},
+        {"uuid", &salts_uuid_cmeta_data, CMETA_DATA_CUSTOM},
+    };
+    static const cmeta_data_kind containers[] = {
+        CMETA_DATA_SEQUENCE, CMETA_DATA_SET, CMETA_DATA_MAP};
+    size_t i;
 
-    check_equal(scalar_descriptor_status(&cmeta_data_bool),
-                DATA_BIND_ERR_SCHEMA);
-    check_equal(scalar_descriptor_status(&salts_uuid_cmeta_data),
-                DATA_BIND_ERR_SCHEMA);
-    check_equal(scalar_descriptor_status(&malformed), DATA_BIND_ERR_SCHEMA);
+    for (i = 0; i < sizeof(deferred) / sizeof(deferred[0]); ++i) {
+      info("schema=%s", deferred[i].schema);
+      check_not_null(deferred[i].data);
+      check_equal(deferred[i].semantic_kind,
+                  strcmp(deferred[i].schema, "uuid") == 0
+                      ? CMETA_DATA_CUSTOM
+                      : deferred[i].data->kind);
+      check_equal(scalar_descriptor_status(deferred[i].data),
+                  DATA_BIND_ERR_SCHEMA);
+    }
+    for (i = 0; i < sizeof(containers) / sizeof(containers[0]); ++i) {
+      cmeta_data_desc malformed = salts_int32_cmeta_data;
+      malformed.kind = containers[i];
+      check_equal(scalar_descriptor_status(&malformed), DATA_BIND_ERR_SCHEMA);
+    }
     check_equal(scalar_descriptor_status(NULL), DATA_BIND_ERR_SCHEMA);
   }
 }
