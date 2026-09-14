@@ -56,7 +56,7 @@ suite("schema_cmeta_buffer") {
     }
 
     it("accepts storage metadata copies by CMeta semantic identity") {
-      cmeta_type_identity identity = salts_tstr_cmeta_identity;
+      cmeta_type_identity identity = *salts_tstr_cmeta_type.identity;
       cmeta_type_desc storage = salts_tstr_cmeta_type;
       cmeta_data_buffer_ops ops = salts_tstr_cmeta_buffer_ops;
       cmeta_data_desc data = {0};
