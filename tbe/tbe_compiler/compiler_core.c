@@ -851,7 +851,7 @@ static int tbe_compiler_cmeta_classify_record(
     size_t target_index;
 
     if (!type || !kind ||
-        (context->runtime && tbe_compiler_has_child(field, "is_optional")) ||
+        tbe_compiler_has_child(field, "is_optional") ||
         tbe_compiler_has_child(field, "is_collection") ||
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||

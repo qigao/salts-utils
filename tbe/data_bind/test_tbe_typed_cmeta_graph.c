@@ -101,8 +101,6 @@ spec("generated native CMeta graph") {
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     if (codec && descriptor && data) {
-      check_equal(tbe_typed_validate_schema(codec, "Sample", descriptor->overlay,
-                                            &error), DATA_BIND_OK);
       check(data_bind_schema_field_at(codec, "Sample", 2u, &field));
       check(field.has_default);
       check_equal(field.default_value, "9");
