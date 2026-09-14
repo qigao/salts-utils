@@ -2863,7 +2863,7 @@ spec("tbe_compiler") {
       }
       if (lua_source != NULL) {
         check_contains(lua_source, "#include \"salts_lua.h\"");
-        check_contains(lua_source, "TBE_LUA_DEFINE_RECORD(LoginMessage)");
+        check_contains(lua_source, "TBE_LUA_DEFINE_RAW_RECORD(LoginMessage)");
         check_contains(lua_source, "c11_lua_read_tbe_typed");
       }
 
