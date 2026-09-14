@@ -7,8 +7,11 @@
 #include <stddef.h>
 #include <string.h>
 
+static unsigned reject_fixed_copy_hits;
+
 static cmeta_status reject_fixed_copy(void *destination, const void *source) {
   (void)source;
+  ++reject_fixed_copy_hits;
   if (destination != NULL) ((uint8_t *)destination)[0] = 0xffu;
   return CMETA_CALLBACK_ERROR;
 }
@@ -321,17 +324,20 @@ spec("generated native CMeta graph") {
       altered_descriptor.native_data = &altered_root;
       memset(output, 0x5a, sizeof(output));
       memcpy(output_before, output, sizeof(output));
+      reject_fixed_copy_hits = 0u;
 
       check_equal(tbe_typed_descriptor_serialize(
                       codec, "FixedValues", &altered_descriptor, &destination,
                       DATA_BIND_FORMAT_JSON, &failed_text, &failed_len, &error),
                   DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(reject_fixed_copy_hits, 1u);
       check_null(failed_text);
       check_equal(failed_len, 0u);
       failed_len = 0u;
       check_equal(tbe_typed_descriptor_serialize_binary_into(
                       &altered_descriptor, &destination, output, sizeof(output),
                       &failed_len, &error), DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(reject_fixed_copy_hits, 2u);
       check_equal(memcmp(output, output_before, sizeof(output)), 0);
     }
     FixedValues_clear(&destination);
