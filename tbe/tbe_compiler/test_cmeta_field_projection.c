@@ -253,6 +253,37 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_record(root, "messages", "A_B");
+        Node *right = field_projection_add_record(root, "messages", "A");
+        Node *left_field = field_projection_add_field(left, "A_B", "C", "bytes");
+        Node *right_field = field_projection_add_field(right, "A", "B_C", "bytes");
+        const char *left_symbol;
+        const char *right_symbol;
+
+        check_not_null(left_field);
+        check_not_null(right_field);
+        if (!left_field || !right_field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(left_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(left_field, create_node_string("size_bytes", "4")), 0);
+        check_equal(map_add(right_field, create_node_string("is_fixed_size", "1")), 0);
+        check_equal(map_add(right_field, create_node_string("size_bytes", "4")), 0);
+
+        tbe_compiler_annotate_language_types(root);
+        left_symbol = field_projection_text(left_field, "native_fixed_bytes_name");
+        right_symbol = field_projection_text(right_field, "native_fixed_bytes_name");
+        check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
+        check_equal(right_symbol, "tbe_fixed_bytes_1_A_3_B_C");
+        check(strcmp(left_symbol, right_symbol) != 0);
+        check_not_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
             "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",

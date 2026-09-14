@@ -103,6 +103,20 @@ int main(void) {
       return 27;
   }
   {
+    const TbeTypedDescriptor *left = A_B_typed_descriptor();
+    const TbeTypedDescriptor *right = A_typed_descriptor();
+    const cmeta_data_struct_shape *left_shape =
+        left ? (const cmeta_data_struct_shape *)left->native_data->shape : NULL;
+    const cmeta_data_struct_shape *right_shape =
+        right ? (const cmeta_data_struct_shape *)right->native_data->shape : NULL;
+    if (left_shape == NULL || right_shape == NULL ||
+        left_shape->field_count != 1u || right_shape->field_count != 1u ||
+        left_shape->fields[0].value == right_shape->fields[0].value ||
+        strcmp(left_shape->fields[0].value->stable_id,
+               right_shape->fields[0].value->stable_id) == 0)
+      return 28;
+  }
+  {
     static const char json[] =
         "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
     const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();

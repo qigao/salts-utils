@@ -7,6 +7,12 @@
 #include <stddef.h>
 #include <string.h>
 
+static cmeta_status reject_fixed_copy(void *destination, const void *source) {
+  (void)source;
+  if (destination != NULL) ((uint8_t *)destination)[0] = 0xffu;
+  return CMETA_CALLBACK_ERROR;
+}
+
 spec("generated native CMeta graph") {
   it("publishes structural metadata and validates the public descriptor") {
     const cmeta_data_desc *data = NULL;
@@ -168,6 +174,32 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
+  it("keeps colliding owner and field spellings as distinct fixed providers") {
+    const TbeTypedDescriptor *left = A_B_typed_descriptor();
+    const TbeTypedDescriptor *right = A_typed_descriptor();
+    const cmeta_data_struct_shape *left_shape =
+        left ? (const cmeta_data_struct_shape *)left->native_data->shape : NULL;
+    const cmeta_data_struct_shape *right_shape =
+        right ? (const cmeta_data_struct_shape *)right->native_data->shape : NULL;
+    const cmeta_data_desc *left_bytes;
+    const cmeta_data_desc *right_bytes;
+
+    check_not_null(left_shape);
+    check_not_null(right_shape);
+    if (!left_shape || !right_shape || left_shape->field_count != 1u ||
+        right_shape->field_count != 1u)
+      return;
+    left_bytes = left_shape->fields[0].value;
+    right_bytes = right_shape->fields[0].value;
+    check_not_null(left_bytes);
+    check_not_null(right_bytes);
+    if (!left_bytes || !right_bytes) return;
+    check(left_bytes != right_bytes);
+    check(strcmp(left_bytes->stable_id, right_bytes->stable_id) != 0);
+    check_not_null(cmeta_data_fixed_ops_of(left_bytes));
+    check_not_null(cmeta_data_fixed_ops_of(right_bytes));
+  }
+
   it("requires exact canonical providers for generated fixed values") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
@@ -180,6 +212,10 @@ spec("generated native CMeta graph") {
     DataBind *codec = NULL;
     FixedValues_t destination;
     FixedValues_t before;
+    uint8_t *wire = NULL;
+    char *encoded = NULL;
+    size_t encoded_len = 0u;
+    size_t wire_len = 0u;
     size_t fixed_extent = 0u;
     size_t index;
 
@@ -217,16 +253,42 @@ spec("generated native CMeta graph") {
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     if (!codec) return;
-    memset(&destination, 0, sizeof(destination));
-    check_equal(tbe_typed_descriptor_parse(
-                    codec, "FixedValues", descriptor, DATA_BIND_FORMAT_JSON,
-                    json, strlen(json), 0u, &destination, &error),
+    memset(&destination, 0xa5, sizeof(destination));
+    FixedValues_init(&destination);
+    check_equal(destination.enabled, 0u);
+    check_equal(cmeta_data_fixed_is_zero(shape->fields[1].value,
+                                         &destination.id, &(bool){false}),
+                CMETA_OK);
+    check_equal(FixedValues_from_json(codec, &destination, json, strlen(json),
+                                      &error),
                 DATA_BIND_OK);
     check_equal(destination.enabled, 1u);
     for (index = 0u; index < sizeof(destination.id.bytes); ++index)
       check_equal(destination.id.bytes[index], 0u);
     check_equal(memcmp(destination.digest, "0123456789abcdef",
                        sizeof(destination.digest)), 0);
+    check_equal(FixedValues_to_json(codec, &destination, &encoded,
+                                    &encoded_len, &error), DATA_BIND_OK);
+    check_not_null(encoded);
+    if (encoded)
+      check_not_null(strstr(encoded, "\"digest\":\"0123456789abcdef\""));
+    check_equal(FixedValues_to_bin(&destination, &wire, &wire_len, &error),
+                DATA_BIND_OK);
+    check_not_null(wire);
+    if (wire) {
+      FixedValues_t decoded;
+      memset(&decoded, 0xa5, sizeof(decoded));
+      FixedValues_init(&decoded);
+      check_equal(FixedValues_from_bin(codec, &decoded, wire, wire_len, &error),
+                  DATA_BIND_OK);
+      check_equal(memcmp(&decoded, &destination, sizeof(decoded)), 0);
+      FixedValues_clear(&decoded);
+      check_equal(memcmp(&decoded, &(FixedValues_t){0}, sizeof(decoded)), 0);
+    }
+    tbe_typed_serialized_free(encoded);
+    tbe_typed_serialized_free(wire);
+    encoded = NULL;
+    wire = NULL;
 
     memset(&destination, 0xa5, sizeof(destination));
     before = destination;
@@ -262,6 +324,44 @@ spec("generated native CMeta graph") {
                                                       "FixedValues.digest"));
       check_equal(memcmp(&destination, &before, sizeof(destination)), 0);
     }
+
+    {
+      TbeTypedDescriptor altered_descriptor = *descriptor;
+      cmeta_data_desc altered_root = *native;
+      cmeta_data_struct_shape altered_shape = *shape;
+      cmeta_data_field_desc altered_fields[3];
+      cmeta_data_desc altered_bytes = *shape->fields[2].value;
+      cmeta_data_fixed_ops altered_ops =
+          *cmeta_data_fixed_ops_of(shape->fields[2].value);
+      uint8_t output[64];
+      uint8_t output_before[64];
+      char *failed_text = (char *)(uintptr_t)1u;
+      size_t failed_len = 19u;
+
+      memcpy(altered_fields, shape->fields, sizeof(altered_fields));
+      altered_ops.copy = reject_fixed_copy;
+      altered_bytes.fixed_ops = &altered_ops;
+      altered_fields[2].value = &altered_bytes;
+      altered_shape.fields = altered_fields;
+      altered_root.shape = &altered_shape;
+      altered_descriptor.native_data = &altered_root;
+      memset(output, 0x5a, sizeof(output));
+      memcpy(output_before, output, sizeof(output));
+
+      check_equal(tbe_typed_descriptor_serialize(
+                      codec, "FixedValues", &altered_descriptor, &destination,
+                      DATA_BIND_FORMAT_JSON, &failed_text, &failed_len, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+      check_null(failed_text);
+      check_equal(failed_len, 0u);
+      failed_len = 0u;
+      check_equal(tbe_typed_descriptor_serialize_binary_into(
+                      &altered_descriptor, &destination, output, sizeof(output),
+                      &failed_len, &error), DATA_BIND_ERR_TYPE_MISMATCH);
+      check_equal(memcmp(output, output_before, sizeof(output)), 0);
+    }
+    FixedValues_clear(&destination);
+    check_equal(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)), 0);
     data_bind_free(codec);
   }
 

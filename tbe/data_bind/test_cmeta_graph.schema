@@ -11,6 +11,8 @@ enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }
 message FlagStorage { Permission value; }
 message BoolStorage { bool value; }
 message FixedValues { bool enabled; uuid id; bytes(16) digest; }
+message A_B { bytes(4) C; }
+message A { bytes(4) B_C; }
 message WideEnumStorage { WideDomain value; }
 message UuidStorage { uuid value; }
 message BytesStorage { bytes value; }
