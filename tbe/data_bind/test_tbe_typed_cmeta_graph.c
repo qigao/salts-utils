@@ -347,13 +347,138 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
-  it("rejects a uint64 enum domain without truncating constants") {
-    const cmeta_data_desc *data = &salts_int32_cmeta_data;
+  it("publishes exact signed and unsigned enum storage domains") {
+    const cmeta_data_desc *signed8 = NULL;
+    const cmeta_data_desc *unsigned8 = NULL;
+    const cmeta_data_desc *signed64 = NULL;
+    const cmeta_data_desc *signed8_value;
+    const cmeta_data_desc *unsigned8_value;
+    const cmeta_data_desc *signed64_value;
+    Signed8Domain_t signed8_storage = 0;
+    Unsigned8Domain_t unsigned8_storage = 0;
+    Signed64Domain_t signed64_storage = 0;
+    int64_t value = 0;
     DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(Signed8Storage_cmeta_data(&signed8, &error), DATA_BIND_OK);
+    check_equal(Unsigned8Storage_cmeta_data(&unsigned8, &error), DATA_BIND_OK);
+    check_equal(Signed64Storage_cmeta_data(&signed64, &error), DATA_BIND_OK);
+    check_not_null(signed8);
+    check_not_null(unsigned8);
+    check_not_null(signed64);
+    if (!signed8 || !unsigned8 || !signed64) return;
+
+    signed8_value = ((const cmeta_data_struct_shape *)signed8->shape)->fields[0].value;
+    unsigned8_value = ((const cmeta_data_struct_shape *)unsigned8->shape)->fields[0].value;
+    signed64_value = ((const cmeta_data_struct_shape *)signed64->shape)->fields[0].value;
+    check_equal(signed8_value->storage_type->size, sizeof(int8_t));
+    check_equal(unsigned8_value->storage_type->size, sizeof(uint8_t));
+    check_equal(signed64_value->storage_type->size, sizeof(int64_t));
+    check_not_null(cmeta_data_enum_ops_of(signed8_value));
+    check_not_null(cmeta_data_enum_ops_of(unsigned8_value));
+    check_not_null(cmeta_data_enum_ops_of(signed64_value));
+    check_equal(cmeta_data_enum_assign(signed8_value, &signed8_storage,
+                                       INT8_MIN), CMETA_OK);
+    check_equal(cmeta_data_enum_read(signed8_value, &signed8_storage, &value),
+                CMETA_OK);
+    check_equal(value, INT8_MIN);
+    check_equal(cmeta_data_enum_assign(unsigned8_value, &unsigned8_storage,
+                                       UINT8_MAX), CMETA_OK);
+    check_equal(cmeta_data_enum_read(unsigned8_value, &unsigned8_storage, &value),
+                CMETA_OK);
+    check_equal(value, UINT8_MAX);
+    check_equal(cmeta_data_enum_assign(signed64_value, &signed64_storage,
+                                       INT64_MIN), CMETA_OK);
+    check_equal(cmeta_data_enum_read(signed64_value, &signed64_storage, &value),
+                CMETA_OK);
+    check_equal(value, INT64_MIN);
+  }
+
+  it("publishes and round-trips a uint64 enum domain without narrowing") {
+    const cmeta_data_desc *data = &salts_int32_cmeta_data;
+    const cmeta_data_desc *enum_data;
+    const cmeta_data_struct_shape *shape;
+    static const char json[] = "{\"value\":\"Maximum\"}";
+    DataBind *codec = NULL;
+    WideEnumStorage_t object = {0};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
     check_equal(sizeof(WideDomain_t), sizeof(uint64_t));
     check(WideDomain_Maximum == UINT64_MAX);
-    check_equal(WideEnumStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == &salts_int32_cmeta_data);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(WideEnumStorage_from_json(codec, &object, json,
+                                          sizeof(json) - 1u, &error),
+                DATA_BIND_OK);
+    check(object.value == UINT64_MAX);
+    check_equal(WideEnumStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check(data != &salts_int32_cmeta_data);
+    if (data != &salts_int32_cmeta_data) {
+      shape = (const cmeta_data_struct_shape *)data->shape;
+      enum_data = shape->fields[0].value;
+      check_equal(enum_data->kind, CMETA_DATA_ENUM);
+      check_equal(enum_data->storage_type->size, sizeof(uint64_t));
+      check_not_null(cmeta_data_enum_ops_of(enum_data));
+    }
+    data_bind_free(codec);
+  }
+
+  it("rejects unknown enum values without replacing the destination") {
+    static const char json[] = "{\"value\":42}";
+    DataBind *codec = NULL;
+    Signed8Storage_t object = {.value = Signed8Domain_Maximum};
+    Signed8Storage_t before = object;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(Signed8Storage_from_json(codec, &object, json,
+                                         sizeof(json) - 1u, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(object.value, before.value);
+    check(error.code != DATA_BIND_ERR_SCHEMA);
+    data_bind_free(codec);
+  }
+
+  it("accepts declared flag combinations and rejects undeclared bits atomically") {
+    static const char valid_json[] = "{\"value\":[\"Read\",\"Write\"]}";
+    static const char invalid_json[] = "{\"value\":4}";
+    const cmeta_data_desc *data = NULL;
+    const cmeta_data_desc *enum_data;
+    const cmeta_data_struct_shape *shape;
+    DataBind *codec = NULL;
+    FlagStorage_t object = {0};
+    FlagStorage_t before;
+    int64_t bits = 0;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_equal(FlagStorage_from_json(codec, &object, valid_json,
+                                      sizeof(valid_json) - 1u, &error),
+                DATA_BIND_OK);
+    check_equal(object.value, Permission_Read | Permission_Write);
+    before = object;
+    check_equal(FlagStorage_from_json(codec, &object, invalid_json,
+                                      sizeof(invalid_json) - 1u, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(object.value, before.value);
+    check(error.code != DATA_BIND_ERR_SCHEMA);
+
+    check_equal(FlagStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check_not_null(data);
+    if (data) {
+      shape = (const cmeta_data_struct_shape *)data->shape;
+      enum_data = shape->fields[0].value;
+      check_not_null(cmeta_data_enum_ops_of(enum_data));
+      check_equal(cmeta_data_enum_restore_zero(enum_data, &object.value),
+                  CMETA_OK);
+      check_equal(cmeta_data_enum_assign(
+                      enum_data, &object.value,
+                      Permission_Read | Permission_Write),
+                  CMETA_OK);
+      check_equal(cmeta_data_enum_read(enum_data, &object.value, &bits),
+                  CMETA_OK);
+      check_equal(bits, Permission_Read | Permission_Write);
+    }
+    data_bind_free(codec);
   }
 
   it("publishes provider-backed UUID structural metadata without a descriptor") {

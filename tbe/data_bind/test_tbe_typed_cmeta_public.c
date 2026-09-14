@@ -77,9 +77,29 @@ int main(void) {
     return 11;
   {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+    const cmeta_data_desc *enum_data = shape->fields[0].value;
     const cmeta_data_enum_shape *flags = (const cmeta_data_enum_shape *)shape->fields[0].value->shape;
-    if (flags->meta->count != 2u || flags->meta->items[1].value != 2)
+    Permission_t value = 0;
+    int64_t bits = 0;
+    if (flags->meta->count != 2u || flags->meta->items[1].value != 2 ||
+        cmeta_data_enum_ops_of(enum_data) == NULL ||
+        cmeta_data_enum_assign(enum_data, &value,
+                               Permission_Read | Permission_Write) != CMETA_OK ||
+        cmeta_data_enum_read(enum_data, &value, &bits) != CMETA_OK ||
+        bits != (Permission_Read | Permission_Write))
       return 12;
+  }
+  sentinel = data;
+  if (WideEnumStorage_cmeta_data(&data, &error) != DATA_BIND_OK ||
+      data == sentinel)
+    return 28;
+  {
+    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+    const cmeta_data_desc *enum_data = shape->fields[0].value;
+    if (enum_data->kind != CMETA_DATA_ENUM ||
+        enum_data->storage_type->size != sizeof(uint64_t) ||
+        cmeta_data_enum_ops_of(enum_data) == NULL)
+      return 29;
   }
   {
     const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();

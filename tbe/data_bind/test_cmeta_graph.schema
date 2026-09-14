@@ -7,8 +7,14 @@ message OptionalStorage { optional int32 value; }
 message UnsupportedNested { Unsupported child; }
 
 flags Permission <uint8> { Read = 1; Write = 2; }
+enum Signed8Domain <int8> { Minimum = -128; Maximum = 127; }
+enum Unsigned8Domain <uint8> { Zero = 0; Maximum = 255; }
+enum Signed64Domain <int64> { Minimum = -9223372036854775808; Maximum = 9223372036854775807; }
 enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }
 message FlagStorage { Permission value; }
+message Signed8Storage { Signed8Domain value; }
+message Unsigned8Storage { Unsigned8Domain value; }
+message Signed64Storage { Signed64Domain value; }
 message BoolStorage { bool value; }
 message FixedValues { bool enabled; uuid id; bytes(16) digest; }
 message WideEnumStorage { WideDomain value; }
