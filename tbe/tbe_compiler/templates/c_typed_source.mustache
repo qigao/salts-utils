@@ -168,34 +168,34 @@ CMETA_DEFINE_FIXED_BYTES({{native_fixed_bytes_name}}, {{native_c_type}},
                          "{{owner_name}}_t.{{c_name}}");
 {{/native_fixed_bytes_name}}{{/fields}}{{/messages}}
 {{#enums}}
-static const cmeta_type_identity {{enum_name}}_CMETA_ID =
+static const cmeta_type_identity {{native_enum_symbol}}Id =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{enum_name}}_t");
-static const cmeta_type_desc {{enum_name}}_CMETA_TYPE = {
+static const cmeta_type_desc {{native_enum_symbol}}Type = {
     "{{enum_name}}_t", sizeof({{enum_name}}_t), TBE_TYPED_ALIGNOF({{enum_name}}_t),
-    CMETA_T_INTEGER, NULL, NULL, &{{enum_name}}_CMETA_ID
+    CMETA_T_INTEGER, NULL, NULL, &{{native_enum_symbol}}Id
 };
 {{#native_enum_supported}}
-static const cmeta_enum_bits_item {{enum_name}}_CMETA_ITEMS[] = {
+static const cmeta_enum_bits_item {{native_enum_symbol}}Items[] = {
 {{#items}}    { (uint64_t){{enum_name}}_{{name}} & (UINT64_MAX >> (64u - {{native_enum_bits}}u)), "{{name}}", "{{name}}" },
 {{/items}}};
-static const cmeta_enum_domain {{enum_name}}_CMETA_DOMAIN = {
+static const cmeta_enum_domain {{native_enum_symbol}}Domain = {
     sizeof(cmeta_enum_domain), CMETA_ENUM_DOMAIN_ABI_VERSION,
     {{native_enum_signedness}}, {{native_enum_bits}}u,
     {{#is_flags}}CMETA_ENUM_FLAGS{{/is_flags}}{{^is_flags}}CMETA_ENUM_ORDINARY{{/is_flags}},
-    {{enum_name}}_CMETA_ITEMS,
-    sizeof({{enum_name}}_CMETA_ITEMS) / sizeof({{enum_name}}_CMETA_ITEMS[0]),
+    {{native_enum_symbol}}Items,
+    sizeof({{native_enum_symbol}}Items) / sizeof({{native_enum_symbol}}Items[0]),
     {{#is_flags}}(UINT64_C(0){{#items}} | (uint64_t){{enum_name}}_{{name}}{{/items}}) & (UINT64_MAX >> (64u - {{native_enum_bits}}u)){{/is_flags}}{{^is_flags}}UINT64_C(0){{/is_flags}}
 };
 {{#typed_cmeta_runtime_supported}}
-static bool {{enum_name}}_cmeta_is_zero(const void *object) {
+static bool {{native_enum_symbol}}IsZero(const void *object) {
     return object != NULL && *(const {{enum_name}}_t *)object == ({{enum_name}}_t)0;
 }
-static cmeta_status {{enum_name}}_cmeta_read(const void *object, uint64_t *out) {
+static cmeta_status {{native_enum_symbol}}Read(const void *object, uint64_t *out) {
     if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
     *out = (uint64_t)*(const {{enum_name}}_t *)object & (UINT64_MAX >> (64u - {{native_enum_bits}}u));
     return CMETA_OK;
 }
-static cmeta_status {{enum_name}}_cmeta_assign(void *object, uint64_t bits) {
+static cmeta_status {{native_enum_symbol}}Assign(void *object, uint64_t bits) {
     if (object == NULL) return CMETA_INVALID_ARGUMENT;
 {{#native_enum_signed}}    /* Decode negatives without an out-of-range unsigned-to-signed cast. */
     if ((bits & (UINT64_C(1) << ({{native_enum_bits}}u - 1u))) != 0u)
@@ -204,25 +204,25 @@ static cmeta_status {{enum_name}}_cmeta_assign(void *object, uint64_t bits) {
 {{/native_enum_signed}}    *({{enum_name}}_t *)object = ({{enum_name}}_t)bits;
     return CMETA_OK;
 }
-static void {{enum_name}}_cmeta_restore_zero(void *object) {
+static void {{native_enum_symbol}}RestoreZero(void *object) {
     if (object != NULL) *({{enum_name}}_t *)object = ({{enum_name}}_t)0;
 }
-static const cmeta_data_enum_bits_ops {{enum_name}}_CMETA_ENUM_OPS = {
+static const cmeta_data_enum_bits_ops {{native_enum_symbol}}Ops = {
     sizeof(cmeta_data_enum_bits_ops), CMETA_DATA_ENUM_BITS_OPS_ABI_VERSION,
-    &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_DOMAIN, {{enum_name}}_cmeta_is_zero,
-    {{enum_name}}_cmeta_read, {{enum_name}}_cmeta_assign,
-    {{enum_name}}_cmeta_restore_zero
+    &{{native_enum_symbol}}Type, &{{native_enum_symbol}}Domain, {{native_enum_symbol}}IsZero,
+    {{native_enum_symbol}}Read, {{native_enum_symbol}}Assign,
+    {{native_enum_symbol}}RestoreZero
 };
 {{/typed_cmeta_runtime_supported}}
-static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {
+static const cmeta_data_desc {{native_enum_symbol}}Data = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
-    CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, NULL,
-    NULL, NULL, NULL, NULL, &{{enum_name}}_CMETA_ENUM_OPS
+    CMETA_DATA_ENUM, &{{native_enum_symbol}}Type, NULL,
+    NULL, NULL, NULL, NULL, &{{native_enum_symbol}}Ops
 };
 {{/native_enum_supported}}
 {{^native_enum_supported}}
-static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {0};
+static const cmeta_data_desc {{native_enum_symbol}}Data = {0};
 {{/native_enum_supported}}
 {{/enums}}
 

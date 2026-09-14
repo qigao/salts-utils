@@ -554,6 +554,45 @@ static void tbe_compiler_field_type(Node *field,
   snprintf(out, out_size, "%s", scalar_mapper(type));
 }
 
+/* Every public enum item/typedef/wrapper contains an underscore. These private
+ * identifiers contain none, so even adversarial legal item names cannot be
+ * macros for them. Length-delimited hex is injective across enum identifiers;
+ * dynamic sizing also prevents long names from aliasing through truncation. */
+static int tbe_compiler_set_enum_symbol(Node *target, const char *key,
+                                         const char *name, const char *role) {
+  static const char prefix[] = "tbeCmetaEnum";
+  static const char hex[] = "0123456789abcdef";
+  const size_t extra = sizeof(prefix) + 3u * sizeof(size_t) + 1u + strlen(role);
+  size_t length;
+  size_t capacity;
+  size_t offset;
+  size_t i;
+  int written;
+  int status;
+  char *symbol;
+  if (name == NULL) return -1;
+  length = strlen(name);
+  if (length > (SIZE_MAX - extra) / 2u) return -1;
+  capacity = extra + 2u * length;
+  symbol = (char *)malloc(capacity);
+  if (symbol == NULL) return -1;
+  written = snprintf(symbol, capacity, "%s%zux", prefix, length);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return -1;
+  }
+  offset = (size_t)written;
+  for (i = 0u; i < length; ++i) {
+    unsigned char byte = (unsigned char)name[i];
+    symbol[offset++] = hex[byte >> 4u];
+    symbol[offset++] = hex[byte & 15u];
+  }
+  memcpy(symbol + offset, role, strlen(role) + 1u);
+  status = tbe_compiler_set_string(target, key, symbol);
+  free(symbol);
+  return status;
+}
+
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                              const schema_cmeta_field_type *semantic) {
   const char *name = tbe_compiler_string_value(field, "name");
@@ -719,7 +758,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_data_symbol", "salts_uuid_cmeta_data");
       tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
       tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0 || strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+    } else if (strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+      if (tbe_compiler_set_enum_symbol(field, "native_data_symbol", type, "Data") == 0 &&
+          tbe_compiler_set_enum_symbol(field, "native_type_symbol", type, "Type") == 0)
+        tbe_compiler_set_string(field, "native_c_type", c_type);
+    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0) {
       snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", type);
       tbe_compiler_set_string(field, "native_data_symbol", symbol);
       snprintf(symbol, sizeof(symbol), "%s_CMETA_TYPE", type);
@@ -858,6 +901,9 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
     const tbe_compiler_scalar_projection_t *storage = tbe_compiler_integer_type(underlying);
 
+    if (tbe_compiler_set_enum_symbol(enum_node, "native_enum_symbol",
+          tbe_compiler_string_value(enum_node, "enum_name"), "") != 0)
+      continue;
     if (storage) {
       char bits[4];
       snprintf(bits, sizeof(bits), "%u",
