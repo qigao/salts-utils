@@ -18,6 +18,37 @@ int main(void) {
     return 1;
   }
   sentinel = data;
+  {
+    const TbeTypedDescriptor *descriptor = EnumSymbolStorage_typed_descriptor();
+    const cmeta_data_struct_shape *shape;
+    const cmeta_data_desc *value_data;
+    EnumSymbolStorage_t object = {0};
+    const EnumSymbols_t items[] = {
+        EnumSymbols_CMETA_DOMAIN, EnumSymbols_CMETA_ENUM_OPS,
+        EnumSymbols_CMETA_BITS_OPS, EnumSymbols_CMETA_DATA, EnumSymbols_CMETA_TYPE,
+        EnumSymbols_CMETA_ID, EnumSymbols_CMETA_ITEMS, EnumSymbols_cmeta_is_zero,
+        EnumSymbols_cmeta_read, EnumSymbols_cmeta_assign, EnumSymbols_cmeta_restore_zero};
+    size_t i;
+    if (!descriptor || tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK)
+      return 30;
+    shape = (const cmeta_data_struct_shape *)descriptor->native_data->shape;
+    if (!shape || shape->field_count != 1u || !shape->fields || !shape->fields[0].value)
+      return 31;
+    value_data = shape->fields[0].value;
+    for (i = 0u; i < sizeof(items) / sizeof(items[0]); ++i) {
+      uint64_t bits = 0u;
+      uint8_t wire[2] = {0};
+      size_t wire_len = 0u;
+      if (cmeta_data_enum_bits_restore_zero(value_data, &object.value) != CMETA_OK ||
+          cmeta_data_enum_assign_bits(value_data, &object.value, items[i]) != CMETA_OK ||
+          cmeta_data_enum_read_bits(value_data, &object.value, &bits) != CMETA_OK ||
+          bits != i + 1u || object.value != items[i] ||
+          EnumSymbolStorage_to_bin_into(&object, wire, sizeof(wire), &wire_len,
+                                        &error) != DATA_BIND_OK ||
+          wire_len != 2u || wire[0] != i + 1u || wire[1] != 0u)
+        return 32;
+    }
+  }
   if (Unsupported_cmeta_data(&data, &error) != DATA_BIND_ERR_SCHEMA) {
     fputs("unsupported public graph request did not fail\n", stderr);
     return 2;

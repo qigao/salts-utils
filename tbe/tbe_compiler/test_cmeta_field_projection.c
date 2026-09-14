@@ -289,6 +289,61 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("injects enum symbols without sharing the public item macro namespace") {
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_enum(root, "A_B", "uint16", 0);
+        Node *right = field_projection_add_enum(root, "AB", "uint16", 0);
+        Node *record = field_projection_add_record(root, "messages", "Symbols");
+        Node *field = field_projection_add_field(record, "Symbols", "value", "A_B");
+        Node *long_enum;
+        Node *long_field;
+        char long_name[241];
+        const char *left_symbol;
+        const char *right_symbol;
+        const char *long_symbol;
+        const char *long_data;
+        memset(long_name, 'A', sizeof(long_name) - 1u);
+        long_name[sizeof(long_name) - 1u] = '\0';
+        long_enum = field_projection_add_enum(root, long_name, "uint16", 0);
+        long_field = field_projection_add_field(record, "Symbols", "long_value", long_name);
+        check_not_null(left);
+        check_not_null(right);
+        check_not_null(field);
+        check_not_null(long_enum);
+        check_not_null(long_field);
+        if (!left || !right || !field || !long_enum || !long_field) {
+            node_free(root);
+            return;
+        }
+        tbe_compiler_annotate_language_types(root);
+        left_symbol = field_projection_text(left, "native_enum_symbol");
+        right_symbol = field_projection_text(right, "native_enum_symbol");
+        long_symbol = field_projection_text(long_enum, "native_enum_symbol");
+        long_data = field_projection_text(long_field, "native_data_symbol");
+        check_not_null(left_symbol);
+        check_not_null(right_symbol);
+        check_not_null(long_symbol);
+        check_not_null(long_data);
+        if (left_symbol && right_symbol && long_symbol && long_data) {
+            check_equal(left_symbol, "tbeCmetaEnum3x415f42");
+            check_equal(right_symbol, "tbeCmetaEnum2x4142");
+            check(strcmp(left_symbol, right_symbol) != 0);
+            check_null(strchr(left_symbol, '_'));
+            check_null(strchr(right_symbol, '_'));
+            check_equal(field_projection_text(field, "native_data_symbol"),
+                        "tbeCmetaEnum3x415f42Data");
+            check_equal(field_projection_text(field, "native_type_symbol"),
+                        "tbeCmetaEnum3x415f42Type");
+            check_equal(strlen(long_symbol), strlen("tbeCmetaEnum240x") + 480u);
+            check_equal(strlen(long_data), strlen(long_symbol) + 4u);
+            check_equal(strncmp(long_data, long_symbol, strlen(long_symbol)), 0);
+            check_equal(long_data + strlen(long_symbol), "Data");
+            check_null(strchr(long_data, '_'));
+            check_not_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+        }
+        node_free(root);
+    }
+
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
             "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",

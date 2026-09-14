@@ -11,6 +11,13 @@ enum Signed8Domain <int8> { Minimum = -128; Maximum = 127; }
 enum Unsigned8Domain <uint8> { Zero = 0; Maximum = 255; }
 enum Signed64Domain <int64> { Minimum = -9223372036854775808; Maximum = 9223372036854775807; }
 enum WideDomain <uint64> { Zero = 0; Maximum = 18446744073709551615; }
+// Public item names must never collide with compiler-owned enum machinery.
+enum EnumSymbols <uint16> {
+    CMETA_DOMAIN = 1; CMETA_ENUM_OPS = 2; CMETA_BITS_OPS = 3;
+    CMETA_DATA = 4; CMETA_TYPE = 5; CMETA_ID = 6; CMETA_ITEMS = 7;
+    cmeta_is_zero = 8; cmeta_read = 9; cmeta_assign = 10; cmeta_restore_zero = 11;
+}
+message EnumSymbolStorage { EnumSymbols value; }
 message FlagStorage { Permission value; }
 message Signed8Storage { Signed8Domain value; }
 message Unsigned8Storage { Unsigned8Domain value; }
