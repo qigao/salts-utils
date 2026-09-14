@@ -4,6 +4,11 @@
 #include <cmeta/data.h>
 #include <string.h>
 
+/* Test-only declaration for the RED checkpoint. Production does not provide
+ * this public API yet, so the test binary must fail to link until Task 1 GREEN. */
+extern const cmeta_type_identity *
+data_bind_value_type_identity(const DataBindValue *value);
+
 static DataBindValue *parse_fixture(DataBind **out_codec) {
   static const char schema[] =
       "message Book { list<uint32> values; set<string> tags; map<string,int32> attrs; }";
@@ -22,6 +27,45 @@ static DataBindValue *parse_fixture(DataBind **out_codec) {
 }
 
 spec("data_bind CMeta adapter") {
+  it("should publish stable dynamic CMeta identity across codecs") {
+    DataBind *left_codec = NULL;
+    DataBind *right_codec = NULL;
+    DataBindValue *left = parse_fixture(&left_codec);
+    DataBindValue *right = parse_fixture(&right_codec);
+    const cmeta_type_identity *left_id;
+    const cmeta_type_identity *right_id;
+
+    check_not_null(left);
+    check_not_null(right);
+    left_id = data_bind_value_type_identity(left);
+    right_id = data_bind_value_type_identity(right);
+    check_not_null(left_id);
+    check_not_null(right_id);
+    check(cmeta_type_identity_equal(left_id, right_id));
+
+    data_bind_value_free(right);
+    data_bind_value_free(left);
+    data_bind_free(right_codec);
+    data_bind_free(left_codec);
+  }
+
+  it("should keep dynamic CMeta identity alive after codec destruction") {
+    DataBind *codec = NULL;
+    DataBindValue *root = parse_fixture(&codec);
+    const cmeta_type_identity *identity;
+
+    check_not_null(root);
+    identity = data_bind_value_type_identity(root);
+    check_not_null(identity);
+
+    data_bind_free(codec);
+    codec = NULL;
+    check_not_null(data_bind_value_type_identity(root));
+    check(cmeta_type_identity_equal(identity, data_bind_value_type_identity(root)));
+
+    data_bind_value_free(root);
+  }
+
   it("should expose ordered object fields as borrowed references") {
     static const char *const names[] = {"values", "tags", "attrs"};
     DataBind *codec = NULL;
