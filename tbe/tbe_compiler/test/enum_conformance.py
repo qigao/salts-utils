@@ -138,6 +138,7 @@ class EnumConformance(unittest.TestCase):
                 'cc', '-std=c11', '-Werror=implicit-function-declaration',
                 '-I' + str(ARGS.source / 'tbe/schema/include'),
                 '-I' + str(ARGS.source / 'tbe/data_bind'),
+                '-I' + str(ARGS.salts_include / 'query_vm'),
                 '-I' + str(ARGS.salts_include), '-c', source,
                 '-o', source.with_suffix('.o')])
             self.assertEqual(result.returncode, 0, result.stdout)
