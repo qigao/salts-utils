@@ -278,6 +278,31 @@ typedef struct tbe_compiler_scalar_projection {
   const char *native_type_symbol;
 } tbe_compiler_scalar_projection_t;
 
+typedef enum tbe_compiler_native_requirement {
+  TBE_COMPILER_NATIVE_FIXED_VALUE,
+  TBE_COMPILER_NATIVE_ENUM_DOMAIN,
+  TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
+  TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
+  TBE_COMPILER_NATIVE_DEFERRED_CONTAINER
+} tbe_compiler_native_requirement_t;
+
+static const char *tbe_compiler_native_requirement_name(
+    tbe_compiler_native_requirement_t requirement) {
+  switch (requirement) {
+    case TBE_COMPILER_NATIVE_FIXED_VALUE:
+      return "fixed_value";
+    case TBE_COMPILER_NATIVE_ENUM_DOMAIN:
+      return "enum_domain";
+    case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
+      return "owned_lifecycle";
+    case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
+      return "overlay_presence";
+    case TBE_COMPILER_NATIVE_DEFERRED_CONTAINER:
+      return "deferred_container";
+  }
+  return NULL;
+}
+
 /* Native symbol spellings project the same canonical records into generated C.
  * BOOL is intentionally absent: generated C currently stores it as uint8_t. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
@@ -681,6 +706,43 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   tbe_compiler_set_string(field, "typed_declaration", declaration);
 }
 
+static void tbe_compiler_annotate_native_requirement(
+    Node *root, Node *field, const schema_cmeta_field_type *semantic) {
+  const char *type;
+  tbe_compiler_native_requirement_t requirement;
+
+  if (!root || !field || !semantic) return;
+  type = tbe_compiler_string_value(field, "type");
+
+  if (tbe_compiler_has_child(field, "is_optional")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
+  } else if (cmeta_data_kind_is_container(semantic->kind)) {
+    requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
+  } else if (semantic->kind == CMETA_DATA_STRING ||
+             (semantic->kind == CMETA_DATA_BYTES &&
+              !tbe_compiler_has_child(field, "is_fixed_size")) ||
+             (semantic->kind == CMETA_DATA_CUSTOM &&
+              !salts_uuid_cmeta_data_valid(semantic->data))) {
+    requirement = TBE_COMPILER_NATIVE_OWNED_LIFECYCLE;
+  } else if (type && tbe_compiler_find_record(root, "enums", type)) {
+    requirement = TBE_COMPILER_NATIVE_ENUM_DOMAIN;
+  } else if (semantic->kind == CMETA_DATA_BOOL ||
+             semantic->kind == CMETA_DATA_SINT ||
+             semantic->kind == CMETA_DATA_UINT ||
+             semantic->kind == CMETA_DATA_FLOAT ||
+             (semantic->kind == CMETA_DATA_BYTES &&
+              tbe_compiler_has_child(field, "is_fixed_size")) ||
+             salts_uuid_cmeta_data_valid(semantic->data)) {
+    requirement = TBE_COMPILER_NATIVE_FIXED_VALUE;
+  } else {
+    return;
+  }
+
+  tbe_compiler_set_string(
+      field, "cmeta_native_requirement",
+      tbe_compiler_native_requirement_name(requirement));
+}
+
 static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
   char type_buf[256];
   char field_name[128];
@@ -730,6 +792,7 @@ static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
                           "Map<", ", ", ">", type_buf, sizeof(type_buf));
   tbe_compiler_set_string(field, "rfl_type", type_buf);
   tbe_compiler_annotate_typed_field(root, field, semantic);
+  tbe_compiler_annotate_native_requirement(root, field, semantic);
 }
 
 static void tbe_compiler_annotate_record_list_types(Node *root, const char *list_name) {
