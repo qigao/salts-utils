@@ -113,7 +113,7 @@ DataBindValue root
        scalar/custom inline or provider-owned state
        Struct/object field-entry Vec
        sequence Vec
-       set HashSet
+       set ordered-value Vec + HashSet membership index
        map ordered-entry Vec + HashMap index
   -> optional schema association / fingerprint
 ```
@@ -184,24 +184,32 @@ second `items/count/capacity` array.
 
 Public indexed access remains deterministic and preserves insertion/wire order.
 
-## Set storage
+## Set storage and deterministic order
 
-Dynamic sets use a real CSTL set provider, normally `hash_set_t`, bound to a
-canonical element descriptor that supplies the required CMeta equality/hash
-traits.
+Dynamic sets use exactly two CSTL components:
 
-This changes an important legacy implementation detail deliberately: a set is
-no longer a list tagged as `DATA_BIND_VALUE_SET`. Duplicate semantic values are
-rejected/coalesced according to the canonical set contract at construction.
+- an ordered `vec_t` that owns dynamic values in first-insertion/wire order;
+- a `hash_set_t` membership index whose keys are non-owning references to the
+  Vec-owned values and whose CMeta hash/equality traits delegate to the
+  canonical element descriptor.
 
-If an element type lacks the traits required by the selected canonical set
-provider, the schema/value combination is unsupported and fails explicitly. The
-runtime must not silently fall back to sequence semantics or pointer identity.
+The Vec is the sole owner of element values. The HashSet owns only membership
+index state and must never own a second deep copy of each dynamic value. Insert,
+clone, erase, and destruction helpers update both components transactionally.
 
-Any observable iteration order must be documented. Code that requires stable
-wire order must not accidentally depend on hash-table slot order; serialization
-uses the schema's defined set policy or a deterministic materialization step
-owned by the format layer where required.
+This deliberately changes the legacy implementation detail that a set is merely
+a list tagged as `DATA_BIND_VALUE_SET`, while preserving deterministic indexed
+access and serialization order. The first semantic occurrence wins; later
+semantic duplicates are not appended.
+
+If an element type lacks the CMeta equality/hash traits required by `hash_set_t`,
+the schema/value combination is unsupported and fails explicitly. The runtime
+must not silently fall back to sequence semantics, pointer identity, a different
+set provider, or a private DataBind membership table.
+
+`data_bind_value_at()` and CMeta Range traversal over a set use the ordered Vec,
+never HashSet slot order. This keeps observable traversal stable while
+`hash_set_t` supplies canonical uniqueness/membership behavior.
 
 ## Map storage and deterministic order
 
@@ -267,7 +275,8 @@ ASan/UBSan and focused ownership tests.
 - the result has independent mutable/storage lifetime;
 - managed scalar values are copied through canonical CMeta copy semantics;
 - Struct/sequence/map containers are rebuilt through CSTL operations;
-- set semantics remain semantic, including uniqueness;
+- set ordered storage and membership index are rebuilt together, preserving
+  first-insertion order and semantic uniqueness;
 - no child pointer, parser document, codec scratch pointer, or CSTL storage block
   is shared between source and clone;
 - the immutable dynamic type graph may be shared only through a retained owning
@@ -293,6 +302,10 @@ use for internal ranges and any mutable/view API:
 - releasing the root invalidates every borrowed child/range/view;
 - scalar reads that do not depend on a container remain unaffected by unrelated
   container mutations.
+
+For composite set/map storage, any mutation that can move ordered Vec storage or
+change membership/index state advances one logical container generation. Public
+borrowed views do not expose separate Vec and HashSet/HashMap generations.
 
 The current `data_bind_cmeta_range_init()` compatibility surface may remain while
 public callers need it, but its traversal must ultimately be backed by the
@@ -362,11 +375,12 @@ Move object field storage and list storage to CSTL Vec. Remove the corresponding
 private reserve/push/free arrays when their final caller disappears. Route CMeta
 Range traversal directly over the new storage.
 
-### Slice C: real set semantics
+### Slice C: deterministic set cutover
 
-Move set storage to CSTL HashSet (or the canonical selected set provider), add
-semantic equality/hash traits, duplicate/clone/failure tests, and remove the
-legacy sequence-backed set path.
+Move set storage to ordered-value CSTL Vec plus CSTL HashSet membership index.
+Add semantic equality/hash traits, first-insertion ordering, duplicate,
+clone/invalidation/failure tests, and remove the legacy sequence-backed set path
+in the same gated cutover.
 
 ### Slice D: deterministic map storage
 
@@ -393,7 +407,8 @@ Focused tests must cover at least:
 - deep clone independence and failure cleanup;
 - object field order and lookup;
 - sequence ordering and limit failures;
-- set semantic uniqueness, equality/hash requirements, and clone behavior;
+- set semantic uniqueness, first-insertion order, equality/hash requirements,
+  and clone behavior;
 - deterministic map indexed/serialization order plus lookup correctness;
 - borrowed Range/view generation invalidation after mutation;
 - release of all temporary CSTL/provider state on parse/conversion failure;
