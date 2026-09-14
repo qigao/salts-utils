@@ -2,12 +2,12 @@
 
 ## 依赖方向
 
-Salts 是底层能力的唯一事实源，安装并导出 Core、CSTL、CMeta、CSerde、CBind、QueryVM
+Salts 是底层能力的唯一事实源，安装并导出 Core、CSTL、CMeta、CSerde、QueryVM
 以及各格式 parser。SaltsUtils 只通过已安装 Salts SDK 的公共头文件和 CMake targets 使用这些能力：
 
 ```text
 application -> SaltsUtils capability -> installed Salts capability
-            \-----------------------> installed Salts::CBind
+            \-----------------------> installed Salts::DataBind
 ```
 
 SaltsUtils 不访问 Salts 源码目录或私有头，也不再提供聚合 `Parser` target。消费方按能力直接链接
@@ -28,7 +28,7 @@ SaltsUtils 不访问 Salts 源码目录或私有头，也不再提供聚合 `Par
 基础 Salts 包拥有并导出：
 
 - `Salts::Core`、`Salts::CSTL`、`Salts::CMeta`
-- `Salts::CSerde`、`Salts::CBind`
+- `Salts::CSerde`
 - QueryVM 和各格式 parser targets
 
 两个包共享 `Salts::` target namespace，但每个 target 只有一个所有者。SaltsUtils 的 package config
@@ -36,8 +36,24 @@ SaltsUtils 不访问 Salts 源码目录或私有头，也不再提供聚合 `Par
 
 ## DataBind 边界
 
-`Salts::DataBind` 保留独立的 schema、动态值与 typed conversion 契约，并通过内部 parser
-compat 层消费已安装 Salts 的格式 parser；它不是基础包 `Salts::CBind` 的 ABI 兼容别名。
+DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的数据绑定
+引擎。生成代码、现有原生 C struct 与动态对象的转换与失败回滚都由 DataBind 执行；它直接消费
+已安装 Salts 的格式 parser，不提供其他 binder、fallback 或 compatibility route。
+
+规范所有权边界为：
+
+```text
+CMeta: native structure and semantic type graph
+schema overlay: external names, presence/defaults, wire layout and validation
+DataBind: native/dynamic conversion, rollback and format orchestration
+CSTL: concrete container storage
+CSerde/parsers: format tokens and mechanics
+```
+
+Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
+metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
+overlay-only.
+
 `Salts::DataBindCMeta` 将不可变 DataBind 容器暴露为 borrowed `cmeta_range`，
 `Salts::DataBindCFlow` 在其上提供同步 Stream 与 Reactive Publisher。适配库不改变 DataBind
 核心 ABI，也不拥有或缓存 payload；调用方必须让 DataBind owner 存活至遍历或 subscription

@@ -1,6 +1,8 @@
 #include "tbe_typed.h"
 #include "tinytest.h"
 
+#include <cmeta/data.h>
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -11,6 +13,21 @@ typedef union BoundaryStorage {
   uint8_t bytes[BOUNDARY_STORAGE_SIZE];
 } BoundaryStorage;
 _Static_assert(sizeof(vec_t) <= sizeof(BoundaryStorage), "Boundary fixture must hold a vector");
+
+static const cmeta_type_identity BOUNDARY_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.BoundaryStorage");
+static const cmeta_type_desc BOUNDARY_CMETA_TYPE = {
+    "BoundaryStorage", sizeof(BoundaryStorage), _Alignof(BoundaryStorage),
+    CMETA_T_OBJECT, NULL, NULL, &BOUNDARY_ID};
+static const cmeta_struct_desc BOUNDARY_LAYOUT = {
+    "BoundaryStorage", sizeof(BoundaryStorage), _Alignof(BoundaryStorage),
+    NULL, 0u};
+static const cmeta_data_struct_shape BOUNDARY_SHAPE = {
+    &BOUNDARY_LAYOUT, NULL, 0u};
+static const cmeta_data_desc BOUNDARY_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "test.BoundaryStorage.data", "BoundaryStorage", CMETA_DATA_STRUCT,
+    &BOUNDARY_CMETA_TYPE, &BOUNDARY_SHAPE, NULL, NULL, NULL};
 
 static TbeTypedType boundary_type(const TbeTypedField *fields, size_t count) {
   TbeTypedType type = {
@@ -46,18 +63,37 @@ static void expect_binary_rejection(const TbeTypedType *type) {
 static void expect_host_rejection(const TbeTypedType *type) {
   BoundaryStorage object;
   uint8_t before[sizeof(object)];
-  const TbeTypedDescriptor descriptor = TBE_TYPED_DESCRIPTOR_INIT(type);
   DataBindError error = DATA_BIND_ERROR_INIT;
   memset(&object, BOUNDARY_SENTINEL, sizeof(object));
   memcpy(before, &object, sizeof(object));
 
   check_equal(tbe_typed_validate_descriptor(type, &error), DATA_BIND_ERR_SCHEMA);
-  check_equal(tbe_typed_descriptor_validate(&descriptor, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(tbe_typed_init(type, &object, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
   tbe_typed_clear(type, &object);
   check_equal(memcmp(&object, before, sizeof(object)), 0);
   expect_binary_rejection(type);
+}
+
+static void expect_descriptor_rejection(const TbeTypedDescriptor *descriptor) {
+  BoundaryStorage object;
+  uint8_t before[sizeof(object)];
+  const uint8_t input[] = {'{', '}'};
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  memset(&object, BOUNDARY_SENTINEL, sizeof(object));
+  memcpy(before, &object, sizeof(object));
+
+  check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_ERR_SCHEMA);
+  check_equal(tbe_typed_descriptor_init(descriptor, &object, &error), DATA_BIND_ERR_SCHEMA);
+  check_equal(memcmp(&object, before, sizeof(object)), 0);
+  check_equal(tbe_typed_descriptor_parse(NULL, "Boundary", descriptor,
+                                         DATA_BIND_FORMAT_JSON, input,
+                                         sizeof(input), 0u, &object, &error),
+              DATA_BIND_ERR_SCHEMA);
+  check_equal(memcmp(&object, before, sizeof(object)), 0);
+  check_equal(tbe_typed_descriptor_clear(descriptor, &object, &error),
+              DATA_BIND_ERR_SCHEMA);
+  check_equal(memcmp(&object, before, sizeof(object)), 0);
 }
 
 spec("typed descriptor boundary") {
@@ -251,5 +287,49 @@ spec("typed descriptor boundary") {
     check_equal(tbe_typed_validate_descriptor(&type, &error), DATA_BIND_OK);
     check_equal(tbe_typed_init(&type, &object, &error), DATA_BIND_OK);
     tbe_typed_clear(&type, &object);
+  }
+
+  it("requires an ABI-v2 descriptor with one canonical Struct graph") {
+    const TbeTypedField overlay_field = {
+        .name = "value", .kind = TBE_TYPED_U8, .wire_kind = TBE_TYPED_U8};
+    TbeTypedType overlay = boundary_type(NULL, 0u);
+    TbeTypedType mismatched_overlay = boundary_type(&overlay_field, 1u);
+    TbeTypedDescriptor descriptor =
+        TBE_TYPED_DESCRIPTOR_INIT(&overlay, &BOUNDARY_DATA);
+    TbeTypedDescriptor rejected;
+    cmeta_data_desc bad_data;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    overlay.fixed_block_size = 0u;
+    mismatched_overlay.fixed_block_size = 0u;
+    check_equal(tbe_typed_descriptor_validate(&descriptor, &error), DATA_BIND_OK);
+
+    rejected = descriptor;
+    rejected.struct_size = offsetof(TbeTypedDescriptor, native_data);
+    expect_descriptor_rejection(&rejected);
+
+    rejected = descriptor;
+    rejected.abi_version = 1u;
+    expect_descriptor_rejection(&rejected);
+
+    rejected = descriptor;
+    rejected.native_data = NULL;
+    expect_descriptor_rejection(&rejected);
+
+    bad_data = BOUNDARY_DATA;
+    bad_data.kind = CMETA_DATA_BOOL;
+    rejected = descriptor;
+    rejected.native_data = &bad_data;
+    expect_descriptor_rejection(&rejected);
+
+    bad_data = BOUNDARY_DATA;
+    bad_data.shape = NULL;
+    rejected = descriptor;
+    rejected.native_data = &bad_data;
+    expect_descriptor_rejection(&rejected);
+
+    rejected = descriptor;
+    rejected.overlay = &mismatched_overlay;
+    expect_descriptor_rejection(&rejected);
   }
 }

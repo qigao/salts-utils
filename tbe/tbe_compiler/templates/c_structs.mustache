@@ -177,12 +177,18 @@ struct cmeta_data_desc;
 /** Borrow immutable native scalar/struct/enum metadata with static lifetime.
  * Unsupported storage returns DATA_BIND_ERR_SCHEMA without changing *out.
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
- * This graph seam does not imply native CBind decode or encode support. */
+ * This graph seam does not itself promise native decode/encode behavior. */
 {{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{/typed_cmeta_runtime_supported}}
 {{/composites}}
 {{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{/typed_cmeta_runtime_supported}}
 {{/groups}}
 {{#messages}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{/typed_cmeta_runtime_supported}}
 {{/messages}}
 TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
 TBE_GENERATED_API const char *{{schema.schema_name}}_schema_text(void);
@@ -404,7 +410,9 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
+{{^typed_cmeta_runtime_supported}}
 TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+{{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}
@@ -758,7 +766,9 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
+{{^typed_cmeta_runtime_supported}}
 TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+{{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}
@@ -1355,7 +1365,9 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
+{{^typed_cmeta_runtime_supported}}
 TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+{{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}

@@ -772,6 +772,10 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     if (storage && !(storage->data->kind == CMETA_DATA_UINT &&
         ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
       tbe_compiler_set_string(enum_node, "native_enum_supported", "1");
+    if (storage && !is_flags &&
+        !(storage->data->kind == CMETA_DATA_UINT &&
+          ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
+      tbe_compiler_set_string(enum_node, "typed_cmeta_runtime_supported", "1");
 
     tbe_compiler_set_string(enum_node, "go_underlying_type",
                             tbe_compiler_go_scalar_type(underlying));
@@ -785,6 +789,198 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     tbe_compiler_set_string(enum_node, "c_underlying_type",
                             tbe_compiler_c_enum_underlying_type(underlying, is_flags));
   }
+}
+
+enum {
+  TBE_COMPILER_CMETA_UNVISITED = 0,
+  TBE_COMPILER_CMETA_VISITING = 1,
+  TBE_COMPILER_CMETA_SUPPORTED = 2,
+  TBE_COMPILER_CMETA_UNSUPPORTED = 3,
+  TBE_COMPILER_CMETA_MAX_DEPTH = 32
+};
+
+typedef struct tbe_compiler_cmeta_classify_context_s {
+  Node *root;
+  Node **records;
+  unsigned char *states;
+  size_t *depths;
+  size_t count;
+  int runtime;
+} tbe_compiler_cmeta_classify_context_t;
+
+static size_t tbe_compiler_cmeta_record_index(
+    const tbe_compiler_cmeta_classify_context_t *context, const Node *record) {
+  size_t i;
+  if (!context || !record) return SIZE_MAX;
+  for (i = 0; i < context->count; ++i)
+    if (context->records[i] == record) return i;
+  return SIZE_MAX;
+}
+
+static Node *tbe_compiler_find_any_record(Node *root, const char *name) {
+  Node *record = tbe_compiler_find_record(root, "composites", name);
+  if (!record) record = tbe_compiler_find_record(root, "groups", name);
+  if (!record) record = tbe_compiler_find_record(root, "messages", name);
+  return record;
+}
+
+static int tbe_compiler_cmeta_classify_record(
+    tbe_compiler_cmeta_classify_context_t *context, size_t index) {
+  Node *record;
+  Node *fields;
+  size_t max_depth = 0;
+  size_t i;
+
+  if (!context || index >= context->count) return 0;
+  if (context->states[index] == TBE_COMPILER_CMETA_SUPPORTED) return 1;
+  if (context->states[index] == TBE_COMPILER_CMETA_UNSUPPORTED ||
+      context->states[index] == TBE_COMPILER_CMETA_VISITING)
+    return 0;
+
+  context->states[index] = TBE_COMPILER_CMETA_VISITING;
+  record = context->records[index];
+  fields = tbe_compiler_find_child(record, "fields");
+  if (!fields || fields->type != NODE_LIST) goto unsupported;
+
+  for (i = 0; i < fields->data.list.count; ++i) {
+    Node *field = fields->data.list.items[i];
+    const char *type = tbe_compiler_string_value(field, "type");
+    const char *kind = tbe_compiler_string_value(field, "typed_kind");
+    const tbe_compiler_scalar_projection_t *scalar;
+    Node *target;
+    size_t target_index;
+
+    if (!type || !kind ||
+        tbe_compiler_has_child(field, "is_optional") ||
+        tbe_compiler_has_child(field, "is_collection") ||
+        tbe_compiler_has_child(field, "is_list") ||
+        tbe_compiler_has_child(field, "is_set") ||
+        tbe_compiler_has_child(field, "is_map") ||
+        tbe_compiler_has_child(field, "is_group_field"))
+      goto unsupported;
+
+    scalar = tbe_compiler_scalar_projection(type);
+    if (scalar) {
+      if (!scalar->native_data_symbol || !scalar->native_type_symbol)
+        goto unsupported;
+      if (context->runtime && scalar->data->kind != CMETA_DATA_SINT &&
+          scalar->data->kind != CMETA_DATA_UINT &&
+          scalar->data->kind != CMETA_DATA_FLOAT)
+        goto unsupported;
+      continue;
+    }
+
+    target = tbe_compiler_find_record(context->root, "enums", type);
+    if (target) {
+      const char *marker = context->runtime ? "typed_cmeta_runtime_supported"
+                                            : "native_enum_supported";
+      if (!tbe_compiler_has_child(target, marker))
+        goto unsupported;
+      continue;
+    }
+
+    target = tbe_compiler_find_any_record(context->root, type);
+    if (target) {
+      target_index = tbe_compiler_cmeta_record_index(context, target);
+      if (target_index == SIZE_MAX ||
+          !tbe_compiler_cmeta_classify_record(context, target_index) ||
+          context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+        goto unsupported;
+      if (context->depths[target_index] + 1u > max_depth)
+        max_depth = context->depths[target_index] + 1u;
+      continue;
+    }
+
+    if (!context->runtime &&
+        tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL)
+      continue;
+    goto unsupported;
+  }
+
+  if (tbe_compiler_set_string(
+          record, context->runtime ? "typed_cmeta_runtime_supported"
+                                   : "cmeta_graph_supported",
+          "1") != 0)
+    goto unsupported;
+  if (context->runtime) {
+    for (i = 0; i < fields->data.list.count; ++i) {
+      Node *field = fields->data.list.items[i];
+      const char *type = tbe_compiler_string_value(field, "type");
+      Node *target = tbe_compiler_find_any_record(context->root, type);
+      if (tbe_compiler_set_string(field, "typed_cmeta_runtime_supported", "1") != 0)
+        goto unsupported;
+      if (target) {
+        const char *overlay = tbe_compiler_string_value(field, "typed_object_descriptor");
+        if (!overlay ||
+            tbe_compiler_set_string(field, "typed_nested_overlay", overlay) != 0)
+          goto unsupported;
+      }
+    }
+  }
+  context->depths[index] = max_depth;
+  context->states[index] = TBE_COMPILER_CMETA_SUPPORTED;
+  return 1;
+
+unsupported:
+  tbe_compiler_remove_children(
+      record, context->runtime ? "typed_cmeta_runtime_supported"
+                               : "cmeta_graph_supported");
+  context->states[index] = TBE_COMPILER_CMETA_UNSUPPORTED;
+  return 0;
+}
+
+static void tbe_compiler_collect_cmeta_records(
+    tbe_compiler_cmeta_classify_context_t *context, const char *list_name,
+    size_t *offset) {
+  Node *list = tbe_compiler_find_child(context->root, list_name);
+  size_t i;
+  if (!list || list->type != NODE_LIST) return;
+  for (i = 0; i < list->data.list.count; ++i) {
+    Node *record = list->data.list.items[i];
+    Node *fields = tbe_compiler_find_child(record, "fields");
+    size_t j;
+    tbe_compiler_remove_children(
+        record, context->runtime ? "typed_cmeta_runtime_supported"
+                                 : "cmeta_graph_supported");
+    if (context->runtime && fields && fields->type == NODE_LIST)
+      for (j = 0; j < fields->data.list.count; ++j) {
+        tbe_compiler_remove_children(fields->data.list.items[j],
+                                     "typed_cmeta_runtime_supported");
+        tbe_compiler_remove_children(fields->data.list.items[j],
+                                     "typed_nested_overlay");
+      }
+    context->records[(*offset)++] = record;
+  }
+}
+
+static void tbe_compiler_annotate_cmeta_support(Node *root, int runtime) {
+  static const char *const lists[] = {"composites", "groups", "messages"};
+  tbe_compiler_cmeta_classify_context_t context = {0};
+  size_t i;
+  size_t offset = 0;
+
+  context.root = root;
+  context.runtime = runtime;
+  for (i = 0; i < sizeof(lists) / sizeof(lists[0]); ++i) {
+    Node *list = tbe_compiler_find_child(root, lists[i]);
+    if (list && list->type == NODE_LIST) context.count += list->data.list.count;
+  }
+  if (context.count == 0u) return;
+  context.records = (Node **)calloc(context.count, sizeof(*context.records));
+  context.states = (unsigned char *)calloc(context.count, sizeof(*context.states));
+  context.depths = (size_t *)calloc(context.count, sizeof(*context.depths));
+  if (!context.records || !context.states || !context.depths) goto cleanup;
+
+  for (i = 0; i < sizeof(lists) / sizeof(lists[0]); ++i)
+    tbe_compiler_collect_cmeta_records(&context, lists[i], &offset);
+  for (i = 0; i < context.count; ++i)
+    (void)tbe_compiler_cmeta_classify_record(&context, i);
+
+cleanup:
+  free(context.depths);
+  free(context.states);
+  free(context.records);
 }
 
 static void tbe_compiler_annotate_schema_types(Node *root) {
@@ -837,6 +1033,8 @@ void tbe_compiler_annotate_language_types(Node *root) {
   tbe_compiler_annotate_record_list_types(root, "groups");
   tbe_compiler_annotate_record_list_types(root, "messages");
   tbe_compiler_annotate_record_list_types(root, "unions");
+  tbe_compiler_annotate_cmeta_support(root, 1);
+  tbe_compiler_annotate_cmeta_support(root, 0);
 }
 
 static const char *tbe_compiler_path_basename(const char *path) {

@@ -4,9 +4,23 @@ SaltsUtils 提供基于 Salts 的高层工具，包括相互独立的 Mustache�
 模块、Cron、TBE schema、DataBind、Serial、Capture、Playback 及构建期代码生成器。底层 JSON、XML、
 YAML、CSV、Cmd 等 parser 由 Salts 直接提供；SaltsUtils 不再提供聚合 parser facade。
 
-DataBind 保留独立的 schema 驱动动态值与 typed conversion API，并通过 Salts parser 实现格式
-适配；它不是基础包 `Salts::CBind` 的 ABI 兼容别名。CMeta range、CFlow Stream 与 Reactive
-Publisher 通过独立适配 targets 提供，不增加 DataBind 核心 target 的传递依赖。
+DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的数据绑定
+引擎。生成代码、现有原生 C struct 与动态对象都通过 DataBind 绑定；CMeta range、CFlow Stream
+与 Reactive Publisher 通过独立适配 targets 提供，不增加 DataBind 核心 target 的传递依赖。
+
+TBE/DataBind 的规范所有权边界为：
+
+```text
+CMeta: native structure and semantic type graph
+schema overlay: external names, presence/defaults, wire layout and validation
+DataBind: native/dynamic conversion, rollback and format orchestration
+CSTL: concrete container storage
+CSerde/parsers: format tokens and mechanics
+```
+
+Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
+metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
+overlay-only.
 
 ## CMake
 
@@ -22,6 +36,7 @@ target_link_libraries(app PRIVATE
   Salts::Unicode
   Salts::Cron
   Salts::TbeSchema
+  Salts::DataBind
   Salts::DataBindCFlow)
 ```
 
@@ -34,11 +49,11 @@ Mustache 与 Jinja CMeta 分别位于 [`mustache/`](mustache/) 和 [`jinja/`](ji
 [`unicode/`](unicode/) 提供 re2c 生成、固定 Unicode 17.0.0 数据版本的 UTF-8 scalar 与
 identifier/whitespace property API；它不包含模板引擎语义。
 
-需要原生 C 数据绑定时直接消费基础 Salts：
+需要原生 C 数据绑定时消费 SaltsUtils 导出的 DataBind：
 
 ```cmake
-find_package(Salts CONFIG REQUIRED)
-target_link_libraries(app PRIVATE Salts::CBind)
+find_package(SaltsUtils CONFIG REQUIRED)
+target_link_libraries(app PRIVATE Salts::DataBind)
 ```
 
 ## TBE Compiler

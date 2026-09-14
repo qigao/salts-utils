@@ -2,6 +2,7 @@
 #define TBE_TYPED_H
 
 #include "data_bind.h"
+#include <cmeta/data.h>
 #include <tstr.h>
 #include <cstl.h>
 
@@ -133,6 +134,7 @@ typedef struct TbeTypedField {
   size_t element_size;
   size_t fixed_count;
   const TbeTypedType *object_type;
+  const TbeTypedType *nested_overlay;
   size_t map_entry_size;
   size_t map_key_offset;
   size_t map_value_offset;
@@ -156,17 +158,18 @@ struct TbeTypedType {
   int wire_big_endian;
 };
 
-enum { TBE_TYPED_DESCRIPTOR_ABI_VERSION = 1 };
+enum { TBE_TYPED_DESCRIPTOR_ABI_VERSION = 2 };
 
 /** Versioned boundary for descriptors compiled separately from DataBind. */
 typedef struct TbeTypedDescriptor {
   size_t struct_size;
   uint32_t abi_version;
-  const TbeTypedType *type;
+  const TbeTypedType *overlay;
+  const cmeta_data_desc *native_data;
 } TbeTypedDescriptor;
 
-#define TBE_TYPED_DESCRIPTOR_INIT(TYPE)                                                     \
-  { sizeof(TbeTypedDescriptor), TBE_TYPED_DESCRIPTOR_ABI_VERSION, (TYPE) }
+#define TBE_TYPED_DESCRIPTOR_INIT(OVERLAY, NATIVE_DATA)                                    \
+  { sizeof(TbeTypedDescriptor), TBE_TYPED_DESCRIPTOR_ABI_VERSION, (OVERLAY), (NATIVE_DATA) }
 
 /**
  * Header-only descriptors for binding an existing C struct.
@@ -189,7 +192,7 @@ typedef struct TbeTypedDescriptor {
     WIRE_SIZE, OPTIONAL_BIT, FLAGS)                                                       \
   {                                                                                      \
     (SCHEMA_NAME), (KIND), (WIRE_KIND), offsetof(C_TYPE, MEMBER), (ELEMENT_KIND),         \
-        (ELEMENT_WIRE_KIND), (ELEMENT_SIZE), (FIXED_COUNT), (OBJECT_TYPE),                \
+        (ELEMENT_WIRE_KIND), (ELEMENT_SIZE), (FIXED_COUNT), (OBJECT_TYPE), NULL,          \
         (MAP_ENTRY_SIZE), (MAP_KEY_OFFSET), (MAP_VALUE_OFFSET), (MAP_VALUE_KIND),         \
         (MAP_VALUE_WIRE_KIND), (MAP_VALUE_TYPE), (WIRE_OFFSET), (WIRE_SIZE),              \
         (OPTIONAL_BIT), (FLAGS)                                                           \
@@ -280,8 +283,7 @@ typedef struct TbeTypedDescriptor {
       (FIXED_BLOCK_SIZE),                                                                   \
       (PRESENCE_OFFSET),                                                                    \
       (PRESENCE_SIZE),                                                                      \
-      (WIRE_BIG_ENDIAN)};                                                                   \
-  static const TbeTypedDescriptor BINDING##_descriptor = TBE_TYPED_DESCRIPTOR_INIT(&(BINDING))
+      (WIRE_BIG_ENDIAN)}
 
 /** Define a text-format binding for a C struct with no optional fields. */
 #define TBE_TYPED_DEFINE_STRUCT(BINDING, C_TYPE, SCHEMA_NAME, ...)                          \
@@ -347,9 +349,17 @@ DATA_BIND_API void tbe_typed_clear(const TbeTypedType *type, void *object);
 DATA_BIND_API DataBindStatus tbe_typed_validate_descriptor(const TbeTypedType *type,
                                                            DataBindError *error);
 
-/** Validate the descriptor ABI before reading its TbeTypedType layout. */
+/** Validate ABI-v2 and its complete canonical native CMeta graph. */
 DATA_BIND_API DataBindStatus tbe_typed_descriptor_validate(
     const TbeTypedDescriptor *descriptor, DataBindError *error);
+
+/** Initialize canonical native storage after complete descriptor preflight. */
+DATA_BIND_API DataBindStatus tbe_typed_descriptor_init(
+    const TbeTypedDescriptor *descriptor, void *object, DataBindError *error);
+
+/** Restore canonical native storage to semantic zero after complete preflight. */
+DATA_BIND_API DataBindStatus tbe_typed_descriptor_clear(
+    const TbeTypedDescriptor *descriptor, void *object, DataBindError *error);
 
 /**
  * Populate an initialized object from a schema-bound dynamic value.
@@ -436,6 +446,16 @@ DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize(
     DataBind *codec, const char *type_name, const TbeTypedDescriptor *descriptor,
     const void *object, DataBindFormat format, char **out, size_t *out_len,
     DataBindError *error);
+
+/** Descriptor-routed binary serialization using CMeta native field addresses. */
+DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize_binary(
+    const TbeTypedDescriptor *descriptor, const void *object, uint8_t **out,
+    size_t *out_len, DataBindError *error);
+
+/** Descriptor-routed binary serialization into caller-owned storage. */
+DATA_BIND_API DataBindStatus tbe_typed_descriptor_serialize_binary_into(
+    const TbeTypedDescriptor *descriptor, const void *object, uint8_t *output,
+    size_t capacity, size_t *out_len, DataBindError *error);
 
 /**
  * Serialize an owning object into its schema binary wire representation.

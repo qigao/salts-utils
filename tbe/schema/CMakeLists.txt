@@ -73,6 +73,11 @@ foreach(test_name
     FOLDER "tbe/schema/tests")
 endforeach()
 
+add_test(NAME test_databind_only_dependency_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test/test_databind_only_dependency_contract.cmake")
+
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
   LIBS Salts::TbeSchema
@@ -82,14 +87,12 @@ if(TARGET test_schema_cmeta_public_cpp)
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 endif()
 
-# Keep CBind on the integration test only, not the schema library export.
 if(TARGET test_schema_cmeta)
   target_sources(test_schema_cmeta PRIVATE
     test/test_schema_cmeta_buffer.c test/test_schema_cmeta_profiles.c)
   set_source_files_properties(test/test_schema_cmeta_buffer.c
     test/test_schema_cmeta_profiles.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
-  target_link_libraries(test_schema_cmeta PRIVATE Salts::CBind)
   add_test(NAME test_schema_cmeta_profile_contract
     COMMAND "${CMAKE_COMMAND}" -P
       "${CMAKE_CURRENT_SOURCE_DIR}/test/test_schema_cmeta_profile_contract.cmake")

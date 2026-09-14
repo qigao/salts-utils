@@ -17,8 +17,8 @@ extern "C" {
  *
  * Returns nonzero after CMeta validates the mapping. Invalid inputs, non-buffer
  * kinds and custom ownership return zero without changing *out_data. Runtime
- * value ownership, view lifetime, byte limits and cleanup belong to the provider
- * and CMeta/CBind; this builder does not choose or substitute storage.
+ * buffer lifecycle belongs to the selected CMeta provider; this builder does
+ * not choose or substitute storage.
  */
 int schema_cmeta_buffer_data(cmeta_data_desc *out_data,
                              const char *stable_id,

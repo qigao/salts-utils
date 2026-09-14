@@ -2,7 +2,9 @@
 #include <schema_cmeta.h>
 #include "cmeta_graph_generated.h"
 #include <salts_cmeta_data.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 /* Public-only, release-build-safe checks: no private validator or generated
  * implementation include may make this consumer link accidentally. */
@@ -78,6 +80,85 @@ int main(void) {
     const cmeta_data_enum_shape *flags = (const cmeta_data_enum_shape *)shape->fields[0].value->shape;
     if (flags->meta->count != 2u || flags->meta->items[1].value != 2)
       return 12;
+  }
+  {
+    static const char json[] =
+        "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    const cmeta_data_desc *root_data;
+    const cmeta_data_struct_shape *root_shape;
+    const cmeta_data_field_desc *count_field;
+    cmeta_data_desc root_data_copy;
+    cmeta_data_struct_shape root_shape_copy;
+    cmeta_data_field_desc fields_copy[3];
+    cmeta_data_desc count_data_copy;
+    cmeta_type_desc count_type_copy;
+    cmeta_type_identity count_identity_copy;
+    TbeTypedDescriptor descriptor_copy;
+    DataBind *codec = NULL;
+    Sample_t actual = {0};
+    Sample_t before;
+    DataBindStatus status;
+    size_t count_index;
+
+    if (descriptor == NULL || descriptor->native_data == NULL) return 16;
+    root_data = descriptor->native_data;
+    root_shape = (const cmeta_data_struct_shape *)root_data->shape;
+    if (root_shape == NULL || root_shape->field_count != 3u) return 23;
+    count_field = cmeta_data_struct_find_field(root_shape, "count");
+    if (count_field == NULL) return 24;
+    count_index = (size_t)(count_field - root_shape->fields);
+
+    descriptor_copy = *descriptor;
+    root_data_copy = *root_data;
+    root_shape_copy = *root_shape;
+    memcpy(fields_copy, root_shape->fields, sizeof(fields_copy));
+    count_data_copy = *count_field->value;
+    count_type_copy = *count_data_copy.storage_type;
+    count_identity_copy = *count_type_copy.identity;
+    count_type_copy.identity = &count_identity_copy;
+    count_data_copy.storage_type = &count_type_copy;
+    fields_copy[count_index].value = &count_data_copy;
+    root_shape_copy.fields = fields_copy;
+    root_data_copy.shape = &root_shape_copy;
+
+    if (&count_data_copy == count_field->value) return 17;
+    if (!cmeta_type_equal(count_data_copy.storage_type,
+                          count_field->value->storage_type))
+      return 18;
+    descriptor_copy.native_data = &root_data_copy;
+    if (Graph_codec_create(&codec, &error) != DATA_BIND_OK || codec == NULL)
+      return 25;
+    status = tbe_typed_descriptor_parse(codec, "Sample", &descriptor_copy,
+                                        DATA_BIND_FORMAT_JSON, json,
+                                        strlen(json), 0u, &actual, &error);
+    if (status != DATA_BIND_OK || actual.count != 7) {
+      data_bind_free(codec);
+      return 19;
+    }
+
+    {
+      cmeta_data_desc bad_root_data = root_data_copy;
+      cmeta_data_struct_shape bad_root_shape = root_shape_copy;
+      cmeta_data_field_desc bad_fields[3];
+      memcpy(bad_fields, fields_copy, sizeof(bad_fields));
+      bad_fields[count_index].offset = offsetof(Sample_t, state);
+      bad_root_shape.fields = bad_fields;
+      bad_root_data.shape = &bad_root_shape;
+      actual.point.x = 91;
+      actual.point.y = 8.25;
+      actual.state = State_Ready;
+      actual.count = 31;
+      before = actual;
+      descriptor_copy.native_data = &bad_root_data;
+      status = tbe_typed_descriptor_parse(codec, "Sample", &descriptor_copy,
+                                          DATA_BIND_FORMAT_JSON, json,
+                                          strlen(json), 0u, &actual, &error);
+      data_bind_free(codec);
+      if (status != DATA_BIND_ERR_SCHEMA) return 20;
+      if (strstr(error.path, "Sample.count") == NULL) return 21;
+      if (memcmp(&actual, &before, sizeof(actual)) != 0) return 22;
+    }
   }
   return 0;
 }

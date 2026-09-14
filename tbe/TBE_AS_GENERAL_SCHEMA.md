@@ -1,9 +1,23 @@
 # TBE As A General Schema Format
 
-> 本文中的 DataBind 路径是遗留设计记录。DataBind 已退出 SaltsUtils 默认构建与安装；
-> 新代码使用基础 Salts 的 `Salts::CBind`，并通过 CMeta/CSerde 描述数据与格式边界。
+DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是生成原生 C、现有 C struct
+和动态对象路径的唯一绑定引擎。
 
-Updated: 2026-09-11
+Canonical ownership is:
+
+```text
+CMeta: native structure and semantic type graph
+schema overlay: external names, presence/defaults, wire layout and validation
+DataBind: native/dynamic conversion, rollback and format orchestration
+CSTL: concrete container storage
+CSerde/parsers: format tokens and mechanics
+```
+
+Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
+metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
+overlay-only.
+
+Updated: 2026-09-13
 
 ## Summary
 

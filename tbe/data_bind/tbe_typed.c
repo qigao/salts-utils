@@ -60,24 +60,6 @@ static int typed_cmeta_scalar_matches(const cmeta_data_desc *data,
          actual->align == expected->align && typed_cmeta_shape_matches(data, canonical);
 }
 
-int tbe_typed_kind_from_cmeta_data(const cmeta_data_desc *data,
-                                   TbeTypedKind *out_kind) {
-  size_t i;
-  if (out_kind == NULL || !cmeta_data_desc_valid(data)) return 0;
-  if (salts_uuid_cmeta_data_valid(data)) {
-    *out_kind = TBE_TYPED_UUID;
-    return 1;
-  }
-  for (i = 0u;
-       i < sizeof(typed_cmeta_kind_mappings) / sizeof(typed_cmeta_kind_mappings[0]); ++i) {
-    if (typed_cmeta_scalar_matches(data, typed_cmeta_kind_mappings[i].data)) {
-      *out_kind = typed_cmeta_kind_mappings[i].kind;
-      return 1;
-    }
-  }
-  return 0;
-}
-
 static DataBindStatus typed_error(DataBindError *error, DataBindStatus status, const char *path,
                                   const char *message) {
   if (error != NULL && error->size >= sizeof(error->size)) {
@@ -94,11 +76,6 @@ static DataBindStatus typed_error(DataBindError *error, DataBindStatus status, c
 
 static int typed_is_integer(TbeTypedKind kind) {
   return kind >= TBE_TYPED_I8 && kind <= TBE_TYPED_U64;
-}
-
-static int typed_is_signed(TbeTypedKind kind) {
-  return kind == TBE_TYPED_I8 || kind == TBE_TYPED_I16 || kind == TBE_TYPED_I32 ||
-         kind == TBE_TYPED_I64;
 }
 
 static TbeTypedKind typed_enum_storage_kind(TbeTypedKind wire_kind) {
@@ -983,81 +960,451 @@ DataBindStatus tbe_typed_validate_descriptor(const TbeTypedType *type, DataBindE
   return typed_validate_descriptor_at(type, 0u, error);
 }
 
-static DataBindStatus typed_cmeta_validate_record(const TbeTypedType *overlay,
-                                                  const cmeta_data_desc *data,
-                                                  unsigned depth, DataBindError *error) {
+enum { TBE_TYPED_NATIVE_MAX_DEPTH = 32u };
+
+typedef struct TypedNativeRecord {
+  const cmeta_data_desc *data;
   const cmeta_data_struct_shape *shape;
+  const TbeTypedType *overlay;
+} TypedNativeRecord;
+
+static int typed_nonempty(const char *text) {
+  return text != NULL && text[0] != '\0';
+}
+
+static int typed_native_scalar_supported(const cmeta_data_desc *data) {
   size_t i;
-  if (overlay == NULL || depth > 32u || !cmeta_data_desc_valid(data) ||
+  for (i = 1u;
+       i < sizeof(typed_cmeta_kind_mappings) / sizeof(typed_cmeta_kind_mappings[0]);
+       ++i) {
+    if (typed_cmeta_scalar_matches(data, typed_cmeta_kind_mappings[i].data))
+      return 1;
+  }
+  return data != NULL && data->kind == CMETA_DATA_ENUM &&
+         cmeta_data_enum_ops_of(data) != NULL;
+}
+
+static DataBindStatus typed_native_path(char *out, size_t capacity,
+                                        const char *parent, const char *field,
+                                        DataBindError *error) {
+  int written;
+  if (out == NULL || capacity == 0u || !typed_nonempty(field))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, parent,
+                       "Native CMeta field name is unavailable");
+  written = typed_nonempty(parent)
+                ? snprintf(out, capacity, "%s.%s", parent, field)
+                : snprintf(out, capacity, "%s", field);
+  if (written < 0 || (size_t)written >= capacity)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, parent,
+                       "Native CMeta field path exceeds the supported length");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_native_record_preflight(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const cmeta_data_desc **ancestors, unsigned depth, const char *path,
+    TypedNativeRecord *out, DataBindError *error) {
+  const size_t required_data_size =
+      offsetof(cmeta_data_desc, shape) + sizeof(data->shape);
+  const cmeta_data_struct_shape *shape;
+  const cmeta_struct_desc *layout;
+  size_t i;
+
+  if (data == NULL || overlay == NULL || data->struct_size < required_data_size ||
+      data->abi_version != CMETA_DATA_DESC_ABI_VERSION ||
       data->kind != CMETA_DATA_STRUCT)
-    return typed_error(error, DATA_BIND_ERR_SCHEMA, overlay ? overlay->name : NULL,
-                       "Native CMeta record graph is unavailable");
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record is unavailable");
+  if (depth > TBE_TYPED_NATIVE_MAX_DEPTH)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record depth exceeds 32");
+  for (i = 0u; i < depth; ++i) {
+    if (ancestors[i] == data)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Canonical native CMeta record graph contains a cycle");
+  }
+  if (data->storage_type == NULL || !cmeta_type_desc_valid(data->storage_type) ||
+      data->storage_type->kind != CMETA_T_OBJECT || data->shape == NULL ||
+      data->storage_type->align > _Alignof(max_align_t))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record storage is invalid");
+
   shape = (const cmeta_data_struct_shape *)data->shape;
-  if (overlay->presence_size != 0u || data->storage_type->size != overlay->size ||
-      shape->layout->size != overlay->size ||
-      shape->layout->align != data->storage_type->align ||
+  layout = shape->layout;
+  if (layout == NULL || !typed_nonempty(layout->name) || layout->size == 0u ||
+      layout->align == 0u || layout->size != data->storage_type->size ||
+      layout->align != data->storage_type->align)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record layout is invalid");
+  if (shape->field_count != layout->field_count ||
       shape->field_count != overlay->field_count ||
-      shape->layout->field_count != shape->field_count ||
-      (overlay->field_count != 0u && overlay->fields == NULL))
-    return typed_error(error, DATA_BIND_ERR_SCHEMA, overlay->name,
-                       "CMeta native layout disagrees with the typed overlay");
+      (shape->field_count != 0u &&
+       (shape->fields == NULL || layout->fields == NULL || overlay->fields == NULL)) ||
+      overlay->presence_size != 0u)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "CMeta native fields disagree with the schema overlay");
+
+  ancestors[depth] = data;
   for (i = 0u; i < shape->field_count; ++i) {
-    const cmeta_data_field_desc *field = cmeta_data_struct_field(shape, i);
-    const cmeta_field_desc *layout = cmeta_struct_find_field(shape->layout, field->name);
-    const cmeta_data_desc *value = field->value;
-    const TbeTypedField *wire = &overlay->fields[i];
-    TbeTypedKind kind;
-    if (layout == NULL || !cmeta_data_desc_valid(value) ||
-        (wire->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u ||
-        field->offset != wire->offset ||
-        !cmeta_type_equal(layout->type, value->storage_type) ||
-        layout->size != value->storage_type->size ||
-        layout->align != value->storage_type->align ||
-        !typed_size_fits(field->offset, layout->size, overlay->size) ||
-        field->offset % layout->align != 0u)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
-                         "Field has no canonical native CMeta storage");
-    if (value->kind == CMETA_DATA_STRUCT && wire->kind == TBE_TYPED_OBJECT) {
-      DataBindStatus status = typed_cmeta_validate_record(wire->object_type, value, depth + 1u, error);
+    const cmeta_data_field_desc *native_field = &shape->fields[i];
+    const cmeta_field_desc *layout_field = &layout->fields[i];
+    const TbeTypedField *wire_field = &overlay->fields[i];
+    const cmeta_data_desc *value = native_field->value;
+    char field_path[sizeof(((DataBindError *)0)->path)];
+    DataBindStatus status =
+        typed_native_path(field_path, sizeof(field_path), path,
+                          native_field->name, error);
+    if (status != DATA_BIND_OK) return status;
+    if (!typed_nonempty(native_field->stable_id) ||
+        !typed_nonempty(layout_field->name) ||
+        strcmp(layout_field->name, native_field->name) != 0 || value == NULL ||
+        value->storage_type == NULL || !cmeta_type_desc_valid(value->storage_type) ||
+        layout_field->type == NULL ||
+        !cmeta_type_equal(layout_field->type, value->storage_type) ||
+        layout_field->size != value->storage_type->size ||
+        layout_field->align != value->storage_type->align ||
+        layout_field->offset != native_field->offset ||
+        !typed_size_fits(native_field->offset, layout_field->size,
+                         data->storage_type->size) ||
+        layout_field->align == 0u ||
+        native_field->offset % layout_field->align != 0u ||
+        (wire_field->flags &
+         (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                         "Field has no exact canonical native CMeta storage");
+
+    if (value->kind == CMETA_DATA_STRUCT) {
+      if (wire_field->nested_overlay == NULL)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Nested Struct has no schema overlay association");
+      status = typed_native_record_preflight(
+          value, wire_field->nested_overlay, ancestors, depth + 1u,
+          field_path, NULL, error);
       if (status != DATA_BIND_OK) return status;
-    } else if (value->kind == CMETA_DATA_ENUM && wire->kind == TBE_TYPED_ENUM) {
-      if (!typed_is_integer(wire->wire_kind) ||
-          value->storage_type->size != typed_kind_size(wire->wire_kind))
-        return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
-                           "Native enum storage disagrees with its wire width");
-    } else if (!tbe_typed_kind_from_cmeta_data(value, &kind) || kind != wire->kind) {
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, wire->name,
-                         "Unsupported CMeta native field mapping");
+    } else {
+      if (!cmeta_data_desc_valid(value) || !typed_native_scalar_supported(value))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Native CMeta field kind is outside this runtime slice");
+    }
+  }
+  if (!cmeta_data_desc_valid(data))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record descriptor is invalid");
+  if (out != NULL) {
+    out->data = data;
+    out->shape = shape;
+    out->overlay = overlay;
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_descriptor_native_record(
+    const TbeTypedDescriptor *descriptor, TypedNativeRecord *out,
+    DataBindError *error) {
+  const size_t required_size =
+      offsetof(TbeTypedDescriptor, native_data) + sizeof(descriptor->native_data);
+  const cmeta_data_desc *ancestors[TBE_TYPED_NATIVE_MAX_DEPTH + 1u];
+  const char *path;
+  if (descriptor == NULL || descriptor->struct_size < required_size ||
+      descriptor->abi_version != TBE_TYPED_DESCRIPTOR_ABI_VERSION ||
+      descriptor->overlay == NULL || descriptor->native_data == NULL)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, NULL,
+                       "Invalid or incompatible typed descriptor boundary");
+  path = typed_nonempty(descriptor->overlay->name)
+             ? descriptor->overlay->name
+             : descriptor->native_data->display_name;
+  return typed_native_record_preflight(descriptor->native_data,
+                                       descriptor->overlay, ancestors, 0u,
+                                       path, out, error);
+}
+
+static DataBindStatus typed_native_init_value(const cmeta_data_desc *data,
+                                              void *storage, const char *path,
+                                              DataBindError *error) {
+  if (data == NULL || storage == NULL || data->storage_type == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native storage");
+  memset(storage, 0, data->storage_type->size);
+  if (data->kind == CMETA_DATA_ENUM) {
+    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Enum provider did not establish semantic zero");
+    return DATA_BIND_OK;
+  }
+  if (data->kind == CMETA_DATA_STRUCT) {
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
+    size_t i;
+    for (i = 0u; i < shape->field_count; ++i) {
+      char field_path[sizeof(((DataBindError *)0)->path)];
+      DataBindStatus status = typed_native_path(
+          field_path, sizeof(field_path), path, shape->fields[i].name, error);
+      if (status == DATA_BIND_OK)
+        status = typed_native_init_value(
+            shape->fields[i].value,
+            (uint8_t *)storage + shape->fields[i].offset,
+            field_path, error);
+      if (status != DATA_BIND_OK) return status;
     }
   }
   return DATA_BIND_OK;
 }
 
-DataBindStatus tbe_typed_cmeta_graph_validate(const TbeTypedType *type,
-                                              const cmeta_data_desc *data,
-                                              DataBindError *error) {
-  DataBindStatus status = typed_cmeta_validate_record(type, data, 0u, error);
-  if (status != DATA_BIND_OK) return status;
-  return typed_error(error, DATA_BIND_OK, NULL, NULL);
+static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data,
+                                               void *storage, const char *path,
+                                               DataBindError *error) {
+  if (data == NULL || storage == NULL || data->storage_type == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native storage");
+  if (data->kind == CMETA_DATA_ENUM) {
+    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Enum provider did not restore semantic zero");
+  } else if (data->kind == CMETA_DATA_STRUCT) {
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
+    size_t i;
+    for (i = 0u; i < shape->field_count; ++i) {
+      char field_path[sizeof(((DataBindError *)0)->path)];
+      DataBindStatus status = typed_native_path(
+          field_path, sizeof(field_path), path, shape->fields[i].name, error);
+      if (status == DATA_BIND_OK)
+        status = typed_native_clear_value(
+            shape->fields[i].value,
+            (uint8_t *)storage + shape->fields[i].offset,
+            field_path, error);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+  memset(storage, 0, data->storage_type->size);
+  return DATA_BIND_OK;
 }
 
-static DataBindStatus typed_descriptor_boundary(const TbeTypedDescriptor *descriptor,
-                                                DataBindError *error) {
-  const size_t required_size =
-      offsetof(TbeTypedDescriptor, type) + sizeof(descriptor->type);
-  if (descriptor == NULL || descriptor->struct_size < required_size ||
-      descriptor->abi_version != TBE_TYPED_DESCRIPTOR_ABI_VERSION || descriptor->type == NULL) {
-    return typed_error(error, DATA_BIND_ERR_SCHEMA, NULL,
-                       "Invalid or incompatible typed descriptor boundary");
+static DataBindStatus typed_native_from_scalar(
+    const cmeta_data_desc *data, const DataBindValue *value, void *storage,
+    const char *path, DataBindError *error) {
+  int64_t signed_value;
+  uint64_t unsigned_value;
+  double floating_value;
+  if (data->kind == CMETA_DATA_ENUM) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Expected declared enum value");
+    if (cmeta_data_enum_assign(data, storage, signed_value) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Enum value is not declared by canonical CMeta");
+    return DATA_BIND_OK;
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < INT8_MIN || signed_value > INT8_MAX) goto range_error;
+    *(int8_t *)storage = (int8_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < 0 || signed_value > UINT8_MAX) goto range_error;
+    *(uint8_t *)storage = (uint8_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < INT16_MIN || signed_value > INT16_MAX) goto range_error;
+    *(int16_t *)storage = (int16_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < 0 || signed_value > UINT16_MAX) goto range_error;
+    *(uint16_t *)storage = (uint16_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < INT32_MIN || signed_value > INT32_MAX) goto range_error;
+    *(int32_t *)storage = (int32_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
+        signed_value < 0 || (uint64_t)signed_value > UINT32_MAX) goto range_error;
+    *(uint32_t *)storage = (uint32_t)signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data)) {
+    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
+      goto range_error;
+    *(int64_t *)storage = signed_value;
+  } else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data)) {
+    if (data_bind_value_get_uint64(value, &unsigned_value) != DATA_BIND_OK)
+      goto range_error;
+    *(uint64_t *)storage = unsigned_value;
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_float)) {
+    if (data_bind_value_get_double(value, &floating_value) != DATA_BIND_OK ||
+        !isfinite(floating_value) || floating_value < -(double)FLT_MAX ||
+        floating_value > (double)FLT_MAX)
+      goto range_error;
+    *(float *)storage = (float)floating_value;
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_double)) {
+    if (data_bind_value_get_double(value, &floating_value) != DATA_BIND_OK ||
+        !isfinite(floating_value))
+      goto range_error;
+    *(double *)storage = floating_value;
+  } else {
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Native CMeta scalar is outside this runtime slice");
+  }
+  return DATA_BIND_OK;
+
+range_error:
+  return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                     "Value is out of range for canonical native storage");
+}
+
+static DataBindStatus typed_native_from_value(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const DataBindValue *value, void *storage, const char *path,
+    DataBindError *error) {
+  if (data == NULL || value == NULL || storage == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native conversion");
+  if (data->kind != CMETA_DATA_STRUCT)
+    return typed_native_from_scalar(data, value, storage, path, error);
+  if (overlay == NULL || data_bind_value_kind(value) != DATA_BIND_VALUE_OBJECT)
+    return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                       "Expected schema object");
+  {
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
+    size_t i;
+    for (i = 0u; i < shape->field_count; ++i) {
+      const cmeta_data_field_desc *native_field = &shape->fields[i];
+      const TbeTypedField *wire_field = &overlay->fields[i];
+      const DataBindValue *child = data_bind_value_get(value, wire_field->name);
+      char field_path[sizeof(((DataBindError *)0)->path)];
+      DataBindStatus status = typed_native_path(
+          field_path, sizeof(field_path), path, native_field->name, error);
+      if (status != DATA_BIND_OK) return status;
+      if (child == NULL)
+        return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+                           "Required field is missing");
+      status = typed_native_from_value(
+          native_field->value,
+          native_field->value->kind == CMETA_DATA_STRUCT
+              ? wire_field->nested_overlay
+              : NULL,
+          child, (uint8_t *)storage + native_field->offset,
+          field_path, error);
+      if (status != DATA_BIND_OK) return status;
+    }
   }
   return DATA_BIND_OK;
 }
 
+static json_value_t *typed_native_to_json(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const void *storage, const char *path, DataBindError *error) {
+  if (data == NULL || storage == NULL) {
+    typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                "Invalid canonical native object");
+    return NULL;
+  }
+  if (data->kind == CMETA_DATA_STRUCT) {
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
+    json_value_t *root = json_create_object();
+    size_t i;
+    if (root == NULL) {
+      typed_error(error, DATA_BIND_ERR_OOM, path,
+                  "Out of memory creating JSON object");
+      return NULL;
+    }
+    for (i = 0u; i < shape->field_count; ++i) {
+      const cmeta_data_field_desc *native_field = &shape->fields[i];
+      const TbeTypedField *wire_field = &overlay->fields[i];
+      char field_path[sizeof(((DataBindError *)0)->path)];
+      json_value_t *child;
+      if (typed_native_path(field_path, sizeof(field_path), path,
+                            native_field->name, error) != DATA_BIND_OK) {
+        json_free(root);
+        return NULL;
+      }
+      child = typed_native_to_json(
+          native_field->value,
+          native_field->value->kind == CMETA_DATA_STRUCT
+              ? wire_field->nested_overlay
+              : NULL,
+          (const uint8_t *)storage + native_field->offset,
+          field_path, error);
+      if (child == NULL ||
+          !json_object_add_checked(root, wire_field->name, child)) {
+        json_free(child);
+        json_free(root);
+        typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+                    "Canonical native field cannot be represented as JSON");
+        return NULL;
+      }
+    }
+    return root;
+  }
+  if (data->kind == CMETA_DATA_ENUM) {
+    int64_t value;
+    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK) {
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Canonical enum provider could not read storage");
+      return NULL;
+    }
+    return json_create_int64(value);
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data))
+    return json_create_int64(*(const int8_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data))
+    return json_create_int64(*(const uint8_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data))
+    return json_create_int64(*(const int16_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data))
+    return json_create_int64(*(const uint16_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data))
+    return json_create_int64(*(const int32_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data))
+    return json_create_int64(*(const uint32_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data))
+    return json_create_int64(*(const int64_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data))
+    return json_create_uint64(*(const uint64_t *)storage);
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_float)) {
+    float value = *(const float *)storage;
+    if (isfinite(value)) return json_create_number(value);
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_double)) {
+    double value = *(const double *)storage;
+    if (isfinite(value)) return json_create_number(value);
+  }
+  typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+              "Canonical native scalar cannot be represented as JSON");
+  return NULL;
+}
+
 DataBindStatus tbe_typed_descriptor_validate(const TbeTypedDescriptor *descriptor,
                                              DataBindError *error) {
-  DataBindStatus status = typed_descriptor_boundary(descriptor, error);
+  DataBindStatus status = typed_descriptor_native_record(descriptor, NULL, error);
   if (status != DATA_BIND_OK) return status;
-  return tbe_typed_validate_descriptor(descriptor->type, error);
+  return typed_error(error, DATA_BIND_OK, NULL, NULL);
+}
+
+DataBindStatus tbe_typed_descriptor_init(const TbeTypedDescriptor *descriptor,
+                                         void *object, DataBindError *error) {
+  TypedNativeRecord native;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  if (object == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
+                       "Invalid typed object");
+  status = typed_native_init_value(native.data, object, native.overlay->name,
+                                   error);
+  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL)
+                                : status;
+}
+
+DataBindStatus tbe_typed_descriptor_clear(const TbeTypedDescriptor *descriptor,
+                                          void *object, DataBindError *error) {
+  TypedNativeRecord native;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  if (object == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
+                       "Invalid typed object");
+  status = typed_native_clear_value(native.data, object, native.overlay->name,
+                                    error);
+  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL)
+                                : status;
 }
 
 static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigned depth,
@@ -1214,6 +1561,101 @@ static DataBindStatus typed_validate_schema_at(DataBind *codec, const char *type
 DataBindStatus tbe_typed_validate_schema(DataBind *codec, const char *type_name,
                                          const TbeTypedType *type, DataBindError *error) {
   return typed_validate_schema_at(codec, type_name, type, 0u, error);
+}
+
+static int typed_native_schema_field_matches(
+    DataBind *codec, const cmeta_data_desc *native,
+    const TbeTypedField *wire, const DataBindSchemaField *schema) {
+  int has_wire_offset;
+  if (native == NULL || wire == NULL || schema == NULL ||
+      !typed_nonempty(wire->name) || !typed_nonempty(schema->name) ||
+      strcmp(wire->name, schema->name) != 0 || schema->is_optional ||
+      (wire->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u)
+    return 0;
+  has_wire_offset = (wire->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0;
+  if (has_wire_offset != (schema->has_offset != 0) ||
+      (has_wire_offset && wire->wire_offset != schema->offset))
+    return 0;
+  if (native->kind == CMETA_DATA_STRUCT) {
+    return !schema->is_collection && !schema->is_map && !schema->is_group &&
+           wire->nested_overlay != NULL && typed_nonempty(schema->type) &&
+           typed_nonempty(wire->nested_overlay->name) &&
+           strcmp(wire->nested_overlay->name, schema->type) == 0;
+  }
+  if (native->kind == CMETA_DATA_ENUM) {
+    DataBindSchemaType enum_type = DATA_BIND_SCHEMA_TYPE_INIT;
+    TbeTypedKind underlying;
+    return typed_nonempty(schema->type) &&
+           data_bind_schema_find_type(codec, schema->type, &enum_type) &&
+           enum_type.kind == DATA_BIND_SCHEMA_ENUM &&
+           typed_scalar_kind_from_name(enum_type.underlying_type, &underlying) &&
+           underlying == wire->wire_kind;
+  }
+  {
+    TbeTypedKind schema_kind;
+    return typed_scalar_kind_from_name(schema->type, &schema_kind) &&
+           schema_kind == wire->wire_kind;
+  }
+}
+
+static DataBindStatus typed_native_validate_schema_at(
+    DataBind *codec, const char *type_name, const cmeta_data_desc *data,
+    const TbeTypedType *overlay, unsigned depth, DataBindError *error) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  DataBindStatus status;
+  size_t i;
+  if (codec == NULL || !typed_nonempty(type_name) || overlay == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
+                       "Invalid canonical schema validation arguments");
+  if (depth > TBE_TYPED_NATIVE_MAX_DEPTH)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type_name,
+                       "Canonical schema nesting exceeds 32");
+  if (!typed_nonempty(overlay->name) || strcmp(overlay->name, type_name) != 0)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type_name,
+                       "Schema overlay name does not match the requested type");
+  if (!data_bind_schema_find_type(codec, type_name, &schema_type))
+    return typed_error(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name,
+                       "Canonical schema type was not found");
+  if ((schema_type.kind != DATA_BIND_SCHEMA_MESSAGE &&
+       schema_type.kind != DATA_BIND_SCHEMA_COMPOSITE &&
+       schema_type.kind != DATA_BIND_SCHEMA_GROUP) ||
+      schema_type.field_count != shape->field_count ||
+      (schema_type.has_fixed_block_size &&
+       schema_type.fixed_block_size != overlay->fixed_block_size) ||
+      (!schema_type.has_fixed_block_size && overlay->fixed_block_size != 0u))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type_name,
+                       "Schema overlay does not match the schema record");
+  if (depth == 0u) {
+    const char *byte_order = data_bind_schema_attribute_get(codec, "byte_order");
+    int schema_big_endian =
+        byte_order != NULL && strcmp(byte_order, "big") == 0;
+    if ((overlay->wire_big_endian != 0) != schema_big_endian)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, type_name,
+                         "Schema overlay byte order does not match the schema");
+  }
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *native_field = &shape->fields[i];
+    const TbeTypedField *wire_field = &overlay->fields[i];
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    char field_path[sizeof(((DataBindError *)0)->path)];
+    status = typed_native_path(field_path, sizeof(field_path), type_name,
+                               native_field->name, error);
+    if (status != DATA_BIND_OK) return status;
+    if (!data_bind_schema_field_at(codec, type_name, i, &schema_field) ||
+        !typed_native_schema_field_matches(codec, native_field->value,
+                                           wire_field, &schema_field))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                         "Canonical native field does not match its schema overlay");
+    if (native_field->value->kind == CMETA_DATA_STRUCT) {
+      status = typed_native_validate_schema_at(
+          codec, schema_field.type, native_field->value,
+          wire_field->nested_overlay, depth + 1u, error);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+  return DATA_BIND_OK;
 }
 
 static void typed_read_wire_scalar(TbeTypedKind kind, const uint8_t *source, int big_endian,
@@ -1486,14 +1928,320 @@ DataBindStatus tbe_typed_parse(DataBind *codec, const char *type_name, const Tbe
   return tbe_typed_parse_ex(codec, type_name, type, parsed_format, data, len, row, object, error);
 }
 
+static int typed_native_wire_extent(const cmeta_data_desc *data,
+                                    const TbeTypedField *wire,
+                                    size_t *extent) {
+  if (data == NULL || wire == NULL || extent == NULL) return 0;
+  if (data->kind == CMETA_DATA_STRUCT) {
+    if (wire->nested_overlay == NULL) return 0;
+    *extent = wire->nested_overlay->fixed_block_size;
+    return *extent != 0u;
+  }
+  *extent = typed_kind_size(wire->wire_kind);
+  return *extent != 0u;
+}
+
+static DataBindStatus typed_native_validate_wire(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const char *path, DataBindError *error) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  size_t i;
+  if (overlay->presence_size != 0u || overlay->fixed_block_size == 0u)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Supported descriptor has no complete fixed wire layout");
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *native_field = &shape->fields[i];
+    const TbeTypedField *wire_field = &overlay->fields[i];
+    size_t extent;
+    size_t j;
+    char field_path[sizeof(((DataBindError *)0)->path)];
+    DataBindStatus status = typed_native_path(
+        field_path, sizeof(field_path), path, native_field->name, error);
+    if (status != DATA_BIND_OK) return status;
+    if ((wire_field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0u ||
+        !typed_native_wire_extent(native_field->value, wire_field, &extent) ||
+        wire_field->wire_size != extent ||
+        !typed_size_fits(wire_field->wire_offset, extent,
+                         overlay->fixed_block_size))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                         "Schema overlay has no exact fixed wire field");
+    for (j = 0u; j < i; ++j) {
+      const TbeTypedField *previous = &overlay->fields[j];
+      size_t previous_extent;
+      if (!typed_native_wire_extent(shape->fields[j].value, previous,
+                                    &previous_extent) ||
+          typed_ranges_overlap(wire_field->wire_offset, extent,
+                               previous->wire_offset, previous_extent))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Schema overlay wire fields overlap");
+    }
+    if (native_field->value->kind == CMETA_DATA_STRUCT) {
+      status = typed_native_validate_wire(native_field->value,
+                                          wire_field->nested_overlay,
+                                          field_path, error);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_native_read_wire_scalar(
+    const cmeta_data_desc *data, TbeTypedKind wire_kind,
+    const uint8_t *source, int big_endian, void *storage,
+    const char *path, DataBindError *error) {
+  if (data->kind == CMETA_DATA_ENUM) {
+    int64_t value;
+    switch (wire_kind) {
+    case TBE_TYPED_I8: value = tbe_wire_read_i8(source, big_endian); break;
+    case TBE_TYPED_U8: value = tbe_wire_read_u8(source, big_endian); break;
+    case TBE_TYPED_I16: value = tbe_wire_read_i16(source, big_endian); break;
+    case TBE_TYPED_U16: value = tbe_wire_read_u16(source, big_endian); break;
+    case TBE_TYPED_I32: value = tbe_wire_read_i32(source, big_endian); break;
+    case TBE_TYPED_U32: value = tbe_wire_read_u32(source, big_endian); break;
+    case TBE_TYPED_I64: value = tbe_wire_read_i64(source, big_endian); break;
+    default:
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Enum wire kind exceeds the signed CMeta domain");
+    }
+    if (cmeta_data_enum_assign(data, storage, value) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Wire enum value is not declared by canonical CMeta");
+    return DATA_BIND_OK;
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) &&
+      wire_kind == TBE_TYPED_I8)
+    *(int8_t *)storage = tbe_wire_read_i8(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) &&
+           wire_kind == TBE_TYPED_U8)
+    *(uint8_t *)storage = tbe_wire_read_u8(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) &&
+           wire_kind == TBE_TYPED_I16)
+    *(int16_t *)storage = tbe_wire_read_i16(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) &&
+           wire_kind == TBE_TYPED_U16)
+    *(uint16_t *)storage = tbe_wire_read_u16(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) &&
+           wire_kind == TBE_TYPED_I32)
+    *(int32_t *)storage = tbe_wire_read_i32(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) &&
+           wire_kind == TBE_TYPED_U32)
+    *(uint32_t *)storage = tbe_wire_read_u32(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) &&
+           wire_kind == TBE_TYPED_I64)
+    *(int64_t *)storage = tbe_wire_read_i64(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) &&
+           wire_kind == TBE_TYPED_U64)
+    *(uint64_t *)storage = tbe_wire_read_u64(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) &&
+           wire_kind == TBE_TYPED_F32)
+    *(float *)storage = tbe_wire_read_f32(source, big_endian);
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_double) &&
+           wire_kind == TBE_TYPED_F64)
+    *(double *)storage = tbe_wire_read_f64(source, big_endian);
+  else
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Wire scalar kind disagrees with canonical CMeta storage");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_native_read_fixed(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const uint8_t *source, void *storage, const char *path,
+    DataBindError *error) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  size_t i;
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *native_field = &shape->fields[i];
+    const TbeTypedField *wire_field = &overlay->fields[i];
+    char field_path[sizeof(((DataBindError *)0)->path)];
+    DataBindStatus status = typed_native_path(
+        field_path, sizeof(field_path), path, native_field->name, error);
+    if (status != DATA_BIND_OK) return status;
+    if (native_field->value->kind == CMETA_DATA_STRUCT)
+      status = typed_native_read_fixed(
+          native_field->value, wire_field->nested_overlay,
+          source + wire_field->wire_offset,
+          (uint8_t *)storage + native_field->offset, field_path, error);
+    else
+      status = typed_native_read_wire_scalar(
+          native_field->value, wire_field->wire_kind,
+          source + wire_field->wire_offset, overlay->wire_big_endian,
+          (uint8_t *)storage + native_field->offset, field_path, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_native_write_wire_scalar(
+    const cmeta_data_desc *data, TbeTypedKind wire_kind, uint8_t *destination,
+    int big_endian, const void *storage, const char *path,
+    DataBindError *error) {
+  if (data->kind == CMETA_DATA_ENUM) {
+    int64_t value;
+    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Canonical enum provider could not read storage");
+    switch (wire_kind) {
+    case TBE_TYPED_I8:
+      if (value < INT8_MIN || value > INT8_MAX) goto enum_range;
+      tbe_wire_write_i8(destination, big_endian, (int8_t)value); break;
+    case TBE_TYPED_U8:
+      if (value < 0 || value > UINT8_MAX) goto enum_range;
+      tbe_wire_write_u8(destination, big_endian, (uint8_t)value); break;
+    case TBE_TYPED_I16:
+      if (value < INT16_MIN || value > INT16_MAX) goto enum_range;
+      tbe_wire_write_i16(destination, big_endian, (int16_t)value); break;
+    case TBE_TYPED_U16:
+      if (value < 0 || value > UINT16_MAX) goto enum_range;
+      tbe_wire_write_u16(destination, big_endian, (uint16_t)value); break;
+    case TBE_TYPED_I32:
+      if (value < INT32_MIN || value > INT32_MAX) goto enum_range;
+      tbe_wire_write_i32(destination, big_endian, (int32_t)value); break;
+    case TBE_TYPED_U32:
+      if (value < 0 || (uint64_t)value > UINT32_MAX) goto enum_range;
+      tbe_wire_write_u32(destination, big_endian, (uint32_t)value); break;
+    case TBE_TYPED_I64:
+      tbe_wire_write_i64(destination, big_endian, value); break;
+    default:
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Enum wire kind exceeds the signed CMeta domain");
+    }
+    return DATA_BIND_OK;
+enum_range:
+    return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                       "Canonical enum value exceeds its wire storage");
+  }
+  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) &&
+      wire_kind == TBE_TYPED_I8)
+    tbe_wire_write_i8(destination, big_endian, *(const int8_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) &&
+           wire_kind == TBE_TYPED_U8)
+    tbe_wire_write_u8(destination, big_endian, *(const uint8_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) &&
+           wire_kind == TBE_TYPED_I16)
+    tbe_wire_write_i16(destination, big_endian, *(const int16_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) &&
+           wire_kind == TBE_TYPED_U16)
+    tbe_wire_write_u16(destination, big_endian, *(const uint16_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) &&
+           wire_kind == TBE_TYPED_I32)
+    tbe_wire_write_i32(destination, big_endian, *(const int32_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) &&
+           wire_kind == TBE_TYPED_U32)
+    tbe_wire_write_u32(destination, big_endian, *(const uint32_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) &&
+           wire_kind == TBE_TYPED_I64)
+    tbe_wire_write_i64(destination, big_endian, *(const int64_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) &&
+           wire_kind == TBE_TYPED_U64)
+    tbe_wire_write_u64(destination, big_endian, *(const uint64_t *)storage);
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) &&
+           wire_kind == TBE_TYPED_F32)
+    tbe_wire_write_f32(destination, big_endian, *(const float *)storage);
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_double) &&
+           wire_kind == TBE_TYPED_F64)
+    tbe_wire_write_f64(destination, big_endian, *(const double *)storage);
+  else
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Wire scalar kind disagrees with canonical CMeta storage");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus typed_native_write_fixed(
+    const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const void *storage, uint8_t *destination, const char *path,
+    DataBindError *error) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  size_t i;
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *native_field = &shape->fields[i];
+    const TbeTypedField *wire_field = &overlay->fields[i];
+    char field_path[sizeof(((DataBindError *)0)->path)];
+    DataBindStatus status = typed_native_path(
+        field_path, sizeof(field_path), path, native_field->name, error);
+    if (status != DATA_BIND_OK) return status;
+    if (native_field->value->kind == CMETA_DATA_STRUCT)
+      status = typed_native_write_fixed(
+          native_field->value, wire_field->nested_overlay,
+          (const uint8_t *)storage + native_field->offset,
+          destination + wire_field->wire_offset, field_path, error);
+    else
+      status = typed_native_write_wire_scalar(
+          native_field->value, wire_field->wire_kind,
+          destination + wire_field->wire_offset, overlay->wire_big_endian,
+          (const uint8_t *)storage + native_field->offset,
+          field_path, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+  return DATA_BIND_OK;
+}
+
 DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name,
                                           const TbeTypedDescriptor *descriptor,
                                           DataBindFormat format, const void *data, size_t len,
                                           size_t row, void *object, DataBindError *error) {
-  DataBindStatus status = typed_descriptor_boundary(descriptor, error);
+  TypedNativeRecord native;
+  DataBindValue *value = NULL;
+  void *temporary;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  return tbe_typed_parse_ex(codec, type_name, descriptor->type, format, data, len, row, object,
-                            error);
+  if (codec == NULL || !typed_nonempty(type_name) || data == NULL || object == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
+                       "Invalid canonical descriptor parse arguments");
+  status = typed_native_validate_schema_at(codec, type_name, native.data,
+                                           native.overlay, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  if (format == DATA_BIND_FORMAT_BINARY) {
+    status = typed_native_validate_wire(native.data, native.overlay,
+                                        type_name, error);
+    if (status != DATA_BIND_OK) return status;
+    if (len != native.overlay->fixed_block_size)
+      return typed_error(error, DATA_BIND_ERR_PARSE, type_name,
+                         "Binary input size does not match the fixed wire block");
+  } else if (format == DATA_BIND_FORMAT_JSON)
+    status = data_bind_parse_json(codec, type_name, (const char *)data, len,
+                                  &value, error);
+  else if (format == DATA_BIND_FORMAT_YAML)
+    status = data_bind_parse_yaml(codec, type_name, (const char *)data, len,
+                                  &value, error);
+  else if (format == DATA_BIND_FORMAT_CSV)
+    status = data_bind_parse_csv(codec, type_name, (const char *)data, len,
+                                 row, &value, error);
+  else if (format == DATA_BIND_FORMAT_XML)
+    status = data_bind_parse_xml(codec, type_name, (const char *)data, len,
+                                 &value, error);
+  else
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
+                       "Unknown canonical descriptor input format");
+  if (status != DATA_BIND_OK) return status;
+
+  temporary = calloc(1u, native.data->storage_type->size);
+  if (temporary == NULL) {
+    data_bind_value_free(value);
+    return typed_error(error, DATA_BIND_ERR_OOM, type_name,
+                       "Out of memory creating canonical native object");
+  }
+  status = typed_native_init_value(native.data, temporary, type_name, error);
+  if (status == DATA_BIND_OK) {
+    if (format == DATA_BIND_FORMAT_BINARY)
+      status = typed_native_read_fixed(native.data, native.overlay,
+                                       (const uint8_t *)data, temporary,
+                                       type_name, error);
+    else
+      status = typed_native_from_value(native.data, native.overlay, value,
+                                       temporary, type_name, error);
+  }
+  data_bind_value_free(value);
+  if (status == DATA_BIND_OK) {
+    memcpy(object, temporary, native.data->storage_type->size);
+    status = typed_error(error, DATA_BIND_OK, NULL, NULL);
+  }
+  (void)typed_native_clear_value(native.data, temporary, type_name, NULL);
+  free(temporary);
+  return status;
 }
 
 DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
@@ -1547,10 +2295,101 @@ DataBindStatus tbe_typed_descriptor_serialize(DataBind *codec, const char *type_
                                               const TbeTypedDescriptor *descriptor,
                                               const void *object, DataBindFormat format, char **out,
                                               size_t *out_len, DataBindError *error) {
-  DataBindStatus status = typed_descriptor_boundary(descriptor, error);
+  TypedNativeRecord native;
+  json_value_t *json;
+  DataBindObject *bound = NULL;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  return tbe_typed_serialize_ex(codec, type_name, descriptor->type, object, format, out, out_len,
-                                error);
+  if (out != NULL) *out = NULL;
+  if (out_len != NULL) *out_len = 0u;
+  if (codec == NULL || !typed_nonempty(type_name) || object == NULL || out == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
+                       "Invalid canonical descriptor serialize arguments");
+  if (format != DATA_BIND_FORMAT_JSON && format != DATA_BIND_FORMAT_YAML &&
+      format != DATA_BIND_FORMAT_CSV && format != DATA_BIND_FORMAT_XML)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
+                       "Unknown canonical descriptor output format");
+  status = typed_native_validate_schema_at(codec, type_name, native.data,
+                                           native.overlay, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  json = typed_native_to_json(native.data, native.overlay, object, type_name,
+                              error);
+  if (json == NULL) {
+    if (error != NULL &&
+        error->size >= offsetof(DataBindError, code) + sizeof(error->code) &&
+        error->code != DATA_BIND_OK)
+      return error->code;
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  }
+  status = data_bind_object_from_json_value(codec, type_name, json, &bound,
+                                            error);
+  json_free(json);
+  if (status != DATA_BIND_OK) return status;
+  if (format == DATA_BIND_FORMAT_JSON)
+    status = data_bind_object_serialize_json(codec, bound, out, out_len, error);
+  else if (format == DATA_BIND_FORMAT_YAML)
+    status = data_bind_object_serialize_yaml(codec, bound, out, out_len, error);
+  else if (format == DATA_BIND_FORMAT_CSV)
+    status = data_bind_object_serialize_csv(codec, bound, out, out_len, error);
+  else
+    status = data_bind_object_serialize_xml(codec, bound, out, out_len, error);
+  data_bind_object_free(bound);
+  return status;
+}
+
+DataBindStatus tbe_typed_descriptor_serialize_binary(
+    const TbeTypedDescriptor *descriptor, const void *object, uint8_t **out,
+    size_t *out_len, DataBindError *error) {
+  TypedNativeRecord native;
+  uint8_t *data;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  if (out != NULL) *out = NULL;
+  if (out_len != NULL) *out_len = 0u;
+  if (object == NULL || out == NULL || out_len == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
+                       "Invalid canonical binary serialize arguments");
+  status = typed_native_validate_wire(native.data, native.overlay,
+                                      native.overlay->name, error);
+  if (status != DATA_BIND_OK) return status;
+  data = (uint8_t *)malloc(native.overlay->fixed_block_size);
+  if (data == NULL)
+    return typed_error(error, DATA_BIND_ERR_OOM, native.overlay->name,
+                       "Out of memory serializing canonical binary object");
+  status = tbe_typed_descriptor_serialize_binary_into(
+      descriptor, object, data, native.overlay->fixed_block_size, out_len,
+      error);
+  if (status != DATA_BIND_OK) {
+    free(data);
+    return status;
+  }
+  *out = data;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus tbe_typed_descriptor_serialize_binary_into(
+    const TbeTypedDescriptor *descriptor, const void *object, uint8_t *output,
+    size_t capacity, size_t *out_len, DataBindError *error) {
+  TypedNativeRecord native;
+  DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  if (out_len != NULL) *out_len = 0u;
+  if (object == NULL || out_len == NULL || (output == NULL && capacity != 0u))
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
+                       "Invalid canonical binary output arguments");
+  status = typed_native_validate_wire(native.data, native.overlay,
+                                      native.overlay->name, error);
+  if (status != DATA_BIND_OK) return status;
+  *out_len = native.overlay->fixed_block_size;
+  if (capacity < native.overlay->fixed_block_size)
+    return typed_error(error, DATA_BIND_ERR_BUFFER_TOO_SMALL,
+                       native.overlay->name,
+                       "Canonical binary output buffer is too small");
+  memset(output, 0, native.overlay->fixed_block_size);
+  status = typed_native_write_fixed(native.data, native.overlay, object, output,
+                                    native.overlay->name, error);
+  return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL)
+                                : status;
 }
 
 static size_t typed_binary_size(const TbeTypedType *type, const void *object, int *supported) {

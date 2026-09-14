@@ -33,7 +33,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
         .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
         .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
         .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-        .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
+        .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+        .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
         .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
         .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
         .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -58,8 +59,6 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .wire_big_endian = {{schema.schema_wire_big_endian_value}}
 };
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE);
 {{/composites}}
 
 {{#groups}}
@@ -71,7 +70,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
       .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
       .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
+      .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+      .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
       .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -92,8 +92,6 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .wire_big_endian = {{schema.schema_wire_big_endian_value}}
 };
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE);
 {{/groups}}
 
 {{#messages}}
@@ -105,7 +103,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
       .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
       .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
+      .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+      .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
       .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_value_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, value){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -126,18 +125,17 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .wire_big_endian = {{schema.schema_wire_big_endian_value}}
 };
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE);
 {{/messages}}
 
-/* #45: native graph metadata is immutable and borrowed. This declaration
- * permits normal generated consumers to use the runtime seam without an
- * uninstalled header or changes to TbeTypedDescriptor's public ABI. */
+/* #45: native graph metadata is immutable and borrowed. ABI-v2 descriptors
+ * join this structural graph to the separate generated schema overlay. */
 #include <salts_cmeta_fixed_width.h>
 #include <salts_cmeta_data.h>
 #define TBE_GENERATED_CMETA_GRAPH 1
-DATA_BIND_API DataBindStatus tbe_typed_cmeta_graph_validate(
-    const TbeTypedType *, const cmeta_data_desc *, DataBindError *);
+
+static DataBindStatus {{schema.schema_name}}_schema_codec_error(
+    DataBindError *error, DataBindStatus status, const char *path,
+    const char *message);
 
 {{#composites}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
 static const cmeta_data_desc {{name}}_CMETA_DATA;
@@ -166,11 +164,35 @@ static const cmeta_enum_desc {{enum_name}}_CMETA_ENUM = {
 static const cmeta_data_enum_shape {{enum_name}}_CMETA_SHAPE = {
     &{{enum_name}}_CMETA_ENUM
 };
+{{#typed_cmeta_runtime_supported}}
+static bool {{enum_name}}_cmeta_is_zero(const void *object) {
+    return object != NULL && *(const {{enum_name}}_t *)object == ({{enum_name}}_t)0;
+}
+static cmeta_status {{enum_name}}_cmeta_read(const void *object, int64_t *out) {
+    if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
+    *out = (int64_t)*(const {{enum_name}}_t *)object;
+    return CMETA_OK;
+}
+static cmeta_status {{enum_name}}_cmeta_assign(void *object, int64_t value) {
+    if (object == NULL) return CMETA_INVALID_ARGUMENT;
+    *({{enum_name}}_t *)object = ({{enum_name}}_t)value;
+    return CMETA_OK;
+}
+static void {{enum_name}}_cmeta_restore_zero(void *object) {
+    if (object != NULL) *({{enum_name}}_t *)object = ({{enum_name}}_t)0;
+}
+static const cmeta_data_enum_ops {{enum_name}}_CMETA_ENUM_OPS = {
+    sizeof(cmeta_data_enum_ops), CMETA_DATA_ENUM_OPS_ABI_VERSION,
+    &{{enum_name}}_CMETA_TYPE, {{enum_name}}_cmeta_is_zero,
+    {{enum_name}}_cmeta_read, {{enum_name}}_cmeta_assign,
+    {{enum_name}}_cmeta_restore_zero
+};
+{{/typed_cmeta_runtime_supported}}
 static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
     CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_SHAPE,
-    NULL, NULL, NULL
+    NULL, {{#typed_cmeta_runtime_supported}}&{{enum_name}}_CMETA_ENUM_OPS{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}, NULL
 };
 {{/native_enum_supported}}
 {{^native_enum_supported}}
@@ -213,14 +235,29 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
 };
+{{#typed_cmeta_runtime_supported}}
+static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
+
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
+{{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
-    DataBindStatus status;
-    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
-    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
-    if (status != DATA_BIND_OK) return status;
+    if (out == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
+            "Native CMeta output is required");
+{{#cmeta_graph_supported}}
     *out = &{{name}}_CMETA_DATA;
-    return DATA_BIND_OK;
+    return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_OK, NULL, NULL);
+{{/cmeta_graph_supported}}
+{{^cmeta_graph_supported}}
+    return {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_ERR_SCHEMA, "{{name}}",
+        "Native CMeta record graph is unavailable");
+{{/cmeta_graph_supported}}
 }
 {{/composites}}
 
@@ -259,14 +296,29 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
 };
+{{#typed_cmeta_runtime_supported}}
+static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
+
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
+{{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
-    DataBindStatus status;
-    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
-    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
-    if (status != DATA_BIND_OK) return status;
+    if (out == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
+            "Native CMeta output is required");
+{{#cmeta_graph_supported}}
     *out = &{{name}}_CMETA_DATA;
-    return DATA_BIND_OK;
+    return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_OK, NULL, NULL);
+{{/cmeta_graph_supported}}
+{{^cmeta_graph_supported}}
+    return {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_ERR_SCHEMA, "{{name}}",
+        "Native CMeta record graph is unavailable");
+{{/cmeta_graph_supported}}
 }
 {{/groups}}
 
@@ -305,22 +357,39 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL
 };
+{{#typed_cmeta_runtime_supported}}
+static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
+
+const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
+    return &{{name}}_TYPED_DESCRIPTOR;
+}
+{{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
-    DataBindStatus status;
-    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
-    status = tbe_typed_cmeta_graph_validate(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA, error);
-    if (status != DATA_BIND_OK) return status;
+    if (out == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
+            "Native CMeta output is required");
+{{#cmeta_graph_supported}}
     *out = &{{name}}_CMETA_DATA;
-    return DATA_BIND_OK;
+    return {{schema.schema_name}}_schema_codec_error(error, DATA_BIND_OK, NULL, NULL);
+{{/cmeta_graph_supported}}
+{{^cmeta_graph_supported}}
+    return {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_ERR_SCHEMA, "{{name}}",
+        "Native CMeta record graph is unavailable");
+{{/cmeta_graph_supported}}
 }
 {{/messages}}
 
-#define TBE_TYPED_DEFINE_RECORD(name) \
+#define TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(name) \
     void name##_init(name##_t *object) { \
-        if (object) (void)tbe_typed_init(&name##_TYPED_TYPE, object, NULL); \
+        if (object) (void)tbe_typed_descriptor_init(&name##_TYPED_DESCRIPTOR, object, NULL); \
     } \
-    void name##_clear(name##_t *object) { tbe_typed_clear(&name##_TYPED_TYPE, object); } \
+    void name##_clear(name##_t *object) { \
+        if (object) (void)tbe_typed_descriptor_clear(&name##_TYPED_DESCRIPTOR, object, NULL); \
+    } \
     DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
     } \
@@ -337,10 +406,10 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
     } \
     DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_binary(&name##_TYPED_TYPE, object, out, out_len, error); \
+        return tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR, object, out, out_len, error); \
     } \
     DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
-        return tbe_typed_serialize_binary_into(&name##_TYPED_TYPE, object, output, output_capacity, out_len, error); \
+        return tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR, object, output, output_capacity, out_len, error); \
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_JSON, out, out_len, error); \
@@ -355,15 +424,59 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
     }
 
-{{#composites}}TBE_TYPED_DEFINE_RECORD({{name}})
-{{/composites}}{{#groups}}TBE_TYPED_DEFINE_RECORD({{name}})
-{{/groups}}{{#messages}}TBE_TYPED_DEFINE_RECORD({{name}})
+#define TBE_TYPED_DEFINE_RAW_RECORD(name) \
+    void name##_init(name##_t *object) { \
+        if (object) (void)tbe_typed_init(&name##_TYPED_TYPE, object, NULL); \
+    } \
+    void name##_clear(name##_t *object) { tbe_typed_clear(&name##_TYPED_TYPE, object); } \
+    DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_from_json(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_JSON, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_YAML, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+    } \
+    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_binary(&name##_TYPED_TYPE, object, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_binary_into(&name##_TYPED_TYPE, object, output, output_capacity, out_len, error); \
+    } \
+    DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_JSON, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+    }
+
+{{#composites}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/composites}}{{#groups}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/groups}}{{#messages}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}
 {{/messages}}
 
 {{#lua_output_enabled}}
-{{#composites}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
-{{/composites}}{{#groups}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
-{{/groups}}{{#messages}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
+{{#composites}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
+{{/typed_cmeta_runtime_supported}}{{/composites}}{{#groups}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
+{{/typed_cmeta_runtime_supported}}{{/groups}}{{#messages}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
+{{/typed_cmeta_runtime_supported}}
 {{/messages}}
 {{/lua_output_enabled}}
 

@@ -1,258 +1,178 @@
-# DataBind Convergence Design
+# DataBind-Only Convergence Design
 
-Date: 2026-09-12
-Status: approved architecture / implementation tracked by issues
-Master tracker: #8
+**Status:** Approved on 2026-09-13
 
-## 1. Goal
+## Context
 
-Refactor DataBind from a second type/container/binding runtime into a thin runtime-schema layer built on the canonical Salts primitives.
+SaltsUtils currently builds and exports `Salts::DataBind`. DataBind owns runtime
+schema loading, dynamic values, typed/generated C conversion, binary and text
+serialization, parser orchestration, query execution, streaming, limits and
+diagnostics.
 
-The final ownership model is:
+The base Salts package also exports a native descriptor binder with overlapping
+decode responsibilities. SaltsUtils production targets do not link that binder,
+but one schema integration test, one installed package consumer and current
+documentation still make it part of the SaltsUtils design. That split ownership
+is misleading and would create two binding engines if the previous convergence
+plan were completed.
 
-- **CMeta** — runtime data type identity, Struct/Enum/generic structural reflection, container descriptors, Range/Collector, semantic identity.
-- **CSTL/container** — concrete sequence/set/map storage and lifecycle providers.
-- **CBind** — the single native C binding engine over CMeta-described storage, for decode and encode.
-- **CSerde + format parsers** — canonical token transport plus JSON/YAML/XML/CSV format mechanics.
-- **DataBind** — schema/wire contract overlay, schema-aware owning dynamic values, validation/fingerprint, parser selection, query/stream orchestration, and error translation.
+## Decision
 
-The refactor must remove duplicated native binding, duplicated structural reflection/type identity, and duplicated container implementations from DataBind.
+DataBind is the only public binding engine owned or consumed by SaltsUtils.
 
-## 2. Non-goals
+The duplicate base-package binder is outside the SaltsUtils dependency,
+configuration, export, test and documented consumer surface. Its upstream target
+is not removed by this project because unknown base-package consumers are outside
+the SaltsUtils compatibility boundary.
 
-- Do not move schema/wire semantics into CMeta.
-- Do not put the dynamic object runtime inside CBind.
-- Do not require native C structs to materialize a dynamic object tree.
-- Do not make schema support every CMeta capability.
-- Do not preserve a hidden legacy engine as a fallback.
-- Do not introduce `CObject` as a generic runtime object model.
+No feature flag, fallback, forwarding facade or compatibility path is added.
+Unsupported descriptor, schema, container and format combinations fail through
+the existing explicit DataBind error contract.
 
-## 3. Target architecture
+## Target architecture
 
 ```text
-Schema / TBE
-    |  wire names, aliases, constraints, compatibility, fingerprint
+schema text
+    |
     v
-CMeta data graph  <---->  schema metadata overlay
-    |
-    +--> CBind ----------------------> native C storage
-    |        decode + encode
-    |
-    +--> CDynamicValue runtime ------> CSTL/container storage
-             |
-             +--> CMeta Range/reflection --> CFlow / consumers
+schema overlay -------------------------------+
+external names / aliases / defaults / wire    |
+                                               v
+CMeta semantic graph ----------------> DataBind conversion core
+struct / enum / scalar / container             |             |
+                                                v             v
+                                      native C storage   dynamic values
+                                                           backed by CSTL
 
-Format parsers <--> CSerde readers/writers
-        ^                 |
-        +------ DataBind orchestration ------+
-                 query / stream / diagnostics
+format parsers <------ CSerde tokens ------ DataBind orchestration
 ```
 
-Dependency direction is one-way. CBind/CMeta/CSTL/CSerde must not depend on DataBind.
+Dependency direction is one way:
 
-## 4. Type and reflection ownership
+- CMeta owns semantic identity and structural reflection.
+- The schema overlay owns external names, aliases, optional/default state,
+  validation, binary layout and compatibility fingerprints.
+- CSTL owns concrete dynamic container storage and lifecycle operations.
+- CSerde and the format parsers own tokenization and format mechanics.
+- DataBind owns conversion, rollback, parse/serialize orchestration and public
+  error translation for both native and dynamic destinations.
 
-CMeta is the source of truth for structural runtime type information:
+Structural metadata must never absorb schema-only wire policy. A CMeta field
+describes the actual C storage field name, type, offset, size and alignment. The
+overlay may map that field to a different external name or wire offset without
+changing the CMeta graph.
 
-- scalar/native type identity;
-- Struct fields and Enum metadata;
-- semantic generic identities;
-- Pair/Tuple/Option/Result data shapes;
-- container descriptors;
-- Range/Collector protocols;
-- structural reflection and type registry.
+## Native typed path
 
-DataBind keeps only schema-specific metadata:
+Generated and existing-struct binding remain DataBind capabilities. The current
+`TbeTypedType` metadata is reduced incrementally until native storage identity,
+shape, offsets and scalar kinds come only from the canonical CMeta graph.
 
-- schema names and versions;
-- external field names and aliases;
-- required/optional/wire presence semantics;
-- format annotations;
-- schema validation/default constraints;
-- compatibility and fingerprint.
+Wire-only properties remain in a DataBind-owned overlay:
 
-DataBind must not add a private type kind if CMeta already represents the same semantic data type.
+- external and alias names;
+- optional presence bits and defaults;
+- binary offsets, widths and byte order;
+- schema fingerprint and compatibility validation.
 
-Generic identity is semantic and must not depend on descriptor pointer equality.
+The first removal slice does not delete public `TBE_TYPED_*` entry points. It
+removes the unrelated base binder from SaltsUtils and freezes the direction for
+subsequent typed-runtime work. Later removal of duplicated metadata requires a
+separate RED/GREEN migration gate; it must not be hidden behind a facade.
 
-## 5. Schema type universe
+## Dynamic value path
 
-Schema supports the **serializable data-type subset of CMeta plus wire semantics**, not all CMeta capabilities.
+Runtime schemas continue to parse into an owning `DataBindValue` root without a
+generated application type. Dynamic values use the same CMeta semantic graph as
+native values and move their sequence, set and map storage to CSTL providers.
 
-Supported/target families:
+The public name remains `DataBindValue` during this convergence. Introducing a
+second generic object brand would not remove duplication. Child views are
+borrowed from the owning root and become invalid when that root or its containing
+storage is mutated or released.
 
-- bool;
-- signed/unsigned fixed-width integers;
-- floating point;
-- string and bytes;
-- Struct;
-- Enum;
-- Option/presence;
-- Pair and Tuple when canonical wire semantics are defined;
-- semantic sequence/set/map containers;
-- Result only after canonical wire representation is defined;
-- Variant/oneof only after the corresponding CMeta data representation is stable.
+## Error and rollback contract
 
-Not schema data types:
+- Invalid arguments return `DATA_BIND_ERR_INVALID_ARG` without consuming or
+  publishing output.
+- Missing or incompatible schema/CMeta mappings return `DATA_BIND_ERR_SCHEMA`
+  with the most specific `Type.field` path available.
+- Type/range mismatches keep their existing typed status and do not partially
+  replace the caller's destination.
+- Allocation and configured resource limits remain distinguishable.
+- Native conversion is transactional: build temporary zero-state storage,
+  publish only on success and restore every owned field on failure.
+- No error is converted to another engine, inferred storage or legacy path.
 
-- raw pointer identity / const pointer identity;
-- Traits;
-- callable / `typed_any`;
-- interface / implements;
-- Range;
-- Collector;
-- effect/property metadata;
-- other execution/control protocols.
+## Issue decomposition
 
-Schema describes a semantic container shape, not a concrete CSTL implementation. For example `sequence<User>` may bind to Vec/List/Deque according to the native CMeta descriptor/profile.
+| Issue | DataBind-only disposition |
+| --- | --- |
+| #5 | Close as superseded; its referenced `tbe_cbind` implementation is absent. |
+| #6 | Reframe parser-owned CSerde adapters as direct DataBind inputs. |
+| #7 | Cover DataBind, schema, CSerde adapters and other active parser surfaces. |
+| #8 | Master tracker for this design. |
+| #9 | Benchmark DataBind native, dynamic, parser and end-to-end costs separately. |
+| #46 | Move dynamic structural identity and containers to CMeta/CSTL. |
+| #47 | Make the DataBind typed runtime consume the canonical CMeta graph. |
+| #48 | Split DataBind by the ownership boundaries above after #46/#47 gates. |
+| #50 | Close after the merged main-branch repair evidence is verified. |
 
-## 6. Native binding
+Standalone Jinja work in #26 is an independent subsystem and keeps its own plan
+and acceptance sequence.
 
-CBind becomes the only native C binding engine.
+## Delivery sequence
 
-The existing DataBind/TBE typed path must converge as follows:
+1. Add a repository gate that rejects active source/build dependencies on the
+   duplicate binder, and observe the existing tree fail it.
+2. Remove the schema integration dependency and tests that validate another
+   package's binding engine. Preserve the schema/CMeta provider construction,
+   semantic-identity and atomic-publication tests.
+3. Remove the unrelated dependency assertion from the installed Cron consumer.
+4. Update current public architecture, DataBind and compiler documentation so
+   SaltsUtils users are directed to DataBind.
+5. Re-run schema, typed, generated-consumer and installed-consumer gates.
+6. Reframe/close the affected GitHub issues using exact-head evidence.
+7. Implement #47, then #46, then #48 as independent RED/GREEN slices.
+8. Complete adapter, fuzz and benchmark work (#6/#7/#9), then resume #26.
 
-```text
-schema metadata
-      +
-CMeta descriptor
-      |
-      v
-CBind decode / encode
-      |
-      v
-native C storage
-```
+## Verification
 
-`TbeTypedDescriptor`, `TBE_TYPED_*`, generated helper code and existing-struct mapping may temporarily remain as compatibility facades, but their implementation must delegate to CMeta + CBind. No new semantics may be added to the legacy engine.
+The first slice is complete only when:
 
-CBind encode is tracked in `qigao/salts#255`; legacy typed serialization cannot be removed until that prerequisite is complete.
+- no active SaltsUtils source or CMake target includes, links or asserts the
+  duplicate binder;
+- `test_schema_cmeta` still validates explicit STRING/BYTES storage providers,
+  copied semantic identities and atomic descriptor publication;
+- schema, enum, descriptor, direct-parser and installed-consumer workflows pass
+  on the same exact head;
+- installed exports still contain `Salts::DataBind`, `Salts::DataBindCMeta` and
+  `Salts::DataBindCFlow` with no added dependency;
+- current public documentation describes DataBind as the sole SaltsUtils binding
+  engine;
+- unsupported mappings remain fail-fast and no compatibility path exists.
 
-## 7. Dynamic object/value model
+## Alternatives rejected
 
-Runtime-schema users still need an owning dynamic representation. This is a storage/object-model concern, not a binding-kernel concern.
+### Default-off compatibility option
 
-Preferred long-term shape:
+Rejected because SaltsUtils has no active production target to toggle. A switch
+would preserve a false architectural choice and add an untested branch.
 
-- `CDynamicValue` — single owning runtime value model;
-- optional `CDynamicObject` convenience facade for object roots;
-- CMeta semantic type identity and reflection;
-- CSTL/container storage for sequence/set/map data;
-- explicit owner/borrowed-child lifetime rules;
-- optional schema association overlay.
+### Cross-repository removal
 
-Do not introduce `CObject`.
+Rejected for this project. Removing the upstream target requires a separate
+consumer inventory and breaking-change review; it is not necessary to make the
+SaltsUtils boundary unambiguous.
 
-Existing `DataBindObject`, `DataBindValue` and `DataBindRecord` may be retained temporarily as migration facades. They should be removed or collapsed once equivalent behavior is covered by the canonical dynamic-value runtime.
+### Delegate DataBind native conversion upstream
 
-Native CBind paths do not allocate the dynamic tree unless a caller explicitly requests dynamic materialization.
+Rejected because it leaves DataBind dynamic conversion and native conversion
+with separate ownership, error and rollback semantics. The approved design uses
+one DataBind conversion boundary over one CMeta graph.
 
-## 8. Containers
+## Rollback
 
-Concrete container storage belongs to CSTL/container.
-
-DataBind must not own independent list/map/set storage or lifecycle rules after convergence.
-
-CMeta descriptors and Range/Collector provide the abstraction boundary so CBind and dynamic-value code do not depend on concrete CSTL layouts.
-
-Container lifecycle, ownership, rollback and semantic-zero restoration follow the CMeta/container provider contracts.
-
-## 9. Format and serialization boundaries
-
-Format parsers own syntax and format-specific mapping. CSerde provides canonical reader/writer tokens. DataBind orchestrates parser selection and schema-aware conversion but does not implement a second parser facade.
-
-Supported format paths must use installed Salts parser/CSerde APIs directly.
-
-Query syntax and execution remain in parser frontends/QueryVM. DataBind forwards limits, selection context, diagnostics and result ownership; it does not implement another query VM.
-
-## 10. DataBind final responsibilities
-
-After migration DataBind contains only three major domains:
-
-1. **Schema/wire contract**
-   - schema loading;
-   - wire names/aliases;
-   - validation/defaults;
-   - compatibility/fingerprint.
-
-2. **Dynamic runtime facade**
-   - owning dynamic root;
-   - schema association;
-   - convenient dynamic lookup;
-   - explicit lifetime rules.
-
-3. **Orchestration**
-   - parser/CSerde selection;
-   - serialization/deserialization coordination;
-   - QueryVM integration;
-   - streaming;
-   - limits/diagnostics/error translation.
-
-DataBind no longer owns a private generic system, structural reflection universe, native typed binder, or concrete container engine.
-
-## 11. Migration sequence
-
-### Phase 0 — capability inventory
-
-- land schema ↔ CMeta capability matrix;
-- identify all DataBind-private type/reflection/container/typed APIs;
-- freeze migration/removal rules.
-
-### Phase 1 — core prerequisites
-
-- add CBind encode (`qigao/salts#255`);
-- complete parser-owned CSerde adapters required by supported formats (#6).
-
-### Phase 2 — native typed convergence
-
-- extend type coverage only through canonical schema→CMeta/CBind mapping (#5);
-- migrate generated/existing-struct typed paths to CBind (#47).
-
-### Phase 3 — dynamic runtime convergence
-
-- introduce CMeta/CSTL-backed dynamic value storage (#46);
-- preserve runtime unknown-schema/plugin/script use.
-
-### Phase 4 — thin DataBind runtime
-
-- split DataBind by ownership domain;
-- remove redundant reflection/container/typed logic and zero-value adapters (#48).
-
-### Phase 5 — conformance/removal gate
-
-- benchmark and workload comparison (#9);
-- fuzz/sanitizer expansion (#7);
-- full Release CTest;
-- install/export and downstream consumer tests;
-- C/C++ public-header tests;
-- generated static/shared schema consumers;
-- dependency-closure checks;
-- publish migration/removal notes;
-- remove legacy compatibility code only after equivalent behavior is covered.
-
-## 12. Issue map
-
-- #8 — master tracker
-- #45 — schema/type/reflection convergence on CMeta
-- #46 — CMeta/CSTL-backed dynamic value runtime
-- #47 — native typed binding migration to CBind
-- #48 — final DataBind thinning and module ownership
-- #5 — schema binding type coverage
-- #6 — parser/CSerde adapters
-- #7 — fuzz/sanitizer coverage
-- #9 — benchmark/workload coverage
-- `qigao/salts#255` — CBind encode prerequisite
-
-## 13. Completion criteria
-
-The refactor is complete only when all of the following are true:
-
-- CMeta is the structural reflection/type source of truth.
-- CSTL/container owns runtime container storage.
-- CBind owns native decode and encode.
-- DataBind has no independent native binder, structural reflection/type system, generic system, or private container engine.
-- Runtime dynamic-schema users retain a supported owning dynamic-value path.
-- Supported formats use direct Salts/CSerde adapters.
-- Query/stream/error/limit semantics are documented and tested.
-- Install/export dependency closure is clean.
-- Migration notes and conformance/benchmark evidence are published.
+Rollback is a source-control revert of the complete removal slice. There is no
+runtime fallback. If a required SaltsUtils consumer is discovered, its concrete
+DataBind requirement must be specified and tested before the design is amended.

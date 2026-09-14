@@ -1,8 +1,21 @@
 # tbe_compiler Command Line Options
 
-> DataBind typed/Lua 输出属于遗留迁移接口。DataBind runtime、公共头和 target 已不再由 SaltsUtils 构建、安装或导出；
-> 新的原生 C 数据绑定应直接使用基础 Salts 包的 `Salts::CBind`。CBind 与 DataBind API
-> 不兼容，因此以下 DataBind 示例仅用于理解旧生成物，不应用于新项目。
+DataBind runtime、公共头和 target 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`。
+DataBind 是生成 C、现有 C struct 与动态对象的唯一绑定引擎；以下 typed/Lua 输出是当前受支持接口。
+
+Canonical ownership is:
+
+```text
+CMeta: native structure and semantic type graph
+schema overlay: external names, presence/defaults, wire layout and validation
+DataBind: native/dynamic conversion, rollback and format orchestration
+CSTL: concrete container storage
+CSerde/parsers: format tokens and mechanics
+```
+
+Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
+metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
+overlay-only.
 
 ## Overview
 
@@ -313,11 +326,15 @@ accept the same `[name(...)]` and `[alias(...)]` annotations as record fields.
 DataBind has two typed routes: generate owning `.h/.c` from schema, or map the same schema
 to an existing C struct. Code generation is optional for the second route. Include
 `tbe_typed.h`, declare fields with `TBE_TYPED_FIELD` and related collection/object macros,
-then create a static descriptor with `TBE_TYPED_DEFINE_STRUCT` or
+then create static raw typed metadata with `TBE_TYPED_DEFINE_STRUCT` or
 `TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE`. `TBE_TYPED_BIND_PARSE` and
-`TBE_TYPED_BIND_SERIALIZE` use that descriptor directly and apply schema names automatically.
-These convenience descriptors do not infer a binary wire layout; use the explicit `_EX`
-macros or generated code when direct TBE binary encoding is required.
+`TBE_TYPED_BIND_SERIALIZE` use that metadata and apply schema names automatically.
+These macros do not create an ABI-v2 descriptor. A descriptor-routed existing struct must
+provide an explicit canonical CMeta graph and initialize
+`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
+they never fall back to the raw route. Raw convenience metadata does not infer a binary wire
+layout; use the explicit `_EX` macros or generated code when direct TBE binary encoding is
+required. #47 remains open while deferred native families still require this raw route.
 
 `Orders_schema_codec()` exposes a schema-specific dispatch table for trusted host providers.
 Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller-owned,
@@ -326,13 +343,12 @@ The reverse `binary_to_text` operation returns an allocated host buffer and is i
 trusted host code unless the runtime also enforces the serializer's temporary-allocation budget.
 Schema `uuid` fields are generated as `salts_uuid_t`; text formats use canonical UUID strings
 and binary serialization preserves the fixed 16-byte wire value.
-This legacy example required the retired DataBind runtime. Installed SaltsUtils no longer
-provides a DataBind target; new consumers should model the generated C type with CMeta and
-link `Salts::CBind` instead:
+Generated C uses DataBind for native conversion, transactional rollback, and format
+orchestration over its canonical CMeta graph and schema overlay:
 
 ```cmake
 add_executable(order_app main.c order.c)
-target_link_libraries(order_app PRIVATE Salts::CBind)
+target_link_libraries(order_app PRIVATE Salts::DataBind)
 ```
 
 The same generated header is C++ compatible. Its C functions use `extern "C"`, and
@@ -360,13 +376,14 @@ int main() {
 }
 ```
 
-Compile the companion `order.c` as C even when the application target is C++. Fixed-layout
-binary input is decoded directly through the generated native descriptor after validating
-it against the codec schema. Variable `list`/`set`/`map` layouts use the dynamic binary
-parser before committing into the owning struct. Text formats
-retain the schema binder so enum names, field formats, and extended scalar rules remain
-identical to the dynamic API. `--lang cpp` without `--source-output` continues to generate
-data-only `std::string`/`std::vector` types and does not provide these serialization functions.
+Compile the companion `order.c` as C even when the application target is C++. The compiler
+emits an ABI-v2 descriptor only when the complete graph contains fixed-width integer/float,
+adapter-backed non-flags enum, and non-optional nested Struct storage. Its lifecycle, text,
+binary, and supported Lua wrappers all use that descriptor. Bool-as-`uint8_t`, flags/wide
+enum, optional, STRING/BYTES/fixed buffer/UUID/custom and sequence/set/map records receive no
+descriptor and stay on their explicit raw DataBind route. This is a generation-time partition,
+not a runtime fallback. `--lang cpp` without `--source-output` continues to generate data-only
+`std::string`/`std::vector` types and does not provide these serialization functions.
 
 ### Example 2b: Generate a Wasm Guest Adapter
 
@@ -477,7 +494,7 @@ tbe_compiler order.schema --lang py --output order.py
 ```cmake
 add_library(order_schema STATIC order.c)
 target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-# Legacy generated DataBind code is not part of the installed SaltsUtils package.
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 ```
 
 ### Example 10: Compile Generated C as a Shared Library
@@ -486,7 +503,7 @@ target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(order_schema SHARED order.c)
 target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-# New bindings should link Salts::CBind after migrating descriptors and adapters.
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 ```
 
 ## Removed Options
