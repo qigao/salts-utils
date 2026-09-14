@@ -1,6 +1,8 @@
 #include "tbe_typed.h"
 #include "tinytest.h"
 
+#include <salts_cmeta_fixed_width.h>
+
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -265,6 +267,29 @@ TBE_TYPED_DEFINE_STRUCT_EX(
     TBE_TYPED_FIELD_EX(MacroWire, id, "id", TBE_TYPED_U32, TBE_TYPED_U32, TBE_TYPED_BOOL,
                        TBE_TYPED_BOOL, 0u, 0u, NULL, 0u, 0u, 0u, TBE_TYPED_BOOL,
                        TBE_TYPED_BOOL, NULL, 0u, 4u, 0u, TBE_TYPED_FIELD_WIRE_OFFSET));
+
+static const cmeta_type_identity MACRO_WIRE_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.MacroWire");
+static const cmeta_type_desc MACRO_WIRE_CMETA_TYPE = {
+    "MacroWire", sizeof(MacroWire), _Alignof(MacroWire), CMETA_T_OBJECT,
+    NULL, NULL, &MACRO_WIRE_CMETA_ID};
+static const cmeta_field_desc MACRO_WIRE_CMETA_LAYOUT_FIELDS[] = {{
+    "id", "uint32_t", offsetof(MacroWire, id), sizeof(uint32_t),
+    _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc MACRO_WIRE_CMETA_LAYOUT = {
+    "MacroWire", sizeof(MacroWire), _Alignof(MacroWire),
+    MACRO_WIRE_CMETA_LAYOUT_FIELDS, 1u};
+static const cmeta_data_field_desc MACRO_WIRE_CMETA_FIELDS[] = {{
+    "test.MacroWire.id", "id", offsetof(MacroWire, id),
+    &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape MACRO_WIRE_CMETA_SHAPE = {
+    &MACRO_WIRE_CMETA_LAYOUT, MACRO_WIRE_CMETA_FIELDS, 1u};
+static const cmeta_data_desc MACRO_WIRE_CMETA_DATA = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "test.MacroWire.data", "MacroWire", CMETA_DATA_STRUCT,
+    &MACRO_WIRE_CMETA_TYPE, &MACRO_WIRE_CMETA_SHAPE, NULL, NULL, NULL};
+static const TbeTypedDescriptor MACRO_WIRE_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&MACRO_WIRE_BINDING, &MACRO_WIRE_CMETA_DATA);
 
 spec("typed DataBind binary") {
   it("round-trips an optional big-endian owning struct directly") {
@@ -793,9 +818,9 @@ spec("typed DataBind binary") {
     MacroWire wire = {0};
     char *encoded = NULL;
     size_t encoded_len = 0;
-    TbeTypedDescriptor incompatible = MACRO_WIRE_BINDING_descriptor;
+    TbeTypedDescriptor incompatible = MACRO_WIRE_DESCRIPTOR;
 
-    check_equal(tbe_typed_descriptor_validate(&MACRO_WIRE_BINDING_descriptor, &error),
+    check_equal(tbe_typed_descriptor_validate(&MACRO_WIRE_DESCRIPTOR, &error),
                  DATA_BIND_OK);
     incompatible.abi_version++;
     check_equal(tbe_typed_descriptor_validate(&incompatible, &error), DATA_BIND_ERR_SCHEMA);
@@ -803,13 +828,13 @@ spec("typed DataBind binary") {
                  DATA_BIND_OK);
     if (codec != NULL) {
       check_equal(tbe_typed_descriptor_parse(codec, "MacroWire",
-                                              &MACRO_WIRE_BINDING_descriptor,
+                                              &MACRO_WIRE_DESCRIPTOR,
                                               DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0,
                                               &wire, &error),
                    DATA_BIND_OK);
       check_equal(wire.id, 7u);
       check_equal(tbe_typed_descriptor_serialize(codec, "MacroWire",
-                                                  &MACRO_WIRE_BINDING_descriptor, &wire,
+                                                  &MACRO_WIRE_DESCRIPTOR, &wire,
                                                   DATA_BIND_FORMAT_JSON, &encoded, &encoded_len,
                                                   &error),
                    DATA_BIND_OK);

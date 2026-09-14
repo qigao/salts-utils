@@ -326,11 +326,15 @@ accept the same `[name(...)]` and `[alias(...)]` annotations as record fields.
 DataBind has two typed routes: generate owning `.h/.c` from schema, or map the same schema
 to an existing C struct. Code generation is optional for the second route. Include
 `tbe_typed.h`, declare fields with `TBE_TYPED_FIELD` and related collection/object macros,
-then create a static descriptor with `TBE_TYPED_DEFINE_STRUCT` or
+then create static raw typed metadata with `TBE_TYPED_DEFINE_STRUCT` or
 `TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE`. `TBE_TYPED_BIND_PARSE` and
-`TBE_TYPED_BIND_SERIALIZE` use that descriptor directly and apply schema names automatically.
-These convenience descriptors do not infer a binary wire layout; use the explicit `_EX`
-macros or generated code when direct TBE binary encoding is required.
+`TBE_TYPED_BIND_SERIALIZE` use that metadata and apply schema names automatically.
+These macros do not create an ABI-v2 descriptor. A descriptor-routed existing struct must
+provide an explicit canonical CMeta graph and initialize
+`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
+they never fall back to the raw route. Raw convenience metadata does not infer a binary wire
+layout; use the explicit `_EX` macros or generated code when direct TBE binary encoding is
+required. #47 remains open while deferred native families still require this raw route.
 
 `Orders_schema_codec()` exposes a schema-specific dispatch table for trusted host providers.
 Its `text_to_binary_into` operation binds JSON/YAML/CSV/XML directly into caller-owned,
@@ -372,13 +376,14 @@ int main() {
 }
 ```
 
-Compile the companion `order.c` as C even when the application target is C++. Fixed-layout
-binary input is decoded directly through the generated native descriptor after validating
-it against the codec schema. Variable `list`/`set`/`map` layouts use the dynamic binary
-parser before committing into the owning struct. Text formats
-retain the schema binder so enum names, field formats, and extended scalar rules remain
-identical to the dynamic API. `--lang cpp` without `--source-output` continues to generate
-data-only `std::string`/`std::vector` types and does not provide these serialization functions.
+Compile the companion `order.c` as C even when the application target is C++. The compiler
+emits an ABI-v2 descriptor only when the complete graph contains fixed-width integer/float,
+adapter-backed non-flags enum, and non-optional nested Struct storage. Its lifecycle, text,
+binary, and supported Lua wrappers all use that descriptor. Bool-as-`uint8_t`, flags/wide
+enum, optional, STRING/BYTES/fixed buffer/UUID/custom and sequence/set/map records receive no
+descriptor and stay on their explicit raw DataBind route. This is a generation-time partition,
+not a runtime fallback. `--lang cpp` without `--source-output` continues to generate data-only
+`std::string`/`std::vector` types and does not provide these serialization functions.
 
 ### Example 2b: Generate a Wasm Guest Adapter
 

@@ -13,7 +13,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TBE_LUA_DEFINE_RECORD(name)                                                \
+#define TBE_LUA_DEFINE_DESCRIPTOR_RECORD(name)                                     \
+    DataBindStatus name##_push_lua(struct lua_State *L, const name##_t *object,    \
+                                    size_t max_depth) {                             \
+        return c11_lua_push_tbe_typed_descriptor(                                  \
+            L, name##_typed_descriptor(), object, max_depth);                      \
+    }                                                                               \
+    DataBindStatus name##_from_lua(struct lua_State *L, int index,                 \
+                                    name##_t *object, size_t max_depth,             \
+                                    size_t max_dynamic_items) {                     \
+        return c11_lua_read_tbe_typed_descriptor(                                  \
+            L, index, name##_typed_descriptor(), object, max_depth,                \
+            max_dynamic_items);                                                     \
+    }
+
+#define TBE_LUA_DEFINE_RAW_RECORD(name)                                            \
     DataBindStatus name##_push_lua(struct lua_State *L, const name##_t *object,    \
                                     size_t max_depth) {                             \
         return c11_lua_push_tbe_typed(L, name##_typed_type(), object, max_depth);  \
@@ -25,12 +39,17 @@
                                       max_depth, max_dynamic_items);                \
     }
 
-{{#composites}}TBE_LUA_DEFINE_RECORD({{name}})
-{{/composites}}{{#groups}}TBE_LUA_DEFINE_RECORD({{name}})
-{{/groups}}{{#messages}}TBE_LUA_DEFINE_RECORD({{name}})
+{{#composites}}{{#typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/composites}}{{#groups}}{{#typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/groups}}{{#messages}}{{#typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_LUA_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}
 {{/messages}}
 
-#undef TBE_LUA_DEFINE_RECORD
+#undef TBE_LUA_DEFINE_DESCRIPTOR_RECORD
+#undef TBE_LUA_DEFINE_RAW_RECORD
 
 {{#has_lua_operations}}
 static size_t {{schema.schema_name}}_lua_bounded_strlen(

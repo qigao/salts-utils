@@ -2763,6 +2763,72 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
+    it("should partition CMeta descriptor wrappers at generation time") {
+      const char *schema_path = "test_tbe_compiler_cmeta_descriptor.tbe";
+      const char *header_path = "test_tbe_compiler_cmeta_descriptor.h";
+      const char *source_path = "test_tbe_compiler_cmeta_descriptor.c";
+      const char *schema =
+          "schema DescriptorGraph;"
+          "enum State <uint8> { Idle = 0; Ready = 7; }"
+          "composite Point { int32 x; double y; }"
+          "message Sample { Point point; State state; uint32 count; }"
+          "message LoginMessage { string user; }";
+      size_t header_size = 0;
+      size_t source_size = 0;
+      char *header = NULL;
+      char *source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = NULL,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      source = tt_read_file(source_path, &source_size);
+      check_not_null(header);
+      check_not_null(source);
+      if (header != NULL) {
+        check_contains(header,
+                       "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
+        check(strstr(header,
+                     "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
+      }
+      if (source != NULL) {
+        check_contains(source,
+                       "TBE_TYPED_DESCRIPTOR_INIT(&Sample_TYPED_TYPE, &Sample_CMETA_DATA)");
+        check_contains(source, "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
+        check_contains(source, "static const cmeta_data_enum_ops State_CMETA_ENUM_OPS");
+        check_contains(source, "State_cmeta_read, State_cmeta_assign");
+        check_contains(source, "&State_CMETA_ENUM_OPS");
+        check(strstr(source, "LoginMessage_TYPED_DESCRIPTOR") == NULL);
+        check_contains(source, "TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(Sample)");
+        check_contains(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)");
+        check_contains(source, "tbe_typed_descriptor_init(&name##_TYPED_DESCRIPTOR");
+        check_contains(source, "tbe_typed_descriptor_clear(&name##_TYPED_DESCRIPTOR");
+        check_contains(source, "tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR");
+        check_contains(source, "tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR");
+        check_contains(source, "tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR");
+        check_contains(source,
+                       "tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR");
+        check_contains(source, "tbe_typed_init(&name##_TYPED_TYPE");
+        check_contains(source, "tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE");
+        check_contains(source, "tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE");
+      }
+
+      free(header);
+      free(source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+    }
+
     it("should generate typed C to Lua adapters") {
       const char *header_path = "test_tbe_compiler_lua.h";
       const char *source_path = "test_tbe_compiler_lua_typed.c";
@@ -2803,6 +2869,58 @@ spec("tbe_compiler") {
 
       free(header);
       free(lua_source);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+    }
+
+    it("should route supported Lua records through their public descriptor") {
+      const char *schema_path = "test_tbe_compiler_lua_descriptor.tbe";
+      const char *header_path = "test_tbe_compiler_lua_descriptor.h";
+      const char *source_path = "test_tbe_compiler_lua_descriptor_typed.c";
+      const char *lua_path = "test_tbe_compiler_lua_descriptor.c";
+      const char *schema =
+          "schema LuaDescriptor;"
+          "enum State <uint8> { Idle = 0; Ready = 7; }"
+          "composite Point { int32 x; double y; }"
+          "message Sample { Point point; State state; uint32 count; }";
+      size_t header_size = 0;
+      size_t lua_size = 0;
+      char *header = NULL;
+      char *lua_source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .template_path = NULL,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lua_output_path = lua_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      cleanup_test_file(lua_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+      header = tt_read_file(header_path, &header_size);
+      lua_source = tt_read_file(lua_path, &lua_size);
+      check_not_null(header);
+      check_not_null(lua_source);
+      if (header != NULL) {
+        check_contains(header, "Sample_typed_descriptor(void)");
+        check(strstr(header, "Sample_typed_type(void)") == NULL);
+      }
+      if (lua_source != NULL) {
+        check_contains(lua_source, "TBE_LUA_DEFINE_DESCRIPTOR_RECORD(Sample)");
+        check_contains(lua_source, "c11_lua_push_tbe_typed_descriptor");
+        check_contains(lua_source, "c11_lua_read_tbe_typed_descriptor");
+        check_contains(lua_source, "name##_typed_descriptor()");
+      }
+
+      free(header);
+      free(lua_source);
+      cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);

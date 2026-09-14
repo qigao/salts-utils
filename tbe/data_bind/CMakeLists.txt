@@ -228,6 +228,8 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     SOURCES test_tbe_typed_cmeta_public.c
     LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema
     FOLDER "tbe/data_bind/tests")
+  set_tests_properties(test_tbe_typed_cmeta_public PROPERTIES
+    LABELS "databind;cmeta;typed-contract")
   cmake_add_test(test_tbe_typed_cmeta_public_cpp
     SOURCES test_tbe_typed_cmeta_public_cpp.cpp
     LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema

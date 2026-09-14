@@ -54,7 +54,7 @@ DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于
 DataBind 2.5 只定义两条强类型路线：
 
 1. schema 生成 `.h/.c`，自动 bind、序列化和反序列化。
-2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 descriptor，自动
+2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 raw typed metadata，自动
    bind、序列化和反序列化。
 
 动态 `DataBindObject` 是两条路线共用的格式中间层和宿主程序集成入口，不是
@@ -65,8 +65,10 @@ defaults、validation 与 fingerprint 只存在于 schema overlay。
 
 - 新生成代码：使用 schema 生成的 `Type_from_*` / `Type_to_*`；生成实现通过
   `TbeTypedDescriptor` 校验 descriptor ABI。
-- 已有 C struct：使用 `TBE_TYPED_*` descriptor 和 enum-based
+- 已有 C struct：deferred storage 使用 `TBE_TYPED_*` raw metadata 和 enum-based
   `TBE_TYPED_BIND_PARSE_EX` / `TBE_TYPED_BIND_SERIALIZE_EX`。
+- ABI-v2 native descriptor：调用方必须同时提供显式 schema overlay 与通过校验的
+  canonical CMeta graph；graphless descriptor 与 ABI-v1 一律返回 schema error。
 - 未知 schema、脚本与插件宿主：使用 owning `DataBindObject` 或动态
   `DataBindValue`，数值读取优先使用返回 `DataBindStatus` 的 `get_*`。
 - 大批量输入：使用 `DataBindStreamConfig` + `data_bind_stream_create()`。
@@ -223,8 +225,14 @@ TBE_TYPED_BIND_CLEAR(ORDER_BINDING, &order);
 data_bind_free(codec);
 ```
 
-这条路线不运行 `tbe_compiler`，也不生成业务头文件。宏 descriptor 将
+这条路线不运行 `tbe_compiler`，也不生成业务头文件。宏生成的 raw typed metadata 将
 `offsetof()`、成员类型、可选位和 wire 属性固化进普通 C 常量。
+
+这些宏不会合成 ABI-v2 descriptor。若现有 struct 要进入 CMeta-authoritative
+descriptor 路线，必须显式提供 canonical `cmeta_data_desc` 根，并使用
+`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`。ABI-v1 或缺少 native graph
+直接失败；不会转入 raw 路线。当前自动 descriptor slice 只覆盖固定宽度整数、
+F32/F64、带完整 CMeta operations 的非 flags enum，以及非 optional 的嵌套 Struct。
 
 ## RulesForge/TurboScript 如何使用
 

@@ -2,6 +2,9 @@ string(CONCAT FORBIDDEN_TARGET "Salts::C" "Bind")
 string(CONCAT FORBIDDEN_INCLUDE "<c" "bind/")
 string(CONCAT FORBIDDEN_MACRO "C" "BIND_")
 string(CONCAT FORBIDDEN_SYMBOL "c" "bind_")
+string(CONCAT FORBIDDEN_REVERSE_KIND "tbe_typed_kind_from_" "cmeta_data")
+string(CONCAT FORBIDDEN_REVERSE_GRAPH "tbe_typed_cmeta_graph_" "validate")
+string(CONCAT FORBIDDEN_REVERSE_RECORD "typed_cmeta_validate_" "record")
 
 file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
   "${PROJECT_SOURCE_DIR}/CMakeLists.txt"
@@ -22,7 +25,10 @@ foreach(FILE_PATH IN LISTS POLICY_FILES)
   endif()
   file(READ "${FILE_PATH}" CONTENT)
   foreach(FORBIDDEN IN ITEMS "${FORBIDDEN_TARGET}" "${FORBIDDEN_INCLUDE}"
-                             "${FORBIDDEN_MACRO}" "${FORBIDDEN_SYMBOL}")
+                             "${FORBIDDEN_MACRO}" "${FORBIDDEN_SYMBOL}"
+                             "${FORBIDDEN_REVERSE_KIND}"
+                             "${FORBIDDEN_REVERSE_GRAPH}"
+                             "${FORBIDDEN_REVERSE_RECORD}")
     string(FIND "${CONTENT}" "${FORBIDDEN}" POSITION)
     if(NOT POSITION EQUAL -1)
       message(FATAL_ERROR "DataBind-only dependency violation: ${FILE_PATH}")
