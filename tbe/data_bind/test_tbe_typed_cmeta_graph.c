@@ -324,6 +324,8 @@ spec("generated native CMeta graph") {
       altered_descriptor.native_data = &altered_root;
       memset(output, 0x5a, sizeof(output));
       memcpy(output_before, output, sizeof(output));
+      check_equal(FixedValues_from_json(codec, &destination, json, strlen(json),
+                                        &error), DATA_BIND_OK);
       reject_fixed_copy_hits = 0u;
 
       check_equal(tbe_typed_descriptor_serialize(
