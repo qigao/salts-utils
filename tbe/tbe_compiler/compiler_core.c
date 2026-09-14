@@ -858,15 +858,19 @@ static void tbe_compiler_annotate_enum_types(Node *root) {
     const int is_flags = tbe_compiler_has_child(enum_node, "is_flags");
     const tbe_compiler_scalar_projection_t *storage = tbe_compiler_integer_type(underlying);
 
-    /* CMeta enum metadata has an int64_t value domain. Do not truncate an
-     * unsigned 64-bit domain to publish a native enum graph. */
-    if (storage && !(storage->data->kind == CMETA_DATA_UINT &&
-        ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
+    if (storage) {
+      char bits[4];
+      snprintf(bits, sizeof(bits), "%u",
+               ((const cmeta_data_integer_shape *)storage->data->shape)->bits);
+      tbe_compiler_set_string(enum_node, "native_enum_bits", bits);
+      tbe_compiler_set_string(enum_node, "native_enum_signedness",
+          storage->data->kind == CMETA_DATA_SINT ? "CMETA_ENUM_SIGNED"
+                                                 : "CMETA_ENUM_UNSIGNED");
+      if (storage->data->kind == CMETA_DATA_SINT)
+        tbe_compiler_set_string(enum_node, "native_enum_signed", "1");
       tbe_compiler_set_string(enum_node, "native_enum_supported", "1");
-    if (storage && !is_flags &&
-        !(storage->data->kind == CMETA_DATA_UINT &&
-          ((const cmeta_data_integer_shape *)storage->data->shape)->bits == 64u))
       tbe_compiler_set_string(enum_node, "typed_cmeta_runtime_supported", "1");
+    }
 
     tbe_compiler_set_string(enum_node, "go_underlying_type",
                             tbe_compiler_go_scalar_type(underlying));

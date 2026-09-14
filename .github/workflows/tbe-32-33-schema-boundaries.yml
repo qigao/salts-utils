@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: c168ee0c96fe12052c3f68f8b0c79d7ea9c494af
+          ref: 48d520416fd0ff4a128b90cc53daa2799e5d0ee7
           path: salts
           persist-credentials: false
 
@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          test "$(git -C salts rev-parse HEAD)" = c168ee0c96fe12052c3f68f8b0c79d7ea9c494af
+          test "$(git -C salts rev-parse HEAD)" = 48d520416fd0ff4a128b90cc53daa2799e5d0ee7
           git -C salts rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/salts-head.txt"
 
       - name: Checkout vcpkg at the manifest baseline

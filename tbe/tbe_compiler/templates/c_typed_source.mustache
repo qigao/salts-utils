@@ -175,36 +175,41 @@ static const cmeta_type_desc {{enum_name}}_CMETA_TYPE = {
     CMETA_T_INTEGER, NULL, NULL, &{{enum_name}}_CMETA_ID
 };
 {{#native_enum_supported}}
-static const cmeta_enum_item_desc {{enum_name}}_CMETA_ITEMS[] = {
-{{#items}}    { (int64_t){{enum_name}}_{{name}}, "{{name}}", "{{name}}" },
+static const cmeta_enum_bits_item {{enum_name}}_CMETA_ITEMS[] = {
+{{#items}}    { (uint64_t){{enum_name}}_{{name}} & (UINT64_MAX >> (64u - {{native_enum_bits}}u)), "{{name}}", "{{name}}" },
 {{/items}}};
-static const cmeta_enum_desc {{enum_name}}_CMETA_ENUM = {
-    "{{enum_name}}_t", {{enum_name}}_CMETA_ITEMS,
-    sizeof({{enum_name}}_CMETA_ITEMS) / sizeof({{enum_name}}_CMETA_ITEMS[0])
-};
-static const cmeta_data_enum_shape {{enum_name}}_CMETA_SHAPE = {
-    &{{enum_name}}_CMETA_ENUM
+static const cmeta_enum_domain {{enum_name}}_CMETA_DOMAIN = {
+    sizeof(cmeta_enum_domain), CMETA_ENUM_DOMAIN_ABI_VERSION,
+    {{native_enum_signedness}}, {{native_enum_bits}}u,
+    {{#is_flags}}CMETA_ENUM_FLAGS{{/is_flags}}{{^is_flags}}CMETA_ENUM_ORDINARY{{/is_flags}},
+    {{enum_name}}_CMETA_ITEMS,
+    sizeof({{enum_name}}_CMETA_ITEMS) / sizeof({{enum_name}}_CMETA_ITEMS[0]),
+    {{#is_flags}}(UINT64_C(0){{#items}} | (uint64_t){{enum_name}}_{{name}}{{/items}}) & (UINT64_MAX >> (64u - {{native_enum_bits}}u)){{/is_flags}}{{^is_flags}}UINT64_C(0){{/is_flags}}
 };
 {{#typed_cmeta_runtime_supported}}
 static bool {{enum_name}}_cmeta_is_zero(const void *object) {
     return object != NULL && *(const {{enum_name}}_t *)object == ({{enum_name}}_t)0;
 }
-static cmeta_status {{enum_name}}_cmeta_read(const void *object, int64_t *out) {
+static cmeta_status {{enum_name}}_cmeta_read(const void *object, uint64_t *out) {
     if (object == NULL || out == NULL) return CMETA_INVALID_ARGUMENT;
-    *out = (int64_t)*(const {{enum_name}}_t *)object;
+    *out = (uint64_t)*(const {{enum_name}}_t *)object & (UINT64_MAX >> (64u - {{native_enum_bits}}u));
     return CMETA_OK;
 }
-static cmeta_status {{enum_name}}_cmeta_assign(void *object, int64_t value) {
+static cmeta_status {{enum_name}}_cmeta_assign(void *object, uint64_t bits) {
     if (object == NULL) return CMETA_INVALID_ARGUMENT;
-    *({{enum_name}}_t *)object = ({{enum_name}}_t)value;
+{{#native_enum_signed}}    /* Decode negatives without an out-of-range unsigned-to-signed cast. */
+    if ((bits & (UINT64_C(1) << ({{native_enum_bits}}u - 1u))) != 0u)
+        *({{enum_name}}_t *)object = ({{enum_name}}_t)(-1 - (int64_t)((UINT64_MAX >> (64u - {{native_enum_bits}}u)) - bits));
+    else
+{{/native_enum_signed}}    *({{enum_name}}_t *)object = ({{enum_name}}_t)bits;
     return CMETA_OK;
 }
 static void {{enum_name}}_cmeta_restore_zero(void *object) {
     if (object != NULL) *({{enum_name}}_t *)object = ({{enum_name}}_t)0;
 }
-static const cmeta_data_enum_ops {{enum_name}}_CMETA_ENUM_OPS = {
-    sizeof(cmeta_data_enum_ops), CMETA_DATA_ENUM_OPS_ABI_VERSION,
-    &{{enum_name}}_CMETA_TYPE, {{enum_name}}_cmeta_is_zero,
+static const cmeta_data_enum_bits_ops {{enum_name}}_CMETA_ENUM_OPS = {
+    sizeof(cmeta_data_enum_bits_ops), CMETA_DATA_ENUM_BITS_OPS_ABI_VERSION,
+    &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_DOMAIN, {{enum_name}}_cmeta_is_zero,
     {{enum_name}}_cmeta_read, {{enum_name}}_cmeta_assign,
     {{enum_name}}_cmeta_restore_zero
 };
@@ -212,8 +217,8 @@ static const cmeta_data_enum_ops {{enum_name}}_CMETA_ENUM_OPS = {
 static const cmeta_data_desc {{enum_name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
-    CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, &{{enum_name}}_CMETA_SHAPE,
-    NULL, {{#typed_cmeta_runtime_supported}}&{{enum_name}}_CMETA_ENUM_OPS{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}, NULL, NULL
+    CMETA_DATA_ENUM, &{{enum_name}}_CMETA_TYPE, NULL,
+    NULL, NULL, NULL, NULL, &{{enum_name}}_CMETA_ENUM_OPS
 };
 {{/native_enum_supported}}
 {{^native_enum_supported}}
@@ -254,7 +259,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
@@ -315,7 +320,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
@@ -376,7 +381,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
 static const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
-    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL
+    CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =

@@ -981,7 +981,7 @@ static int typed_native_scalar_supported(const cmeta_data_desc *data) {
       return 1;
   }
   if (data != NULL && data->kind == CMETA_DATA_ENUM)
-    return cmeta_data_enum_ops_of(data) != NULL;
+    return cmeta_data_enum_bits_ops_of(data) != NULL;
   if (data == NULL || cmeta_data_fixed_ops_of(data) == NULL)
     return 0;
   return typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) ||
@@ -1143,7 +1143,7 @@ static DataBindStatus typed_native_init_value(const cmeta_data_desc *data,
   }
   memset(storage, 0, data->storage_type->size);
   if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "Enum provider did not establish semantic zero");
     return DATA_BIND_OK;
@@ -1180,7 +1180,7 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data,
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_restore_zero(data, storage) != CMETA_OK)
+    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "Enum provider did not restore semantic zero");
   } else if (data->kind == CMETA_DATA_STRUCT) {
@@ -1201,6 +1201,44 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data,
   }
   memset(storage, 0, data->storage_type->size);
   return DATA_BIND_OK;
+}
+
+/* Numeric wire/text adaptation only; native storage and membership belong to
+ * the canonical provider. Negative canonical bits are width-local. */
+static DataBindStatus typed_native_enum_assign_number(
+    const cmeta_data_desc *data, int input_signed, int64_t signed_value,
+    uint64_t unsigned_value, void *storage, const char *path,
+    DataBindError *error) {
+  const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+  uint64_t mask = UINT64_MAX >> (64u - domain->bits);
+  uint64_t bits;
+  if (domain->signedness == CMETA_ENUM_SIGNED) {
+    int64_t maximum = (int64_t)(mask >> 1u);
+    if (input_signed) {
+      if (signed_value < -maximum - 1 || signed_value > maximum) goto range;
+      bits = (uint64_t)signed_value & mask;
+    } else {
+      if (unsigned_value > (uint64_t)maximum) goto range;
+      bits = unsigned_value;
+    }
+  } else {
+    if (input_signed && signed_value < 0) goto range;
+    bits = input_signed ? (uint64_t)signed_value : unsigned_value;
+    if (bits > mask) goto range;
+  }
+  if (cmeta_data_enum_assign_bits(data, storage, bits) == CMETA_OK)
+    return DATA_BIND_OK;
+range:
+  return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                     "Enum value is outside the canonical CMeta domain");
+}
+
+static int64_t typed_native_enum_signed_value(const cmeta_enum_domain *domain,
+                                              uint64_t bits) {
+  uint64_t mask = UINT64_MAX >> (64u - domain->bits);
+  if ((bits & (UINT64_C(1) << (domain->bits - 1u))) != 0u)
+    return -1 - (int64_t)(mask - bits);
+  return (int64_t)bits;
 }
 
 static DataBindStatus typed_native_from_scalar(
@@ -1247,13 +1285,17 @@ static DataBindStatus typed_native_from_scalar(
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
-      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Expected declared enum value");
-    if (cmeta_data_enum_assign(data, storage, signed_value) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Enum value is not declared by canonical CMeta");
-    return DATA_BIND_OK;
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    if (domain->signedness == CMETA_ENUM_SIGNED) {
+      if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK)
+        goto range_error;
+      return typed_native_enum_assign_number(data, 1, signed_value, 0u,
+                                              storage, path, error);
+    }
+    if (data_bind_value_get_uint64(value, &unsigned_value) != DATA_BIND_OK)
+      goto range_error;
+    return typed_native_enum_assign_number(data, 0, 0, unsigned_value,
+                                            storage, path, error);
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data)) {
     if (data_bind_value_get_int64(value, &signed_value) != DATA_BIND_OK ||
@@ -1396,13 +1438,16 @@ static json_value_t *typed_native_to_json(
     return root;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
-    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK) {
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    uint64_t bits;
+    if (cmeta_data_enum_read_bits(data, storage, &bits) != CMETA_OK) {
       typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                   "Canonical enum provider could not read storage");
       return NULL;
     }
-    return json_create_int64(value);
+    return domain->signedness == CMETA_ENUM_SIGNED
+               ? json_create_int64(typed_native_enum_signed_value(domain, bits))
+               : json_create_uint64(bits);
   }
   if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data)) {
     uint8_t candidate = 0u;
@@ -1693,10 +1738,13 @@ static int typed_native_schema_field_matches(
   }
   if (native->kind == CMETA_DATA_ENUM) {
     DataBindSchemaType enum_type = DATA_BIND_SCHEMA_TYPE_INIT;
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(native)->domain;
     TbeTypedKind underlying;
     return typed_nonempty(schema->type) &&
            data_bind_schema_find_type(codec, schema->type, &enum_type) &&
-           enum_type.kind == DATA_BIND_SCHEMA_ENUM &&
+           enum_type.kind == (domain->kind == CMETA_ENUM_FLAGS
+                                  ? DATA_BIND_SCHEMA_FLAGS
+                                  : DATA_BIND_SCHEMA_ENUM) &&
            typed_scalar_kind_from_name(enum_type.underlying_type, &underlying) &&
            underlying == wire->wire_kind;
   }
@@ -2143,23 +2191,24 @@ static DataBindStatus typed_native_read_wire_scalar(
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
+    int64_t signed_value = 0;
+    uint64_t unsigned_value = 0u;
+    int input_signed = 0;
     switch (wire_kind) {
-    case TBE_TYPED_I8: value = tbe_wire_read_i8(source, big_endian); break;
-    case TBE_TYPED_U8: value = tbe_wire_read_u8(source, big_endian); break;
-    case TBE_TYPED_I16: value = tbe_wire_read_i16(source, big_endian); break;
-    case TBE_TYPED_U16: value = tbe_wire_read_u16(source, big_endian); break;
-    case TBE_TYPED_I32: value = tbe_wire_read_i32(source, big_endian); break;
-    case TBE_TYPED_U32: value = tbe_wire_read_u32(source, big_endian); break;
-    case TBE_TYPED_I64: value = tbe_wire_read_i64(source, big_endian); break;
+    case TBE_TYPED_I8: input_signed = 1; signed_value = tbe_wire_read_i8(source, big_endian); break;
+    case TBE_TYPED_U8: unsigned_value = tbe_wire_read_u8(source, big_endian); break;
+    case TBE_TYPED_I16: input_signed = 1; signed_value = tbe_wire_read_i16(source, big_endian); break;
+    case TBE_TYPED_U16: unsigned_value = tbe_wire_read_u16(source, big_endian); break;
+    case TBE_TYPED_I32: input_signed = 1; signed_value = tbe_wire_read_i32(source, big_endian); break;
+    case TBE_TYPED_U32: unsigned_value = tbe_wire_read_u32(source, big_endian); break;
+    case TBE_TYPED_I64: input_signed = 1; signed_value = tbe_wire_read_i64(source, big_endian); break;
+    case TBE_TYPED_U64: unsigned_value = tbe_wire_read_u64(source, big_endian); break;
     default:
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum wire kind exceeds the signed CMeta domain");
+                         "Enum wire kind is not an integer");
     }
-    if (cmeta_data_enum_assign(data, storage, value) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
-                         "Wire enum value is not declared by canonical CMeta");
-    return DATA_BIND_OK;
+    return typed_native_enum_assign_number(data, input_signed, signed_value,
+                                            unsigned_value, storage, path, error);
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) &&
       wire_kind == TBE_TYPED_I8)
@@ -2271,34 +2320,41 @@ static DataBindStatus typed_native_write_wire_scalar(
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_ENUM) {
-    int64_t value;
-    if (cmeta_data_enum_read(data, storage, &value) != CMETA_OK)
+    const cmeta_enum_domain *domain = cmeta_data_enum_bits_ops_of(data)->domain;
+    uint64_t bits;
+    uint64_t wire_mask;
+    unsigned wire_bits;
+    int wire_signed;
+    if (cmeta_data_enum_read_bits(data, storage, &bits) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                          "Canonical enum provider could not read storage");
     switch (wire_kind) {
-    case TBE_TYPED_I8:
-      if (value < INT8_MIN || value > INT8_MAX) goto enum_range;
-      tbe_wire_write_i8(destination, big_endian, (int8_t)value); break;
-    case TBE_TYPED_U8:
-      if (value < 0 || value > UINT8_MAX) goto enum_range;
-      tbe_wire_write_u8(destination, big_endian, (uint8_t)value); break;
-    case TBE_TYPED_I16:
-      if (value < INT16_MIN || value > INT16_MAX) goto enum_range;
-      tbe_wire_write_i16(destination, big_endian, (int16_t)value); break;
-    case TBE_TYPED_U16:
-      if (value < 0 || value > UINT16_MAX) goto enum_range;
-      tbe_wire_write_u16(destination, big_endian, (uint16_t)value); break;
-    case TBE_TYPED_I32:
-      if (value < INT32_MIN || value > INT32_MAX) goto enum_range;
-      tbe_wire_write_i32(destination, big_endian, (int32_t)value); break;
-    case TBE_TYPED_U32:
-      if (value < 0 || (uint64_t)value > UINT32_MAX) goto enum_range;
-      tbe_wire_write_u32(destination, big_endian, (uint32_t)value); break;
-    case TBE_TYPED_I64:
-      tbe_wire_write_i64(destination, big_endian, value); break;
+    case TBE_TYPED_I8: wire_bits = 8u; wire_signed = 1; break;
+    case TBE_TYPED_U8: wire_bits = 8u; wire_signed = 0; break;
+    case TBE_TYPED_I16: wire_bits = 16u; wire_signed = 1; break;
+    case TBE_TYPED_U16: wire_bits = 16u; wire_signed = 0; break;
+    case TBE_TYPED_I32: wire_bits = 32u; wire_signed = 1; break;
+    case TBE_TYPED_U32: wire_bits = 32u; wire_signed = 0; break;
+    case TBE_TYPED_I64: wire_bits = 64u; wire_signed = 1; break;
+    case TBE_TYPED_U64: wire_bits = 64u; wire_signed = 0; break;
     default:
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum wire kind exceeds the signed CMeta domain");
+                         "Enum wire kind is not an integer");
+    }
+    wire_mask = UINT64_MAX >> (64u - wire_bits);
+    if (domain->signedness == CMETA_ENUM_SIGNED &&
+        (bits & (UINT64_C(1) << (domain->bits - 1u))) != 0u) {
+      uint64_t magnitude = (UINT64_MAX >> (64u - domain->bits)) - bits + 1u;
+      if (!wire_signed || magnitude > (wire_mask >> 1u) + 1u) goto enum_range;
+      bits = ~(magnitude - 1u) & wire_mask;
+    } else if (bits > (wire_signed ? wire_mask >> 1u : wire_mask)) {
+      goto enum_range;
+    }
+    switch (wire_bits) {
+    case 8u: tbe_wire_write_u8(destination, big_endian, (uint8_t)bits); break;
+    case 16u: tbe_wire_write_u16(destination, big_endian, (uint16_t)bits); break;
+    case 32u: tbe_wire_write_u32(destination, big_endian, (uint32_t)bits); break;
+    case 64u: tbe_wire_write_u64(destination, big_endian, bits); break;
     }
     return DATA_BIND_OK;
 enum_range:
