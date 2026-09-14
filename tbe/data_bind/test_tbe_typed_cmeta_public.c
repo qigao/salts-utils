@@ -99,6 +99,8 @@ int main(void) {
   }
   {
     const TbeTypedDescriptor *descriptor = WideEnumStorage_typed_descriptor();
+    DataBind *codec = NULL;
+    int failed;
     const cmeta_data_struct_shape *shape;
     const cmeta_data_desc *root;
     const cmeta_data_desc *enum_data;
@@ -117,7 +119,9 @@ int main(void) {
         shape->fields[0].value == NULL)
       return 29;
     enum_data = shape->fields[0].value;
-    if (enum_data->kind != CMETA_DATA_ENUM ||
+    if (Graph_codec_create(&codec, &error) != DATA_BIND_OK || codec == NULL)
+      return 29;
+    failed = enum_data->kind != CMETA_DATA_ENUM ||
         enum_data->storage_type->size != sizeof(uint64_t) ||
         cmeta_data_enum_bits_ops_of(enum_data) == NULL ||
         cmeta_data_enum_assign_bits(enum_data, &object.value,
@@ -127,12 +131,13 @@ int main(void) {
             &error) != DATA_BIND_OK ||
         wire_len != sizeof(wire) ||
         tbe_typed_descriptor_parse(
-            NULL, "WideEnumStorage", descriptor, DATA_BIND_FORMAT_BINARY,
+            codec, "WideEnumStorage", descriptor, DATA_BIND_FORMAT_BINARY,
             wire, wire_len, 0u, &decoded, &error) != DATA_BIND_OK ||
         cmeta_data_enum_read_bits(enum_data, &decoded.value,
                                   &bits) != CMETA_OK ||
-        bits != UINT64_MAX || decoded.value != UINT64_MAX)
-      return 29;
+        bits != UINT64_MAX || decoded.value != UINT64_MAX;
+    data_bind_free(codec);
+    if (failed) return 29;
   }
   {
     const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();

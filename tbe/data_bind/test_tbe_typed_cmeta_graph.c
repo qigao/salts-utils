@@ -438,6 +438,7 @@ spec("generated native CMeta graph") {
 
   it("round-trips UINT64_MAX through canonical bits and descriptor binary APIs") {
     const TbeTypedDescriptor *descriptor = WideEnumStorage_typed_descriptor();
+    DataBind *codec = NULL;
     const cmeta_data_desc *data;
     const cmeta_data_desc *enum_data;
     const cmeta_data_struct_shape *shape;
@@ -486,8 +487,10 @@ spec("generated native CMeta graph") {
     check_not_null(wire);
     check_equal(wire_len, sizeof(uint64_t));
     if (wire) {
+      check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+      check_not_null(codec);
       check_equal(tbe_typed_descriptor_parse(
-                      NULL, "WideEnumStorage", descriptor,
+                      codec, "WideEnumStorage", descriptor,
                       DATA_BIND_FORMAT_BINARY, wire, wire_len, 0u,
                       &decoded, &error),
                   DATA_BIND_OK);
@@ -498,6 +501,7 @@ spec("generated native CMeta graph") {
       check(value == UINT64_MAX);
       check(decoded.value == UINT64_MAX);
     }
+    data_bind_free(codec);
     tbe_typed_serialized_free(wire);
     check_equal(tbe_typed_descriptor_clear(descriptor, &decoded, &error),
                 DATA_BIND_OK);
