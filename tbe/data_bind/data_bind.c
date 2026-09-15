@@ -282,73 +282,10 @@ struct data_bind_stream_t {
 static DataBindStatus data_bind_query_failure_status(
     const DataBindQueryDiagnostic *diagnostic);
 
-typedef struct data_bind_value_field {
-  char *name;
-  DataBindValue *value;
-} data_bind_value_field_t;
-
-typedef struct data_bind_value_array {
-  DataBindValue **items;
-  size_t count;
-  size_t capacity;
-} data_bind_value_array_t;
-
-typedef struct data_bind_value_field_array {
-  data_bind_value_field_t *items;
-  size_t count;
-  size_t capacity;
-} data_bind_value_field_array_t;
-
-typedef struct data_bind_value_map_entry {
-  char *key;
-  DataBindValue *value;
-} data_bind_value_map_entry_t;
-
-typedef struct data_bind_value_map_array {
-  data_bind_value_map_entry_t *items;
-  size_t count;
-  size_t capacity;
-} data_bind_value_map_array_t;
-
-typedef struct db_dynamic_graph {
+struct db_dynamic_graph {
   size_t references;
   cmeta_type_identity root_identity;
   char *stable_id;
-} db_dynamic_graph_t;
-
-struct DataBindValue {
-  size_t references;
-  const cmeta_type_identity *type_identity;
-  db_dynamic_graph_t *owned_graph;
-  DataBindValueKind kind;
-  union {
-    int32_t int_val;
-    int64_t int64_val;
-    uint64_t uint64_val;
-    double double_val;
-    int bool_val;
-    struct {
-      char *ptr;
-      size_t len;
-    } string_val;
-    struct {
-      uint8_t *ptr;
-      size_t len;
-    } bytes_val;
-    salts_uuid_t uuid_val;
-    datetime_t datetime_val;
-    DataBindDate date_val;
-    DataBindTime time_val;
-    int64_t duration_ms;
-    DataBindDecimal decimal_val;
-    struct {
-      char *ptr;
-    } bigint_val;
-    DataBindMoney money_val;
-    data_bind_value_field_array_t object_val;
-    data_bind_value_array_t array_val;
-    data_bind_value_map_array_t map_val;
-  } data;
 };
 
 struct DataBindObject {
@@ -605,9 +542,133 @@ static int db_dynamic_attach_root(DataBind *codec, const char *root_type, DataBi
   return 1;
 }
 
+static DataBindValue *dbv_retain(DataBindValue *value) {
+  if (value == NULL || value->references == SIZE_MAX) return NULL;
+  value->references++;
+  return value;
+}
+
+static void dbv_release(DataBindValue *value);
+
+static bool db_owned_value_slot_copy(void *destination_, const void *source_) {
+  db_owned_value_slot_t *destination = (db_owned_value_slot_t *)destination_;
+  const db_owned_value_slot_t *source = (const db_owned_value_slot_t *)source_;
+  if (destination == NULL || source == NULL) return false;
+  destination->value = dbv_retain(source->value);
+  return source->value == NULL || destination->value != NULL;
+}
+
+static void db_owned_value_slot_move(void *destination_, void *source_) {
+  db_owned_value_slot_t *destination = (db_owned_value_slot_t *)destination_;
+  db_owned_value_slot_t *source = (db_owned_value_slot_t *)source_;
+  destination->value = source->value;
+  source->value = NULL;
+}
+
+static void db_owned_value_slot_destroy(void *slot_) {
+  db_owned_value_slot_t *slot = (db_owned_value_slot_t *)slot_;
+  dbv_release(slot->value);
+  slot->value = NULL;
+}
+
+static bool db_field_slot_copy(void *destination_, const void *source_) {
+  db_field_slot_t *destination = (db_field_slot_t *)destination_;
+  const db_field_slot_t *source = (const db_field_slot_t *)source_;
+  if (destination == NULL || source == NULL) return false;
+  memset(destination, 0, sizeof(*destination));
+  if (source->name != NULL) {
+    destination->name = dbv_strdup(source->name);
+    if (destination->name == NULL) return false;
+  }
+  destination->value = dbv_retain(source->value);
+  if (source->value != NULL && destination->value == NULL) {
+    free(destination->name);
+    destination->name = NULL;
+    return false;
+  }
+  return true;
+}
+
+static void db_field_slot_move(void *destination_, void *source_) {
+  db_field_slot_t *destination = (db_field_slot_t *)destination_;
+  db_field_slot_t *source = (db_field_slot_t *)source_;
+  destination->name = source->name;
+  destination->value = source->value;
+  source->name = NULL;
+  source->value = NULL;
+}
+
+static void db_field_slot_destroy(void *slot_) {
+  db_field_slot_t *slot = (db_field_slot_t *)slot_;
+  free(slot->name);
+  slot->name = NULL;
+  dbv_release(slot->value);
+  slot->value = NULL;
+}
+
+static const cmeta_type_traits DB_OWNED_VALUE_SLOT_TRAITS = {
+    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,
+    NULL,
+    NULL,
+    NULL,
+    db_owned_value_slot_copy,
+    db_owned_value_slot_move,
+    db_owned_value_slot_destroy};
+
+static const cmeta_type_desc DB_OWNED_VALUE_SLOT_TYPE = {
+    "salts-utils.databind.owned-value-slot",
+    sizeof(db_owned_value_slot_t),
+    _Alignof(db_owned_value_slot_t),
+    CMETA_T_OBJECT,
+    NULL,
+    &DB_OWNED_VALUE_SLOT_TRAITS,
+    NULL};
+
+static const cmeta_type_traits DB_FIELD_SLOT_TRAITS = {
+    CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY,
+    NULL,
+    NULL,
+    NULL,
+    db_field_slot_copy,
+    db_field_slot_move,
+    db_field_slot_destroy};
+
+static const cmeta_type_desc DB_FIELD_SLOT_TYPE = {
+    "salts-utils.databind.field-slot", sizeof(db_field_slot_t),
+    _Alignof(db_field_slot_t), CMETA_T_OBJECT, NULL, &DB_FIELD_SLOT_TRAITS, NULL};
+
+static stl_status db_vec_init(vec_t *vec, const cmeta_type_desc *slot_type,
+                              size_t limit) {
+  if (vec == NULL || slot_type == NULL) return STL_INVALID_ARGUMENT;
+  memset(vec, 0, sizeof(*vec));
+  vec->cmeta.descriptor = &stl_vec_container_desc;
+  vec->element_type = slot_type;
+  return vec_init(vec, limit);
+}
+
+static DataBindStatus db_status_from_stl(stl_status status) {
+  switch (status) {
+  case STL_OK:
+    return DATA_BIND_OK;
+  case STL_OUT_OF_MEMORY:
+    return DATA_BIND_ERR_OOM;
+  case STL_CAPACITY_EXCEEDED:
+    return DATA_BIND_ERR_LIMIT;
+  case STL_INVALID_ARGUMENT:
+  case STL_TYPE_MISMATCH:
+  case STL_TRAIT_MISSING:
+    return DATA_BIND_ERR_SCHEMA;
+  case STL_EMPTY:
+  case STL_NOT_FOUND:
+  default:
+    return DATA_BIND_ERR_RUNTIME;
+  }
+}
+
 static DataBindValue *dbv_new(DataBindValueKind kind) {
   DataBindValue *value = NULL;
   int pool_enabled = value_pool_is_enabled();
+  stl_status status = STL_OK;
 
   if (pool_enabled && atomic_load_explicit(&g_value_pool_ready_mask, memory_order_relaxed) != 0) {
     value = value_pool_take();
@@ -627,6 +688,15 @@ static DataBindValue *dbv_new(DataBindValueKind kind) {
   if (value != NULL) {
     value->references = 1u;
     value->kind = kind;
+    if (kind == DATA_BIND_VALUE_OBJECT)
+      status = db_vec_init(&value->data.object.fields, &DB_FIELD_SLOT_TYPE, SIZE_MAX);
+    else if (kind == DATA_BIND_VALUE_LIST || kind == DATA_BIND_VALUE_SET)
+      status = db_vec_init(&value->data.sequence.values, &DB_OWNED_VALUE_SLOT_TYPE, SIZE_MAX);
+    if (status != STL_OK) {
+      value->references = 0u;
+      if (!pool_enabled || !value_pool_put(value)) free(value);
+      value = NULL;
+    }
   }
   return value;
 }
@@ -669,39 +739,6 @@ static int dbv_reserve_capacity(size_t current_capacity, size_t min_capacity, si
   return 1;
 }
 
-static int dbv_array_reserve(data_bind_value_array_t *array, size_t min_capacity) {
-  DataBindValue **items;
-  size_t capacity;
-  if (array == NULL || min_capacity <= array->capacity) return array != NULL;
-  if (!dbv_reserve_capacity(array->capacity, min_capacity, sizeof(*array->items), &capacity))
-    return 0;
-  items = (DataBindValue **)realloc(array->items, capacity * sizeof(*items));
-  if (items == NULL) {
-    return 0;
-  }
-  array->items = items;
-  array->capacity = capacity;
-  return 1;
-}
-
-static int dbv_object_reserve(DataBindValue *obj, size_t min_capacity) {
-  data_bind_value_field_array_t *fields;
-  data_bind_value_field_t *items;
-  size_t capacity;
-  if (obj == NULL || obj->kind != DATA_BIND_VALUE_OBJECT) return 0;
-  fields = &obj->data.object_val;
-  if (min_capacity <= fields->capacity) return 1;
-  if (!dbv_reserve_capacity(fields->capacity, min_capacity, sizeof(*fields->items), &capacity))
-    return 0;
-  items = (data_bind_value_field_t *)realloc(fields->items, capacity * sizeof(*items));
-  if (items == NULL) {
-    return 0;
-  }
-  fields->items = items;
-  fields->capacity = capacity;
-  return 1;
-}
-
 static int dbv_map_reserve(DataBindValue *map, size_t min_capacity) {
   data_bind_value_map_array_t *entries;
   data_bind_value_map_entry_t *items;
@@ -720,23 +757,46 @@ static int dbv_map_reserve(DataBindValue *map, size_t min_capacity) {
   return 1;
 }
 
-static int dbv_array_push(data_bind_value_array_t *array, DataBindValue *value) {
-  if (array == NULL || value == NULL) return 0;
-  if (array->count == SIZE_MAX || !dbv_array_reserve(array, array->count + 1)) return 0;
-  array->items[array->count++] = value;
+static DataBindStatus dbv_sequence_push(DataBindValue *sequence,
+                                        DataBindValue *value) {
+  db_owned_value_slot_t slot;
+  stl_status status;
+  if (sequence == NULL ||
+      (sequence->kind != DATA_BIND_VALUE_LIST &&
+       sequence->kind != DATA_BIND_VALUE_SET) ||
+      value == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  slot.value = value;
+  status = vec_push(&sequence->data.sequence.values, &slot);
+  if (status == STL_OK) dbv_release(value);
+  return db_status_from_stl(status);
+}
+
+static int dbv_sequence_set_limit(DataBindValue *sequence, size_t limit) {
+  vec_t *values;
+  if (sequence == NULL ||
+      (sequence->kind != DATA_BIND_VALUE_LIST &&
+       sequence->kind != DATA_BIND_VALUE_SET) ||
+      limit == 0u)
+    return 0;
+  values = &sequence->data.sequence.values;
+  if (!values->initialized || vec_size(values) > limit) return 0;
+  values->element_limit = limit;
   return 1;
 }
 
-static int dbv_object_set(DataBindValue *obj, const char *name, DataBindValue *value) {
-  data_bind_value_field_array_t *fields;
-  if (obj == NULL || obj->kind != DATA_BIND_VALUE_OBJECT || name == NULL || value == NULL) return 0;
-  fields = &obj->data.object_val;
-  if (fields->count == SIZE_MAX || !dbv_object_reserve(obj, fields->count + 1)) return 0;
-  fields->items[fields->count].name = dbv_strdup(name);
-  if (fields->items[fields->count].name == NULL) return 0;
-  fields->items[fields->count].value = value;
-  fields->count++;
-  return 1;
+static DataBindStatus dbv_object_set(DataBindValue *object, const char *name,
+                                     DataBindValue *value) {
+  db_field_slot_t slot;
+  stl_status status;
+  if (object == NULL || object->kind != DATA_BIND_VALUE_OBJECT ||
+      name == NULL || value == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  slot.name = (char *)name;
+  slot.value = value;
+  status = vec_push(&object->data.object.fields, &slot);
+  if (status == STL_OK) dbv_release(value);
+  return db_status_from_stl(status);
 }
 
 static int dbv_map_set(DataBindValue *map, const char *key, DataBindValue *value) {
@@ -761,31 +821,27 @@ static int dbv_map_has_key(const DataBindValue *map, const char *key) {
   return 0;
 }
 
-void data_bind_value_free(DataBindValue *value) {
+static void dbv_release(DataBindValue *value) {
   db_dynamic_graph_t *owned_graph;
   size_t i;
-  if (value == NULL) return;
+  if (value == NULL || value->references == 0u) return;
+  value->references--;
+  if (value->references != 0u) return;
   owned_graph = value->owned_graph;
   value->owned_graph = NULL;
   value->type_identity = NULL;
   switch (value->kind) {
   case DATA_BIND_VALUE_OBJECT:
-    for (i = 0; i < value->data.object_val.count; i++) {
-      free(value->data.object_val.items[i].name);
-      data_bind_value_free(value->data.object_val.items[i].value);
-    }
-    free(value->data.object_val.items);
+    vec_destroy(&value->data.object.fields);
     break;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
-    for (i = 0; i < value->data.array_val.count; i++)
-      data_bind_value_free(value->data.array_val.items[i]);
-    free(value->data.array_val.items);
+    vec_destroy(&value->data.sequence.values);
     break;
   case DATA_BIND_VALUE_MAP:
     for (i = 0; i < value->data.map_val.count; i++) {
       free(value->data.map_val.items[i].key);
-      data_bind_value_free(value->data.map_val.items[i].value);
+      dbv_release(value->data.map_val.items[i].value);
     }
     free(value->data.map_val.items);
     break;
@@ -803,10 +859,11 @@ void data_bind_value_free(DataBindValue *value) {
   }
 
   db_dynamic_graph_release(owned_graph);
-  value->references = 0u;
   if (value_pool_is_enabled() && value_pool_put(value)) return;
   free(value);
 }
+
+void data_bind_value_free(DataBindValue *value) { dbv_release(value); }
 
 static DataBindValue *dbv_int(int32_t value) {
   DataBindValue *v = dbv_new(DATA_BIND_VALUE_INT);
@@ -1382,18 +1439,17 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
   case DATA_BIND_VALUE_OBJECT:
     copy = dbv_new(DATA_BIND_VALUE_OBJECT);
     if (copy == NULL) return DATA_BIND_ERR_OOM;
-    for (i = 0; i < source->data.object_val.count; ++i) {
-      const data_bind_value_field_t *field = &source->data.object_val.items[i];
+    for (i = 0; i < vec_size(&source->data.object.fields); ++i) {
+      const db_field_slot_t *field =
+          (const db_field_slot_t *)vec_at_const(&source->data.object.fields, i);
       if (field->name == NULL || field->value == NULL) {
         status = DATA_BIND_ERR_RUNTIME;
         goto fail;
       }
       status = dbv_clone_tree(field->value, depth + 1u, &child);
       if (status != DATA_BIND_OK) goto fail;
-      if (!dbv_object_set(copy, field->name, child)) {
-        status = DATA_BIND_ERR_OOM;
-        goto fail;
-      }
+      status = dbv_object_set(copy, field->name, child);
+      if (status != DATA_BIND_OK) goto fail;
       child = NULL;
     }
     break;
@@ -1401,17 +1457,17 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
   case DATA_BIND_VALUE_SET:
     copy = dbv_new(source->kind);
     if (copy == NULL) return DATA_BIND_ERR_OOM;
-    for (i = 0; i < source->data.array_val.count; ++i) {
-      if (source->data.array_val.items[i] == NULL) {
+    for (i = 0; i < vec_size(&source->data.sequence.values); ++i) {
+      const db_owned_value_slot_t *slot = (const db_owned_value_slot_t *)vec_at_const(
+          &source->data.sequence.values, i);
+      if (slot == NULL || slot->value == NULL) {
         status = DATA_BIND_ERR_RUNTIME;
         goto fail;
       }
-      status = dbv_clone_tree(source->data.array_val.items[i], depth + 1u, &child);
+      status = dbv_clone_tree(slot->value, depth + 1u, &child);
       if (status != DATA_BIND_OK) goto fail;
-      if (!dbv_array_push(&copy->data.array_val, child)) {
-        status = DATA_BIND_ERR_OOM;
-        goto fail;
-      }
+      status = dbv_sequence_push(copy, child);
+      if (status != DATA_BIND_OK) goto fail;
       child = NULL;
     }
     break;
@@ -2787,7 +2843,7 @@ static DataBindValue *bind_json_array(Node *schema_root, Node *field, json_value
     return NULL;
   list = dbv_new(list_kind);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
+  if (vec_reserve(&list->data.sequence.values, json_array_size(value)) != STL_OK) {
     data_bind_value_free(list);
     return NULL;
   }
@@ -2800,7 +2856,7 @@ static DataBindValue *bind_json_array(Node *schema_root, Node *field, json_value
         find_union_record(schema_root, inner_type) != NULL)
       bound = bind_json_typed_value(schema_root, inner_type, item);
     else bound = bind_json_value(schema_root, inner_type, scalar_kind, item);
-    if (bound == NULL || !dbv_array_push(&list->data.array_val, bound)) {
+    if (bound == NULL || dbv_sequence_push(list, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(list);
       return NULL;
@@ -2816,14 +2872,14 @@ static DataBindValue *bind_json_record_array(Node *schema_root, const char *type
   if (value == NULL || json_type(value) != JSON_ARRAY || type_name == NULL) return NULL;
   list = dbv_new(DATA_BIND_VALUE_LIST);
   if (list == NULL) return NULL;
-  if (!dbv_array_reserve(&list->data.array_val, json_array_size(value))) {
+  if (vec_reserve(&list->data.sequence.values, json_array_size(value)) != STL_OK) {
     data_bind_value_free(list);
     return NULL;
   }
   for (i = 0; i < json_array_size(value); i++) {
     DataBindValue *bound =
         bind_json_typed_value(schema_root, type_name, json_array_get(value, i));
-    if (bound == NULL || !dbv_array_push(&list->data.array_val, bound)) {
+    if (bound == NULL || dbv_sequence_push(list, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(list);
       return NULL;
@@ -2890,7 +2946,7 @@ static DataBindValue *bind_json_union(Node *schema_root, Node *union_node, json_
   }
   if (bound == NULL) return NULL;
   result = dbv_new(DATA_BIND_VALUE_OBJECT);
-  if (result == NULL || !dbv_object_set(result, variant_name, bound)) {
+  if (result == NULL || dbv_object_set(result, variant_name, bound) != DATA_BIND_OK) {
     data_bind_value_free(bound);
     data_bind_value_free(result);
     return NULL;
@@ -2919,7 +2975,7 @@ static DataBindValue *bind_json_object(Node *schema_root, Node *record, json_val
     if (value == NULL) {
       bound = bind_field_default(schema_root, field);
       if (bound != NULL && db_value_matches_field_format(field, bound)) {
-        if (!dbv_object_set(result, name, bound)) {
+        if (dbv_object_set(result, name, bound) != DATA_BIND_OK) {
           data_bind_value_free(bound);
           data_bind_value_free(result);
           return NULL;
@@ -2952,7 +3008,7 @@ static DataBindValue *bind_json_object(Node *schema_root, Node *record, json_val
       bound = bind_json_value(schema_root, field_type, kind, value);
     }
     if (bound == NULL || !db_value_matches_field_format(field, bound) ||
-        !dbv_object_set(result, name, bound)) {
+        dbv_object_set(result, name, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
       return NULL;
@@ -3103,7 +3159,7 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, cons
         find_union_record(schema_root, inner_type) != NULL)
       item = bind_xml_typed_value(schema_root, inner_type, doc, item_path);
     else item = bind_xml_scalar_at_path(schema_root, inner_type, scalar_kind, doc, item_path);
-    if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
+    if (item == NULL || dbv_sequence_push(list, item) != DATA_BIND_OK) {
       data_bind_value_free(item);
       data_bind_value_free(list);
       salts_xml_node_list_destroy(&nodes);
@@ -3199,7 +3255,7 @@ static DataBindValue *bind_xml_union_at_path(Node *schema_root, Node *union_node
         find_union_record(schema_root, variant_type) != NULL)
       item = bind_xml_typed_value(schema_root, variant_type, doc, item_path);
     else item = bind_xml_scalar_at_path(schema_root, variant_type, scalar_kind, doc, item_path);
-    if (item == NULL || !dbv_object_set(result, name, item)) {
+    if (item == NULL || dbv_object_set(result, name, item) != DATA_BIND_OK) {
       data_bind_value_free(item);
       data_bind_value_free(result);
       return NULL;
@@ -3257,7 +3313,8 @@ static DataBindValue *bind_xml_record_at_path(Node *schema_root, Node *record, c
       data_bind_value_free(result);
       return NULL;
     }
-    if (!db_value_matches_field_format(field, bound) || !dbv_object_set(result, name, bound)) {
+    if (!db_value_matches_field_format(field, bound) ||
+        dbv_object_set(result, name, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
       return NULL;
@@ -3681,7 +3738,7 @@ static DataBindValue *bind_csv_list_at_path(Node *schema_root, Node *field, csv_
       item = bind_csv_typed_value(schema_root, inner_type, doc, row, headers, item_path);
     else item = bind_csv_scalar_at_path(schema_root, inner_type, scalar_kind, doc, row, item_path);
     if (item != NULL) {
-      if (!dbv_array_push(&list->data.array_val, item)) {
+      if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
         data_bind_value_free(item);
         data_bind_value_free(list);
         goto fail_indexes;
@@ -3727,7 +3784,7 @@ static DataBindValue *bind_csv_union_at_path(Node *schema_root, Node *union_node
         !csv_row_has_nonempty_path(doc, row, headers, item_path))
       continue;
     item = bind_csv_typed_value(schema_root, variant_type, doc, row, headers, item_path);
-    if (item == NULL || !dbv_object_set(result, name, item)) {
+    if (item == NULL || dbv_object_set(result, name, item) != DATA_BIND_OK) {
       data_bind_value_free(item);
       data_bind_value_free(result);
       return NULL;
@@ -3789,7 +3846,8 @@ static DataBindValue *bind_csv_record_at_path(Node *schema_root, Node *record, c
       data_bind_value_free(result);
       return NULL;
     }
-    if (!db_value_matches_field_format(field, bound) || !dbv_object_set(result, name, bound)) {
+    if (!db_value_matches_field_format(field, bound) ||
+        dbv_object_set(result, name, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
       return NULL;
@@ -4547,8 +4605,10 @@ static const DataBindValue *db_binary_object_get_n(const DataBindValue *object, 
                                                    size_t name_len) {
   size_t i;
   if (object == NULL || object->kind != DATA_BIND_VALUE_OBJECT || name == NULL) return NULL;
-  for (i = 0; i < object->data.object_val.count; ++i) {
-    const data_bind_value_field_t *field = &object->data.object_val.items[i];
+  for (i = 0; i < vec_size(&object->data.object.fields); ++i) {
+    const db_field_slot_t *field =
+        (const db_field_slot_t *)vec_at_const(&object->data.object.fields, i);
+    if (field == NULL || field->name == NULL) return NULL;
     if (strlen(field->name) == name_len && memcmp(field->name, name, name_len) == 0)
       return field->value;
   }
@@ -4859,7 +4919,7 @@ static DataBindStatus db_binary_write_collection(data_bind_binary_writer_t *writ
   if (value == NULL || value->kind != expected)
     return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
                         "Collection field has the wrong value type");
-  count = value->data.array_val.count;
+  count = vec_size(&value->data.sequence.values);
   if (field->fixed_count != 0) {
     if (count != field->fixed_count)
       return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
@@ -4872,7 +4932,10 @@ static DataBindStatus db_binary_write_collection(data_bind_binary_writer_t *writ
     if (status != DATA_BIND_OK) return status;
   }
   for (i = 0; i < count; ++i) {
-    status = db_binary_write_collection_item(writer, field, value->data.array_val.items[i]);
+    const db_owned_value_slot_t *slot =
+        (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
+    status = db_binary_write_collection_item(writer, field,
+                                             slot != NULL ? slot->value : NULL);
     if (status != DATA_BIND_OK) return status;
   }
   return DATA_BIND_OK;
@@ -4908,19 +4971,23 @@ static DataBindStatus db_binary_write_map(data_bind_binary_writer_t *writer,
 static DataBindStatus db_binary_write_group(data_bind_binary_writer_t *writer,
                                             const emit_field_t *field, const DataBindValue *value) {
   size_t i;
+  size_t count;
   DataBindStatus status;
+  count = value != NULL ? vec_size(&value->data.sequence.values) : 0u;
   if (value == NULL || value->kind != DATA_BIND_VALUE_LIST || field->group_dim < 4 ||
-      field->size <= 0 || field->size > UINT16_MAX || value->data.array_val.count > UINT16_MAX)
+      field->size <= 0 || field->size > UINT16_MAX || count > UINT16_MAX)
     return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
                         "Group value does not fit the schema dimensions");
   status = db_binary_write_u16(writer, (uint16_t)field->size, field->name);
   if (status == DATA_BIND_OK)
-    status = db_binary_write_u16(writer, (uint16_t)value->data.array_val.count, field->name);
+    status = db_binary_write_u16(writer, (uint16_t)count, field->name);
   if (status == DATA_BIND_OK && field->group_dim > 4)
     status = db_binary_write_zeros(writer, (size_t)field->group_dim - 4u, field->name);
   if (status != DATA_BIND_OK) return status;
-  for (i = 0; i < value->data.array_val.count; ++i) {
-    const DataBindValue *entry = value->data.array_val.items[i];
+  for (i = 0; i < count; ++i) {
+    const db_owned_value_slot_t *slot =
+        (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
+    const DataBindValue *entry = slot != NULL ? slot->value : NULL;
     size_t start = writer->offset;
     if (entry == NULL || entry->kind != DATA_BIND_VALUE_OBJECT)
       return db_error_set(writer->error, DATA_BIND_ERR_TYPE_MISMATCH, field->name, -1, -1,
@@ -5114,7 +5181,7 @@ static DataBindStatus db_binary_read_collection(data_bind_binary_reader_t *reade
   for (i = 0; i < count; ++i) {
     DataBindValue *item = NULL;
     status = db_binary_read_collection_item(reader, field, &item);
-    if (status != DATA_BIND_OK || !dbv_array_push(&collection->data.array_val, item)) {
+    if (status != DATA_BIND_OK || dbv_sequence_push(collection, item) != DATA_BIND_OK) {
       if (status == DATA_BIND_OK)
         status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
                               "Out of memory storing binary collection item");
@@ -5210,7 +5277,7 @@ static DataBindStatus db_binary_read_group(data_bind_binary_reader_t *reader,
     if (status == DATA_BIND_OK)
       status = db_binary_reader_take(reader, block_length - (reader->offset - start), field->name,
                                      NULL);
-    if (status != DATA_BIND_OK || !dbv_array_push(&list->data.array_val, entry)) {
+    if (status != DATA_BIND_OK || dbv_sequence_push(list, entry) != DATA_BIND_OK) {
       if (status == DATA_BIND_OK)
         status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
                               "Out of memory storing binary group entry");
@@ -5249,7 +5316,8 @@ static DataBindStatus db_binary_read_fields(data_bind_binary_reader_t *reader,
     else
       status = db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
                             "Unsupported binary field kind");
-    if (status != DATA_BIND_OK || !dbv_object_set(object, field->name, value)) {
+    if (status != DATA_BIND_OK ||
+        dbv_object_set(object, field->name, value) != DATA_BIND_OK) {
       if (status == DATA_BIND_OK)
         status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
                               "Out of memory storing binary field");
@@ -5719,28 +5787,42 @@ static char *data_bind_stream_copy_slice(const char *text, size_t len) {
 
 static int data_bind_stream_values_push(data_bind_stream_t *parser, DataBindValue *item,
                                         const char *message) {
+  DataBindStatus push_status;
   if (parser == NULL || item == NULL ||
       (parser->output_mode == DATA_BIND_STREAM_OUTPUT_RETAIN && parser->stream_values == NULL)) {
     data_bind_value_free(item);
     data_bind_stream_error_msg(parser, message);
     return -1;
   }
-  if (parser->result_count >= parser->limits.max_result_count) {
+  if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
+      parser->result_count >= parser->limits.max_result_count) {
     data_bind_value_free(item);
     parser->limit_failed = 1;
     data_bind_stream_error_msg(parser, "Stream result count limit exceeded");
     return -1;
   }
-  if (data_bind_stream_emit_record(parser, item) != 0) {
-    data_bind_value_free(item);
-    return -1;
-  }
   if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
+    if (data_bind_stream_emit_record(parser, item) != 0) {
+      data_bind_value_free(item);
+      return -1;
+    }
     data_bind_value_free(item);
-  } else if (!dbv_array_push(&parser->stream_values->data.array_val, item)) {
-    data_bind_value_free(item);
-    data_bind_stream_error_msg(parser, "Out of memory appending streamed bind result");
-    return -1;
+  } else {
+    push_status = dbv_sequence_push(parser->stream_values, item);
+    if (push_status != DATA_BIND_OK) {
+      data_bind_value_free(item);
+      if (push_status == DATA_BIND_ERR_LIMIT) {
+        parser->limit_failed = 1;
+        data_bind_stream_error_msg(parser, "Stream result count limit exceeded");
+      } else {
+        data_bind_stream_error_msg(parser, message);
+      }
+      return -1;
+    }
+    if (data_bind_stream_emit_record(parser, item) != 0) {
+      (void)vec_pop(&parser->stream_values->data.sequence.values, NULL);
+      return -1;
+    }
   }
   parser->result_count++;
   return 0;
@@ -6660,7 +6742,9 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
   status =
       data_bind_parse_csv(parser->codec, parser->type_name, doc_text, doc_len, 0, &value, error);
   if (status == DATA_BIND_OK && value != NULL) {
-    if (parser->result_count >= parser->limits.max_result_count) {
+    DataBindStatus push_status = DATA_BIND_OK;
+    if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
+        parser->result_count >= parser->limits.max_result_count) {
       data_bind_value_free(value);
       free(doc_text);
       parser->csv_failed = 1;
@@ -6669,26 +6753,47 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
                           "Stream result count exceeds limit of %zu",
                           parser->limits.max_result_count);
     }
-    if (data_bind_stream_emit_record(parser, value) != 0) {
-      data_bind_value_free(value);
-      free(doc_text);
-      parser->csv_failed = 1;
-      if (parser->canceled)
-        return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
-                            "Record callback canceled the stream at CSV row %llu",
-                            (unsigned long long)parser->csv_data_row);
-      return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
-                          "Record callback failed at CSV row %llu",
-                          (unsigned long long)parser->csv_data_row);
-    }
     if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
+      if (data_bind_stream_emit_record(parser, value) != 0) {
+        data_bind_value_free(value);
+        free(doc_text);
+        parser->csv_failed = 1;
+        if (parser->canceled)
+          return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
+                              "Record callback canceled the stream at CSV row %llu",
+                              (unsigned long long)parser->csv_data_row);
+        return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
+                            "Record callback failed at CSV row %llu",
+                            (unsigned long long)parser->csv_data_row);
+      }
       data_bind_value_free(value);
-    } else if (!dbv_array_push(&parser->csv_values->data.array_val, value)) {
-      data_bind_value_free(value);
-      free(doc_text);
-      parser->csv_failed = 1;
-      return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
-                          "Out of memory appending CSV stream row");
+    } else {
+      push_status = dbv_sequence_push(parser->csv_values, value);
+      if (push_status != DATA_BIND_OK) {
+        data_bind_value_free(value);
+        free(doc_text);
+        parser->csv_failed = 1;
+        if (push_status == DATA_BIND_ERR_LIMIT) {
+          parser->limit_failed = 1;
+          return db_error_set(error, DATA_BIND_ERR_LIMIT, "stream.results", -1, -1,
+                              "Stream result count exceeds limit of %zu",
+                              parser->limits.max_result_count);
+        }
+        return db_error_set(error, push_status, "data_bind_stream_feed", -1, -1,
+                            "Out of memory appending CSV stream row");
+      }
+      if (data_bind_stream_emit_record(parser, value) != 0) {
+        (void)vec_pop(&parser->csv_values->data.sequence.values, NULL);
+        free(doc_text);
+        parser->csv_failed = 1;
+        if (parser->canceled)
+          return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
+                              "Record callback canceled the stream at CSV row %llu",
+                              (unsigned long long)parser->csv_data_row);
+        return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
+                            "Record callback failed at CSV row %llu",
+                            (unsigned long long)parser->csv_data_row);
+      }
     }
     parser->result_count++;
   }
@@ -6981,7 +7086,10 @@ static data_bind_stream_t *data_bind_stream_create_common(
   parser->canceled = 0;
   if (is_csv) {
     parser->csv_values = dbv_new(DATA_BIND_VALUE_LIST);
-    if (parser->csv_values == NULL) {
+    if (parser->csv_values == NULL ||
+        !dbv_sequence_set_limit(parser->csv_values,
+                                parser->limits.max_result_count)) {
+      data_bind_value_free(parser->csv_values);
       free(parser->path_or_expr);
       free(parser->type_name);
       free(parser);
@@ -6993,7 +7101,10 @@ static data_bind_stream_t *data_bind_stream_create_common(
     if (parser->json_stream_candidate ||
         parser->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_ALL) {
       parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
-      if (parser->stream_values == NULL) {
+      if (parser->stream_values == NULL ||
+          !dbv_sequence_set_limit(parser->stream_values,
+                                  parser->limits.max_result_count)) {
+        data_bind_value_free(parser->stream_values);
         free(parser->path_or_expr);
         free(parser->type_name);
         free(parser);
@@ -7068,7 +7179,9 @@ static data_bind_stream_t *data_bind_stream_create_common(
       parser->xml_capture = tstr_new();
       parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
       if (parser->xml_stream_target == NULL || parser->xml_capture == NULL ||
-          parser->stream_values == NULL) {
+          parser->stream_values == NULL ||
+          !dbv_sequence_set_limit(parser->stream_values,
+                                  parser->limits.max_result_count)) {
         free(parser->xml_stream_target);
         tstr_free(parser->xml_capture);
         data_bind_value_free(parser->stream_values);
@@ -7573,6 +7686,14 @@ DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
     return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG,
                         "data_bind_stream_set_limits", -1, -1,
                         "XML parser limits cannot change after parsing starts");
+  }
+  if ((parser->stream_values != NULL &&
+       !dbv_sequence_set_limit(parser->stream_values, limits->max_result_count)) ||
+      (parser->csv_values != NULL &&
+       !dbv_sequence_set_limit(parser->csv_values, limits->max_result_count))) {
+    return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG,
+                        "data_bind_stream_set_limits", -1, -1,
+                        "Stream result storage cannot accept the requested limit");
   }
   parser->limits = *limits;
   parser->limits.size = sizeof(parser->limits);
@@ -8142,7 +8263,7 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
           list = NULL;
           break;
         }
-        if (!dbv_array_push(&list->data.array_val, item)) {
+        if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
           data_bind_value_free(item);
           data_bind_value_free(list);
           list = NULL;
@@ -8151,7 +8272,7 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
       }
     } else {
       DataBindValue *item = bind_json_typed_value(codec->schema_root, type_name, root);
-      if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
+      if (item == NULL || dbv_sequence_push(list, item) != DATA_BIND_OK) {
         data_bind_value_free(item);
         data_bind_value_free(list);
         list = NULL;
@@ -8334,7 +8455,7 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
         list = NULL;
         break;
       }
-      if (!dbv_array_push(&list->data.array_val, item)) {
+      if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
         data_bind_value_free(item);
         data_bind_value_free(list);
         list = NULL;
@@ -8476,7 +8597,7 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
     }
     if (!bind_all) {
       result = bound;
-    } else if (!dbv_array_push(&result->data.array_val, bound)) {
+    } else if (dbv_sequence_push(result, bound) != DATA_BIND_OK) {
       data_bind_value_free(bound);
       data_bind_value_free(result);
       cyaml_path_result_free(&matches);
@@ -8593,7 +8714,7 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
           list = NULL;
           break;
         }
-        if (!dbv_array_push(&list->data.array_val, item)) {
+        if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
           data_bind_value_free(item);
           data_bind_value_free(list);
           list = NULL;
@@ -8702,7 +8823,7 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
           break;
         }
         if (item != NULL) {
-          if (!dbv_array_push(&list->data.array_val, item)) {
+          if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
             data_bind_value_free(item);
             data_bind_value_free(list);
             list = NULL;
@@ -8796,7 +8917,7 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
   if (list != NULL) {
     if (xmlpath == NULL || xmlpath[0] == '\0') {
       DataBindValue *item = bind_xml_typed_value(codec->schema_root, type_name, &doc, "/*");
-      if (item == NULL || !dbv_array_push(&list->data.array_val, item)) {
+      if (item == NULL || dbv_sequence_push(list, item) != DATA_BIND_OK) {
         data_bind_value_free(item);
         data_bind_value_free(list);
         list = NULL;
@@ -8833,7 +8954,7 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
           list = NULL;
           break;
         }
-        if (!dbv_array_push(&list->data.array_val, item)) {
+        if (dbv_sequence_push(list, item) != DATA_BIND_OK) {
           data_bind_value_free(item);
           data_bind_value_free(list);
           list = NULL;
@@ -9277,12 +9398,13 @@ cleanup:
 }
 
 static DataBindValue *object_field_value_mutable(DataBindValue *object, const char *name,
-                                                 data_bind_value_field_t **out_field) {
+                                                 db_field_slot_t **out_field) {
   size_t i;
   if (out_field != NULL) *out_field = NULL;
   if (object == NULL || object->kind != DATA_BIND_VALUE_OBJECT || name == NULL) return NULL;
-  for (i = 0; i < object->data.object_val.count; ++i) {
-    data_bind_value_field_t *field = &object->data.object_val.items[i];
+  for (i = 0; i < vec_size(&object->data.object.fields); ++i) {
+    db_field_slot_t *field = (db_field_slot_t *)vec_at(&object->data.object.fields, i);
+    if (field == NULL || field->name == NULL) return NULL;
     if (strcmp(field->name, name) == 0) {
       if (out_field != NULL) *out_field = field;
       return field->value;
@@ -9306,15 +9428,18 @@ static DataBindStatus apply_mapped_names(Node *schema_root, const char *type_nam
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, type_name, -1, -1,
                         "Mapped serialization expected an object");
   if (union_node != NULL) {
-    data_bind_value_field_t *owned_field;
+    db_field_slot_t *owned_field;
     Node *variant;
     const char *mapped;
     const char *variant_type;
     DataBindStatus status = DATA_BIND_OK;
-    if (value->data.object_val.count != 1)
+    if (vec_size(&value->data.object.fields) != 1u)
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, type_name, -1, -1,
                           "Mapped serialization expected one union variant");
-    owned_field = &value->data.object_val.items[0];
+    owned_field = (db_field_slot_t *)vec_at(&value->data.object.fields, 0u);
+    if (owned_field == NULL || owned_field->name == NULL || owned_field->value == NULL)
+      return db_error_set(error, DATA_BIND_ERR_RUNTIME, type_name, -1, -1,
+                          "Mapped serialization found invalid object storage");
     variant = union_variant(union_node, owned_field->name);
     if (variant == NULL)
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, type_name, -1, -1,
@@ -9343,7 +9468,7 @@ static DataBindStatus apply_mapped_names(Node *schema_root, const char *type_nam
     const char *canonical = get_string_val(find_child(schema_field, "name"));
     const char *mapped = field_binding_name(schema_field);
     const char *nested_type = NULL;
-    data_bind_value_field_t *owned_field = NULL;
+    db_field_slot_t *owned_field = NULL;
     DataBindValue *child = object_field_value_mutable(value, canonical, &owned_field);
     DataBindStatus status = DATA_BIND_OK;
     size_t j;
@@ -9361,9 +9486,16 @@ static DataBindStatus apply_mapped_names(Node *schema_root, const char *type_nam
         (find_data_record(schema_root, nested_type) != NULL ||
          find_union_record(schema_root, nested_type) != NULL)) {
       if (child->kind == DATA_BIND_VALUE_LIST || child->kind == DATA_BIND_VALUE_SET) {
-        for (j = 0; j < child->data.array_val.count && status == DATA_BIND_OK; ++j)
-          status = apply_mapped_names(schema_root, nested_type, child->data.array_val.items[j],
-                                      depth + 1u, error);
+        for (j = 0; j < vec_size(&child->data.sequence.values) &&
+                    status == DATA_BIND_OK;
+             ++j) {
+          const db_owned_value_slot_t *slot =
+              (const db_owned_value_slot_t *)vec_at_const(&child->data.sequence.values, j);
+          status = slot != NULL && slot->value != NULL
+                       ? apply_mapped_names(schema_root, nested_type, slot->value,
+                                            depth + 1u, error)
+                       : DATA_BIND_ERR_RUNTIME;
+        }
       } else if (child->kind == DATA_BIND_VALUE_MAP) {
         for (j = 0; j < child->data.map_val.count && status == DATA_BIND_OK; ++j)
           status = apply_mapped_names(schema_root, nested_type, child->data.map_val.items[j].value,
@@ -9547,11 +9679,14 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
   }
   case DATA_BIND_VALUE_OBJECT:
     json = json_create_object();
-    for (i = 0; json != NULL && i < value->data.object_val.count; ++i) {
-      json_value_t *child =
-          data_bind_value_to_json(value->data.object_val.items[i].value, depth + 1, status);
-      if (child == NULL ||
-          !json_object_add_checked(json, value->data.object_val.items[i].name, child)) {
+    for (i = 0; json != NULL && i < vec_size(&value->data.object.fields); ++i) {
+      const db_field_slot_t *field =
+          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
+      json_value_t *child = field != NULL
+                                ? data_bind_value_to_json(field->value, depth + 1, status)
+                                : NULL;
+      if (field == NULL || field->name == NULL || child == NULL ||
+          !json_object_add_checked(json, field->name, child)) {
         (json_free(child), child = NULL);
         (json_free(json), json = NULL);
         if (*status == DATA_BIND_OK) *status = DATA_BIND_ERR_OOM;
@@ -9561,9 +9696,12 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
     json = json_create_array();
-    for (i = 0; json != NULL && i < value->data.array_val.count; ++i) {
-      json_value_t *child =
-          data_bind_value_to_json(value->data.array_val.items[i], depth + 1, status);
+    for (i = 0; json != NULL && i < vec_size(&value->data.sequence.values); ++i) {
+      const db_owned_value_slot_t *slot =
+          (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
+      json_value_t *child = slot != NULL
+                                ? data_bind_value_to_json(slot->value, depth + 1, status)
+                                : NULL;
       if (child == NULL || !json_array_add_checked(json, child)) {
         (json_free(child), child = NULL);
         (json_free(json), json = NULL);
@@ -9717,15 +9855,21 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
   case DATA_BIND_VALUE_BIGINT:
     return value->data.bigint_val.ptr && salts_xml_node_set_text(node, value->data.bigint_val.ptr) == 0;
   case DATA_BIND_VALUE_OBJECT:
-    for (i = 0; i < value->data.object_val.count; ++i) {
-      const char *name = value->data.object_val.items[i].name;
-      const DataBindValue *child_value = value->data.object_val.items[i].value;
+    for (i = 0; i < vec_size(&value->data.object.fields); ++i) {
+      const db_field_slot_t *field =
+          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
+      const char *name = field != NULL ? field->name : NULL;
+      const DataBindValue *child_value = field != NULL ? field->value : NULL;
+      if (name == NULL || child_value == NULL) return 0;
       if (child_value->kind == DATA_BIND_VALUE_LIST || child_value->kind == DATA_BIND_VALUE_SET) {
-        for (size_t j = 0; j < child_value->data.array_val.count; ++j) {
+        for (size_t j = 0; j < vec_size(&child_value->data.sequence.values); ++j) {
+          const db_owned_value_slot_t *slot = (const db_owned_value_slot_t *)vec_at_const(
+              &child_value->data.sequence.values, j);
           salts_xml_node child = {0};
-        if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
+          if (salts_xml_node_add_element(node, name, &child) != SALTS_XML_OK) return 0;
           if (!child.impl ||
-              !data_bind_value_to_xml(child_value->data.array_val.items[j], child, depth + 1))
+              slot == NULL || slot->value == NULL ||
+              !data_bind_value_to_xml(slot->value, child, depth + 1))
             return 0;
         }
       } else {
@@ -9737,10 +9881,13 @@ static int data_bind_value_to_xml(const DataBindValue *value, salts_xml_node nod
     return 1;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
-    for (i = 0; i < value->data.array_val.count; ++i) {
+    for (i = 0; i < vec_size(&value->data.sequence.values); ++i) {
+      const db_owned_value_slot_t *slot =
+          (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
       salts_xml_node child = {0};
       if (salts_xml_node_add_element(node, "item", &child) != SALTS_XML_OK) return 0;
-      if (!child.impl || !data_bind_value_to_xml(value->data.array_val.items[i], child, depth + 1))
+      if (!child.impl || slot == NULL || slot->value == NULL ||
+          !data_bind_value_to_xml(slot->value, child, depth + 1))
         return 0;
     }
     return 1;
@@ -9950,28 +10097,34 @@ static DataBindStatus data_bind_csv_flatten_value(data_bind_csv_cell_vec_t *cell
   if (depth > DATA_BIND_JSON_MAX_DEPTH) return DATA_BIND_ERR_RUNTIME;
   switch (value->kind) {
   case DATA_BIND_VALUE_OBJECT:
-    if (value->data.object_val.count == 0) return DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < value->data.object_val.count; ++i) {
+    if (vec_size(&value->data.object.fields) == 0u) return DATA_BIND_ERR_TYPE_MISMATCH;
+    for (i = 0; i < vec_size(&value->data.object.fields); ++i) {
+      const db_field_slot_t *field =
+          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
       DataBindStatus status;
-      tstr child_path =
-          data_bind_csv_child_path(path, value->data.object_val.items[i].name, &status);
+      tstr child_path;
+      if (field == NULL || field->name == NULL || field->value == NULL)
+        return DATA_BIND_ERR_RUNTIME;
+      child_path = data_bind_csv_child_path(path, field->name, &status);
       if (child_path == NULL) return status;
-      status = data_bind_csv_flatten_value(cells, value->data.object_val.items[i].value,
-                                           child_path, depth + 1);
+      status = data_bind_csv_flatten_value(cells, field->value, child_path, depth + 1);
       tstr_free(child_path);
       if (status != DATA_BIND_OK) return status;
     }
     return DATA_BIND_OK;
   case DATA_BIND_VALUE_LIST:
   case DATA_BIND_VALUE_SET:
-    if (path == NULL || tstr_empty(path) || value->data.array_val.count == 0)
+    if (path == NULL || tstr_empty(path) || vec_size(&value->data.sequence.values) == 0u)
       return DATA_BIND_ERR_TYPE_MISMATCH;
-    for (i = 0; i < value->data.array_val.count; ++i) {
+    for (i = 0; i < vec_size(&value->data.sequence.values); ++i) {
+      const db_owned_value_slot_t *slot =
+          (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
       DataBindStatus status;
       tstr child_path = data_bind_csv_index_path(path, i, &status);
       if (child_path == NULL) return status;
-      status = data_bind_csv_flatten_value(cells, value->data.array_val.items[i], child_path,
-                                           depth + 1);
+      status = slot != NULL && slot->value != NULL
+                   ? data_bind_csv_flatten_value(cells, slot->value, child_path, depth + 1)
+                   : DATA_BIND_ERR_RUNTIME;
       tstr_free(child_path);
       if (status != DATA_BIND_OK) return status;
     }
@@ -10197,54 +10350,52 @@ const cmeta_type_identity *data_bind_value_type_identity(const DataBindValue *va
   return value != NULL ? value->type_identity : NULL;
 }
 
-db_internal_storage_kind_t
-data_bind_internal_storage_kind(const DataBindValue *value) {
-  (void)value;
-  return DB_INTERNAL_STORAGE_SCALAR;
-}
-
 size_t data_bind_value_field_count(const DataBindValue *value) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT) return 0;
-  return value->data.object_val.count;
+  return vec_size(&value->data.object.fields);
 }
 
 const char *data_bind_value_field_name(const DataBindValue *value, size_t index) {
-  if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT ||
-      index >= value->data.object_val.count)
-    return NULL;
-  return value->data.object_val.items[index].name;
+  const db_field_slot_t *field;
+  if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT) return NULL;
+  field = (const db_field_slot_t *)vec_at_const(&value->data.object.fields, index);
+  return field != NULL ? field->name : NULL;
 }
 
 const DataBindValue *data_bind_value_field_at(const DataBindValue *value, size_t index) {
-  if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT ||
-      index >= value->data.object_val.count)
-    return NULL;
-  return value->data.object_val.items[index].value;
+  const db_field_slot_t *field;
+  if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT) return NULL;
+  field = (const db_field_slot_t *)vec_at_const(&value->data.object.fields, index);
+  return field != NULL ? field->value : NULL;
 }
 
 const DataBindValue *data_bind_value_get(const DataBindValue *value, const char *name) {
   size_t i;
   if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT || name == NULL) return NULL;
-  for (i = 0; i < value->data.object_val.count; i++)
-    if (strcmp(value->data.object_val.items[i].name, name) == 0)
-      return value->data.object_val.items[i].value;
+  for (i = 0; i < vec_size(&value->data.object.fields); i++) {
+    const db_field_slot_t *field =
+        (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
+    if (field != NULL && field->name != NULL && strcmp(field->name, name) == 0)
+      return field->value;
+  }
   return NULL;
 }
 
 size_t data_bind_value_count(const DataBindValue *value) {
   if (value == NULL) return 0;
   if (value->kind == DATA_BIND_VALUE_LIST || value->kind == DATA_BIND_VALUE_SET)
-    return value->data.array_val.count;
+    return vec_size(&value->data.sequence.values);
   if (value->kind == DATA_BIND_VALUE_MAP) return value->data.map_val.count;
   return 0;
 }
 
 const DataBindValue *data_bind_value_at(const DataBindValue *value, size_t index) {
+  const db_owned_value_slot_t *slot;
   if (value == NULL ||
-      (value->kind != DATA_BIND_VALUE_LIST && value->kind != DATA_BIND_VALUE_SET) ||
-      index >= value->data.array_val.count)
+      (value->kind != DATA_BIND_VALUE_LIST && value->kind != DATA_BIND_VALUE_SET))
     return NULL;
-  return value->data.array_val.items[index];
+  slot = (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, index);
+  return slot != NULL ? slot->value : NULL;
 }
 
 DataBindMapEntry data_bind_value_map_entry_at(const DataBindValue *value, size_t index) {
