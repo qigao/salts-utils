@@ -322,6 +322,88 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
+  it("preserves schema-aware CSV header and empty-default compatibility") {
+    static const char csv[] =
+        "point_x_n,point_y_n,state_n,old_count_n\r\n"
+        "3,4.5,7,\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves schema-aware XML shape and empty-default compatibility") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y><unknown>ignored</unknown>"
+        "</point><state>7</state><old_count/><unknown><nested>ignored"
+        "</nested></unknown></Sample>";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_XML,
+                      xml, sizeof(xml) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves XML scalar attributes and aliases") {
+    static const char xml[] =
+        "<Sample state=\"7\" old_count=\"7\"><point x=\"3\" y=\"4.5\"/>"
+        "</Sample>";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_XML,
+                      xml, sizeof(xml) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 7);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
   it("keeps structural publication independent from descriptor overlay support") {
     const cmeta_data_desc *sentinel = &salts_int32_cmeta_data;
     const cmeta_data_desc *data = sentinel;
