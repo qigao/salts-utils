@@ -150,6 +150,6 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
 }
 
 /* Private range-version query keeps CMeta adapters independent of value layout. */
-uint64_t data_bind_value_generation(const DataBindValue *value);
+DATA_BIND_API uint64_t data_bind_value_generation(const DataBindValue *value);
 
 #endif
