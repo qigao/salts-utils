@@ -172,6 +172,28 @@ static DataBindStatus serialize_depth32(DataBindFormat format) {
   return status;
 }
 
+static DataBindStatus parse_sample_count(DataBindFormat format,
+                                         const char *input,
+                                         size_t input_length,
+                                         int32_t *out_count) {
+  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Sample_t value = {0};
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    status = tbe_typed_descriptor_parse(codec, "Sample", descriptor, format,
+                                        input, input_length, 0u, &value,
+                                        &error);
+    if (status == DATA_BIND_OK && out_count != NULL) *out_count = value.count;
+    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  data_bind_free(codec);
+  return status;
+}
+
 spec("generated native CMeta graph") {
   it("publishes structural metadata and validates the public descriptor") {
     const cmeta_data_desc *data = NULL;
@@ -565,6 +587,46 @@ spec("generated native CMeta graph") {
     if (descriptor != NULL)
       (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
     data_bind_free(codec);
+  }
+
+  it("preserves invalid scalar default fallback in native CSV") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,garbage\r\n";
+    int32_t count = 0;
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_CSV, csv,
+                                   sizeof(csv) - 1u, &count),
+                DATA_BIND_OK);
+    check_equal(count, 9);
+  }
+
+  it("preserves invalid scalar default fallback in native XML") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
+        "<wire_count>garbage</wire_count></Sample>";
+    int32_t count = 0;
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_XML, xml,
+                                   sizeof(xml) - 1u, &count),
+                DATA_BIND_OK);
+    check_equal(count, 9);
+  }
+
+  it("keeps invalid scalar defaults strict in native JSON and YAML") {
+    static const char json[] =
+        "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,"
+        "\"wire_count\":\"garbage\"}";
+    static const char yaml[] =
+        "\"point\":\n"
+        "  \"x\": 3\n"
+        "  \"y\": 4.5\n"
+        "\"state\": 7\n"
+        "\"wire_count\": garbage\n";
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_JSON, json,
+                                   sizeof(json) - 1u, NULL),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_YAML, yaml,
+                                   sizeof(yaml) - 1u, NULL),
+                DATA_BIND_ERR_TYPE_MISMATCH);
   }
 
   it("preserves the accepted Depth32 parse boundary in CSV") {
