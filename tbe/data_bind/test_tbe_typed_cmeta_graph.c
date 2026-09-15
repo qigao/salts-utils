@@ -9,6 +9,77 @@
 
 static unsigned reject_fixed_copy_hits;
 
+static void check_native_text_format_isolated(
+    DataBindFormat format, const char *input, size_t input_len,
+    const char *mapped_output, const char *canonical_output) {
+  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Sample_t value = {0};
+  char *serialized = NULL;
+  size_t serialized_len = 0u;
+  size_t allocated_before = 0u;
+  size_t reused_before = 0u;
+  size_t allocated_after_parse = 0u;
+  size_t reused_after_parse = 0u;
+  size_t allocated_after_serialize = 0u;
+  size_t reused_after_serialize = 0u;
+  DataBindStatus parse_status;
+  DataBindStatus serialize_status = DATA_BIND_ERR_RUNTIME;
+  int parsed_x;
+  double parsed_y;
+  State_t parsed_state;
+  int32_t parsed_count;
+  int has_mapped_output = 0;
+  int has_canonical_output = 0;
+
+  check_not_null(descriptor);
+  check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+  check_not_null(codec);
+  if (codec == NULL || descriptor == NULL) return;
+
+  data_bind_set_value_pool_enabled(0);
+  data_bind_get_value_pool_stats(&allocated_before, &reused_before);
+  parse_status = tbe_typed_descriptor_parse(
+      codec, "Sample", descriptor, format, input, input_len, 0u, &value,
+      &error);
+  data_bind_get_value_pool_stats(&allocated_after_parse, &reused_after_parse);
+
+  if (parse_status == DATA_BIND_OK)
+    serialize_status = tbe_typed_descriptor_serialize(
+        codec, "Sample", descriptor, &value, format, &serialized,
+        &serialized_len, &error);
+  data_bind_get_value_pool_stats(&allocated_after_serialize,
+                                 &reused_after_serialize);
+
+  parsed_x = value.point.x;
+  parsed_y = value.point.y;
+  parsed_state = value.state;
+  parsed_count = value.count;
+  if (serialized != NULL) {
+    has_mapped_output = strstr(serialized, mapped_output) != NULL;
+    has_canonical_output = strstr(serialized, canonical_output) != NULL;
+  }
+  tbe_typed_serialized_free(serialized);
+  (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  data_bind_free(codec);
+  data_bind_set_value_pool_enabled(1);
+
+  check_equal(parse_status, DATA_BIND_OK);
+  check_equal(allocated_after_parse, allocated_before);
+  check_equal(reused_after_parse, reused_before);
+  check_equal(parsed_x, 3);
+  check_equal(parsed_y, 4.5);
+  check_equal(parsed_state, State_Ready);
+  check_equal(parsed_count, 7);
+  check_equal(serialize_status, DATA_BIND_OK);
+  check_equal(allocated_after_serialize, allocated_after_parse);
+  check_equal(reused_after_serialize, reused_after_parse);
+  check(serialized_len != 0u);
+  check(has_mapped_output);
+  check(!has_canonical_output);
+}
+
 static cmeta_status reject_fixed_copy(void *destination, const void *source) {
   (void)source;
   ++reject_fixed_copy_hits;
@@ -145,6 +216,39 @@ spec("generated native CMeta graph") {
                   DATA_BIND_OK);
     data_bind_free(codec);
     data_bind_set_value_pool_enabled(1);
+  }
+
+  it("keeps native descriptor YAML isolated from dynamic values") {
+    static const char yaml[] =
+        "\"point\":\n"
+        "  \"x\": 3\n"
+        "  \"y\": 4.5\n"
+        "\"state\": 7\n"
+        "\"wire_count\": 7\n";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_YAML, yaml, sizeof(yaml) - 1u,
+        "\"wire_count\": 7", "\"count\": 7");
+  }
+
+  it("keeps native descriptor CSV isolated from dynamic values") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,7\r\n";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_CSV, csv, sizeof(csv) - 1u,
+        "point.x,point.y,state,wire_count", "point.x,point.y,state,count");
+  }
+
+  it("keeps native descriptor XML isolated from dynamic values") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
+        "<wire_count>7</wire_count></Sample>";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_XML, xml, sizeof(xml) - 1u,
+        "<wire_count>7</wire_count>", "<count>7</count>");
   }
 
   it("keeps structural publication independent from descriptor overlay support") {
