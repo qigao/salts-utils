@@ -2,6 +2,7 @@
 #include "data_bind_cmeta.h"
 #include "tinytest.h"
 
+#include <stdint.h>
 #include <string.h>
 
 typedef struct reentrant_cancel_context {
@@ -987,6 +988,43 @@ spec("data_bind dynamic CSTL storage") {
     data_bind_value_free(binary_value);
     data_bind_binary_free(wire);
     data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
+  it("publishes no value at every dynamic graph allocation failure point") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *value = NULL;
+    size_t fail_after;
+    int reached_success = 0;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA,
+                                           strlen(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    for (fail_after = 0u; codec != NULL && fail_after < 256u; ++fail_after) {
+      DataBindStatus status;
+      check_equal(data_bind_internal_test_set_dynamic_graph_allocation_failure(
+                      fail_after),
+                  DATA_BIND_OK);
+      status = data_bind_parse_json(codec, "Envelope",
+                                    DATA_BIND_RECURSIVE_IDENTITY_JSON,
+                                    strlen(DATA_BIND_RECURSIVE_IDENTITY_JSON),
+                                    &value, &error);
+      if (status == DATA_BIND_OK) {
+        reached_success = 1;
+        break;
+      }
+      check_equal(status, DATA_BIND_ERR_OOM);
+      check_null(value);
+    }
+    check_equal(data_bind_internal_test_set_dynamic_graph_allocation_failure(
+                    SIZE_MAX),
+                DATA_BIND_OK);
+    check_true(reached_success);
+    check(reachable_identities_are_attached(value));
+
+    data_bind_value_free(value);
     data_bind_free(codec);
   }
 
