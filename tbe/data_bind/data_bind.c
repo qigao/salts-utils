@@ -1335,7 +1335,8 @@ static DataBindStatus dbv_object_set(DataBindValue *object, const char *name,
   return db_status_from_stl(status);
 }
 
-static int dbv_map_set(DataBindValue *map, const char *key, DataBindValue *value) {
+static int dbv_string_map_set(DataBindValue *map, const char *key,
+                              DataBindValue *value) {
   db_map_storage_t *storage;
   db_map_entry_slot_t slot;
   DataBindValue *key_value;
@@ -2070,7 +2071,7 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
       }
       status = dbv_clone_tree(entry->value, depth + 1u, &child);
       if (status != DATA_BIND_OK) goto fail;
-      if (!dbv_map_set(copy, entry->public_key_text, child)) {
+      if (!dbv_string_map_set(copy, entry->public_key_text, child)) {
         status = DATA_BIND_ERR_OOM;
         goto fail;
       }
@@ -3477,11 +3478,13 @@ static DataBindValue *bind_json_record_array(Node *schema_root, const char *type
 }
 
 static DataBindValue *bind_json_map(Node *schema_root, Node *field, json_value_t *value) {
+  const char *key_type = get_string_val(find_child(field, "key_type"));
   const char *value_type = get_string_val(find_child(field, "value_type"));
   data_bind_text_kind_t value_kind = bind_type_kind(schema_root, value_type);
   DataBindValue *map;
   size_t i;
-  if (value == NULL || json_type(value) != JSON_OBJECT || value_type == NULL)
+  if (value == NULL || json_type(value) != JSON_OBJECT || key_type == NULL ||
+      strcmp(key_type, "string") != 0 || value_type == NULL)
     return NULL;
   map = dbv_new(DATA_BIND_VALUE_MAP);
   if (map == NULL) return NULL;
@@ -3500,7 +3503,7 @@ static DataBindValue *bind_json_map(Node *schema_root, Node *field, json_value_t
         find_union_record(schema_root, value_type) != NULL)
       bound = bind_json_typed_value(schema_root, value_type, item);
     else bound = bind_json_value(schema_root, value_type, value_kind, item);
-    if (bound == NULL || !dbv_map_set(map, key, bound)) {
+    if (bound == NULL || !dbv_string_map_set(map, key, bound)) {
       data_bind_value_free(bound);
       data_bind_value_free(map);
       return NULL;
@@ -3766,11 +3769,13 @@ static DataBindValue *bind_xml_list_at_path(Node *schema_root, Node *field, cons
 
 static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const salts_xml_document *doc,
                                            const char *path) {
+  const char *key_type = get_string_val(find_child(field, "key_type"));
   const char *value_type = get_string_val(find_child(field, "value_type"));
   DataBindValue *map;
   salts_xml_node_list nodes = {0};
   char children[256];
-  if (schema_root == NULL || field == NULL || doc == NULL || path == NULL || value_type == NULL)
+  if (schema_root == NULL || field == NULL || doc == NULL || path == NULL ||
+      key_type == NULL || strcmp(key_type, "string") != 0 || value_type == NULL)
     return NULL;
   if (!xml_children_path(children, sizeof(children), path)) return NULL;
   if (salts_xml_document_xpath_query(doc, children, &nodes, NULL, NULL) != QVM_STATUS_OK) {
@@ -3800,7 +3805,7 @@ static DataBindValue *bind_xml_map_at_path(Node *schema_root, Node *field, const
       item = bind_xml_scalar_at_path(schema_root, value_type,
                                      bind_type_kind(schema_root, value_type), doc, item_path);
     if (item != NULL) {
-      if (!dbv_map_set(map, key, item)) {
+      if (!dbv_string_map_set(map, key, item)) {
         data_bind_value_free(item);
         data_bind_value_free(map);
         salts_xml_node_list_destroy(&nodes);
@@ -4260,11 +4265,14 @@ static DataBindValue *bind_csv_scalar_value(Node *schema_root, const char *type_
 static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, csv_doc_t *doc,
                                            size_t row, const data_bind_csv_headers_t *headers,
                                            const char *path) {
+  const char *key_type = get_string_val(find_child(field, "key_type"));
   const char *value_type = get_string_val(find_child(field, "value_type"));
   data_bind_text_kind_t value_kind = bind_type_kind(schema_root, value_type);
   DataBindValue *map;
   size_t i;
-  if (value_type == NULL || headers == NULL || path == NULL) return NULL;
+  if (key_type == NULL || strcmp(key_type, "string") != 0 || value_type == NULL ||
+      headers == NULL || path == NULL)
+    return NULL;
   map = dbv_new(DATA_BIND_VALUE_MAP);
   if (map == NULL) return NULL;
   for (i = 0; i < headers->count; i++) {
@@ -4280,7 +4288,7 @@ static DataBindValue *bind_csv_map_at_path(Node *schema_root, Node *field, csv_d
       item = bind_csv_typed_value(schema_root, value_type, doc, row, headers, item_path);
     else item = bind_csv_scalar_at_path(schema_root, value_type, value_kind, doc, row, item_path);
     if (item != NULL) {
-      if (!dbv_map_set(map, key, item)) {
+      if (!dbv_string_map_set(map, key, item)) {
         data_bind_value_free(item);
         data_bind_value_free(map);
         return NULL;
@@ -5832,7 +5840,7 @@ static DataBindStatus db_binary_read_map(data_bind_binary_reader_t *reader,
     else if (field->kind == EF_MAP_STR_DBL) scalar.kind = EF_DBL;
     else scalar.kind = EF_BOOL;
     status = db_binary_read_scalar(reader, &scalar, &item);
-    if (status == DATA_BIND_OK && !dbv_map_set(map, key, item)) {
+    if (status == DATA_BIND_OK && !dbv_string_map_set(map, key, item)) {
       data_bind_value_free(item);
       status = db_error_set(reader->error, DATA_BIND_ERR_OOM, field->name, -1, -1,
                             "Out of memory storing binary map item");
