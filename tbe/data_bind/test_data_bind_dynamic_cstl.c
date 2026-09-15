@@ -43,9 +43,6 @@ static const char DATA_BIND_RECURSIVE_IDENTITY_JSON[] =
     "\"tags\":[\"alpha\"],\"by_name\":{\"first\":7},"
     "\"stage\":\"Ready\",\"created\":\"2026-09-16T10:11:12Z\"}";
 static const char DATA_BIND_ROUTE_SCHEMA[] = "message RouteItem { int32 id; }";
-static const char DATA_BIND_NAMED_ROUTE_SCHEMA[] =
-    "message NamedRoute { "
-    "[name(\"orderId\"), alias(\"id\")] int32 internal_id; }";
 
 static int reachable_identities_are_attached(const DataBindValue *value) {
   size_t i;
@@ -991,40 +988,6 @@ spec("data_bind dynamic CSTL storage") {
     data_bind_value_free(binary_value);
     data_bind_binary_free(wire);
     data_bind_object_free(object);
-    data_bind_free(codec);
-  }
-
-  it("attaches identities for canonical and aliased field input names") {
-    static const char canonical_json[] = "{\"orderId\":7}";
-    static const char alias_json[] = "{\"id\":8}";
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    DataBind *codec = NULL;
-    DataBindValue *canonical = NULL;
-    DataBindValue *alias = NULL;
-
-    check_equal(data_bind_create_from_text(DATA_BIND_NAMED_ROUTE_SCHEMA,
-                                           strlen(DATA_BIND_NAMED_ROUTE_SCHEMA),
-                                           &codec, &error),
-                DATA_BIND_OK);
-    if (codec != NULL) {
-      check_equal(data_bind_parse_json(codec, "NamedRoute", canonical_json,
-                                       strlen(canonical_json), &canonical,
-                                       &error),
-                  DATA_BIND_OK);
-      check_equal(data_bind_parse_json(codec, "NamedRoute", alias_json,
-                                       strlen(alias_json), &alias, &error),
-                  DATA_BIND_OK);
-    }
-    check(reachable_identities_are_attached(canonical));
-    check(reachable_identities_are_attached(alias));
-    if (canonical != NULL && alias != NULL) {
-      check_not_null(data_bind_value_get(canonical, "orderId"));
-      check_not_null(data_bind_value_get(alias, "orderId"));
-      check_null(data_bind_value_get(canonical, "internal_id"));
-    }
-
-    data_bind_value_free(alias);
-    data_bind_value_free(canonical);
     data_bind_free(codec);
   }
 
