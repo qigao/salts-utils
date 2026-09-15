@@ -179,6 +179,7 @@ DataBindStatus data_bind_cmeta_range_init(const DataBindValue *owner,
   case DATA_BIND_CMETA_RANGE_VALUES:
     if (value_kind != DATA_BIND_VALUE_LIST && value_kind != DATA_BIND_VALUE_SET)
       return DATA_BIND_ERR_INVALID_ARG;
+    if (value_kind == DATA_BIND_VALUE_SET) range.flags |= CMETA_RANGE_UNIQUE;
     range.element_type = data_bind_cmeta_value_ref_type();
     range.size = data_bind_cmeta_values_size;
     range.next = data_bind_cmeta_values_next;

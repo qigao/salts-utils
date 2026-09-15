@@ -22,6 +22,15 @@ typedef struct db_sequence_storage {
   vec_t values;
 } db_sequence_storage_t;
 
+typedef struct db_value_ref_key {
+  const DataBindValue *value;
+} db_value_ref_key_t;
+
+typedef struct db_set_storage {
+  vec_t ordered_values;
+  hash_set_t membership;
+} db_set_storage_t;
+
 typedef struct data_bind_value_map_entry {
   char *key;
   DataBindValue *value;
@@ -66,6 +75,7 @@ struct DataBindValue {
     DataBindMoney money_val;
     db_object_storage_t object;
     db_sequence_storage_t sequence;
+    db_set_storage_t set;
     data_bind_value_map_array_t map_val;
   } data;
 };
@@ -85,10 +95,22 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
   if (value->kind == DATA_BIND_VALUE_OBJECT) {
     vec = &value->data.object.fields;
     slot_size = sizeof(db_field_slot_t);
-  } else if (value->kind == DATA_BIND_VALUE_LIST ||
-             value->kind == DATA_BIND_VALUE_SET) {
+  } else if (value->kind == DATA_BIND_VALUE_LIST) {
     vec = &value->data.sequence.values;
     slot_size = sizeof(db_owned_value_slot_t);
+  } else if (value->kind == DATA_BIND_VALUE_SET) {
+    const hash_set_t *membership = &value->data.set.membership;
+    vec = &value->data.set.ordered_values;
+    slot_size = sizeof(db_owned_value_slot_t);
+    if (membership->cmeta.descriptor != &stl_hash_set_container_desc ||
+        membership->element_type == NULL ||
+        membership->element_type->size != sizeof(db_value_ref_key_t) ||
+        cmeta_type_require_traits(membership->element_type,
+                                  CMETA_TRAIT_EQUAL | CMETA_TRAIT_HASH |
+                                      CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |
+                                      CMETA_TRAIT_DESTROY) != CMETA_OK ||
+        !membership->table.initialized)
+      return DB_INTERNAL_STORAGE_SCALAR;
   } else {
     return DB_INTERNAL_STORAGE_SCALAR;
   }
@@ -98,7 +120,8 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
                                 CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |
                                     CMETA_TRAIT_DESTROY) != CMETA_OK)
     return DB_INTERNAL_STORAGE_SCALAR;
-  return DB_INTERNAL_STORAGE_VEC;
+  return value->kind == DATA_BIND_VALUE_SET ? DB_INTERNAL_STORAGE_ORDERED_SET
+                                             : DB_INTERNAL_STORAGE_VEC;
 }
 
 #endif
