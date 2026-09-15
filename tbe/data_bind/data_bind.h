@@ -1155,6 +1155,10 @@ DATA_BIND_API void data_bind_binary_free(void *data);
 DATA_BIND_API void data_bind_object_free(DataBindObject *object);
 
 DATA_BIND_API DataBindValueKind data_bind_value_kind(const DataBindValue *value);
+
+/** Borrowed canonical CMeta semantic identity owned by the value root. */
+DATA_BIND_API const cmeta_type_identity *
+data_bind_value_type_identity(const DataBindValue *value);
 DATA_BIND_API size_t data_bind_value_field_count(const DataBindValue *value);
 DATA_BIND_API const char *data_bind_value_field_name(const DataBindValue *value, size_t index);
 DATA_BIND_API const DataBindValue *data_bind_value_field_at(const DataBindValue *value,

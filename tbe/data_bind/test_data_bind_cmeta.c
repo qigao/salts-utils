@@ -4,11 +4,6 @@
 #include <cmeta/data.h>
 #include <string.h>
 
-/* Test-only declaration for the RED checkpoint. Production does not provide
- * this public API yet, so the test binary must fail to link until Task 1 GREEN. */
-extern const cmeta_type_identity *
-data_bind_value_type_identity(const DataBindValue *value);
-
 static DataBindValue *parse_fixture(DataBind **out_codec) {
   static const char schema[] =
       "message Book { list<uint32> values; set<string> tags; map<string,int32> attrs; }";

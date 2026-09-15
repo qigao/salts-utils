@@ -310,7 +310,16 @@ typedef struct data_bind_value_map_array {
   size_t capacity;
 } data_bind_value_map_array_t;
 
+typedef struct db_dynamic_graph {
+  size_t references;
+  cmeta_type_identity root_identity;
+  char *stable_id;
+} db_dynamic_graph_t;
+
 struct DataBindValue {
+  size_t references;
+  const cmeta_type_identity *type_identity;
+  db_dynamic_graph_t *owned_graph;
   DataBindValueKind kind;
   union {
     int32_t int_val;
@@ -524,6 +533,78 @@ static int data_bind_schema_fingerprint(const Node *root,
   return 1;
 }
 
+static db_dynamic_graph_t *db_dynamic_graph_retain(db_dynamic_graph_t *graph) {
+  if (graph == NULL || graph->references == SIZE_MAX) return NULL;
+  graph->references++;
+  return graph;
+}
+
+static void db_dynamic_graph_release(db_dynamic_graph_t *graph) {
+  if (graph == NULL || graph->references == 0u) return;
+  graph->references--;
+  if (graph->references != 0u) return;
+  free(graph->stable_id);
+  free(graph);
+}
+
+static db_dynamic_graph_t *db_dynamic_graph_create_root(
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *root_type) {
+  static const char prefix[] = "salts-utils.databind.dynamic.v1:";
+  static const char hex[] = "0123456789abcdef";
+  db_dynamic_graph_t *graph;
+  size_t prefix_len;
+  size_t type_len;
+  size_t stable_len;
+  size_t i;
+  char *cursor;
+
+  if (schema_fingerprint == NULL || root_type == NULL || root_type[0] == '\0') return NULL;
+  prefix_len = sizeof(prefix) - 1u;
+  type_len = strlen(root_type);
+  if (type_len > SIZE_MAX - prefix_len - DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u - 2u)
+    return NULL;
+  stable_len = prefix_len + DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u + 1u + type_len;
+
+  graph = (db_dynamic_graph_t *)calloc(1u, sizeof(*graph));
+  if (graph == NULL) return NULL;
+  graph->stable_id = (char *)malloc(stable_len + 1u);
+  if (graph->stable_id == NULL) {
+    free(graph);
+    return NULL;
+  }
+
+  cursor = graph->stable_id;
+  memcpy(cursor, prefix, prefix_len);
+  cursor += prefix_len;
+  for (i = 0u; i < DATA_BIND_SCHEMA_FINGERPRINT_SIZE; ++i) {
+    *cursor++ = hex[(schema_fingerprint[i] >> 4u) & 0x0fu];
+    *cursor++ = hex[schema_fingerprint[i] & 0x0fu];
+  }
+  *cursor++ = ':';
+  memcpy(cursor, root_type, type_len);
+  cursor[type_len] = '\0';
+
+  graph->references = 1u;
+  graph->root_identity.form = CMETA_TYPE_ATOM;
+  graph->root_identity.stable_atom_id = graph->stable_id;
+  graph->root_identity.constructor = NULL;
+  graph->root_identity.base = NULL;
+  graph->root_identity.args = NULL;
+  graph->root_identity.arity = 0u;
+  return graph;
+}
+
+static int db_dynamic_attach_root(DataBind *codec, const char *root_type, DataBindValue *value) {
+  db_dynamic_graph_t *graph;
+  if (codec == NULL || value == NULL || value->owned_graph != NULL) return 0;
+  graph = db_dynamic_graph_create_root(codec->schema_fingerprint, root_type);
+  if (graph == NULL) return 0;
+  value->owned_graph = graph;
+  value->type_identity = &graph->root_identity;
+  return 1;
+}
+
 static DataBindValue *dbv_new(DataBindValueKind kind) {
   DataBindValue *value = NULL;
   int pool_enabled = value_pool_is_enabled();
@@ -543,7 +624,10 @@ static DataBindValue *dbv_new(DataBindValueKind kind) {
     }
   }
 
-  if (value != NULL) value->kind = kind;
+  if (value != NULL) {
+    value->references = 1u;
+    value->kind = kind;
+  }
   return value;
 }
 
@@ -664,8 +748,12 @@ static int dbv_map_has_key(const DataBindValue *map, const char *key) {
 }
 
 void data_bind_value_free(DataBindValue *value) {
+  db_dynamic_graph_t *owned_graph;
   size_t i;
   if (value == NULL) return;
+  owned_graph = value->owned_graph;
+  value->owned_graph = NULL;
+  value->type_identity = NULL;
   switch (value->kind) {
   case DATA_BIND_VALUE_OBJECT:
     for (i = 0; i < value->data.object_val.count; i++) {
@@ -700,6 +788,8 @@ void data_bind_value_free(DataBindValue *value) {
     break;
   }
 
+  db_dynamic_graph_release(owned_graph);
+  value->references = 0u;
   if (value_pool_is_enabled() && value_pool_put(value)) return;
   free(value);
 }
@@ -1394,7 +1484,20 @@ fail:
 }
 
 DataBindStatus data_bind_value_clone(const DataBindValue *value, DataBindValue **out_value) {
-  return dbv_clone_tree(value, 0u, out_value);
+  DataBindStatus status = dbv_clone_tree(value, 0u, out_value);
+  db_dynamic_graph_t *graph;
+  if (status != DATA_BIND_OK || value == NULL || out_value == NULL || *out_value == NULL ||
+      value->owned_graph == NULL)
+    return status;
+  graph = db_dynamic_graph_retain(value->owned_graph);
+  if (graph == NULL) {
+    data_bind_value_free(*out_value);
+    *out_value = NULL;
+    return DATA_BIND_ERR_LIMIT;
+  }
+  (*out_value)->owned_graph = graph;
+  (*out_value)->type_identity = &graph->root_identity;
+  return DATA_BIND_OK;
 }
 
 typedef enum data_bind_text_kind {
@@ -7938,7 +8041,7 @@ static DataBindStatus data_bind_json_root_to_value(DataBind *codec, const char *
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, const char *json,
+static DataBindStatus data_bind_parse_json_without_dynamic_identity(DataBind *codec, const char *type_name, const char *json,
                                     size_t len, DataBindValue **out_value, DataBindError *error) {
   json_value_t *root = NULL;
   DataBindStatus status;
@@ -7960,6 +8063,21 @@ DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, cons
   (json_free(root), root = NULL);
   return status;
 }
+
+DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, const char *json,
+                                    size_t len, DataBindValue **out_value, DataBindError *error) {
+  DataBindStatus status = data_bind_parse_json_without_dynamic_identity(
+      codec, type_name, json, len, out_value, error);
+  if (status != DATA_BIND_OK || out_value == NULL || *out_value == NULL) return status;
+  if (!db_dynamic_attach_root(codec, type_name, *out_value)) {
+    data_bind_value_free(*out_value);
+    *out_value = NULL;
+    return db_error_set(error, DATA_BIND_ERR_OOM, "json", -1, -1,
+                        "Out of memory building dynamic CMeta identity");
+  }
+  return DATA_BIND_OK;
+}
+
 
 DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, const char *json,
                                         size_t len, DataBindValue **out_value,
@@ -10042,6 +10160,10 @@ void data_bind_object_free(DataBindObject *object) {
 
 DataBindValueKind data_bind_value_kind(const DataBindValue *value) {
   return value != NULL ? value->kind : DATA_BIND_VALUE_NULL;
+}
+
+const cmeta_type_identity *data_bind_value_type_identity(const DataBindValue *value) {
+  return value != NULL ? value->type_identity : NULL;
 }
 
 size_t data_bind_value_field_count(const DataBindValue *value) {
