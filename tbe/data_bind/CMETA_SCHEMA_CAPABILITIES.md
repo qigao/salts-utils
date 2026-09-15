@@ -1,7 +1,8 @@
 # DataBind / TBE schema to CMeta capability matrix
 
-Status: #45's canonical schema/reflection boundary is complete on `main`. This
-branch adds the first #47 native-runtime slice and still requires exact-head CI.
+Status: #45's canonical schema/reflection boundary and #47's native-runtime
+slice are complete. This branch implements #46's canonical dynamic runtime and
+still requires exact-head CI before closure.
 This document is normative: implementation must not add a second DataBind-private
 type universe where CMeta already provides the structural/data semantic.
 
@@ -26,7 +27,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 
 ## Current lowering matrix
 
-`supported value type` means runtime reflection and the compiler share the canonical Schema resolver. Descriptors are immutable and provider-owned; callers borrow them and must not free them. Native graph publication additionally requires matching actual storage. `kind only` means semantic metadata is available but concrete storage has not been selected. Neither status claims dynamic storage migration (#46) or new provider/type coverage (#5).
+`supported value type` means runtime reflection and the compiler share the canonical Schema resolver. Descriptors are immutable and provider-owned; callers borrow them and must not free them. Native graph publication additionally requires matching actual storage. `kind only` means semantic metadata is available but concrete native storage has not been selected. Dynamic runtime storage is documented separately below and does not imply new generated/native provider coverage.
 
 | Schema / DataBind family | Canonical CMeta data semantic | Storage/type source | Status | Notes |
 | --- | --- | --- | --- | --- |
@@ -119,7 +120,7 @@ delegates after failure, or constructs a graphless descriptor.
 | Flags and uint64-wide Enum | deferred | unsigned/flags-capable enum operations required | wire integer policy |
 | Optional/presence | deferred | explicit native-presence contract required | presence/default policy |
 | STRING/BYTES/fixed buffer/UUID/custom | deferred | lifecycle/adapter contract required | wire policy |
-| Sequence/set/map | deferred to #46 | CMeta range plus CSTL provider required | container wire policy |
+| Sequence/set/map | deferred | A separate native-container provider slice must bind the actual generated storage to CMeta/CSTL | container wire policy |
 
 The completion contract assigns `cmeta_native_requirement` to each candidate
 leaf so later provider slices consume one executable classification instead of
@@ -135,7 +136,7 @@ do not by themselves enable `typed_cmeta_runtime_supported`.
 | `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
-| `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred to #46 | Requires the native-container/CSTL provider contract; list, set and map remain rejected in #47. |
+| `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred | Requires a separate native-container/CSTL provider contract; #46's dynamic storage migration does not enable generated list, set or map descriptors. |
 
 All non-owned `fixed_value` providers and the currently supported
 `enum_domain` subset are installed at this checkpoint. The executable
@@ -202,10 +203,31 @@ and public C/C++ linkage. The actual CLI-generated graph test also compares
 runtime scalar semantic identity and nested struct/enum kinds with generated
 metadata. `test_tbe_cmeta_acceptance` adds current supported/gated-family parity and
 deterministic failure checks through the real CLI fixture and runtime parser.
-Runtime native-provider association and parameterized container storage remain
-provider/dynamic-storage work; their absence is an explicit #45 rejection, not
-permission to infer storage. Exact-head parser/CLI and installed CI must still
+Generated/native provider association and parameterized native container storage
+remain work for a later provider slice; their absence is an explicit rejection,
+not permission to infer native storage. The completed dynamic runtime storage is
+documented separately below. Exact-head parser/CLI and installed CI must still
 execute this acceptance coverage before issue closure.
+
+## Dynamic runtime storage
+
+The owning dynamic route now retains immutable CMeta semantic identity metadata.
+`cmeta_data_kind` and the retained identities are the sole structural authority;
+`DataBindValueKind` remains only the public projection. Concrete dynamic storage is:
+
+| Dynamic value | Physical storage | Ownership and observable order |
+| --- | --- | --- |
+| object | CSTL Vec of DataBind-owned field slots | Schema/wire field order |
+| list/sequence | CSTL Vec of DataBind-owned value slots | Insertion/wire order |
+| set | Ordered CSTL Vec plus non-owning CSTL HashSet membership index | First semantic insertion wins; iteration never exposes bucket order |
+| map | Ordered CSTL Vec plus non-owning CSTL HashMap key-to-index | Insertion/wire order; iteration never exposes bucket order |
+
+DataBind owns the dynamic nodes stored by the ordered Vecs. The HashSet and
+HashMap are indexes over those nodes, not parallel owning stores or ordering
+authorities. No DataBind-private owning dynamic-value growable container engine,
+compatibility route, or storage fallback remains. This dynamic capability is
+independent of the generated/native container rows above, which stay deferred
+until a provider slice proves the actual native storage contract.
 
 ## Internal buffer lowering
 

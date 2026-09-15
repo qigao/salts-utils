@@ -7,11 +7,12 @@ DataBind's native typed runtime consume canonical CMeta graphs while preserving
 DataBind as SaltsUtils' sole binding and conversion engine. #46 applies the same
 ownership discipline to runtime-schema dynamic values.
 
-The current dynamic implementation is not yet canonical. `DataBindValue`
-contains DataBind-private object, sequence/set, and map arrays; `data_bind.c`
-owns their reserve/growth, mutation, clone, and destruction logic. The existing
-`data_bind_cmeta.c` exposes those legacy containers through CMeta Range adapters,
-but CMeta and CSTL do not yet own the underlying dynamic structure and storage.
+At design approval time, the dynamic implementation was not yet canonical:
+`DataBindValue` contained DataBind-private object, sequence/set, and map arrays,
+and `data_bind.c` owned their reserve/growth, mutation, clone, and destruction
+logic. The implemented #46 runtime now retains canonical CMeta semantic identity,
+uses CSTL-backed dynamic container storage, and exposes generation-checked CMeta
+Range adapters; this historical gap no longer describes the current branch.
 
 #46 closes only when owning dynamic values use canonical CMeta semantic identity
 and traversal, and concrete collection storage/lifecycle comes from CSTL rather
