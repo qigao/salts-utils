@@ -1,4 +1,5 @@
 #include "data_bind_cmeta.h"
+#include "schema_cmeta.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -22,6 +23,93 @@ static DataBindValue *parse_fixture(DataBind **out_codec) {
 }
 
 spec("data_bind CMeta adapter") {
+  it("should publish stable dynamic CMeta identity across codecs") {
+    DataBind *left_codec = NULL;
+    DataBind *right_codec = NULL;
+    DataBindValue *left = parse_fixture(&left_codec);
+    DataBindValue *right = parse_fixture(&right_codec);
+    const cmeta_type_identity *left_id;
+    const cmeta_type_identity *right_id;
+
+    check_not_null(left);
+    check_not_null(right);
+    left_id = data_bind_value_type_identity(left);
+    right_id = data_bind_value_type_identity(right);
+    check_not_null(left_id);
+    check_not_null(right_id);
+    check(cmeta_type_identity_equal(left_id, right_id));
+
+    data_bind_value_free(right);
+    data_bind_value_free(left);
+    data_bind_free(right_codec);
+    data_bind_free(left_codec);
+  }
+
+  it("should keep dynamic CMeta identity alive after codec destruction") {
+    DataBind *codec = NULL;
+    DataBindValue *root = parse_fixture(&codec);
+    const cmeta_type_identity *identity;
+
+    check_not_null(root);
+    identity = data_bind_value_type_identity(root);
+    check_not_null(identity);
+
+    data_bind_free(codec);
+    codec = NULL;
+    check_not_null(data_bind_value_type_identity(root));
+    check(cmeta_type_identity_equal(identity, data_bind_value_type_identity(root)));
+
+    data_bind_value_free(root);
+  }
+
+  it("should reuse canonical int32 provider identity for scalar children") {
+    DataBind *codec = NULL;
+    DataBindValue *root = parse_fixture(&codec);
+    DataBindValue *copy = NULL;
+    const DataBindValue *attrs = data_bind_value_get(root, "attrs");
+    const DataBindMapEntry x_entry = data_bind_value_map_entry_at(attrs, 0u);
+    const DataBindValue *x = x_entry.value;
+    const cmeta_data_desc *provider = schema_cmeta_builtin_data("int32");
+    const cmeta_type_identity *provider_id = NULL;
+    const cmeta_type_identity *value_id;
+
+    check_not_null(root);
+    check_not_null(attrs);
+    check_not_null(x);
+    check_not_null(provider);
+    if (provider != NULL) {
+      check_not_null(provider->storage_type);
+      if (provider->storage_type != NULL) {
+        provider_id = provider->storage_type->identity;
+        check_not_null(provider_id);
+      }
+    }
+
+    value_id = data_bind_value_type_identity(x);
+    check_not_null(value_id);
+    if (value_id != NULL && provider_id != NULL)
+      check(cmeta_type_identity_equal(value_id, provider_id));
+
+    check_equal(data_bind_value_clone(root, &copy), DATA_BIND_OK);
+    check_not_null(copy);
+    if (copy != NULL) {
+      const DataBindValue *copy_attrs = data_bind_value_get(copy, "attrs");
+      check_not_null(copy_attrs);
+      if (copy_attrs != NULL) {
+        const DataBindMapEntry copy_x_entry = data_bind_value_map_entry_at(copy_attrs, 0u);
+        const cmeta_type_identity *copy_value_id =
+            data_bind_value_type_identity(copy_x_entry.value);
+        check_not_null(copy_value_id);
+        if (copy_value_id != NULL && provider_id != NULL)
+          check(cmeta_type_identity_equal(copy_value_id, provider_id));
+      }
+    }
+
+    data_bind_value_free(copy);
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
   it("should expose ordered object fields as borrowed references") {
     static const char *const names[] = {"values", "tags", "attrs"};
     DataBind *codec = NULL;

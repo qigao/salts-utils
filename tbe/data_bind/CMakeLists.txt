@@ -107,7 +107,7 @@ set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
-  LIBS Salts::DataBindCMeta Salts::TinyTest
+  LIBS Salts::DataBindCMeta Salts::TbeSchema Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_cmeta_kind
   SOURCES test_data_bind_cmeta_kind.c
