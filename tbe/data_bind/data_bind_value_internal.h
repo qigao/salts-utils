@@ -29,6 +29,7 @@ typedef struct db_value_ref_key {
 typedef struct db_set_storage {
   vec_t ordered_values;
   hash_set_t membership;
+  uint64_t generation;
 } db_set_storage_t;
 
 typedef struct db_map_entry_slot {
@@ -44,6 +45,7 @@ typedef struct db_map_index_value {
 typedef struct db_map_storage {
   vec_t ordered_entries;
   hash_map_t index;
+  uint64_t generation;
 } db_map_storage_t;
 
 typedef struct db_dynamic_graph db_dynamic_graph_t;

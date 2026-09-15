@@ -1156,7 +1156,11 @@ static stl_status db_set_init(db_set_storage_t *set, size_t limit) {
   set->membership.cmeta.descriptor = &stl_hash_set_container_desc;
   set->membership.element_type = &DB_VALUE_REF_KEY_TYPE;
   status = hash_set_init(&set->membership, limit);
-  if (status != STL_OK) vec_destroy(&set->ordered_values);
+  if (status != STL_OK) {
+    vec_destroy(&set->ordered_values);
+  } else {
+    set->generation = vec_generation(&set->ordered_values);
+  }
   return status;
 }
 
@@ -1170,7 +1174,11 @@ static stl_status db_map_init(db_map_storage_t *map, size_t limit) {
   map->index.key_type = &DB_VALUE_REF_KEY_TYPE;
   map->index.value_type = &DB_MAP_INDEX_VALUE_TYPE;
   status = hash_map_init(&map->index, limit);
-  if (status != STL_OK) vec_destroy(&map->ordered_entries);
+  if (status != STL_OK) {
+    vec_destroy(&map->ordered_entries);
+  } else {
+    map->generation = vec_generation(&map->ordered_entries);
+  }
   return status;
 }
 
@@ -1286,6 +1294,7 @@ static DataBindStatus dbv_collection_push(DataBindValue *sequence,
                                        : db_status_from_stl(rollback_status);
     }
     dbv_release(value);
+    ++sequence->data.set.generation;
     return DATA_BIND_OK;
   }
 
@@ -1365,6 +1374,7 @@ static int dbv_string_map_set(DataBindValue *map, const char *key,
     stored->value = value;
     dbv_release(replaced);
     dbv_release(key_value);
+    ++storage->generation;
     return 1;
   }
 
@@ -1390,7 +1400,36 @@ static int dbv_string_map_set(DataBindValue *map, const char *key,
   dbv_release(key_value);
   if (status != STL_OK) return 0;
   dbv_release(value);
+  ++storage->generation;
   return 1;
+}
+
+DataBindStatus data_bind_internal_test_touch_generation(DataBindValue *value) {
+  if (value == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  switch (value->kind) {
+  case DATA_BIND_VALUE_OBJECT:
+    if (data_bind_internal_storage_kind(value) != DB_INTERNAL_STORAGE_VEC)
+      return DATA_BIND_ERR_RUNTIME;
+    ++value->data.object.fields.generation;
+    return DATA_BIND_OK;
+  case DATA_BIND_VALUE_LIST:
+    if (data_bind_internal_storage_kind(value) != DB_INTERNAL_STORAGE_VEC)
+      return DATA_BIND_ERR_RUNTIME;
+    ++value->data.sequence.values.generation;
+    return DATA_BIND_OK;
+  case DATA_BIND_VALUE_SET:
+    if (data_bind_internal_storage_kind(value) != DB_INTERNAL_STORAGE_ORDERED_SET)
+      return DATA_BIND_ERR_RUNTIME;
+    ++value->data.set.generation;
+    return DATA_BIND_OK;
+  case DATA_BIND_VALUE_MAP:
+    if (data_bind_internal_storage_kind(value) != DB_INTERNAL_STORAGE_ORDERED_MAP)
+      return DATA_BIND_ERR_RUNTIME;
+    ++value->data.map.generation;
+    return DATA_BIND_OK;
+  default:
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
 }
 
 static int dbv_map_has_key(const DataBindValue *map, const char *key) {
