@@ -3023,8 +3023,9 @@ static const char *enum_item_value_n(Node *schema_root, const char *type_name,
   return NULL;
 }
 
-static int db_parse_integer_magnitude(const char *text, size_t len, uint64_t max_value,
-                                      int allow_negative, uint64_t *out, int *negative) {
+int data_bind_internal_parse_integer_magnitude(
+    const char *text, size_t len, uint64_t max_value, int allow_negative,
+    uint64_t *out, int *negative) {
   size_t pos = 0, exponent_pos = len, digits = 0, fraction_digits = 0, digit_index = 0;
   int seen_dot = 0, nonzero = 0, exponent_negative = 0;
   int64_t exponent = 0, effective_digits;
@@ -3108,11 +3109,11 @@ static DataBindValue *dbv_scalar_integer_text(const type_meta_t *meta, const cha
   case DB_WIRE_I64: max_value = (uint64_t)INT64_MAX + 1u; break;
   default: return NULL;
   }
-  if (!db_parse_integer_magnitude(text, len, max_value, meta->wire_type == DB_WIRE_I8 ||
-                                                             meta->wire_type == DB_WIRE_I16 ||
-                                                             meta->wire_type == DB_WIRE_I32 ||
-                                                             meta->wire_type == DB_WIRE_I64,
-                                  &magnitude, &negative))
+  if (!data_bind_internal_parse_integer_magnitude(
+          text, len, max_value,
+          meta->wire_type == DB_WIRE_I8 || meta->wire_type == DB_WIRE_I16 ||
+              meta->wire_type == DB_WIRE_I32 || meta->wire_type == DB_WIRE_I64,
+          &magnitude, &negative))
     return NULL;
   if (meta->wire_type == DB_WIRE_U64) return dbv_uint64(magnitude);
   if (negative) {
@@ -11562,6 +11563,42 @@ const char *data_bind_internal_json_field_output_name(
   fields = fields_node_for_record(record);
   if (fields == NULL || field_index >= fields->data.list.count) return NULL;
   return field_binding_name(fields->data.list.items[field_index]);
+}
+
+size_t data_bind_internal_field_input_name_count(
+    DataBind *codec, const char *type_name, size_t field_index) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL)
+    return 0u;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return 0u;
+  return field_input_name_count(fields->data.list.items[field_index]);
+}
+
+const char *data_bind_internal_field_input_name_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t input_name_index) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL)
+    return NULL;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return NULL;
+  return field_input_name_at(fields->data.list.items[field_index],
+                             input_name_index);
+}
+
+int data_bind_internal_csv_find_path_column(
+    const csv_doc_t *document, const char *path, size_t *out_column) {
+  return csv_find_path_column((csv_doc_t *)document, path, out_column);
+}
+
+int data_bind_internal_csv_header_matches_path(const char *header,
+                                               const char *path) {
+  return csv_header_matches_path(header, path);
 }
 
 DataBindStatus data_bind_schema_field_cmeta_data(DataBind *codec, const char *type_name,
