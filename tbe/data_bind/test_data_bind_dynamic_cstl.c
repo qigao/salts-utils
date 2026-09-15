@@ -18,6 +18,10 @@ static const char DATA_BIND_SET_STRING_SCHEMA[] =
     "message StringSet { set<string> tags; }";
 static const char DATA_BIND_SET_STRING_DUPLICATES_JSON[] =
     "{\"tags\":[\"alpha\",\"beta\",\"alpha\",\"beta\"]}";
+static const char DATA_BIND_MAP_SCHEMA[] =
+    "message Attributes { map<string,int32> attrs; }";
+static const char DATA_BIND_MAP_JSON[] =
+    "{\"attrs\":{\"z\":1,\"a\":2}}";
 
 static DataBindRecordAction cancel_stream_from_callback(void *user_data,
                                                         const DataBindValue *record,
@@ -31,6 +35,184 @@ static DataBindRecordAction cancel_stream_from_callback(void *user_data,
 }
 
 spec("data_bind dynamic CSTL storage") {
+  it("preserves JSON map insertion order with ordered Map storage") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *root = NULL;
+    const DataBindValue *attrs = NULL;
+    DataBindMapEntry first = {0};
+    DataBindMapEntry second = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_MAP_SCHEMA,
+                                           strlen(DATA_BIND_MAP_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "Attributes", DATA_BIND_MAP_JSON,
+                                       strlen(DATA_BIND_MAP_JSON), &root, &error),
+                  DATA_BIND_OK);
+
+    if (root != NULL) attrs = data_bind_value_get(root, "attrs");
+    check_not_null(attrs);
+    if (attrs != NULL) {
+      check_equal(data_bind_internal_storage_kind(attrs),
+                  DB_INTERNAL_STORAGE_ORDERED_MAP);
+      check_equal(data_bind_value_count(attrs), (size_t)2u);
+      first = data_bind_value_map_entry_at(attrs, 0u);
+      second = data_bind_value_map_entry_at(attrs, 1u);
+      check_equal(first.key, "z");
+      check_equal(data_bind_value_as_int(first.value), 1);
+      check_equal(second.key, "a");
+      check_equal(data_bind_value_as_int(second.value), 2);
+    }
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
+  it("replaces a duplicate binary map key without moving its first position") {
+    static const uint8_t wire[] = {
+        3, 0, 0, 0,
+        1, 0, 0, 0, 'z', 1, 0, 0, 0,
+        1, 0, 0, 0, 'a', 2, 0, 0, 0,
+        1, 0, 0, 0, 'z', 9, 0, 0, 0};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    const DataBindValue *attrs = NULL;
+    DataBindMapEntry first = {0};
+    DataBindMapEntry second = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_MAP_SCHEMA,
+                                           strlen(DATA_BIND_MAP_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_object_from_bin(codec, "Attributes", wire,
+                                            sizeof(wire), &object, &error),
+                  DATA_BIND_OK);
+
+    if (object != NULL)
+      attrs = data_bind_value_get(data_bind_object_value(object), "attrs");
+    check_not_null(attrs);
+    if (attrs != NULL) {
+      check_equal(data_bind_value_count(attrs), (size_t)2u);
+      first = data_bind_value_map_entry_at(attrs, 0u);
+      second = data_bind_value_map_entry_at(attrs, 1u);
+      check_equal(first.key, "z");
+      check_equal(data_bind_value_as_int(first.value), 9);
+      check_equal(second.key, "a");
+      check_equal(data_bind_value_as_int(second.value), 2);
+      check_equal(data_bind_internal_storage_kind(attrs),
+                  DB_INTERNAL_STORAGE_ORDERED_MAP);
+    }
+
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
+  it("keeps a cloned Map ordered and owned after releasing its source") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *source = NULL;
+    DataBindValue *clone = NULL;
+    const DataBindValue *attrs = NULL;
+    DataBindMapEntry first = {0};
+    DataBindMapEntry second = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_MAP_SCHEMA,
+                                           strlen(DATA_BIND_MAP_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "Attributes", DATA_BIND_MAP_JSON,
+                                       strlen(DATA_BIND_MAP_JSON), &source, &error),
+                  DATA_BIND_OK);
+    if (source != NULL)
+      check_equal(data_bind_value_clone(source, &clone), DATA_BIND_OK);
+    check_not_null(clone);
+
+    data_bind_value_free(source);
+    source = NULL;
+
+    if (clone != NULL) attrs = data_bind_value_get(clone, "attrs");
+    check_not_null(attrs);
+    if (attrs != NULL) {
+      check_equal(data_bind_internal_storage_kind(attrs),
+                  DB_INTERNAL_STORAGE_ORDERED_MAP);
+      first = data_bind_value_map_entry_at(attrs, 0u);
+      second = data_bind_value_map_entry_at(attrs, 1u);
+      check_equal(first.key, "z");
+      check_equal(data_bind_value_as_int(first.value), 1);
+      check_equal(second.key, "a");
+      check_equal(data_bind_value_as_int(second.value), 2);
+    }
+
+    data_bind_value_free(clone);
+    data_bind_free(codec);
+  }
+
+  it("round-trips JSON and binary maps in insertion order") {
+    static const char expected_json[] = "{\"attrs\":{\"z\":1,\"a\":2}}";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindObject *source = NULL;
+    DataBindObject *roundtrip = NULL;
+    char *json = NULL;
+    size_t json_len = 0u;
+    uint8_t *wire = NULL;
+    size_t wire_len = 0u;
+    const DataBindValue *attrs = NULL;
+    DataBindMapEntry first = {0};
+    DataBindMapEntry second = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_MAP_SCHEMA,
+                                           strlen(DATA_BIND_MAP_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_object_from_json(codec, "Attributes",
+                                             DATA_BIND_MAP_JSON,
+                                             strlen(DATA_BIND_MAP_JSON),
+                                             &source, &error),
+                  DATA_BIND_OK);
+    if (source != NULL)
+      check_equal(data_bind_object_serialize_json(codec, source, &json,
+                                                  &json_len, &error),
+                  DATA_BIND_OK);
+    check_not_null(json);
+    if (json != NULL) {
+      check_equal(json_len, strlen(expected_json));
+      check_equal(json, expected_json);
+    }
+    if (source != NULL)
+      check_equal(data_bind_object_serialize_bin(codec, source, &wire,
+                                                 &wire_len, &error),
+                  DATA_BIND_OK);
+    if (wire != NULL)
+      check_equal(data_bind_object_from_bin(codec, "Attributes", wire,
+                                            wire_len, &roundtrip, &error),
+                  DATA_BIND_OK);
+
+    if (roundtrip != NULL)
+      attrs = data_bind_value_get(data_bind_object_value(roundtrip), "attrs");
+    check_not_null(attrs);
+    if (attrs != NULL) {
+      first = data_bind_value_map_entry_at(attrs, 0u);
+      second = data_bind_value_map_entry_at(attrs, 1u);
+      check_equal(first.key, "z");
+      check_equal(data_bind_value_as_int(first.value), 1);
+      check_equal(second.key, "a");
+      check_equal(data_bind_value_as_int(second.value), 2);
+    }
+
+    data_bind_object_free(roundtrip);
+    data_bind_binary_free(wire);
+    data_bind_serialized_free(json);
+    data_bind_object_free(source);
+    data_bind_free(codec);
+  }
+
   it("deduplicates int32 sets in first-insertion order with ordered Set storage") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
