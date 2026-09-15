@@ -89,6 +89,10 @@ cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_value_boundary
+  SOURCES test_data_bind_value_boundary.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_dynamic_cstl
   SOURCES test_data_bind_dynamic_cstl.c
   LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
