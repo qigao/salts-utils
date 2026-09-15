@@ -66,7 +66,8 @@ spec("data_bind CMeta adapter") {
     DataBind *codec = NULL;
     DataBindValue *root = parse_fixture(&codec);
     const DataBindValue *attrs = data_bind_value_get(root, "attrs");
-    const DataBindValue *x = data_bind_value_map_value_at(attrs, 0u);
+    const DataBindMapEntry x_entry = data_bind_value_map_entry_at(attrs, 0u);
+    const DataBindValue *x = x_entry.value;
     const cmeta_data_desc *provider = schema_cmeta_builtin_data("int32");
     const cmeta_type_identity *provider_id = NULL;
     const cmeta_type_identity *value_id;
