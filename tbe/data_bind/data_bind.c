@@ -11448,6 +11448,22 @@ DataBindValueKind data_bind_value_kind(const DataBindValue *value) {
   return value != NULL ? value->kind : DATA_BIND_VALUE_NULL;
 }
 
+uint64_t data_bind_value_generation(const DataBindValue *value) {
+  if (value == NULL) return UINT64_C(0);
+  switch (value->kind) {
+  case DATA_BIND_VALUE_OBJECT:
+    return vec_generation(&value->data.object.fields);
+  case DATA_BIND_VALUE_LIST:
+    return vec_generation(&value->data.sequence.values);
+  case DATA_BIND_VALUE_SET:
+    return value->data.set.generation;
+  case DATA_BIND_VALUE_MAP:
+    return value->data.map.generation;
+  default:
+    return UINT64_C(0);
+  }
+}
+
 const cmeta_type_identity *data_bind_value_type_identity(const DataBindValue *value) {
   return value != NULL ? value->type_identity : NULL;
 }

@@ -109,20 +109,7 @@ static size_t data_bind_cmeta_fields_size(const void *object) {
 }
 
 static uint64_t data_bind_cmeta_container_version(const void *object) {
-  const DataBindValue *owner = (const DataBindValue *)object;
-  if (owner == NULL) return UINT64_C(0);
-  switch (owner->kind) {
-  case DATA_BIND_VALUE_OBJECT:
-    return vec_generation(&owner->data.object.fields);
-  case DATA_BIND_VALUE_LIST:
-    return vec_generation(&owner->data.sequence.values);
-  case DATA_BIND_VALUE_SET:
-    return owner->data.set.generation;
-  case DATA_BIND_VALUE_MAP:
-    return owner->data.map.generation;
-  default:
-    return UINT64_C(0);
-  }
+  return data_bind_value_generation((const DataBindValue *)object);
 }
 
 static cmeta_gen_status data_bind_cmeta_values_next(const void *object,
