@@ -3,6 +3,23 @@
 
 #include <string.h>
 
+typedef struct reentrant_cancel_context {
+  data_bind_stream_t *stream;
+  size_t calls;
+  DataBindStatus cancel_status;
+} reentrant_cancel_context_t;
+
+static DataBindRecordAction cancel_stream_from_callback(void *user_data,
+                                                        const DataBindValue *record,
+                                                        uint64_t record_index) {
+  reentrant_cancel_context_t *context = (reentrant_cancel_context_t *)user_data;
+  if (context == NULL || context->stream == NULL || record == NULL || record_index != 0u)
+    return DATA_BIND_RECORD_ERROR;
+  context->calls++;
+  context->cancel_status = data_bind_stream_cancel(context->stream);
+  return DATA_BIND_RECORD_CANCEL;
+}
+
 spec("data_bind dynamic CSTL storage") {
   it("preserves ordered object fields and list values in Vec storage") {
     static const char schema[] =
@@ -119,6 +136,72 @@ spec("data_bind dynamic CSTL storage") {
                   DATA_BIND_ERR_LIMIT);
       check_equal(error.code, DATA_BIND_ERR_LIMIT);
       check_null(result);
+    }
+
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(result);
+    data_bind_free(codec);
+  }
+
+  it("allows a retained JSON callback to cancel its stream reentrantly") {
+    static const char schema[] = "message Item { int32 id; }";
+    static const char json[] = "[{\"id\":1},{\"id\":2}]";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *result = NULL;
+    data_bind_stream_t *stream = NULL;
+    reentrant_cancel_context_t context = {0};
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      stream = data_bind_stream_json_all_create(codec, "Item", &result, &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      context.stream = stream;
+      check_equal(data_bind_stream_set_record_callback(
+                      stream, cancel_stream_from_callback, &context),
+                  DATA_BIND_OK);
+      check_equal(data_bind_stream_feed(stream, json, strlen(json)),
+                  DATA_BIND_ERR_CANCELED);
+      check_equal(error.code, DATA_BIND_ERR_CANCELED);
+      check_equal(context.calls, (size_t)1u);
+      check_equal(context.cancel_status, DATA_BIND_ERR_CANCELED);
+      check_null(result);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_CANCELED);
+    }
+
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(result);
+    data_bind_free(codec);
+  }
+
+  it("allows a retained CSV callback to cancel its stream reentrantly") {
+    static const char schema[] = "message Item { int32 id; }";
+    static const char csv[] = "id\n1\n2\n";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *result = NULL;
+    data_bind_stream_t *stream = NULL;
+    reentrant_cancel_context_t context = {0};
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      stream = data_bind_stream_csv_all_create(codec, "Item", &result, &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      context.stream = stream;
+      check_equal(data_bind_stream_set_record_callback(
+                      stream, cancel_stream_from_callback, &context),
+                  DATA_BIND_OK);
+      check_equal(data_bind_stream_feed(stream, csv, strlen(csv)),
+                  DATA_BIND_ERR_CANCELED);
+      check_equal(error.code, DATA_BIND_ERR_CANCELED);
+      check_equal(context.calls, (size_t)1u);
+      check_equal(context.cancel_status, DATA_BIND_ERR_CANCELED);
+      check_null(result);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_CANCELED);
     }
 
     data_bind_stream_destroy(stream);

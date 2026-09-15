@@ -5794,18 +5794,17 @@ static int data_bind_stream_values_push(data_bind_stream_t *parser, DataBindValu
     data_bind_stream_error_msg(parser, message);
     return -1;
   }
-  if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
-      parser->result_count >= parser->limits.max_result_count) {
+  if (parser->result_count >= parser->limits.max_result_count) {
     data_bind_value_free(item);
     parser->limit_failed = 1;
     data_bind_stream_error_msg(parser, "Stream result count limit exceeded");
     return -1;
   }
+  if (data_bind_stream_emit_record(parser, item) != 0) {
+    data_bind_value_free(item);
+    return -1;
+  }
   if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
-    if (data_bind_stream_emit_record(parser, item) != 0) {
-      data_bind_value_free(item);
-      return -1;
-    }
     data_bind_value_free(item);
   } else {
     push_status = dbv_sequence_push(parser->stream_values, item);
@@ -5817,10 +5816,6 @@ static int data_bind_stream_values_push(data_bind_stream_t *parser, DataBindValu
       } else {
         data_bind_stream_error_msg(parser, message);
       }
-      return -1;
-    }
-    if (data_bind_stream_emit_record(parser, item) != 0) {
-      (void)vec_pop(&parser->stream_values->data.sequence.values, NULL);
       return -1;
     }
   }
@@ -6743,8 +6738,7 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
       data_bind_parse_csv(parser->codec, parser->type_name, doc_text, doc_len, 0, &value, error);
   if (status == DATA_BIND_OK && value != NULL) {
     DataBindStatus push_status = DATA_BIND_OK;
-    if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY &&
-        parser->result_count >= parser->limits.max_result_count) {
+    if (parser->result_count >= parser->limits.max_result_count) {
       data_bind_value_free(value);
       free(doc_text);
       parser->csv_failed = 1;
@@ -6753,19 +6747,19 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
                           "Stream result count exceeds limit of %zu",
                           parser->limits.max_result_count);
     }
-    if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
-      if (data_bind_stream_emit_record(parser, value) != 0) {
-        data_bind_value_free(value);
-        free(doc_text);
-        parser->csv_failed = 1;
-        if (parser->canceled)
-          return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
-                              "Record callback canceled the stream at CSV row %llu",
-                              (unsigned long long)parser->csv_data_row);
-        return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
-                            "Record callback failed at CSV row %llu",
+    if (data_bind_stream_emit_record(parser, value) != 0) {
+      data_bind_value_free(value);
+      free(doc_text);
+      parser->csv_failed = 1;
+      if (parser->canceled)
+        return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
+                            "Record callback canceled the stream at CSV row %llu",
                             (unsigned long long)parser->csv_data_row);
-      }
+      return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
+                          "Record callback failed at CSV row %llu",
+                          (unsigned long long)parser->csv_data_row);
+    }
+    if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
       data_bind_value_free(value);
     } else {
       push_status = dbv_sequence_push(parser->csv_values, value);
@@ -6781,18 +6775,6 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
         }
         return db_error_set(error, push_status, "data_bind_stream_feed", -1, -1,
                             "Out of memory appending CSV stream row");
-      }
-      if (data_bind_stream_emit_record(parser, value) != 0) {
-        (void)vec_pop(&parser->csv_values->data.sequence.values, NULL);
-        free(doc_text);
-        parser->csv_failed = 1;
-        if (parser->canceled)
-          return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
-                              "Record callback canceled the stream at CSV row %llu",
-                              (unsigned long long)parser->csv_data_row);
-        return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
-                            "Record callback failed at CSV row %llu",
-                            (unsigned long long)parser->csv_data_row);
       }
     }
     parser->result_count++;
