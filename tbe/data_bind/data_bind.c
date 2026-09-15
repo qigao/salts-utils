@@ -631,6 +631,20 @@ static DataBindValue *dbv_new(DataBindValueKind kind) {
   return value;
 }
 
+static DataBindValue *dbv_attach_canonical_identity(const char *type_name,
+                                                    DataBindValue *value) {
+  const cmeta_data_desc *canonical;
+  if (value == NULL || type_name == NULL) return value;
+  canonical = schema_cmeta_builtin_data(type_name);
+  if (canonical == NULL) return value;
+  if (!cmeta_data_desc_valid(canonical)) {
+    data_bind_value_free(value);
+    return NULL;
+  }
+  value->type_identity = canonical->storage_type->identity;
+  return value;
+}
+
 static int dbv_reserve_capacity(size_t current_capacity, size_t min_capacity, size_t item_size,
                                 size_t *new_capacity) {
   size_t capacity;
@@ -1474,6 +1488,7 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
   }
 
   if (copy == NULL) return DATA_BIND_ERR_OOM;
+  copy->type_identity = source->type_identity;
   *out_value = copy;
   return DATA_BIND_OK;
 
@@ -2510,8 +2525,9 @@ static DataBindValue *dbv_integer_text(Node *schema_root, const char *type_name,
   return dbv_enum_item_text(schema_root, type_name, meta, text, len);
 }
 
-static DataBindValue *bind_text_scalar(Node *schema_root, const char *type_name,
-                                       data_bind_text_kind_t kind, const char *text) {
+static DataBindValue *bind_text_scalar_without_identity(
+    Node *schema_root, const char *type_name, data_bind_text_kind_t kind,
+    const char *text) {
   double dbl = 0.0;
   int b = 0;
   if (kind == DB_TEXT_UNSUPPORTED) return NULL;
@@ -2549,6 +2565,13 @@ static DataBindValue *bind_text_scalar(Node *schema_root, const char *type_name,
   default:
     return NULL;
   }
+}
+
+static DataBindValue *bind_text_scalar(Node *schema_root, const char *type_name,
+                                       data_bind_text_kind_t kind, const char *text) {
+  return dbv_attach_canonical_identity(
+      type_name,
+      bind_text_scalar_without_identity(schema_root, type_name, kind, text));
 }
 
 static DataBindValue *bind_field_default(Node *schema_root, Node *field) {
@@ -2604,8 +2627,9 @@ static DataBindValue *json_flags_value(Node *schema_root, const char *type_name,
   return dbv_integer_from_unsigned(meta, acc);
 }
 
-static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
-                                      data_bind_text_kind_t kind, json_value_t *value) {
+static DataBindValue *bind_json_value_without_identity(
+    Node *schema_root, const char *type_name, data_bind_text_kind_t kind,
+    json_value_t *value) {
   char number_buf[64];
   char decimal_buf[64];
   char bigint_buf[64];
@@ -2714,6 +2738,13 @@ static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
   default:
     return NULL;
   }
+}
+
+static DataBindValue *bind_json_value(Node *schema_root, const char *type_name,
+                                      data_bind_text_kind_t kind, json_value_t *value) {
+  return dbv_attach_canonical_identity(
+      type_name,
+      bind_json_value_without_identity(schema_root, type_name, kind, value));
 }
 
 static Node *union_variant(Node *union_node, const char *variant_name) {

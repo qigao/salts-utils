@@ -65,6 +65,7 @@ spec("data_bind CMeta adapter") {
   it("should reuse canonical int32 provider identity for scalar children") {
     DataBind *codec = NULL;
     DataBindValue *root = parse_fixture(&codec);
+    DataBindValue *copy = NULL;
     const DataBindValue *attrs = data_bind_value_get(root, "attrs");
     const DataBindMapEntry x_entry = data_bind_value_map_entry_at(attrs, 0u);
     const DataBindValue *x = x_entry.value;
@@ -89,6 +90,22 @@ spec("data_bind CMeta adapter") {
     if (value_id != NULL && provider_id != NULL)
       check(cmeta_type_identity_equal(value_id, provider_id));
 
+    check_equal(data_bind_value_clone(root, &copy), DATA_BIND_OK);
+    check_not_null(copy);
+    if (copy != NULL) {
+      const DataBindValue *copy_attrs = data_bind_value_get(copy, "attrs");
+      check_not_null(copy_attrs);
+      if (copy_attrs != NULL) {
+        const DataBindMapEntry copy_x_entry = data_bind_value_map_entry_at(copy_attrs, 0u);
+        const cmeta_type_identity *copy_value_id =
+            data_bind_value_type_identity(copy_x_entry.value);
+        check_not_null(copy_value_id);
+        if (copy_value_id != NULL && provider_id != NULL)
+          check(cmeta_type_identity_equal(copy_value_id, provider_id));
+      }
+    }
+
+    data_bind_value_free(copy);
     data_bind_value_free(root);
     data_bind_free(codec);
   }
