@@ -87,6 +87,91 @@ static cmeta_status reject_fixed_copy(void *destination, const void *source) {
   return CMETA_CALLBACK_ERROR;
 }
 
+static size_t append_test_text(char *buffer, size_t capacity, size_t used,
+                               const char *text) {
+  size_t length = strlen(text);
+  if (used > capacity || length >= capacity - used) return SIZE_MAX;
+  memcpy(buffer + used, text, length + 1u);
+  return used + length;
+}
+
+static size_t make_depth32_csv(char *buffer, size_t capacity) {
+  size_t used = 0u;
+  size_t depth;
+  if (capacity != 0u) buffer[0] = '\0';
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "child.");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "value\r\n0\r\n");
+  return used;
+}
+
+static size_t make_depth32_xml(char *buffer, size_t capacity) {
+  size_t used = 0u;
+  size_t depth;
+  if (capacity != 0u) buffer[0] = '\0';
+  used = append_test_text(buffer, capacity, used, "<Depth32>");
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "<child>");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "<value>0</value>");
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "</child>");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "</Depth32>");
+  return used;
+}
+
+static DataBindStatus parse_depth32(DataBindFormat format, const char *input,
+                                    size_t input_length) {
+  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Depth32_t value;
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    memset(&value, 0xa5, sizeof(value));
+    status = tbe_typed_descriptor_parse(
+        codec, "Depth32", descriptor, format, input, input_length, 0u,
+        &value, &error);
+    if (status == DATA_BIND_OK) {
+      Depth32_t expected;
+      memset(&expected, 0, sizeof(expected));
+      if (memcmp(&value, &expected, sizeof(value)) != 0)
+        status = DATA_BIND_ERR_RUNTIME;
+    }
+    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  data_bind_free(codec);
+  return status;
+}
+
+static DataBindStatus serialize_depth32(DataBindFormat format) {
+  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Depth32_t value;
+  char *serialized = NULL;
+  size_t serialized_length = 0u;
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  memset(&value, 0, sizeof(value));
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    status = tbe_typed_descriptor_serialize(
+        codec, "Depth32", descriptor, &value, format, &serialized,
+        &serialized_length, &error);
+    if (status == DATA_BIND_OK &&
+        (serialized == NULL || serialized_length == 0u))
+      status = DATA_BIND_ERR_RUNTIME;
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  tbe_typed_serialized_free(serialized);
+  data_bind_free(codec);
+  return status;
+}
+
 spec("generated native CMeta graph") {
   it("publishes structural metadata and validates the public descriptor") {
     const cmeta_data_desc *data = NULL;
@@ -299,6 +384,31 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
+  it("preserves Boolean defaults for integral native fields") {
+    static const char json[] = "{}";
+    const TbeTypedDescriptor *descriptor =
+        IntegerBoolDefaults_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    IntegerBoolDefaults_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "IntegerBoolDefaults", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.enabled, 1u);
+    check_equal(value.debug, 0);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
   it("preserves delimited flags compatibility") {
     static const char json[] = "{\"value\":\"Read|Write\"}";
     const TbeTypedDescriptor *descriptor = FlagStorage_typed_descriptor();
@@ -402,6 +512,62 @@ spec("generated native CMeta graph") {
     if (descriptor != NULL)
       (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
     data_bind_free(codec);
+  }
+
+  it("preserves native YAML and CSV compatibility error codes") {
+    static const char yaml[] = "? [a, b]\n: 1\n";
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,7\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL) {
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_YAML,
+                      yaml, sizeof(yaml) - 1u, 0u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 1u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+    }
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves the accepted Depth32 parse boundary in CSV") {
+    char csv[512];
+    size_t length = make_depth32_csv(csv, sizeof(csv));
+    check(length != SIZE_MAX);
+    if (length != SIZE_MAX)
+      check_equal(parse_depth32(DATA_BIND_FORMAT_CSV, csv, length),
+                  DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 serialize boundary in CSV") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_CSV), DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 parse boundary in XML") {
+    char xml[768];
+    size_t length = make_depth32_xml(xml, sizeof(xml));
+    check(length != SIZE_MAX);
+    if (length != SIZE_MAX)
+      check_equal(parse_depth32(DATA_BIND_FORMAT_XML, xml, length),
+                  DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 serialize boundary in XML") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_XML), DATA_BIND_OK);
   }
 
   it("keeps structural publication independent from descriptor overlay support") {
