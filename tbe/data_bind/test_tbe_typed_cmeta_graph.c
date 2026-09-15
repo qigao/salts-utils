@@ -88,6 +88,61 @@ spec("generated native CMeta graph") {
     }
   }
 
+  it("keeps supported native descriptor JSON paths isolated from dynamic values") {
+    static const char json[] =
+        "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    size_t allocated_before = 0u;
+    size_t reused_before = 0u;
+    size_t allocated_after = 0u;
+    size_t reused_after = 0u;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    data_bind_set_value_pool_enabled(0);
+    data_bind_get_value_pool_stats(&allocated_before, &reused_before);
+
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_JSON,
+                      json, sizeof(json) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    data_bind_get_value_pool_stats(&allocated_after, &reused_after);
+    check_equal(allocated_after, allocated_before);
+    check_equal(reused_after, reused_before);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 7);
+
+    allocated_before = allocated_after;
+    reused_before = reused_after;
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_serialize(
+                      codec, "Sample", descriptor, &value,
+                      DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                      &error),
+                  DATA_BIND_OK);
+    data_bind_get_value_pool_stats(&allocated_after, &reused_after);
+    check_equal(allocated_after, allocated_before);
+    check_equal(reused_after, reused_before);
+    check_not_null(serialized);
+    check(serialized_len != 0u);
+
+    tbe_typed_serialized_free(serialized);
+    if (descriptor != NULL)
+      check_equal(tbe_typed_descriptor_clear(descriptor, &value, &error),
+                  DATA_BIND_OK);
+    data_bind_free(codec);
+    data_bind_set_value_pool_enabled(1);
+  }
+
   it("keeps structural publication independent from descriptor overlay support") {
     const cmeta_data_desc *sentinel = &salts_int32_cmeta_data;
     const cmeta_data_desc *data = sentinel;
