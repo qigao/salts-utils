@@ -4,7 +4,7 @@
 
 **Goal:** Split DataBind's sole binding engine into private modules whose files match schema, dynamic-value, format, query, streaming, and orchestration ownership without changing public behavior.
 
-**Architecture:** Keep `data_bind` as one shared-library target and move implementation in reviewable slices. Extract schema fingerprinting before #46 because it is already independent; defer the dynamic-value and remaining module cuts until #46 establishes CSTL as the final container owner.
+**Architecture:** Keep `data_bind` as one shared-library target and move implementation in reviewable slices. This branch has extracted schema fingerprinting; after #59 merged #46's final CSTL owner, it is rebased on that prerequisite before the dynamic-value and remaining module cuts.
 
 **Tech Stack:** C11, CMake Presets, Salts CMeta/CSTL/parser/CSerde/QueryVM APIs, TinyTest, ASan/UBSan.
 
@@ -91,7 +91,7 @@ refactor(databind): isolate schema fingerprint ownership
 
 ---
 
-### Task 2: Complete the #46 prerequisite
+### Task 2: Integrate the #46 prerequisite
 
 **Files:**
 - Consume: `docs/superpowers/plans/2026-09-15-databind-dynamic-cmeta-cstl.md`
@@ -103,12 +103,12 @@ refactor(databind): isolate schema fingerprint ownership
 - Consumes: #46 canonical identity seam.
 - Produces: CSTL-backed object/list/set/map storage and versioned CMeta ranges with no private growable container engine.
 
-- [ ] **Step 1: Execute #46 Tasks 2-6 on its own branch**
+- [x] **Step 1: Complete #46 Tasks 2-6 on its own branch**
 
-Use the existing #46 design and plan. Do not mix container storage migration
-into the #48 module branch.
+Completed in #59 without mixing container storage migration into this #48
+module branch.
 
-- [ ] **Step 2: Verify the prerequisite factually**
+- [x] **Step 2: Verify the prerequisite factually**
 
 Require zero production matches for:
 
@@ -121,12 +121,13 @@ dbv_object_reserve
 dbv_map_reserve
 ```
 
-Require object/list/set/map ranges to expose a nonzero generation and mutation
-detection, then require fresh full exact-head CI before merging #46.
+Object/list/set/map ranges expose nonzero generations and mutation detection;
+the #59 exact-head CI passed before its merge.
 
-- [ ] **Step 3: Rebase the #48 branch on the merged #46 head**
+- [x] **Step 3: Rebase the #48 branch on the merged #46 head**
 
-Resolve only factual source-move conflicts. Re-run Task 1 verification before
+Resolved the CMake source-list conflict by retaining the #46 value private
+header and the #58 schema source/header. Re-run Task 1 verification before
 starting Task 3.
 
 ---

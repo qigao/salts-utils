@@ -3,9 +3,9 @@
 ## Status and scope
 
 This design implements salts-utils issue #48 from `main` at merge commit
-`e56bd15c10f490795e4e9a03c4fd118d92d3f5e6`. It supersedes the stale Task 8
+`f62ac0f0a13c5c9bb927cf42ae8d9e9b2d140adc`. It supersedes the stale Task 8
 wording in `2026-09-12-databind-convergence.md`, which still refers to CBind and
-does not reflect the merged #47 native runtime or the partial #46 checkpoint.
+does not reflect the merged #47 native runtime or completed #46 checkpoint.
 
 The split is behavior-preserving. DataBind remains the sole public binding
 engine. This work does not add a facade, compatibility route, fallback engine,
@@ -18,9 +18,9 @@ or public ABI. Public declarations remain in `data_bind.h`, `tbe_typed.h`,
   value storage, JSON/YAML/XML/CSV/binary binding, object orchestration, query
   execution, and streaming state.
 - #47 is merged and native typed conversion consumes canonical CMeta graphs.
-- #46 Task 1 is merged: dynamic roots and canonical scalar children expose
-  CMeta identities. #46 Tasks 2-6, including CSTL-backed object/list/set/map
-  storage and range generation, remain incomplete.
+- #46 is merged: dynamic roots retain recursive CMeta semantic identity graphs;
+  object/list/set/map use CSTL-backed storage and CMeta ranges expose generation
+  invalidation.
 - `data_bind_schema_fingerprint()` has one production caller,
   `data_bind_create_from_root()`. Its output is consumed by dynamic root
   identity and `DataBindObject` schema compatibility checks.
@@ -85,9 +85,10 @@ unless a later removal gate proves a public replacement.
 
 ## Migration sequence
 
-1. Extract deterministic schema fingerprinting now. This seam is independent
-   of #46 storage and has a single caller.
-2. Complete and merge #46 CSTL storage/range work.
+1. Extract deterministic schema fingerprinting. This seam is independent of
+   #46 storage and has a single caller.
+2. Merge #46 CSTL storage/range work and rebase this branch on that exact main
+   head before subsequent source moves.
 3. Extract the final dynamic-value owner without preserving private arrays.
 4. Extract schema reflection and validation over the immutable overlay.
 5. Extract one format at a time, starting with JSON/YAML and then XML/CSV and
