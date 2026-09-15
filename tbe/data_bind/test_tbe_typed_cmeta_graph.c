@@ -544,6 +544,29 @@ spec("generated native CMeta graph") {
     data_bind_free(codec);
   }
 
+  it("preserves the native ragged CSV row compatibility error") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 0u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
   it("preserves the accepted Depth32 parse boundary in CSV") {
     char csv[512];
     size_t length = make_depth32_csv(csv, sizeof(csv));
