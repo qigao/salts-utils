@@ -16,6 +16,13 @@ DataBindStatus data_bind_object_from_json_value(DataBind *codec, const char *typ
                                                 DataBindObject **out_object,
                                                 DataBindError *error);
 
+/* Borrows the schema and JSON object; applies the schema's input name/aliases. */
+json_value_t *data_bind_internal_json_field_value(
+    DataBind *codec, const char *type_name, size_t field_index,
+    const json_value_t *object);
+const char *data_bind_internal_json_field_output_name(
+    DataBind *codec, const char *type_name, size_t field_index);
+
 /* Test-only seam: advances container generation without changing its contents. */
 DATA_BIND_API DataBindStatus
 data_bind_internal_test_touch_generation(DataBindValue *value);

@@ -2381,7 +2381,7 @@ static int field_accepts_name(Node *field, const char *candidate) {
   return 0;
 }
 
-static json_value_t *json_field_value(Node *field, json_value_t *object) {
+static json_value_t *json_field_value(Node *field, const json_value_t *object) {
   size_t i;
   if (object == NULL) return NULL;
   for (i = 0; i < field_input_name_count(field); ++i) {
@@ -11536,6 +11536,32 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
     return 0;
   }
   return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
+}
+
+json_value_t *data_bind_internal_json_field_value(
+    DataBind *codec, const char *type_name, size_t field_index,
+    const json_value_t *object) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL ||
+      object == NULL)
+    return NULL;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return NULL;
+  return json_field_value(fields->data.list.items[field_index], object);
+}
+
+const char *data_bind_internal_json_field_output_name(
+    DataBind *codec, const char *type_name, size_t field_index) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL)
+    return NULL;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return NULL;
+  return field_binding_name(fields->data.list.items[field_index]);
 }
 
 DataBindStatus data_bind_schema_field_cmeta_data(DataBind *codec, const char *type_name,
