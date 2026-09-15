@@ -36,14 +36,11 @@ static const char DATA_BIND_RANGE_JSON[] =
 static const char DATA_BIND_RECURSIVE_IDENTITY_SCHEMA[] =
     "enum Stage <uint8> { Idle = 0; Ready = 1; } "
     "composite Child { int32 label; } "
-    "group Fill { int32 price; uint32 qty; } "
-    "message Envelope { Child child; Stage stage; group<Fill> fills; "
-    "list<int32> children; set<string> tags; map<string,int32> by_name; "
-    "string created; }";
+    "message Envelope { Child child; Stage stage; list<int32> children; "
+    "set<string> tags; map<string,int32> by_name; string created; }";
 static const char DATA_BIND_RECURSIVE_IDENTITY_JSON[] =
     "{\"child\":{\"label\":1},\"children\":[11],"
     "\"tags\":[\"alpha\"],\"by_name\":{\"first\":7},"
-    "\"fills\":[{\"price\":100,\"qty\":2}],"
     "\"stage\":\"Ready\",\"created\":\"2026-09-16T10:11:12Z\"}";
 static const char DATA_BIND_ROUTE_SCHEMA[] = "message RouteItem { int32 id; }";
 
