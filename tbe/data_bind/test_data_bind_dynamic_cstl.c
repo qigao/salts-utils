@@ -10,6 +10,11 @@ typedef struct reentrant_cancel_context {
   DataBindStatus cancel_status;
 } reentrant_cancel_context_t;
 
+typedef struct identity_callback_context {
+  size_t calls;
+  int all_attached;
+} identity_callback_context_t;
+
 static const char DATA_BIND_SET_INT_SCHEMA[] =
     "message NumberSet { set<int32> ids; }";
 static const char DATA_BIND_SET_INT_DUPLICATES_JSON[] =
@@ -27,6 +32,103 @@ static const char DATA_BIND_RANGE_SCHEMA[] =
     "map<string,int32> attrs; }";
 static const char DATA_BIND_RANGE_JSON[] =
     "{\"id\":7,\"values\":[10,20],\"ids\":[3,1],\"attrs\":{\"z\":1,\"a\":2}}";
+static const char DATA_BIND_RECURSIVE_IDENTITY_SCHEMA[] =
+    "enum Stage <uint8> { Idle = 0; Ready = 1; } "
+    "composite Child { int32 label; } "
+    "message Envelope { Child child; Stage stage; list<int32> children; "
+    "set<string> tags; map<string,int32> by_name; string created; }";
+static const char DATA_BIND_RECURSIVE_IDENTITY_JSON[] =
+    "{\"child\":{\"label\":1},\"children\":[11],"
+    "\"tags\":[\"alpha\"],\"by_name\":{\"first\":7},"
+    "\"stage\":\"Ready\",\"created\":\"2026-09-16T10:11:12Z\"}";
+static const char DATA_BIND_ROUTE_SCHEMA[] = "message RouteItem { int32 id; }";
+
+static int reachable_identities_are_attached(const DataBindValue *value) {
+  size_t i;
+  if (value == NULL || data_bind_value_type_identity(value) == NULL) return 0;
+  if (value->kind == DATA_BIND_VALUE_OBJECT) {
+    for (i = 0; i < vec_size(&value->data.object.fields); ++i) {
+      const db_field_slot_t *field =
+          (const db_field_slot_t *)vec_at_const(&value->data.object.fields, i);
+      if (field == NULL || !reachable_identities_are_attached(field->value)) return 0;
+    }
+  } else if (value->kind == DATA_BIND_VALUE_LIST) {
+    for (i = 0; i < vec_size(&value->data.sequence.values); ++i) {
+      const db_owned_value_slot_t *slot =
+          (const db_owned_value_slot_t *)vec_at_const(&value->data.sequence.values, i);
+      if (slot == NULL || !reachable_identities_are_attached(slot->value)) return 0;
+    }
+  } else if (value->kind == DATA_BIND_VALUE_SET) {
+    for (i = 0; i < vec_size(&value->data.set.ordered_values); ++i) {
+      const db_owned_value_slot_t *slot =
+          (const db_owned_value_slot_t *)vec_at_const(&value->data.set.ordered_values, i);
+      if (slot == NULL || !reachable_identities_are_attached(slot->value)) return 0;
+    }
+  } else if (value->kind == DATA_BIND_VALUE_MAP) {
+    for (i = 0; i < vec_size(&value->data.map.ordered_entries); ++i) {
+      const db_map_entry_slot_t *entry =
+          (const db_map_entry_slot_t *)vec_at_const(&value->data.map.ordered_entries, i);
+      if (entry == NULL || !reachable_identities_are_attached(entry->key_value) ||
+          !reachable_identities_are_attached(entry->value))
+        return 0;
+    }
+  }
+  return 1;
+}
+
+static int identities_are_semantically_equal(const DataBindValue *left,
+                                              const DataBindValue *right) {
+  size_t i;
+  if (left == NULL || right == NULL || left->kind != right->kind ||
+      data_bind_value_type_identity(left) == NULL ||
+      data_bind_value_type_identity(right) == NULL ||
+      !cmeta_type_identity_equal(data_bind_value_type_identity(left),
+                                 data_bind_value_type_identity(right)))
+    return 0;
+  if (left->kind == DATA_BIND_VALUE_OBJECT) {
+    if (vec_size(&left->data.object.fields) != vec_size(&right->data.object.fields)) return 0;
+    for (i = 0; i < vec_size(&left->data.object.fields); ++i) {
+      const db_field_slot_t *a =
+          (const db_field_slot_t *)vec_at_const(&left->data.object.fields, i);
+      const db_field_slot_t *b =
+          (const db_field_slot_t *)vec_at_const(&right->data.object.fields, i);
+      if (a == NULL || b == NULL || strcmp(a->name, b->name) != 0 ||
+          !identities_are_semantically_equal(a->value, b->value))
+        return 0;
+    }
+  } else if (left->kind == DATA_BIND_VALUE_LIST || left->kind == DATA_BIND_VALUE_SET) {
+    const vec_t *a_values = left->kind == DATA_BIND_VALUE_LIST
+                                ? &left->data.sequence.values
+                                : &left->data.set.ordered_values;
+    const vec_t *b_values = right->kind == DATA_BIND_VALUE_LIST
+                                ? &right->data.sequence.values
+                                : &right->data.set.ordered_values;
+    if (vec_size(a_values) != vec_size(b_values)) return 0;
+    for (i = 0; i < vec_size(a_values); ++i) {
+      const db_owned_value_slot_t *a =
+          (const db_owned_value_slot_t *)vec_at_const(a_values, i);
+      const db_owned_value_slot_t *b =
+          (const db_owned_value_slot_t *)vec_at_const(b_values, i);
+      if (a == NULL || b == NULL || !identities_are_semantically_equal(a->value, b->value))
+        return 0;
+    }
+  } else if (left->kind == DATA_BIND_VALUE_MAP) {
+    if (vec_size(&left->data.map.ordered_entries) !=
+        vec_size(&right->data.map.ordered_entries))
+      return 0;
+    for (i = 0; i < vec_size(&left->data.map.ordered_entries); ++i) {
+      const db_map_entry_slot_t *a =
+          (const db_map_entry_slot_t *)vec_at_const(&left->data.map.ordered_entries, i);
+      const db_map_entry_slot_t *b =
+          (const db_map_entry_slot_t *)vec_at_const(&right->data.map.ordered_entries, i);
+      if (a == NULL || b == NULL ||
+          !identities_are_semantically_equal(a->key_value, b->key_value) ||
+          !identities_are_semantically_equal(a->value, b->value))
+        return 0;
+    }
+  }
+  return 1;
+}
 
 static DataBindRecordAction cancel_stream_from_callback(void *user_data,
                                                         const DataBindValue *record,
@@ -37,6 +139,17 @@ static DataBindRecordAction cancel_stream_from_callback(void *user_data,
   context->calls++;
   context->cancel_status = data_bind_stream_cancel(context->stream);
   return DATA_BIND_RECORD_CANCEL;
+}
+
+static DataBindRecordAction inspect_stream_identity(void *user_data,
+                                                     const DataBindValue *record,
+                                                     uint64_t record_index) {
+  identity_callback_context_t *context = (identity_callback_context_t *)user_data;
+  (void)record_index;
+  if (context == NULL || record == NULL) return DATA_BIND_RECORD_ERROR;
+  context->calls++;
+  context->all_attached &= reachable_identities_are_attached(record);
+  return DATA_BIND_RECORD_CONTINUE;
 }
 
 spec("data_bind dynamic CSTL storage") {
@@ -749,6 +862,212 @@ spec("data_bind dynamic CSTL storage") {
       check_null(result);
       check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_CANCELED);
     }
+
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(result);
+    data_bind_free(codec);
+  }
+
+  it("attaches recursive schema identities to every reachable dynamic node") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStatus create_status;
+    DataBind *left_codec = NULL;
+    DataBind *right_codec = NULL;
+    DataBindValue *left = NULL;
+    DataBindValue *right = NULL;
+    const DataBindValue *child;
+    const DataBindValue *children;
+    const DataBindValue *tags;
+    const DataBindValue *map;
+
+    create_status = data_bind_create_from_text(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA,
+                                                strlen(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA),
+                                                &left_codec, &error);
+    check_equal(create_status, DATA_BIND_OK);
+    check_equal(data_bind_create_from_text(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA,
+                                           strlen(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA),
+                                           &right_codec, &error),
+                DATA_BIND_OK);
+    if (left_codec != NULL)
+      check_equal(data_bind_parse_json(left_codec, "Envelope",
+                                       DATA_BIND_RECURSIVE_IDENTITY_JSON,
+                                       strlen(DATA_BIND_RECURSIVE_IDENTITY_JSON),
+                                       &left, &error),
+                  DATA_BIND_OK);
+    if (right_codec != NULL)
+      check_equal(data_bind_parse_json(right_codec, "Envelope",
+                                       DATA_BIND_RECURSIVE_IDENTITY_JSON,
+                                       strlen(DATA_BIND_RECURSIVE_IDENTITY_JSON),
+                                       &right, &error),
+                  DATA_BIND_OK);
+
+    check(reachable_identities_are_attached(left));
+    check(identities_are_semantically_equal(left, right));
+    child = data_bind_value_get(left, "child");
+    children = data_bind_value_get(left, "children");
+    tags = data_bind_value_get(left, "tags");
+    map = data_bind_value_get(left, "by_name");
+    check_not_null(child);
+    check_not_null(children);
+    check_not_null(tags);
+    check_not_null(map);
+    if (left != NULL && child != NULL && children != NULL && tags != NULL && map != NULL) {
+      check_false(cmeta_type_identity_equal(data_bind_value_type_identity(left),
+                                            data_bind_value_type_identity(child)));
+      check_false(cmeta_type_identity_equal(data_bind_value_type_identity(children),
+                                            data_bind_value_type_identity(tags)));
+      check_false(cmeta_type_identity_equal(data_bind_value_type_identity(tags),
+                                            data_bind_value_type_identity(map)));
+    }
+
+    data_bind_value_free(right);
+    data_bind_value_free(left);
+    data_bind_free(right_codec);
+    data_bind_free(left_codec);
+  }
+
+  it("retains nested identities for source and clone after codec destruction") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *source = NULL;
+    DataBindValue *clone = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA,
+                                           strlen(DATA_BIND_RECURSIVE_IDENTITY_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "Envelope",
+                                       DATA_BIND_RECURSIVE_IDENTITY_JSON,
+                                       strlen(DATA_BIND_RECURSIVE_IDENTITY_JSON),
+                                       &source, &error),
+                  DATA_BIND_OK);
+    if (source != NULL)
+      check_equal(data_bind_value_clone(source, &clone), DATA_BIND_OK);
+    data_bind_free(codec);
+    codec = NULL;
+
+    check(reachable_identities_are_attached(source));
+    check(reachable_identities_are_attached(clone));
+    check(identities_are_semantically_equal(source, clone));
+    data_bind_value_free(source);
+    source = NULL;
+    check(reachable_identities_are_attached(clone));
+
+    data_bind_value_free(clone);
+  }
+
+  it("attaches identities on the binary publication route") {
+    static const char json[] = "{\"id\":7}";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindValue *binary_value = NULL;
+    uint8_t *wire = NULL;
+    size_t wire_len = 0u;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_ROUTE_SCHEMA,
+                                           strlen(DATA_BIND_ROUTE_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_object_from_json(codec, "RouteItem", json,
+                                             strlen(json), &object, &error),
+                  DATA_BIND_OK);
+    if (object != NULL)
+      check_equal(data_bind_object_serialize_bin(codec, object, &wire, &wire_len,
+                                                 &error),
+                  DATA_BIND_OK);
+    if (wire != NULL)
+      check_equal(data_bind_parse(codec, "RouteItem", wire, wire_len,
+                                  &binary_value, &error),
+                  DATA_BIND_OK);
+    check(reachable_identities_are_attached(binary_value));
+
+    data_bind_value_free(binary_value);
+    data_bind_binary_free(wire);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
+  it("attaches identities on text direct all and path publication routes") {
+    static const char json_path[] = "{\"item\":{\"id\":7},\"items\":[{\"id\":8}]}";
+    static const char yaml[] = "id: 7\n";
+    static const char yaml_all[] = "- id: 7\n- id: 8\n";
+    static const char csv[] = "id\n7\n8\n";
+    static const char xml[] = "<RouteItem><id>7</id></RouteItem>";
+    static const char xml_all[] =
+        "<root><RouteItem><id>7</id></RouteItem><RouteItem><id>8</id></RouteItem></root>";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *value = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_ROUTE_SCHEMA,
+                                           strlen(DATA_BIND_ROUTE_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+#define CHECK_ROUTE(call_)                                                       \
+    do {                                                                         \
+      check_equal((call_), DATA_BIND_OK);                                         \
+      check(reachable_identities_are_attached(value));                            \
+      data_bind_value_free(value);                                                \
+      value = NULL;                                                               \
+    } while (0)
+    CHECK_ROUTE(data_bind_parse_json_path(codec, "RouteItem", json_path,
+                                          strlen(json_path), "$.item", &value,
+                                          &error));
+    CHECK_ROUTE(data_bind_parse_json_path_all(codec, "RouteItem", json_path,
+                                              strlen(json_path), "$.items[*]",
+                                              &value, &error));
+    CHECK_ROUTE(data_bind_parse_yaml(codec, "RouteItem", yaml, strlen(yaml),
+                                     &value, &error));
+    CHECK_ROUTE(data_bind_parse_yaml_all(codec, "RouteItem", yaml_all,
+                                         strlen(yaml_all), &value, &error));
+    CHECK_ROUTE(data_bind_parse_yaml_path(codec, "RouteItem", "item:\n  id: 7\n",
+                                          strlen("item:\n  id: 7\n"), "/item",
+                                          &value, &error));
+    CHECK_ROUTE(data_bind_parse_csv(codec, "RouteItem", csv, strlen(csv), 0u,
+                                    &value, &error));
+    CHECK_ROUTE(data_bind_parse_csv_all(codec, "RouteItem", csv, strlen(csv),
+                                        &value, &error));
+    CHECK_ROUTE(data_bind_parse_csv_path(codec, "RouteItem", csv, strlen(csv),
+                                         "id >= 8", &value, &error));
+    CHECK_ROUTE(data_bind_parse_xml(codec, "RouteItem", xml, strlen(xml),
+                                    &value, &error));
+    CHECK_ROUTE(data_bind_parse_xml_path_all(codec, "RouteItem", xml_all,
+                                             strlen(xml_all), "//RouteItem",
+                                             &value, &error));
+#undef CHECK_ROUTE
+    data_bind_free(codec);
+  }
+
+  it("attaches identities before retained stream and callback publication") {
+    static const char json[] = "[{\"id\":7},{\"id\":8}]";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *result = NULL;
+    data_bind_stream_t *stream = NULL;
+    identity_callback_context_t context = {0u, 1};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_ROUTE_SCHEMA,
+                                           strlen(DATA_BIND_ROUTE_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      stream = data_bind_stream_json_all_create(codec, "RouteItem", &result,
+                                                &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(data_bind_stream_set_record_callback(stream,
+                                                       inspect_stream_identity,
+                                                       &context),
+                  DATA_BIND_OK);
+      check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+    }
+    check_equal(context.calls, (size_t)2u);
+    check_true(context.all_attached);
+    check(reachable_identities_are_attached(result));
 
     data_bind_stream_destroy(stream);
     data_bind_value_free(result);
