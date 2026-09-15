@@ -1162,7 +1162,9 @@ spec("data_bind dynamic CSTL storage") {
     DataBindValue *source = NULL;
     DataBindValue *clone = NULL;
     DataBindValue *fresh = NULL;
+    DataBindValue *callback_result = NULL;
     data_bind_stream_t *stream = NULL;
+    identity_callback_context_t callback_context = {0u, 1};
 
     check_equal(data_bind_create_from_text(DATA_BIND_STREAM_IDENTITY_SCHEMA,
                                            strlen(DATA_BIND_STREAM_IDENTITY_SCHEMA),
@@ -1189,6 +1191,24 @@ spec("data_bind dynamic CSTL storage") {
                                           &fresh, &error), DATA_BIND_OK);
     check(identities_are_semantically_equal(clone, fresh));
 
+    if (codec != NULL)
+      stream = data_bind_stream_csv_all_create(codec, "StreamItem", &callback_result,
+                                                &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(data_bind_stream_set_record_callback(stream, inspect_stream_identity,
+                                                       &callback_context), DATA_BIND_OK);
+      check_equal(data_bind_stream_set_output_mode(stream,
+                                                    DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY),
+                  DATA_BIND_OK);
+      check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+    }
+    check_equal(callback_context.calls, (size_t)1u);
+    check_true(callback_context.all_attached);
+
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(callback_result);
     data_bind_value_free(fresh);
     data_bind_value_free(clone);
     data_bind_free(codec);
