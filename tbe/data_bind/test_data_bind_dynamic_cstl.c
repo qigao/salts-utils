@@ -1,4 +1,5 @@
 #include "data_bind_internal.h"
+#include "data_bind_cmeta.h"
 #include "tinytest.h"
 
 #include <string.h>
@@ -8,6 +9,15 @@ typedef struct reentrant_cancel_context {
   size_t calls;
   DataBindStatus cancel_status;
 } reentrant_cancel_context_t;
+
+static const char DATA_BIND_SET_INT_SCHEMA[] =
+    "message NumberSet { set<int32> ids; }";
+static const char DATA_BIND_SET_INT_DUPLICATES_JSON[] =
+    "{\"ids\":[3,1,3,2,1]}";
+static const char DATA_BIND_SET_STRING_SCHEMA[] =
+    "message StringSet { set<string> tags; }";
+static const char DATA_BIND_SET_STRING_DUPLICATES_JSON[] =
+    "{\"tags\":[\"alpha\",\"beta\",\"alpha\",\"beta\"]}";
 
 static DataBindRecordAction cancel_stream_from_callback(void *user_data,
                                                         const DataBindValue *record,
@@ -21,6 +31,249 @@ static DataBindRecordAction cancel_stream_from_callback(void *user_data,
 }
 
 spec("data_bind dynamic CSTL storage") {
+  it("deduplicates int32 sets in first-insertion order with ordered Set storage") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *root = NULL;
+    const DataBindValue *ids = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_INT_SCHEMA,
+                                           strlen(DATA_BIND_SET_INT_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "NumberSet",
+                                       DATA_BIND_SET_INT_DUPLICATES_JSON,
+                                       strlen(DATA_BIND_SET_INT_DUPLICATES_JSON),
+                                       &root, &error),
+                  DATA_BIND_OK);
+
+    check_not_null(root);
+    if (root != NULL) ids = data_bind_value_get(root, "ids");
+    check_not_null(ids);
+    if (ids != NULL) {
+      check_equal(data_bind_value_kind(ids), DATA_BIND_VALUE_SET);
+      check_equal(data_bind_value_count(ids), (size_t)3u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 0u)), 3);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 1u)), 1);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 2u)), 2);
+      check_equal(data_bind_internal_storage_kind(ids),
+                  DB_INTERNAL_STORAGE_ORDERED_SET);
+    }
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
+  it("deduplicates supported string sets without canonical element identity") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *root = NULL;
+    const DataBindValue *tags = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_STRING_SCHEMA,
+                                           strlen(DATA_BIND_SET_STRING_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "StringSet",
+                                       DATA_BIND_SET_STRING_DUPLICATES_JSON,
+                                       strlen(DATA_BIND_SET_STRING_DUPLICATES_JSON),
+                                       &root, &error),
+                  DATA_BIND_OK);
+
+    check_not_null(root);
+    if (root != NULL) tags = data_bind_value_get(root, "tags");
+    check_not_null(tags);
+    if (tags != NULL) {
+      check_equal(data_bind_value_count(tags), (size_t)2u);
+      check_equal(data_bind_value_as_string(data_bind_value_at(tags, 0u)),
+                  "alpha");
+      check_equal(data_bind_value_as_string(data_bind_value_at(tags, 1u)),
+                  "beta");
+    }
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
+  it("keeps a cloned Set unique and ordered after releasing its source") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *source = NULL;
+    DataBindValue *clone = NULL;
+    const DataBindValue *ids = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_INT_SCHEMA,
+                                           strlen(DATA_BIND_SET_INT_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "NumberSet",
+                                       DATA_BIND_SET_INT_DUPLICATES_JSON,
+                                       strlen(DATA_BIND_SET_INT_DUPLICATES_JSON),
+                                       &source, &error),
+                  DATA_BIND_OK);
+    check_not_null(source);
+    if (source != NULL)
+      check_equal(data_bind_value_clone(source, &clone), DATA_BIND_OK);
+    check_not_null(clone);
+
+    data_bind_value_free(source);
+    source = NULL;
+
+    if (clone != NULL) ids = data_bind_value_get(clone, "ids");
+    check_not_null(ids);
+    if (ids != NULL) {
+      check_equal(data_bind_internal_storage_kind(ids),
+                  DB_INTERNAL_STORAGE_ORDERED_SET);
+      check_equal(data_bind_value_count(ids), (size_t)3u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 0u)), 3);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 1u)), 1);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 2u)), 2);
+    }
+
+    data_bind_value_free(clone);
+    data_bind_free(codec);
+  }
+
+  it("round-trips JSON Set values in unique first-insertion order") {
+    static const char expected_json[] = "{\"ids\":[3,1,2]}";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindObject *source = NULL;
+    DataBindObject *roundtrip = NULL;
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    const DataBindValue *ids = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_INT_SCHEMA,
+                                           strlen(DATA_BIND_SET_INT_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_object_from_json(codec, "NumberSet",
+                                             DATA_BIND_SET_INT_DUPLICATES_JSON,
+                                             strlen(DATA_BIND_SET_INT_DUPLICATES_JSON),
+                                             &source, &error),
+                  DATA_BIND_OK);
+    check_not_null(source);
+    if (source != NULL)
+      check_equal(data_bind_object_serialize_json(codec, source, &serialized,
+                                                  &serialized_len, &error),
+                  DATA_BIND_OK);
+    check_not_null(serialized);
+    if (serialized != NULL) {
+      check_equal(serialized_len, strlen(expected_json));
+      check_equal(serialized, expected_json);
+      check_equal(data_bind_object_from_json(codec, "NumberSet", serialized,
+                                             serialized_len, &roundtrip, &error),
+                  DATA_BIND_OK);
+    }
+
+    if (roundtrip != NULL)
+      ids = data_bind_value_get(data_bind_object_value(roundtrip), "ids");
+    check_not_null(ids);
+    if (ids != NULL) {
+      check_equal(data_bind_value_count(ids), (size_t)3u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 0u)), 3);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 1u)), 1);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 2u)), 2);
+    }
+
+    data_bind_object_free(roundtrip);
+    data_bind_serialized_free(serialized);
+    data_bind_object_free(source);
+    data_bind_free(codec);
+  }
+
+  it("round-trips binary Set values in unique first-insertion order") {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindObject *source = NULL;
+    DataBindObject *roundtrip = NULL;
+    uint8_t *wire = NULL;
+    size_t wire_len = 0u;
+    const DataBindValue *ids = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_INT_SCHEMA,
+                                           strlen(DATA_BIND_SET_INT_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_object_from_json(codec, "NumberSet",
+                                             DATA_BIND_SET_INT_DUPLICATES_JSON,
+                                             strlen(DATA_BIND_SET_INT_DUPLICATES_JSON),
+                                             &source, &error),
+                  DATA_BIND_OK);
+    check_not_null(source);
+    if (source != NULL)
+      check_equal(data_bind_object_serialize_bin(codec, source, &wire, &wire_len,
+                                                 &error),
+                  DATA_BIND_OK);
+    check_not_null(wire);
+    if (wire != NULL)
+      check_equal(data_bind_object_from_bin(codec, "NumberSet", wire, wire_len,
+                                            &roundtrip, &error),
+                  DATA_BIND_OK);
+
+    if (roundtrip != NULL)
+      ids = data_bind_value_get(data_bind_object_value(roundtrip), "ids");
+    check_not_null(ids);
+    if (ids != NULL) {
+      check_equal(data_bind_value_count(ids), (size_t)3u);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 0u)), 3);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 1u)), 1);
+      check_equal(data_bind_value_as_int(data_bind_value_at(ids, 2u)), 2);
+    }
+
+    data_bind_object_free(roundtrip);
+    data_bind_binary_free(wire);
+    data_bind_object_free(source);
+    data_bind_free(codec);
+  }
+
+  it("marks Set value ranges as unique and ordered") {
+    static const char json[] = "{\"ids\":[3,1,2]}";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *root = NULL;
+    const DataBindValue *ids = NULL;
+    cmeta_range range = {0};
+    cmeta_range_cursor cursor = {0};
+    DataBindValueRef ref = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_SET_INT_SCHEMA,
+                                           strlen(DATA_BIND_SET_INT_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "NumberSet", json, strlen(json),
+                                       &root, &error),
+                  DATA_BIND_OK);
+    check_not_null(root);
+    if (root != NULL) ids = data_bind_value_get(root, "ids");
+    check_not_null(ids);
+    if (ids != NULL)
+      check_equal(data_bind_cmeta_range_init(ids, DATA_BIND_CMETA_RANGE_VALUES,
+                                             &range),
+                  DATA_BIND_OK);
+
+    check((range.flags & CMETA_RANGE_UNIQUE) != 0u);
+    check((range.flags & CMETA_RANGE_ORDERED) != 0u);
+    check_equal(cmeta_range_size(&range), (size_t)3u);
+    check_equal(cmeta_range_next(&range, &cursor, &ref), CMETA_GEN_VALUE);
+    check_equal(data_bind_value_as_int(ref.value), 3);
+    check_equal(cmeta_range_next(&range, &cursor, &ref), CMETA_GEN_VALUE);
+    check_equal(data_bind_value_as_int(ref.value), 1);
+    check_equal(cmeta_range_next(&range, &cursor, &ref),
+                CMETA_GEN_VALUE_AND_DONE);
+    check_equal(data_bind_value_as_int(ref.value), 2);
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
   it("preserves ordered object fields and list values in Vec storage") {
     static const char schema[] =
         "message Ordered { int32 first; int32 second; int32 third; } "
