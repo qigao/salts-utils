@@ -16,6 +16,9 @@ DataBindStatus data_bind_object_from_json_value(DataBind *codec, const char *typ
                                                 DataBindObject **out_object,
                                                 DataBindError *error);
 
+/* Test-only seam: advances container generation without changing its contents. */
+DataBindStatus data_bind_internal_test_touch_generation(DataBindValue *value);
+
 #ifdef __cplusplus
 }
 #endif

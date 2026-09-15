@@ -22,6 +22,11 @@ static const char DATA_BIND_MAP_SCHEMA[] =
     "message Attributes { map<string,int32> attrs; }";
 static const char DATA_BIND_MAP_JSON[] =
     "{\"attrs\":{\"z\":1,\"a\":2}}";
+static const char DATA_BIND_RANGE_SCHEMA[] =
+    "message RangeOwner { int32 id; list<int32> values; set<int32> ids; "
+    "map<string,int32> attrs; }";
+static const char DATA_BIND_RANGE_JSON[] =
+    "{\"id\":7,\"values\":[10,20],\"ids\":[3,1],\"attrs\":{\"z\":1,\"a\":2}}";
 
 static DataBindRecordAction cancel_stream_from_callback(void *user_data,
                                                         const DataBindValue *record,
@@ -35,6 +40,112 @@ static DataBindRecordAction cancel_stream_from_callback(void *user_data,
 }
 
 spec("data_bind dynamic CSTL storage") {
+  it("versions every borrowed container range and rejects traversal after mutation") {
+    const cmeta_range_flags ordered_flags =
+        CMETA_RANGE_SIZED | CMETA_RANGE_ORDERED | CMETA_RANGE_REUSABLE;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *root = NULL;
+    const DataBindValue *values = NULL;
+    const DataBindValue *ids = NULL;
+    const DataBindValue *attrs = NULL;
+    cmeta_range range = {0};
+    cmeta_range_cursor cursor = {0};
+    DataBindValueRef value_ref = {0};
+    DataBindFieldRef field_ref = {0};
+    DataBindMapEntryRef entry_ref = {0};
+
+    check_equal(data_bind_create_from_text(DATA_BIND_RANGE_SCHEMA,
+                                           strlen(DATA_BIND_RANGE_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      check_equal(data_bind_parse_json(codec, "RangeOwner", DATA_BIND_RANGE_JSON,
+                                       strlen(DATA_BIND_RANGE_JSON), &root, &error),
+                  DATA_BIND_OK);
+    check_not_null(root);
+    if (root != NULL) {
+      values = data_bind_value_get(root, "values");
+      ids = data_bind_value_get(root, "ids");
+      attrs = data_bind_value_get(root, "attrs");
+    }
+    check_not_null(values);
+    check_not_null(ids);
+    check_not_null(attrs);
+
+    if (root != NULL) {
+      check_equal(data_bind_cmeta_range_init(root, DATA_BIND_CMETA_RANGE_FIELDS,
+                                             &range),
+                  DATA_BIND_OK);
+      check_equal(range.flags, ordered_flags);
+      check_not_null(range.current_version);
+      check(range.version != UINT64_C(0));
+      if (range.current_version != NULL)
+        check_equal(range.version, range.current_version(range.object));
+      check_equal(data_bind_internal_test_touch_generation(root), DATA_BIND_OK);
+      check_equal(cmeta_range_next(&range, &cursor, &field_ref), CMETA_GEN_MUTATED);
+      check_equal(cursor.index, (size_t)0u);
+      check_null(field_ref.value);
+    }
+
+    if (values != NULL) {
+      memset(&range, 0, sizeof(range));
+      memset(&cursor, 0, sizeof(cursor));
+      check_equal(data_bind_cmeta_range_init(values, DATA_BIND_CMETA_RANGE_VALUES,
+                                             &range),
+                  DATA_BIND_OK);
+      check_equal(range.flags, ordered_flags);
+      check_not_null(range.current_version);
+      check(range.version != UINT64_C(0));
+      if (range.current_version != NULL)
+        check_equal(range.version, range.current_version(range.object));
+      check_equal(data_bind_internal_test_touch_generation((DataBindValue *)values),
+                  DATA_BIND_OK);
+      check_equal(cmeta_range_next(&range, &cursor, &value_ref), CMETA_GEN_MUTATED);
+      check_equal(cursor.index, (size_t)0u);
+      check_null(value_ref.value);
+    }
+
+    if (ids != NULL) {
+      memset(&range, 0, sizeof(range));
+      memset(&cursor, 0, sizeof(cursor));
+      check_equal(data_bind_cmeta_range_init(ids, DATA_BIND_CMETA_RANGE_VALUES,
+                                             &range),
+                  DATA_BIND_OK);
+      check_equal(range.flags, ordered_flags | CMETA_RANGE_UNIQUE);
+      check_not_null(range.current_version);
+      check(range.version != UINT64_C(0));
+      if (range.current_version != NULL)
+        check_equal(range.version, range.current_version(range.object));
+      check_equal(data_bind_internal_test_touch_generation((DataBindValue *)ids),
+                  DATA_BIND_OK);
+      check_equal(cmeta_range_next(&range, &cursor, &value_ref), CMETA_GEN_MUTATED);
+      check_equal(cursor.index, (size_t)0u);
+      check_null(value_ref.value);
+    }
+
+    if (attrs != NULL) {
+      memset(&range, 0, sizeof(range));
+      memset(&cursor, 0, sizeof(cursor));
+      check_equal(data_bind_cmeta_range_init(attrs, DATA_BIND_CMETA_RANGE_MAP_ENTRIES,
+                                             &range),
+                  DATA_BIND_OK);
+      check_equal(range.flags, ordered_flags);
+      check_not_null(range.current_version);
+      check(range.version != UINT64_C(0));
+      if (range.current_version != NULL)
+        check_equal(range.version, range.current_version(range.object));
+      check_equal(data_bind_internal_test_touch_generation((DataBindValue *)attrs),
+                  DATA_BIND_OK);
+      check_equal(cmeta_range_next(&range, &cursor, &entry_ref), CMETA_GEN_MUTATED);
+      check_equal(cursor.index, (size_t)0u);
+      check_null(entry_ref.value);
+    }
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
+  }
+
   it("preserves JSON map insertion order with ordered Map storage") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
