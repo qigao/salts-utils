@@ -31,16 +31,20 @@ typedef struct db_set_storage {
   hash_set_t membership;
 } db_set_storage_t;
 
-typedef struct data_bind_value_map_entry {
-  char *key;
+typedef struct db_map_entry_slot {
+  DataBindValue *key_value;
+  char *public_key_text;
   DataBindValue *value;
-} data_bind_value_map_entry_t;
+} db_map_entry_slot_t;
 
-typedef struct data_bind_value_map_array {
-  data_bind_value_map_entry_t *items;
-  size_t count;
-  size_t capacity;
-} data_bind_value_map_array_t;
+typedef struct db_map_index_value {
+  size_t ordered_index;
+} db_map_index_value_t;
+
+typedef struct db_map_storage {
+  vec_t ordered_entries;
+  hash_map_t index;
+} db_map_storage_t;
 
 typedef struct db_dynamic_graph db_dynamic_graph_t;
 
@@ -76,7 +80,7 @@ struct DataBindValue {
     db_object_storage_t object;
     db_sequence_storage_t sequence;
     db_set_storage_t set;
-    data_bind_value_map_array_t map_val;
+    db_map_storage_t map;
   } data;
 };
 
@@ -111,6 +115,24 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
                                       CMETA_TRAIT_DESTROY) != CMETA_OK ||
         !membership->table.initialized)
       return DB_INTERNAL_STORAGE_SCALAR;
+  } else if (value->kind == DATA_BIND_VALUE_MAP) {
+    const hash_map_t *index = &value->data.map.index;
+    vec = &value->data.map.ordered_entries;
+    slot_size = sizeof(db_map_entry_slot_t);
+    if (index->cmeta.descriptor != &stl_hash_map_container_desc ||
+        index->key_type == NULL ||
+        index->key_type->size != sizeof(db_value_ref_key_t) ||
+        cmeta_type_require_traits(index->key_type,
+                                  CMETA_TRAIT_EQUAL | CMETA_TRAIT_HASH |
+                                      CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |
+                                      CMETA_TRAIT_DESTROY) != CMETA_OK ||
+        index->value_type == NULL ||
+        index->value_type->size != sizeof(db_map_index_value_t) ||
+        cmeta_type_require_traits(index->value_type,
+                                  CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |
+                                      CMETA_TRAIT_DESTROY) != CMETA_OK ||
+        !index->initialized)
+      return DB_INTERNAL_STORAGE_SCALAR;
   } else {
     return DB_INTERNAL_STORAGE_SCALAR;
   }
@@ -120,8 +142,9 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
                                 CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |
                                     CMETA_TRAIT_DESTROY) != CMETA_OK)
     return DB_INTERNAL_STORAGE_SCALAR;
-  return value->kind == DATA_BIND_VALUE_SET ? DB_INTERNAL_STORAGE_ORDERED_SET
-                                             : DB_INTERNAL_STORAGE_VEC;
+  if (value->kind == DATA_BIND_VALUE_SET) return DB_INTERNAL_STORAGE_ORDERED_SET;
+  if (value->kind == DATA_BIND_VALUE_MAP) return DB_INTERNAL_STORAGE_ORDERED_MAP;
+  return DB_INTERNAL_STORAGE_VEC;
 }
 
 #endif
