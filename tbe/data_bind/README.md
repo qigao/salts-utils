@@ -1,8 +1,10 @@
 # DataBind 2.5
 
 DataBind 由 SaltsUtils 构建、测试、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的
-数据绑定引擎。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在其他
-binder、fallback 或 compatibility route。
+数据绑定引擎。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
+DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
+或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
+它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
 
 DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
@@ -32,7 +34,10 @@ CSerde/parsers: format tokens and mechanics
 Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
 metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
 overlay-only. DataBind 不复制结构类型事实，CSTL 不决定 schema，CSerde 与各 parser 也不执行
-对象绑定。
+对象绑定。每个已发布的 runtime-schema dynamic root 保留一份 immutable recursive CMeta
+identity graph；所有可达 child 借用其中与其 schema type expression 对应的 identity。
+`DataBindValueKind` 仍是公开兼容与物理 storage union 的 discriminator，不承担另一套
+semantic type graph。
 
 ### 原生 parser 依赖与迁移
 
@@ -57,9 +62,11 @@ DataBind 2.5 只定义两条强类型路线：
 2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 raw typed metadata，自动
    bind、序列化和反序列化。
 
-动态 `DataBindObject` 是两条路线共用的格式中间层和宿主程序集成入口，不是
-第三套 schema 契约。字段结构和语义类型以 CMeta 为准；wire layout、外部名称、presence、
-defaults、validation 与 fingerprint 只存在于 schema overlay。
+动态 `DataBindObject` / `DataBindValue` 是显式的宿主程序集成与 runtime-schema 路线，
+不是第三套 schema 契约，也不是原生 descriptor 路线的格式中间层。受支持的原生
+descriptor JSON/YAML/CSV/XML 路径直接在格式 AST/DOM、canonical native CMeta graph 与
+schema overlay 之间转换，不分配动态 owning root。字段结构和语义类型以 CMeta 为准；
+wire layout、外部名称、presence、defaults、validation 与 fingerprint 只存在于 schema overlay。
 
 ### 公开 API 分层
 
@@ -321,8 +328,13 @@ if (data_bind_cflow_publisher_from_value(
 range、stream、publisher 和 subscription 都只借用 `DataBindValue` owner；适配器不
 释放 owner，也不预取或缓存 payload。owner 必须存活至 range 遍历完成、stream 销毁，
 或 publisher/subscription 关闭。释放 owner 后，已发出的 value/name/key 指针立即
-失效。range cursor 是单线程对象；Reactive resume 由 CFlow 串行化，cancel/close 只
-结束消费状态。kind 与值类型不匹配时返回 `DATA_BIND_ERR_INVALID_ARG`，不自动降级。
+失效。只有由 `data_bind_cmeta_range_init()` 创建的 `cmeta_range` 捕获容器 generation；
+后续结构性修改会使该 range 的遍历返回 `CMETA_GEN_MUTATED`，而不是继续读取可能已经
+移动的槽位。普通 Record/List/Map borrowed view 不携带 generation，也不返回
+`CMETA_GEN_MUTATED`；它们按 owner 生命周期与各 accessor 的失效规则使用。SET/MAP 始终遍历 owning
+ordered Vec：SET 是首次语义插入顺序，MAP 是插入/wire 顺序，绝不暴露 HashSet/HashMap
+bucket 顺序。range cursor 是单线程对象；Reactive resume 由 CFlow 串行化，cancel/close
+只结束消费状态。kind 与值类型不匹配时返回 `DATA_BIND_ERR_INVALID_ARG`，不自动降级。
 
 ## 流式消费
 
@@ -364,8 +376,14 @@ final output。
 
 - `DataBind` 创建完成后不可变，可由多个线程共享；每个调用必须使用独立的输出对象和
   `DataBindError`，且释放 codec 前必须确保所有调用已经结束。
+- 已发布的 owning dynamic root 保留不可变的语义 metadata，可在创建它的
+  `DataBind *codec` 释放后继续读取、clone 和释放；需要 schema overlay 的后续操作仍须
+  传入匹配 codec。
 - owning object/value 必须使用对应的 DataBind/TBE typed 释放函数。
-- view 借用 owning record/object，owner 释放或清空后立即失效。
+- accessor 返回的 child/string 指针以及 range/view 都借用 owning root；root 释放后其
+  所有 descendants/views 立即失效。
+- `data_bind_value_clone()` 创建独立 owning storage；源与 clone 可分别释放。不可变的
+  semantic type graph 可以通过 retained reference 安全共享，不共享可变容器槽位。
 - typed object 在首次使用前调用 `*_init()`，结束时调用 `*_clear()`。
 - 外部 schema 和输入必须在可信边界校验；解析错误直接返回，不自动修复或降级。
 

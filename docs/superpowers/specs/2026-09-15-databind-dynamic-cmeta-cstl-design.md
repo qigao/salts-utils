@@ -7,11 +7,22 @@ DataBind's native typed runtime consume canonical CMeta graphs while preserving
 DataBind as SaltsUtils' sole binding and conversion engine. #46 applies the same
 ownership discipline to runtime-schema dynamic values.
 
-The current dynamic implementation is not yet canonical. `DataBindValue`
-contains DataBind-private object, sequence/set, and map arrays; `data_bind.c`
-owns their reserve/growth, mutation, clone, and destruction logic. The existing
-`data_bind_cmeta.c` exposes those legacy containers through CMeta Range adapters,
-but CMeta and CSTL do not yet own the underlying dynamic structure and storage.
+At design approval time, the dynamic implementation was not yet canonical. The
+implemented #46 runtime now stores object/list/set/map state in CSTL handles and
+publishes each binary or text direct/all/path/stream dynamic root with one
+immutable retained recursive CMeta identity graph. Every reachable object,
+sequence, set, map, key, child, Enum/custom or supported scalar points at its
+matching semantic node; synthetic all/path/stream list roots have their own
+sequence node. Clone copies value/container storage, retains the graph once at
+the cloned root, and remains valid after codec or source release.
+
+`DataBindValueKind` has deliberately not disappeared: it remains the public and
+physical-storage union discriminator required for compatibility and destruction.
+It is checked against the graph node at publication boundaries, but it is not a
+parallel semantic type graph. Only `cmeta_range` created by
+`data_bind_cmeta_range_init()` captures generation and can return
+`CMETA_GEN_MUTATED`; ordinary borrowed Record/List/Map views expose lifecycle
+invalidation, not generation-status reporting.
 
 #46 closes only when owning dynamic values use canonical CMeta semantic identity
 and traversal, and concrete collection storage/lifecycle comes from CSTL rather
@@ -293,15 +304,19 @@ root is released unless the containing storage is explicitly mutated through an
 API that documents invalidation.
 
 CSTL handles already expose mutation generation counters. #46 standardizes their
-use for internal ranges and any mutable/view API:
+use for CMeta ranges created by `data_bind_cmeta_range_init()`:
 
-- a borrowed Range/cursor/view captures the containing storage generation;
+- such a borrowed range/cursor captures the containing storage generation;
 - structural mutation increments the provider generation;
 - a later traversal with a stale generation fails rather than reading moved or
   erased storage;
 - releasing the root invalidates every borrowed child/range/view;
 - scalar reads that do not depend on a container remain unaffected by unrelated
   container mutations.
+
+Ordinary Record/List/Map borrowed views do not carry a captured generation and
+cannot return `CMETA_GEN_MUTATED`; they follow the owner lifetime and accessor
+invalidation contract instead.
 
 For composite set/map storage, any mutation that can move ordered Vec storage or
 change membership/index state advances one logical container generation. Public

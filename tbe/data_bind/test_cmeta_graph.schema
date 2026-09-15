@@ -23,6 +23,7 @@ message Signed8Storage { Signed8Domain value; }
 message Unsigned8Storage { Unsigned8Domain value; }
 message Signed64Storage { Signed64Domain value; }
 message BoolStorage { bool value; }
+message IntegerBoolDefaults { uint8 enabled default true; int32 debug default false; }
 message FixedValues { bool enabled; uuid id; bytes(16) digest; }
 message WideEnumStorage { WideDomain value; }
 message UuidStorage { uuid value; }
