@@ -4582,7 +4582,7 @@ static int db_dynamic_schema_node_count(const Node *node, unsigned depth,
   size_t child_count = 0u;
   size_t i;
   if (node == NULL || count == NULL ||
-      depth > DATA_BIND_SCHEMA_FINGERPRINT_MAX_DEPTH || *count == SIZE_MAX)
+      depth > DATA_BIND_SEMANTIC_MAX_DEPTH || *count == SIZE_MAX)
     return 0;
   ++*count;
   if (node->type == NODE_LIST) child_count = node->data.list.count;
