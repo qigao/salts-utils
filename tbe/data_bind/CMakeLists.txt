@@ -5,6 +5,8 @@ add_library(
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
+  data_bind_schema.c
+  data_bind_schema_internal.h
   data_bind_record.c
   tbe_typed.c
   tbe_typed.h)
