@@ -501,6 +501,57 @@ spec("data_bind public API") {
     }
   }
 
+  it("should reject non-string map keys from the public JSON object entry") {
+    const char *schema = "message InvalidMap { map<int32,int32> attrs; }\n";
+    const char *json = "{\"attrs\":{\"one\":7}}";
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_equal(data_bind_object_from_json(codec, "InvalidMap", json, strlen(json),
+                                           &object, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(object);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
+  it("should reject non-string map keys from the public XML object entry") {
+    const char *schema = "message InvalidMap { map<int32,int32> attrs; }\n";
+    const char *xml = "<InvalidMap><attrs><one>7</one></attrs></InvalidMap>";
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_equal(data_bind_object_from_xml(codec, "InvalidMap", xml, strlen(xml),
+                                          &object, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(object);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
+  it("should reject non-string map keys from the public CSV object entry") {
+    const char *schema = "message InvalidMap { map<int32,int32> attrs; }\n";
+    const char *csv = "attrs.one\r\n7\r\n";
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_equal(data_bind_object_from_csv(codec, "InvalidMap", csv, strlen(csv), 0,
+                                          &object, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(object);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
   it("enforces stream input field and retained-result limits") {
     const char *order_schema =
         "enum Side <uint8> { Buy = 1; Sell = 2; } "
