@@ -20,7 +20,9 @@ CSerde/parsers: format tokens and mechanics
 
 Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
 metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
-overlay-only.
+overlay-only. Runtime-schema dynamic roots retain an immutable recursive CMeta identity graph;
+their public `DataBindValueKind` remains only the storage/API discriminator and is not a second
+semantic type system.
 
 ## CMake
 
