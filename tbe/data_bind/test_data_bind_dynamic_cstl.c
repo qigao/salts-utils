@@ -43,6 +43,8 @@ static const char DATA_BIND_RECURSIVE_IDENTITY_JSON[] =
     "\"tags\":[\"alpha\"],\"by_name\":{\"first\":7},"
     "\"stage\":\"Ready\",\"created\":\"2026-09-16T10:11:12Z\"}";
 static const char DATA_BIND_ROUTE_SCHEMA[] = "message RouteItem { int32 id; }";
+static const char DATA_BIND_STREAM_IDENTITY_SCHEMA[] =
+    "message StreamItem { int32 id; list<int32> values; }";
 
 static int reachable_identities_are_attached(const DataBindValue *value) {
   size_t i;
@@ -1109,6 +1111,86 @@ spec("data_bind dynamic CSTL storage") {
 
     data_bind_stream_destroy(stream);
     data_bind_value_free(result);
+    data_bind_free(codec);
+  }
+
+  it("assigns retained JSON and XML stream items despite nested sequences") {
+    static const char json[] = "[{\"id\":7,\"values\":[11]}]";
+    static const char xml[] =
+        "<root><StreamItem><id>7</id><values>11</values></StreamItem></root>";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *result = NULL;
+    data_bind_stream_t *stream = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_STREAM_IDENTITY_SCHEMA,
+                                           strlen(DATA_BIND_STREAM_IDENTITY_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      stream = data_bind_stream_json_all_create(codec, "StreamItem", &result, &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(data_bind_stream_feed(stream, json, strlen(json)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+      check(reachable_identities_are_attached(result));
+    }
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(result);
+    result = NULL;
+    stream = NULL;
+
+    if (codec != NULL)
+      stream = data_bind_stream_xml_path_all_create(codec, "StreamItem", "//StreamItem",
+                                                     &result, &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(data_bind_stream_feed(stream, xml, strlen(xml)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+      check(reachable_identities_are_attached(result));
+    }
+
+    data_bind_stream_destroy(stream);
+    data_bind_value_free(result);
+    data_bind_free(codec);
+  }
+
+  it("keeps CSV stream clone identities after releasing its source") {
+    static const char csv[] = "id,values[0]\n7,11\n";
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    DataBindValue *source = NULL;
+    DataBindValue *clone = NULL;
+    DataBindValue *fresh = NULL;
+    data_bind_stream_t *stream = NULL;
+
+    check_equal(data_bind_create_from_text(DATA_BIND_STREAM_IDENTITY_SCHEMA,
+                                           strlen(DATA_BIND_STREAM_IDENTITY_SCHEMA),
+                                           &codec, &error),
+                DATA_BIND_OK);
+    if (codec != NULL)
+      stream = data_bind_stream_csv_all_create(codec, "StreamItem", &source, &error);
+    check_not_null(stream);
+    if (stream != NULL) {
+      check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_OK);
+      check_equal(data_bind_stream_finish(stream), DATA_BIND_OK);
+    }
+    if (source != NULL)
+      check_equal(data_bind_value_clone(source, &clone), DATA_BIND_OK);
+    check_not_null(clone);
+    data_bind_stream_destroy(stream);
+    stream = NULL;
+    data_bind_value_free(source);
+    source = NULL;
+
+    check(reachable_identities_are_attached(clone));
+    if (codec != NULL)
+      check_equal(data_bind_parse_csv_all(codec, "StreamItem", csv, strlen(csv),
+                                          &fresh, &error), DATA_BIND_OK);
+    check(identities_are_semantically_equal(clone, fresh));
+
+    data_bind_value_free(fresh);
+    data_bind_value_free(clone);
     data_bind_free(codec);
   }
 }

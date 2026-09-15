@@ -5009,6 +5009,18 @@ static DataBindStatus db_dynamic_assign_sequence_item(
   return DATA_BIND_ERR_SCHEMA;
 }
 
+static DataBindStatus db_dynamic_rehome_sequence_item(
+    DataBindValue *sequence, DataBindValue *item) {
+  db_dynamic_graph_t *previous_graph;
+  DataBindStatus status;
+  if (sequence == NULL || item == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  previous_graph = item->owned_graph;
+  item->owned_graph = NULL;
+  status = db_dynamic_assign_sequence_item(sequence, item);
+  db_dynamic_graph_release(previous_graph);
+  return status;
+}
+
 static DataBindStatus db_dynamic_attach_root(DataBind *codec,
                                              const char *root_type,
                                              int synthetic_sequence,
@@ -7860,6 +7872,14 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
       data_bind_parse_csv(parser->codec, parser->type_name, doc_text, doc_len, 0, &value, error);
   if (status == DATA_BIND_OK && value != NULL) {
     DataBindStatus push_status = DATA_BIND_OK;
+    status = db_dynamic_rehome_sequence_item(parser->csv_values, value);
+    if (status != DATA_BIND_OK) {
+      data_bind_value_free(value);
+      free(doc_text);
+      parser->csv_failed = 1;
+      return db_error_set(error, status, "data_bind_stream_feed", -1, -1,
+                          "CSV stream item dynamic identity assignment failed");
+    }
     if (parser->result_count >= parser->limits.max_result_count) {
       data_bind_value_free(value);
       free(doc_text);
