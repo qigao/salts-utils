@@ -86,6 +86,13 @@ cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_dynamic_cstl
+  SOURCES test_data_bind_dynamic_cstl.c
+  LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
+  INCLUDES ${CMAKE_SOURCE_DIR}/tbe/schema/include
+  FOLDER "tbe/data_bind/tests")
+set_tests_properties(test_data_bind_dynamic_cstl PROPERTIES
+  LABELS "databind;cmeta;cstl;dynamic")
 cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}

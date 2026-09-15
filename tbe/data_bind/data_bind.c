@@ -10197,6 +10197,12 @@ const cmeta_type_identity *data_bind_value_type_identity(const DataBindValue *va
   return value != NULL ? value->type_identity : NULL;
 }
 
+db_internal_storage_kind_t
+data_bind_internal_storage_kind(const DataBindValue *value) {
+  (void)value;
+  return DB_INTERNAL_STORAGE_SCALAR;
+}
+
 size_t data_bind_value_field_count(const DataBindValue *value) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_OBJECT) return 0;
   return value->data.object_val.count;
