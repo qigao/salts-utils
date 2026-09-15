@@ -282,10 +282,34 @@ struct data_bind_stream_t {
 static DataBindStatus data_bind_query_failure_status(
     const DataBindQueryDiagnostic *diagnostic);
 
+typedef struct db_dynamic_type db_dynamic_type_t;
+
+typedef struct db_dynamic_field_type {
+  char *stable_name;
+  const db_dynamic_type_t *value_type;
+} db_dynamic_field_type_t;
+
+struct db_dynamic_type {
+  cmeta_data_kind kind;
+  const cmeta_data_desc *canonical_data;
+  cmeta_type_identity owned_identity;
+  const cmeta_type_identity *identity;
+  char *semantic_key;
+  char *owned_stable_id;
+  db_dynamic_field_type_t *fields;
+  size_t field_count;
+  const db_dynamic_type_t *element_type;
+  const db_dynamic_type_t *key_type;
+  const db_dynamic_type_t *value_type;
+  int building;
+  int complete;
+};
+
 struct db_dynamic_graph {
   size_t references;
-  cmeta_type_identity root_identity;
-  char *stable_id;
+  db_dynamic_type_t *nodes;
+  size_t node_count;
+  size_t node_capacity;
 };
 
 struct DataBindObject {
@@ -477,70 +501,27 @@ static db_dynamic_graph_t *db_dynamic_graph_retain(db_dynamic_graph_t *graph) {
 }
 
 static void db_dynamic_graph_release(db_dynamic_graph_t *graph) {
+  size_t i;
+  size_t field_index;
   if (graph == NULL || graph->references == 0u) return;
   graph->references--;
   if (graph->references != 0u) return;
-  free(graph->stable_id);
+  for (i = 0u; i < graph->node_count; ++i) {
+    for (field_index = 0u; field_index < graph->nodes[i].field_count;
+         ++field_index)
+      free(graph->nodes[i].fields[field_index].stable_name);
+    free(graph->nodes[i].fields);
+    free(graph->nodes[i].owned_stable_id);
+    free(graph->nodes[i].semantic_key);
+  }
+  free(graph->nodes);
   free(graph);
 }
 
-static db_dynamic_graph_t *db_dynamic_graph_create_root(
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
-    const char *root_type) {
-  static const char prefix[] = "salts-utils.databind.dynamic.v1:";
-  static const char hex[] = "0123456789abcdef";
-  db_dynamic_graph_t *graph;
-  size_t prefix_len;
-  size_t type_len;
-  size_t stable_len;
-  size_t i;
-  char *cursor;
-
-  if (schema_fingerprint == NULL || root_type == NULL || root_type[0] == '\0') return NULL;
-  prefix_len = sizeof(prefix) - 1u;
-  type_len = strlen(root_type);
-  if (type_len > SIZE_MAX - prefix_len - DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u - 2u)
-    return NULL;
-  stable_len = prefix_len + DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u + 1u + type_len;
-
-  graph = (db_dynamic_graph_t *)calloc(1u, sizeof(*graph));
-  if (graph == NULL) return NULL;
-  graph->stable_id = (char *)malloc(stable_len + 1u);
-  if (graph->stable_id == NULL) {
-    free(graph);
-    return NULL;
-  }
-
-  cursor = graph->stable_id;
-  memcpy(cursor, prefix, prefix_len);
-  cursor += prefix_len;
-  for (i = 0u; i < DATA_BIND_SCHEMA_FINGERPRINT_SIZE; ++i) {
-    *cursor++ = hex[(schema_fingerprint[i] >> 4u) & 0x0fu];
-    *cursor++ = hex[schema_fingerprint[i] & 0x0fu];
-  }
-  *cursor++ = ':';
-  memcpy(cursor, root_type, type_len);
-  cursor[type_len] = '\0';
-
-  graph->references = 1u;
-  graph->root_identity.form = CMETA_TYPE_ATOM;
-  graph->root_identity.stable_atom_id = graph->stable_id;
-  graph->root_identity.constructor = NULL;
-  graph->root_identity.base = NULL;
-  graph->root_identity.args = NULL;
-  graph->root_identity.arity = 0u;
-  return graph;
-}
-
-static int db_dynamic_attach_root(DataBind *codec, const char *root_type, DataBindValue *value) {
-  db_dynamic_graph_t *graph;
-  if (codec == NULL || value == NULL || value->owned_graph != NULL) return 0;
-  graph = db_dynamic_graph_create_root(codec->schema_fingerprint, root_type);
-  if (graph == NULL) return 0;
-  value->owned_graph = graph;
-  value->type_identity = &graph->root_identity;
-  return 1;
-}
+static DataBindStatus db_dynamic_attach_root(DataBind *codec,
+                                             const char *root_type,
+                                             int synthetic_sequence,
+                                             DataBindValue *value);
 
 static DataBindValue *dbv_retain(DataBindValue *value) {
   if (value == NULL || value->references == SIZE_MAX) return NULL;
@@ -2114,6 +2095,16 @@ static DataBindStatus dbv_clone_tree(const DataBindValue *source, size_t depth,
         status = DATA_BIND_ERR_OOM;
         goto fail;
       }
+      {
+        db_map_entry_slot_t *new_entry = (db_map_entry_slot_t *)vec_at(
+            &copy->data.map.ordered_entries,
+            vec_size(&copy->data.map.ordered_entries) - 1u);
+        if (new_entry == NULL || new_entry->key_value == NULL) {
+          status = DATA_BIND_ERR_RUNTIME;
+          goto fail;
+        }
+        new_entry->key_value->type_identity = entry->key_value->type_identity;
+      }
       child = NULL;
     }
     break;
@@ -2195,7 +2186,6 @@ DataBindStatus data_bind_value_clone(const DataBindValue *value, DataBindValue *
     return DATA_BIND_ERR_LIMIT;
   }
   (*out_value)->owned_graph = graph;
-  (*out_value)->type_identity = &graph->root_identity;
   return DATA_BIND_OK;
 }
 
@@ -4626,6 +4616,473 @@ static Node *items_node_for_enum(Node *record) {
   return items != NULL && items->type == NODE_LIST ? items : NULL;
 }
 
+static atomic_size_t g_dynamic_graph_fail_after = SIZE_MAX;
+
+static void *db_dynamic_graph_calloc(size_t count, size_t size) {
+  size_t remaining = atomic_load_explicit(&g_dynamic_graph_fail_after,
+                                          memory_order_relaxed);
+  while (remaining != SIZE_MAX) {
+    if (remaining == 0u) return NULL;
+    if (atomic_compare_exchange_weak_explicit(
+            &g_dynamic_graph_fail_after, &remaining, remaining - 1u,
+            memory_order_relaxed, memory_order_relaxed))
+      break;
+  }
+  return calloc(count, size);
+}
+
+static char *db_dynamic_graph_strdup(const char *text) {
+  size_t len;
+  char *copy;
+  if (text == NULL) return NULL;
+  len = strlen(text);
+  if (len == SIZE_MAX) return NULL;
+  copy = (char *)db_dynamic_graph_calloc(len + 1u, 1u);
+  if (copy != NULL) memcpy(copy, text, len + 1u);
+  return copy;
+}
+
+static int db_dynamic_schema_node_count(const Node *node, unsigned depth,
+                                        size_t *count) {
+  size_t child_count = 0u;
+  size_t i;
+  if (node == NULL || count == NULL ||
+      depth > DATA_BIND_SCHEMA_FINGERPRINT_MAX_DEPTH || *count == SIZE_MAX)
+    return 0;
+  ++*count;
+  if (node->type == NODE_LIST) child_count = node->data.list.count;
+  else if (node->type == NODE_ROOT || node->type == NODE_MAP)
+    child_count = node->data.map.count;
+  for (i = 0u; i < child_count; ++i) {
+    const Node *child = node->type == NODE_LIST ? node->data.list.items[i]
+                                                : node->data.map.items[i];
+    if (!db_dynamic_schema_node_count(child, depth + 1u, count)) return 0;
+  }
+  return 1;
+}
+
+static char *db_dynamic_join_type(const char *constructor,
+                                  const char *first,
+                                  const char *second) {
+  size_t constructor_len;
+  size_t first_len;
+  size_t second_len = second != NULL ? strlen(second) : 0u;
+  size_t len;
+  char *text;
+  if (constructor == NULL || first == NULL) return NULL;
+  constructor_len = strlen(constructor);
+  first_len = strlen(first);
+  if (constructor_len > SIZE_MAX - first_len - second_len - 5u) return NULL;
+  len = constructor_len + first_len + second_len + (second != NULL ? 3u : 2u);
+  text = (char *)db_dynamic_graph_calloc(len + 1u, 1u);
+  if (text == NULL) return NULL;
+  if (second != NULL)
+    snprintf(text, len + 1u, "%s<%s,%s>", constructor, first, second);
+  else
+    snprintf(text, len + 1u, "%s<%s>", constructor, first);
+  return text;
+}
+
+static db_dynamic_type_t *db_dynamic_graph_find(db_dynamic_graph_t *graph,
+                                                const char *semantic_key) {
+  size_t i;
+  if (graph == NULL || semantic_key == NULL) return NULL;
+  for (i = 0u; i < graph->node_count; ++i)
+    if (graph->nodes[i].semantic_key != NULL &&
+        strcmp(graph->nodes[i].semantic_key, semantic_key) == 0)
+      return &graph->nodes[i];
+  return NULL;
+}
+
+static char *db_dynamic_stable_id(
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *semantic_key) {
+  static const char prefix[] = "salts-utils.databind.dynamic.v2:";
+  static const char hex[] = "0123456789abcdef";
+  size_t prefix_len = sizeof(prefix) - 1u;
+  size_t key_len;
+  size_t len;
+  size_t i;
+  char *text;
+  char *cursor;
+  if (schema_fingerprint == NULL || semantic_key == NULL) return NULL;
+  key_len = strlen(semantic_key);
+  if (key_len > SIZE_MAX - prefix_len - DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u - 2u)
+    return NULL;
+  len = prefix_len + DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u + 1u + key_len;
+  text = (char *)db_dynamic_graph_calloc(len + 1u, 1u);
+  if (text == NULL) return NULL;
+  cursor = text;
+  memcpy(cursor, prefix, prefix_len);
+  cursor += prefix_len;
+  for (i = 0u; i < DATA_BIND_SCHEMA_FINGERPRINT_SIZE; ++i) {
+    *cursor++ = hex[(schema_fingerprint[i] >> 4u) & 0x0fu];
+    *cursor++ = hex[schema_fingerprint[i] & 0x0fu];
+  }
+  *cursor++ = ':';
+  memcpy(cursor, semantic_key, key_len + 1u);
+  return text;
+}
+
+static db_dynamic_type_t *db_dynamic_graph_add(
+    db_dynamic_graph_t *graph,
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *semantic_key, cmeta_data_kind kind,
+    const cmeta_data_desc *canonical_data) {
+  db_dynamic_type_t *type;
+  if (graph == NULL || semantic_key == NULL ||
+      graph->node_count >= graph->node_capacity)
+    return NULL;
+  type = &graph->nodes[graph->node_count++];
+  type->semantic_key = db_dynamic_graph_strdup(semantic_key);
+  if (type->semantic_key == NULL) return NULL;
+  type->kind = kind;
+  type->canonical_data = canonical_data;
+  if (canonical_data != NULL && canonical_data->storage_type != NULL &&
+      canonical_data->storage_type->identity != NULL) {
+    type->identity = canonical_data->storage_type->identity;
+  } else {
+    type->owned_stable_id = db_dynamic_stable_id(schema_fingerprint,
+                                                 semantic_key);
+    if (type->owned_stable_id == NULL) return NULL;
+    type->owned_identity.form = CMETA_TYPE_ATOM;
+    type->owned_identity.stable_atom_id = type->owned_stable_id;
+    type->identity = &type->owned_identity;
+  }
+  return type;
+}
+
+static DataBindStatus db_dynamic_build_named(
+    db_dynamic_graph_t *graph, Node *schema_root,
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *type_name, unsigned depth, db_dynamic_type_t **out_type);
+
+static DataBindStatus db_dynamic_build_container(
+    db_dynamic_graph_t *graph, Node *schema_root,
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    Node *field, const schema_cmeta_field_type *semantic, unsigned depth,
+    db_dynamic_type_t **out_type) {
+  const char *constructor = semantic->schema_kind;
+  const char *element_name = get_string_val(find_child(field, "inner_type"));
+  const char *key_name = get_string_val(find_child(field, "key_type"));
+  const char *value_name = get_string_val(find_child(field, "value_type"));
+  char *semantic_key;
+  db_dynamic_type_t *type;
+  DataBindStatus status;
+  if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+  if (semantic->kind == CMETA_DATA_MAP) {
+    if (key_name == NULL || value_name == NULL) return DATA_BIND_ERR_SCHEMA;
+    semantic_key = db_dynamic_join_type("map", key_name, value_name);
+  } else {
+    if (element_name == NULL) return DATA_BIND_ERR_SCHEMA;
+    semantic_key = db_dynamic_join_type(constructor != NULL ? constructor : "list",
+                                        element_name, NULL);
+  }
+  if (semantic_key == NULL) return DATA_BIND_ERR_OOM;
+  type = db_dynamic_graph_find(graph, semantic_key);
+  if (type == NULL)
+    type = db_dynamic_graph_add(graph, schema_fingerprint, semantic_key,
+                                semantic->kind, semantic->data);
+  free(semantic_key);
+  if (type == NULL) return DATA_BIND_ERR_OOM;
+  if (type->complete || type->building) {
+    *out_type = type;
+    return DATA_BIND_OK;
+  }
+  type->building = 1;
+  if (semantic->kind == CMETA_DATA_MAP) {
+    db_dynamic_type_t *key_type = NULL;
+    db_dynamic_type_t *value_type = NULL;
+    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
+                                    key_name, depth + 1u, &key_type);
+    if (status == DATA_BIND_OK)
+      status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
+                                      value_name, depth + 1u, &value_type);
+    if (status != DATA_BIND_OK) return status;
+    type->key_type = key_type;
+    type->value_type = value_type;
+  } else {
+    db_dynamic_type_t *element_type = NULL;
+    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
+                                    element_name, depth + 1u, &element_type);
+    if (status != DATA_BIND_OK) return status;
+    type->element_type = element_type;
+  }
+  type->building = 0;
+  type->complete = 1;
+  *out_type = type;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus db_dynamic_build_named(
+    db_dynamic_graph_t *graph, Node *schema_root,
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *type_name, unsigned depth, db_dynamic_type_t **out_type) {
+  Node *record;
+  Node *fields;
+  const cmeta_data_desc *canonical;
+  cmeta_data_kind kind;
+  db_dynamic_type_t *type;
+  size_t i;
+  if (out_type != NULL) *out_type = NULL;
+  if (graph == NULL || schema_root == NULL || type_name == NULL ||
+      out_type == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+  type = db_dynamic_graph_find(graph, type_name);
+  if (type != NULL) {
+    *out_type = type;
+    return DATA_BIND_OK;
+  }
+  canonical = schema_cmeta_builtin_data(type_name);
+  record = find_data_record(schema_root, type_name);
+  if (record != NULL) kind = CMETA_DATA_STRUCT;
+  else if (find_enum_record(schema_root, type_name) != NULL) kind = CMETA_DATA_ENUM;
+  else if (find_union_record(schema_root, type_name) != NULL) kind = CMETA_DATA_VARIANT;
+  else if (!schema_cmeta_data_kind(type_name, &kind)) return DATA_BIND_ERR_SCHEMA;
+  type = db_dynamic_graph_add(graph, schema_fingerprint, type_name, kind,
+                              canonical);
+  if (type == NULL) return DATA_BIND_ERR_OOM;
+  type->building = 1;
+  if (kind == CMETA_DATA_STRUCT || kind == CMETA_DATA_VARIANT) {
+    if (record == NULL) record = find_union_record(schema_root, type_name);
+    fields = fields_node_for_record(record);
+    if (fields == NULL) return DATA_BIND_ERR_SCHEMA;
+    if (fields->data.list.count != 0u) {
+      type->fields = (db_dynamic_field_type_t *)db_dynamic_graph_calloc(
+          fields->data.list.count, sizeof(*type->fields));
+      if (type->fields == NULL) return DATA_BIND_ERR_OOM;
+    }
+    type->field_count = fields->data.list.count;
+    for (i = 0u; i < type->field_count; ++i) {
+      Node *field = fields->data.list.items[i];
+      const char *name = get_string_val(find_child(field, "name"));
+      const char *field_type = get_string_val(find_child(field, "type"));
+      schema_cmeta_field_type semantic;
+      db_dynamic_type_t *child_type = NULL;
+      DataBindStatus status;
+      if (name == NULL || !schema_cmeta_field_resolve(schema_root, field,
+                                                       &semantic))
+        return DATA_BIND_ERR_SCHEMA;
+      type->fields[i].stable_name = db_dynamic_graph_strdup(name);
+      if (type->fields[i].stable_name == NULL) return DATA_BIND_ERR_OOM;
+      if (cmeta_data_kind_is_container(semantic.kind)) {
+        status = db_dynamic_build_container(graph, schema_root,
+                                            schema_fingerprint, field,
+                                            &semantic, depth + 1u,
+                                            &child_type);
+      } else {
+        if (field_flag(field, "is_group_field"))
+          field_type = get_string_val(find_child(field, "group_type"));
+        status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
+                                        field_type, depth + 1u, &child_type);
+      }
+      if (status != DATA_BIND_OK) return status;
+      type->fields[i].value_type = child_type;
+    }
+  }
+  type->building = 0;
+  type->complete = 1;
+  *out_type = type;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus db_dynamic_build_synthetic_sequence(
+    db_dynamic_graph_t *graph,
+    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const char *root_type, db_dynamic_type_t *element_type,
+    db_dynamic_type_t **out_type) {
+  char *key = db_dynamic_join_type("result", root_type, NULL);
+  db_dynamic_type_t *type;
+  if (key == NULL) return DATA_BIND_ERR_OOM;
+  type = db_dynamic_graph_find(graph, key);
+  if (type == NULL)
+    type = db_dynamic_graph_add(graph, schema_fingerprint, key,
+                                CMETA_DATA_SEQUENCE, &cmeta_data_sequence);
+  free(key);
+  if (type == NULL) return DATA_BIND_ERR_OOM;
+  type->element_type = element_type;
+  type->complete = 1;
+  *out_type = type;
+  return DATA_BIND_OK;
+}
+
+static const db_dynamic_type_t *db_dynamic_field_type_find(
+    const db_dynamic_type_t *type, const char *name) {
+  size_t i;
+  if (type == NULL || name == NULL) return NULL;
+  for (i = 0u; i < type->field_count; ++i)
+    if (type->fields[i].stable_name != NULL &&
+        strcmp(type->fields[i].stable_name, name) == 0)
+      return type->fields[i].value_type;
+  return NULL;
+}
+
+static int db_dynamic_type_matches_value(const db_dynamic_type_t *type,
+                                         const DataBindValue *value) {
+  if (type == NULL || value == NULL || type->identity == NULL) return 0;
+  if (value->kind == DATA_BIND_VALUE_NULL) return 1;
+  switch (type->kind) {
+  case CMETA_DATA_STRUCT:
+  case CMETA_DATA_VARIANT:
+    return value->kind == DATA_BIND_VALUE_OBJECT;
+  case CMETA_DATA_SEQUENCE:
+    return value->kind == DATA_BIND_VALUE_LIST;
+  case CMETA_DATA_SET:
+    return value->kind == DATA_BIND_VALUE_SET;
+  case CMETA_DATA_MAP:
+    return value->kind == DATA_BIND_VALUE_MAP;
+  default:
+    return value->kind != DATA_BIND_VALUE_OBJECT &&
+           value->kind != DATA_BIND_VALUE_LIST &&
+           value->kind != DATA_BIND_VALUE_SET &&
+           value->kind != DATA_BIND_VALUE_MAP;
+  }
+}
+
+static DataBindStatus db_dynamic_assign_value(DataBindValue *value,
+                                              const db_dynamic_type_t *type,
+                                              unsigned depth) {
+  size_t i;
+  if (value == NULL || type == NULL) return DATA_BIND_ERR_SCHEMA;
+  if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+  if (!db_dynamic_type_matches_value(type, value)) return DATA_BIND_ERR_SCHEMA;
+  value->type_identity = type->identity;
+  if (value->kind == DATA_BIND_VALUE_OBJECT) {
+    for (i = 0u; i < vec_size(&value->data.object.fields); ++i) {
+      db_field_slot_t *field =
+          (db_field_slot_t *)vec_at(&value->data.object.fields, i);
+      const db_dynamic_type_t *field_type = field != NULL
+                                                ? db_dynamic_field_type_find(type,
+                                                                             field->name)
+                                                : NULL;
+      DataBindStatus status = field != NULL
+                                  ? db_dynamic_assign_value(field->value, field_type,
+                                                            depth + 1u)
+                                  : DATA_BIND_ERR_SCHEMA;
+      if (status != DATA_BIND_OK) return status;
+    }
+  } else if (value->kind == DATA_BIND_VALUE_LIST ||
+             value->kind == DATA_BIND_VALUE_SET) {
+    vec_t *values = value->kind == DATA_BIND_VALUE_LIST
+                        ? &value->data.sequence.values
+                        : &value->data.set.ordered_values;
+    for (i = 0u; i < vec_size(values); ++i) {
+      db_owned_value_slot_t *slot = (db_owned_value_slot_t *)vec_at(values, i);
+      DataBindStatus status = slot != NULL
+                                  ? db_dynamic_assign_value(slot->value,
+                                                            type->element_type,
+                                                            depth + 1u)
+                                  : DATA_BIND_ERR_SCHEMA;
+      if (status != DATA_BIND_OK) return status;
+    }
+  } else if (value->kind == DATA_BIND_VALUE_MAP) {
+    for (i = 0u; i < vec_size(&value->data.map.ordered_entries); ++i) {
+      db_map_entry_slot_t *entry = (db_map_entry_slot_t *)vec_at(
+          &value->data.map.ordered_entries, i);
+      DataBindStatus status;
+      if (entry == NULL) return DATA_BIND_ERR_SCHEMA;
+      status = db_dynamic_assign_value(entry->key_value, type->key_type,
+                                       depth + 1u);
+      if (status == DATA_BIND_OK)
+        status = db_dynamic_assign_value(entry->value, type->value_type,
+                                         depth + 1u);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus db_dynamic_assign_sequence_item(
+    DataBindValue *sequence, DataBindValue *item) {
+  db_dynamic_graph_t *graph;
+  size_t i;
+  if (sequence == NULL || item == NULL || sequence->owned_graph == NULL ||
+      sequence->type_identity == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  graph = sequence->owned_graph;
+  for (i = 0u; i < graph->node_count; ++i) {
+    const db_dynamic_type_t *type = &graph->nodes[i];
+    if (type->identity == sequence->type_identity && type->element_type != NULL)
+      return db_dynamic_assign_value(item, type->element_type, 0u);
+  }
+  return DATA_BIND_ERR_SCHEMA;
+}
+
+static DataBindStatus db_dynamic_attach_root(DataBind *codec,
+                                             const char *root_type,
+                                             int synthetic_sequence,
+                                             DataBindValue *value) {
+  db_dynamic_graph_t *graph;
+  db_dynamic_type_t *semantic_root = NULL;
+  db_dynamic_type_t *value_root = NULL;
+  size_t capacity = 0u;
+  DataBindStatus status;
+  if (codec == NULL || codec->schema_root == NULL || root_type == NULL ||
+      value == NULL || value->owned_graph != NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (!db_dynamic_schema_node_count(codec->schema_root, 0u, &capacity) ||
+      capacity == SIZE_MAX)
+    return DATA_BIND_ERR_LIMIT;
+  ++capacity;
+  graph = (db_dynamic_graph_t *)db_dynamic_graph_calloc(1u, sizeof(*graph));
+  if (graph == NULL) return DATA_BIND_ERR_OOM;
+  graph->nodes = (db_dynamic_type_t *)db_dynamic_graph_calloc(
+      capacity, sizeof(*graph->nodes));
+  if (graph->nodes == NULL) {
+    free(graph);
+    return DATA_BIND_ERR_OOM;
+  }
+  graph->references = 1u;
+  graph->node_capacity = capacity;
+  status = db_dynamic_build_named(graph, codec->schema_root,
+                                  codec->schema_fingerprint, root_type, 0u,
+                                  &semantic_root);
+  value_root = semantic_root;
+  if (status == DATA_BIND_OK && synthetic_sequence)
+    status = db_dynamic_build_synthetic_sequence(
+        graph, codec->schema_fingerprint, root_type, semantic_root, &value_root);
+  if (status == DATA_BIND_OK) {
+    value->owned_graph = graph;
+    status = db_dynamic_assign_value(value, value_root, 0u);
+  }
+  if (status != DATA_BIND_OK) {
+    if (value->owned_graph == graph) value->owned_graph = NULL;
+    db_dynamic_graph_release(graph);
+    return status;
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus db_dynamic_publish_result(
+    DataBind *codec, const char *root_type, int synthetic_sequence,
+    DataBindValue *value, DataBindValue **out_value, DataBindError *error,
+    const char *path) {
+  DataBindStatus status;
+  if (out_value == NULL) {
+    data_bind_value_free(value);
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
+  status = db_dynamic_attach_root(codec, root_type, synthetic_sequence, value);
+  if (status != DATA_BIND_OK) {
+    data_bind_value_free(value);
+    *out_value = NULL;
+    return db_error_set(error, status, path, -1, -1,
+                        "Failed to build dynamic CMeta identity graph for type: %s",
+                        root_type != NULL ? root_type : "");
+  }
+  *out_value = value;
+  db_error_clear(error);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_internal_test_set_dynamic_graph_allocation_failure(
+    size_t successful_allocations) {
+  atomic_store_explicit(&g_dynamic_graph_fail_after, successful_allocations,
+                        memory_order_relaxed);
+  return DATA_BIND_OK;
+}
+
 static size_t db_reflect_out_size(size_t requested, size_t full_size) {
   return requested != 0 && requested < full_size ? requested : full_size;
 }
@@ -6297,9 +6754,9 @@ DataBindStatus data_bind_parse(DataBind *codec, const char *type_name, const uin
     status = db_error_set(error, DATA_BIND_ERR_PARSE, "binary", -1, -1,
                           "Binary input has trailing bytes");
   if (status == DATA_BIND_OK) {
-    *out_value = result;
+    status = db_dynamic_publish_result(codec, type_name, 0, result, out_value,
+                                       error, "binary");
     result = NULL;
-    db_error_clear(error);
   }
   data_bind_value_free(result);
   emit_field_array_free(&fields);
@@ -6444,6 +6901,13 @@ static int data_bind_stream_values_push(data_bind_stream_t *parser, DataBindValu
     data_bind_stream_error_msg(parser, message);
     return -1;
   }
+  push_status = db_dynamic_assign_sequence_item(parser->stream_values, item);
+  if (push_status != DATA_BIND_OK) {
+    data_bind_value_free(item);
+    data_bind_stream_error_msg(parser,
+                               "Stream item dynamic identity assignment failed");
+    return -1;
+  }
   if (parser->result_count >= parser->limits.max_result_count) {
     data_bind_value_free(item);
     parser->limit_failed = 1;
@@ -6483,6 +6947,14 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
     return -1;
   }
   if (parser->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST) {
+    DataBindStatus identity_status = db_dynamic_attach_root(
+        parser->codec, parser->type_name, 0, item);
+    if (identity_status != DATA_BIND_OK) {
+      data_bind_value_free(item);
+      data_bind_stream_error_msg(
+          parser, "JSON stream item dynamic identity attachment failed");
+      return -1;
+    }
     if (parser->result_count >= parser->limits.max_result_count) {
       data_bind_value_free(item);
       parser->limit_failed = 1;
@@ -7841,6 +8313,26 @@ static data_bind_stream_t *data_bind_stream_create_common(
       return NULL;
     }
   }
+  if (parser->csv_values != NULL) {
+    DataBindStatus identity_status = db_dynamic_attach_root(
+        parser->codec, parser->type_name, 1, parser->csv_values);
+    if (identity_status != DATA_BIND_OK) {
+      data_bind_stream_destroy(parser);
+      db_error_set(error, identity_status, "data_bind_stream_create", -1, -1,
+                   "Failed to build CSV stream dynamic identity graph");
+      return NULL;
+    }
+  }
+  if (parser->stream_values != NULL) {
+    DataBindStatus identity_status = db_dynamic_attach_root(
+        parser->codec, parser->type_name, 1, parser->stream_values);
+    if (identity_status != DATA_BIND_OK) {
+      data_bind_stream_destroy(parser);
+      db_error_set(error, identity_status, "data_bind_stream_create", -1, -1,
+                   "Failed to build stream dynamic identity graph");
+      return NULL;
+    }
+  }
   db_error_clear(error);
   return parser;
 }
@@ -8853,13 +9345,12 @@ DataBindStatus data_bind_parse_json(DataBind *codec, const char *type_name, cons
   DataBindStatus status = data_bind_parse_json_without_dynamic_identity(
       codec, type_name, json, len, out_value, error);
   if (status != DATA_BIND_OK || out_value == NULL || *out_value == NULL) return status;
-  if (!db_dynamic_attach_root(codec, type_name, *out_value)) {
-    data_bind_value_free(*out_value);
+  {
+    DataBindValue *value = *out_value;
     *out_value = NULL;
-    return db_error_set(error, DATA_BIND_ERR_OOM, "json", -1, -1,
-                        "Out of memory building dynamic CMeta identity");
+    return db_dynamic_publish_result(codec, type_name, 0, value, out_value,
+                                     error, "json");
   }
-  return DATA_BIND_OK;
 }
 
 
@@ -8917,9 +9408,8 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "JSON bind_all failed for type: %s", type_name);
   }
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 1, list, out_value, error,
+                                   "json");
 }
 
 static DataBindStatus data_bind_query_failure_status(
@@ -9003,9 +9493,8 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "JSONPath bind failed for type: %s", type_name);
   }
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 0, result, out_value,
+                                   error, error_path);
 }
 
 DataBindStatus data_bind_parse_json_path(DataBind *codec, const char *type_name,
@@ -9108,9 +9597,8 @@ static DataBindStatus data_bind_parse_json_path_all_with_query(
   }
   if (matches != NULL) json_path_result_free(matches);
   (json_free(root), root = NULL);
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 1, list, out_value, error,
+                                   error_path);
 }
 
 DataBindStatus data_bind_parse_json_path_all(DataBind *codec, const char *type_name,
@@ -9241,9 +9729,8 @@ static DataBindStatus data_bind_parse_yaml_selected(DataBind *codec, const char 
 
   cyaml_path_result_free(&matches);
   (cyaml_free(doc), doc = NULL);
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, bind_all, result, out_value,
+                                   error, "yaml");
 }
 
 DataBindStatus data_bind_parse_yaml(DataBind *codec, const char *type_name, const char *yaml,
@@ -9307,9 +9794,8 @@ DataBindStatus data_bind_parse_csv(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, (int)row, -1,
                         "CSV bind failed for type: %s", type_name);
   }
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 0, result, out_value,
+                                   error, error_path);
 }
 
 DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, const char *csv,
@@ -9362,9 +9848,8 @@ DataBindStatus data_bind_parse_csv_all(DataBind *codec, const char *type_name, c
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "CSV bind_all failed for type: %s", type_name);
   }
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 1, list, out_value, error,
+                                   "csv");
 }
 
 static DataBindStatus data_bind_parse_csv_path_with_query(
@@ -9477,9 +9962,8 @@ static DataBindStatus data_bind_parse_csv_path_with_query(
                         error_path, -1, -1, "%s for type: %s",
                         failure_msg != NULL ? failure_msg : "CSVPath bind failed", type_name);
   }
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 1, list, out_value, error,
+                                   error_path);
 }
 
 DataBindStatus data_bind_parse_csv_path(DataBind *codec, const char *type_name,
@@ -9516,9 +10000,8 @@ DataBindStatus data_bind_parse_xml(DataBind *codec, const char *type_name, const
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "XML bind failed for type: %s", type_name);
   }
-  *out_value = result;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 0, result, out_value,
+                                   error, error_path);
 }
 
 static DataBindStatus data_bind_parse_xml_path_all_with_query(
@@ -9603,9 +10086,8 @@ static DataBindStatus data_bind_parse_xml_path_all_with_query(
     return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
                         "XML bind_all failed for type: %s", type_name);
   }
-  *out_value = list;
-  db_error_clear(error);
-  return DATA_BIND_OK;
+  return db_dynamic_publish_result(codec, type_name, 1, list, out_value, error,
+                                   error_path);
 }
 
 DataBindStatus data_bind_parse_xml_path_all(DataBind *codec, const char *type_name,

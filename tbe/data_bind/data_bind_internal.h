@@ -42,6 +42,12 @@ int data_bind_internal_parse_integer_magnitude(
 DATA_BIND_API DataBindStatus
 data_bind_internal_test_touch_generation(DataBindValue *value);
 
+/* Test-only seam: fail graph allocation after the requested successful calls.
+ * Pass SIZE_MAX to restore normal allocation. */
+DATA_BIND_API DataBindStatus
+data_bind_internal_test_set_dynamic_graph_allocation_failure(
+    size_t successful_allocations);
+
 #ifdef __cplusplus
 }
 #endif
