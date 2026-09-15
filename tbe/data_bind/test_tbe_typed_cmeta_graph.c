@@ -251,6 +251,77 @@ spec("generated native CMeta graph") {
         "<wire_count>7</wire_count>", "<count>7</count>");
   }
 
+  it("preserves integral number and typed default compatibility") {
+    static const char json[] =
+        "{\"point\":{\"x\":3.0,\"y\":4.5},\"state\":7e0}";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_JSON,
+                      json, sizeof(json) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves textual Boolean compatibility") {
+    static const char json[] = "{\"value\":\"yes\"}";
+    const TbeTypedDescriptor *descriptor = BoolStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    BoolStorage_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "BoolStorage", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.value, 1u);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves delimited flags compatibility") {
+    static const char json[] = "{\"value\":\"Read|Write\"}";
+    const TbeTypedDescriptor *descriptor = FlagStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    FlagStorage_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "FlagStorage", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.value, Permission_Read | Permission_Write);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
   it("keeps structural publication independent from descriptor overlay support") {
     const cmeta_data_desc *sentinel = &salts_int32_cmeta_data;
     const cmeta_data_desc *data = sentinel;
