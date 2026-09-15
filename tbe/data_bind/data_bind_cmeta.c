@@ -1,4 +1,5 @@
 #include "data_bind_cmeta.h"
+#include "data_bind_value_internal.h"
 
 #include <cmeta/pp.h>
 
@@ -107,6 +108,23 @@ static size_t data_bind_cmeta_fields_size(const void *object) {
   return data_bind_value_field_count((const DataBindValue *)object);
 }
 
+static uint64_t data_bind_cmeta_container_version(const void *object) {
+  const DataBindValue *owner = (const DataBindValue *)object;
+  if (owner == NULL) return UINT64_C(0);
+  switch (owner->kind) {
+  case DATA_BIND_VALUE_OBJECT:
+    return vec_generation(&owner->data.object.fields);
+  case DATA_BIND_VALUE_LIST:
+    return vec_generation(&owner->data.sequence.values);
+  case DATA_BIND_VALUE_SET:
+    return owner->data.set.generation;
+  case DATA_BIND_VALUE_MAP:
+    return owner->data.map.generation;
+  default:
+    return UINT64_C(0);
+  }
+}
+
 static cmeta_gen_status data_bind_cmeta_values_next(const void *object,
                                                      cmeta_range_cursor *cursor,
                                                      void *out_value) {
@@ -179,6 +197,7 @@ DataBindStatus data_bind_cmeta_range_init(const DataBindValue *owner,
   case DATA_BIND_CMETA_RANGE_VALUES:
     if (value_kind != DATA_BIND_VALUE_LIST && value_kind != DATA_BIND_VALUE_SET)
       return DATA_BIND_ERR_INVALID_ARG;
+    if (value_kind == DATA_BIND_VALUE_SET) range.flags |= CMETA_RANGE_UNIQUE;
     range.element_type = data_bind_cmeta_value_ref_type();
     range.size = data_bind_cmeta_values_size;
     range.next = data_bind_cmeta_values_next;
@@ -198,6 +217,10 @@ DataBindStatus data_bind_cmeta_range_init(const DataBindValue *owner,
   default:
     return DATA_BIND_ERR_INVALID_ARG;
   }
+
+  range.current_version = data_bind_cmeta_container_version;
+  range.version = cmeta_range_capture_version(range.current_version, range.object);
+  if (range.version == UINT64_C(0)) return DATA_BIND_ERR_RUNTIME;
 
   *out_range = range;
   return DATA_BIND_OK;

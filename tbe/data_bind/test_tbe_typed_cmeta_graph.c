@@ -9,11 +9,189 @@
 
 static unsigned reject_fixed_copy_hits;
 
+static void check_native_text_format_isolated(
+    DataBindFormat format, const char *input, size_t input_len,
+    const char *mapped_output, const char *canonical_output) {
+  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Sample_t value = {0};
+  char *serialized = NULL;
+  size_t serialized_len = 0u;
+  size_t allocated_before = 0u;
+  size_t reused_before = 0u;
+  size_t allocated_after_parse = 0u;
+  size_t reused_after_parse = 0u;
+  size_t allocated_after_serialize = 0u;
+  size_t reused_after_serialize = 0u;
+  DataBindStatus parse_status;
+  DataBindStatus serialize_status = DATA_BIND_ERR_RUNTIME;
+  int parsed_x;
+  double parsed_y;
+  State_t parsed_state;
+  int32_t parsed_count;
+  int has_mapped_output = 0;
+  int has_canonical_output = 0;
+
+  check_not_null(descriptor);
+  check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+  check_not_null(codec);
+  if (codec == NULL || descriptor == NULL) return;
+
+  data_bind_set_value_pool_enabled(0);
+  data_bind_get_value_pool_stats(&allocated_before, &reused_before);
+  parse_status = tbe_typed_descriptor_parse(
+      codec, "Sample", descriptor, format, input, input_len, 0u, &value,
+      &error);
+  data_bind_get_value_pool_stats(&allocated_after_parse, &reused_after_parse);
+
+  if (parse_status == DATA_BIND_OK)
+    serialize_status = tbe_typed_descriptor_serialize(
+        codec, "Sample", descriptor, &value, format, &serialized,
+        &serialized_len, &error);
+  data_bind_get_value_pool_stats(&allocated_after_serialize,
+                                 &reused_after_serialize);
+
+  parsed_x = value.point.x;
+  parsed_y = value.point.y;
+  parsed_state = value.state;
+  parsed_count = value.count;
+  if (serialized != NULL) {
+    has_mapped_output = strstr(serialized, mapped_output) != NULL;
+    has_canonical_output = strstr(serialized, canonical_output) != NULL;
+  }
+  tbe_typed_serialized_free(serialized);
+  (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  data_bind_free(codec);
+  data_bind_set_value_pool_enabled(1);
+
+  check_equal(parse_status, DATA_BIND_OK);
+  check_equal(allocated_after_parse, allocated_before);
+  check_equal(reused_after_parse, reused_before);
+  check_equal(parsed_x, 3);
+  check_equal(parsed_y, 4.5);
+  check_equal(parsed_state, State_Ready);
+  check_equal(parsed_count, 7);
+  check_equal(serialize_status, DATA_BIND_OK);
+  check_equal(allocated_after_serialize, allocated_after_parse);
+  check_equal(reused_after_serialize, reused_after_parse);
+  check(serialized_len != 0u);
+  check(has_mapped_output);
+  check(!has_canonical_output);
+}
+
 static cmeta_status reject_fixed_copy(void *destination, const void *source) {
   (void)source;
   ++reject_fixed_copy_hits;
   if (destination != NULL) ((uint8_t *)destination)[0] = 0xffu;
   return CMETA_CALLBACK_ERROR;
+}
+
+static size_t append_test_text(char *buffer, size_t capacity, size_t used,
+                               const char *text) {
+  size_t length = strlen(text);
+  if (used > capacity || length >= capacity - used) return SIZE_MAX;
+  memcpy(buffer + used, text, length + 1u);
+  return used + length;
+}
+
+static size_t make_depth32_csv(char *buffer, size_t capacity) {
+  size_t used = 0u;
+  size_t depth;
+  if (capacity != 0u) buffer[0] = '\0';
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "child.");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "value\r\n0\r\n");
+  return used;
+}
+
+static size_t make_depth32_xml(char *buffer, size_t capacity) {
+  size_t used = 0u;
+  size_t depth;
+  if (capacity != 0u) buffer[0] = '\0';
+  used = append_test_text(buffer, capacity, used, "<Depth32>");
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "<child>");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "<value>0</value>");
+  for (depth = 0u; depth < 32u && used != SIZE_MAX; ++depth)
+    used = append_test_text(buffer, capacity, used, "</child>");
+  if (used != SIZE_MAX)
+    used = append_test_text(buffer, capacity, used, "</Depth32>");
+  return used;
+}
+
+static DataBindStatus parse_depth32(DataBindFormat format, const char *input,
+                                    size_t input_length) {
+  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Depth32_t value;
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    memset(&value, 0xa5, sizeof(value));
+    status = tbe_typed_descriptor_parse(
+        codec, "Depth32", descriptor, format, input, input_length, 0u,
+        &value, &error);
+    if (status == DATA_BIND_OK) {
+      Depth32_t expected;
+      memset(&expected, 0, sizeof(expected));
+      if (memcmp(&value, &expected, sizeof(value)) != 0)
+        status = DATA_BIND_ERR_RUNTIME;
+    }
+    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  data_bind_free(codec);
+  return status;
+}
+
+static DataBindStatus serialize_depth32(DataBindFormat format) {
+  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Depth32_t value;
+  char *serialized = NULL;
+  size_t serialized_length = 0u;
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  memset(&value, 0, sizeof(value));
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    status = tbe_typed_descriptor_serialize(
+        codec, "Depth32", descriptor, &value, format, &serialized,
+        &serialized_length, &error);
+    if (status == DATA_BIND_OK &&
+        (serialized == NULL || serialized_length == 0u))
+      status = DATA_BIND_ERR_RUNTIME;
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  tbe_typed_serialized_free(serialized);
+  data_bind_free(codec);
+  return status;
+}
+
+static DataBindStatus parse_sample_count(DataBindFormat format,
+                                         const char *input,
+                                         size_t input_length,
+                                         int32_t *out_count) {
+  const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBind *codec = NULL;
+  Sample_t value = {0};
+  DataBindStatus status = Graph_codec_create(&codec, &error);
+  if (status == DATA_BIND_OK && descriptor != NULL) {
+    status = tbe_typed_descriptor_parse(codec, "Sample", descriptor, format,
+                                        input, input_length, 0u, &value,
+                                        &error);
+    if (status == DATA_BIND_OK && out_count != NULL) *out_count = value.count;
+    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+  } else if (status == DATA_BIND_OK) {
+    status = DATA_BIND_ERR_RUNTIME;
+  }
+  data_bind_free(codec);
+  return status;
 }
 
 spec("generated native CMeta graph") {
@@ -86,6 +264,395 @@ spec("generated native CMeta graph") {
       check_null(descriptor->overlay->fields[0].object_type);
       check_not_null(descriptor->overlay->fields[0].nested_overlay);
     }
+  }
+
+  it("keeps supported native descriptor JSON paths isolated from dynamic values") {
+    static const char json[] =
+        "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,\"wire_count\":7}";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    size_t allocated_before = 0u;
+    size_t reused_before = 0u;
+    size_t allocated_after = 0u;
+    size_t reused_after = 0u;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    data_bind_set_value_pool_enabled(0);
+    data_bind_get_value_pool_stats(&allocated_before, &reused_before);
+
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_JSON,
+                      json, sizeof(json) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    data_bind_get_value_pool_stats(&allocated_after, &reused_after);
+    check_equal(allocated_after, allocated_before);
+    check_equal(reused_after, reused_before);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 7);
+
+    allocated_before = allocated_after;
+    reused_before = reused_after;
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_serialize(
+                      codec, "Sample", descriptor, &value,
+                      DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                      &error),
+                  DATA_BIND_OK);
+    data_bind_get_value_pool_stats(&allocated_after, &reused_after);
+    check_equal(allocated_after, allocated_before);
+    check_equal(reused_after, reused_before);
+    check_not_null(serialized);
+    check(serialized_len != 0u);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"wire_count\":7"));
+      check_null(strstr(serialized, "\"count\":7"));
+    }
+
+    tbe_typed_serialized_free(serialized);
+    if (descriptor != NULL)
+      check_equal(tbe_typed_descriptor_clear(descriptor, &value, &error),
+                  DATA_BIND_OK);
+    data_bind_free(codec);
+    data_bind_set_value_pool_enabled(1);
+  }
+
+  it("keeps native descriptor YAML isolated from dynamic values") {
+    static const char yaml[] =
+        "\"point\":\n"
+        "  \"x\": 3\n"
+        "  \"y\": 4.5\n"
+        "\"state\": 7\n"
+        "\"wire_count\": 7\n";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_YAML, yaml, sizeof(yaml) - 1u,
+        "\"wire_count\": 7", "\"count\": 7");
+  }
+
+  it("keeps native descriptor CSV isolated from dynamic values") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,7\r\n";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_CSV, csv, sizeof(csv) - 1u,
+        "point.x,point.y,state,wire_count", "point.x,point.y,state,count");
+  }
+
+  it("keeps native descriptor XML isolated from dynamic values") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
+        "<wire_count>7</wire_count></Sample>";
+
+    check_native_text_format_isolated(
+        DATA_BIND_FORMAT_XML, xml, sizeof(xml) - 1u,
+        "<wire_count>7</wire_count>", "<count>7</count>");
+  }
+
+  it("preserves integral number and typed default compatibility") {
+    static const char json[] =
+        "{\"point\":{\"x\":3.0,\"y\":4.5},\"state\":7e0}";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_JSON,
+                      json, sizeof(json) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves textual Boolean compatibility") {
+    static const char json[] = "{\"value\":\"yes\"}";
+    const TbeTypedDescriptor *descriptor = BoolStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    BoolStorage_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "BoolStorage", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.value, 1u);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves Boolean defaults for integral native fields") {
+    static const char json[] = "{}";
+    const TbeTypedDescriptor *descriptor =
+        IntegerBoolDefaults_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    IntegerBoolDefaults_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "IntegerBoolDefaults", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.enabled, 1u);
+    check_equal(value.debug, 0);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves delimited flags compatibility") {
+    static const char json[] = "{\"value\":\"Read|Write\"}";
+    const TbeTypedDescriptor *descriptor = FlagStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    FlagStorage_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "FlagStorage", descriptor,
+                      DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                      &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.value, Permission_Read | Permission_Write);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves schema-aware CSV header and empty-default compatibility") {
+    static const char csv[] =
+        "point_x_n,point_y_n,state_n,old_count_n\r\n"
+        "3,4.5,7,\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves schema-aware XML shape and empty-default compatibility") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y><unknown>ignored</unknown>"
+        "</point><state>7</state><old_count/><unknown><nested>ignored"
+        "</nested></unknown></Sample>";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_XML,
+                      xml, sizeof(xml) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 9);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves XML scalar attributes and aliases") {
+    static const char xml[] =
+        "<Sample state=\"7\" old_count=\"7\"><point x=\"3\" y=\"4.5\"/>"
+        "</Sample>";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_XML,
+                      xml, sizeof(xml) - 1u, 0u, &value, &error),
+                  DATA_BIND_OK);
+    check_equal(value.point.x, 3);
+    check_equal(value.point.y, 4.5);
+    check_equal(value.state, State_Ready);
+    check_equal(value.count, 7);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves native YAML and CSV compatibility error codes") {
+    static const char yaml[] = "? [a, b]\n: 1\n";
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,7\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL) {
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_YAML,
+                      yaml, sizeof(yaml) - 1u, 0u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 1u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+    }
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves the native ragged CSV row compatibility error") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7\r\n";
+    const TbeTypedDescriptor *descriptor = Sample_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    Sample_t value = {0};
+
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    check_not_null(descriptor);
+    if (codec != NULL && descriptor != NULL)
+      check_equal(tbe_typed_descriptor_parse(
+                      codec, "Sample", descriptor, DATA_BIND_FORMAT_CSV,
+                      csv, sizeof(csv) - 1u, 0u, &value, &error),
+                  DATA_BIND_ERR_TYPE_MISMATCH);
+
+    if (descriptor != NULL)
+      (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
+    data_bind_free(codec);
+  }
+
+  it("preserves invalid scalar default fallback in native CSV") {
+    static const char csv[] =
+        "point.x,point.y,state,wire_count\r\n"
+        "3,4.5,7,garbage\r\n";
+    int32_t count = 0;
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_CSV, csv,
+                                   sizeof(csv) - 1u, &count),
+                DATA_BIND_OK);
+    check_equal(count, 9);
+  }
+
+  it("preserves invalid scalar default fallback in native XML") {
+    static const char xml[] =
+        "<Sample><point><x>3</x><y>4.5</y></point><state>7</state>"
+        "<wire_count>garbage</wire_count></Sample>";
+    int32_t count = 0;
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_XML, xml,
+                                   sizeof(xml) - 1u, &count),
+                DATA_BIND_OK);
+    check_equal(count, 9);
+  }
+
+  it("keeps invalid scalar defaults strict in native JSON and YAML") {
+    static const char json[] =
+        "{\"point\":{\"x\":3,\"y\":4.5},\"state\":7,"
+        "\"wire_count\":\"garbage\"}";
+    static const char yaml[] =
+        "\"point\":\n"
+        "  \"x\": 3\n"
+        "  \"y\": 4.5\n"
+        "\"state\": 7\n"
+        "\"wire_count\": garbage\n";
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_JSON, json,
+                                   sizeof(json) - 1u, NULL),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(parse_sample_count(DATA_BIND_FORMAT_YAML, yaml,
+                                   sizeof(yaml) - 1u, NULL),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+  }
+
+  it("preserves the accepted Depth32 parse boundary in CSV") {
+    char csv[512];
+    size_t length = make_depth32_csv(csv, sizeof(csv));
+    check(length != SIZE_MAX);
+    if (length != SIZE_MAX)
+      check_equal(parse_depth32(DATA_BIND_FORMAT_CSV, csv, length),
+                  DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 serialize boundary in CSV") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_CSV), DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 parse boundary in XML") {
+    char xml[768];
+    size_t length = make_depth32_xml(xml, sizeof(xml));
+    check(length != SIZE_MAX);
+    if (length != SIZE_MAX)
+      check_equal(parse_depth32(DATA_BIND_FORMAT_XML, xml, length),
+                  DATA_BIND_OK);
+  }
+
+  it("preserves the accepted Depth32 serialize boundary in XML") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_XML), DATA_BIND_OK);
   }
 
   it("keeps structural publication independent from descriptor overlay support") {
