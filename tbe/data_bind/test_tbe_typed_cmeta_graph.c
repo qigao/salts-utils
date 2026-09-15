@@ -134,6 +134,10 @@ spec("generated native CMeta graph") {
     check_equal(reused_after, reused_before);
     check_not_null(serialized);
     check(serialized_len != 0u);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"wire_count\":7"));
+      check_null(strstr(serialized, "\"count\":7"));
+    }
 
     tbe_typed_serialized_free(serialized);
     if (descriptor != NULL)
