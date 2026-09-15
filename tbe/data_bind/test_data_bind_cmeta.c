@@ -1,4 +1,5 @@
 #include "data_bind_cmeta.h"
+#include "schema_cmeta.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -59,6 +60,36 @@ spec("data_bind CMeta adapter") {
     check(cmeta_type_identity_equal(identity, data_bind_value_type_identity(root)));
 
     data_bind_value_free(root);
+  }
+
+  it("should reuse canonical int32 provider identity for scalar children") {
+    DataBind *codec = NULL;
+    DataBindValue *root = parse_fixture(&codec);
+    const DataBindValue *attrs = data_bind_value_get(root, "attrs");
+    const DataBindValue *x = data_bind_value_map_value_at(attrs, 0u);
+    const cmeta_data_desc *provider = schema_cmeta_builtin_data("int32");
+    const cmeta_type_identity *provider_id = NULL;
+    const cmeta_type_identity *value_id;
+
+    check_not_null(root);
+    check_not_null(attrs);
+    check_not_null(x);
+    check_not_null(provider);
+    if (provider != NULL) {
+      check_not_null(provider->storage_type);
+      if (provider->storage_type != NULL) {
+        provider_id = provider->storage_type->identity;
+        check_not_null(provider_id);
+      }
+    }
+
+    value_id = data_bind_value_type_identity(x);
+    check_not_null(value_id);
+    if (value_id != NULL && provider_id != NULL)
+      check(cmeta_type_identity_equal(value_id, provider_id));
+
+    data_bind_value_free(root);
+    data_bind_free(codec);
   }
 
   it("should expose ordered object fields as borrowed references") {
