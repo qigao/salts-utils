@@ -63,7 +63,13 @@ unset(Salts_DIR)
 find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
-foreach(required_salts_target IN ITEMS Salts::Platform Salts::Core Salts::CFlow)
+foreach(required_salts_target IN ITEMS
+        Salts::Platform
+        Salts::Core
+        Salts::CFlow
+        Salts::CSTL
+        Salts::CSerde
+        Salts::UriParser)
   if(NOT TARGET ${required_salts_target})
     message(FATAL_ERROR
             "SALTS_ROOT package is missing required target ${required_salts_target}")
@@ -73,7 +79,25 @@ endforeach()
 foreach(pre_migration_target IN ITEMS
         Salts::Crypto
         Salts::CFlowFS
-        Salts::CFlowProcess)
+        Salts::CFlowProcess
+        Salts::QueryVM
+        Salts::IniParser
+        Salts::JsonParser
+        Salts::JsonCSerdeAdapter
+        Salts::XmlParser
+        Salts::CsvParser
+        Salts::TLVParser
+        Salts::LtvParser
+        Salts::ModbusParser
+        Salts::SoaParser
+        Salts::DotEnvParser
+        Salts::CmdParser
+        Salts::Toon
+        Salts::TomlParser
+        Salts::DateTimeParser
+        Salts::CYaml
+        Salts::CYamlJsonAdapter
+        Salts::Selector)
   if(TARGET ${pre_migration_target})
     message(FATAL_ERROR
             "SALTS_ROOT points to a pre-migration Salts package that still exports ${pre_migration_target}")
@@ -88,6 +112,8 @@ endif()
 add_subdirectory(tools)
 include(FindTools)
 add_subdirectory(vendor)
+add_subdirectory(parser)
+add_subdirectory(tools/junit_to_html)
 add_subdirectory(crypto)
 add_subdirectory(cflow-fs)
 add_subdirectory(cflow-process)
