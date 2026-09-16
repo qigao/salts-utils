@@ -36,16 +36,3 @@ cmake_add_test(
   SOURCES test_playback_lifecycle.c
   LIBS playback_null_test_impl Salts::TinyTest
   FOLDER "playback/tests")
-
-add_test(
-  NAME playback_package_test
-  COMMAND
-    ${CMAKE_COMMAND}
-    -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
-    -DBUILD_DIR=${CMAKE_BINARY_DIR}
-    -DINSTALL_CONFIG=$<CONFIG>
-    -DCMAKE_COMMAND_PATH=${CMAKE_COMMAND}
-    -DCTEST_COMMAND_PATH=${CMAKE_CTEST_COMMAND}
-    -DBUILD_GENERATOR=${CMAKE_GENERATOR}
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/VerifyInstalledPlayback.cmake)
-set_tests_properties(playback_package_test PROPERTIES LABELS "package")

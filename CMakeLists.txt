@@ -63,6 +63,23 @@ unset(Salts_DIR)
 find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
+foreach(required_salts_target IN ITEMS Salts::Platform Salts::Core Salts::CFlow)
+  if(NOT TARGET ${required_salts_target})
+    message(FATAL_ERROR
+            "SALTS_ROOT package is missing required target ${required_salts_target}")
+  endif()
+endforeach()
+
+foreach(pre_migration_target IN ITEMS
+        Salts::Crypto
+        Salts::CFlowFS
+        Salts::CFlowProcess)
+  if(TARGET ${pre_migration_target})
+    message(FATAL_ERROR
+            "SALTS_ROOT points to a pre-migration Salts package that still exports ${pre_migration_target}")
+  endif()
+endforeach()
+
 if(BUILD_TESTING)
   add_subdirectory(tests/runtime_path)
 endif()
