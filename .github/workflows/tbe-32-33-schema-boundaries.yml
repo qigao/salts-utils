@@ -47,8 +47,8 @@ jobs:
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
       SALTS_SHA: 2804c2eb809fed4cb89f917f0a8cd00f482abb64
       VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-      SALTS_PROJECT_ROOT: ${{ runner.temp }}/salts-project
-      SALTS_PACKAGE: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+      SALTS_PROJECT_ROOT: ${{ github.workspace }}/.ci-cache/salts-project
+      SALTS_PACKAGE: ${{ github.workspace }}/.ci-cache/salts-project/external/pkgs/salts/debug
     steps:
       - name: Checkout the exact committed source
         uses: actions/checkout@v4
