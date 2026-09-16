@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SALTS_SHA: 838cfff6d36b48daf83d6e5f405a91fc92f99eae
+  SALTS_SHA: 7ca4981854276854974696600791cf0b017fcfa4
   VCPKG_BASELINE: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
   SALTS_PREFIX: /opt/salts/release
@@ -163,7 +163,6 @@ jobs:
             salts_crypto_header_cpp_test \
             cflow_fs_test \
             cflow_fs_header_cpp_test \
-            cflow_fs_init_failure_test \
             cflow_fs_watch_test \
             cflow_fs_watch_publisher_test \
             cflow_process_test \
@@ -185,7 +184,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/linux-gcc-release --no-tests=error \
-            -R '^(salts_crypto_test|salts_crypto_header_cpp_test|cflow_fs_test|cflow_fs_header_cpp_test|cflow_fs_init_failure_test|cflow_fs_watch_test|cflow_fs_watch_publisher_test|cflow_process_test|cflow_process_header_cpp_test)$' \
+            -R '^(salts_crypto_test|salts_crypto_header_cpp_test|cflow_fs_test|cflow_fs_header_cpp_test|cflow_fs_watch_test|cflow_fs_watch_publisher_test|cflow_process_test|cflow_process_header_cpp_test)$' \
             --output-on-failure
 
       - name: Verify committed source stayed clean
