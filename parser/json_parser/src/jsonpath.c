@@ -1290,6 +1290,8 @@ static json_path_program_t *jsonpath_program_lower(jsonpath_parse_ctx_t *ctx,
       }
       program->expr_vm = builder.insns;
       program->expr_vm_count = (uint32_t)builder.count;
+    } else {
+      free(builder.insns);
     }
   }
 
