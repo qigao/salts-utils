@@ -37,8 +37,8 @@ jobs:
           ! grep -R -n --include='CMakeLists.txt' 'uri_parser/include' parser
           grep -Fx 'add_subdirectory(parser)' CMakeLists.txt
           grep -R -n 'Salts::UriParser' parser CMakeLists.txt cmake/SaltsUtilsConfig.cmake.in
-          if grep -R -n "$OLD_SALTS_SHA" .github/workflows; then
-            echo "old pre-migration Salts SHA remains in workflow wiring" >&2
+          if grep -R -n --exclude='parser-migration-verification.yml' "$OLD_SALTS_SHA" .github/workflows; then
+            echo "old pre-migration Salts SHA remains in production workflow wiring" >&2
             exit 1
           fi
           git diff --check
