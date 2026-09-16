@@ -138,7 +138,17 @@ jobs:
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            2>&1 | tee "$RUNNER_TEMP/migration-configure.log"
+
+      - name: Upload configure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-configure-diagnostics
+          path: ${{ runner.temp }}/migration-configure.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build migrated capability tests
         shell: bash
