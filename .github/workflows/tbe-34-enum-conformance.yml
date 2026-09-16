@@ -88,7 +88,7 @@ jobs:
       - name: Install pinned re2c 4.6 and Unicode data
         shell: bash
         run: bash cmake/ci/install-re2c.sh
-      - name: Install pinned Core
+      - name: Build and install pinned Salts debug profile
         if: steps.salts-package-cache.outputs.cache-hit != 'true'
         working-directory: salts
         env:
@@ -99,7 +99,7 @@ jobs:
           set -euxo pipefail
           cmake --preset linux-dev-user
           cmake --build build/linux-gcc-debug --target install -j2
-      - name: Validate installed Core package
+      - name: Validate installed Salts debug package
         shell: bash
         run: |
           set -euxo pipefail
@@ -107,7 +107,7 @@ jobs:
           test -d "$SALTS_PACKAGE/lib"
           test -n "$(find "$SALTS_PACKAGE/lib" -maxdepth 1 -type f -print -quit)"
           sudo ln -sfn "$SALTS_PACKAGE" /opt/salts/debug
-      - name: Save installed Core package
+      - name: Save installed Salts debug package
         if: steps.salts-package-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
