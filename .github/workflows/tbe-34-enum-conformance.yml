@@ -108,6 +108,7 @@ jobs:
           package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
           test -d "$package/include"
           test -d "$package/lib"
+          test "$(git -C salts rev-parse HEAD)" = 2804c2eb809fed4cb89f917f0a8cd00f482abb64
           git -C salts rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
           sudo ln -sfn "$package" /opt/salts/debug
       - name: Build production compiler and complete TBE tests
