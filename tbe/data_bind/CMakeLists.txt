@@ -5,6 +5,8 @@ add_library(
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
+  data_bind_schema.c
+  data_bind_schema_internal.h
   data_bind_record.c
   tbe_typed.c
   tbe_typed.h)
@@ -85,6 +87,10 @@ cmake_add_test(test_data_bind
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_value_boundary
+  SOURCES test_data_bind_value_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_dynamic_cstl
