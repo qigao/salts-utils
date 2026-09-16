@@ -2,7 +2,7 @@ name: TBE descriptor safety
 
 on:
   push:
-    branches: [main, fix/tbe-30-descriptor-layout-validation]
+    branches: [master, fix/tbe-30-descriptor-layout-validation]
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
@@ -15,7 +15,7 @@ on:
       - 'vcpkg.json'
       - '.github/workflows/tbe-30-green.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
