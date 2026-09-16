@@ -1,4 +1,5 @@
 name: Parser migration CTest diagnostic
+# GREEN rerun after the minimal JSONPath builder ownership fix.
 
 on:
   push:
