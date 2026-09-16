@@ -1,8 +1,20 @@
 # SaltsUtils
 
-SaltsUtils 提供基于 Salts 的高层工具，包括相互独立的 Mustache、Jinja CMeta 与 Unicode
-模块、Cron、TBE schema、DataBind、Serial、Capture、Playback 及构建期代码生成器。底层 JSON、XML、
-YAML、CSV、Cmd 等 parser 由 Salts 直接提供；SaltsUtils 不再提供聚合 parser facade。
+SaltsUtils 提供基于已安装 Salts SDK 的高层能力，包括 `Salts::Crypto`、`Salts::FS`、
+`Salts::Process`、Playback、Capture、Serial、Cron、Mustache、Jinja CMeta、Unicode、TBE schema、
+DataBind 及构建期代码生成器。底层 Core、Platform、CFlow、CMeta、CSTL、CSerde、QueryVM 与各格式
+parser 仍由 Salts 提供；SaltsUtils 不访问 Salts 源码目录或私有头。
+
+本仓库现在是以下三个 target 的唯一 owner：
+
+- `Salts::Crypto` — RFC 8032 Ed448 与 SHA-256，公开头 `<salts/crypto.h>`；
+- `Salts::FS` — bounded filesystem service、native watch 与 typed watch Publisher，公开头
+  `<salts/fs.h>`、`<salts/fs_watch.h>`、`<salts/fs_watch_publisher.h>`；
+- `Salts::Process` — 基于 Salts process owner 与 CFlow native pipe 的异步标准流 adapter，公开头
+  `<salts/process.h>`。
+
+旧的 `Salts::CFlowFS`、`Salts::CFlowProcess` 和 `<cflow/fs*.h>` / `<cflow/process.h>` 不提供
+alias、forwarding header 或 fallback。底层 `salts_fs_*` 与 `salts_process_*` API 仍属于 Salts。
 
 DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的数据绑定
 引擎。生成代码、现有原生 C struct 与动态对象都通过 DataBind 绑定；CMeta range、CFlow Stream
@@ -26,12 +38,18 @@ semantic type system.
 
 ## CMake
 
-设置与当前构建 profile 对应的 `SALTS_ROOT`，然后使用：
+配置时必须让 `SALTS_ROOT` 指向匹配 profile 的已安装 Salts。缺失/无效的 `SALTS_ROOT`、缺少
+`Salts::Platform` / `Salts::Core` / `Salts::CFlow`，或 Salts 仍导出迁移前的
+`Salts::Crypto` / `Salts::CFlowFS` / `Salts::CFlowProcess`，都会直接配置失败；不会搜索其他 prefix
+或退回源码树。
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED)
 
 target_link_libraries(app PRIVATE
+  Salts::Crypto
+  Salts::FS
+  Salts::Process
   Salts::Playback
   Salts::Mustache
   Salts::JinjaCMeta
