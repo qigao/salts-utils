@@ -43,11 +43,11 @@ jobs:
           import shutil
 
           root = Path('.')
-
           fs = root / 'cflow-fs'
           process = root / 'cflow-process'
 
           shutil.move(str(fs / 'include' / 'cflow'), str(fs / 'include' / 'salts'))
+          (process / 'include' / 'salts').mkdir(parents=True, exist_ok=True)
           shutil.move(str(process / 'include' / 'cflow' / 'process.h'),
                       str(process / 'include' / 'salts' / 'process.h'))
           (process / 'include' / 'cflow').rmdir()
