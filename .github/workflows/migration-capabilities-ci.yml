@@ -110,11 +110,15 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm re2c curl xz-utils
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts
           sudo chown -R "$USER":"$USER" /opt/salts
           sudo ln -sfn "$VCPKG_ROOT" /opt/vcpkg
+
+      - name: Install pinned re2c 4.6 and Unicode data
+        shell: bash
+        run: bash cmake/ci/install-re2c.sh
 
       - name: Build and install pinned Salts dependency
         shell: bash
