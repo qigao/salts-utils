@@ -28,6 +28,10 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SALTS_SHA: 2804c2eb809fed4cb89f917f0a8cd00f482abb64
+      VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+      SALTS_PROJECT_ROOT: ${{ runner.temp }}/salts-project
+      SALTS_PACKAGE: ${{ runner.temp }}/salts-project/external/pkgs/salts/release
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
@@ -48,15 +52,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: 2804c2eb809fed4cb89f917f0a8cd00f482abb64
+          ref: ${{ env.SALTS_SHA }}
           path: salts
           persist-credentials: false
+
+      - name: Verify pinned Salts source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
+
+      - name: Restore installed Salts release package
+        id: salts-package-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SALTS_PACKAGE }}
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-release-${{ env.SALTS_SHA }}-vcpkg-${{ env.VCPKG_SHA }}
 
       - name: Checkout vcpkg at manifest baseline
         uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
-          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          ref: ${{ env.VCPKG_SHA }}
           path: vcpkg
           fetch-depth: 0
           persist-credentials: false
@@ -89,16 +106,32 @@ jobs:
           cmake --build build/host-lemon --target lemon -j2
 
       - name: Build and install pinned Salts release
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: salts
         env:
-          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          PROJECT_ROOT: ${{ env.SALTS_PROJECT_ROOT }}
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: |
           set -euxo pipefail
           cmake --preset linux-release-user
           cmake --build build/linux-gcc-release --target install -j2
-          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/release" /opt/salts/release
+
+      - name: Validate installed Salts release package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -d "$SALTS_PACKAGE/include"
+          test -d "$SALTS_PACKAGE/lib"
+          test -n "$(find "$SALTS_PACKAGE/lib" -maxdepth 1 -type f -print -quit)"
+          sudo ln -sfn "$SALTS_PACKAGE" /opt/salts/release
+
+      - name: Save installed Salts release package
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SALTS_PACKAGE }}
+          key: ${{ steps.salts-package-cache.outputs.cache-primary-key }}
 
       - name: Configure Jinja benchmark release build
         shell: bash
