@@ -9,7 +9,8 @@
 enum {
   JINJA_BENCH_COMPILE_SAMPLES = 5000,
   JINJA_BENCH_RENDER_SAMPLES = 20000,
-  JINJA_BENCH_STRING_SAMPLES = 10000,
+  JINJA_BENCH_STRING_SAMPLES = 250,
+  JINJA_BENCH_STRING_OPS = 20,
   JINJA_BENCH_EXPECTED_OUTPUT_BYTES = 18
 };
 
@@ -46,9 +47,20 @@ spec("Jinja CMeta benchmark") {
       const char *source;
       size_t output_bytes;
     } cases[] = {
-        {"render scalar conversion", "{{none|string}}", 4u},
+        {"render literal string", "{{'none'}}", 4u},
+        {"render native scalar", "{{none}}", 4u},
+        {"render scalar string filter", "{{none|string}}", 4u},
+        {"render container repr", "{{[1,2,3]}}", 9u},
         {"render container concatenation", "{{'A'~[1,2,3]}}", 10u},
-        {"render large concatenation", "{{'a'*16384~[1,2,3]}}", 16393u}};
+        {"render large repeat", "{{'a'*16384}}", 16384u},
+        {"render large concatenation", "{{'a'*16384~[1,2,3]}}", 16393u},
+        {"render repeat 16 B", "{{'a'*16}}", 16u},
+        {"render repeat 64 B", "{{'a'*64}}", 64u},
+        {"render repeat 256 B", "{{'a'*256}}", 256u},
+        {"render repeat 1 KiB", "{{'a'*1024}}", 1024u},
+        {"render repeat 4 KiB", "{{'a'*4096}}", 4096u},
+        {"render repeat 16 KiB", "{{'a'*16384}}", 16384u},
+        {"render repeat 64 KiB", "{{'a'*65536}}", 65536u}};
     const vstr root = vstr_from_cstr("");
     for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
       JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
@@ -59,11 +71,14 @@ spec("Jinja CMeta benchmark") {
       check_equal(jinja_cmeta_render(compiled, jinja_cmeta_vstr_data(), &root, NULL,
           &jinja_bench_renderer, &output, &error), JINJA_CMETA_OK);
       check_equal(output.bytes, cases[i].output_bytes);
-      benchmark_io(cases[i].name, JINJA_BENCH_STRING_SAMPLES, 1u, cases[i].output_bytes) {
+      benchmark_io(cases[i].name, JINJA_BENCH_STRING_SAMPLES, JINJA_BENCH_STRING_OPS,
+                   cases[i].output_bytes * JINJA_BENCH_STRING_OPS) {
         output.bytes = 0u;
-        JINJA_CMETA_STATUS current = jinja_cmeta_render(compiled, jinja_cmeta_vstr_data(), &root,
-            NULL, &jinja_bench_renderer, &output, NULL);
-        if (current != JINJA_CMETA_OK) status = current;
+        for (size_t op = 0u; op < JINJA_BENCH_STRING_OPS; ++op) {
+          JINJA_CMETA_STATUS current = jinja_cmeta_render(
+              compiled, jinja_cmeta_vstr_data(), &root, NULL, &jinja_bench_renderer, &output, NULL);
+          if (current != JINJA_CMETA_OK) status = current;
+        }
         jinja_bench_sink += output.bytes;
       }
       check_equal(status, JINJA_CMETA_OK);
