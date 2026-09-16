@@ -96,6 +96,7 @@ cmake_add_test(test_data_bind_value_boundary
 cmake_add_test(test_data_bind_dynamic_cstl
   SOURCES test_data_bind_dynamic_cstl.c
   LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
+       Salts::CsvParser Salts::JsonParser
   INCLUDES ${CMAKE_SOURCE_DIR}/tbe/schema/include
   FOLDER "tbe/data_bind/tests")
 set_tests_properties(test_data_bind_dynamic_cstl PROPERTIES
