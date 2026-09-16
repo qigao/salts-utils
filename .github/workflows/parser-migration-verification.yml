@@ -1,4 +1,5 @@
 name: Parser ownership migration verification
+# Final exact-head verification trigger after destination CI turned green.
 
 on:
   push:
