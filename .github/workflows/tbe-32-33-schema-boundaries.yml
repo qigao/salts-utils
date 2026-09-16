@@ -2,7 +2,7 @@ name: TBE schema boundaries
 
 on:
   push:
-    branches: [main, fix/tbe-32-33-schema-boundaries]
+    branches: [master, fix/tbe-32-33-schema-boundaries]
     paths:
       - 'tbe/schema/**'
       - 'tbe/tbe_compiler/**'
@@ -15,7 +15,7 @@ on:
       - 'vcpkg.json'
       - '.github/workflows/tbe-32-33-schema-boundaries.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'tbe/schema/**'
       - 'tbe/tbe_compiler/**'
