@@ -1,0 +1,92 @@
+name: One-shot JUnit HTML tool migration
+
+on:
+  push:
+    branches:
+      - migration/move-parser-capabilities
+    paths:
+      - .github/workflows/migrate-junit-to-html.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SaltsUtils migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/move-parser-capabilities
+          fetch-depth: 0
+
+      - name: Checkout source Salts cutover
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: b4639683d9408ba534ad6d72d1a180f4e51417aa
+          path: salts-source
+          persist-credentials: false
+
+      - name: Move JUnit HTML tool and its fixture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git -C salts-source rev-parse HEAD)" = b4639683d9408ba534ad6d72d1a180f4e51417aa
+          test ! -e tools/junit_to_html
+          mkdir -p tools/junit_to_html/test
+          cp salts-source/tinytest/junit_to_html/junit_to_html.c tools/junit_to_html/
+          cp salts-source/tinytest/junit_to_html/dashboard.html tools/junit_to_html/
+          cp salts-source/tinytest/test/junit_to_html_input.xml tools/junit_to_html/test/
+          cp salts-source/tinytest/test/junit_to_html_test.cmake tools/junit_to_html/test/
+
+          cat > tools/junit_to_html/CMakeLists.txt <<'EOF'
+          cmake_add_executable(junit_to_html
+            SOURCES junit_to_html.c
+            LIBS Salts::Core Salts::CmdParser Salts::XmlParser
+            FOLDER "tools/junit_to_html")
+
+          target_compile_features(junit_to_html PRIVATE c_std_11)
+
+          add_custom_command(
+            TARGET junit_to_html POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${CMAKE_CURRENT_SOURCE_DIR}/dashboard.html
+                    $<TARGET_FILE_DIR:junit_to_html>/dashboard.html
+            COMMENT "Copying JUnit dashboard template"
+            VERBATIM)
+
+          if(BUILD_TESTING)
+            add_test(
+              NAME junit_to_html_test
+              COMMAND ${CMAKE_COMMAND}
+                "-DJUNIT_TO_HTML_EXECUTABLE=$<TARGET_FILE:junit_to_html>"
+                "-DJUNIT_INPUT=${CMAKE_CURRENT_SOURCE_DIR}/test/junit_to_html_input.xml"
+                "-DJUNIT_TEMPLATE=${CMAKE_CURRENT_SOURCE_DIR}/dashboard.html"
+                "-DHTML_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/junit_to_html_output.html"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/test/junit_to_html_test.cmake")
+          endif()
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('CMakeLists.txt')
+          text = p.read_text()
+          old = 'add_subdirectory(parser)\nadd_subdirectory(crypto)'
+          new = 'add_subdirectory(parser)\nadd_subdirectory(tools/junit_to_html)\nadd_subdirectory(crypto)'
+          if text.count(old) != 1:
+              raise SystemExit('expected parser/crypto registration boundary exactly once')
+          p.write_text(text.replace(old, new))
+          PY
+
+          grep -n 'add_subdirectory(tools/junit_to_html)' CMakeLists.txt
+          grep -n 'Salts::CmdParser Salts::XmlParser' tools/junit_to_html/CMakeLists.txt
+          git diff --check
+
+          git rm .github/workflows/migrate-junit-to-html.yml
+          rm -rf salts-source
+          git add CMakeLists.txt tools/junit_to_html
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'refactor: move junit html parser tool to salts-utils'
+          git push origin HEAD:migration/move-parser-capabilities
