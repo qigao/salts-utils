@@ -2,10 +2,10 @@ name: TBE enum conformance
 
 on:
   push:
-    branches: [main, fix/tbe-34-enum-conformance]
+    branches: [master, fix/tbe-34-enum-conformance]
     paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
   pull_request:
-    branches: [main]
+    branches: [master]
     paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
   workflow_dispatch:
 
@@ -52,7 +52,6 @@ jobs:
         run: |
           set -euxo pipefail
           test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
-          git rev-parse HEAD > /dev/null
           git -C salts rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
       - name: Restore installed Salts debug package
         id: salts-package-cache
