@@ -57,22 +57,24 @@ jobs:
           fi
 
           set +e
-          forbidden_refs="$(rg -n \
-            --glob '!docs/superpowers/**' \
-            --glob '!.superpowers/**' \
-            --glob '!crypto/vendor/**' \
-            --glob '!build/**' \
-            --glob '!.github/workflows/migration-capabilities-ci.yml' \
-            'verify_installed_package|VerifyInstalled|tests/.*/(install_consumer|package_consumer|installed)|Install and verify.*consumer' . 2>&1)"
+          grep -RInE \
+            --exclude-dir=.git \
+            --exclude-dir=build \
+            --exclude-dir=.superpowers \
+            --exclude-dir=superpowers \
+            --exclude-dir=vendor \
+            --exclude=migration-capabilities-ci.yml \
+            'verify_installed_package|VerifyInstalled|tests/.*/(install_consumer|package_consumer|installed)|Install and verify.*consumer' \
+            . > "$RUNNER_TEMP/forbidden-install-refs.txt" 2>&1
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
-            printf '%s\n' "$forbidden_refs"
+            cat "$RUNNER_TEMP/forbidden-install-refs.txt"
             echo '::error::Active synthetic install-verification reference remains.'
             exit 1
           fi
           if [ "$status" -ne 1 ]; then
-            printf '%s\n' "$forbidden_refs"
+            cat "$RUNNER_TEMP/forbidden-install-refs.txt"
             exit "$status"
           fi
 
@@ -108,7 +110,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm re2c curl xz-utils ripgrep
+          sudo apt-get install -y ninja-build pkg-config nasm re2c curl xz-utils
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts
           sudo chown -R "$USER":"$USER" /opt/salts
@@ -147,6 +149,7 @@ jobs:
             salts_crypto_header_cpp_test \
             cflow_fs_test \
             cflow_fs_header_cpp_test \
+            cflow_fs_init_failure_test \
             cflow_fs_watch_test \
             cflow_fs_watch_publisher_test \
             cflow_process_test \
@@ -158,7 +161,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/linux-gcc-release --no-tests=error \
-            -R '^(salts_crypto_test|salts_crypto_header_cpp_test|cflow_fs_test|cflow_fs_header_cpp_test|cflow_fs_watch_test|cflow_fs_watch_publisher_test|cflow_process_test|cflow_process_header_cpp_test)$' \
+            -R '^(salts_crypto_test|salts_crypto_header_cpp_test|cflow_fs_test|cflow_fs_header_cpp_test|cflow_fs_init_failure_test|cflow_fs_watch_test|cflow_fs_watch_publisher_test|cflow_process_test|cflow_process_header_cpp_test)$' \
             --output-on-failure
 
       - name: Verify committed source stayed clean
