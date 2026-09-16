@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      SALTS_CUTOVER_SHA: b4639683d9408ba534ad6d72d1a180f4e51417aa
+      SALTS_CUTOVER_SHA: 801202e58c2d86b35202414d4812e79a2fd25bae
       OLD_SALTS_SHA: 7ca4981854276854974696600791cf0b017fcfa4
       ASAN_OPTIONS: detect_leaks=1:detect_odr_violation=2:halt_on_error=1
     steps:
@@ -36,6 +36,10 @@ jobs:
           ! grep -R -n --include='CMakeLists.txt' 'add_subdirectory(uri_parser)' parser
           ! grep -R -n --include='CMakeLists.txt' 'uri_parser/include' parser
           grep -Fx 'add_subdirectory(parser)' CMakeLists.txt
+          grep -Fx 'add_subdirectory(tools/junit_to_html)' CMakeLists.txt
+          test -f tools/junit_to_html/junit_to_html.c
+          test -f tools/junit_to_html/test/junit_to_html_test.cmake
+          grep -n 'Salts::CmdParser Salts::XmlParser' tools/junit_to_html/CMakeLists.txt
           grep -R -n 'Salts::UriParser' parser CMakeLists.txt cmake/SaltsUtilsConfig.cmake.in
           if grep -R -n --exclude='parser-migration-verification.yml' "$OLD_SALTS_SHA" .github/workflows; then
             echo "old pre-migration Salts SHA remains in production workflow wiring" >&2
@@ -47,7 +51,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: b4639683d9408ba534ad6d72d1a180f4e51417aa
+          ref: 801202e58c2d86b35202414d4812e79a2fd25bae
           path: salts
           persist-credentials: false
 
@@ -58,9 +62,16 @@ jobs:
           test "$(git -C salts rev-parse HEAD)" = "$SALTS_CUTOVER_SHA"
           test -d salts/uri
           test ! -e salts/parser
+          test ! -e salts/tinytest/junit_to_html
+          test ! -e salts/tinytest/test/junit_to_html_test.cmake
           grep -Fx 'add_subdirectory(uri)' salts/CMakeLists.txt
           grep -n 'ALIAS Salts::UriParser' salts/uri/CMakeLists.txt
           grep -n 'EXPORT SaltsTargets' salts/uri/CMakeLists.txt
+          if grep -R -n --include='CMakeLists.txt' -E 'Salts::(CmdParser|XmlParser|QueryVM|JsonParser)' salts \
+             --exclude-dir=docs --exclude-dir=book; then
+            echo 'Salts still consumes a moved parser target' >&2
+            exit 1
+          fi
 
       - name: Checkout pinned vcpkg
         uses: actions/checkout@v4
