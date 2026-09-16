@@ -168,7 +168,17 @@ jobs:
             cflow_fs_watch_publisher_test \
             cflow_process_test \
             cflow_process_header_cpp_test \
-            -j2
+            -j2 \
+            2>&1 | tee "$RUNNER_TEMP/migration-build.log"
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-build-diagnostics
+          path: ${{ runner.temp }}/migration-build.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Run migrated capability tests
         shell: bash
