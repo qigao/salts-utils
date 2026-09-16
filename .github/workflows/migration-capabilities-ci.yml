@@ -1,0 +1,171 @@
+name: Salts capability migration
+
+on:
+  push:
+    branches: [migration/move-salts-capabilities]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: salts-capability-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SALTS_SHA: 5600bff442e3476a43cce8381def0a37c547481a
+  VCPKG_BASELINE: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  SALTS_PREFIX: /opt/salts/release
+
+jobs:
+  linux:
+    name: Linux exact-head migration gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact salts-utils head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+
+      - name: Reject synthetic installed-consumer verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden_paths="$({
+            find . -type f \
+              -not -path './.git/*' \
+              -not -path './build/*' \
+              -not -path './docs/superpowers/*' \
+              -not -path './.superpowers/*' \
+              -not -path './crypto/vendor/*' \
+              -print
+          } | grep -E '(^|/)(install_consumer|package_consumer|installed)(/|$)|VerifyInstalled' || true)"
+          if [ -n "$forbidden_paths" ]; then
+            printf '%s\n' "$forbidden_paths"
+            echo '::error::Synthetic installed/package consumer verification is forbidden.'
+            exit 1
+          fi
+
+          set +e
+          forbidden_refs="$(rg -n \
+            --glob '!docs/superpowers/**' \
+            --glob '!.superpowers/**' \
+            --glob '!crypto/vendor/**' \
+            --glob '!build/**' \
+            --glob '!.github/workflows/migration-capabilities-ci.yml' \
+            'verify_installed_package|VerifyInstalled|tests/.*/(install_consumer|package_consumer|installed)|Install and verify.*consumer' . 2>&1)"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            printf '%s\n' "$forbidden_refs"
+            echo '::error::Active synthetic install-verification reference remains.'
+            exit 1
+          fi
+          if [ "$status" -ne 1 ]; then
+            printf '%s\n' "$forbidden_refs"
+            exit "$status"
+          fi
+
+      - name: Checkout pinned Salts cutover
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_SHA }}
+          path: salts
+          persist-credentials: false
+
+      - name: Verify Salts dependency identity
+        shell: bash
+        run: test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
+
+      - name: Checkout vcpkg baseline
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_BASELINE }}
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: salts-capability-migration-x64-linux-${{ env.VCPKG_BASELINE }}-v1
+
+      - name: Prepare Linux toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm re2c curl xz-utils ripgrep
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo chown -R "$USER":"$USER" /opt/salts
+          sudo ln -sfn "$VCPKG_ROOT" /opt/vcpkg
+
+      - name: Build and install pinned Salts dependency
+        shell: bash
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-sdk-package
+          cmake --build build/linux-gcc-sdk-package -j2
+          cmake --install build/linux-gcc-sdk-package --prefix "$SALTS_PREFIX"
+
+      - name: Configure salts-utils migration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-release-user \
+            -DENABLE_TESTS=ON \
+            -DBUILD_TESTS=ON \
+            -DBUILD_TESTING=ON \
+            -DBUILD_BENCHMARKS=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF
+
+      - name: Build migrated capability tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-release --target \
+            salts_crypto_test \
+            salts_crypto_header_cpp_test \
+            cflow_fs_test \
+            cflow_fs_header_cpp_test \
+            cflow_fs_watch_test \
+            cflow_fs_watch_publisher_test \
+            cflow_process_test \
+            cflow_process_header_cpp_test \
+            -j2
+
+      - name: Run migrated capability tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-release --no-tests=error \
+            -R '^(salts_crypto_test|salts_crypto_header_cpp_test|cflow_fs_test|cflow_fs_header_cpp_test|cflow_fs_watch_test|cflow_fs_watch_publisher_test|cflow_process_test|cflow_process_header_cpp_test)$' \
+            --output-on-failure
+
+      - name: Verify committed source stayed clean
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git diff --exit-code
