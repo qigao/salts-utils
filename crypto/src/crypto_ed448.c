@@ -8,7 +8,7 @@
 #include <libecc/external_deps/rand.h>
 #include <libecc/sig/eddsa.h>
 #include <libecc/sig/sig_algs.h>
-#include <monocypher.h>
+#include <openssl/mem.h>
 
 static const uint8_t salts_crypto_empty_message = 0U;
 
@@ -65,9 +65,9 @@ int salts_crypto_ed448_public_key(const uint8_t private_key[SALTS_CRYPTO_ED448_P
     status = SALTS_CRYPTO_ECRYPTO;
   }
 
-  crypto_wipe(&key_pair, sizeof(key_pair));
-  crypto_wipe(&params, sizeof(params));
-  if (status != SALTS_CRYPTO_OK) crypto_wipe(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
+  OPENSSL_cleanse(&key_pair, sizeof(key_pair));
+  OPENSSL_cleanse(&params, sizeof(params));
+  if (status != SALTS_CRYPTO_OK) OPENSSL_cleanse(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
   return status;
 }
 
@@ -83,8 +83,8 @@ int salts_crypto_ed448_keygen(uint8_t private_key[SALTS_CRYPTO_ED448_PRIVATE_KEY
   status = salts_crypto_random(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
   if (status == SALTS_CRYPTO_OK) status = salts_crypto_ed448_public_key(private_key, public_key);
   if (status != SALTS_CRYPTO_OK) {
-    crypto_wipe(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
-    crypto_wipe(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
+    OPENSSL_cleanse(private_key, SALTS_CRYPTO_ED448_PRIVATE_KEY_SIZE);
+    OPENSSL_cleanse(public_key, SALTS_CRYPTO_ED448_PUBLIC_KEY_SIZE);
   }
   return status;
 }
@@ -117,9 +117,9 @@ int salts_crypto_ed448_sign(const uint8_t private_key[SALTS_CRYPTO_ED448_PRIVATE
     status = SALTS_CRYPTO_ECRYPTO;
   }
 
-  crypto_wipe(&key_pair, sizeof(key_pair));
-  crypto_wipe(&params, sizeof(params));
-  if (status != SALTS_CRYPTO_OK) crypto_wipe(signature, SALTS_CRYPTO_ED448_SIGNATURE_SIZE);
+  OPENSSL_cleanse(&key_pair, sizeof(key_pair));
+  OPENSSL_cleanse(&params, sizeof(params));
+  if (status != SALTS_CRYPTO_OK) OPENSSL_cleanse(signature, SALTS_CRYPTO_ED448_SIGNATURE_SIZE);
   return status;
 }
 
@@ -150,7 +150,7 @@ int salts_crypto_ed448_verify(const uint8_t public_key[SALTS_CRYPTO_ED448_PUBLIC
     status = SALTS_CRYPTO_EVERIFY;
   }
 
-  crypto_wipe(&imported_public_key, sizeof(imported_public_key));
-  crypto_wipe(&params, sizeof(params));
+  OPENSSL_cleanse(&imported_public_key, sizeof(imported_public_key));
+  OPENSSL_cleanse(&params, sizeof(params));
   return status;
 }
