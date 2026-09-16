@@ -1,6 +1,8 @@
 set(TARGET_NAME salts_crypto)
 set(LIBECC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libecc")
 
+find_package(OpenSSL REQUIRED)
+
 file(
   GLOB LIBECC_ARITHMETIC_SOURCES CONFIGURE_DEPENDS
   "${LIBECC_ROOT}/src/fp/fp*.c"
@@ -23,7 +25,7 @@ set(
   "${LIBECC_ROOT}/src/utils/utils_rand.c")
 
 add_library(${TARGET_NAME} SHARED src/crypto_ed448.c src/crypto_sha256.c
-            ${LIBECC_ED448_SOURCES} "${LIBECC_ROOT}/src/hash/sha256.c")
+            ${LIBECC_ED448_SOURCES})
 cmake_config_target(
   ${TARGET_NAME}
   ALIAS Salts::Crypto
@@ -42,13 +44,11 @@ target_include_directories(
 # explicit word size is required by MSVC and matches supported 64-bit targets.
 set_source_files_properties(
   src/crypto_ed448.c
-  src/crypto_sha256.c
   ${LIBECC_ED448_SOURCES}
-  "${LIBECC_ROOT}/src/hash/sha256.c"
   PROPERTIES COMPILE_DEFINITIONS
-             "WITH_STDLIB;WITH_LIBECC_CONFIG_OVERRIDE;WITH_CURVE_WEI448;WITH_HASH_SHA256;WITH_HASH_SHAKE256;WITH_SIG_EDDSA448;WORDSIZE=64")
+             "WITH_STDLIB;WITH_LIBECC_CONFIG_OVERRIDE;WITH_CURVE_WEI448;WITH_HASH_SHAKE256;WITH_SIG_EDDSA448;WORDSIZE=64")
 
-target_link_libraries(${TARGET_NAME} PRIVATE Salts::Platform monocypher)
+target_link_libraries(${TARGET_NAME} PRIVATE Salts::Platform OpenSSL::Crypto)
 
 install(TARGETS ${TARGET_NAME} EXPORT SaltsUtilsTargets)
 install(
