@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SALTS_SHA: 5600bff442e3476a43cce8381def0a37c547481a
+  SALTS_SHA: 838cfff6d36b48daf83d6e5f405a91fc92f99eae
   VCPKG_BASELINE: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
   VCPKG_ROOT: ${{ github.workspace }}/vcpkg
   SALTS_PREFIX: /opt/salts/release
