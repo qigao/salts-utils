@@ -1,0 +1,151 @@
+name: one-shot capability migration
+
+on:
+  push:
+    branches:
+      - migration/move-salts-capabilities
+    paths:
+      - .github/workflows/migrate-salts-capabilities.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout salts-utils migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/move-salts-capabilities
+          fetch-depth: 0
+
+      - name: Checkout pinned Salts source
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: b12c3614a21c5926c79d35c59a6b535d596e8a75
+          path: source-salts
+          persist-credentials: false
+
+      - name: Copy capabilities and apply clean cutover
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf crypto cflow-fs cflow-process
+          cp -a source-salts/crypto ./crypto
+          cp -a source-salts/cflow-fs ./cflow-fs
+          cp -a source-salts/cflow-process ./cflow-process
+          rm -rf source-salts
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          root = Path('.')
+
+          fs = root / 'cflow-fs'
+          process = root / 'cflow-process'
+
+          shutil.move(str(fs / 'include' / 'cflow'), str(fs / 'include' / 'salts'))
+          shutil.move(str(process / 'include' / 'cflow' / 'process.h'),
+                      str(process / 'include' / 'salts' / 'process.h'))
+          (process / 'include' / 'cflow').rmdir()
+
+          replacements = {
+              '<cflow/fs.h>': '<salts/fs.h>',
+              '<cflow/fs_watch.h>': '<salts/fs_watch.h>',
+              '<cflow/fs_watch_publisher.h>': '<salts/fs_watch_publisher.h>',
+          }
+          for path in fs.rglob('*'):
+              if path.is_file() and path.suffix in {'.c', '.h', '.cpp', '.md', '.txt'}:
+                  text = path.read_text(encoding='utf-8')
+                  for old, new in replacements.items():
+                      text = text.replace(old, new)
+                  text = text.replace('Salts::CFlowFS', 'Salts::FS')
+                  text = text.replace('find_package(Salts CONFIG REQUIRED)',
+                                      'find_package(SaltsUtils CONFIG REQUIRED)')
+                  path.write_text(text, encoding='utf-8')
+
+          for path in process.rglob('*'):
+              if path.is_file() and path.suffix in {'.c', '.h', '.cpp', '.md', '.txt'}:
+                  text = path.read_text(encoding='utf-8')
+                  text = text.replace('<cflow/process.h>', '<salts/process.h>')
+                  text = text.replace('Salts::CFlowProcess', 'Salts::Process')
+                  text = text.replace('find_package(Salts CONFIG REQUIRED)',
+                                      'find_package(SaltsUtils CONFIG REQUIRED)')
+                  path.write_text(text, encoding='utf-8')
+
+          p = fs / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('ALIAS Salts::CFlowFS', 'ALIAS Salts::FS')
+          text = text.replace('EXPORT_NAME CFlowFS', 'EXPORT_NAME FS')
+          text = text.replace('EXPORT SaltsTargets', 'EXPORT SaltsUtilsTargets')
+          text = text.replace('DIRECTORY include/cflow', 'DIRECTORY include/salts')
+          p.write_text(text, encoding='utf-8')
+
+          p = fs / 'tests' / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8').replace('Salts::CFlowFS', 'Salts::FS')
+          p.write_text(text, encoding='utf-8')
+
+          p = process / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('ALIAS Salts::CFlowProcess', 'ALIAS Salts::Process')
+          text = text.replace('EXPORT_NAME CFlowProcess', 'EXPORT_NAME Process')
+          text = text.replace('EXPORT SaltsTargets', 'EXPORT SaltsUtilsTargets')
+          text = text.replace('DIRECTORY include/cflow', 'DIRECTORY include/salts')
+          p.write_text(text, encoding='utf-8')
+
+          p = process / 'tests' / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8').replace('Salts::CFlowProcess', 'Salts::Process')
+          p.write_text(text, encoding='utf-8')
+
+          p = root / 'crypto' / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('EXPORT SaltsTargets', 'EXPORT SaltsUtilsTargets')
+          text = text.replace('share/licenses/Salts/libecc', 'share/licenses/SaltsUtils/libecc')
+          p.write_text(text, encoding='utf-8')
+
+          p = root / 'crypto' / 'tests' / 'CMakeLists.txt'
+          text = p.read_text(encoding='utf-8').replace('LIBS salts_crypto', 'LIBS Salts::Crypto')
+          p.write_text(text, encoding='utf-8')
+
+          root_cmake = root / 'CMakeLists.txt'
+          text = root_cmake.read_text(encoding='utf-8')
+          marker = 'add_subdirectory(vendor)\n'
+          insertion = marker + 'add_subdirectory(crypto)\nadd_subdirectory(cflow-fs)\nadd_subdirectory(cflow-process)\n'
+          if 'add_subdirectory(crypto)' not in text:
+              if marker not in text:
+                  raise SystemExit('vendor registration marker missing')
+              text = text.replace(marker, insertion, 1)
+          root_cmake.write_text(text, encoding='utf-8')
+          PY
+
+          test -f crypto/vendor/libecc/LICENSE
+          test -f crypto/vendor/libecc/UPSTREAM.md
+          test -f cflow-fs/include/salts/fs.h
+          test -f cflow-fs/include/salts/fs_watch.h
+          test -f cflow-fs/include/salts/fs_watch_publisher.h
+          test -f cflow-process/include/salts/process.h
+          test ! -e cflow-fs/include/cflow
+          test ! -e cflow-process/include/cflow
+          ! grep -R "Salts::CFlowFS\|Salts::CFlowProcess" cflow-fs cflow-process
+          ! grep -R "<cflow/fs\|<cflow/process" cflow-fs cflow-process
+          grep -q 'ALIAS Salts::Crypto' crypto/CMakeLists.txt
+          grep -q 'ALIAS Salts::FS' cflow-fs/CMakeLists.txt
+          grep -q 'ALIAS Salts::Process' cflow-process/CMakeLists.txt
+          grep -q 'EXPORT SaltsUtilsTargets' crypto/CMakeLists.txt
+          grep -q 'EXPORT SaltsUtilsTargets' cflow-fs/CMakeLists.txt
+          grep -q 'EXPORT SaltsUtilsTargets' cflow-process/CMakeLists.txt
+
+      - name: Commit migrated sources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm .github/workflows/migrate-salts-capabilities.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: move crypto fs and process into salts-utils"
+          git push origin HEAD:migration/move-salts-capabilities
