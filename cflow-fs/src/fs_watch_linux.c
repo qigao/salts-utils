@@ -302,6 +302,7 @@ static void watch_linux_process(cflow_fs_watch_linux *backend,
             continue;
         }
         if (watch_index == SIZE_MAX) {
+            /* Native removal can leave already-queued events for that wd. */
             offset += sizeof(*native) + native->len;
             continue;
         }

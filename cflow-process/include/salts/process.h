@@ -58,26 +58,72 @@ typedef struct cflow_process_stats {
   int cleanup_error;
 } cflow_process_stats;
 
+/**
+ * Starts one process with three adapter-owned asynchronous standard streams.
+ * options and config are borrowed only for the call. Capture/pipe flags,
+ * zero capacities, a null callback, or an initialized output return
+ * SALTS_EINVAL; an unavailable pipe backend returns SALTS_ENOTSUP. On success
+ * process owns all runtime resources until quiescent destroy.
+ */
 int cflow_process_start(cflow_process *process, const salts_process_options_t *options,
                         const cflow_process_config *config);
+
+/**
+ * Admits one bounded write. buffer is borrowed until its terminal callback
+ * returns; partial completion is successful and reports the transferred size.
+ */
 cflow_process_submit_result cflow_process_try_write_stdin(cflow_process *process,
                                                           cflow_io_lease_id lease_id,
                                                           const void *buffer, size_t length);
+
+/** Borrowing and partial-completion semantics match try_write_stdin(). */
 cflow_process_submit_result cflow_process_try_read_stdout(cflow_process *process,
                                                           cflow_io_lease_id lease_id, void *buffer,
                                                           size_t length);
+
+/** Borrowing and partial-completion semantics match try_write_stdin(). */
 cflow_process_submit_result cflow_process_try_read_stderr(cflow_process *process,
                                                           cflow_io_lease_id lease_id, void *buffer,
                                                           size_t length);
+
+/**
+ * Requests cancellation for one admitted request. Acceptance is not terminal
+ * evidence; the caller must retain its buffer through the later callback.
+ */
 cflow_io_cancel_status cflow_process_try_cancel(cflow_process *process,
                                                 cflow_io_request_id request_id);
+
+/**
+ * Closes stdin after all admitted stdin writes have settled. Returns
+ * SALTS_EBUSY while any stdin write is live; success is idempotent.
+ */
 int cflow_process_close_stdin(cflow_process *process);
+
 int cflow_process_poll(const cflow_process *process, salts_process_result_t *out_result);
+
+/** Requests termination through the Core process owner. */
 int cflow_process_terminate(cflow_process *process);
+
+/** Drives at most max_steps Actor/Executor transitions on one driver thread. */
 int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *progressed);
+
+/**
+ * Copies bounded I/O admission counters and endpoint ownership state.
+ * The Actor counters and endpoint fields are individually consistent; callers
+ * coordinating concurrent producers must treat the combined value as an
+ * observational snapshot rather than one cross-component transaction.
+ */
 bool cflow_process_get_stats(const cflow_process *process, cflow_process_stats *out);
+
+/**
+ * Stops I/O admission, requests cancellation, and terminates a live child.
+ * Call from the lifecycle owner after all producer threads have stopped.
+ */
 int cflow_process_close(cflow_process *process);
+
 bool cflow_process_is_quiescent(const cflow_process *process);
+
+/** Destroys only after close, I/O drain, endpoint close, and process terminal. */
 int cflow_process_destroy(cflow_process *process);
 
 #ifdef __cplusplus

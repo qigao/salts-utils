@@ -37,12 +37,12 @@ static void cflow_fs_watch_publisher_free(cflow_fs_watch_publisher_state *state)
 }
 
 static void cflow_fs_watch_publisher_retain_wake_locked(cflow_fs_watch_publisher_state *state,
-                                                         cflow_waker waker) {
+                                                     cflow_waker waker) {
   if (waker.wake != NULL) ++state->wake_inflight;
 }
 
 static void cflow_fs_watch_publisher_invoke_wake(cflow_fs_watch_publisher_state *state,
-                                                  cflow_waker waker) {
+                                              cflow_waker waker) {
   cflow_fs_watch_publisher_state *previous;
   if (waker.wake == NULL) return;
   previous = cflow_fs_watch_publisher_active_callback;
@@ -121,8 +121,7 @@ static void cflow_fs_watch_publisher_unarm(void *self) {
 CMETA_IMPLEMENTS(cflow_waitable, cflow_fs_watch_publisher_waitable, 0,
                  .arm = cflow_fs_watch_publisher_arm, .cancel = cflow_fs_watch_publisher_unarm);
 
-static cflow_step cflow_fs_watch_publisher_resume(void *self, cflow_publish_context *ctx,
-                                                  void *out_value) {
+static cflow_step cflow_fs_watch_publisher_resume(void *self, cflow_publish_context *ctx, void *out_value) {
   cflow_fs_watch_publisher_state *state = (cflow_fs_watch_publisher_state *)self;
   size_t delivered = 0u;
   int status;
@@ -151,16 +150,15 @@ static cflow_step cflow_fs_watch_publisher_resume(void *self, cflow_publish_cont
     const bool encoded = state->encoded;
     const bool done = cflow_fs_watch_backend_done_and_empty(&state->watch);
     salts_mutex_unlock(&state->lock);
-    if (!encoded)
-      return (cflow_step){CFLOW_STEP_ERROR, {0}, "filesystem watch encoder failed"};
+    if (!encoded) return (cflow_step){CFLOW_STEP_ERROR, {0}, "filesystem watch encoder failed"};
     return (cflow_step){done ? CFLOW_STEP_VALUE_AND_DONE : CFLOW_STEP_VALUE, {0}, NULL};
   }
   salts_mutex_unlock(&state->lock);
 
   if (cflow_fs_watch_backend_done_and_empty(&state->watch))
     return (cflow_step){CFLOW_STEP_DONE, {0}, NULL};
-  return (cflow_step){CFLOW_STEP_WAIT,
-                      cflow_fs_watch_publisher_waitable_as_cflow_waitable(state), NULL};
+  return (cflow_step){CFLOW_STEP_WAIT, cflow_fs_watch_publisher_waitable_as_cflow_waitable(state),
+                      NULL};
 }
 
 static void cflow_fs_watch_publisher_cancel(void *self) {
@@ -224,8 +222,7 @@ static void cflow_fs_watch_publisher_bind_terminal(void *self, cflow_waker waker
   if (wake_now) cflow_fs_watch_publisher_invoke_wake(state, waker);
 }
 
-static cflow_publisher_terminal cflow_fs_watch_publisher_poll_terminal(void *self,
-                                                                       const char **error) {
+static cflow_publisher_terminal cflow_fs_watch_publisher_poll_terminal(void *self, const char **error) {
   cflow_fs_watch_publisher_state *state = (cflow_fs_watch_publisher_state *)self;
   bool cancelled;
   (void)error;
@@ -236,19 +233,14 @@ static cflow_publisher_terminal cflow_fs_watch_publisher_poll_terminal(void *sel
   return cancelled ? CFLOW_PUBLISHER_DONE : CFLOW_PUBLISHER_OPEN;
 }
 
-CMETA_IMPLEMENTS(cflow_publisher, cflow_fs_watch_publisher, 0,
-                 .name = cflow_fs_watch_publisher_name,
-                 .output_type = cflow_fs_watch_publisher_type,
-                 .resume = cflow_fs_watch_publisher_resume,
-                 .cancel = cflow_fs_watch_publisher_cancel,
-                 .destroy = cflow_fs_watch_publisher_destroy,
+CMETA_IMPLEMENTS(cflow_publisher, cflow_fs_watch_publisher, 0, .name = cflow_fs_watch_publisher_name,
+                 .output_type = cflow_fs_watch_publisher_type, .resume = cflow_fs_watch_publisher_resume,
+                 .cancel = cflow_fs_watch_publisher_cancel, .destroy = cflow_fs_watch_publisher_destroy,
                  .bind_terminal_waker = cflow_fs_watch_publisher_bind_terminal,
                  .poll_terminal = cflow_fs_watch_publisher_poll_terminal);
 
-int cflow_fs_watch_publisher_open(cflow_publisher *out,
-                                  cflow_fs_watch_publisher_owner *owner,
-                                  const char *path,
-                                  const cflow_fs_watch_publisher_config *config) {
+int cflow_fs_watch_publisher_open(cflow_publisher *out, cflow_fs_watch_publisher_owner *owner,
+                               const char *path, const cflow_fs_watch_publisher_config *config) {
   const cmeta_trait_flags required = CMETA_TRAIT_TRIVIAL_COPY | CMETA_TRAIT_TRIVIAL_DESTROY;
   cflow_fs_watch_publisher_state *state;
   cflow_fs_watch_config watch_config;
@@ -259,8 +251,7 @@ int cflow_fs_watch_publisher_open(cflow_publisher *out,
       config->native_buffer_capacity < 1024u || config->native_buffer_capacity > 65536u ||
       config->encode == NULL || !cmeta_type_desc_valid(config->output_type))
     return SALTS_EINVAL;
-  if (cmeta_type_require_traits(config->output_type, required) != CMETA_OK)
-    return SALTS_ENOTSUP;
+  if (cmeta_type_require_traits(config->output_type, required) != CMETA_OK) return SALTS_ENOTSUP;
 
   state = (cflow_fs_watch_publisher_state *)calloc(1u, sizeof(*state));
   if (state == NULL) return SALTS_ENOMEM;
@@ -298,16 +289,15 @@ int cflow_fs_watch_publisher_open(cflow_publisher *out,
   return SALTS_OK;
 }
 
-int cflow_fs_watch_publisher_owner_acknowledge_rescan(
-    cflow_fs_watch_publisher_owner *owner) {
+int cflow_fs_watch_publisher_owner_acknowledge_rescan(cflow_fs_watch_publisher_owner *owner) {
   cflow_fs_watch_publisher_state *state =
       owner != NULL ? (cflow_fs_watch_publisher_state *)owner->impl : NULL;
   if (state == NULL) return SALTS_EINVAL;
   return cflow_fs_watch_acknowledge_rescan(&state->watch);
 }
 
-bool cflow_fs_watch_publisher_owner_get_stats(
-    const cflow_fs_watch_publisher_owner *owner, cflow_fs_watch_stats *out) {
+bool cflow_fs_watch_publisher_owner_get_stats(const cflow_fs_watch_publisher_owner *owner,
+                                           cflow_fs_watch_stats *out) {
   cflow_fs_watch_publisher_state *state =
       owner != NULL ? (cflow_fs_watch_publisher_state *)owner->impl : NULL;
   return state != NULL && cflow_fs_watch_get_stats(&state->watch, out);

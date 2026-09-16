@@ -27,12 +27,7 @@ target_link_libraries(salts_cflow_fs
   PUBLIC Salts::Core Salts::CFlow
   PRIVATE Salts::Platform)
 
-install(
-  TARGETS salts_cflow_fs
-  EXPORT SaltsUtilsTargets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS salts_cflow_fs EXPORT SaltsUtilsTargets)
 install(
   DIRECTORY include/salts
   DESTINATION include

@@ -11,12 +11,7 @@ target_include_directories(salts_cflow_process PUBLIC
 target_link_libraries(salts_cflow_process
   PUBLIC Salts::Core Salts::CFlow
   PRIVATE Salts::Platform)
-install(
-  TARGETS salts_cflow_process
-  EXPORT SaltsUtilsTargets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS salts_cflow_process EXPORT SaltsUtilsTargets)
 install(DIRECTORY include/salts DESTINATION include FILES_MATCHING PATTERN "*.h")
 
 if(BUILD_TESTS)
