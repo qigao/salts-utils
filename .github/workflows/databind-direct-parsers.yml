@@ -39,14 +39,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qigao/salts
-          ref: 7ca4981854276854974696600791cf0b017fcfa4
+          ref: b4639683d9408ba534ad6d72d1a180f4e51417aa
           path: salts
           persist-credentials: false
       - name: Record native API source
         shell: bash
         run: |
           set -euxo pipefail
-          test "$(git -C salts rev-parse HEAD)" = 7ca4981854276854974696600791cf0b017fcfa4
+          test "$(git -C salts rev-parse HEAD)" = b4639683d9408ba534ad6d72d1a180f4e51417aa
           git -C salts rev-parse HEAD > "$RUNNER_TEMP/databind-parsers/salts-head.txt"
           git -C salts archive --format=tar.gz HEAD > "$RUNNER_TEMP/databind-parsers/salts-source.tar.gz"
       - name: Reject parser facade dependencies
