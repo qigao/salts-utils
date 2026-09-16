@@ -14,8 +14,8 @@ spec("data_bind dynamic value public boundary") {
     const char *schema =
         "composite Meta { i32 seq; } "
         "message Values { i32 signed_value; i64 long_value; u64 unsigned_value; double ratio; "
-        "bool active; string note; bytes raw; uuid uid; datetime created; date day; time at; "
-        "duration span; decimal price; bigint total; money cost; Meta meta; list<u32> values; "
+        "bool active; uuid uid; datetime created; date day; time at; duration span; decimal price; "
+        "bigint total; money cost; Meta meta; string note; bytes raw; list<u32> values; "
         "set<i8> tags; map<string,i64> attrs; }";
     const char *json =
         "{\"signed_value\":-7,\"long_value\":-9007199254740991,"
