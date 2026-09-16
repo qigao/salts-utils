@@ -18,14 +18,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: crypto-boringssl-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 env:
-  SALTS_SHA: 3970219065e89a08a7c648dba62d6c0e0ce0b78b
+  SALTS_SHA: 801202e58c2d86b35202414d4812e79a2fd25bae
   VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
 
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - name: Checkout exact SaltsUtils head
         uses: actions/checkout@v4
@@ -65,6 +69,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Restore vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+
+      - name: Set up Go for BoringSSL
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
       - name: Prepare toolchain
         shell: bash
         run: |
@@ -76,7 +92,20 @@ jobs:
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
           bash cmake/ci/install-re2c.sh
 
+      - name: Record Salts cache toolchain
+        id: salts-toolchain
+        shell: bash
+        run: echo "key=gcc-$(gcc -dumpfullversion -dumpversion)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned Salts debug package
+        id: salts-package-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
       - name: Build and install exact Salts
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: salts
         env:
@@ -90,12 +119,20 @@ jobs:
             -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/linux-gcc-debug --target install -j2
 
+      - name: Save pinned Salts debug package
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
       - name: Expose exact Salts profile
         shell: bash
         run: |
           set -euxo pipefail
           package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
           test -f "$package/lib/cmake/Salts/SaltsConfig.cmake"
+          test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
           sudo ln -sfn "$package" /opt/salts/debug
 
       - name: Build standalone host Lemon
