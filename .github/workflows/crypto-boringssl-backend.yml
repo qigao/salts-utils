@@ -1,0 +1,179 @@
+name: Crypto BoringSSL backend verification
+
+on:
+  pull_request:
+    paths:
+      - "crypto/**"
+      - "tests/dependency_manifest_test.py"
+      - ".github/workflows/crypto-boringssl-backend.yml"
+  push:
+    branches:
+      - refactor/crypto-boringssl-backend
+    paths:
+      - "crypto/**"
+      - "tests/dependency_manifest_test.py"
+      - ".github/workflows/crypto-boringssl-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-boringssl-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  SALTS_SHA: 801202e58c2d86b35202414d4812e79a2fd25bae
+  VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact SaltsUtils head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify source ownership boundary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          python tests/dependency_manifest_test.py
+          ! grep -n 'monocypher' crypto/CMakeLists.txt
+          ! grep -R -n 'libecc/hash/sha256\|src/hash/sha256.c\|WITH_HASH_SHA256' crypto \
+            --exclude-dir=vendor
+          ! grep -R -n 'crypto_wipe' crypto/src
+          grep -n 'OpenSSL::Crypto' crypto/CMakeLists.txt
+          grep -n 'SHA256_Update' crypto/src/crypto_sha256.c
+          grep -n 'OPENSSL_cleanse' crypto/src/crypto_sha256.c crypto/src/crypto_ed448.c
+          git diff --check
+
+      - name: Checkout exact Salts
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_SHA }}
+          path: salts
+          persist-credentials: false
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_SHA }}
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Restore vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+
+      - name: Set up Go for BoringSSL
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+          bash cmake/ci/install-re2c.sh
+
+      - name: Record Salts cache toolchain
+        id: salts-toolchain
+        shell: bash
+        run: echo "key=gcc-$(gcc -dumpfullversion -dumpversion)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned Salts debug package
+        id: salts-package-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+      - name: Build and install exact Salts
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$SALTS_SHA"
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/linux-gcc-debug --target install -j2
+
+      - name: Save pinned Salts debug package
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+      - name: Expose exact Salts profile
+        shell: bash
+        run: |
+          set -euxo pipefail
+          package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
+          test -f "$package/lib/cmake/Salts/SaltsConfig.cmake"
+          test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
+          sudo ln -sfn "$package" /opt/salts/debug
+
+      - name: Build standalone host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+
+      - name: Configure SaltsUtils exact head
+        shell: bash
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon"
+
+      - name: Build crypto and its tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug \
+            --target salts_crypto salts_crypto_test salts_crypto_header_cpp_test -j2
+
+      - name: Run crypto CTest subset
+        shell: bash
+        env:
+          LD_LIBRARY_PATH: /opt/salts/debug/lib:${{ github.workspace }}/build/linux-gcc-debug/bin:${{ github.workspace }}/vcpkg_installed/x64-linux/debug/lib
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug \
+            -R '^salts_crypto(_header_cpp)?_test$' \
+            --no-tests=error --output-on-failure
+
+      - name: Verify exact head and clean tracked source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
