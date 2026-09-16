@@ -2,7 +2,7 @@ name: TBE descriptor safety
 
 on:
   push:
-    branches: [main, fix/tbe-30-descriptor-layout-validation]
+    branches: [master, fix/tbe-30-descriptor-layout-validation]
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
@@ -15,7 +15,7 @@ on:
       - 'vcpkg.json'
       - '.github/workflows/tbe-30-green.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
@@ -101,6 +101,18 @@ jobs:
           sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
 
+      - name: Record Salts cache toolchain
+        id: salts-toolchain
+        shell: bash
+        run: echo "key=gcc-$(gcc -dumpfullversion -dumpversion)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned Salts debug package
+        id: salts-package-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-2804c2eb809fed4cb89f917f0a8cd00f482abb64-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
       - name: Install pinned re2c 4.6 and Unicode data
         shell: bash
         run: bash cmake/ci/install-re2c.sh
@@ -113,6 +125,7 @@ jobs:
           cmake --build build/host-lemon --target lemon -j2
 
       - name: Build and install pinned Salts debug profile
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: salts
         env:
@@ -127,7 +140,22 @@ jobs:
             -DENABLE_SANITIZER_ADDRESS=OFF \
             -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/linux-gcc-debug --target install -j2
-          sudo ln -sfn "${PROJECT_ROOT}/external/pkgs/salts/debug" /opt/salts/debug
+
+      - name: Save pinned Salts debug package
+        if: steps.salts-package-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
+          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-2804c2eb809fed4cb89f917f0a8cd00f482abb64-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+      - name: Use pinned Salts debug package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
+          test -d "$package/include"
+          test -d "$package/lib"
+          sudo ln -sfn "$package" /opt/salts/debug
 
       - name: Configure developer preset with both sanitizers
         shell: bash
