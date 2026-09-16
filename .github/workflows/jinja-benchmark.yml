@@ -30,8 +30,8 @@ jobs:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SALTS_SHA: 2804c2eb809fed4cb89f917f0a8cd00f482abb64
       VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-      SALTS_PROJECT_ROOT: ${{ runner.temp }}/salts-project
-      SALTS_PACKAGE: ${{ runner.temp }}/salts-project/external/pkgs/salts/release
+      SALTS_PROJECT_ROOT: ${{ github.workspace }}/.ci-cache/salts-project
+      SALTS_PACKAGE: ${{ github.workspace }}/.ci-cache/salts-project/external/pkgs/salts/release
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
