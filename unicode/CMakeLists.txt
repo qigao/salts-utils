@@ -10,7 +10,7 @@ add_custom_command(
           --no-generation-date
           -W
           -Werror
-          -I ${RE2C_STDLIB_DIR}
+          -I "${RE2C_ROOT}/share/re2c/stdlib"
           -o ${SALTS_UNICODE_LEXER_GEN}
           ${SALTS_UNICODE_LEXER_RE}
   DEPENDS ${SALTS_UNICODE_LEXER_RE} ${RE2C_UNICODE_PROPERTIES} ${RE2C_UNICODE_CATEGORIES}

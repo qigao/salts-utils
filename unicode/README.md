@@ -10,7 +10,7 @@ NULL输出、surrogate或超出U+10FFFF返回`SALTS_UNICODE_ERR_INVALID_ARGUMENT
 均保持输出不变。接口不分配内存、不访问共享可变状态，可并发调用；不改变已有scalar布局。
 例如U+0662得到2，而上标²与汉字〇不是Nd。
 
-实现复用re2c 4.6的Unicode 17分类表（构建时校验SHA256），无另一份数字值映射。
+实现复用 re2c 4.6 的 Unicode 17 分类表，无另一份数字值映射。
 在连续Nd区间中按偏移模10取值，支持相邻多组数字；时间O(L)、空间O(1)，固定数据的L最多50。
 官方UnicodeData.txt全码点对照验证770个Nd数字、非数字和非法scalar状态。
 数据语义参见[Unicode 17数字章节](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-22/)。
@@ -70,16 +70,16 @@ trim/XID 整体操作按输入 bytes 为 O(n) 时间、O(1) 额外空间。
 
 ## 构建依赖与数据版本
 
-构建需要 re2c 4.6 或更新版本，以及它安装的 `unicode_properties.re`。CMake 校验该文件的
-SHA-256，以固定到 re2c 4.6 基于 Unicode 17.0.0 生成的数据；不接受随日期变化的 `latest`：
+构建需要 re2c 4.6 或更新版本，以及它安装的 `unicode_properties.re`。使用 re2c 4.6
+基于 Unicode 17.0.0 生成的数据；不接受随日期变化的 `latest`：
 
 ```powershell
 cmd /d /c 'call "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul && cmake --preset win-release-user'
 ```
 
-当前 `cpp-dev` 路径只替换了 re2c 可执行文件，不包含配套 stdlib；`CMakeUserPresets.json`的
-Windows profile统一指定已安装的4.6 stdlib目录，清理缓存后也能重现配置。CMake校验其SHA-256，
-不会自动降级到其他Unicode数据版本。其他机器需在user preset配置实际工具路径，并先进入本机VS环境。
+`CMakeUserPresets.json` 的 Windows profile 通过 `RE2C_ROOT` 统一指定 re2c 4.6 安装根，
+并从同一根目录查找可执行文件与 Unicode 数据。清理缓存后也能重现配置。其他机器需在 user preset
+配置实际工具根，并先进入本机 VS 环境。
 
 数据来源：
 

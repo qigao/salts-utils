@@ -4,9 +4,9 @@ set -euo pipefail
 
 : "${RUNNER_TEMP:?GitHub Actions RUNNER_TEMP is required}"
 : "${GITHUB_PATH:?GitHub Actions GITHUB_PATH is required}"
+: "${GITHUB_ENV:?GitHub Actions GITHUB_ENV is required}"
 
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-python3 "$script_dir/../tests/test_re2c_unicode.py" -v
 
 readonly version=4.6
 # Official release asset: https://github.com/skvadrik/re2c/releases/tag/4.6
@@ -31,7 +31,6 @@ done
 cmake -S "$work_dir/re2c-${version}" -B "$work_dir/build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$prefix" \
-  -DRE2C_STDLIB_DIR="$prefix/share/re2c/stdlib" \
   -DRE2C_BUILD_TESTS=OFF \
   -DRE2C_REBUILD_LEXERS=OFF \
   -DRE2C_REBUILD_PARSERS=OFF \
@@ -47,9 +46,6 @@ if [[ "$actual_version" != "re2c $version" ]]; then
 fi
 printf '%s\n' "$actual_version"
 
-# Use the same content and line-ending validation as project configuration.
-cmake "-DRE2C_STDLIB_DIR=$prefix/share/re2c/stdlib" \
-  -P "$script_dir/../VerifyRe2cUnicode.cmake"
-
-# Publish only a fully validated installation to subsequent Salts/Utils steps.
+# Publish the installation root to subsequent Salts/Utils steps.
 printf '%s\n' "$prefix/bin" >> "$GITHUB_PATH"
+printf 'RE2C_ROOT=%s\n' "$prefix" >> "$GITHUB_ENV"

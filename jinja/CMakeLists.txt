@@ -8,14 +8,14 @@ cmake_add_grammar(JINJA_EXPRESSION
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_grammar.y
   LEXER_DEPENDS_ON_GRAMMAR
-  LEXER_OPTIONS -I ${RE2C_STDLIB_DIR}
+  LEXER_OPTIONS -I "${RE2C_ROOT}/share/re2c/stdlib"
   LEXER_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_expression_parser.h ${RE2C_UNICODE_PROPERTIES} ${RE2C_UNICODE_CATEGORIES}
   FOLDER "jinja/grammar")
 
 set(JINJA_TEXT_LEXER_GEN "${CMAKE_CURRENT_BINARY_DIR}/jinja_text_lexer_gen.c")
 add_custom_command(
   OUTPUT "${JINJA_TEXT_LEXER_GEN}"
-  COMMAND "${RE2C_EXECUTABLE}" -I "${RE2C_STDLIB_DIR}" -o "${JINJA_TEXT_LEXER_GEN}"
+  COMMAND "${RE2C_EXECUTABLE}" -I "${RE2C_ROOT}/share/re2c/stdlib" -o "${JINJA_TEXT_LEXER_GEN}"
           "${CMAKE_CURRENT_SOURCE_DIR}/src/parser/jinja_text_lexer.re"
   DEPENDS src/parser/jinja_text_lexer.re src/parser/jinja_text_lexer.h ${RE2C_UNICODE_CATEGORIES}
   COMMENT "Generating Jinja text lexer with re2c"

@@ -11,6 +11,7 @@
                 "PROJECT_ROOT": "C:/projects/cpp",
                 "PKG_ROOT": "$env{PROJECT_ROOT}/external/pkgs",
                 "VCPKG_ROOT": "C:/tools/vcpkg",
+                "RE2C_ROOT": "C:/tools/re2c-4.6",
                 "VCPKG_INSTALLED_DIR": "${sourceDir}/vcpkg_installed",
                 "USER_ROOT": "C:/Users/lockg",
                 "PROGRAM_FILES_X86_ROOT": "C:/Program Files (x86)",

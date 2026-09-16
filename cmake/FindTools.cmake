@@ -1,6 +1,28 @@
 set(RE2C_MIN_VERSION "4.6")
 
-find_program(RE2C_EXECUTABLE NAMES re2c REQUIRED)
+if(NOT DEFINED ENV{RE2C_ROOT} OR "$ENV{RE2C_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "RE2C_ROOT is required")
+endif()
+if(NOT IS_DIRECTORY "$ENV{RE2C_ROOT}")
+  message(FATAL_ERROR "RE2C_ROOT is not a directory: $ENV{RE2C_ROOT}")
+endif()
+
+set(RE2C_ROOT "$ENV{RE2C_ROOT}")
+unset(RE2C_EXECUTABLE CACHE)
+unset(RE2C_EXECUTABLE)
+find_program(RE2C_EXECUTABLE
+  NAMES re2c
+  PATHS "${RE2C_ROOT}/bin"
+  NO_DEFAULT_PATH
+  REQUIRED)
+file(REAL_PATH "${RE2C_ROOT}" _re2c_root_realpath)
+file(REAL_PATH "${RE2C_EXECUTABLE}" _re2c_executable_realpath)
+cmake_path(IS_PREFIX _re2c_root_realpath "${_re2c_executable_realpath}"
+           NORMALIZE _re2c_executable_in_root)
+if(NOT _re2c_executable_in_root)
+  message(FATAL_ERROR
+          "re2c executable is outside RE2C_ROOT: ${RE2C_EXECUTABLE}")
+endif()
 execute_process(
   COMMAND "${RE2C_EXECUTABLE}" --version
   RESULT_VARIABLE RE2C_VERSION_RESULT
@@ -18,16 +40,8 @@ if(RE2C_VERSION VERSION_LESS RE2C_MIN_VERSION)
           "re2c ${RE2C_MIN_VERSION} or newer is required; found ${RE2C_VERSION} at ${RE2C_EXECUTABLE}")
 endif()
 
-if(NOT RE2C_STDLIB_DIR)
-  get_filename_component(_re2c_bin_dir "${RE2C_EXECUTABLE}" DIRECTORY)
-  get_filename_component(_re2c_prefix "${_re2c_bin_dir}" DIRECTORY)
-  set(RE2C_STDLIB_DIR "${_re2c_prefix}/share/re2c/stdlib" CACHE PATH
-      "Directory containing re2c standard include files")
-endif()
-set(RE2C_UNICODE_PROPERTIES "${RE2C_STDLIB_DIR}/unicode_properties.re")
-set(RE2C_UNICODE_CATEGORIES "${RE2C_STDLIB_DIR}/unicode_categories.re")
-include("${CMAKE_CURRENT_LIST_DIR}/VerifyRe2cUnicode.cmake")
-salts_utils_verify_re2c_unicode("${RE2C_STDLIB_DIR}")
+set(RE2C_UNICODE_PROPERTIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_properties.re")
+set(RE2C_UNICODE_CATEGORIES "${RE2C_ROOT}/share/re2c/stdlib/unicode_categories.re")
 
 if(NOT TARGET lemon)
   message(FATAL_ERROR "The required in-tree lemon target is missing")

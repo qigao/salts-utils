@@ -42,9 +42,8 @@ Mustache remains independent and has no Unicode dependency until it needs this A
 ## 数据与生成协议
 
 Unicode 行为固定为 17.0.0。re2c 4.6 的 `unicode_properties.re` 由官方
-`DerivedCoreProperties.txt` 与 `PropList.txt` 生成；配置阶段同时检查最低工具版本、stdlib
-文件存在性与 SHA-256。该 hash 是构建事实源的 admission gate，避免不同开发机用浮动
-Unicode 数据生成不同 ABI 内行为。
+`DerivedCoreProperties.txt` 与 `PropList.txt` 生成；配置阶段检查最低工具版本，并从
+`RE2C_ROOT` 下的安装目录读取 stdlib 文件。
 
 生成命令启用 UTF-8 encoding 和 `encoding-policy=fail`。DFA 先匹配 `XID_Start`，再匹配
 `XID_Continue`、`White_Space` 和任意其他合法 scalar；最后的 default byte rule 只表示非法
@@ -69,7 +68,7 @@ General_Category属于L/M/N/P/S，或U+0020时为真，其余有效标量为假�
 salts_unicode_status salts_unicode_is_printable(uint32_t scalar, int *result);
 ```
 
-固定Unicode17；re2c复用当前已校验hash的unicode_categories.re，以UTF-32单标量规则
+固定Unicode17；re2c复用固定版本的unicode_categories.re，以UTF-32单标量规则
 `(L | M | N | P | S | [\x20])`分类，生成到原build tree。合法标量均返回OK并写0/1；
 NULL输出、surrogate或大于U+10FFFF返回ERR_INVALID_ARGUMENT，输出不变。
 参数值按值传递，结果由caller持有；无借用存活、堆分配、可变共享状态、锁或初始化/关闭过程。
