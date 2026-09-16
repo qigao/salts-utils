@@ -157,9 +157,9 @@ jobs:
           targets=/opt/salts-utils/debug/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake
           test -f "$targets"
           for moved in QueryVM IniParser JsonParser JsonCSerdeAdapter XmlParser CsvParser TLVParser LtvParser ModbusParser SoaParser DotEnvParser CmdParser Toon TomlParser DateTimeParser CYaml CYamlJsonAdapter Selector; do
-            grep -n "Salts::${moved}" "$targets"
+            grep -n -E "^add_library\\(Salts::${moved}[[:space:]]" "$targets"
           done
-          if grep -n 'Salts::UriParser' "$targets"; then
+          if grep -n -E '^add_library\(Salts::UriParser[[:space:]]' "$targets"; then
             echo 'SaltsUtils must consume, not export, Salts::UriParser' >&2
             exit 1
           fi
