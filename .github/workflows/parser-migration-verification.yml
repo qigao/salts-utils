@@ -1,5 +1,5 @@
 name: Parser ownership migration verification
-# Final exact-head verification trigger after destination CI turned green.
+# Final exact-head verification after CTest leak fix and diagnostic cleanup.
 
 on:
   push:
