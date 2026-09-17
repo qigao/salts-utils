@@ -753,10 +753,12 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     if (scalar && scalar->native_data_symbol) {
       tbe_compiler_set_string(field, "native_data_symbol", scalar->native_data_symbol);
       tbe_compiler_set_string(field, "native_type_symbol", scalar->native_type_symbol);
+      tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
     } else if (semantic && salts_uuid_cmeta_data_valid(semantic->data)) {
       tbe_compiler_set_string(field, "native_data_symbol", "salts_uuid_cmeta_data");
       tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
+      tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
     } else if (strcmp(kind, "TBE_TYPED_ENUM") == 0) {
       if (tbe_compiler_set_enum_symbol(field, "native_data_symbol", type, "Data") == 0 &&

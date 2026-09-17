@@ -4,6 +4,7 @@
 #include "data_bind.h"
 
 #include <cstl.h>
+#include <string.h>
 
 typedef struct db_field_slot {
   char *name;
@@ -108,7 +109,9 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
     const hash_set_t *membership = &value->data.set.membership;
     vec = &value->data.set.ordered_values;
     slot_size = sizeof(db_owned_value_slot_t);
-    if (membership->cmeta.descriptor != &stl_hash_set_container_desc ||
+    if (membership->cmeta.descriptor == NULL ||
+        membership->cmeta.descriptor->name == NULL ||
+        strcmp(membership->cmeta.descriptor->name, stl_hash_set_container_desc.name) != 0 ||
         membership->element_type == NULL ||
         membership->element_type->size != sizeof(db_value_ref_key_t) ||
         cmeta_type_require_traits(membership->element_type,
@@ -121,7 +124,9 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
     const hash_map_t *index = &value->data.map.index;
     vec = &value->data.map.ordered_entries;
     slot_size = sizeof(db_map_entry_slot_t);
-    if (index->cmeta.descriptor != &stl_hash_map_container_desc ||
+    if (index->cmeta.descriptor == NULL ||
+        index->cmeta.descriptor->name == NULL ||
+        strcmp(index->cmeta.descriptor->name, stl_hash_map_container_desc.name) != 0 ||
         index->key_type == NULL ||
         index->key_type->size != sizeof(db_value_ref_key_t) ||
         cmeta_type_require_traits(index->key_type,
@@ -138,7 +143,9 @@ data_bind_internal_storage_kind(const DataBindValue *value) {
   } else {
     return DB_INTERNAL_STORAGE_SCALAR;
   }
-  if (!vec->initialized || vec->cmeta.descriptor != &stl_vec_container_desc ||
+  if (!vec->initialized || vec->cmeta.descriptor == NULL ||
+      vec->cmeta.descriptor->name == NULL ||
+      strcmp(vec->cmeta.descriptor->name, stl_vec_container_desc.name) != 0 ||
       vec->element_type == NULL || vec->element_type->size != slot_size ||
       cmeta_type_require_traits(vec->element_type,
                                 CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE |

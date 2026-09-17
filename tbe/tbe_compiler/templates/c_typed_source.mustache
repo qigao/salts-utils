@@ -2,9 +2,11 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
+static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
 
 const char *{{schema.schema_name}}_schema_text(void) {
     return {{schema.schema_name}}_SCHEMA_TEXT;
@@ -233,12 +235,12 @@ static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
 };
-static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
-      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       NULL },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
@@ -246,12 +248,23 @@ static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };
-static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+static cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
 {{#fields}}
     { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
       "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
-      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}}{{/native_external}} },
 {{/fields}}};
+static void {{name}}_CMETA_INIT_FIELDS(void) {
+    size_t i;
+    for (i = 0; i < sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_LAYOUT_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_LAYOUT_FIELDS[i].type = &{{native_type_symbol}};
+{{/native_external}}{{/fields}}    }
+    for (i = 0; i < sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_FIELDS[i].value = &{{native_data_symbol}};
+{{/native_external}}{{/fields}}    }
+}
 static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
@@ -271,6 +284,7 @@ const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
@@ -294,12 +308,12 @@ static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
 };
-static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
-      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       NULL },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
@@ -307,12 +321,23 @@ static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };
-static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+static cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
 {{#fields}}
     { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
       "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
-      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}}{{/native_external}} },
 {{/fields}}};
+static void {{name}}_CMETA_INIT_FIELDS(void) {
+    size_t i;
+    for (i = 0; i < sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_LAYOUT_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_LAYOUT_FIELDS[i].type = &{{native_type_symbol}};
+{{/native_external}}{{/fields}}    }
+    for (i = 0; i < sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_FIELDS[i].value = &{{native_data_symbol}};
+{{/native_external}}{{/fields}}    }
+}
 static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
@@ -332,6 +357,7 @@ const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
@@ -355,12 +381,12 @@ static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL, NULL, &{{name}}_CMETA_ID
 };
-static const cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
+static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
 {{#fields}}
     { "{{c_name}}", "{{native_c_type}}", offsetof({{owner_name}}_t, {{c_name}}),
       sizeof((({{owner_name}}_t *)0)->{{c_name}}),
       {{#native_c_type}}TBE_TYPED_ALIGNOF({{native_c_type}}){{/native_c_type}}{{^native_c_type}}1u{{/native_c_type}},
-      {{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}},
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_type_symbol}}&{{native_type_symbol}}{{/native_type_symbol}}{{^native_type_symbol}}NULL{{/native_type_symbol}}{{/native_external}},
       NULL },
 {{/fields}}};
 static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
@@ -368,12 +394,23 @@ static const cmeta_struct_desc {{name}}_CMETA_LAYOUT = {
     {{name}}_CMETA_LAYOUT_FIELDS,
     sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0])
 };
-static const cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
+static cmeta_data_field_desc {{name}}_CMETA_FIELDS[] = {
 {{#fields}}
     { "tbe.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}",
       "{{c_name}}", offsetof({{owner_name}}_t, {{c_name}}),
-      {{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}} },
+      {{#native_external}}NULL{{/native_external}}{{^native_external}}{{#native_data_symbol}}&{{native_data_symbol}}{{/native_data_symbol}}{{^native_data_symbol}}NULL{{/native_data_symbol}}{{/native_external}} },
 {{/fields}}};
+static void {{name}}_CMETA_INIT_FIELDS(void) {
+    size_t i;
+    for (i = 0; i < sizeof({{name}}_CMETA_LAYOUT_FIELDS) / sizeof({{name}}_CMETA_LAYOUT_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_LAYOUT_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_LAYOUT_FIELDS[i].type = &{{native_type_symbol}};
+{{/native_external}}{{/fields}}    }
+    for (i = 0; i < sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0]); ++i) {
+{{#fields}}{{#native_external}}        if (strcmp({{owner_name}}_CMETA_FIELDS[i].name, "{{c_name}}") == 0)
+            {{owner_name}}_CMETA_FIELDS[i].value = &{{native_data_symbol}};
+{{/native_external}}{{/fields}}    }
+}
 static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
@@ -393,6 +430,7 @@ const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
 {{/typed_cmeta_runtime_supported}}
 
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
+    {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_INVALID_ARG, "{{name}}",
@@ -409,44 +447,66 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
 }
 {{/messages}}
 
+static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
+    static atomic_flag initialized = ATOMIC_FLAG_INIT;
+    if (atomic_flag_test_and_set_explicit(&initialized, memory_order_acquire))
+        return;
+{{#composites}}    {{name}}_CMETA_INIT_FIELDS();
+{{/composites}}{{#groups}}    {{name}}_CMETA_INIT_FIELDS();
+{{/groups}}{{#messages}}    {{name}}_CMETA_INIT_FIELDS();
+{{/messages}}}
+
 #define TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(name) \
     void name##_init(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         if (object) (void)tbe_typed_descriptor_init(&name##_TYPED_DESCRIPTOR, object, NULL); \
     } \
     void name##_clear(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         if (object) (void)tbe_typed_descriptor_clear(&name##_TYPED_DESCRIPTOR, object, NULL); \
     } \
     DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
     } \
     DataBindStatus name##_from_json(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_JSON, data, len, 0, object, error); \
     } \
     DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_YAML, data, len, 0, object, error); \
     } \
     DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
     } \
     DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
     } \
     DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR, object, out, out_len, error); \
     } \
     DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR, object, output, output_capacity, out_len, error); \
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_JSON, out, out_len, error); \
     } \
     DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
     } \
     DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
     } \
     DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
     }
 

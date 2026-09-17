@@ -8,10 +8,24 @@
 #include <string.h>
 
 enum { BOUNDARY_STORAGE_SIZE = 128, BOUNDARY_SENTINEL = 0xa5 };
+
+#ifdef _MSC_VER
+typedef union BoundaryMaxAlign {
+  long double long_double;
+  void *pointer;
+  long long integer;
+} BoundaryMaxAlign;
+#define BOUNDARY_ALIGNMENT_TYPE BoundaryMaxAlign
+#else
+#define BOUNDARY_ALIGNMENT_TYPE max_align_t
+#endif
+
 typedef union BoundaryStorage {
-  max_align_t alignment;
+  BOUNDARY_ALIGNMENT_TYPE alignment;
   uint8_t bytes[BOUNDARY_STORAGE_SIZE];
 } BoundaryStorage;
+
+#undef BOUNDARY_ALIGNMENT_TYPE
 _Static_assert(sizeof(vec_t) <= sizeof(BoundaryStorage), "Boundary fixture must hold a vector");
 
 static const cmeta_type_identity BOUNDARY_ID =
