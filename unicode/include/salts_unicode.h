@@ -11,16 +11,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef SALTS_UNICODE_API
-  #if defined(_WIN32) && defined(SALTS_UNICODE_BUILD_DLL)
-    #define SALTS_UNICODE_API __declspec(dllexport)
-  #elif defined(__GNUC__) && __GNUC__ >= 4
-    #define SALTS_UNICODE_API __attribute__((visibility("default")))
-  #else
-    #define SALTS_UNICODE_API
-  #endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,8 +66,8 @@ typedef struct salts_unicode_scalar {
  * @param out_scalar Output scalar record.
  * @return `SALTS_UNICODE_OK`, `SALTS_UNICODE_END`, or a negative error code.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_utf8_next(
-    vstr input, size_t *cursor, salts_unicode_scalar *out_scalar);
+salts_unicode_status salts_unicode_utf8_next(vstr input, size_t *cursor,
+                                             salts_unicode_scalar *out_scalar);
 
 /**
  * Query Unicode 17.0.0 properties for one scalar value.
@@ -86,8 +76,7 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_utf8_next(
  * @param out_properties Receives `salts_unicode_property` flags.
  * @return `SALTS_UNICODE_OK` or `SALTS_UNICODE_ERR_INVALID_ARGUMENT`.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_scalar_properties(
-    uint32_t scalar, uint32_t *out_properties);
+salts_unicode_status salts_unicode_scalar_properties(uint32_t scalar, uint32_t *out_properties);
 
 /**
  * Query the decimal value of a Unicode 17.0.0 Nd scalar, without allocation.
@@ -98,8 +87,7 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_scalar_properties(
  *         invalid scalar or NULL output. No shared mutable state is accessed.
  * Example: salts_unicode_decimal_value(0x0662u, &value) writes 2 and returns OK.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_decimal_value(
-    uint32_t scalar, uint32_t *out_value);
+salts_unicode_status salts_unicode_decimal_value(uint32_t scalar, uint32_t *out_value);
 
 /**
  * Resolve a Unicode 17 character name or name alias to one scalar.
@@ -113,7 +101,7 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_decimal_value(
  * safe for concurrent calls; no storage is retained from name.
  * Example: salts_unicode_name_lookup(vstr_from_cstr("LF"), &scalar) writes 10.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_name_lookup(vstr name, uint32_t *out_scalar);
+salts_unicode_status salts_unicode_name_lookup(vstr name, uint32_t *out_scalar);
 
 /**
  * Trim Unicode White_Space scalars from both ends of a UTF-8 view.
@@ -126,16 +114,15 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_name_lookup(vstr name, uint
  * @param output Receives the trimmed borrowed view; unchanged on error.
  * @return `SALTS_UNICODE_OK` or a negative error code.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_trim_whitespace(
-    vstr input, vstr *output);
+salts_unicode_status salts_unicode_trim_whitespace(vstr input, vstr *output);
 
 /** Transform UTF-8 using Unicode 17.0.0 default full case mappings. The input
  * is fully validated before callbacks begin. Mappings can expand a scalar;
  * lowercase applies Greek final sigma, while title maps every scalar's default
  * titlecase mapping. Locale-specific mappings are excluded. Callback chunks
  * borrow valid UTF-8 and a nonzero return stops with ERR_CALLBACK. */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_case_transform(
-    vstr input, salts_unicode_case_mode mode, salts_unicode_case_write write, void *userdata);
+salts_unicode_status salts_unicode_case_transform(vstr input, salts_unicode_case_mode mode,
+                                                  salts_unicode_case_write write, void *userdata);
 
 /**
  * Scan one Unicode XID identifier starting at a byte offset.
@@ -151,8 +138,7 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_case_transform(
  * @return `SALTS_UNICODE_OK`, `SALTS_UNICODE_END`,
  *         `SALTS_UNICODE_NO_MATCH`, or a negative error code.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_xid_span(
-    vstr input, size_t start, size_t *end);
+salts_unicode_status salts_unicode_xid_span(vstr input, size_t start, size_t *end);
 
 /**
  * Validate that a complete UTF-8 view is one Unicode XID identifier.
@@ -166,11 +152,10 @@ SALTS_UNICODE_API salts_unicode_status salts_unicode_xid_span(
  * @param result Receives zero or one on success.
  * @return `SALTS_UNICODE_OK` or a negative error code.
  */
-SALTS_UNICODE_API salts_unicode_status salts_unicode_is_xid(
-    vstr input, int *result);
+salts_unicode_status salts_unicode_is_xid(vstr input, int *result);
 
 /** Return the immutable Unicode Character Database version string. */
-SALTS_UNICODE_API const char *salts_unicode_version(void);
+const char *salts_unicode_version(void);
 
 #ifdef __cplusplus
 }
