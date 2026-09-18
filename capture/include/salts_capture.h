@@ -94,7 +94,8 @@ typedef enum {
     SALTS_CAMERA_CONTROL_BRIGHTNESS = 6,
     SALTS_CAMERA_CONTROL_CONTRAST = 7,
     SALTS_CAMERA_CONTROL_HUE = 8,
-    SALTS_CAMERA_CONTROL_WHITE_BALANCE = 9
+    SALTS_CAMERA_CONTROL_WHITE_BALANCE = 9,
+    SALTS_CAMERA_CONTROL_AUTO_EXPOSURE = 10 /* Mode: 0 manual, 1 automatic. */
 } salts_camera_control_t;
 
 typedef struct {
@@ -321,6 +322,9 @@ SALTS_CAPTURE_API void salts_video_capture_set_callback(salts_capture_t *capture
  * Not every backend/device supports every control. Unsupported controls return
  * SALTS_CAPTURE_ERR_UNSUPPORTED. Backends should prefer hardware controls and
  * may fall back to software controls when a hardware control is unavailable.
+ * AUTO_EXPOSURE is hardware-only (currently Windows). Its bounds reflect the
+ * supported modes (0/1), step is 1, and current_value is read from the driver.
+ * default_value is -1 for this control: the driver does not expose a default mode.
  */
 SALTS_CAPTURE_API int salts_video_capture_get_control_range(salts_capture_t *capture,
                                                      salts_camera_control_t control,
@@ -331,11 +335,21 @@ SALTS_CAPTURE_API int salts_video_capture_get_control_range(salts_capture_t *cap
  *
  * For SALTS_CAMERA_CONTROL_ZOOM, value is percent: 100 means 1.0x. Backends
  * should apply hardware zoom first and fall back to software zoom if needed.
+ * For AUTO_EXPOSURE, value must be 0 (manual) or 1 (automatic); any other value
+ * returns ERR_FORMAT. Switching mode retains the current exposure value. Missing
+ * hardware/capability returns ERR_UNSUPPORTED; driver read/write errors return
+ * ERR_DEVICE. There is no software fallback. Setting EXPOSURE still sets a
+ * manual exposure value, independently of this mode control.
+ * Example: salts_video_capture_set_control(camera, SALTS_CAMERA_CONTROL_AUTO_EXPOSURE, 1).
+ * Controls must be called by the capture owner, serialized with stop/destroy.
  */
 SALTS_CAPTURE_API int salts_video_capture_set_control(salts_capture_t *capture,
                                                salts_camera_control_t control,
                                                int value);
 
+/** Read the driver value. AUTO_EXPOSURE returns 0/1, not the exposure magnitude.
+ * On failure the output is unchanged. Null capture/output returns ERR_DEVICE.
+ */
 SALTS_CAPTURE_API int salts_video_capture_get_control(salts_capture_t *capture,
                                                salts_camera_control_t control,
                                                int *value);

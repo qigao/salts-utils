@@ -1372,6 +1372,41 @@ void salts_video_capture_set_callback(salts_capture_t *capture,
     capture->user_data = user_data;
 }
 
+static int exposure_hresult_result(HRESULT hr) {
+    if (SUCCEEDED(hr)) return SALTS_CAPTURE_OK;
+    if (hr == E_PROP_ID_UNSUPPORTED || hr == E_PROP_SET_UNSUPPORTED ||
+        hr == E_NOTIMPL || hr == E_NOINTERFACE ||
+        hr == HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED))
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_ERR_DEVICE;
+}
+
+static int exposure_capabilities(IAMCameraControl *control,
+                                 long *minimum, long *maximum, long *caps) {
+    long step, default_value;
+    HRESULT hr;
+    if (!control) return SALTS_CAPTURE_ERR_UNSUPPORTED;
+    hr = IAMCameraControl_GetRange(control, CameraControl_Exposure,
+                                   minimum, maximum, &step, &default_value, caps);
+    if (FAILED(hr)) return exposure_hresult_result(hr);
+    if (*minimum > *maximum) return SALTS_CAPTURE_ERR_DEVICE;
+    if (!(*caps & (CameraControl_Flags_Auto | CameraControl_Flags_Manual)))
+        return SALTS_CAPTURE_ERR_UNSUPPORTED;
+    return SALTS_CAPTURE_OK;
+}
+
+static int read_exposure_mode(IAMCameraControl *control, long *exposure, int *mode) {
+    long flags;
+    HRESULT hr;
+    if (!control) return SALTS_CAPTURE_ERR_UNSUPPORTED;
+    hr = IAMCameraControl_Get(control, CameraControl_Exposure, exposure, &flags);
+    if (FAILED(hr)) return exposure_hresult_result(hr);
+    if (flags == CameraControl_Flags_Auto) *mode = 1;
+    else if (flags == CameraControl_Flags_Manual) *mode = 0;
+    else return SALTS_CAPTURE_ERR_DEVICE;
+    return SALTS_CAPTURE_OK;
+}
+
 int salts_video_capture_get_control_range(salts_capture_t *capture,
                                            salts_camera_control_t control,
                                            salts_camera_control_range_t *range) {
@@ -1393,6 +1428,21 @@ int salts_video_capture_get_control_range(salts_capture_t *capture,
     if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
     memset(range, 0, sizeof(*range));
+
+    if (control == SALTS_CAMERA_CONTROL_AUTO_EXPOSURE) {
+        long caps;
+        int mode;
+        int result = exposure_capabilities(ctx->camera_control, &min_value, &max_value, &caps);
+        if (result != SALTS_CAPTURE_OK) return result;
+        result = read_exposure_mode(ctx->camera_control, &current_value, &mode);
+        if (result != SALTS_CAPTURE_OK) return result;
+        range->min_value = (caps & CameraControl_Flags_Manual) ? 0 : 1;
+        range->max_value = (caps & CameraControl_Flags_Auto) ? 1 : 0;
+        range->step = 1;
+        range->default_value = -1; /* GetRange exposes a value default, not a mode default. */
+        range->current_value = mode;
+        return SALTS_CAPTURE_OK;
+    }
 
     if (ctx->camera_control && camera_control_to_dshow(control, &property)) {
         hr = IAMCameraControl_GetRange(ctx->camera_control, property,
@@ -1468,6 +1518,24 @@ int salts_video_capture_set_control(salts_capture_t *capture,
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
     if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
 
+    if (control == SALTS_CAMERA_CONTROL_AUTO_EXPOSURE) {
+        long minimum, maximum, caps, exposure;
+        long flags;
+        int mode, result;
+        if (value != 0 && value != 1) return SALTS_CAPTURE_ERR_FORMAT;
+        result = exposure_capabilities(ctx->camera_control, &minimum, &maximum, &caps);
+        if (result != SALTS_CAPTURE_OK) return result;
+        flags = value ? CameraControl_Flags_Auto : CameraControl_Flags_Manual;
+        if (!(caps & flags)) return SALTS_CAPTURE_ERR_UNSUPPORTED;
+        result = read_exposure_mode(ctx->camera_control, &exposure, &mode);
+        if (result != SALTS_CAPTURE_OK) return result;
+        if (exposure < minimum || exposure > maximum) return SALTS_CAPTURE_ERR_DEVICE;
+        /* Even automatic mode requires an in-range value; manual mode preserves it.
+         * https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-iamcameracontrol-set */
+        hr = IAMCameraControl_Set(ctx->camera_control, CameraControl_Exposure, exposure, flags);
+        return exposure_hresult_result(hr);
+    }
+
     if (ctx->camera_control && camera_control_to_dshow(control, &property)) {
         hr = IAMCameraControl_Set(ctx->camera_control, property, value, CameraControl_Flags_Manual);
         if (SUCCEEDED(hr)) {
@@ -1516,6 +1584,10 @@ int salts_video_capture_get_control(salts_capture_t *capture,
 
     ctx = (mf_video_capture_ctx_t *)capture->platform_ctx;
     if (!ctx) return SALTS_CAPTURE_ERR_DEVICE;
+
+    if (control == SALTS_CAMERA_CONTROL_AUTO_EXPOSURE) {
+        return read_exposure_mode(ctx->camera_control, &ds_value, value);
+    }
 
     if (ctx->camera_control && camera_control_to_dshow(control, &property)) {
         hr = IAMCameraControl_Get(ctx->camera_control, property, &ds_value, &ignored_flags);

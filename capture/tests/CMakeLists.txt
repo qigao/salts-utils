@@ -18,6 +18,15 @@ cmake_add_test(
   FOLDER "capture/tests")
 
 if(WIN32)
+  # Exercise the real Windows control entry points with a fake COM device;
+  # including the backend keeps its private capture context out of the SDK ABI.
+  add_executable(capture_exposure_windows_test test_capture_exposure_windows.c)
+  target_compile_definitions(capture_exposure_windows_test PRIVATE SALTS_CAPTURE_BUILD)
+  target_link_libraries(capture_exposure_windows_test PRIVATE
+    Salts::Capture Salts::Core Salts::TinyTest yuv
+    mfplat mf mfuuid mfreadwrite strmiids ole32 oleaut32)
+  add_test(NAME capture_exposure_windows_test COMMAND capture_exposure_windows_test)
+  set_target_properties(capture_exposure_windows_test PROPERTIES FOLDER "capture/tests")
   cmake_add_test(
     capture_windows_test
     SOURCES test_capture_windows.c

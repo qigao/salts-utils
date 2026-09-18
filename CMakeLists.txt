@@ -106,6 +106,7 @@ endforeach()
 
 if(BUILD_TESTING)
   add_subdirectory(tests/runtime_path)
+  add_subdirectory(tests/package_config)
 endif()
 
 # Additional components

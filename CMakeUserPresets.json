@@ -109,6 +109,7 @@
         {
             "name": "win-release-user",
             "cacheVariables": {
+                "ENABLE_TESTS": true,
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
