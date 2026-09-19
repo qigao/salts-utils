@@ -40,6 +40,11 @@ static void test_release(void *opaque, JINJA_CMETA_SOURCE *source) {
   tstr_free((tstr)source->lease);
 }
 
+static int test_autoescape_html(void *opaque, vstr name) {
+  (void)opaque;
+  return vstr_eq(name, vstr_from_cstr("page.html")) ? 1 : 0;
+}
+
 static JINJA_CMETA_STATUS test_registered_function(void *opaque,
     const JINJA_CMETA_CALL_CONTEXT *context, JINJA_CMETA_CALL_RESULT *result) {
   (void)opaque;
@@ -121,6 +126,35 @@ spec("Jinja named template environment") {
   static char *output;
   before_each() { env = NULL; templ = NULL; output = NULL; loader = (TEST_LOADER){0}; }
   after_each() { free(output); jinja_cmeta_release(templ); jinja_cmeta_env_destroy(env); }
+
+  it("applies the environment autoescape selector to the root named template") {
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.autoescape_selector = test_autoescape_html;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("page.html"),
+        vstr_from_cstr("{{ '<x & y>' }}"), &error);
+    check_not_null(templ);
+    vstr root = vstr_from_cstr("");
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "&lt;x &amp; y&gt;");
+
+    free(output);
+    output = NULL;
+    jinja_cmeta_release(templ);
+    templ = NULL;
+    jinja_cmeta_env_destroy(env);
+    env = NULL;
+
+    /* Direct unnamed compilation keeps its existing default-off semantics. */
+    templ = jinja_cmeta_compile(vstr_from_cstr("{{ '<x & y>' }}"), NULL, &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "<x & y>");
+  }
 
   it("retains the defining instance of macros passed across includes") {
     const TEST_SOURCE sources[] = {{"child",
