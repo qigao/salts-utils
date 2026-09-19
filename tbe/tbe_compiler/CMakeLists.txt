@@ -46,8 +46,7 @@ add_custom_command(
 
 install(
   TARGETS tbe_compiler
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  COMPONENT DataBind)
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
 
 install(
   DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates"
