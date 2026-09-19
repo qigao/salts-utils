@@ -31,9 +31,33 @@ class DirectParserBoundary(unittest.TestCase):
         cmake = (BIND / "CMakeLists.txt").read_text()
         self.assertNotIn("parser_compat", cmake)
         self.assertNotIn("DATA_BIND_PARSER_COMPAT_TARGET", cmake)
-        for target in ("JsonParser", "CsvParser", "XmlParser", "CYaml",
-                       "CYamlJsonAdapter", "DateTimeParser", "QueryVM"):
-            self.assertIn(f"Salts::{target}", cmake)
+
+    def test_core_runtime_has_no_concrete_saltsutils_dependencies(self):
+        cmake = (BIND / "CMakeLists.txt").read_text()
+        match = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\n\)",
+            cmake,
+        )
+        self.assertIsNotNone(match, "DataBind core link contract not found")
+        links = match.group(1)
+        forbidden = (
+            "Salts::JsonParser",
+            "Salts::CsvParser",
+            "Salts::XmlParser",
+            "Salts::CYaml",
+            "Salts::CYamlJsonAdapter",
+            "Salts::DateTimeParser",
+            "Salts::QueryVM",
+        )
+        leaked = [target for target in forbidden if target in links]
+        self.assertEqual(
+            leaked,
+            [],
+            "DataBind core still depends on concrete SaltsUtils targets: "
+            + ", ".join(leaked),
+        )
+        self.assertIn("Salts::CMeta", links)
+        self.assertIn("Salts::CSTL", links)
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
