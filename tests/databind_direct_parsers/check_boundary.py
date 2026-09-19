@@ -217,6 +217,39 @@ class DirectParserBoundary(unittest.TestCase):
             "stream shell still destroys concrete format state directly",
         )
 
+    def test_databind_has_independent_package_owner(self):
+        data_bind_cmake = (BIND / "CMakeLists.txt").read_text()
+        schema_cmake = (ROOT / "tbe" / "schema" / "CMakeLists.txt").read_text()
+        salts_utils_config = (ROOT / "cmake" / "SaltsUtilsConfig.cmake.in").read_text()
+
+        self.assertTrue(
+            (ROOT / "cmake" / "DataBindConfig.cmake.in").exists(),
+            "DataBind must have its own installed package config",
+        )
+        self.assertIn("EXPORT DataBindTargets", data_bind_cmake)
+        self.assertNotIn("EXPORT SaltsUtilsTargets", data_bind_cmake)
+        self.assertIn("EXPORT DataBindTargets", schema_cmake)
+        self.assertNotIn("EXPORT SaltsUtilsTargets", schema_cmake)
+
+        for legacy_owner in (
+            "Salts::DataBind",
+            "Salts::DataBindCore",
+            "Salts::DataBindCMeta",
+            "Salts::DataBindCFlow",
+            "Salts::TbeSchema",
+            "Salts::SchemaBE",
+        ):
+            self.assertNotIn(
+                legacy_owner,
+                salts_utils_config,
+                "SaltsUtils package still owns DataBind/TBE target: "
+                + legacy_owner,
+            )
+
+        top_level = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn("DataBindTargets.cmake", top_level)
+        self.assertIn("DataBindConfig.cmake", top_level)
+
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
         self.assertNotIn("#include <datetime_parser.h>", header)
