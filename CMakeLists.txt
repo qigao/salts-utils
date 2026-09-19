@@ -157,6 +157,10 @@ export(
   FILE "${CMAKE_BINARY_DIR}/DataBindTargets.cmake"
   NAMESPACE DataBind::)
 export(
+  EXPORT DataBindAdapterTargets
+  FILE "${CMAKE_BINARY_DIR}/DataBindAdapterTargets.cmake"
+  NAMESPACE DataBind::)
+export(
   EXPORT DataBindCFlowTargets
   FILE "${CMAKE_BINARY_DIR}/DataBindCFlowTargets.cmake"
   NAMESPACE DataBind::)
@@ -164,6 +168,11 @@ export(
 install(
   EXPORT DataBindTargets
   FILE DataBindTargets.cmake
+  NAMESPACE DataBind::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+install(
+  EXPORT DataBindAdapterTargets
+  FILE DataBindAdapterTargets.cmake
   NAMESPACE DataBind::
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
 install(
