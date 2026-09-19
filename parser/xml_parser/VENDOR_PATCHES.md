@@ -1,5 +1,11 @@
 # XML parser maintenance notes
 
+## XPath parser-error cleanup
+
+`vendor/cxml/src/xpath/cxxpmemdeb.c`, `cxml_xp_fvisit`: return immediately for a null AST node. Invalid XPath recovery can leave a null placeholder in the parser-owned AST node list; cleanup previously dereferenced that placeholder and turned a normal parse rejection into UBSan-visible undefined behavior.
+
+Reproduced by the DataBind XML format-provider regression at exact head `16d4655aa28806d8166b360ea5f397f0c35f1ead` with the invalid expression `//*[`. The provider contract requires invalid selection syntax to fail without producing a reader. This patch changes only cleanup of partially constructed vendor parser state; it does not accept additional XPath syntax or suppress sanitizers.
+
 ## cxml local-name initialization
 
 `vendor/cxml/src/query/cxqapi.c`, `cxml_set_name`: skip clearing the old local-name buffer when its length is zero. A newly allocated node has a null `qname` buffer; even a zero-length `memset` must not evaluate null-pointer arithmetic or pass null to an annotated nonnull parameter.
