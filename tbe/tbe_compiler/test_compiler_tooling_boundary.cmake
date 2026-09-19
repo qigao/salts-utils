@@ -8,7 +8,7 @@ if(TOOLING_TARGET_POS EQUAL -1)
 endif()
 
 string(FIND "${COMPILER_CMAKE}"
-  "target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}" TOOLING_LINK_POS)
+  "target_link_libraries(\${DATABIND_COMPILER_TOOLING_TARGET}" TOOLING_LINK_POS)
 if(TOOLING_LINK_POS EQUAL -1)
   message(FATAL_ERROR "Compiler tooling boundary has no explicit link contract")
 endif()
@@ -28,7 +28,7 @@ if(NOT DIRECT_LINK_POS EQUAL -1)
 endif()
 
 string(FIND "${COMPILER_CMAKE}"
-  "LIBS Salts::TbeSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
+  "LIBS Salts::TbeSchema \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
     "tbe_compiler does not consume the explicit compiler tooling boundary")
