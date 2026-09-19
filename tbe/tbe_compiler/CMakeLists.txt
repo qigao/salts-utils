@@ -2,6 +2,13 @@
 # Executable
 # =============================================================================
 
+set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)
+add_library(${DATABIND_COMPILER_TOOLING_TARGET} INTERFACE)
+target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
+  INTERFACE Salts::CmdParser Salts::Mustache)
+set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
+  PROPERTIES FOLDER "tbe/tbe_compiler")
+
 set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
@@ -18,7 +25,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
 
 cmake_add_executable(tbe_compiler
   SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS Salts::TbeSchema Salts::CmdParser Salts::Mustache Salts::Core
+  LIBS Salts::TbeSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(tbe_compiler
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
@@ -49,9 +56,17 @@ install(
 # Tests
 # =============================================================================
 
+add_test(NAME test_databind_compiler_tooling_boundary
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_tooling_boundary.cmake")
+set_tests_properties(test_databind_compiler_tooling_boundary
+  PROPERTIES LABELS "databind;package;compiler")
+
+
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
+  LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     C_STRUCT_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -68,12 +83,12 @@ target_include_directories(test_tbe_compiler
 
 cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
+  LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
 cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
+  LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
   PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
