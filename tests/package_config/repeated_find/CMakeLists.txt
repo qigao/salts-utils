@@ -12,6 +12,11 @@ find_package(SaltsUtils CONFIG REQUIRED
   PATHS "${SALTS_UTILS_PACKAGE_DIR}" NO_DEFAULT_PATH)
 find_package(SaltsUtils CONFIG REQUIRED)
 
-if(NOT TARGET Salts::DataBind)
-  message(FATAL_ERROR "Repeated package discovery lost Salts::DataBind")
-endif()
+foreach(legacy_target IN ITEMS
+    Salts::DataBind Salts::DataBindCore Salts::DataBindCMeta
+    Salts::DataBindCFlow Salts::TbeSchema Salts::SchemaBE)
+  if(TARGET ${legacy_target})
+    message(FATAL_ERROR
+      "SaltsUtils must not export legacy DataBind ownership: ${legacy_target}")
+  endif()
+endforeach()
