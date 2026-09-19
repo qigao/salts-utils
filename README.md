@@ -2,7 +2,7 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared type, ownership, execution, and error semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, schema tooling, and related utilities.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared type, ownership, execution, and error semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, and related utilities. DataBind now has an independent installed package owner even though its sources are still physically hosted in this repository during staged extraction.
 
 It deliberately does **not** create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
 
@@ -30,9 +30,9 @@ Salts
 ```
 
 SaltsUtils is the **general-purpose extension layer**. Protocol networking belongs in
-[salts-net](https://github.com/qigao/salts-net). DataBind is being separated into a sibling package/repository so schema/compiler/data-binding concerns do not remain coupled to the general utility bundle.
+[salts-net](https://github.com/qigao/salts-net). DataBind is already a sibling **package owner** for schema/compiler/data-binding concerns; only the physical repository extraction remains staged.
 
-Until that extraction is complete, the existing `Salts::TbeSchema`, `Salts::DataBind`, and related generator targets are still built and exported from this repository. This README documents that transition explicitly rather than presenting the target split as already complete.
+The DataBind sources and compiler are still physically built from this repository, but `SaltsUtilsTargets` no longer owns or exports DataBind/TBE targets. Consumers resolve the independent `DataBindConfig.cmake` package explicitly.
 
 ## Main capabilities
 
@@ -46,7 +46,7 @@ Until that extraction is complete, the existing `Salts::TbeSchema`, `Salts::Data
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
-| Transitional schema/binding | TBE schema/compiler and DataBind until the sibling split is completed |
+| DataBind source hosting | DataBind/TBE sources and compiler remain physically hosted here during repository extraction; package ownership is independent |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
@@ -96,12 +96,14 @@ target_link_libraries(app PRIVATE
 
 The package is fail-fast by design. It does not silently search unrelated prefixes, source trees, compatibility shims, or fallback implementations when the required installed Salts profile is missing.
 
-### Transitional DataBind targets
+### Independent DataBind package
 
-Until the DataBind repository/package extraction is complete:
+DataBind is resolved from its own package root:
 
 ```cmake
-find_package(SaltsUtils CONFIG REQUIRED)
+find_package(DataBind 3 CONFIG REQUIRED
+  PATHS "$ENV{DATABIND_ROOT}"
+  NO_DEFAULT_PATH)
 
 target_link_libraries(app PRIVATE
   Salts::TbeSchema
@@ -109,7 +111,7 @@ target_link_libraries(app PRIVATE
   Salts::DataBindCFlow)
 ```
 
-Consumers should treat those targets as a boundary in transition, not as permanent evidence that DataBind belongs to the general SaltsUtils utility layer.
+The canonical target namespace remains `Salts::`, but ownership comes from `DataBindConfig.cmake`, not `SaltsUtilsConfig.cmake`. Base DataBind discovery requires Salts only; concrete adapter components resolve SaltsUtils explicitly when requested. There is no forwarding package or fallback through SaltsUtils.
 
 ## Selected modules
 
@@ -139,7 +141,7 @@ The Unicode component uses generated data with a fixed Unicode version and expos
 
 ## Schema / DataBind transition
 
-The current repository still contains the TBE compiler and DataBind implementation. The long-term ecosystem boundary is a sibling **DataBind** layer focused on:
+The current repository still physically contains the TBE compiler and DataBind implementation, but the installed package boundary is already a sibling **DataBind** owner focused on:
 
 - schema definition and validation;
 - compiler/code generation;
@@ -148,7 +150,7 @@ The current repository still contains the TBE compiler and DataBind implementati
 - format orchestration over parser/token contracts;
 - adapters to CMeta, CSTL, CSerde, and CFlow.
 
-The split should preserve one semantic source of truth: **CMeta owns native type identity; DataBind owns schema/binding concerns.**
+The remaining physical repository extraction must preserve one semantic source of truth: **CMeta owns native type identity; DataBind owns schema/binding concerns.**
 
 Current detailed documentation remains available at:
 
