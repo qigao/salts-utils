@@ -230,20 +230,12 @@ struct data_bind_stream_t {
   int query_limits_configured;
   size_t total_input_bytes;
   size_t result_count;
-  DataBindStatus (*feed_fn)(data_bind_stream_t *parser, const char *data, size_t len,
-                            DataBindError *error);
-  DataBindStatus (*finish_fn)(data_bind_stream_t *parser, DataBindValue **out_value,
-                              DataBindError *error);
-  DataBindStatus (*bind_fn)(DataBind *codec, const char *type_name, const char *text, size_t len,
-                            const char *path, const DataBindQueryLimits *query_limits,
-                            DataBindQueryDiagnostic *query_diagnostic,
-                            DataBindValue **out_value, DataBindError *error);
+  data_bind_stream_provider_lease provider;
   char *buffer;
   size_t size;
   size_t capacity;
   DataBindValue *csv_values;
   DataBindValue *stream_values;
-  data_bind_stream_format_state *format_state;
   int finished;
   int started;
   int record_callback_stopped;
@@ -251,6 +243,77 @@ struct data_bind_stream_t {
   int limit_failed;
   int canceled;
 };
+
+static data_bind_stream_format_state *data_bind_stream_provider_state(
+    data_bind_stream_t *stream) {
+  if (stream == NULL) return NULL;
+  return (data_bind_stream_format_state *)stream->provider.state;
+}
+
+static int data_bind_stream_provider_ops_valid(
+    const data_bind_stream_provider_ops *ops) {
+  return ops != NULL &&
+         ops->size >= offsetof(data_bind_stream_provider_ops, destroy) +
+                         sizeof(ops->destroy) &&
+         ops->abi_version == DATA_BIND_STREAM_PROVIDER_OPS_ABI_VERSION &&
+         ops->feed != NULL && ops->finish != NULL && ops->bind != NULL &&
+         ops->cancel != NULL && ops->destroy != NULL;
+}
+
+static DataBindStatus data_bind_stream_provider_feed(
+    data_bind_stream_t *stream, const char *data, size_t len,
+    DataBindError *error) {
+  data_bind_stream_format_state *state =
+      data_bind_stream_provider_state(stream);
+  if (state == NULL || state->feed_impl == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  return state->feed_impl(stream, data, len, error);
+}
+
+static DataBindStatus data_bind_stream_provider_finish(
+    data_bind_stream_t *stream, DataBindValue **out_value,
+    DataBindError *error) {
+  data_bind_stream_format_state *state =
+      data_bind_stream_provider_state(stream);
+  if (state == NULL || state->finish_impl == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  return state->finish_impl(stream, out_value, error);
+}
+
+static DataBindStatus data_bind_stream_provider_bind(
+    data_bind_stream_t *stream, const char *text, size_t len,
+    DataBindValue **out_value, DataBindError *error) {
+  data_bind_stream_format_state *state =
+      data_bind_stream_provider_state(stream);
+  if (stream == NULL || state == NULL || state->bind_impl == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  return state->bind_impl(
+      stream->codec, stream->type_name, text, len, stream->path_or_expr,
+      stream->query_limits_configured ? &stream->query_limits : NULL,
+      &stream->query_diagnostic, out_value, error);
+}
+
+static DataBindStatus data_bind_stream_provider_cancel(
+    data_bind_stream_t *stream, DataBindError *error) {
+  (void)error;
+  return stream != NULL ? DATA_BIND_OK : DATA_BIND_ERR_INVALID_ARG;
+}
+
+static void data_bind_stream_provider_destroy(data_bind_stream_t *stream) {
+  data_bind_stream_format_state *state =
+      data_bind_stream_provider_state(stream);
+  data_bind_stream_format_state_cleanup(state);
+  if (stream != NULL) stream->provider.state = NULL;
+}
+
+static const data_bind_stream_provider_ops DATA_BIND_STREAM_PROVIDER_OPS = {
+    sizeof(data_bind_stream_provider_ops),
+    DATA_BIND_STREAM_PROVIDER_OPS_ABI_VERSION,
+    data_bind_stream_provider_feed,
+    data_bind_stream_provider_finish,
+    data_bind_stream_provider_bind,
+    data_bind_stream_provider_cancel,
+    data_bind_stream_provider_destroy};
 
 static DataBindStatus data_bind_query_failure_status(
     const DataBindQueryDiagnostic *diagnostic);
@@ -6724,7 +6787,7 @@ static int data_bind_stream_xml_can_bind_incrementally(const char *path) {
 
 static void data_bind_stream_error_msg(data_bind_stream_t *parser, const char *message) {
   if (parser == NULL || message == NULL) return;
-  snprintf(parser->format_state->stream_error, sizeof(parser->format_state->stream_error), "%s", message);
+  snprintf(data_bind_stream_provider_state(parser)->stream_error, sizeof(data_bind_stream_provider_state(parser)->stream_error), "%s", message);
 }
 
 static int data_bind_stream_limit_exceeded(size_t current, size_t added, size_t limit) {
@@ -6858,7 +6921,7 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
     data_bind_stream_error_msg(parser, "JSON stream item bind failed");
     return -1;
   }
-  if (parser->format_state->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST) {
+  if (data_bind_stream_provider_state(parser)->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST) {
     DataBindStatus identity_status = db_dynamic_attach_root(
         parser->codec, parser->type_name, 0, item);
     if (identity_status != DATA_BIND_OK) {
@@ -6885,7 +6948,7 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
       parser->stream_values = item;
     }
     parser->result_count++;
-    parser->format_state->json_stream_done = 1;
+    data_bind_stream_provider_state(parser)->json_stream_done = 1;
     return 0;
   }
   return data_bind_stream_values_push(parser, item, "JSON stream item append failed");
@@ -6894,33 +6957,33 @@ static int data_bind_stream_json_bind_value(data_bind_stream_t *parser, json_val
 static int data_bind_stream_json_frame_reserve(data_bind_stream_t *parser) {
   data_bind_json_stream_frame_t *grown;
   size_t next_capacity;
-  if (parser->format_state->json_frame_count < parser->format_state->json_frame_capacity) return 0;
-  if (parser->format_state->json_frame_count >= DATA_BIND_JSON_STREAM_MAX_DEPTH) {
+  if (data_bind_stream_provider_state(parser)->json_frame_count < data_bind_stream_provider_state(parser)->json_frame_capacity) return 0;
+  if (data_bind_stream_provider_state(parser)->json_frame_count >= DATA_BIND_JSON_STREAM_MAX_DEPTH) {
     data_bind_stream_error_msg(parser, "JSON stream nesting too deep");
     return -1;
   }
-  next_capacity = parser->format_state->json_frame_capacity == 0 ? 8 : parser->format_state->json_frame_capacity * 2;
+  next_capacity = data_bind_stream_provider_state(parser)->json_frame_capacity == 0 ? 8 : data_bind_stream_provider_state(parser)->json_frame_capacity * 2;
   if (next_capacity > DATA_BIND_JSON_STREAM_MAX_DEPTH)
     next_capacity = DATA_BIND_JSON_STREAM_MAX_DEPTH;
-  if (next_capacity <= parser->format_state->json_frame_capacity) {
+  if (next_capacity <= data_bind_stream_provider_state(parser)->json_frame_capacity) {
     data_bind_stream_error_msg(parser, "JSON stream nesting too deep");
     return -1;
   }
   grown =
-      (data_bind_json_stream_frame_t *)realloc(parser->format_state->json_frames, next_capacity * sizeof(*grown));
+      (data_bind_json_stream_frame_t *)realloc(data_bind_stream_provider_state(parser)->json_frames, next_capacity * sizeof(*grown));
   if (grown == NULL) {
     data_bind_stream_error_msg(parser, "Out of memory growing JSON stream stack");
     return -1;
   }
-  parser->format_state->json_frames = grown;
-  parser->format_state->json_frame_capacity = next_capacity;
+  data_bind_stream_provider_state(parser)->json_frames = grown;
+  data_bind_stream_provider_state(parser)->json_frame_capacity = next_capacity;
   return 0;
 }
 
 static int data_bind_stream_json_attach_value(data_bind_stream_t *parser, json_value_t *value) {
   data_bind_json_stream_frame_t *parent;
-  if (parser->format_state->json_frame_count == 0) return 0;
-  parent = &parser->format_state->json_frames[parser->format_state->json_frame_count - 1];
+  if (data_bind_stream_provider_state(parser)->json_frame_count == 0) return 0;
+  parent = &data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count - 1];
   if (parent->is_object) {
     if (parent->pending_key == NULL) {
       data_bind_stream_error_msg(parser, "JSON stream object value without key");
@@ -6946,16 +7009,16 @@ static int data_bind_stream_json_scalar(data_bind_stream_t *parser, json_value_t
     data_bind_stream_error_msg(parser, "Out of memory creating JSON stream value");
     return -1;
   }
-  if (!parser->format_state->json_stream_active || parser->format_state->json_sax_depth == 0) {
+  if (!data_bind_stream_provider_state(parser)->json_stream_active || data_bind_stream_provider_state(parser)->json_sax_depth == 0) {
     (json_free(value), value = NULL);
     return 0;
   }
-  if (parser->format_state->json_sax_depth == 1 || parser->format_state->json_frame_count > 0) {
+  if (data_bind_stream_provider_state(parser)->json_sax_depth == 1 || data_bind_stream_provider_state(parser)->json_frame_count > 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
       (json_free(value), value = NULL);
       return -1;
     }
-    if (parser->format_state->json_frame_count == 0) {
+    if (data_bind_stream_provider_state(parser)->json_frame_count == 0) {
       return data_bind_stream_json_bind_value(parser, value);
     }
   } else {
@@ -6971,11 +7034,11 @@ static int data_bind_stream_json_container_start(data_bind_stream_t *parser, jso
     data_bind_stream_error_msg(parser, "Out of memory creating JSON stream value");
     return -1;
   }
-  if (!parser->format_state->json_stream_active || parser->format_state->json_sax_depth == 0) {
+  if (!data_bind_stream_provider_state(parser)->json_stream_active || data_bind_stream_provider_state(parser)->json_sax_depth == 0) {
     (json_free(value), value = NULL);
     return 0;
   }
-  if (parser->format_state->json_sax_depth != 1 && parser->format_state->json_frame_count == 0) {
+  if (data_bind_stream_provider_state(parser)->json_sax_depth != 1 && data_bind_stream_provider_state(parser)->json_frame_count == 0) {
     (json_free(value), value = NULL);
     return 0;
   }
@@ -6984,7 +7047,7 @@ static int data_bind_stream_json_container_start(data_bind_stream_t *parser, jso
     (json_free(value), value = NULL);
     return -1;
   }
-  frame = &parser->format_state->json_frames[parser->format_state->json_frame_count++];
+  frame = &data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count++];
   frame->value = value;
   frame->pending_key = NULL;
   frame->is_object = is_object;
@@ -6993,15 +7056,15 @@ static int data_bind_stream_json_container_start(data_bind_stream_t *parser, jso
 
 static int data_bind_stream_json_container_end(data_bind_stream_t *parser, int is_object) {
   data_bind_json_stream_frame_t frame;
-  if (parser == NULL || !parser->format_state->json_stream_active || parser->format_state->json_frame_count == 0) return 0;
-  frame = parser->format_state->json_frames[parser->format_state->json_frame_count - 1];
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->json_stream_active || data_bind_stream_provider_state(parser)->json_frame_count == 0) return 0;
+  frame = data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count - 1];
   if (frame.is_object != is_object) {
     data_bind_stream_error_msg(parser, "JSON stream container mismatch");
     return -1;
   }
   free(frame.pending_key);
-  parser->format_state->json_frames[--parser->format_state->json_frame_count].pending_key = NULL;
-  if (parser->format_state->json_frame_count == 0) {
+  data_bind_stream_provider_state(parser)->json_frames[--data_bind_stream_provider_state(parser)->json_frame_count].pending_key = NULL;
+  if (data_bind_stream_provider_state(parser)->json_frame_count == 0) {
     return data_bind_stream_json_bind_value(parser, frame.value);
   }
   return 0;
@@ -7043,8 +7106,8 @@ static int data_bind_stream_json_on_string(void *ctx, const char *val, size_t le
 static int data_bind_stream_json_on_object_key(void *ctx, const char *key, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   data_bind_json_stream_frame_t *frame;
-  if (parser == NULL || !parser->format_state->json_stream_active || parser->format_state->json_frame_count == 0) return 0;
-  frame = &parser->format_state->json_frames[parser->format_state->json_frame_count - 1];
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->json_stream_active || data_bind_stream_provider_state(parser)->json_frame_count == 0) return 0;
+  frame = &data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count - 1];
   if (!frame->is_object) return 0;
   free(frame->pending_key);
   frame->pending_key = data_bind_stream_copy_slice(key, len);
@@ -7059,21 +7122,21 @@ static int data_bind_stream_json_on_object_start(void *ctx) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   int rc = 0;
   if (parser == NULL) return -1;
-  if (parser->format_state->json_sax_depth == 0) {
-    parser->format_state->json_root_seen = 1;
+  if (data_bind_stream_provider_state(parser)->json_sax_depth == 0) {
+    data_bind_stream_provider_state(parser)->json_root_seen = 1;
   } else {
     rc = data_bind_stream_json_container_start(parser, json_create_object(), 1);
   }
-  parser->format_state->json_sax_depth++;
+  data_bind_stream_provider_state(parser)->json_sax_depth++;
   return rc;
 }
 
 static int data_bind_stream_json_on_object_end(void *ctx) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   int rc;
-  if (parser == NULL || parser->format_state->json_sax_depth == 0) return -1;
+  if (parser == NULL || data_bind_stream_provider_state(parser)->json_sax_depth == 0) return -1;
   rc = data_bind_stream_json_container_end(parser, 1);
-  parser->format_state->json_sax_depth--;
+  data_bind_stream_provider_state(parser)->json_sax_depth--;
   return rc;
 }
 
@@ -7081,10 +7144,10 @@ static int data_bind_stream_json_on_array_start(void *ctx) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   int rc = 0;
   if (parser == NULL) return -1;
-  if (parser->format_state->json_sax_depth == 0) {
-    parser->format_state->json_root_seen = 1;
-    if (parser->format_state->json_stream_candidate) {
-      parser->format_state->json_stream_active = 1;
+  if (data_bind_stream_provider_state(parser)->json_sax_depth == 0) {
+    data_bind_stream_provider_state(parser)->json_root_seen = 1;
+    if (data_bind_stream_provider_state(parser)->json_stream_candidate) {
+      data_bind_stream_provider_state(parser)->json_stream_active = 1;
       free(parser->buffer);
       parser->buffer = NULL;
       parser->size = 0;
@@ -7093,20 +7156,20 @@ static int data_bind_stream_json_on_array_start(void *ctx) {
   } else {
     rc = data_bind_stream_json_container_start(parser, json_create_array(), 0);
   }
-  parser->format_state->json_sax_depth++;
+  data_bind_stream_provider_state(parser)->json_sax_depth++;
   return rc;
 }
 
 static int data_bind_stream_json_on_array_end(void *ctx) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   int rc = 0;
-  if (parser == NULL || parser->format_state->json_sax_depth == 0) return -1;
-  if (parser->format_state->json_stream_active && parser->format_state->json_sax_depth == 1) {
-    parser->format_state->json_stream_done = 1;
+  if (parser == NULL || data_bind_stream_provider_state(parser)->json_sax_depth == 0) return -1;
+  if (data_bind_stream_provider_state(parser)->json_stream_active && data_bind_stream_provider_state(parser)->json_sax_depth == 1) {
+    data_bind_stream_provider_state(parser)->json_stream_done = 1;
   } else {
     rc = data_bind_stream_json_container_end(parser, 0);
   }
-  parser->format_state->json_sax_depth--;
+  data_bind_stream_provider_state(parser)->json_sax_depth--;
   return rc;
 }
 
@@ -7114,17 +7177,17 @@ static int data_bind_stream_json_path_match_start(void *ctx, json_type_t type) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   (void)type;
   if (parser == NULL) return -1;
-  if (parser->format_state->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST &&
-      parser->format_state->json_stream_done) {
-    parser->format_state->json_stream_active = 0;
+  if (data_bind_stream_provider_state(parser)->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST &&
+      data_bind_stream_provider_state(parser)->json_stream_done) {
+    data_bind_stream_provider_state(parser)->json_stream_active = 0;
     return 0;
   }
-  if (parser->format_state->json_stream_active || parser->format_state->json_frame_count != 0 ||
-      parser->format_state->json_match_value != NULL) {
+  if (data_bind_stream_provider_state(parser)->json_stream_active || data_bind_stream_provider_state(parser)->json_frame_count != 0 ||
+      data_bind_stream_provider_state(parser)->json_match_value != NULL) {
     data_bind_stream_error_msg(parser, "Overlapping JSONPath stream matches are unsupported");
     return -1;
   }
-  parser->format_state->json_stream_active = 1;
+  data_bind_stream_provider_state(parser)->json_stream_active = 1;
   return 0;
 }
 
@@ -7133,17 +7196,17 @@ static int data_bind_stream_json_path_scalar(data_bind_stream_t *parser, json_va
     data_bind_stream_error_msg(parser, "Out of memory creating JSONPath stream value");
     return -1;
   }
-  if (parser == NULL || !parser->format_state->json_stream_active) {
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->json_stream_active) {
     (json_free(value), value = NULL);
     return 0;
   }
-  if (parser->format_state->json_frame_count != 0) {
+  if (data_bind_stream_provider_state(parser)->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
       (json_free(value), value = NULL);
       return -1;
     }
-  } else if (parser->format_state->json_match_value == NULL) {
-    parser->format_state->json_match_value = value;
+  } else if (data_bind_stream_provider_state(parser)->json_match_value == NULL) {
+    data_bind_stream_provider_state(parser)->json_match_value = value;
   } else {
     (json_free(value), value = NULL);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root values");
@@ -7159,7 +7222,7 @@ static int data_bind_stream_json_path_container_start(data_bind_stream_t *parser
     data_bind_stream_error_msg(parser, "Out of memory creating JSONPath stream container");
     return -1;
   }
-  if (parser == NULL || !parser->format_state->json_stream_active) {
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->json_stream_active) {
     (json_free(value), value = NULL);
     return 0;
   }
@@ -7167,19 +7230,19 @@ static int data_bind_stream_json_path_container_start(data_bind_stream_t *parser
     (json_free(value), value = NULL);
     return -1;
   }
-  if (parser->format_state->json_frame_count != 0) {
+  if (data_bind_stream_provider_state(parser)->json_frame_count != 0) {
     if (data_bind_stream_json_attach_value(parser, value) != 0) {
       (json_free(value), value = NULL);
       return -1;
     }
-  } else if (parser->format_state->json_match_value == NULL) {
-    parser->format_state->json_match_value = value;
+  } else if (data_bind_stream_provider_state(parser)->json_match_value == NULL) {
+    data_bind_stream_provider_state(parser)->json_match_value = value;
   } else {
     (json_free(value), value = NULL);
     data_bind_stream_error_msg(parser, "JSONPath stream match has multiple root containers");
     return -1;
   }
-  frame = &parser->format_state->json_frames[parser->format_state->json_frame_count++];
+  frame = &data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count++];
   frame->value = value;
   frame->pending_key = NULL;
   frame->is_object = is_object;
@@ -7188,19 +7251,19 @@ static int data_bind_stream_json_path_container_start(data_bind_stream_t *parser
 
 static int data_bind_stream_json_path_container_end(data_bind_stream_t *parser, int is_object) {
   data_bind_json_stream_frame_t *frame;
-  if (parser == NULL || !parser->format_state->json_stream_active) return 0;
-  if (parser->format_state->json_frame_count == 0) {
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->json_stream_active) return 0;
+  if (data_bind_stream_provider_state(parser)->json_frame_count == 0) {
     data_bind_stream_error_msg(parser, "JSONPath stream container stack underflow");
     return -1;
   }
-  frame = &parser->format_state->json_frames[parser->format_state->json_frame_count - 1U];
+  frame = &data_bind_stream_provider_state(parser)->json_frames[data_bind_stream_provider_state(parser)->json_frame_count - 1U];
   if (frame->is_object != is_object) {
     data_bind_stream_error_msg(parser, "JSONPath stream container mismatch");
     return -1;
   }
   free(frame->pending_key);
   frame->pending_key = NULL;
-  parser->format_state->json_frame_count--;
+  data_bind_stream_provider_state(parser)->json_frame_count--;
   return 0;
 }
 
@@ -7209,14 +7272,14 @@ static int data_bind_stream_json_path_match_end(void *ctx, json_type_t type) {
   json_value_t *matched;
   (void)type;
   if (parser == NULL) return -1;
-  if (!parser->format_state->json_stream_active) return 0;
-  if (parser->format_state->json_frame_count != 0 || parser->format_state->json_match_value == NULL) {
+  if (!data_bind_stream_provider_state(parser)->json_stream_active) return 0;
+  if (data_bind_stream_provider_state(parser)->json_frame_count != 0 || data_bind_stream_provider_state(parser)->json_match_value == NULL) {
     data_bind_stream_error_msg(parser, "Incomplete JSONPath stream match");
     return -1;
   }
-  matched = parser->format_state->json_match_value;
-  parser->format_state->json_match_value = NULL;
-  parser->format_state->json_stream_active = 0;
+  matched = data_bind_stream_provider_state(parser)->json_match_value;
+  data_bind_stream_provider_state(parser)->json_match_value = NULL;
+  data_bind_stream_provider_state(parser)->json_stream_active = 0;
   return data_bind_stream_json_bind_value(parser, matched);
 }
 
@@ -7276,13 +7339,13 @@ static int data_bind_stream_json_path_on_array_end(void *ctx) {
 
 static int data_bind_stream_xml_append(data_bind_stream_t *parser, const char *text, size_t len) {
   tstr next;
-  if (parser == NULL || !parser->format_state->xml_capture_active || len == 0) return 0;
-  next = tstr_cat_len(parser->format_state->xml_capture, text, len);
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active || len == 0) return 0;
+  next = tstr_cat_len(data_bind_stream_provider_state(parser)->xml_capture, text, len);
   if (next == NULL) {
     data_bind_stream_error_msg(parser, "Out of memory extending XML stream item");
     return -1;
   }
-  parser->format_state->xml_capture = next;
+  data_bind_stream_provider_state(parser)->xml_capture = next;
   return 0;
 }
 
@@ -7291,9 +7354,9 @@ static int data_bind_stream_xml_append_char(data_bind_stream_t *parser, char ch)
 }
 
 static int data_bind_stream_xml_close_start(data_bind_stream_t *parser) {
-  if (parser != NULL && parser->format_state->xml_capture_active && parser->format_state->xml_open_start) {
+  if (parser != NULL && data_bind_stream_provider_state(parser)->xml_capture_active && data_bind_stream_provider_state(parser)->xml_open_start) {
     if (data_bind_stream_xml_append_char(parser, '>') != 0) return -1;
-    parser->format_state->xml_open_start = 0;
+    data_bind_stream_provider_state(parser)->xml_open_start = 0;
   }
   return 0;
 }
@@ -7301,8 +7364,8 @@ static int data_bind_stream_xml_close_start(data_bind_stream_t *parser) {
 static int data_bind_stream_xml_bind_capture(data_bind_stream_t *parser) {
   salts_xml_document doc = {0};
   DataBindValue *item;
-  if (parser == NULL || parser->format_state->xml_capture == NULL) return -1;
-  if (salts_xml_parse(&doc, parser->format_state->xml_capture, tstr_len(parser->format_state->xml_capture),
+  if (parser == NULL || data_bind_stream_provider_state(parser)->xml_capture == NULL) return -1;
+  if (salts_xml_parse(&doc, data_bind_stream_provider_state(parser)->xml_capture, tstr_len(data_bind_stream_provider_state(parser)->xml_capture),
                       NULL, NULL) != SALTS_XML_OK) {
     data_bind_stream_error_msg(parser, "XML stream item parse failed");
     return -1;
@@ -7322,15 +7385,15 @@ static int data_bind_stream_xml_name_eq(const char *left, size_t left_len, const
 
 static int data_bind_stream_xml_on_element_start(void *ctx, const char *name, size_t name_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  if (parser == NULL || !parser->format_state->xml_stream_candidate) return 0;
-  if (!parser->format_state->xml_capture_active &&
-      !data_bind_stream_xml_name_eq(name, name_len, parser->format_state->xml_stream_target)) {
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_stream_candidate) return 0;
+  if (!data_bind_stream_provider_state(parser)->xml_capture_active &&
+      !data_bind_stream_xml_name_eq(name, name_len, data_bind_stream_provider_state(parser)->xml_stream_target)) {
     return 0;
   }
-  if (!parser->format_state->xml_capture_active) {
-    tstr_clear(parser->format_state->xml_capture);
-    parser->format_state->xml_capture_active = 1;
-    parser->format_state->xml_capture_depth = 0;
+  if (!data_bind_stream_provider_state(parser)->xml_capture_active) {
+    tstr_clear(data_bind_stream_provider_state(parser)->xml_capture);
+    data_bind_stream_provider_state(parser)->xml_capture_active = 1;
+    data_bind_stream_provider_state(parser)->xml_capture_depth = 0;
   } else if (data_bind_stream_xml_close_start(parser) != 0) {
     return -1;
   }
@@ -7338,15 +7401,15 @@ static int data_bind_stream_xml_on_element_start(void *ctx, const char *name, si
       data_bind_stream_xml_append(parser, name, name_len) != 0) {
     return -1;
   }
-  parser->format_state->xml_open_start = 1;
-  parser->format_state->xml_capture_depth++;
+  data_bind_stream_provider_state(parser)->xml_open_start = 1;
+  data_bind_stream_provider_state(parser)->xml_capture_depth++;
   return 0;
 }
 
 static int data_bind_stream_xml_on_attribute(void *ctx, const char *name, size_t name_len,
                                              const char *value, size_t value_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  if (parser == NULL || !parser->format_state->xml_capture_active || !parser->format_state->xml_open_start) return 0;
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active || !data_bind_stream_provider_state(parser)->xml_open_start) return 0;
   if (data_bind_stream_xml_append_char(parser, ' ') != 0 ||
       data_bind_stream_xml_append(parser, name, name_len) != 0 ||
       data_bind_stream_xml_append(parser, "=\"", 2) != 0 ||
@@ -7360,19 +7423,19 @@ static int data_bind_stream_xml_on_attribute(void *ctx, const char *name, size_t
 static int data_bind_stream_xml_on_element_end(void *ctx, const char *name, size_t name_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
   int rc;
-  if (parser == NULL || !parser->format_state->xml_capture_active) return 0;
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active) return 0;
   if (data_bind_stream_xml_close_start(parser) != 0 ||
       data_bind_stream_xml_append(parser, "</", 2) != 0 ||
       data_bind_stream_xml_append(parser, name, name_len) != 0 ||
       data_bind_stream_xml_append_char(parser, '>') != 0) {
     return -1;
   }
-  if (parser->format_state->xml_capture_depth > 0) parser->format_state->xml_capture_depth--;
-  if (parser->format_state->xml_capture_depth == 0) {
+  if (data_bind_stream_provider_state(parser)->xml_capture_depth > 0) data_bind_stream_provider_state(parser)->xml_capture_depth--;
+  if (data_bind_stream_provider_state(parser)->xml_capture_depth == 0) {
     rc = data_bind_stream_xml_bind_capture(parser);
-    parser->format_state->xml_capture_active = 0;
-    parser->format_state->xml_open_start = 0;
-    tstr_clear(parser->format_state->xml_capture);
+    data_bind_stream_provider_state(parser)->xml_capture_active = 0;
+    data_bind_stream_provider_state(parser)->xml_open_start = 0;
+    tstr_clear(data_bind_stream_provider_state(parser)->xml_capture);
     return rc;
   }
   return 0;
@@ -7380,14 +7443,14 @@ static int data_bind_stream_xml_on_element_end(void *ctx, const char *name, size
 
 static int data_bind_stream_xml_on_text(void *ctx, const char *text, size_t text_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  if (parser == NULL || !parser->format_state->xml_capture_active) return 0;
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active) return 0;
   if (data_bind_stream_xml_close_start(parser) != 0) return -1;
   return data_bind_stream_xml_append(parser, text, text_len);
 }
 
 static int data_bind_stream_xml_on_comment(void *ctx, const char *text, size_t text_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  if (parser == NULL || !parser->format_state->xml_capture_active) return 0;
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active) return 0;
   if (data_bind_stream_xml_close_start(parser) != 0 ||
       data_bind_stream_xml_append(parser, "<!--", 4) != 0 ||
       data_bind_stream_xml_append(parser, text, text_len) != 0 ||
@@ -7399,7 +7462,7 @@ static int data_bind_stream_xml_on_comment(void *ctx, const char *text, size_t t
 
 static int data_bind_stream_xml_on_cdata(void *ctx, const char *text, size_t text_len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)ctx;
-  if (parser == NULL || !parser->format_state->xml_capture_active) return 0;
+  if (parser == NULL || !data_bind_stream_provider_state(parser)->xml_capture_active) return 0;
   if (data_bind_stream_xml_close_start(parser) != 0 ||
       data_bind_stream_xml_append(parser, "<![CDATA[", 9) != 0 ||
       data_bind_stream_xml_append(parser, text, text_len) != 0 ||
@@ -7450,23 +7513,23 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
   const char *message = "Stream parse failed";
   const char *path = "stream";
   if (parser != NULL) {
-    if (parser->format_state->stream_error[0] != '\0') {
-      message = parser->format_state->stream_error;
-    } else if (parser->format_state->json_path_stream != NULL) {
-      message = json_path_stream_error(parser->format_state->json_path_stream);
+    if (data_bind_stream_provider_state(parser)->stream_error[0] != '\0') {
+      message = data_bind_stream_provider_state(parser)->stream_error;
+    } else if (data_bind_stream_provider_state(parser)->json_path_stream != NULL) {
+      message = json_path_stream_error(data_bind_stream_provider_state(parser)->json_path_stream);
       path = "json";
-    } else if (parser->format_state->json_sax != NULL) {
-      message = json_sax_parser_error(parser->format_state->json_sax);
+    } else if (data_bind_stream_provider_state(parser)->json_sax != NULL) {
+      message = json_sax_parser_error(data_bind_stream_provider_state(parser)->json_sax);
       path = "json";
-    } else if (parser->format_state->yaml_sax != NULL) {
-      const cyaml_error_t *native_error = cyaml_sax_parser_error(parser->format_state->yaml_sax);
+    } else if (data_bind_stream_provider_state(parser)->yaml_sax != NULL) {
+      const cyaml_error_t *native_error = cyaml_sax_parser_error(data_bind_stream_provider_state(parser)->yaml_sax);
       message = native_error ? native_error->msg : NULL;
       path = "yaml";
-    } else if (parser->format_state->xml_sax != NULL) {
-      message = salts_xml_sax_parser_error(parser->format_state->xml_sax);
+    } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
+      message = salts_xml_sax_parser_error(data_bind_stream_provider_state(parser)->xml_sax);
       path = "xml";
     }
-    parser->format_state->sax_failed = 1;
+    data_bind_stream_provider_state(parser)->sax_failed = 1;
   }
   if (message == NULL || message[0] == '\0') message = "Stream parse failed";
   if (parser != NULL && parser->canceled) {
@@ -7484,23 +7547,23 @@ static DataBindStatus data_bind_stream_sax_error(data_bind_stream_t *parser, Dat
 
 static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, const char *data,
                                                 size_t len, DataBindError *error) {
-  if (parser == NULL || parser->format_state->sax_failed) {
+  if (parser == NULL || data_bind_stream_provider_state(parser)->sax_failed) {
     return data_bind_stream_sax_error(parser, error, "stream feed");
   }
-  if (parser->format_state->json_path_stream != NULL) {
-    if (json_path_stream_feed(parser->format_state->json_path_stream, data, len) != 0) {
+  if (data_bind_stream_provider_state(parser)->json_path_stream != NULL) {
+    if (json_path_stream_feed(data_bind_stream_provider_state(parser)->json_path_stream, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream feed");
     }
-  } else if (parser->format_state->json_sax != NULL) {
-    if (json_sax_parser_feed(parser->format_state->json_sax, data, len) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->json_sax != NULL) {
+    if (json_sax_parser_feed(data_bind_stream_provider_state(parser)->json_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream feed");
     }
-  } else if (parser->format_state->yaml_sax != NULL) {
-    if (cyaml_sax_parser_feed(parser->format_state->yaml_sax, data, len) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->yaml_sax != NULL) {
+    if (cyaml_sax_parser_feed(data_bind_stream_provider_state(parser)->yaml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream feed");
     }
-  } else if (parser->format_state->xml_sax != NULL) {
-    if (salts_xml_sax_parser_feed(parser->format_state->xml_sax, data, len) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
+    if (salts_xml_sax_parser_feed(data_bind_stream_provider_state(parser)->xml_sax, data, len) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream feed");
     }
   }
@@ -7509,23 +7572,23 @@ static DataBindStatus data_bind_stream_sax_feed(data_bind_stream_t *parser, cons
 
 static DataBindStatus data_bind_stream_sax_finish(data_bind_stream_t *parser,
                                                   DataBindError *error) {
-  if (parser == NULL || parser->format_state->sax_failed) {
+  if (parser == NULL || data_bind_stream_provider_state(parser)->sax_failed) {
     return data_bind_stream_sax_error(parser, error, "stream finish");
   }
-  if (parser->format_state->json_path_stream != NULL) {
-    if (json_path_stream_finish(parser->format_state->json_path_stream) != 0) {
+  if (data_bind_stream_provider_state(parser)->json_path_stream != NULL) {
+    if (json_path_stream_finish(data_bind_stream_provider_state(parser)->json_path_stream) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSONPath stream finish");
     }
-  } else if (parser->format_state->json_sax != NULL) {
-    if (json_sax_parser_finish(parser->format_state->json_sax) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->json_sax != NULL) {
+    if (json_sax_parser_finish(data_bind_stream_provider_state(parser)->json_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "JSON stream finish");
     }
-  } else if (parser->format_state->yaml_sax != NULL) {
-    if (cyaml_sax_parser_finish(parser->format_state->yaml_sax) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->yaml_sax != NULL) {
+    if (cyaml_sax_parser_finish(data_bind_stream_provider_state(parser)->yaml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "YAML stream finish");
     }
-  } else if (parser->format_state->xml_sax != NULL) {
-    if (salts_xml_sax_parser_finish(parser->format_state->xml_sax) != 0) {
+  } else if (data_bind_stream_provider_state(parser)->xml_sax != NULL) {
+    if (salts_xml_sax_parser_finish(data_bind_stream_provider_state(parser)->xml_sax) != 0) {
       return data_bind_stream_sax_error(parser, error, "XML stream finish");
     }
   }
@@ -7536,23 +7599,23 @@ static int data_bind_stream_csv_record_append(data_bind_stream_t *parser, char c
   char *grown;
   size_t next_capacity;
   if (parser == NULL) return 0;
-  if (parser->format_state->csv_record_len >= parser->limits.max_record_bytes) {
+  if (data_bind_stream_provider_state(parser)->csv_record_len >= parser->limits.max_record_bytes) {
     parser->limit_failed = 1;
     data_bind_stream_error_msg(parser, "CSV record byte limit exceeded");
     return 0;
   }
-  if (parser->format_state->csv_record_len + 1 >= parser->format_state->csv_record_capacity) {
-    next_capacity = parser->format_state->csv_record_capacity == 0 ? 256 : parser->format_state->csv_record_capacity * 2;
-    if (next_capacity <= parser->format_state->csv_record_capacity) return 0;
+  if (data_bind_stream_provider_state(parser)->csv_record_len + 1 >= data_bind_stream_provider_state(parser)->csv_record_capacity) {
+    next_capacity = data_bind_stream_provider_state(parser)->csv_record_capacity == 0 ? 256 : data_bind_stream_provider_state(parser)->csv_record_capacity * 2;
+    if (next_capacity <= data_bind_stream_provider_state(parser)->csv_record_capacity) return 0;
     if (next_capacity > parser->limits.max_record_bytes + 1u)
       next_capacity = parser->limits.max_record_bytes + 1u;
-    grown = (char *)realloc(parser->format_state->csv_record, next_capacity);
+    grown = (char *)realloc(data_bind_stream_provider_state(parser)->csv_record, next_capacity);
     if (grown == NULL) return 0;
-    parser->format_state->csv_record = grown;
-    parser->format_state->csv_record_capacity = next_capacity;
+    data_bind_stream_provider_state(parser)->csv_record = grown;
+    data_bind_stream_provider_state(parser)->csv_record_capacity = next_capacity;
   }
-  parser->format_state->csv_record[parser->format_state->csv_record_len++] = ch;
-  parser->format_state->csv_record[parser->format_state->csv_record_len] = '\0';
+  data_bind_stream_provider_state(parser)->csv_record[data_bind_stream_provider_state(parser)->csv_record_len++] = ch;
+  data_bind_stream_provider_state(parser)->csv_record[data_bind_stream_provider_state(parser)->csv_record_len] = '\0';
   return 1;
 }
 
@@ -7560,33 +7623,33 @@ static int data_bind_stream_csv_field_append(data_bind_stream_t *parser, char ch
   char *grown;
   size_t next_capacity;
   if (parser == NULL) return 0;
-  if (parser->format_state->csv_field_len >= parser->limits.max_field_bytes) {
+  if (data_bind_stream_provider_state(parser)->csv_field_len >= parser->limits.max_field_bytes) {
     parser->limit_failed = 1;
     data_bind_stream_error_msg(parser, "CSV field byte limit exceeded");
     return 0;
   }
-  if (parser->format_state->csv_field_len + 1 >= parser->format_state->csv_field_capacity) {
-    next_capacity = parser->format_state->csv_field_capacity == 0 ? 128 : parser->format_state->csv_field_capacity * 2;
-    if (next_capacity <= parser->format_state->csv_field_capacity) return 0;
+  if (data_bind_stream_provider_state(parser)->csv_field_len + 1 >= data_bind_stream_provider_state(parser)->csv_field_capacity) {
+    next_capacity = data_bind_stream_provider_state(parser)->csv_field_capacity == 0 ? 128 : data_bind_stream_provider_state(parser)->csv_field_capacity * 2;
+    if (next_capacity <= data_bind_stream_provider_state(parser)->csv_field_capacity) return 0;
     if (next_capacity > parser->limits.max_field_bytes + 1u)
       next_capacity = parser->limits.max_field_bytes + 1u;
-    grown = (char *)realloc(parser->format_state->csv_field, next_capacity);
+    grown = (char *)realloc(data_bind_stream_provider_state(parser)->csv_field, next_capacity);
     if (grown == NULL) return 0;
-    parser->format_state->csv_field = grown;
-    parser->format_state->csv_field_capacity = next_capacity;
+    data_bind_stream_provider_state(parser)->csv_field = grown;
+    data_bind_stream_provider_state(parser)->csv_field_capacity = next_capacity;
   }
-  parser->format_state->csv_field[parser->format_state->csv_field_len++] = ch;
-  parser->format_state->csv_field[parser->format_state->csv_field_len] = '\0';
+  data_bind_stream_provider_state(parser)->csv_field[data_bind_stream_provider_state(parser)->csv_field_len++] = ch;
+  data_bind_stream_provider_state(parser)->csv_field[data_bind_stream_provider_state(parser)->csv_field_len] = '\0';
   return 1;
 }
 
 static DataBindStatus data_bind_stream_csv_growth_error(data_bind_stream_t *parser,
                                                          DataBindError *error,
                                                          const char *oom_message) {
-  if (parser != NULL) parser->format_state->csv_failed = 1;
+  if (parser != NULL) data_bind_stream_provider_state(parser)->csv_failed = 1;
   if (parser != NULL && parser->limit_failed)
     return db_error_set(error, DATA_BIND_ERR_LIMIT, "stream.limit", -1, -1, "%s",
-                        parser->format_state->stream_error);
+                        data_bind_stream_provider_state(parser)->stream_error);
   return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1, "%s",
                       oom_message);
 }
@@ -7594,13 +7657,13 @@ static DataBindStatus data_bind_stream_csv_growth_error(data_bind_stream_t *pars
 static void data_bind_stream_csv_clear_fields(data_bind_stream_t *parser) {
   size_t i;
   if (parser == NULL) return;
-  for (i = 0; i < parser->format_state->csv_field_count; i++) {
-    free(parser->format_state->csv_field_storage[i]);
-    parser->format_state->csv_field_storage[i] = NULL;
+  for (i = 0; i < data_bind_stream_provider_state(parser)->csv_field_count; i++) {
+    free(data_bind_stream_provider_state(parser)->csv_field_storage[i]);
+    data_bind_stream_provider_state(parser)->csv_field_storage[i] = NULL;
   }
-  parser->format_state->csv_field_count = 0;
-  parser->format_state->csv_field_len = 0;
-  if (parser->format_state->csv_field != NULL) parser->format_state->csv_field[0] = '\0';
+  data_bind_stream_provider_state(parser)->csv_field_count = 0;
+  data_bind_stream_provider_state(parser)->csv_field_len = 0;
+  if (data_bind_stream_provider_state(parser)->csv_field != NULL) data_bind_stream_provider_state(parser)->csv_field[0] = '\0';
 }
 
 static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
@@ -7610,28 +7673,28 @@ static int data_bind_stream_csv_finish_field(data_bind_stream_t *parser) {
   size_t next_capacity;
 
   if (parser == NULL) return 0;
-  if (parser->format_state->csv_field_count >= parser->format_state->csv_fields_capacity) {
-    next_capacity = parser->format_state->csv_fields_capacity == 0 ? 8 : parser->format_state->csv_fields_capacity * 2;
-    if (next_capacity <= parser->format_state->csv_fields_capacity) return 0;
-    grown_fields = (vstr *)realloc(parser->format_state->csv_fields, next_capacity * sizeof(*grown_fields));
+  if (data_bind_stream_provider_state(parser)->csv_field_count >= data_bind_stream_provider_state(parser)->csv_fields_capacity) {
+    next_capacity = data_bind_stream_provider_state(parser)->csv_fields_capacity == 0 ? 8 : data_bind_stream_provider_state(parser)->csv_fields_capacity * 2;
+    if (next_capacity <= data_bind_stream_provider_state(parser)->csv_fields_capacity) return 0;
+    grown_fields = (vstr *)realloc(data_bind_stream_provider_state(parser)->csv_fields, next_capacity * sizeof(*grown_fields));
     if (grown_fields == NULL) return 0;
-    parser->format_state->csv_fields = grown_fields;
+    data_bind_stream_provider_state(parser)->csv_fields = grown_fields;
     grown_storage =
-        (char **)realloc(parser->format_state->csv_field_storage, next_capacity * sizeof(*grown_storage));
+        (char **)realloc(data_bind_stream_provider_state(parser)->csv_field_storage, next_capacity * sizeof(*grown_storage));
     if (grown_storage == NULL) return 0;
-    parser->format_state->csv_field_storage = grown_storage;
-    parser->format_state->csv_fields_capacity = next_capacity;
+    data_bind_stream_provider_state(parser)->csv_field_storage = grown_storage;
+    data_bind_stream_provider_state(parser)->csv_fields_capacity = next_capacity;
   }
 
-  field_copy = (char *)malloc(parser->format_state->csv_field_len + 1);
+  field_copy = (char *)malloc(data_bind_stream_provider_state(parser)->csv_field_len + 1);
   if (field_copy == NULL) return 0;
-  if (parser->format_state->csv_field_len > 0) memcpy(field_copy, parser->format_state->csv_field, parser->format_state->csv_field_len);
-  field_copy[parser->format_state->csv_field_len] = '\0';
-  parser->format_state->csv_field_storage[parser->format_state->csv_field_count] = field_copy;
-  parser->format_state->csv_fields[parser->format_state->csv_field_count] = vstr_from_buf(field_copy, parser->format_state->csv_field_len);
-  parser->format_state->csv_field_count++;
-  parser->format_state->csv_field_len = 0;
-  if (parser->format_state->csv_field != NULL) parser->format_state->csv_field[0] = '\0';
+  if (data_bind_stream_provider_state(parser)->csv_field_len > 0) memcpy(field_copy, data_bind_stream_provider_state(parser)->csv_field, data_bind_stream_provider_state(parser)->csv_field_len);
+  field_copy[data_bind_stream_provider_state(parser)->csv_field_len] = '\0';
+  data_bind_stream_provider_state(parser)->csv_field_storage[data_bind_stream_provider_state(parser)->csv_field_count] = field_copy;
+  data_bind_stream_provider_state(parser)->csv_fields[data_bind_stream_provider_state(parser)->csv_field_count] = vstr_from_buf(field_copy, data_bind_stream_provider_state(parser)->csv_field_len);
+  data_bind_stream_provider_state(parser)->csv_field_count++;
+  data_bind_stream_provider_state(parser)->csv_field_len = 0;
+  if (data_bind_stream_provider_state(parser)->csv_field != NULL) data_bind_stream_provider_state(parser)->csv_field[0] = '\0';
   return 1;
 }
 
@@ -7644,45 +7707,45 @@ static DataBindStatus data_bind_stream_csv_compile_filter(data_bind_stream_t *pa
   csv_options_t opts = {false, ',', '"', true};
   int compiled;
 
-  if (parser == NULL || parser->path_or_expr == NULL || parser->format_state->csv_filter != NULL)
+  if (parser == NULL || parser->path_or_expr == NULL || data_bind_stream_provider_state(parser)->csv_filter != NULL)
     return DATA_BIND_OK;
 
   native_limits = db_query_native_limits(
       parser->query_limits_configured ? &parser->query_limits : NULL);
-  header_doc_len = parser->format_state->csv_header_len + 1;
+  header_doc_len = data_bind_stream_provider_state(parser)->csv_header_len + 1;
   header_doc = (char *)malloc(header_doc_len + 1);
   if (header_doc == NULL) {
-    parser->format_state->csv_failed = 1;
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
                         "Out of memory building CSVPath stream header");
   }
-  memcpy(header_doc, parser->format_state->csv_header, parser->format_state->csv_header_len);
-  header_doc[parser->format_state->csv_header_len] = '\n';
+  memcpy(header_doc, data_bind_stream_provider_state(parser)->csv_header, data_bind_stream_provider_state(parser)->csv_header_len);
+  header_doc[data_bind_stream_provider_state(parser)->csv_header_len] = '\n';
   header_doc[header_doc_len] = '\0';
 
-  if ((parser->format_state->csv_filter_doc = csv_parse_opts(header_doc, header_doc_len, &opts)) == NULL) {
+  if ((data_bind_stream_provider_state(parser)->csv_filter_doc = csv_parse_opts(header_doc, header_doc_len, &opts)) == NULL) {
     free(header_doc);
-    parser->format_state->csv_failed = 1;
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1,
                         "Failed to parse CSVPath stream header");
   }
   free(header_doc);
-  if (parser->format_state->csv_filter_doc == NULL) {
-    parser->format_state->csv_failed = 1;
+  if (data_bind_stream_provider_state(parser)->csv_filter_doc == NULL) {
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1,
                         "Failed to parse CSVPath stream header");
   }
 
-  parser->format_state->csv_filter = dsv_filter_create(parser->format_state->csv_filter_doc, 0);
-  compiled = parser->format_state->csv_filter != NULL &&
-             dsv_filter_compile_ex(parser->format_state->csv_filter, parser->path_or_expr,
+  data_bind_stream_provider_state(parser)->csv_filter = dsv_filter_create(data_bind_stream_provider_state(parser)->csv_filter_doc, 0);
+  compiled = data_bind_stream_provider_state(parser)->csv_filter != NULL &&
+             dsv_filter_compile_ex(data_bind_stream_provider_state(parser)->csv_filter, parser->path_or_expr,
                                    &native_limits, &native_diagnostic);
   db_query_diagnostic_copy(&parser->query_diagnostic, &native_diagnostic);
   if (!compiled) {
-    const char *filter_error = parser->format_state->csv_filter != NULL
-                                   ? dsv_filter_error(parser->format_state->csv_filter)
+    const char *filter_error = data_bind_stream_provider_state(parser)->csv_filter != NULL
+                                   ? dsv_filter_error(data_bind_stream_provider_state(parser)->csv_filter)
                                    : "Failed to create CSVPath filter";
-    parser->format_state->csv_failed = 1;
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     {
       DataBindStatus status =
           data_bind_query_failure_status(&parser->query_diagnostic);
@@ -7702,42 +7765,42 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
   DataBindStatus status;
   int match;
   if (parser == NULL) return DATA_BIND_ERR_INVALID_ARG;
-  if (parser->format_state->csv_record_len == 0 && parser->format_state->csv_header_seen) {
+  if (data_bind_stream_provider_state(parser)->csv_record_len == 0 && data_bind_stream_provider_state(parser)->csv_header_seen) {
     data_bind_stream_csv_clear_fields(parser);
     return DATA_BIND_OK;
   }
 
-  if (!parser->format_state->csv_header_seen) {
-    parser->format_state->csv_header = (char *)malloc(parser->format_state->csv_record_len + 1);
-    if (parser->format_state->csv_header == NULL) {
-      parser->format_state->csv_failed = 1;
+  if (!data_bind_stream_provider_state(parser)->csv_header_seen) {
+    data_bind_stream_provider_state(parser)->csv_header = (char *)malloc(data_bind_stream_provider_state(parser)->csv_record_len + 1);
+    if (data_bind_stream_provider_state(parser)->csv_header == NULL) {
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
                           "Out of memory storing CSV stream header");
     }
-    memcpy(parser->format_state->csv_header, parser->format_state->csv_record, parser->format_state->csv_record_len);
-    parser->format_state->csv_header[parser->format_state->csv_record_len] = '\0';
-    parser->format_state->csv_header_len = parser->format_state->csv_record_len;
-    parser->format_state->csv_header_seen = 1;
-    parser->format_state->csv_record_len = 0;
-    if (parser->format_state->csv_record != NULL) parser->format_state->csv_record[0] = '\0';
+    memcpy(data_bind_stream_provider_state(parser)->csv_header, data_bind_stream_provider_state(parser)->csv_record, data_bind_stream_provider_state(parser)->csv_record_len);
+    data_bind_stream_provider_state(parser)->csv_header[data_bind_stream_provider_state(parser)->csv_record_len] = '\0';
+    data_bind_stream_provider_state(parser)->csv_header_len = data_bind_stream_provider_state(parser)->csv_record_len;
+    data_bind_stream_provider_state(parser)->csv_header_seen = 1;
+    data_bind_stream_provider_state(parser)->csv_record_len = 0;
+    if (data_bind_stream_provider_state(parser)->csv_record != NULL) data_bind_stream_provider_state(parser)->csv_record[0] = '\0';
     status = data_bind_stream_csv_compile_filter(parser, error);
     data_bind_stream_csv_clear_fields(parser);
     return status;
   }
 
   if (parser->path_or_expr != NULL) {
-    if (parser->format_state->csv_filter == NULL) {
+    if (data_bind_stream_provider_state(parser)->csv_filter == NULL) {
       status = data_bind_stream_csv_compile_filter(parser, error);
       if (status != DATA_BIND_OK) return status;
     }
-    match = dsv_filter_check_values(parser->format_state->csv_filter, parser->format_state->csv_fields,
-                                          parser->format_state->csv_field_count);
+    match = dsv_filter_check_values(data_bind_stream_provider_state(parser)->csv_filter, data_bind_stream_provider_state(parser)->csv_fields,
+                                          data_bind_stream_provider_state(parser)->csv_field_count);
     if (match < 0) {
-      const qvm_diagnostic_t *native_diagnostic = dsv_filter_qvm_diagnostic(parser->format_state->csv_filter);
+      const qvm_diagnostic_t *native_diagnostic = dsv_filter_qvm_diagnostic(data_bind_stream_provider_state(parser)->csv_filter);
       qvm_status_t query_status = native_diagnostic ? native_diagnostic->status
                                                    : QVM_STATUS_INVALID_ARGUMENT;
       db_query_diagnostic_copy(&parser->query_diagnostic, native_diagnostic);
-      parser->format_state->csv_failed = 1;
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       if (query_status == QVM_STATUS_RESOURCE_LIMIT) parser->limit_failed = 1;
       return db_error_set(error,
                           query_status == QVM_STATUS_RESOURCE_LIMIT
@@ -7748,23 +7811,23 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
     }
     if (match == 0) {
       data_bind_stream_csv_clear_fields(parser);
-      parser->format_state->csv_record_len = 0;
-      if (parser->format_state->csv_record != NULL) parser->format_state->csv_record[0] = '\0';
-      parser->format_state->csv_data_row++;
+      data_bind_stream_provider_state(parser)->csv_record_len = 0;
+      if (data_bind_stream_provider_state(parser)->csv_record != NULL) data_bind_stream_provider_state(parser)->csv_record[0] = '\0';
+      data_bind_stream_provider_state(parser)->csv_data_row++;
       return DATA_BIND_OK;
     }
   }
 
-  doc_len = parser->format_state->csv_header_len + 1 + parser->format_state->csv_record_len + 1;
+  doc_len = data_bind_stream_provider_state(parser)->csv_header_len + 1 + data_bind_stream_provider_state(parser)->csv_record_len + 1;
   doc_text = (char *)malloc(doc_len + 1);
   if (doc_text == NULL) {
-    parser->format_state->csv_failed = 1;
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
                         "Out of memory building CSV stream row");
   }
-  memcpy(doc_text, parser->format_state->csv_header, parser->format_state->csv_header_len);
-  doc_text[parser->format_state->csv_header_len] = '\n';
-  memcpy(doc_text + parser->format_state->csv_header_len + 1, parser->format_state->csv_record, parser->format_state->csv_record_len);
+  memcpy(doc_text, data_bind_stream_provider_state(parser)->csv_header, data_bind_stream_provider_state(parser)->csv_header_len);
+  doc_text[data_bind_stream_provider_state(parser)->csv_header_len] = '\n';
+  memcpy(doc_text + data_bind_stream_provider_state(parser)->csv_header_len + 1, data_bind_stream_provider_state(parser)->csv_record, data_bind_stream_provider_state(parser)->csv_record_len);
   doc_text[doc_len - 1] = '\n';
   doc_text[doc_len] = '\0';
 
@@ -7776,14 +7839,14 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
     if (status != DATA_BIND_OK) {
       data_bind_value_free(value);
       free(doc_text);
-      parser->format_state->csv_failed = 1;
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       return db_error_set(error, status, "data_bind_stream_feed", -1, -1,
                           "CSV stream item dynamic identity assignment failed");
     }
     if (parser->result_count >= parser->limits.max_result_count) {
       data_bind_value_free(value);
       free(doc_text);
-      parser->format_state->csv_failed = 1;
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       parser->limit_failed = 1;
       return db_error_set(error, DATA_BIND_ERR_LIMIT, "stream.results", -1, -1,
                           "Stream result count exceeds limit of %zu",
@@ -7792,14 +7855,14 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
     if (data_bind_stream_emit_record(parser, value) != 0) {
       data_bind_value_free(value);
       free(doc_text);
-      parser->format_state->csv_failed = 1;
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       if (parser->canceled)
         return db_error_set(error, DATA_BIND_ERR_CANCELED, "record_callback", -1, -1,
                             "Record callback canceled the stream at CSV row %llu",
-                            (unsigned long long)parser->format_state->csv_data_row);
+                            (unsigned long long)data_bind_stream_provider_state(parser)->csv_data_row);
       return db_error_set(error, DATA_BIND_ERR_RUNTIME, "record_callback", -1, -1,
                           "Record callback failed at CSV row %llu",
-                          (unsigned long long)parser->format_state->csv_data_row);
+                          (unsigned long long)data_bind_stream_provider_state(parser)->csv_data_row);
     }
     if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_CALLBACK_ONLY) {
       data_bind_value_free(value);
@@ -7808,7 +7871,7 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
       if (push_status != DATA_BIND_OK) {
         data_bind_value_free(value);
         free(doc_text);
-        parser->format_state->csv_failed = 1;
+        data_bind_stream_provider_state(parser)->csv_failed = 1;
         if (push_status == DATA_BIND_ERR_LIMIT) {
           parser->limit_failed = 1;
           return db_error_set(error, DATA_BIND_ERR_LIMIT, "stream.results", -1, -1,
@@ -7824,10 +7887,10 @@ static DataBindStatus data_bind_stream_csv_process_record(data_bind_stream_t *pa
 
   free(doc_text);
   data_bind_stream_csv_clear_fields(parser);
-  parser->format_state->csv_record_len = 0;
-  if (parser->format_state->csv_record != NULL) parser->format_state->csv_record[0] = '\0';
-  parser->format_state->csv_data_row++;
-  if (status != DATA_BIND_OK) parser->format_state->csv_failed = 1;
+  data_bind_stream_provider_state(parser)->csv_record_len = 0;
+  if (data_bind_stream_provider_state(parser)->csv_record != NULL) data_bind_stream_provider_state(parser)->csv_record[0] = '\0';
+  data_bind_stream_provider_state(parser)->csv_data_row++;
+  if (status != DATA_BIND_OK) data_bind_stream_provider_state(parser)->csv_failed = 1;
   return status;
 }
 
@@ -7840,12 +7903,12 @@ static DataBindStatus data_bind_stream_csv_feed(data_bind_stream_t *parser, cons
   for (i = 0; i < len; i++) {
     char ch = data[i];
   reprocess:
-    if (parser->format_state->csv_skip_next_lf) {
-      parser->format_state->csv_skip_next_lf = 0;
+    if (data_bind_stream_provider_state(parser)->csv_skip_next_lf) {
+      data_bind_stream_provider_state(parser)->csv_skip_next_lf = 0;
       if (ch == '\n') continue;
     }
-    if (parser->format_state->csv_quote_pending) {
-      parser->format_state->csv_quote_pending = 0;
+    if (data_bind_stream_provider_state(parser)->csv_quote_pending) {
+      data_bind_stream_provider_state(parser)->csv_quote_pending = 0;
       if (ch == '"') {
         if (!data_bind_stream_csv_record_append(parser, ch)) {
           return data_bind_stream_csv_growth_error(
@@ -7857,17 +7920,17 @@ static DataBindStatus data_bind_stream_csv_feed(data_bind_stream_t *parser, cons
         }
         continue;
       }
-      parser->format_state->csv_in_quotes = 0;
+      data_bind_stream_provider_state(parser)->csv_in_quotes = 0;
       goto reprocess;
     }
 
-    if (parser->format_state->csv_in_quotes) {
+    if (data_bind_stream_provider_state(parser)->csv_in_quotes) {
       if (!data_bind_stream_csv_record_append(parser, ch)) {
         return data_bind_stream_csv_growth_error(
             parser, error, "Out of memory extending CSV stream record");
       }
       if (ch == '"') {
-        parser->format_state->csv_quote_pending = 1;
+        data_bind_stream_provider_state(parser)->csv_quote_pending = 1;
       } else if (!data_bind_stream_csv_field_append(parser, ch)) {
         return data_bind_stream_csv_growth_error(
             parser, error, "Out of memory extending CSV stream field");
@@ -7876,7 +7939,7 @@ static DataBindStatus data_bind_stream_csv_feed(data_bind_stream_t *parser, cons
     }
 
     if (ch == '"') {
-      parser->format_state->csv_in_quotes = 1;
+      data_bind_stream_provider_state(parser)->csv_in_quotes = 1;
       if (!data_bind_stream_csv_record_append(parser, ch)) {
         return data_bind_stream_csv_growth_error(
             parser, error, "Out of memory extending CSV stream record");
@@ -7893,13 +7956,13 @@ static DataBindStatus data_bind_stream_csv_feed(data_bind_stream_t *parser, cons
     }
     if (ch == '\r' || ch == '\n') {
       if (!data_bind_stream_csv_finish_field(parser)) {
-        parser->format_state->csv_failed = 1;
+        data_bind_stream_provider_state(parser)->csv_failed = 1;
         return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_feed", -1, -1,
                             "Out of memory extending CSV stream field list");
       }
       status = data_bind_stream_csv_process_record(parser, error);
       if (status != DATA_BIND_OK) return status;
-      if (ch == '\r') parser->format_state->csv_skip_next_lf = 1;
+      if (ch == '\r') data_bind_stream_provider_state(parser)->csv_skip_next_lf = 1;
       continue;
     }
     if (!data_bind_stream_csv_record_append(parser, ch)) {
@@ -7921,25 +7984,25 @@ static DataBindStatus data_bind_stream_csv_finish(data_bind_stream_t *parser,
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_finish", -1, -1,
                         "Invalid CSV stream finish arguments");
   }
-  if (parser->format_state->csv_quote_pending) {
-    parser->format_state->csv_quote_pending = 0;
-    parser->format_state->csv_in_quotes = 0;
+  if (data_bind_stream_provider_state(parser)->csv_quote_pending) {
+    data_bind_stream_provider_state(parser)->csv_quote_pending = 0;
+    data_bind_stream_provider_state(parser)->csv_in_quotes = 0;
   }
-  if (parser->format_state->csv_in_quotes) {
-    parser->format_state->csv_failed = 1;
+  if (data_bind_stream_provider_state(parser)->csv_in_quotes) {
+    data_bind_stream_provider_state(parser)->csv_failed = 1;
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1, "Unterminated quoted CSV field");
   }
-  if (parser->format_state->csv_record_len > 0 || parser->format_state->csv_field_len > 0 || parser->format_state->csv_field_count > 0 ||
-      !parser->format_state->csv_header_seen) {
+  if (data_bind_stream_provider_state(parser)->csv_record_len > 0 || data_bind_stream_provider_state(parser)->csv_field_len > 0 || data_bind_stream_provider_state(parser)->csv_field_count > 0 ||
+      !data_bind_stream_provider_state(parser)->csv_header_seen) {
     if (!data_bind_stream_csv_finish_field(parser)) {
-      parser->format_state->csv_failed = 1;
+      data_bind_stream_provider_state(parser)->csv_failed = 1;
       return db_error_set(error, DATA_BIND_ERR_OOM, "data_bind_stream_finish", -1, -1,
                           "Out of memory extending CSV stream field list");
     }
     status = data_bind_stream_csv_process_record(parser, error);
     if (status != DATA_BIND_OK) return status;
   }
-  if (!parser->format_state->csv_header_seen || parser->format_state->csv_failed || parser->csv_values == NULL) {
+  if (!data_bind_stream_provider_state(parser)->csv_header_seen || data_bind_stream_provider_state(parser)->csv_failed || parser->csv_values == NULL) {
     return db_error_set(error, DATA_BIND_ERR_PARSE, "csv", -1, -1, "CSV stream parse failed");
   }
   *out_value = parser->csv_values;
@@ -8007,10 +8070,10 @@ static data_bind_stream_t *data_bind_stream_create_common(
     return NULL;
   }
 
-  parser->format_state =
+  data_bind_stream_provider_state(parser) =
       (data_bind_stream_format_state *)(void *)(parser + 1);
   data_bind_stream_format_state_init(
-      parser->format_state, is_csv, json_stream_candidate,
+      data_bind_stream_provider_state(parser), is_csv, json_stream_candidate,
       json_path_stream_mode, xml_stream_candidate);
 
   type_name_len = strlen(type_name);
@@ -8085,8 +8148,8 @@ static data_bind_stream_t *data_bind_stream_create_common(
       return NULL;
     }
   } else if (finish_fn == data_bind_stream_json_finish) {
-    if (parser->format_state->json_stream_candidate ||
-        parser->format_state->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_ALL) {
+    if (data_bind_stream_provider_state(parser)->json_stream_candidate ||
+        data_bind_stream_provider_state(parser)->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_ALL) {
       parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
       if (parser->stream_values == NULL ||
           !dbv_sequence_set_limit(parser->stream_values,
@@ -8100,27 +8163,27 @@ static data_bind_stream_t *data_bind_stream_create_common(
         return NULL;
       }
     }
-    if (parser->format_state->json_path_stream_mode != DATA_BIND_JSON_PATH_STREAM_NONE) {
+    if (data_bind_stream_provider_state(parser)->json_path_stream_mode != DATA_BIND_JSON_PATH_STREAM_NONE) {
       const char *path_error;
-      parser->format_state->json_path_program = json_path_compile(parser->path_or_expr);
-      if (parser->format_state->json_path_program == NULL) {
-        parser->format_state->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
+      data_bind_stream_provider_state(parser)->json_path_program = json_path_compile(parser->path_or_expr);
+      if (data_bind_stream_provider_state(parser)->json_path_program == NULL) {
+        data_bind_stream_provider_state(parser)->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
         data_bind_value_free(parser->stream_values);
         parser->stream_values = NULL;
       } else {
-        parser->format_state->json_path_stream = json_path_stream_create(
-            parser->format_state->json_path_program, &DATA_BIND_JSON_PATH_STREAM_HANDLER, parser);
+        data_bind_stream_provider_state(parser)->json_path_stream = json_path_stream_create(
+            data_bind_stream_provider_state(parser)->json_path_program, &DATA_BIND_JSON_PATH_STREAM_HANDLER, parser);
       }
-      if (parser->format_state->json_path_program != NULL && parser->format_state->json_path_stream == NULL) {
+      if (data_bind_stream_provider_state(parser)->json_path_program != NULL && data_bind_stream_provider_state(parser)->json_path_stream == NULL) {
         path_error = json_path_stream_error(NULL);
         if (path_error != NULL && strstr(path_error, "not streamable") != NULL) {
-          json_path_program_free(parser->format_state->json_path_program);
-          parser->format_state->json_path_program = NULL;
-          parser->format_state->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
+          json_path_program_free(data_bind_stream_provider_state(parser)->json_path_program);
+          data_bind_stream_provider_state(parser)->json_path_program = NULL;
+          data_bind_stream_provider_state(parser)->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
           data_bind_value_free(parser->stream_values);
           parser->stream_values = NULL;
         } else {
-          json_path_program_free(parser->format_state->json_path_program);
+          json_path_program_free(data_bind_stream_provider_state(parser)->json_path_program);
           data_bind_value_free(parser->stream_values);
           free(parser->path_or_expr);
           free(parser->type_name);
@@ -8132,16 +8195,16 @@ static data_bind_stream_t *data_bind_stream_create_common(
         }
       }
     }
-    if (parser->format_state->json_path_stream == NULL) {
-      parser->format_state->json_sax = parser->format_state->json_stream_candidate
+    if (data_bind_stream_provider_state(parser)->json_path_stream == NULL) {
+      data_bind_stream_provider_state(parser)->json_sax = data_bind_stream_provider_state(parser)->json_stream_candidate
                              ? json_sax_parser_create_raw(&DATA_BIND_JSON_STREAM_HANDLER,
                                                                parser)
                              : json_sax_parser_create(&DATA_BIND_JSON_SAX_VALIDATE_HANDLER,
                                                            parser);
     }
-    if (parser->format_state->json_path_stream == NULL && parser->format_state->json_sax == NULL) {
+    if (data_bind_stream_provider_state(parser)->json_path_stream == NULL && data_bind_stream_provider_state(parser)->json_sax == NULL) {
       data_bind_value_free(parser->stream_values);
-      json_path_program_free(parser->format_state->json_path_program);
+      json_path_program_free(data_bind_stream_provider_state(parser)->json_path_program);
       free(parser->path_or_expr);
       free(parser->type_name);
       free(parser);
@@ -8150,9 +8213,9 @@ static data_bind_stream_t *data_bind_stream_create_common(
       return NULL;
     }
   } else if (finish_fn == data_bind_stream_buffered_finish) {
-    parser->format_state->yaml_sax =
+    data_bind_stream_provider_state(parser)->yaml_sax =
         cyaml_sax_parser_create(&DATA_BIND_YAML_SAX_VALIDATE_HANDLER, parser, NULL);
-    if (parser->format_state->yaml_sax == NULL) {
+    if (data_bind_stream_provider_state(parser)->yaml_sax == NULL) {
       free(parser->path_or_expr);
       free(parser->type_name);
       free(parser);
@@ -8161,16 +8224,16 @@ static data_bind_stream_t *data_bind_stream_create_common(
       return NULL;
     }
   } else if (finish_fn == data_bind_stream_xml_finish) {
-    if (parser->format_state->xml_stream_candidate) {
-      parser->format_state->xml_stream_target = data_bind_stream_xml_target_from_path(parser->path_or_expr);
-      parser->format_state->xml_capture = tstr_new();
+    if (data_bind_stream_provider_state(parser)->xml_stream_candidate) {
+      data_bind_stream_provider_state(parser)->xml_stream_target = data_bind_stream_xml_target_from_path(parser->path_or_expr);
+      data_bind_stream_provider_state(parser)->xml_capture = tstr_new();
       parser->stream_values = dbv_new(DATA_BIND_VALUE_LIST);
-      if (parser->format_state->xml_stream_target == NULL || parser->format_state->xml_capture == NULL ||
+      if (data_bind_stream_provider_state(parser)->xml_stream_target == NULL || data_bind_stream_provider_state(parser)->xml_capture == NULL ||
           parser->stream_values == NULL ||
           !dbv_sequence_set_limit(parser->stream_values,
                                   parser->limits.max_result_count)) {
-        free(parser->format_state->xml_stream_target);
-        tstr_free(parser->format_state->xml_capture);
+        free(data_bind_stream_provider_state(parser)->xml_stream_target);
+        tstr_free(data_bind_stream_provider_state(parser)->xml_capture);
         data_bind_value_free(parser->stream_values);
         free(parser->path_or_expr);
         free(parser->type_name);
@@ -8180,13 +8243,13 @@ static data_bind_stream_t *data_bind_stream_create_common(
         return NULL;
       }
     }
-    parser->format_state->xml_sax = salts_xml_sax_parser_create(parser->format_state->xml_stream_candidate
+    data_bind_stream_provider_state(parser)->xml_sax = salts_xml_sax_parser_create(data_bind_stream_provider_state(parser)->xml_stream_candidate
                                                       ? &DATA_BIND_XML_STREAM_HANDLER
                                                       : &DATA_BIND_XML_SAX_VALIDATE_HANDLER,
                                                   parser, parser->limits.max_input_bytes);
-    if (parser->format_state->xml_sax == NULL) {
-      free(parser->format_state->xml_stream_target);
-      tstr_free(parser->format_state->xml_capture);
+    if (data_bind_stream_provider_state(parser)->xml_sax == NULL) {
+      free(data_bind_stream_provider_state(parser)->xml_stream_target);
+      tstr_free(data_bind_stream_provider_state(parser)->xml_capture);
       data_bind_value_free(parser->stream_values);
       free(parser->path_or_expr);
       free(parser->type_name);
@@ -8688,8 +8751,8 @@ DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
                         "data_bind_stream_set_limits", -1, -1,
                         "Valid stream limits must be set before first feed");
   }
-  if (parser->format_state->xml_sax != NULL &&
-      salts_xml_sax_parser_set_buffer_limit(parser->format_state->xml_sax, limits->max_input_bytes) != 0) {
+  if (data_bind_stream_provider_state(parser)->xml_sax != NULL &&
+      salts_xml_sax_parser_set_buffer_limit(data_bind_stream_provider_state(parser)->xml_sax, limits->max_input_bytes) != 0) {
     return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG,
                         "data_bind_stream_set_limits", -1, -1,
                         "XML parser limits cannot change after parsing starts");
@@ -8705,7 +8768,7 @@ DataBindStatus data_bind_stream_set_limits(data_bind_stream_t *stream,
   parser->limits = *limits;
   parser->limits.size = sizeof(parser->limits);
   parser->limit_failed = 0;
-  parser->format_state->stream_error[0] = '\0';
+  data_bind_stream_provider_state(parser)->stream_error[0] = '\0';
   db_error_clear(parser->error);
   return DATA_BIND_OK;
 }
@@ -8727,7 +8790,7 @@ DataBindStatus data_bind_stream_set_query_limits(
       (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
   parser->query_limits_configured = 1;
 
-  if (parser->format_state->json_path_program != NULL && parser->path_or_expr != NULL) {
+  if (data_bind_stream_provider_state(parser)->json_path_program != NULL && parser->path_or_expr != NULL) {
     qvm_limits_t native_limits = db_query_native_limits(&parser->query_limits);
     qvm_diagnostic_t native_diagnostic = {0};
     json_path_program_t *verified = json_path_compile_ex(
@@ -8743,7 +8806,7 @@ DataBindStatus data_bind_stream_set_query_limits(
                               : "query VM failure");
     }
     json_path_program_free(verified);
-    if (parser->format_state->json_path_stream != NULL &&
+    if (data_bind_stream_provider_state(parser)->json_path_stream != NULL &&
         (limits->max_instructions != QVM_DEFAULT_MAX_INSTRUCTIONS ||
          limits->max_operands != QVM_DEFAULT_MAX_OPERANDS ||
          limits->max_regexes != QVM_DEFAULT_MAX_REGEXES ||
@@ -8753,12 +8816,12 @@ DataBindStatus data_bind_stream_set_query_limits(
       if (replacement == NULL)
         return db_error_set(parser->error, DATA_BIND_ERR_OOM, "jsonpath", -1,
                             -1, "Out of memory applying JSONPath query limits");
-      json_path_stream_destroy(parser->format_state->json_path_stream);
-      parser->format_state->json_path_stream = NULL;
-      parser->format_state->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
+      json_path_stream_destroy(data_bind_stream_provider_state(parser)->json_path_stream);
+      data_bind_stream_provider_state(parser)->json_path_stream = NULL;
+      data_bind_stream_provider_state(parser)->json_path_stream_mode = DATA_BIND_JSON_PATH_STREAM_NONE;
       data_bind_value_free(parser->stream_values);
       parser->stream_values = NULL;
-      parser->format_state->json_sax = replacement;
+      data_bind_stream_provider_state(parser)->json_sax = replacement;
     }
   }
   db_error_clear(parser->error);
@@ -8798,9 +8861,9 @@ static DataBindStatus data_bind_stream_text_feed(data_bind_stream_t *parser, con
   status = data_bind_stream_sax_feed(parser, data, len, error);
   if (status != DATA_BIND_OK) return status;
 
-  if (parser->format_state->json_path_stream != NULL ||
-      (parser->format_state->json_stream_candidate && parser->format_state->json_stream_active) ||
-      parser->format_state->xml_stream_candidate) {
+  if (data_bind_stream_provider_state(parser)->json_path_stream != NULL ||
+      (data_bind_stream_provider_state(parser)->json_stream_candidate && data_bind_stream_provider_state(parser)->json_stream_active) ||
+      data_bind_stream_provider_state(parser)->xml_stream_candidate) {
     parser->started = 1;
     db_error_clear(error);
     return DATA_BIND_OK;
@@ -8943,11 +9006,11 @@ static DataBindStatus data_bind_stream_json_finish(data_bind_stream_t *parser,
     parser->finished = 1;
     return status;
   }
-  if (parser->format_state->json_path_stream != NULL ||
-      (parser->format_state->json_stream_candidate && parser->format_state->json_stream_active) ||
-      parser->format_state->xml_stream_candidate) {
-    if (parser->format_state->json_path_stream != NULL &&
-        parser->format_state->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST &&
+  if (data_bind_stream_provider_state(parser)->json_path_stream != NULL ||
+      (data_bind_stream_provider_state(parser)->json_stream_candidate && data_bind_stream_provider_state(parser)->json_stream_active) ||
+      data_bind_stream_provider_state(parser)->xml_stream_candidate) {
+    if (data_bind_stream_provider_state(parser)->json_path_stream != NULL &&
+        data_bind_stream_provider_state(parser)->json_path_stream_mode == DATA_BIND_JSON_PATH_STREAM_FIRST &&
         parser->result_count == 0) {
       parser->finished = 1;
       return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, path, -1, -1,
@@ -9010,7 +9073,7 @@ static DataBindStatus data_bind_stream_xml_finish(data_bind_stream_t *parser,
     parser->finished = 1;
     return status;
   }
-  if (parser->format_state->xml_stream_candidate) {
+  if (data_bind_stream_provider_state(parser)->xml_stream_candidate) {
     *out_value = parser->stream_values;
     parser->stream_values = NULL;
     parser->finished = 1;
@@ -9142,7 +9205,7 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   free(parser->type_name);
   free(parser->path_or_expr);
   free(parser->buffer);
-  data_bind_stream_format_state_cleanup(parser->format_state);
+  data_bind_stream_format_state_cleanup(data_bind_stream_provider_state(parser));
   data_bind_value_free(parser->stream_values);
   data_bind_value_free(parser->csv_values);
   data_bind_value_free(parser->internal_out_value);
