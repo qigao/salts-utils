@@ -2,13 +2,17 @@ cmake_minimum_required(VERSION 3.27)
 
 project(databind_package_core_consumer LANGUAGES C)
 
-if(NOT IS_DIRECTORY "${DATABIND_PACKAGE_DIR}")
+if(NOT DEFINED ENV{DATABIND_ROOT} OR "$ENV{DATABIND_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "DATABIND_ROOT is required")
+endif()
+file(TO_CMAKE_PATH "$ENV{DATABIND_ROOT}" DATABIND_ROOT_PATH)
+if(NOT IS_DIRECTORY "${DATABIND_ROOT_PATH}")
   message(FATAL_ERROR
-    "DATABIND_PACKAGE_DIR is not a directory: ${DATABIND_PACKAGE_DIR}")
+    "DATABIND_ROOT is not a directory: $ENV{DATABIND_ROOT}")
 endif()
 
 find_package(DataBind 3 CONFIG REQUIRED COMPONENTS Core
-  PATHS "${DATABIND_PACKAGE_DIR}" NO_DEFAULT_PATH)
+  PATHS "${DATABIND_ROOT_PATH}" NO_DEFAULT_PATH)
 
 foreach(required_target IN ITEMS DataBind::Core DataBind::Schema DataBind::Runtime DataBind::CMeta)
   if(NOT TARGET ${required_target})
