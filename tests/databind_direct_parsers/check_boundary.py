@@ -66,6 +66,17 @@ class DirectParserBoundary(unittest.TestCase):
         )
         self.assertIsNotNone(facade, "DataBind facade link contract not found")
         self.assertIn("Salts::DataBindCore", facade.group(1))
+        self.assertIn("Salts::DataBindJsonAdapter", facade.group(1))
+        self.assertNotIn("Salts::JsonParser", facade.group(1))
+        self.assertNotIn("Salts::JsonCSerdeAdapter", facade.group(1))
+
+        json_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_JSON_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(json_adapter, "JSON adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", json_adapter.group(1))
+        self.assertIn("Salts::JsonCSerdeAdapter", json_adapter.group(1))
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
