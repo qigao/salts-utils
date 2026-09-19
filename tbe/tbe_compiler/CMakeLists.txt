@@ -49,6 +49,14 @@ install(
 # Tests
 # =============================================================================
 
+add_test(NAME test_databind_compiler_tooling_boundary
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_tooling_boundary.cmake")
+set_tests_properties(test_databind_compiler_tooling_boundary
+  PROPERTIES LABELS "databind;package;compiler")
+
+
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::TbeSchema Salts::TinyTest Salts::Mustache Salts::Core
