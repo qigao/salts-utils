@@ -68,15 +68,31 @@ endforeach()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
+string(CONCAT _SALTS_UTILS_LEGACY_DATABIND "Salts::Data" "Bind")
+string(CONCAT _SALTS_UTILS_LEGACY_DATABIND_CORE "Salts::Data" "BindCore")
+string(CONCAT _SALTS_UTILS_LEGACY_DATABIND_CMETA "Salts::Data" "BindCMeta")
+string(CONCAT _SALTS_UTILS_LEGACY_DATABIND_CFLOW "Salts::Data" "BindCFlow")
+string(CONCAT _SALTS_UTILS_LEGACY_TBE_SCHEMA "Salts::Tbe" "Schema")
+string(CONCAT _SALTS_UTILS_LEGACY_SCHEMA_BE "Salts::Schema" "BE")
 foreach(_SALTS_UTILS_FORBIDDEN_DATABIND_TARGET IN ITEMS
-    Salts::DataBind Salts::DataBindCore Salts::DataBindCMeta
-    Salts::DataBindCFlow Salts::TbeSchema Salts::SchemaBE)
+    "${_SALTS_UTILS_LEGACY_DATABIND}"
+    "${_SALTS_UTILS_LEGACY_DATABIND_CORE}"
+    "${_SALTS_UTILS_LEGACY_DATABIND_CMETA}"
+    "${_SALTS_UTILS_LEGACY_DATABIND_CFLOW}"
+    "${_SALTS_UTILS_LEGACY_TBE_SCHEMA}"
+    "${_SALTS_UTILS_LEGACY_SCHEMA_BE}")
   if(TARGET ${_SALTS_UTILS_FORBIDDEN_DATABIND_TARGET})
     message(FATAL_ERROR
       "SaltsUtils package contains stale DataBind ownership: "
       "${_SALTS_UTILS_FORBIDDEN_DATABIND_TARGET}")
   endif()
 endforeach()
+unset(_SALTS_UTILS_LEGACY_DATABIND)
+unset(_SALTS_UTILS_LEGACY_DATABIND_CORE)
+unset(_SALTS_UTILS_LEGACY_DATABIND_CMETA)
+unset(_SALTS_UTILS_LEGACY_DATABIND_CFLOW)
+unset(_SALTS_UTILS_LEGACY_TBE_SCHEMA)
+unset(_SALTS_UTILS_LEGACY_SCHEMA_BE)
 
 set_property(GLOBAL PROPERTY SALTS_UTILS_CONFIG_LOADED TRUE)
 check_required_components(SaltsUtils)
