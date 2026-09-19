@@ -38,13 +38,15 @@ install(
   EXPORT DataBindTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT DataBind)
 
 install(
   DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
   DESTINATION include
   FILES_MATCHING
-  PATTERN "*.h")
+  PATTERN "*.h"
+  COMPONENT DataBind)
 
 # =============================================================================
 # Tests
