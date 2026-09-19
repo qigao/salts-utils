@@ -34,8 +34,9 @@ class DirectParserBoundary(unittest.TestCase):
 
     def test_core_runtime_has_no_concrete_saltsutils_dependencies(self):
         cmake = (BIND / "CMakeLists.txt").read_text()
+        self.assertIn("set(DATA_BIND_CORE_TARGET data_bind_core)", cmake)
         match = re.search(
-            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\)",
+            r"target_link_libraries\(\s*\$\{DATA_BIND_CORE_TARGET\}([\s\S]*?)\)",
             cmake,
         )
         self.assertIsNotNone(match, "DataBind core link contract not found")
@@ -56,8 +57,15 @@ class DirectParserBoundary(unittest.TestCase):
             "DataBind core still depends on concrete SaltsUtils targets: "
             + ", ".join(leaked),
         )
-        self.assertIn("Salts::CMeta", links)
-        self.assertIn("Salts::CSTL", links)
+        for target in ("Salts::Core", "Salts::CMeta", "Salts::CSTL", "Salts::CSerde"):
+            self.assertIn(target, links)
+
+        facade = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(facade, "DataBind facade link contract not found")
+        self.assertIn("Salts::DataBindCore", facade.group(1))
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
