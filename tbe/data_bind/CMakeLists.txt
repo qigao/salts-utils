@@ -32,7 +32,20 @@ target_link_libraries(
     Salts::QueryVM
   PUBLIC
     Salts::Core
+    Salts::CMeta
     Salts::CSTL)
+
+if(BUILD_TESTING)
+  get_target_property(DATA_BIND_PUBLIC_LINKS
+    ${DATA_BIND_TARGET} INTERFACE_LINK_LIBRARIES)
+  if(DATA_BIND_PUBLIC_LINKS MATCHES
+     "QueryVM|DateTimeParser|JsonParser|CsvParser|XmlParser|CYaml")
+    message(FATAL_ERROR
+      "DataBind public interface leaks a SaltsUtils parser/query target: "
+      "${DATA_BIND_PUBLIC_LINKS}")
+  endif()
+endif()
+
 cmake_config_target(
   ${DATA_BIND_TARGET}
   ALIAS Salts::DataBind
