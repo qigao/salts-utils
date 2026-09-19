@@ -227,6 +227,7 @@ class DirectParserBoundary(unittest.TestCase):
             "DataBind must have its own installed package config",
         )
         self.assertIn("EXPORT DataBindTargets", data_bind_cmake)
+        self.assertIn("EXPORT DataBindAdapterTargets", data_bind_cmake)
         self.assertNotIn("EXPORT SaltsUtilsTargets", data_bind_cmake)
         self.assertIn("EXPORT DataBindTargets", schema_cmake)
         self.assertNotIn("EXPORT SaltsUtilsTargets", schema_cmake)
@@ -248,6 +249,7 @@ class DirectParserBoundary(unittest.TestCase):
 
         top_level = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn("DataBindTargets.cmake", top_level)
+        self.assertIn("DataBindAdapterTargets.cmake", top_level)
         self.assertIn("DataBindConfig.cmake", top_level)
 
     def test_datetime_is_owned_by_databind_public_abi(self):
