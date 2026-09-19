@@ -45,6 +45,14 @@ static int test_autoescape_html(void *opaque, vstr name) {
   return vstr_eq(name, vstr_from_cstr("page.html")) ? 1 : 0;
 }
 
+static int test_autoescape_html_suffix(void *opaque, vstr name) {
+  static const char suffix[] = ".html";
+  (void)opaque;
+  if (!vstr_is_valid(name) || name.len < sizeof(suffix) - 1u) return 0;
+  return memcmp(name.data + name.len - (sizeof(suffix) - 1u),
+                suffix, sizeof(suffix) - 1u) == 0;
+}
+
 typedef struct TEST_BYTE_SINK {
   char bytes[256];
   size_t size;
@@ -603,7 +611,10 @@ spec("Jinja imports and inheritance") {
     {"self_module", "{% block body %}S{% endblock %}{% macro again() %}{{ self.body() }}{% endmacro %}", JINJA_CMETA_OK},
     {"import_cycle", "{% import 'import_cycle' as m %}", JINJA_CMETA_OK},
     {"extends_cycle", "{% extends 'extends_cycle' %}", JINJA_CMETA_OK},
-    {"failure", "{{ 1/0 }}", JINJA_CMETA_OK}
+    {"failure", "{{ 1/0 }}", JINJA_CMETA_OK},
+    {"autoescape_base.html",
+     "[{% block body %}{{ '<base & x>' }}{% endblock %}]",
+     JINJA_CMETA_OK}
   };
   static JINJA_CMETA_ENV *env;
   static JINJA_CMETA_ERROR error;
@@ -851,6 +862,33 @@ spec("Jinja imports and inheritance") {
         &output, &error), JINJA_CMETA_OK);
     check_equal(output, "4/1;5/2;");
     check_equal(loader.releases, loader.loads);
+  }
+
+  it("preserves named autoescape inside overriding inheritance blocks") {
+    jinja_cmeta_env_destroy(env);
+    env = NULL;
+    loader.loads = 0u;
+    loader.releases = 0u;
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.loader = (JINJA_CMETA_LOADER){test_load, test_release, &loader};
+    options.autoescape_selector = test_autoescape_html_suffix;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+
+    JINJA_CMETA_TEMPLATE *compiled = jinja_cmeta_env_compile(
+        env, vstr_from_cstr("page.html"),
+        vstr_from_cstr(
+            "{% extends 'autoescape_base.html' %}"
+            "{% block body %}{{ '<child & x>' }}{% endblock %}"),
+        &error);
+    check_not_null(compiled);
+    vstr root = vstr_from_cstr("");
+    check_equal(jinja_cmeta_render_string(
+        compiled, jinja_cmeta_vstr_data(), &root, NULL, &output, &error),
+        JINJA_CMETA_OK);
+    check_equal(output, "[&lt;child &amp; x&gt;]");
+    check_equal(loader.releases, loader.loads);
+    jinja_cmeta_release(compiled);
   }
 
   it("resolves three generations of blocks and super") {
