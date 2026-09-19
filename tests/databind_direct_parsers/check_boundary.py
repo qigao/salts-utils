@@ -78,6 +78,7 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertNotIn("Salts::CYaml", facade.group(1))
         self.assertNotIn("Salts::CYamlJsonAdapter", facade.group(1))
         self.assertNotIn("Salts::DateTimeParser", facade.group(1))
+        self.assertNotIn("Salts::QueryVM", facade.group(1))
 
         json_adapter = re.search(
             r"target_link_libraries\(\s*\$\{DATA_BIND_JSON_ADAPTER_TARGET\}([\s\S]*?)\)",
