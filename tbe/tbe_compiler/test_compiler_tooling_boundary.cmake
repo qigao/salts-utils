@@ -1,32 +1,35 @@
 file(READ "${PROJECT_SOURCE_DIR}/tbe/tbe_compiler/CMakeLists.txt" COMPILER_CMAKE)
 
 string(FIND "${COMPILER_CMAKE}"
-  "set(DATABIND_COMPILER_TOOLING_TARGET" TOOLING_TARGET_POS)
+  "set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)" TOOLING_TARGET_POS)
 if(TOOLING_TARGET_POS EQUAL -1)
   message(FATAL_ERROR
     "DataBind compiler must declare an explicit build-tool dependency boundary")
 endif()
 
-string(REGEX MATCH
-  "cmake_add_executable\\(tbe_compiler[\\s\\S]*?\\)"
-  COMPILER_BLOCK "${COMPILER_CMAKE}")
-if(COMPILER_BLOCK STREQUAL "")
-  message(FATAL_ERROR "Unable to locate tbe_compiler target definition")
+string(FIND "${COMPILER_CMAKE}"
+  "target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}" TOOLING_LINK_POS)
+if(TOOLING_LINK_POS EQUAL -1)
+  message(FATAL_ERROR "Compiler tooling boundary has no explicit link contract")
 endif()
 
-foreach(FORBIDDEN IN ITEMS "Salts::CmdParser" "Salts::Mustache")
-  string(FIND "${COMPILER_BLOCK}" "${FORBIDDEN}" POS)
-  if(NOT POS EQUAL -1)
-    message(FATAL_ERROR
-      "tbe_compiler directly links SaltsUtils tooling instead of the explicit build-tool boundary: ${FORBIDDEN}")
+foreach(REQUIRED IN ITEMS "Salts::CmdParser" "Salts::Mustache")
+  string(FIND "${COMPILER_CMAKE}" "${REQUIRED}" REQUIRED_POS)
+  if(REQUIRED_POS EQUAL -1)
+    message(FATAL_ERROR "Compiler tooling boundary lost required helper: ${REQUIRED}")
   endif()
 endforeach()
 
-file(READ "${PROJECT_SOURCE_DIR}/cmake/DataBindConfig.cmake.in" DATABIND_CONFIG)
-foreach(FORBIDDEN IN ITEMS "SaltsUtils" "SALTS_UTILS_ROOT")
-  string(FIND "${DATABIND_CONFIG}" "${FORBIDDEN}" POS)
-  if(NOT POS EQUAL -1)
-    message(FATAL_ERROR
-      "Base DataBind package config must not resolve SaltsUtils compiler tooling: ${FORBIDDEN}")
-  endif()
-endforeach()
+string(FIND "${COMPILER_CMAKE}"
+  "LIBS Salts::TbeSchema Salts::CmdParser Salts::Mustache Salts::Core" DIRECT_LINK_POS)
+if(NOT DIRECT_LINK_POS EQUAL -1)
+  message(FATAL_ERROR
+    "tbe_compiler still directly owns SaltsUtils CmdParser/Mustache dependencies")
+endif()
+
+string(FIND "${COMPILER_CMAKE}"
+  "LIBS Salts::TbeSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
+if(BOUNDARY_USE_POS EQUAL -1)
+  message(FATAL_ERROR
+    "tbe_compiler does not consume the explicit compiler tooling boundary")
+endif()
