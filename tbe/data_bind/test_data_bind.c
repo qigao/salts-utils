@@ -233,7 +233,7 @@ suite("Data Bind") {
 
           then("all text formats should produce native datetime values") {
             const DataBindValue *at;
-            datetime_t dt;
+            DataBindDateTime dt;
             char text[64];
             check_not_null(from_json);
             at = require_field(from_json, "at");
