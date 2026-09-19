@@ -9070,7 +9070,6 @@ static DataBindStatus data_bind_stream_json_finish(data_bind_stream_t *parser,
 
 static DataBindStatus data_bind_stream_xml_finish(data_bind_stream_t *parser,
                                                   DataBindValue **out_value, DataBindError *error) {
-  const char *path = parser ? parser->path_or_expr : NULL;
   DataBindStatus status;
   if (parser == NULL || out_value == NULL || parser->codec == NULL || parser->type_name == NULL ||
       parser->finished) {
