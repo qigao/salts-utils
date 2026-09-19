@@ -67,8 +67,11 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertIsNotNone(facade, "DataBind facade link contract not found")
         self.assertIn("Salts::DataBindCore", facade.group(1))
         self.assertIn("Salts::DataBindJsonAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindYamlAdapter", facade.group(1))
         self.assertNotIn("Salts::JsonParser", facade.group(1))
         self.assertNotIn("Salts::JsonCSerdeAdapter", facade.group(1))
+        self.assertNotIn("Salts::CYaml", facade.group(1))
+        self.assertNotIn("Salts::CYamlJsonAdapter", facade.group(1))
 
         json_adapter = re.search(
             r"target_link_libraries\(\s*\$\{DATA_BIND_JSON_ADAPTER_TARGET\}([\s\S]*?)\)",
@@ -77,6 +80,15 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertIsNotNone(json_adapter, "JSON adapter link contract not found")
         self.assertIn("Salts::DataBindCore", json_adapter.group(1))
         self.assertIn("Salts::JsonCSerdeAdapter", json_adapter.group(1))
+
+        yaml_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_YAML_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(yaml_adapter, "YAML adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", yaml_adapter.group(1))
+        self.assertIn("Salts::CYamlJsonAdapter", yaml_adapter.group(1))
+        self.assertIn("Salts::JsonCSerdeAdapter", yaml_adapter.group(1))
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
