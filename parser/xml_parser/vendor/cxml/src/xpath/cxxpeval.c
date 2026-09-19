@@ -11,7 +11,7 @@
 
 
 /*************************************************************/
-extern void query_string(const char *expr);
+extern int query_string(const char *expr);
 
 extern void cxml_set__init_with(cxml_set *recipient, cxml_set *donor);
 
@@ -2096,7 +2096,13 @@ int cxml_xpath_ex(void *root, const char *expr, cxml_set **out,
     cxml_xp_qvm_diagnostic.opcode = QVM_NO_OPCODE;
     cxml_xp_qvm_diagnostic.operand = QVM_NO_OPERAND;
     cxml_xp_qvm_status = QVM_STATUS_OK;
-    query_string(expr);
+    if (!query_string(expr)) {
+        cxml_xp_qvm_status = QVM_STATUS_INVALID_PROGRAM;
+        cxml_xp_qvm_diagnostic.status = QVM_STATUS_INVALID_PROGRAM;
+        cxml_xp_qvm_diagnostic.message = "invalid XPath expression";
+        if (diagnostic) *diagnostic = cxml_xp_qvm_diagnostic;
+        return QVM_STATUS_INVALID_PROGRAM;
+    }
     _set_roots(root);
     nodeset = cxml_xp_eval_expr();
     if (diagnostic) *diagnostic = cxml_xp_qvm_diagnostic;
