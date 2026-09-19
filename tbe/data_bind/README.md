@@ -48,11 +48,17 @@ DataBind 3.0 makes the public ABI independent of parser/query implementation hea
 `DataBindQueryLimits`, and `DataBindQueryDiagnostic`; callers do not include
 `datetime_parser.h` or `query_vm.h`.
 
-The current implementation still privately uses `Salts::JsonParser`, `Salts::CsvParser`,
-`Salts::XmlParser`, `Salts::CYaml`, `Salts::DateTimeParser`, and `Salts::QueryVM`.
-Those dependencies are transitional implementation details and are not part of
-`Salts::DataBind`'s public link interface. Issue #67 moves the concrete format/query adapters
-out of the runtime core in the next slice.
+The runtime migration now exposes a Salts-only `Salts::DataBindCore` plus
+explicit JSON, YAML, CSV, XML and temporal adapter targets. Concrete parser and
+QueryVM types remain above the core boundary; format providers expose bounded
+CSerde readers and own their native path-query translation without a registry
+or fallback path.
+
+The existing `Salts::DataBind` facade still contains the mature
+schema/dynamic-binding and incremental-stream code while that orchestration is
+moved onto the new provider boundary. Therefore this target split is an active
+migration boundary, not a claim that every legacy format-specific code path has
+already been removed.
 
 JSON/CSV 文档、YAML 文档与选择结果、XML 文档与节点列表均由各自 Salts parser 创建和释放。
 DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于 `Salts::XmlParser`，
