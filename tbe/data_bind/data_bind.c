@@ -22,6 +22,8 @@
 #include <cyaml_json_adapter.h>
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
+#include <datetime_parser.h>
+#include <query_vm.h>
 #include <salts_fs.h>
 #include <tstr.h>
 #include <salts_thread.h>
@@ -40,6 +42,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+static DataBindQueryStatus db_query_status_from_native(qvm_status_t status) {
+  switch (status) {
+  case QVM_STATUS_OK:
+    return DATA_BIND_QUERY_OK;
+  case QVM_STATUS_INVALID_ARGUMENT:
+    return DATA_BIND_QUERY_INVALID_ARGUMENT;
+  case QVM_STATUS_INVALID_PROGRAM:
+    return DATA_BIND_QUERY_INVALID_PROGRAM;
+  case QVM_STATUS_UNSUPPORTED:
+    return DATA_BIND_QUERY_UNSUPPORTED;
+  case QVM_STATUS_BACKEND_ERROR:
+    return DATA_BIND_QUERY_BACKEND_ERROR;
+  case QVM_STATUS_NO_MEMORY:
+    return DATA_BIND_QUERY_NO_MEMORY;
+  case QVM_STATUS_RESOURCE_LIMIT:
+    return DATA_BIND_QUERY_RESOURCE_LIMIT;
+  case QVM_STATUS_BUFFER_TOO_SMALL:
+    return DATA_BIND_QUERY_BUFFER_TOO_SMALL;
+  default:
+    return DATA_BIND_QUERY_BACKEND_ERROR;
+  }
+}
+
 /* DataBind owns diagnostics after the native query/program has been released. */
 static void db_query_diagnostic_copy(DataBindQueryDiagnostic *out,
                                      const qvm_diagnostic_t *native) {
@@ -48,7 +73,7 @@ static void db_query_diagnostic_copy(DataBindQueryDiagnostic *out,
   size = out->size;
   *out = (DataBindQueryDiagnostic)DATA_BIND_QUERY_DIAGNOSTIC_INIT;
   out->size = size;
-  out->status = native->status;
+  out->status = db_query_status_from_native(native->status);
   out->instruction = native->instruction;
   out->opcode = native->opcode;
   out->operand = native->operand;
@@ -59,6 +84,20 @@ static qvm_limits_t db_query_native_limits(const DataBindQueryLimits *limits) {
   if (!limits) return qvm_default_limits();
   return (qvm_limits_t){limits->max_instructions, limits->max_operands,
                         limits->max_regexes, limits->max_steps};
+}
+
+static DataBindDateTime db_datetime_from_native(datetime_t native) {
+  return (DataBindDateTime){
+      native.year, native.month, native.day, native.hour, native.minute,
+      native.second, native.millisecond, native.tz_offset, native.has_tz,
+      native.day_of_week};
+}
+
+static datetime_t db_datetime_to_native(DataBindDateTime value) {
+  return (datetime_t){
+      value.year, value.month, value.day, value.hour, value.minute,
+      value.second, value.millisecond, value.tz_offset, value.has_tz,
+      value.day_of_week};
 }
 
 typedef enum data_bind_wire_type {
@@ -829,7 +868,7 @@ static uint64_t dbv_semantic_hash_depth(const DataBindValue *value,
     return dbv_hash_mix(hash, dbv_hash_bytes(value->data.uuid_val.bytes,
                                              sizeof(value->data.uuid_val.bytes)));
   case DATA_BIND_VALUE_DATETIME: {
-    const datetime_t *datetime = &value->data.datetime_val;
+    const DataBindDateTime *datetime = &value->data.datetime_val;
     hash = dbv_hash_mix(hash, (uint64_t)(uint32_t)datetime->year);
     hash = dbv_hash_mix(hash, (uint64_t)(uint32_t)datetime->month);
     hash = dbv_hash_mix(hash, (uint64_t)(uint32_t)datetime->day);
@@ -1492,7 +1531,7 @@ static DataBindValue *dbv_uuid_text(const char *text) {
   return dbv_uuid_bytes(uuid.bytes);
 }
 
-static DataBindValue *dbv_datetime(datetime_t value) {
+static DataBindValue *dbv_datetime(DataBindDateTime value) {
   DataBindValue *v = dbv_new(DATA_BIND_VALUE_DATETIME);
   if (v == NULL) return NULL;
   v->data.datetime_val = value;
@@ -1502,7 +1541,7 @@ static DataBindValue *dbv_datetime(datetime_t value) {
 static DataBindValue *dbv_datetime_text(const char *text) {
   datetime_t dt;
   if (text == NULL || datetime_parse(text, strlen(text), &dt) != 0) return NULL;
-  return dbv_datetime(dt);
+  return dbv_datetime(db_datetime_from_native(dt));
 }
 
 static int db_date_valid(int year, int month, int day) {
@@ -11617,22 +11656,27 @@ const char *data_bind_value_as_uuid_string(const DataBindValue *value, char *out
   return salts_uuid_format(&value->data.uuid_val, out, len) == SALTS_OK ? out : NULL;
 }
 
-int data_bind_value_as_datetime(const DataBindValue *value, datetime_t *out) {
+int data_bind_value_as_datetime(const DataBindValue *value, DataBindDateTime *out) {
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL) return 0;
   *out = value->data.datetime_val;
   return 1;
 }
 
 double data_bind_value_as_datetime_timestamp(const DataBindValue *value) {
+  datetime_t native;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME) return -1.0;
-  return (double)datetime_to_time(&value->data.datetime_val);
+  native = db_datetime_to_native(value->data.datetime_val);
+  return (double)datetime_to_time(&native);
 }
 
 const char *data_bind_value_as_datetime_string(const DataBindValue *value, char *out, size_t len) {
   time_t ts;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL || len < 32)
     return NULL;
-  ts = datetime_to_time(&value->data.datetime_val);
+  {
+    datetime_t native = db_datetime_to_native(value->data.datetime_val);
+    ts = datetime_to_time(&native);
+  }
   if (ts == (time_t)-1 || datetime_format_rfc822(ts, out, len) < 0) return NULL;
   return out;
 }
@@ -11847,7 +11891,7 @@ DataBindStatus data_bind_value_get_uuid(const DataBindValue *value,
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, datetime_t *out) {
+DataBindStatus data_bind_value_get_datetime(const DataBindValue *value, DataBindDateTime *out) {
   if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value == NULL) return DATA_BIND_ERR_INVALID_ARG;
   if (value->kind != DATA_BIND_VALUE_DATETIME) return DATA_BIND_ERR_TYPE_MISMATCH;
