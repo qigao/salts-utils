@@ -8070,11 +8070,21 @@ static data_bind_stream_t *data_bind_stream_create_common(
     return NULL;
   }
 
-  data_bind_stream_provider_state(parser) =
+  parser->provider.ops = &DATA_BIND_STREAM_PROVIDER_OPS;
+  parser->provider.state =
       (data_bind_stream_format_state *)(void *)(parser + 1);
+  if (!data_bind_stream_provider_ops_valid(parser->provider.ops)) {
+    free(parser);
+    db_error_set(error, DATA_BIND_ERR_RUNTIME, "data_bind_stream_create", -1, -1,
+                 "Invalid stream provider operations");
+    return NULL;
+  }
   data_bind_stream_format_state_init(
       data_bind_stream_provider_state(parser), is_csv, json_stream_candidate,
       json_path_stream_mode, xml_stream_candidate);
+  data_bind_stream_provider_state(parser)->feed_impl = feed_fn;
+  data_bind_stream_provider_state(parser)->finish_impl = finish_fn;
+  data_bind_stream_provider_state(parser)->bind_impl = bind_fn;
 
   type_name_len = strlen(type_name);
   parser->type_name = (char *)malloc(type_name_len + 1);
@@ -8120,9 +8130,6 @@ static data_bind_stream_t *data_bind_stream_create_common(
   parser->query_limits_configured = 0;
   parser->total_input_bytes = 0;
   parser->result_count = 0;
-  parser->feed_fn = feed_fn;
-  parser->finish_fn = finish_fn;
-  parser->bind_fn = bind_fn;
   parser->buffer = NULL;
   parser->size = 0;
   parser->capacity = 0;
@@ -8913,7 +8920,9 @@ static void data_bind_stream_discard_results(data_bind_stream_t *parser) {
 DataBindStatus data_bind_stream_feed(data_bind_stream_t *stream, const void *data, size_t len) {
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindStatus status;
-  if (parser == NULL || parser->feed_fn == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  if (parser == NULL || parser->provider.ops == NULL ||
+      parser->provider.ops->feed == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
   if (parser->canceled)
     return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_feed", -1, -1,
                         "Stream was canceled");
@@ -8932,7 +8941,8 @@ DataBindStatus data_bind_stream_feed(data_bind_stream_t *stream, const void *dat
                         "Stream input exceeds byte limit of %zu",
                         parser->limits.max_input_bytes);
   }
-  status = parser->feed_fn(parser, (const char *)data, len, parser->error);
+  status = parser->provider.ops->feed(
+      parser, (const char *)data, len, parser->error);
   if (status == DATA_BIND_OK) {
     parser->total_input_bytes += len;
     parser->started = 1;
@@ -9043,9 +9053,8 @@ static DataBindStatus data_bind_stream_json_finish(data_bind_stream_t *parser,
   }
   parser->buffer[parser->size] = '\0';
 
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size, path,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
+  status = parser->provider.ops->bind(
+      parser, parser->buffer, parser->size, out_value, error);
 
   if (status == DATA_BIND_OK) {
     status = data_bind_stream_emit_result(parser, *out_value, error);
@@ -9100,9 +9109,8 @@ static DataBindStatus data_bind_stream_xml_finish(data_bind_stream_t *parser,
     parser->capacity = 1;
   }
   parser->buffer[parser->size] = '\0';
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size, path,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
+  status = parser->provider.ops->bind(
+      parser, parser->buffer, parser->size, out_value, error);
   if (status == DATA_BIND_OK) {
     status = data_bind_stream_emit_result(parser, *out_value, error);
     if (status != DATA_BIND_OK) {
@@ -9119,7 +9127,8 @@ static DataBindStatus data_bind_stream_buffered_finish(data_bind_stream_t *parse
                                                        DataBindError *error) {
   DataBindStatus status;
   if (parser == NULL || out_value == NULL || parser->codec == NULL || parser->type_name == NULL ||
-      parser->bind_fn == NULL || parser->finished) {
+      parser->provider.ops == NULL || parser->provider.ops->bind == NULL ||
+      parser->finished) {
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_finish", -1, -1,
                         "Invalid buffered stream finish state");
   }
@@ -9138,10 +9147,8 @@ static DataBindStatus data_bind_stream_buffered_finish(data_bind_stream_t *parse
     parser->buffer[0] = '\0';
     parser->capacity = 1;
   }
-  status = parser->bind_fn(parser->codec, parser->type_name, parser->buffer, parser->size,
-                           parser->path_or_expr,
-                           parser->query_limits_configured ? &parser->query_limits : NULL,
-                           &parser->query_diagnostic, out_value, error);
+  status = parser->provider.ops->bind(
+      parser, parser->buffer, parser->size, out_value, error);
   if (status == DATA_BIND_OK) {
     status = data_bind_stream_emit_result(parser, *out_value, error);
     if (status != DATA_BIND_OK) {
@@ -9157,7 +9164,8 @@ DataBindStatus data_bind_stream_finish(data_bind_stream_t *stream) {
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   DataBindValue *callback_value = NULL;
   DataBindStatus status;
-  if (parser == NULL || parser->finish_fn == NULL || parser->out_value == NULL) {
+  if (parser == NULL || parser->provider.ops == NULL ||
+      parser->provider.ops->finish == NULL || parser->out_value == NULL) {
     return DATA_BIND_ERR_INVALID_ARG;
   }
   if (parser->canceled) {
@@ -9176,9 +9184,11 @@ DataBindStatus data_bind_stream_finish(data_bind_stream_t *stream) {
                         "Stream is in a failed resource-limit state");
   }
   if (parser->output_mode == DATA_BIND_STREAM_OUTPUT_RETAIN) {
-    return parser->finish_fn(parser, parser->out_value, parser->error);
+    return parser->provider.ops->finish(
+        parser, parser->out_value, parser->error);
   }
-  status = parser->finish_fn(parser, &callback_value, parser->error);
+  status = parser->provider.ops->finish(
+      parser, &callback_value, parser->error);
   data_bind_value_free(callback_value);
   *parser->out_value = NULL;
   return status;
@@ -9193,6 +9203,10 @@ DataBindStatus data_bind_stream_cancel(data_bind_stream_t *stream) {
   if (parser->finished)
     return db_error_set(parser->error, DATA_BIND_ERR_INVALID_ARG, "data_bind_stream_cancel", -1,
                         -1, "Finished stream cannot be canceled");
+  if (parser->provider.ops == NULL || parser->provider.ops->cancel == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (parser->provider.ops->cancel(parser, parser->error) != DATA_BIND_OK)
+    return DATA_BIND_ERR_RUNTIME;
   parser->canceled = 1;
   data_bind_stream_discard_results(parser);
   return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_cancel", -1, -1,
@@ -9205,7 +9219,8 @@ void data_bind_stream_destroy(data_bind_stream_t *stream) {
   free(parser->type_name);
   free(parser->path_or_expr);
   free(parser->buffer);
-  data_bind_stream_format_state_cleanup(data_bind_stream_provider_state(parser));
+  if (parser->provider.ops != NULL && parser->provider.ops->destroy != NULL)
+    parser->provider.ops->destroy(parser);
   data_bind_value_free(parser->stream_values);
   data_bind_value_free(parser->csv_values);
   data_bind_value_free(parser->internal_out_value);
