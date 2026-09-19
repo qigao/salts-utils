@@ -71,7 +71,7 @@ struct DataBindValue {
       size_t len;
     } bytes_val;
     salts_uuid_t uuid_val;
-    datetime_t datetime_val;
+    DataBindDateTime datetime_val;
     DataBindDate date_val;
     DataBindTime time_val;
     int64_t duration_ms;

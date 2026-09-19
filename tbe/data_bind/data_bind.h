@@ -15,26 +15,24 @@
 #ifndef DATA_BIND_H
 #define DATA_BIND_H
 
-#include <query_vm.h>
 #include <cmeta/data.h>
 #include <stdbool.h>
 #include <time.h>
 #include <vstr.h>
-#include <datetime_parser.h>
 #include <salts_uuid.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #define DATA_BIND_UUID_SIZE SALTS_UUID_SIZE
 
-#define DATA_BIND_VERSION_MAJOR 2
-#define DATA_BIND_VERSION_MINOR 5
-#define DATA_BIND_VERSION_PATCH 1
+#define DATA_BIND_VERSION_MAJOR 3
+#define DATA_BIND_VERSION_MINOR 0
+#define DATA_BIND_VERSION_PATCH 0
 #define DATA_BIND_VERSION                                                                          \
   (DATA_BIND_VERSION_MAJOR * 10000 + DATA_BIND_VERSION_MINOR * 100 + DATA_BIND_VERSION_PATCH)
 
 /* Increment when the public C ABI changes incompatibly. */
-#define DATA_BIND_ABI_VERSION 8
+#define DATA_BIND_ABI_VERSION 9
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,8 +46,26 @@ extern "C" {
 #endif
 
 typedef struct DataBind DataBind;
-/** DataBind datetime uses the native Salts parser layout. */
-typedef datetime_t DataBindDateTime;
+
+/**
+ * DataBind-owned date-time value.
+ *
+ * This public layout intentionally does not alias any parser implementation
+ * type. Concrete format adapters translate between their private parser
+ * representation and this stable DataBind value.
+ */
+typedef struct DataBindDateTime {
+  int year;
+  int month;
+  int day;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int tz_offset; /* minutes from UTC */
+  int has_tz;
+  int day_of_week; /* 0-6 (Sun-Sat), -1 if not set */
+} DataBindDateTime;
 /**
  * Immutable recursive dynamic node. Parse outputs own their root node; values
  * returned by object, field, list, map, and record accessors are borrowed.
@@ -238,7 +254,7 @@ typedef struct DataBindStreamLimits {
   size_t max_result_count;
 } DataBindStreamLimits;
 
-/** Format-neutral query VM budgets copied into one stream handle. */
+/** Format-neutral query budgets copied into one stream handle. */
 typedef struct DataBindQueryLimits {
   size_t size;
   uint32_t max_instructions;
@@ -247,11 +263,36 @@ typedef struct DataBindQueryLimits {
   uint32_t max_steps;
 } DataBindQueryLimits;
 
+/**
+ * DataBind-owned query result categories.
+ *
+ * Concrete path/query implementations map their native statuses into this
+ * enum. Callers never need to include a QueryVM header.
+ */
+typedef enum DataBindQueryStatus {
+  DATA_BIND_QUERY_OK = 0,
+  DATA_BIND_QUERY_INVALID_ARGUMENT = -1,
+  DATA_BIND_QUERY_INVALID_PROGRAM = -2,
+  DATA_BIND_QUERY_UNSUPPORTED = -3,
+  DATA_BIND_QUERY_BACKEND_ERROR = -4,
+  DATA_BIND_QUERY_NO_MEMORY = -5,
+  DATA_BIND_QUERY_RESOURCE_LIMIT = -6,
+  DATA_BIND_QUERY_BUFFER_TOO_SMALL = -7
+} DataBindQueryStatus;
+
+#define DATA_BIND_QUERY_NO_OPERAND UINT32_MAX
+#define DATA_BIND_QUERY_NO_INSTRUCTION UINT32_MAX
+#define DATA_BIND_QUERY_NO_OPCODE UINT8_MAX
+#define DATA_BIND_QUERY_DEFAULT_MAX_INSTRUCTIONS 1048576u
+#define DATA_BIND_QUERY_DEFAULT_MAX_OPERANDS 1048576u
+#define DATA_BIND_QUERY_DEFAULT_MAX_REGEXES 65536u
+#define DATA_BIND_QUERY_DEFAULT_MAX_STEPS 1048576u
+
 #define DATA_BIND_QUERY_DIAGNOSTIC_MESSAGE_CAPACITY 160u
-/** Caller-owned native query diagnostic, independent of parser lifetime. */
+/** Caller-owned query diagnostic, independent of concrete parser/query lifetime. */
 typedef struct DataBindQueryDiagnostic {
   size_t size;
-  qvm_status_t status;
+  DataBindQueryStatus status;
   uint32_t instruction;
   uint8_t opcode;
   uint8_t reserved[3];
@@ -260,11 +301,12 @@ typedef struct DataBindQueryDiagnostic {
 } DataBindQueryDiagnostic;
 
 #define DATA_BIND_QUERY_LIMITS_INIT \
-  {sizeof(DataBindQueryLimits), QVM_DEFAULT_MAX_INSTRUCTIONS, \
-   QVM_DEFAULT_MAX_OPERANDS, QVM_DEFAULT_MAX_REGEXES, QVM_DEFAULT_MAX_STEPS}
+  {sizeof(DataBindQueryLimits), DATA_BIND_QUERY_DEFAULT_MAX_INSTRUCTIONS, \
+   DATA_BIND_QUERY_DEFAULT_MAX_OPERANDS, DATA_BIND_QUERY_DEFAULT_MAX_REGEXES, \
+   DATA_BIND_QUERY_DEFAULT_MAX_STEPS}
 #define DATA_BIND_QUERY_DIAGNOSTIC_INIT \
-  {sizeof(DataBindQueryDiagnostic), QVM_STATUS_OK, QVM_NO_INSTRUCTION, \
-   QVM_NO_OPCODE, {0, 0, 0}, QVM_NO_OPERAND, {0}}
+  {sizeof(DataBindQueryDiagnostic), DATA_BIND_QUERY_OK, DATA_BIND_QUERY_NO_INSTRUCTION, \
+   DATA_BIND_QUERY_NO_OPCODE, {0, 0, 0}, DATA_BIND_QUERY_NO_OPERAND, {0}}
 
 #define DATA_BIND_STREAM_LIMITS_INIT                                                        \
   {                                                                                         \
