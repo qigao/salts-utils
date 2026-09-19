@@ -543,6 +543,25 @@ suite("bounded XML parser facade") {
         salts_xml_document_destroy(&document);
     }
 
+    it("rejects malformed XPath without undefined cleanup") {
+        static const char xml[] = "<root><tag>x</tag></root>";
+        salts_xml_document document = {0};
+        salts_xml_diagnostic parse_diagnostic = {0};
+        salts_xml_node_list nodes = {0};
+        qvm_diagnostic_t query_diagnostic = {0};
+
+        check_equal(salts_xml_parse(&document, xml, sizeof(xml) - 1u, NULL,
+                                    &parse_diagnostic),
+                    SALTS_XML_OK);
+        check_not_equal(
+            salts_xml_document_xpath_query(&document, "//*[", &nodes, NULL,
+                                           &query_diagnostic),
+            QVM_STATUS_OK);
+        check_equal(salts_xml_node_list_size(&nodes), (size_t)0u);
+        salts_xml_node_list_destroy(&nodes);
+        salts_xml_document_destroy(&document);
+    }
+
     it("returns owned lists of borrowed query and XPath nodes") {
         static const char xml[] = "<fruit><name>banana</name><name>pear</name></fruit>";
         salts_xml_document document = {0};
