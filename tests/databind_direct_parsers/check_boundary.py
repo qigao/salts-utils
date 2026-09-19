@@ -38,7 +38,7 @@ class DirectParserBoundary(unittest.TestCase):
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
         self.assertNotIn("#include <datetime_parser.h>", header)
-        self.assertNotIn("datetime_t", header)
+        self.assertIsNone(re.search(r"\bdatetime_t\b", header))
         self.assertNotIn("turbo_datetime_t", header)
         self.assertRegex(
             header,
