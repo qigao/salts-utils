@@ -29,17 +29,13 @@ target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
 
 cmake_config_target(
   ${TARGET_NAME}
-  ALIAS Salts::TbeSchema
+  ALIAS DataBind::Schema
   FOLDER tbe/schema
-  EXPORT_NAME TbeSchema)
-
-if(NOT TARGET Salts::SchemaBE)
-  add_library(Salts::SchemaBE ALIAS ${TARGET_NAME})
-endif()
+  EXPORT_NAME Schema)
 
 install(
   TARGETS ${TARGET_NAME}
-  EXPORT SaltsUtilsTargets
+  EXPORT DataBindTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -54,7 +50,7 @@ install(
 # Tests
 # =============================================================================
 
-set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
+set(TBE_SCHEMA_TEST_LIBS DataBind::Schema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
         test_schema_boundaries
@@ -80,7 +76,7 @@ add_test(NAME test_databind_only_dependency_contract
 
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
-  LIBS Salts::TbeSchema
+  LIBS DataBind::Schema
   FOLDER "tbe/schema/tests")
 if(TARGET test_schema_cmeta_public_cpp)
   set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
@@ -100,7 +96,7 @@ endif()
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
-  LIBS Salts::TbeSchema
+  LIBS DataBind::Schema
   FOLDER tbe/schema/tests)
 
 # =============================================================================
