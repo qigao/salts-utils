@@ -29,3 +29,21 @@ add_test(
 set_tests_properties(
   salts_utils_package_config_resolves_public_dependencies
   PROPERTIES LABELS "cmake;package-config")
+
+add_test(
+  NAME databind_package_core_only
+  COMMAND
+    "${CMAKE_COMMAND}" -E env
+      "SALTS_ROOT=${SALTS_ROOT_PATH}"
+      "SALTS_UTILS_ROOT="
+    "${CMAKE_COMMAND}" --fresh
+    -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_core"
+    -B "${CMAKE_CURRENT_BINARY_DIR}/databind_core_build"
+    -G "${CMAKE_GENERATOR}"
+    "-DDATABIND_PACKAGE_DIR=${CMAKE_BINARY_DIR}"
+    "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
+    "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+
+set_tests_properties(
+  databind_package_core_only
+  PROPERTIES LABELS "cmake;package-config;databind")
