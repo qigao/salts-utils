@@ -6,6 +6,7 @@ on:
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
+      - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
       - 'cmake/**'
       - 'presets/**'
@@ -19,6 +20,7 @@ on:
     paths:
       - 'tbe/**'
       - 'tests/databind_direct_parsers/**'
+      - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
       - 'cmake/**'
       - 'presets/**'
