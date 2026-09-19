@@ -458,12 +458,21 @@ void cxml_xp_fvisit_String(cxml_xp_string* node){
 void cxml_xp_fvisit_Path(cxml_xp_path* path){
     _cxml_dprint("<--FREEING (cxml_xp_path) node-->\n")
 
+    if (path == NULL) return;
     cxml_for_each(step, &path->steps)
     {
         cxml_xp_fvisit_Step(step);
     }
     cxml_list_free(&path->steps);
     FREE(path);
+}
+
+void cxml_xp_free_partial_step(cxml_xp_step *step) {
+    if (step != NULL) cxml_xp_fvisit_Step(step);
+}
+
+void cxml_xp_free_partial_path(cxml_xp_path *path) {
+    if (path != NULL) cxml_xp_fvisit_Path(path);
 }
 
 // F
