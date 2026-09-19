@@ -68,9 +68,5 @@ endforeach()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
-if(TARGET Salts::TbeSchema AND NOT TARGET Salts::SchemaBE)
-  add_library(Salts::SchemaBE ALIAS Salts::TbeSchema)
-endif()
-
 set_property(GLOBAL PROPERTY SALTS_UTILS_CONFIG_LOADED TRUE)
 check_required_components(SaltsUtils)
