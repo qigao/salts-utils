@@ -1,10 +1,14 @@
 # XML parser maintenance notes
 
-## XPath parser-error cleanup
+## XPath parser-error recovery and cleanup
 
-`vendor/cxml/src/xpath/cxxpmemdeb.c`, `cxml_xp_fvisit`: return immediately for a null AST node. Invalid XPath recovery can leave a null placeholder in the parser-owned AST node list; cleanup previously dereferenced that placeholder and turned a normal parse rejection into UBSan-visible undefined behavior.
+The upstream XPath parser treated malformed expressions as a process-fatal condition: its recursive-descent error path printed the expression to stderr, released partially built state, and called `exit(EXIT_FAILURE)`. Embeddable library code cannot terminate its host for invalid input.
 
-Reproduced by the DataBind XML format-provider regression at exact head `16d4655aa28806d8166b360ea5f397f0c35f1ead` with the invalid expression `//*[`. The provider contract requires invalid selection syntax to fail without producing a reader. This patch changes only cleanup of partially constructed vendor parser state; it does not accept additional XPath syntax or suppress sanitizers.
+The local patch now gives the XPath parser its own `setjmp` recovery point. Syntax rejection releases partial parser state and returns `QVM_STATUS_INVALID_PROGRAM` through `cxml_xpath_ex()`, with a stable diagnostic message. It does not print the supplied XPath and does not terminate the process.
+
+`vendor/cxml/src/xpath/cxxpmemdeb.c`, `cxml_xp_fvisit`, is also null-safe because parser recovery can leave a null placeholder in the AST-node stack during partial construction.
+
+Reproduced by the DataBind XML format-provider regression at exact head `16d4655aa28806d8166b360ea5f397f0c35f1ead` with the invalid expression `//*[`: the first failure exposed a null dereference under UBSan, and after the cleanup guard the provider test still exited nonzero because the vendor syntax-error path intentionally terminated the process. Both behaviors are now covered by the parser-level malformed-XPath regression. No sanitizer suppression or syntax relaxation is used.
 
 ## cxml local-name initialization
 
