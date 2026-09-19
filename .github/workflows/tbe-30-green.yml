@@ -241,7 +241,11 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(salts_utils_package_config_repeated_find|databind_package_config_repeated_find|databind_package_config_adapters)      - name: Run complete Jinja regressions with the allocator-bound SDK
+            -R '^(salts_utils_package_config_repeated_find|databind_package_config_repeated_find|databind_package_config_adapters)$' \
+            --output-on-failure \
+            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+
+      - name: Run complete Jinja regressions with the allocator-bound SDK
         shell: bash
         run: |
           set -euxo pipefail
