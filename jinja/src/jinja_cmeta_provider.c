@@ -11504,7 +11504,9 @@ static JINJA_CMETA_STATUS jinja_invoke_function(JINJA_CMETA_PROVIDER *provider,
   if (status != JINJA_CMETA_OK) goto restore;
   status = jinja_scope_initialize(provider, function->scope, closure->activation);
   if (status != JINJA_CMETA_OK) goto restore;
-  provider->autoescape = function->is_block ? 0 : closure->autoescape;
+  provider->autoescape = function->is_block
+      ? closure->instance->templ->autoescape
+      : closure->autoescape;
   if (!function->is_block) {
     status = jinja_macro_parameters(provider, function, input);
     if (status != JINJA_CMETA_OK) goto restore;
