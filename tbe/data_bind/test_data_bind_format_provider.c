@@ -97,5 +97,14 @@ int main(void) {
     return 8;
   if (data_bind_format_reader_close(&lease) != DATA_BIND_OK) return 9;
   if (CLOSE_CALLS != 1) return 10;
+
+  lease = (DataBindFormatReader)DATA_BIND_FORMAT_READER_INIT;
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  if (data_bind_format_reader_open_selected(
+          &TEST_PROVIDER, payload, sizeof(payload) - 1u, 4u,
+          DATA_BIND_STREAM_SELECT_ROOT, NULL, NULL, NULL,
+          &lease, &error) != DATA_BIND_ERR_INVALID_ARG)
+    return 11;
+  if (OPEN_CALLS != 1 || lease.reader != NULL) return 12;
   return 0;
 }
