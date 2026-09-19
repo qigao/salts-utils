@@ -35,11 +35,15 @@ class DirectParserBoundary(unittest.TestCase):
                        "CYamlJsonAdapter", "DateTimeParser", "QueryVM"):
             self.assertIn(f"Salts::{target}", cmake)
 
-    def test_datetime_uses_the_native_public_type(self):
+    def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
-        self.assertIn("#include <datetime_parser.h>", header)
-        self.assertIn("datetime_t", header)
+        self.assertNotIn("#include <datetime_parser.h>", header)
+        self.assertNotIn("datetime_t", header)
         self.assertNotIn("turbo_datetime_t", header)
+        self.assertRegex(
+            header,
+            r"typedef\s+struct\s+DataBindDateTime\s*\{[\s\S]*?\}\s*DataBindDateTime\s*;",
+        )
 
 
 if __name__ == "__main__":
