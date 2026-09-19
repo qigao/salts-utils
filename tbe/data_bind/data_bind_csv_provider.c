@@ -51,7 +51,7 @@ static void csv_emit_string(cserde_token *out, vstr view) {
   memset(out, 0, sizeof(*out));
   out->kind = CSERDE_STRING;
   out->value.slice.data = (const unsigned char *)view.data;
-  out->value.slice.size = view.length;
+  out->value.slice.size = view.len;
   out->value.slice.lifetime = CSERDE_VIEW_STABLE;
 }
 
