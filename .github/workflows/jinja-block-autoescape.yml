@@ -102,17 +102,17 @@ jobs:
             -DENABLE_SANITIZER_UNDEFINED=OFF \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="${GITHUB_WORKSPACE}/build/host-lemon/lemon"
 
-      - name: Build focused Jinja environment test
+      - name: Build configured SaltsUtils tree
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target test_jinja_environment -j2
+          cmake --build build/linux-gcc-debug -j2
 
-      - name: Run focused Jinja environment test
+      - name: Run full Jinja test label
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug -R '^test_jinja_environment$' --output-on-failure
+          ctest --test-dir build/linux-gcc-debug -L jinja --output-on-failure
 
       - name: Verify exact head and clean tracked source
         if: always()
