@@ -136,6 +136,8 @@ add_library(
   data_bind_schema.c
   data_bind_schema_internal.h
   data_bind_record.c
+  data_bind_stream_format_state.c
+  data_bind_stream_format_state_internal.h
   tbe_typed.c
   tbe_typed.h)
 target_compile_definitions(${DATA_BIND_TARGET} PRIVATE DATA_BIND_BUILD_DLL)
