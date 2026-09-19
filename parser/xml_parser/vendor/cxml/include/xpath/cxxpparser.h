@@ -47,6 +47,9 @@ typedef struct {
     _cxml_stack ctx_stack;
     // context state of the xpath node objects
     struct _cxml_xp_context_state context;
+    // parser-error recovery: malformed XPath must return to the caller rather
+    // than terminating the process.
+    jmp_buf error_jmp;
 } _cxml_xp_parser;
 
 extern _cxml_xp_parser _xpath_parser;
