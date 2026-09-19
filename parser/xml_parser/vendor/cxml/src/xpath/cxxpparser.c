@@ -185,44 +185,17 @@ static void _cxml_xp__err(
         const int *_line,
         const int *_col)
 {
-    cxml_string context_msg = new_cxml_string();
-    cxml_string_raw_append(&context_msg, "Found at least %d valid xpath expression tokens.\n");
-    cxml_string_raw_append(&context_msg, "Token `%.*s` that caused this error "
-                                         "was found at line: %d, column: %d.\n");
-    if (msg){
-        cxml_string_raw_append(&context_msg, "Error message: ");
-        cxml_string_raw_append(&context_msg, msg);
-        cxml_string_append(&context_msg, "\n", 1);
-    }
-    cxml_string_raw_append(&context_msg, "Hence, `%s` is not a valid xpath expression.\n");
-    char* raw = cxml_string_as_raw(&context_msg);
-    // beginning col is offset of token's length from col_no current position
-    // since col_no will count to the end of a token before returning it as a
-    // complete token to the parser.
-    int col = _col ? (*_col) : (_xpath_parser.lexer.col_no - (token->length - 1));  // -1 to drop at the token's first char
-    fprintf(stderr, "%s", raw);
-    // Explicitly print parts that were intended to be formatted, safely.
-    // However, the 'raw' string itself already contains the formatted output from cxml_string_as_raw
-    // wait, actually 'raw' is just the buffer. We need to use a format string.
-    // The previous code used 'fprintf(stderr, raw, ...)' which is dangerous if 'raw' comes from data.
-    // In this case 'raw' is built from 'context_msg' which has format specifiers.
-    // To fix -Wformat-nonliteral, we should use a literal format string.
+    (void)token;
+    (void)msg;
+    (void)_line;
+    (void)_col;
 
-    // Actually, looking at the code, context_msg is built with format specifiers like %d, %.*s, etc.
-    // A better fix is to use a literal format string for fprintf.
-
-    fprintf(stderr, "Found at least %d valid xpath expression tokens.\n"
-                    "Token `%.*s` that caused this error was found at line: %d, column: %d.\n"
-                    "%s"
-                    "Hence, `%s` is not a valid xpath expression.\n",
-            _xpath_parser.consume_cnt,
-            token->length, token->start,
-            (_line ? *_line : _xpath_parser.lexer.line_no), col,
-            (msg ? msg : ""),
-            _xpath_parser.lexer.expr);
-    cxml_string_free(&context_msg);
+    /* Syntax rejection is an ordinary API result. Release every partially
+     * constructed parser object, then return to query_string()'s recovery
+     * point. Never print attacker-controlled XPath text and never terminate
+     * the embedding process. */
     _cxml_xpath_parser_free();
-    exit(EXIT_FAILURE);
+    longjmp(_xpath_parser.error_jmp, 1);
 }
 
 struct _cxml_xp_binding_power_LU{  // binding-power lookup-table
@@ -950,11 +923,13 @@ void location_path() {
  * QueryString  ::=     "'" LocationPath  "'"
  */
 
-void query_string(const char *query_string) {
+int query_string(const char *query_string) {
     _cxml_xp_lexer_init(&_xpath_parser.lexer, query_string);
     _cxml_xpath_parser_init();
+    if (setjmp(_xpath_parser.error_jmp) != 0) return 0;
     _cxml_xp_p__advance();
     /***/
     location_path();
     _cxml_xp_p__consume(CXML_XP_TOKEN_END);
+    return 1;
 }
