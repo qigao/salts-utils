@@ -333,7 +333,10 @@ static DataBindStatus csv_provider_open_selected(
       !dsv_filter_compile_ex(
           filter, path, &native_limits, &native_diagnostic)) {
     DataBindStatus status;
+    char filter_message[160] = "CSV filter compile failed";
     const char *filter_error = dsv_filter_error(filter);
+    if (filter_error != NULL && filter_error[0] != '\0')
+      snprintf(filter_message, sizeof(filter_message), "%s", filter_error);
     csv_query_diagnostic(query_diagnostic, &native_diagnostic);
     status = csv_query_failure(query_diagnostic);
     if (filter != NULL) dsv_filter_destroy(filter);
@@ -343,9 +346,7 @@ static DataBindStatus csv_provider_open_selected(
         error, status,
         query_diagnostic != NULL && query_diagnostic->message[0] != '\0'
             ? query_diagnostic->message
-            : (filter_error != NULL && filter_error[0] != '\0'
-                   ? filter_error
-                   : "CSV filter compile failed"));
+            : filter_message);
   }
   csv_query_diagnostic(query_diagnostic, &native_diagnostic);
 
