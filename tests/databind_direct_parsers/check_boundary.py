@@ -172,6 +172,51 @@ class DirectParserBoundary(unittest.TestCase):
             + ", ".join(leaked_destroy),
         )
 
+    def test_incremental_stream_uses_versioned_provider_lease(self):
+        source = (BIND / "data_bind.c").read_text()
+        internal = (BIND / "data_bind_stream_format_state_internal.h").read_text()
+
+        struct_match = re.search(
+            r"struct\s+data_bind_stream_t\s*\{([\s\S]*?)\n\};",
+            source,
+        )
+        self.assertIsNotNone(struct_match, "data_bind_stream_t definition not found")
+        stream_state = struct_match.group(1)
+        for loose_callback in ("feed_fn", "finish_fn", "bind_fn"):
+            self.assertNotIn(
+                loose_callback,
+                stream_state,
+                "stream shell still owns loose provider callback: " + loose_callback,
+            )
+        self.assertRegex(
+            stream_state,
+            r"data_bind_stream_provider_lease\s+provider",
+        )
+
+        self.assertIn("DATA_BIND_STREAM_PROVIDER_OPS_ABI_VERSION", internal)
+        self.assertRegex(
+            internal,
+            r"typedef\s+struct\s+data_bind_stream_provider_ops\s*\{[\s\S]*?"
+            r"size_t\s+size\s*;[\s\S]*?uint32_t\s+abi_version\s*;",
+        )
+        for operation in ("feed", "finish", "cancel", "destroy"):
+            self.assertRegex(
+                internal,
+                rf"\(\*{operation}\)\s*\(",
+                "provider ops missing lifecycle operation: " + operation,
+            )
+
+        destroy_match = re.search(
+            r"void\s+data_bind_stream_destroy\s*\([^)]*\)\s*\{([\s\S]*?)\n\}",
+            source,
+        )
+        self.assertIsNotNone(destroy_match, "data_bind_stream_destroy definition not found")
+        self.assertNotIn(
+            "data_bind_stream_format_state_cleanup",
+            destroy_match.group(1),
+            "stream shell still destroys concrete format state directly",
+        )
+
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
         self.assertNotIn("#include <datetime_parser.h>", header)
