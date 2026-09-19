@@ -35,7 +35,7 @@ class DirectParserBoundary(unittest.TestCase):
     def test_core_runtime_has_no_concrete_saltsutils_dependencies(self):
         cmake = (BIND / "CMakeLists.txt").read_text()
         match = re.search(
-            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\n\)",
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\)",
             cmake,
         )
         self.assertIsNotNone(match, "DataBind core link contract not found")
