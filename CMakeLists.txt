@@ -159,7 +159,8 @@ install(
   EXPORT DataBindTargets
   FILE DataBindTargets.cmake
   NAMESPACE Salts::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind"
+  COMPONENT DataBind)
 install(
   EXPORT DataBindAdapterTargets
   FILE DataBindAdapterTargets.cmake
@@ -168,7 +169,8 @@ install(
 install(
   FILES "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
         "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind"
+  COMPONENT DataBind)
 
 # Generate the config file
 configure_package_config_file(
