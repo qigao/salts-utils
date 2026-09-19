@@ -1,5 +1,23 @@
 @PACKAGE_INIT@
 
+set(_DATABIND_SUPPORTED_COMPONENTS
+    Core
+    Schema
+    Runtime
+    CMeta
+    JsonAdapter
+    YamlAdapter
+    CsvAdapter
+    XmlAdapter
+    TemporalAdapter
+    CFlow)
+
+foreach(_DATABIND_COMPONENT IN LISTS DataBind_FIND_COMPONENTS)
+  if(NOT _DATABIND_COMPONENT IN_LIST _DATABIND_SUPPORTED_COMPONENTS)
+    set(DataBind_${_DATABIND_COMPONENT}_FOUND FALSE)
+  endif()
+endforeach()
+
 if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
   set(DataBind_FOUND FALSE)
   set(DataBind_NOT_FOUND_MESSAGE
@@ -31,22 +49,41 @@ foreach(_DATABIND_REQUIRED_SALTS_TARGET IN ITEMS
   endif()
 endforeach()
 
-set(_DATABIND_NEEDS_SALTS_UTILS FALSE)
-foreach(_DATABIND_COMPONENT IN LISTS DataBind_FIND_COMPONENTS)
-  if(_DATABIND_COMPONENT MATCHES
-     "^(JsonAdapter|YamlAdapter|CsvAdapter|XmlAdapter|TemporalAdapter)$")
-    set(_DATABIND_NEEDS_SALTS_UTILS TRUE)
+# Core/schema/runtime/CMeta are one Salts-only export closure. Importing the
+# normal package or requesting only these components must not discover
+# SaltsUtils concrete parser targets or CFlow.
+if(NOT TARGET DataBind::Core)
+  include("${CMAKE_CURRENT_LIST_DIR}/DataBindTargets.cmake")
+endif()
+
+set(DataBind_Core_FOUND FALSE)
+set(DataBind_Schema_FOUND FALSE)
+set(DataBind_Runtime_FOUND FALSE)
+set(DataBind_CMeta_FOUND FALSE)
+foreach(_DATABIND_BASE_COMPONENT IN ITEMS Core Schema Runtime CMeta)
+  if(TARGET DataBind::${_DATABIND_BASE_COMPONENT})
+    set(DataBind_${_DATABIND_BASE_COMPONENT}_FOUND TRUE)
   endif()
 endforeach()
 
-# A component-less lookup exposes the normal runtime package but does not
-# eagerly resolve adapter implementation dependencies. The Runtime shared
-# library's installed interface depends only on DataBind::Core.
-if(_DATABIND_NEEDS_SALTS_UTILS)
+set(_DATABIND_ADAPTER_COMPONENTS
+    JsonAdapter YamlAdapter CsvAdapter XmlAdapter TemporalAdapter)
+set(_DATABIND_NEEDS_ADAPTERS FALSE)
+foreach(_DATABIND_COMPONENT IN LISTS DataBind_FIND_COMPONENTS)
+  if(_DATABIND_COMPONENT IN_LIST _DATABIND_ADAPTER_COMPONENTS)
+    set(_DATABIND_NEEDS_ADAPTERS TRUE)
+  endif()
+endforeach()
+
+foreach(_DATABIND_ADAPTER_COMPONENT IN LISTS _DATABIND_ADAPTER_COMPONENTS)
+  set(DataBind_${_DATABIND_ADAPTER_COMPONENT}_FOUND FALSE)
+endforeach()
+
+if(_DATABIND_NEEDS_ADAPTERS)
   if(NOT DEFINED ENV{SALTS_UTILS_ROOT} OR "$ENV{SALTS_UTILS_ROOT}" STREQUAL "")
     set(DataBind_FOUND FALSE)
     set(DataBind_NOT_FOUND_MESSAGE
-        "SALTS_UTILS_ROOT is required for the requested DataBind concrete adapter component")
+        "SALTS_UTILS_ROOT is required for a requested DataBind concrete adapter component")
     return()
   endif()
   file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_ROOT_PATH)
@@ -56,28 +93,25 @@ if(_DATABIND_NEEDS_SALTS_UTILS)
         "SALTS_UTILS_ROOT is not a directory: $ENV{SALTS_UTILS_ROOT}")
     return()
   endif()
+
   unset(SaltsUtils_DIR CACHE)
   unset(SaltsUtils_DIR)
   find_dependency(SaltsUtils CONFIG REQUIRED
     PATHS "${SALTS_UTILS_ROOT_PATH}"
     NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+
+  if(NOT TARGET DataBind::JsonAdapter)
+    include("${CMAKE_CURRENT_LIST_DIR}/DataBindAdapterTargets.cmake")
+  endif()
+
+  foreach(_DATABIND_ADAPTER_COMPONENT IN LISTS _DATABIND_ADAPTER_COMPONENTS)
+    if(TARGET DataBind::${_DATABIND_ADAPTER_COMPONENT})
+      set(DataBind_${_DATABIND_ADAPTER_COMPONENT}_FOUND TRUE)
+    endif()
+  endforeach()
 endif()
 
-if(NOT TARGET DataBind::Core)
-  include("${CMAKE_CURRENT_LIST_DIR}/DataBindTargets.cmake")
-endif()
-
-set(DataBind_Core_FOUND TRUE)
-set(DataBind_Schema_FOUND TRUE)
-set(DataBind_Runtime_FOUND TRUE)
-set(DataBind_JsonAdapter_FOUND TRUE)
-set(DataBind_YamlAdapter_FOUND TRUE)
-set(DataBind_CsvAdapter_FOUND TRUE)
-set(DataBind_XmlAdapter_FOUND TRUE)
-set(DataBind_TemporalAdapter_FOUND TRUE)
-set(DataBind_CMeta_FOUND TRUE)
 set(DataBind_CFlow_FOUND FALSE)
-
 list(FIND DataBind_FIND_COMPONENTS "CFlow" _DATABIND_CFLOW_COMPONENT_INDEX)
 if(NOT _DATABIND_CFLOW_COMPONENT_INDEX EQUAL -1)
   if(NOT TARGET Salts::CFlow)
@@ -104,3 +138,12 @@ foreach(_DATABIND_LEGACY_TARGET IN ITEMS
 endforeach()
 
 check_required_components(DataBind)
+
+unset(_DATABIND_ADAPTER_COMPONENT)
+unset(_DATABIND_ADAPTER_COMPONENTS)
+unset(_DATABIND_BASE_COMPONENT)
+unset(_DATABIND_CFLOW_COMPONENT_INDEX)
+unset(_DATABIND_COMPONENT)
+unset(_DATABIND_NEEDS_ADAPTERS)
+unset(_DATABIND_REQUIRED_SALTS_TARGET)
+unset(_DATABIND_SUPPORTED_COMPONENTS)
