@@ -156,7 +156,6 @@ target_link_libraries(
     Salts::DataBindXmlAdapter
     Salts::DataBindTemporalAdapter
     Salts::TbeSchema
-    Salts::QueryVM
   PUBLIC
     Salts::DataBindCore)
 
