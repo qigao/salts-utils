@@ -28,11 +28,11 @@ target_link_libraries(
     Salts::CYaml
     Salts::CYamlJsonAdapter
     Salts::TbeSchema
+    Salts::DateTimeParser
+    Salts::QueryVM
   PUBLIC
     Salts::Core
-    Salts::CSTL
-    Salts::DateTimeParser
-    Salts::QueryVM)
+    Salts::CSTL)
 cmake_config_target(
   ${DATA_BIND_TARGET}
   ALIAS Salts::DataBind
@@ -89,6 +89,15 @@ cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+
+add_executable(test_data_bind_public_header_boundary
+  test_data_bind_public_header_boundary.c)
+target_compile_features(test_data_bind_public_header_boundary PRIVATE c_std_11)
+target_link_libraries(test_data_bind_public_header_boundary PRIVATE Salts::DataBind)
+set_target_properties(test_data_bind_public_header_boundary
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_public_header_boundary
+  COMMAND test_data_bind_public_header_boundary)
 cmake_add_test(test_data_bind_value_boundary
   SOURCES test_data_bind_value_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
