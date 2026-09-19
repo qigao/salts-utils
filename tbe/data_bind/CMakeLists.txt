@@ -297,6 +297,11 @@ set_target_properties(test_data_bind_temporal_adapter
 add_test(NAME test_data_bind_temporal_adapter
   COMMAND test_data_bind_temporal_adapter)
 
+if(NOT DEFINED DATABIND_TEST_SALTS_UTILS_ROOT OR
+   "${DATABIND_TEST_SALTS_UTILS_ROOT}" STREQUAL "")
+  set(DATABIND_TEST_SALTS_UTILS_ROOT "${CMAKE_BINARY_DIR}")
+endif()
+
 add_test(
   NAME test_databind_package_config_repeated_find
   COMMAND
@@ -314,7 +319,7 @@ add_test(
   COMMAND
     "${CMAKE_COMMAND}" -E env
       "SALTS_ROOT=${SALTS_ROOT_PATH}"
-      "SALTS_UTILS_ROOT=${CMAKE_BINARY_DIR}"
+      "SALTS_UTILS_ROOT=${DATABIND_TEST_SALTS_UTILS_ROOT}"
     "${CMAKE_COMMAND}" --fresh
     -S "${CMAKE_SOURCE_DIR}/tests/package_config/databind_adapters"
     -B "${CMAKE_CURRENT_BINARY_DIR}/package/databind_adapters"
@@ -331,7 +336,7 @@ add_test(
     -S "${CMAKE_SOURCE_DIR}/tests/package_config/repeated_find"
     -B "${CMAKE_CURRENT_BINARY_DIR}/package/salts_utils_repeated_find"
     -G "${CMAKE_GENERATOR}"
-    "-DSALTS_UTILS_PACKAGE_DIR=${CMAKE_BINARY_DIR}"
+    "-DSALTS_UTILS_PACKAGE_DIR=${DATABIND_TEST_SALTS_UTILS_ROOT}"
     "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
     "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
 
