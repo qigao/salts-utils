@@ -9215,11 +9215,11 @@ DataBindStatus data_bind_stream_cancel(data_bind_stream_t *stream) {
 void data_bind_stream_destroy(data_bind_stream_t *stream) {
   data_bind_stream_t *parser = (data_bind_stream_t *)stream;
   if (parser == NULL) return;
+  if (parser->provider.ops != NULL && parser->provider.ops->destroy != NULL)
+    parser->provider.ops->destroy(parser);
   free(parser->type_name);
   free(parser->path_or_expr);
   free(parser->buffer);
-  if (parser->provider.ops != NULL && parser->provider.ops->destroy != NULL)
-    parser->provider.ops->destroy(parser);
   data_bind_value_free(parser->stream_values);
   data_bind_value_free(parser->csv_values);
   data_bind_value_free(parser->internal_out_value);
