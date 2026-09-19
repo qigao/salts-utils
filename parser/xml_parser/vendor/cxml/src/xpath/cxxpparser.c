@@ -90,6 +90,8 @@ void _cxml_xpath_parser_init() {
     _cxml_cache_init(&_xpath_parser.lru_cache);
 
     cxml_list_init(&_xpath_parser.alloc_set_list);
+    cxml_list_init(&_xpath_parser.recovery_paths);
+    cxml_list_init(&_xpath_parser.recovery_steps);
 
     _xpath_parser.xml_namespace = NULL;
 }
@@ -101,6 +103,18 @@ void cxml_xp_free_ast_nodes(_cxml_xp_parser *xpp){
 }
 
 void _cxml_xpath_parser_free(){
+    /* Raw path/step nodes are tracked only until ownership transfers into a
+     * wrapped AST. Drain raw steps first; recovery paths own only steps that
+     * have already been untracked. */
+    cxml_for_each(step, &_xpath_parser.recovery_steps) {
+        cxml_xp_free_partial_step(step);
+    }
+    cxml_list_free(&_xpath_parser.recovery_steps);
+    cxml_for_each(path, &_xpath_parser.recovery_paths) {
+        cxml_xp_free_partial_path(path);
+    }
+    cxml_list_free(&_xpath_parser.recovery_paths);
+
 _CXML__TRACE(
     cxml_string acc = new_cxml_string();
     cxml_xp_bvisit(_cxml_stack__get(&_xpath_parser.ast_stack), &acc);
@@ -329,7 +343,14 @@ static cxml_xp_path* new_path(){
     path_node->type = CXML_XP_AST_PATH_NODE;
     path_node->from_predicate = 0;
     cxml_list_init(&path_node->steps);
+    cxml_list_append(&_xpath_parser.recovery_paths, path_node);
     return path_node;
+}
+
+static void _cxml_xp_recovery_adopt_path(cxml_xp_path *path) {
+    if (path != NULL)
+        cxml_list_search_delete(&_xpath_parser.recovery_paths,
+                                cxml_list_cmp_raw_items, path);
 }
 
 static cxml_xp_predicate* new_predicate(){
@@ -360,7 +381,14 @@ static cxml_xp_step* new_step(){
     step->node_test = NULL;
     step->path_spec = 0;
     cxml_list_init(&step->predicates);
+    cxml_list_append(&_xpath_parser.recovery_steps, step);
     return step;
+}
+
+static void _cxml_xp_recovery_adopt_step(cxml_xp_step *step) {
+    if (step != NULL)
+        cxml_list_search_delete(&_xpath_parser.recovery_steps,
+                                cxml_list_cmp_raw_items, step);
 }
 
 static cxml_xp_binaryop* new_binary(){
@@ -854,18 +882,24 @@ void relative_location_path(){
     path_node->from_predicate = _xpath_parser.from_predicate;
     step();
     if (!_cxml_xp_p__stack_empty()){
-        cxml_list_append(&path_node->steps, _cxml_xp_p__pop());
+        cxml_xp_step *owned_step = _cxml_xp_p__pop();
+        cxml_list_append(&path_node->steps, owned_step);
+        _cxml_xp_recovery_adopt_step(owned_step);
     }
     while (_xpath_parser.current_tok.type == CXML_XP_TOKEN_F_SLASH
           || _xpath_parser.current_tok.type == CXML_XP_TOKEN_DF_SLASH)
     {
+        cxml_xp_step *owned_step;
         _cxml_xp_p__consume(_xpath_parser.current_tok.type);
         step();
-        cxml_list_append(&path_node->steps, _cxml_xp_p__pop());
+        owned_step = _cxml_xp_p__pop();
+        cxml_list_append(&path_node->steps, owned_step);
+        _cxml_xp_recovery_adopt_step(owned_step);
     }
     cxml_xp_astnode* node = new_astnode();
     node->wrapped_type = CXML_XP_AST_PATH_NODE;
     node->wrapped_node.path = path_node;
+    _cxml_xp_recovery_adopt_path(path_node);
     _cxml_xp_p__push(node);
 }
 
@@ -879,9 +913,11 @@ static void _abbrev_step(){
     cxml_xp_path *path_node = new_path();
     path_node->from_predicate = _xpath_parser.from_predicate;
     cxml_list_append(&path_node->steps, step_node);
+    _cxml_xp_recovery_adopt_step(step_node);
     cxml_xp_astnode* node = new_astnode();
     node->wrapped_type = CXML_XP_AST_PATH_NODE;
     node->wrapped_node.path = path_node;
+    _cxml_xp_recovery_adopt_path(path_node);
     _cxml_xp_p__push(node);
 }
 
