@@ -43,6 +43,10 @@ typedef struct {
     _cxml_lru_cache lru_cache;
     // list to store all allocated cxml_list objects used in caching, for later de-allocation
     cxml_list alloc_set_list;
+    // Partially constructed raw path/step nodes that are not yet owned by a
+    // wrapped AST node. Parser-error recovery drains these lists.
+    cxml_list recovery_paths;
+    cxml_list recovery_steps;
     // context_state stack
     _cxml_stack ctx_stack;
     // context state of the xpath node objects
