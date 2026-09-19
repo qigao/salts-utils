@@ -79,3 +79,19 @@ add_test(
     "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
 set_tests_properties(databind_package_explicit_json_adapter
   PROPERTIES LABELS "cmake;package-config;databind")
+
+add_test(
+  NAME databind_package_installed_runtime_without_salts_utils
+  COMMAND
+    "${CMAKE_COMMAND}"
+    "-DPROJECT_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DSALTS_ROOT_PATH=${SALTS_ROOT_PATH}"
+    "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+    "-DTEST_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+    "-DCMAKE_PREFIX_PATH_VALUE=${CMAKE_PREFIX_PATH}"
+    "-DCMAKE_TOOLCHAIN_FILE_VALUE=${CMAKE_TOOLCHAIN_FILE}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/run_databind_installed_runtime.cmake")
+set_tests_properties(
+  databind_package_installed_runtime_without_salts_utils
+  PROPERTIES LABELS "cmake;package-config;databind;install" RUN_SERIAL TRUE)
