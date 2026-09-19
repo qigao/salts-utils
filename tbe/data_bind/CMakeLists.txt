@@ -1,3 +1,26 @@
+set(DATA_BIND_CORE_TARGET data_bind_core)
+add_library(
+  ${DATA_BIND_CORE_TARGET} STATIC
+  data_bind_format_provider.c
+  data_bind_format_provider.h)
+target_include_directories(
+  ${DATA_BIND_CORE_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_CORE_TARGET}
+  PUBLIC
+    Salts::Core
+    Salts::CMeta
+    Salts::CSTL
+    Salts::CSerde)
+cmake_config_target(
+  ${DATA_BIND_CORE_TARGET}
+  ALIAS Salts::DataBindCore
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindCore)
+
 set(DATA_BIND_TARGET data_bind)
 add_library(
   ${DATA_BIND_TARGET} SHARED
@@ -31,9 +54,7 @@ target_link_libraries(
     Salts::DateTimeParser
     Salts::QueryVM
   PUBLIC
-    Salts::Core
-    Salts::CMeta
-    Salts::CSTL)
+    Salts::DataBindCore)
 
 if(BUILD_TESTING)
   get_target_property(DATA_BIND_PUBLIC_LINKS
@@ -79,7 +100,8 @@ cmake_config_target(
   EXPORT_NAME DataBindCFlow)
 
 install(
-  TARGETS ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
+  TARGETS ${DATA_BIND_CORE_TARGET} ${DATA_BIND_TARGET}
+          data_bind_cmeta data_bind_cflow
   EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -87,10 +109,21 @@ install(
 install(
   FILES
     data_bind.h
+    data_bind_format_provider.h
     data_bind_cflow.h
     data_bind_cmeta.h
     tbe_typed.h
   DESTINATION include)
+
+add_executable(test_data_bind_format_provider
+  test_data_bind_format_provider.c)
+target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_format_provider
+  PRIVATE Salts::DataBindCore)
+set_target_properties(test_data_bind_format_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_format_provider
+  COMMAND test_data_bind_format_provider)
 
 set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)
 cmake_add_test(test_data_bind
