@@ -210,7 +210,8 @@ install(
   EXPORT DataBindTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  COMPONENT DataBind)
 
 install(
   TARGETS ${DATA_BIND_JSON_ADAPTER_TARGET}
@@ -234,7 +235,8 @@ install(
     data_bind_cflow.h
     data_bind_cmeta.h
     tbe_typed.h
-  DESTINATION include)
+  DESTINATION include
+  COMPONENT DataBind)
 
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
