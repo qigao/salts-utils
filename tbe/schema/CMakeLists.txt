@@ -33,13 +33,9 @@ cmake_config_target(
   FOLDER tbe/schema
   EXPORT_NAME TbeSchema)
 
-if(NOT TARGET Salts::SchemaBE)
-  add_library(Salts::SchemaBE ALIAS ${TARGET_NAME})
-endif()
-
 install(
   TARGETS ${TARGET_NAME}
-  EXPORT SaltsUtilsTargets
+  EXPORT DataBindTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
