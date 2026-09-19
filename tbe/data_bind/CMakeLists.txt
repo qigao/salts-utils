@@ -1,3 +1,131 @@
+set(DATA_BIND_CORE_TARGET data_bind_core)
+add_library(
+  ${DATA_BIND_CORE_TARGET} STATIC
+  data_bind_format_provider.c
+  data_bind_format_provider.h)
+target_include_directories(
+  ${DATA_BIND_CORE_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_CORE_TARGET}
+  PUBLIC
+    Salts::Core
+    Salts::CMeta
+    Salts::CSTL
+    Salts::CSerde)
+cmake_config_target(
+  ${DATA_BIND_CORE_TARGET}
+  ALIAS Salts::DataBindCore
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindCore)
+
+set(DATA_BIND_JSON_ADAPTER_TARGET data_bind_json_adapter)
+add_library(
+  ${DATA_BIND_JSON_ADAPTER_TARGET} STATIC
+  data_bind_json_provider.c
+  data_bind_json_provider.h)
+target_include_directories(
+  ${DATA_BIND_JSON_ADAPTER_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_JSON_ADAPTER_TARGET}
+  PUBLIC
+    Salts::DataBindCore
+    Salts::JsonCSerdeAdapter)
+cmake_config_target(
+  ${DATA_BIND_JSON_ADAPTER_TARGET}
+  ALIAS Salts::DataBindJsonAdapter
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindJsonAdapter)
+
+set(DATA_BIND_YAML_ADAPTER_TARGET data_bind_yaml_adapter)
+add_library(
+  ${DATA_BIND_YAML_ADAPTER_TARGET} STATIC
+  data_bind_yaml_provider.c
+  data_bind_yaml_provider.h)
+target_include_directories(
+  ${DATA_BIND_YAML_ADAPTER_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_YAML_ADAPTER_TARGET}
+  PUBLIC
+    Salts::DataBindCore
+    Salts::CYamlJsonAdapter
+    Salts::JsonCSerdeAdapter)
+cmake_config_target(
+  ${DATA_BIND_YAML_ADAPTER_TARGET}
+  ALIAS Salts::DataBindYamlAdapter
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindYamlAdapter)
+
+set(DATA_BIND_CSV_ADAPTER_TARGET data_bind_csv_adapter)
+add_library(
+  ${DATA_BIND_CSV_ADAPTER_TARGET} STATIC
+  data_bind_csv_provider.c
+  data_bind_csv_provider.h)
+target_include_directories(
+  ${DATA_BIND_CSV_ADAPTER_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_CSV_ADAPTER_TARGET}
+  PUBLIC
+    Salts::DataBindCore
+    Salts::CsvParser)
+cmake_config_target(
+  ${DATA_BIND_CSV_ADAPTER_TARGET}
+  ALIAS Salts::DataBindCsvAdapter
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindCsvAdapter)
+
+set(DATA_BIND_XML_ADAPTER_TARGET data_bind_xml_adapter)
+add_library(
+  ${DATA_BIND_XML_ADAPTER_TARGET} STATIC
+  data_bind_xml_provider.c
+  data_bind_xml_provider.h)
+target_include_directories(
+  ${DATA_BIND_XML_ADAPTER_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_XML_ADAPTER_TARGET}
+  PUBLIC
+    Salts::DataBindCore
+    Salts::XmlParser)
+cmake_config_target(
+  ${DATA_BIND_XML_ADAPTER_TARGET}
+  ALIAS Salts::DataBindXmlAdapter
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindXmlAdapter)
+
+set(DATA_BIND_TEMPORAL_ADAPTER_TARGET data_bind_temporal_adapter)
+add_library(
+  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET} STATIC
+  data_bind_temporal_adapter.c
+  data_bind_temporal_adapter.h)
+target_include_directories(
+  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(
+  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
+  PUBLIC Salts::DataBindCore
+  PRIVATE Salts::DateTimeParser)
+cmake_config_target(
+  ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
+  ALIAS Salts::DataBindTemporalAdapter
+  FOLDER "tbe/data_bind"
+  EXPORT_NAME DataBindTemporalAdapter)
+
 set(DATA_BIND_TARGET data_bind)
 add_library(
   ${DATA_BIND_TARGET} SHARED
@@ -22,18 +150,14 @@ target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
     monocypher
-    Salts::JsonParser
-    Salts::CsvParser
-    Salts::XmlParser
-    Salts::CYaml
-    Salts::CYamlJsonAdapter
+    Salts::DataBindJsonAdapter
+    Salts::DataBindYamlAdapter
+    Salts::DataBindCsvAdapter
+    Salts::DataBindXmlAdapter
+    Salts::DataBindTemporalAdapter
     Salts::TbeSchema
-    Salts::DateTimeParser
-    Salts::QueryVM
   PUBLIC
-    Salts::Core
-    Salts::CMeta
-    Salts::CSTL)
+    Salts::DataBindCore)
 
 if(BUILD_TESTING)
   get_target_property(DATA_BIND_PUBLIC_LINKS
@@ -79,7 +203,12 @@ cmake_config_target(
   EXPORT_NAME DataBindCFlow)
 
 install(
-  TARGETS ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
+  TARGETS ${DATA_BIND_CORE_TARGET} ${DATA_BIND_JSON_ADAPTER_TARGET}
+          ${DATA_BIND_YAML_ADAPTER_TARGET}
+          ${DATA_BIND_CSV_ADAPTER_TARGET}
+          ${DATA_BIND_XML_ADAPTER_TARGET}
+          ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
+          ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
   EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -87,10 +216,76 @@ install(
 install(
   FILES
     data_bind.h
+    data_bind_format_provider.h
+    data_bind_json_provider.h
+    data_bind_yaml_provider.h
+    data_bind_csv_provider.h
+    data_bind_xml_provider.h
+    data_bind_temporal_adapter.h
     data_bind_cflow.h
     data_bind_cmeta.h
     tbe_typed.h
   DESTINATION include)
+
+add_executable(test_data_bind_format_provider
+  test_data_bind_format_provider.c)
+target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_format_provider
+  PRIVATE Salts::DataBindCore)
+set_target_properties(test_data_bind_format_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_format_provider
+  COMMAND test_data_bind_format_provider)
+
+add_executable(test_data_bind_json_provider
+  test_data_bind_json_provider.c)
+target_compile_features(test_data_bind_json_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_json_provider
+  PRIVATE Salts::DataBindJsonAdapter)
+set_target_properties(test_data_bind_json_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_json_provider
+  COMMAND test_data_bind_json_provider)
+
+add_executable(test_data_bind_yaml_provider
+  test_data_bind_yaml_provider.c)
+target_compile_features(test_data_bind_yaml_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_yaml_provider
+  PRIVATE Salts::DataBindYamlAdapter)
+set_target_properties(test_data_bind_yaml_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_yaml_provider
+  COMMAND test_data_bind_yaml_provider)
+
+add_executable(test_data_bind_csv_provider
+  test_data_bind_csv_provider.c)
+target_compile_features(test_data_bind_csv_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_csv_provider
+  PRIVATE Salts::DataBindCsvAdapter)
+set_target_properties(test_data_bind_csv_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_csv_provider
+  COMMAND test_data_bind_csv_provider)
+
+add_executable(test_data_bind_xml_provider
+  test_data_bind_xml_provider.c)
+target_compile_features(test_data_bind_xml_provider PRIVATE c_std_11)
+target_link_libraries(test_data_bind_xml_provider
+  PRIVATE Salts::DataBindXmlAdapter)
+set_target_properties(test_data_bind_xml_provider
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_xml_provider
+  COMMAND test_data_bind_xml_provider)
+
+add_executable(test_data_bind_temporal_adapter
+  test_data_bind_temporal_adapter.c)
+target_compile_features(test_data_bind_temporal_adapter PRIVATE c_std_11)
+target_link_libraries(test_data_bind_temporal_adapter
+  PRIVATE Salts::DataBindTemporalAdapter)
+set_target_properties(test_data_bind_temporal_adapter
+  PROPERTIES FOLDER "tbe/data_bind/tests")
+add_test(NAME test_data_bind_temporal_adapter
+  COMMAND test_data_bind_temporal_adapter)
 
 set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)
 cmake_add_test(test_data_bind

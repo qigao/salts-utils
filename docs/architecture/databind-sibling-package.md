@@ -65,15 +65,34 @@ The first migration slice makes the public header implementation-neutral:
 
 This is intentionally a major ABI boundary, not a compatibility shim.
 
-## Next runtime cut
+## Runtime format-provider cut
 
-The current runtime still directly implements JSON/YAML/CSV/XML and path-query
-orchestration using SaltsUtils-owned parser targets. The next slice must move
-those mechanics behind an explicit format adapter / CSerde-facing contract so
-the core runtime can build from Salts alone.
+The migration now has an explicit Salts-only `Salts::DataBindCore` substrate.
+Its public dependency closure is limited to Salts Core, CMeta, CSTL and CSerde.
+Concrete syntax/query implementations live in separately exported adapter
+targets:
 
-No runtime plugin discovery or format fallback is required. Provider selection
-must remain explicit and bounded.
+```text
+Salts::DataBindCore
+    ^
+    +-- Salts::DataBindJsonAdapter     -> JsonParser / JSONPath
+    +-- Salts::DataBindYamlAdapter     -> CYaml / YPath
+    +-- Salts::DataBindCsvAdapter      -> CsvParser / DSV filter
+    +-- Salts::DataBindXmlAdapter      -> XmlParser / XPath
+    +-- Salts::DataBindTemporalAdapter -> DateTimeParser
+```
+
+The provider ABI is explicit, struct-size/version checked and caller-selected.
+There is no registry, runtime plugin discovery, format substitution, or
+fallback. Providers expose CSerde readers and may optionally own their native
+PATH_FIRST/PATH_ALL selection semantics while translating native query
+diagnostics into DataBind-owned records.
+
+This is the first runtime cut, not the final sibling package. The legacy
+`Salts::DataBind` facade still contains the existing schema/dynamic binding and
+incremental-stream implementation. Complete binding/serialization orchestration
+and concrete stream parser state must continue moving across this boundary
+before the independent package cut is considered complete.
 
 ## Package cut
 

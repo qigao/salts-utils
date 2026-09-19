@@ -307,6 +307,11 @@ _CXML__TRACE(
 void cxml_xp_fvisit(cxml_xp_astnode * ast_node){  // generic cxml_xp_visit
     _cxml_dprint("<--FREEING (cxml_xp_astnode) node-->\n")
 
+    /* Parser error recovery may leave a null placeholder in the AST node list.
+     * Cleanup must be total: a rejected XPath must never turn into UB while
+     * releasing partially constructed parser state. */
+    if (ast_node == NULL) return;
+
     switch(ast_node->wrapped_type){
         case CXML_XP_AST_UNARYOP_NODE:
             cxml_xp_fvisit_UnaryOp(ast_node->wrapped_node.unary);
@@ -453,12 +458,21 @@ void cxml_xp_fvisit_String(cxml_xp_string* node){
 void cxml_xp_fvisit_Path(cxml_xp_path* path){
     _cxml_dprint("<--FREEING (cxml_xp_path) node-->\n")
 
+    if (path == NULL) return;
     cxml_for_each(step, &path->steps)
     {
         cxml_xp_fvisit_Step(step);
     }
     cxml_list_free(&path->steps);
     FREE(path);
+}
+
+void cxml_xp_free_partial_step(cxml_xp_step *step) {
+    if (step != NULL) cxml_xp_fvisit_Step(step);
+}
+
+void cxml_xp_free_partial_path(cxml_xp_path *path) {
+    if (path != NULL) cxml_xp_fvisit_Path(path);
 }
 
 // F

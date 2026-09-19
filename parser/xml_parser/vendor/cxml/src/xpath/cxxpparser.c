@@ -90,6 +90,8 @@ void _cxml_xpath_parser_init() {
     _cxml_cache_init(&_xpath_parser.lru_cache);
 
     cxml_list_init(&_xpath_parser.alloc_set_list);
+    cxml_list_init(&_xpath_parser.recovery_paths);
+    cxml_list_init(&_xpath_parser.recovery_steps);
 
     _xpath_parser.xml_namespace = NULL;
 }
@@ -101,6 +103,18 @@ void cxml_xp_free_ast_nodes(_cxml_xp_parser *xpp){
 }
 
 void _cxml_xpath_parser_free(){
+    /* Raw path/step nodes are tracked only until ownership transfers into a
+     * wrapped AST. Drain raw steps first; recovery paths own only steps that
+     * have already been untracked. */
+    cxml_for_each(step, &_xpath_parser.recovery_steps) {
+        cxml_xp_free_partial_step(step);
+    }
+    cxml_list_free(&_xpath_parser.recovery_steps);
+    cxml_for_each(path, &_xpath_parser.recovery_paths) {
+        cxml_xp_free_partial_path(path);
+    }
+    cxml_list_free(&_xpath_parser.recovery_paths);
+
 _CXML__TRACE(
     cxml_string acc = new_cxml_string();
     cxml_xp_bvisit(_cxml_stack__get(&_xpath_parser.ast_stack), &acc);
@@ -185,44 +199,17 @@ static void _cxml_xp__err(
         const int *_line,
         const int *_col)
 {
-    cxml_string context_msg = new_cxml_string();
-    cxml_string_raw_append(&context_msg, "Found at least %d valid xpath expression tokens.\n");
-    cxml_string_raw_append(&context_msg, "Token `%.*s` that caused this error "
-                                         "was found at line: %d, column: %d.\n");
-    if (msg){
-        cxml_string_raw_append(&context_msg, "Error message: ");
-        cxml_string_raw_append(&context_msg, msg);
-        cxml_string_append(&context_msg, "\n", 1);
-    }
-    cxml_string_raw_append(&context_msg, "Hence, `%s` is not a valid xpath expression.\n");
-    char* raw = cxml_string_as_raw(&context_msg);
-    // beginning col is offset of token's length from col_no current position
-    // since col_no will count to the end of a token before returning it as a
-    // complete token to the parser.
-    int col = _col ? (*_col) : (_xpath_parser.lexer.col_no - (token->length - 1));  // -1 to drop at the token's first char
-    fprintf(stderr, "%s", raw);
-    // Explicitly print parts that were intended to be formatted, safely.
-    // However, the 'raw' string itself already contains the formatted output from cxml_string_as_raw
-    // wait, actually 'raw' is just the buffer. We need to use a format string.
-    // The previous code used 'fprintf(stderr, raw, ...)' which is dangerous if 'raw' comes from data.
-    // In this case 'raw' is built from 'context_msg' which has format specifiers.
-    // To fix -Wformat-nonliteral, we should use a literal format string.
+    (void)token;
+    (void)msg;
+    (void)_line;
+    (void)_col;
 
-    // Actually, looking at the code, context_msg is built with format specifiers like %d, %.*s, etc.
-    // A better fix is to use a literal format string for fprintf.
-
-    fprintf(stderr, "Found at least %d valid xpath expression tokens.\n"
-                    "Token `%.*s` that caused this error was found at line: %d, column: %d.\n"
-                    "%s"
-                    "Hence, `%s` is not a valid xpath expression.\n",
-            _xpath_parser.consume_cnt,
-            token->length, token->start,
-            (_line ? *_line : _xpath_parser.lexer.line_no), col,
-            (msg ? msg : ""),
-            _xpath_parser.lexer.expr);
-    cxml_string_free(&context_msg);
+    /* Syntax rejection is an ordinary API result. Release every partially
+     * constructed parser object, then return to query_string()'s recovery
+     * point. Never print attacker-controlled XPath text and never terminate
+     * the embedding process. */
     _cxml_xpath_parser_free();
-    exit(EXIT_FAILURE);
+    longjmp(_xpath_parser.error_jmp, 1);
 }
 
 struct _cxml_xp_binding_power_LU{  // binding-power lookup-table
@@ -356,7 +343,14 @@ static cxml_xp_path* new_path(){
     path_node->type = CXML_XP_AST_PATH_NODE;
     path_node->from_predicate = 0;
     cxml_list_init(&path_node->steps);
+    cxml_list_append(&_xpath_parser.recovery_paths, path_node);
     return path_node;
+}
+
+static void _cxml_xp_recovery_adopt_path(cxml_xp_path *path) {
+    if (path != NULL)
+        cxml_list_search_delete(&_xpath_parser.recovery_paths,
+                                cxml_list_cmp_raw_items, path);
 }
 
 static cxml_xp_predicate* new_predicate(){
@@ -387,7 +381,14 @@ static cxml_xp_step* new_step(){
     step->node_test = NULL;
     step->path_spec = 0;
     cxml_list_init(&step->predicates);
+    cxml_list_append(&_xpath_parser.recovery_steps, step);
     return step;
+}
+
+static void _cxml_xp_recovery_adopt_step(cxml_xp_step *step) {
+    if (step != NULL)
+        cxml_list_search_delete(&_xpath_parser.recovery_steps,
+                                cxml_list_cmp_raw_items, step);
 }
 
 static cxml_xp_binaryop* new_binary(){
@@ -881,18 +882,24 @@ void relative_location_path(){
     path_node->from_predicate = _xpath_parser.from_predicate;
     step();
     if (!_cxml_xp_p__stack_empty()){
-        cxml_list_append(&path_node->steps, _cxml_xp_p__pop());
+        cxml_xp_step *owned_step = _cxml_xp_p__pop();
+        cxml_list_append(&path_node->steps, owned_step);
+        _cxml_xp_recovery_adopt_step(owned_step);
     }
     while (_xpath_parser.current_tok.type == CXML_XP_TOKEN_F_SLASH
           || _xpath_parser.current_tok.type == CXML_XP_TOKEN_DF_SLASH)
     {
+        cxml_xp_step *owned_step;
         _cxml_xp_p__consume(_xpath_parser.current_tok.type);
         step();
-        cxml_list_append(&path_node->steps, _cxml_xp_p__pop());
+        owned_step = _cxml_xp_p__pop();
+        cxml_list_append(&path_node->steps, owned_step);
+        _cxml_xp_recovery_adopt_step(owned_step);
     }
     cxml_xp_astnode* node = new_astnode();
     node->wrapped_type = CXML_XP_AST_PATH_NODE;
     node->wrapped_node.path = path_node;
+    _cxml_xp_recovery_adopt_path(path_node);
     _cxml_xp_p__push(node);
 }
 
@@ -906,9 +913,11 @@ static void _abbrev_step(){
     cxml_xp_path *path_node = new_path();
     path_node->from_predicate = _xpath_parser.from_predicate;
     cxml_list_append(&path_node->steps, step_node);
+    _cxml_xp_recovery_adopt_step(step_node);
     cxml_xp_astnode* node = new_astnode();
     node->wrapped_type = CXML_XP_AST_PATH_NODE;
     node->wrapped_node.path = path_node;
+    _cxml_xp_recovery_adopt_path(path_node);
     _cxml_xp_p__push(node);
 }
 
@@ -950,11 +959,13 @@ void location_path() {
  * QueryString  ::=     "'" LocationPath  "'"
  */
 
-void query_string(const char *query_string) {
+int query_string(const char *query_string) {
     _cxml_xp_lexer_init(&_xpath_parser.lexer, query_string);
     _cxml_xpath_parser_init();
+    if (setjmp(_xpath_parser.error_jmp) != 0) return 0;
     _cxml_xp_p__advance();
     /***/
     location_path();
     _cxml_xp_p__consume(CXML_XP_TOKEN_END);
+    return 1;
 }

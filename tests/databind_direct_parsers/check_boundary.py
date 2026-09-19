@@ -31,9 +31,96 @@ class DirectParserBoundary(unittest.TestCase):
         cmake = (BIND / "CMakeLists.txt").read_text()
         self.assertNotIn("parser_compat", cmake)
         self.assertNotIn("DATA_BIND_PARSER_COMPAT_TARGET", cmake)
-        for target in ("JsonParser", "CsvParser", "XmlParser", "CYaml",
-                       "CYamlJsonAdapter", "DateTimeParser", "QueryVM"):
-            self.assertIn(f"Salts::{target}", cmake)
+
+    def test_core_runtime_has_no_concrete_saltsutils_dependencies(self):
+        cmake = (BIND / "CMakeLists.txt").read_text()
+        self.assertIn("set(DATA_BIND_CORE_TARGET data_bind_core)", cmake)
+        match = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_CORE_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(match, "DataBind core link contract not found")
+        links = match.group(1)
+        forbidden = (
+            "Salts::JsonParser",
+            "Salts::CsvParser",
+            "Salts::XmlParser",
+            "Salts::CYaml",
+            "Salts::CYamlJsonAdapter",
+            "Salts::DateTimeParser",
+            "Salts::QueryVM",
+        )
+        leaked = [target for target in forbidden if target in links]
+        self.assertEqual(
+            leaked,
+            [],
+            "DataBind core still depends on concrete SaltsUtils targets: "
+            + ", ".join(leaked),
+        )
+        for target in ("Salts::Core", "Salts::CMeta", "Salts::CSTL", "Salts::CSerde"):
+            self.assertIn(target, links)
+
+        facade = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(facade, "DataBind facade link contract not found")
+        self.assertIn("Salts::DataBindCore", facade.group(1))
+        self.assertIn("Salts::DataBindJsonAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindYamlAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindCsvAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindXmlAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindTemporalAdapter", facade.group(1))
+        self.assertNotIn("Salts::JsonParser", facade.group(1))
+        self.assertNotIn("Salts::CsvParser", facade.group(1))
+        self.assertNotIn("Salts::XmlParser", facade.group(1))
+        self.assertNotIn("Salts::JsonCSerdeAdapter", facade.group(1))
+        self.assertNotIn("Salts::CYaml", facade.group(1))
+        self.assertNotIn("Salts::CYamlJsonAdapter", facade.group(1))
+        self.assertNotIn("Salts::DateTimeParser", facade.group(1))
+        self.assertNotIn("Salts::QueryVM", facade.group(1))
+
+        json_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_JSON_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(json_adapter, "JSON adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", json_adapter.group(1))
+        self.assertIn("Salts::JsonCSerdeAdapter", json_adapter.group(1))
+
+        yaml_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_YAML_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(yaml_adapter, "YAML adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", yaml_adapter.group(1))
+        self.assertIn("Salts::CYamlJsonAdapter", yaml_adapter.group(1))
+        self.assertIn("Salts::JsonCSerdeAdapter", yaml_adapter.group(1))
+
+        csv_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_CSV_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(csv_adapter, "CSV adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", csv_adapter.group(1))
+        self.assertIn("Salts::CsvParser", csv_adapter.group(1))
+
+        xml_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_XML_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(xml_adapter, "XML adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", xml_adapter.group(1))
+        self.assertIn("Salts::XmlParser", xml_adapter.group(1))
+
+        temporal_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TEMPORAL_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(
+            temporal_adapter, "Temporal adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", temporal_adapter.group(1))
+        self.assertIn("Salts::DateTimeParser", temporal_adapter.group(1))
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
