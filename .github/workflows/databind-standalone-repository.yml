@@ -81,6 +81,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Prepare Go generator consumer toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+
       - name: Cache vcpkg binary archives
         uses: actions/cache@v4
         with:
@@ -186,6 +192,16 @@ jobs:
           ctest --test-dir "$RUNNER_TEMP/build/databind-release/tbe" \
             --no-tests=error --output-on-failure \
             2>&1 | tee "$RUNNER_TEMP/databind-standalone-tests.log"
+
+      - name: Verify staged compiler enum conformance
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 "$RUNNER_TEMP/databind-repository/tbe/tbe_compiler/test/enum_conformance.py" \
+            --compiler "$RUNNER_TEMP/build/databind-release/bin/tbe_compiler" \
+            --source "$RUNNER_TEMP/databind-repository" \
+            --salts-include "$RUNNER_TEMP/sdk/salts-release/include" \
+            2>&1 | tee "$RUNNER_TEMP/databind-standalone-enum.log"
 
       - name: Install standalone DataBind
         shell: bash
