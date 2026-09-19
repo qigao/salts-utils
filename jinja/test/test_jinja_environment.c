@@ -40,6 +40,27 @@ static void test_release(void *opaque, JINJA_CMETA_SOURCE *source) {
   tstr_free((tstr)source->lease);
 }
 
+static int test_autoescape_html(void *opaque, vstr name) {
+  (void)opaque;
+  return vstr_eq(name, vstr_from_cstr("page.html")) ? 1 : 0;
+}
+
+typedef struct TEST_BYTE_SINK {
+  char bytes[256];
+  size_t size;
+} TEST_BYTE_SINK;
+
+static int test_byte_sink_write(const char *text, size_t size, void *opaque) {
+  TEST_BYTE_SINK *sink = (TEST_BYTE_SINK *)opaque;
+  if (sink == NULL || (size != 0u && text == NULL) ||
+      sink->size > sizeof(sink->bytes) ||
+      size > sizeof(sink->bytes) - sink->size)
+    return -1;
+  if (size != 0u) memcpy(sink->bytes + sink->size, text, size);
+  sink->size += size;
+  return 0;
+}
+
 static JINJA_CMETA_STATUS test_registered_function(void *opaque,
     const JINJA_CMETA_CALL_CONTEXT *context, JINJA_CMETA_CALL_RESULT *result) {
   (void)opaque;
@@ -121,6 +142,110 @@ spec("Jinja named template environment") {
   static char *output;
   before_each() { env = NULL; templ = NULL; output = NULL; loader = (TEST_LOADER){0}; }
   after_each() { free(output); jinja_cmeta_release(templ); jinja_cmeta_env_destroy(env); }
+
+  it("applies named root autoescape across all render entry points") {
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.autoescape_selector = test_autoescape_html;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("page.html"),
+        vstr_from_cstr("{{ '<x & y>' }}"), &error);
+    check_not_null(templ);
+    vstr root = vstr_from_cstr("");
+    static const char expected[] = "&lt;x &amp; y&gt;";
+    const JINJA_CMETA_RENDERER renderer = {test_byte_sink_write};
+
+    TEST_BYTE_SINK sink = {{0}, 0u};
+    check_equal(jinja_cmeta_render(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &renderer, &sink, &error), JINJA_CMETA_OK);
+    check_equal(sink.size, sizeof(expected) - 1u);
+    check_equal(sink.bytes, expected, sizeof(expected) - 1u);
+
+    JINJA_CMETA_RUNTIME_CONFIG *runtime = jinja_cmeta_runtime_config_create(&error);
+    check_not_null(runtime);
+    sink = (TEST_BYTE_SINK){{0}, 0u};
+    check_equal(jinja_cmeta_render_ex(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, runtime, &renderer, &sink, &error), JINJA_CMETA_OK);
+    check_equal(sink.size, sizeof(expected) - 1u);
+    check_equal(sink.bytes, expected, sizeof(expected) - 1u);
+
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, expected);
+    free(output);
+    output = NULL;
+
+    check_equal(jinja_cmeta_render_string_ex(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, runtime, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, expected);
+    free(output);
+    output = NULL;
+    jinja_cmeta_runtime_config_destroy(runtime);
+
+    jinja_cmeta_release(templ);
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("plain.txt"),
+        vstr_from_cstr("{{ '<x & y>' }}"), &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "<x & y>");
+  }
+
+  it("allows explicit autoescape blocks to override and restore named root policy") {
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.autoescape_selector = test_autoescape_html;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("page.html"),
+        vstr_from_cstr("{{ '<x>' }}|{% autoescape false %}{{ '<y>' }}"
+                       "{% endautoescape %}|{{ '<z>' }}"), &error);
+    check_not_null(templ);
+    vstr root = vstr_from_cstr("");
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "&lt;x&gt;|<y>|&lt;z&gt;");
+  }
+
+  it("applies named root strict undefined policy without changing default behavior") {
+    JINJA_CMETA_ENV_OPTIONS options = JINJA_CMETA_ENV_OPTIONS_INIT;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("plain.txt"),
+        vstr_from_cstr("A{{ missing }}B"), &error);
+    check_not_null(templ);
+    vstr root = vstr_from_cstr("");
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "AB");
+
+    free(output);
+    output = NULL;
+    jinja_cmeta_release(templ);
+    templ = NULL;
+    jinja_cmeta_env_destroy(env);
+    env = NULL;
+
+    options = (JINJA_CMETA_ENV_OPTIONS)JINJA_CMETA_ENV_OPTIONS_INIT;
+    options.undefined_policy = JINJA_CMETA_UNDEFINED_STRICT;
+    env = jinja_cmeta_env_create(&options, &error);
+    check_not_null(env);
+    templ = jinja_cmeta_env_compile(env, vstr_from_cstr("plain.txt"),
+        vstr_from_cstr("A{{ missing }}B"), &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_ERR_RENDER);
+    check_null(output);
+  }
+
+  it("keeps direct unnamed compilation autoescape disabled") {
+    templ = jinja_cmeta_compile(vstr_from_cstr("{{ '<x & y>' }}"), NULL, &error);
+    check_not_null(templ);
+    vstr root = vstr_from_cstr("");
+    check_equal(jinja_cmeta_render_string(templ, jinja_cmeta_vstr_data(),
+        &root, NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output, "<x & y>");
+  }
 
   it("retains the defining instance of macros passed across includes") {
     const TEST_SOURCE sources[] = {{"child",

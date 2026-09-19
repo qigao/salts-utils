@@ -11691,6 +11691,9 @@ static JINJA_CMETA_STATUS jinja_render(const JINJA_CMETA_TEMPLATE *templ,
   provider.shared.values.limit = max_values;
   provider.instance = &root_instance;
   provider.context = &provider.instance->root_context;
+  provider.autoescape = templ->autoescape;
+  provider.strict_undefined =
+      templ->undefined_policy == JINJA_CMETA_UNDEFINED_STRICT;
   provider.shared.max_string_bytes = resolved.max_string_bytes;
   provider.shared.max_render_depth = resolved.max_render_depth;
   provider.shared.max_value_visits = resolved.max_value_visits;
