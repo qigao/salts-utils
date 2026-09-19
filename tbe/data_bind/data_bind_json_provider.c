@@ -206,8 +206,20 @@ static DataBindStatus json_provider_open_selected(
   program = json_path_compile_ex(path, &native_limits, &native_diagnostic);
   json_query_diagnostic(query_diagnostic, &native_diagnostic);
   if (program == NULL) {
-    DataBindStatus status = json_query_failure(query_diagnostic);
+    DataBindStatus status;
     parser_error = json_path_get_error();
+    if (query_diagnostic != NULL &&
+        query_diagnostic->status == DATA_BIND_QUERY_OK) {
+      query_diagnostic->status = DATA_BIND_QUERY_INVALID_PROGRAM;
+      query_diagnostic->instruction = DATA_BIND_QUERY_NO_INSTRUCTION;
+      query_diagnostic->opcode = DATA_BIND_QUERY_NO_OPCODE;
+      query_diagnostic->operand = DATA_BIND_QUERY_NO_OPERAND;
+      snprintf(query_diagnostic->message, sizeof(query_diagnostic->message),
+               "%s", parser_error != NULL && parser_error[0] != '\0'
+                         ? parser_error
+                         : "Invalid JSONPath");
+    }
+    status = json_query_failure(query_diagnostic);
     json_free(root);
     return json_provider_error(
         error, status,
