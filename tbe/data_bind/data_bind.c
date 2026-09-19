@@ -9409,11 +9409,11 @@ DataBindStatus data_bind_parse_json_all(DataBind *codec, const char *type_name, 
 static DataBindStatus data_bind_query_failure_status(
     const DataBindQueryDiagnostic *diagnostic) {
   if (!diagnostic) return DATA_BIND_ERR_PARSE;
-  if (diagnostic->status == QVM_STATUS_RESOURCE_LIMIT)
+  if (diagnostic->status == DATA_BIND_QUERY_RESOURCE_LIMIT)
     return DATA_BIND_ERR_LIMIT;
-  if (diagnostic->status == QVM_STATUS_NO_MEMORY)
+  if (diagnostic->status == DATA_BIND_QUERY_NO_MEMORY)
     return DATA_BIND_ERR_OOM;
-  if (diagnostic->status == QVM_STATUS_INVALID_ARGUMENT)
+  if (diagnostic->status == DATA_BIND_QUERY_INVALID_ARGUMENT)
     return DATA_BIND_ERR_INVALID_ARG;
   return DATA_BIND_ERR_PARSE;
 }
@@ -9468,7 +9468,7 @@ static DataBindStatus data_bind_parse_json_path_with_query(
     DataBindStatus query_status = data_bind_query_failure_status(query_diagnostic);
     (json_free(root), root = NULL);
     db_error_format_path(error_path, sizeof(error_path), "json", jsonpath);
-    if (query_diagnostic && query_diagnostic->status != QVM_STATUS_OK)
+    if (query_diagnostic && query_diagnostic->status != DATA_BIND_QUERY_OK)
       return db_error_set(error, query_status, error_path, -1, -1,
                           "JSONPath query failed: %s",
                           query_diagnostic->message[0]
