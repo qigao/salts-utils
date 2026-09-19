@@ -7,6 +7,9 @@ if(NOT IS_DIRECTORY "${DATABIND_PACKAGE_DIR}")
     "DATABIND_PACKAGE_DIR is not a directory: ${DATABIND_PACKAGE_DIR}")
 endif()
 
+find_package(DataBind CONFIG REQUIRED
+  PATHS "${DATABIND_PACKAGE_DIR}" NO_DEFAULT_PATH)
+
 find_package(DataBind CONFIG REQUIRED COMPONENTS
   JsonAdapter YamlAdapter CsvAdapter XmlAdapter TemporalAdapter
   PATHS "${DATABIND_PACKAGE_DIR}" NO_DEFAULT_PATH)
