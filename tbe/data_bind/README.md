@@ -1,7 +1,8 @@
-# DataBind 2.5
+# DataBind 3.0
 
-DataBind 由 SaltsUtils 构建、测试、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的
-数据绑定引擎。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
+DataBind 当前仍由 SaltsUtils 构建、测试和安装，但正在按
+[issue #67](https://github.com/qigao/salts-utils/issues/67) 提取为与 salts-utils / salts-net
+平级的 sibling package。这个迁移不会保留第二个 binder、重复 target owner 或 fallback。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
 或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
 它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
@@ -18,8 +19,9 @@ DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造�
 
 ## 设计边界
 
-DataBind 是 SaltsUtils 自有的 schema、动态值和 typed conversion 运行时。它依赖
-SaltsUtils 的 TBE schema，并直接消费基础 Salts 的具体格式解析器，不再构建或安装 parser compatibility 层。
+DataBind owns schema overlay, dynamic values and typed conversion semantics. CMeta remains the
+canonical native semantic type model. The target sibling runtime boundary depends on Salts
+foundation primitives; concrete format/query utilities remain adapters above that core boundary.
 
 规范所有权边界为：
 
@@ -41,22 +43,23 @@ semantic type graph。
 
 ### 原生 parser 依赖与迁移
 
-格式解析直接链接 `Salts::JsonParser`、`Salts::CsvParser`、`Salts::XmlParser`、
-`Salts::CYaml` 和 `Salts::CYamlJsonAdapter`。公开 datetime 和查询预算/诊断分别依赖
-`Salts::DateTimeParser`、`Salts::QueryVM`，由 `Salts::DataBind` 的公开链接接口传递。
+DataBind 3.0 makes the public ABI independent of parser/query implementation headers.
+`data_bind.h` owns `DataBindDateTime`, `DataBindQueryStatus`,
+`DataBindQueryLimits`, and `DataBindQueryDiagnostic`; callers do not include
+`datetime_parser.h` or `query_vm.h`.
 
-`parser_compat/` 及其构建目标、头文件安装项已移除；不存在另一份 facade 或 fallback。
-调用方应包含 `data_bind.h`，datetime 使用原生 `datetime_t`（也可用 `DataBindDateTime`），
-查询状态使用 `QVM_STATUS_*`。不得继续包含 `turbo_parser*.h` 或使用 `turbo_*` parser 类型。
-`DataBindQueryLimits` 保留带 `size` 的版本化配置；`DataBindQueryDiagnostic` 保留错误消息的
-自有副本，不能直接用含借用消息指针的 `qvm_diagnostic_t` 替代它。
+The current implementation still privately uses `Salts::JsonParser`, `Salts::CsvParser`,
+`Salts::XmlParser`, `Salts::CYaml`, `Salts::DateTimeParser`, and `Salts::QueryVM`.
+Those dependencies are transitional implementation details and are not part of
+`Salts::DataBind`'s public link interface. Issue #67 moves the concrete format/query adapters
+out of the runtime core in the next slice.
 
 JSON/CSV 文档、YAML 文档与选择结果、XML 文档与节点列表均由各自 Salts parser 创建和释放。
 DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于 `Salts::XmlParser`，
 不再由 DataBind 自行实现。流式回调、取消、预算和错误后的资源清理仍由现有回归测试约束。
 既有 `turbo_parser.data_bind.*.v1` CMeta 语义标识不是 parser API，保持不变以避免破坏类型身份。
 
-DataBind 2.5 只定义两条强类型路线：
+DataBind 3.0 defines two strongly typed routes:
 
 1. schema 生成 `.h/.c`，自动 bind、序列化和反序列化。
 2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 raw typed metadata，自动
@@ -98,9 +101,11 @@ JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前
 语法、树遍历、类型转换和操作符语义，并把可执行表达式降低为 QVM bytecode；DataBind
 只负责选择、绑定、所有权和错误转换，不直接构造或执行 QVM 指令。
 
-这个边界避免在 DataBind 中再维护一套不完整的“通用路径”语义。2.5 由四个 parser
-前端统一提供指令、operand、正则和执行步数预算；`DataBindStreamConfig.query_limits`
-只转发这些预算，并把 `QVM_STATUS_RESOURCE_LIMIT` 映射为 `DATA_BIND_ERR_LIMIT`。
+这个边界避免在 DataBind 中再维护一套不完整的“通用路径”语义。现有 parser
+前端提供指令、operand、正则和执行步数预算；`DataBindStreamConfig.query_limits`
+只转发这些预算。Native QueryVM status 在 implementation boundary 被映射为
+`DataBindQueryStatus`，例如 resource limit 映射为
+`DATA_BIND_QUERY_RESOURCE_LIMIT`，对调用方不暴露 `QVM_STATUS_*`。
 `data_bind_stream_query_diagnostic()` 可复制最后一次 VM 指令、opcode、operand 和消息。
 预算在 stream 创建/设置时复制，诊断由 stream 持有；不存在进程全局 DataBind 策略，
 也不允许 DataBind 绕过前端直接构造或执行 QVM 指令。
@@ -398,7 +403,7 @@ if (data_bind_abi_version() != DATA_BIND_ABI_VERSION) {
 }
 ```
 
-DataBind 2.5 的 ABI 版本为 8。2.3 将 stream 的 `feed`、`feed_file`、`finish`
+DataBind 3.0 的 ABI 版本为 9。2.3 将 stream 的 `feed`、`feed_file`、`finish`
 声明统一为 `DataBindStatus`；导出符号和调用约定未变，但保存这些函数指针的调用方
 应使用新签名重新编译。2.4 在枚举尾部增加 buffer-too-small/canceled 状态，并增加
 版本化 descriptor、统一 format 和配置式 stream 入口。2.5 在版本化
