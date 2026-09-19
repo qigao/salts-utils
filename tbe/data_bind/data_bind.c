@@ -10721,7 +10721,8 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
     json = json_create_string(text);
     break;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = datetime_to_time(&value->data.datetime_val);
+    datetime_t native = db_datetime_to_native(value->data.datetime_val);
+    time_t timestamp = datetime_to_time(&native);
     if (timestamp == (time_t)-1 ||
         datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
@@ -10939,7 +10940,8 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
   case DATA_BIND_VALUE_UUID:
     return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
   case DATA_BIND_VALUE_DATETIME: {
-    time_t timestamp = datetime_to_time(&value->data.datetime_val);
+    datetime_t native = db_datetime_to_native(value->data.datetime_val);
+    time_t timestamp = datetime_to_time(&native);
     return timestamp != (time_t)-1 && datetime_format_rfc822(timestamp, text, size) >= 0;
   }
   case DATA_BIND_VALUE_DATE:
@@ -12270,7 +12272,7 @@ int data_bind_library_version(void) { return DATA_BIND_VERSION; }
 
 int data_bind_abi_version(void) { return DATA_BIND_ABI_VERSION; }
 
-const char *data_bind_version_string(void) { return "2.5.1"; }
+const char *data_bind_version_string(void) { return "3.0.0"; }
 
 const char *data_bind_format_name(DataBindFormat format) {
   switch (format) {
