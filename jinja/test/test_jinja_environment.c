@@ -614,6 +614,9 @@ spec("Jinja imports and inheritance") {
     {"failure", "{{ 1/0 }}", JINJA_CMETA_OK},
     {"autoescape_base.html",
      "[{% block body %}{{ '<base & x>' }}{% endblock %}]",
+     JINJA_CMETA_OK},
+    {"autoescape_base.txt",
+     "[{% block body %}{{ '<base & x>' }}{% endblock %}]",
      JINJA_CMETA_OK}
   };
   static JINJA_CMETA_ENV *env;
@@ -864,7 +867,7 @@ spec("Jinja imports and inheritance") {
     check_equal(loader.releases, loader.loads);
   }
 
-  it("preserves named autoescape inside overriding inheritance blocks") {
+  it("uses the defining template autoescape policy for inherited blocks and super") {
     jinja_cmeta_env_destroy(env);
     env = NULL;
     loader.loads = 0u;
@@ -875,20 +878,45 @@ spec("Jinja imports and inheritance") {
     env = jinja_cmeta_env_create(&options, &error);
     check_not_null(env);
 
-    JINJA_CMETA_TEMPLATE *compiled = jinja_cmeta_env_compile(
-        env, vstr_from_cstr("page.html"),
-        vstr_from_cstr(
-            "{% extends 'autoescape_base.html' %}"
-            "{% block body %}{{ '<child & x>' }}{% endblock %}"),
-        &error);
-    check_not_null(compiled);
+    static const struct {
+      const char *name;
+      const char *source;
+      const char *expected;
+    } cases[] = {
+      {"child.txt",
+       "{% extends 'autoescape_base.html' %}"
+       "{% block body %}{{ '<child & x>' }}{% endblock %}",
+       "[<child & x>]"},
+      {"child.html",
+       "{% extends 'autoescape_base.txt' %}"
+       "{% block body %}{{ '<child & x>' }}{% endblock %}",
+       "[&lt;child &amp; x&gt;]"},
+      {"super_child.txt",
+       "{% extends 'autoescape_base.html' %}"
+       "{% block body %}{{ '<child & x>' }}|{{ super() }}{% endblock %}",
+       "[<child & x>|&lt;base &amp; x&gt;]"},
+      {"super_child.html",
+       "{% extends 'autoescape_base.txt' %}"
+       "{% block body %}{{ '<child & x>' }}|{{ super() }}{% endblock %}",
+       "[&lt;child &amp; x&gt;|<base & x>]"}
+    };
+
     vstr root = vstr_from_cstr("");
-    check_equal(jinja_cmeta_render_string(
-        compiled, jinja_cmeta_vstr_data(), &root, NULL, &output, &error),
-        JINJA_CMETA_OK);
-    check_equal(output, "[&lt;child &amp; x&gt;]");
+    for (size_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      info("named autoescape inheritance case=%s", cases[i].name);
+      JINJA_CMETA_TEMPLATE *compiled = jinja_cmeta_env_compile(
+          env, vstr_from_cstr(cases[i].name),
+          vstr_from_cstr(cases[i].source), &error);
+      check_not_null(compiled);
+      check_equal(jinja_cmeta_render_string(
+          compiled, jinja_cmeta_vstr_data(), &root, NULL, &output, &error),
+          JINJA_CMETA_OK);
+      check_equal(output, cases[i].expected);
+      free(output);
+      output = NULL;
+      jinja_cmeta_release(compiled);
+    }
     check_equal(loader.releases, loader.loads);
-    jinja_cmeta_release(compiled);
   }
 
   it("resolves three generations of blocks and super") {
