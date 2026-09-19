@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/jinja-block-autoescape-inheritance
+      - fix/jinja-block-autoescape-green
   workflow_dispatch:
 
 permissions:
