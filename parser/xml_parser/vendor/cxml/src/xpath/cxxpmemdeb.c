@@ -307,6 +307,11 @@ _CXML__TRACE(
 void cxml_xp_fvisit(cxml_xp_astnode * ast_node){  // generic cxml_xp_visit
     _cxml_dprint("<--FREEING (cxml_xp_astnode) node-->\n")
 
+    /* Parser error recovery may leave a null placeholder in the AST node list.
+     * Cleanup must be total: a rejected XPath must never turn into UB while
+     * releasing partially constructed parser state. */
+    if (ast_node == NULL) return;
+
     switch(ast_node->wrapped_type){
         case CXML_XP_AST_UNARYOP_NODE:
             cxml_xp_fvisit_UnaryOp(ast_node->wrapped_node.unary);
