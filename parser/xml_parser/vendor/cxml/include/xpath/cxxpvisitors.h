@@ -22,6 +22,10 @@
  */
 void cxml_xp_fvisit(cxml_xp_astnode *ast_node);
 
+/* Parser-recovery helpers for raw nodes not yet wrapped by cxml_xp_astnode. */
+void cxml_xp_free_partial_step(cxml_xp_step *step);
+void cxml_xp_free_partial_path(cxml_xp_path *path);
+
 
 /*************************************
  *          debug visitor            *
