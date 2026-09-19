@@ -20,6 +20,17 @@ foreach(required_target IN ITEMS DataBind::Core DataBind::Schema DataBind::Runti
   endif()
 endforeach()
 
+foreach(forbidden_target IN ITEMS
+    DataBind::JsonAdapter DataBind::YamlAdapter DataBind::CsvAdapter
+    DataBind::XmlAdapter DataBind::TemporalAdapter
+    Salts::JsonCSerdeAdapter Salts::CYamlJsonAdapter Salts::CsvParser
+    Salts::XmlParser Salts::DateTimeParser)
+  if(TARGET ${forbidden_target})
+    message(FATAL_ERROR
+      "Core/runtime-only DataBind discovery imported concrete adapter target: ${forbidden_target}")
+  endif()
+endforeach()
+
 if(TARGET DataBind::CFlow)
   message(FATAL_ERROR
     "Core-only DataBind discovery must not import the CFlow adapter")
