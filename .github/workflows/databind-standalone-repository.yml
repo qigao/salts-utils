@@ -1,0 +1,252 @@
+name: DataBind standalone repository
+
+on:
+  push:
+    branches: [master, refactor/databind-standalone-repository-88]
+    paths:
+      - 'tbe/**'
+      - 'cmake/DataBindConfig.cmake.in'
+      - 'cmake/CmakeUtils.cmake'
+      - 'cmake/FindTools.cmake'
+      - 'cmake/ci/install-re2c.sh'
+      - 'cmake/databind-repository/**'
+      - 'tools/lemon/**'
+      - 'vendor/monocypher/**'
+      - 'tests/package_config/databind_*/**'
+      - 'tests/package_config/repeated_find/**'
+      - '.github/workflows/databind-standalone-repository.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'tbe/**'
+      - 'cmake/DataBindConfig.cmake.in'
+      - 'cmake/CmakeUtils.cmake'
+      - 'cmake/FindTools.cmake'
+      - 'cmake/ci/install-re2c.sh'
+      - 'cmake/databind-repository/**'
+      - 'tools/lemon/**'
+      - 'vendor/monocypher/**'
+      - 'tests/package_config/databind_*/**'
+      - 'tests/package_config/repeated_find/**'
+      - '.github/workflows/databind-standalone-repository.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databind-standalone-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SALTS_COMMIT: 801202e58c2d86b35202414d4812e79a2fd25bae
+  VCPKG_COMMIT: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+jobs:
+  standalone:
+    name: Exact-head standalone package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact salts-utils head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --check HEAD^ HEAD
+          git diff --exit-code
+
+      - name: Checkout pinned Salts
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_COMMIT }}
+          path: .ci/deps/salts
+          persist-credentials: false
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_COMMIT }}
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: databind-standalone-vcpkg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
+
+      - name: Prepare Linux toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils autoconf automake libtool
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          chmod +x ./vcpkg/vcpkg
+          sudo mkdir -p /opt
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+
+      - name: Install pinned re2c 4.6
+        shell: bash
+        run: bash cmake/ci/install-re2c.sh
+
+      - name: Build standalone host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B "$RUNNER_TEMP/host-lemon" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/host-lemon" --target lemon -j2
+
+      - name: Build pinned Salts Release SDK
+        shell: bash
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake -S .ci/deps/salts -B "$RUNNER_TEMP/build/salts-release" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/sdk/salts-release" \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build "$RUNNER_TEMP/build/salts-release" --target install -j2
+
+      - name: Build external SaltsUtils SDK without DataBind ownership
+        shell: bash
+        env:
+          SALTS_ROOT: ${{ runner.temp }}/sdk/salts-release
+        run: |
+          set -euxo pipefail
+          cmake -S . -B "$RUNNER_TEMP/build/salts-utils-release" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon" \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF
+          cmake --build "$RUNNER_TEMP/build/salts-utils-release" -j2
+          cmake --install "$RUNNER_TEMP/build/salts-utils-release" \
+            --prefix "$RUNNER_TEMP/sdk/salts-utils-release" --component Unspecified
+          test -f "$RUNNER_TEMP/sdk/salts-utils-release/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$RUNNER_TEMP/sdk/salts-utils-release/lib/cmake/DataBind/DataBindConfig.cmake"
+
+      - name: Stage exact standalone DataBind repository
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake \
+            -DSOURCE_ROOT="$GITHUB_WORKSPACE" \
+            -DSTAGE_ROOT="$RUNNER_TEMP/databind-repository" \
+            -P cmake/databind-repository/stage.cmake
+          test -f "$RUNNER_TEMP/databind-repository/CMakeLists.txt"
+          test -d "$RUNNER_TEMP/databind-repository/tbe"
+          test ! -e "$RUNNER_TEMP/databind-repository/parser"
+          test ! -e "$RUNNER_TEMP/databind-repository/mustache"
+
+      - name: Configure standalone DataBind
+        shell: bash
+        env:
+          SALTS_ROOT: ${{ runner.temp }}/sdk/salts-release
+          SALTS_UTILS_ROOT: ${{ runner.temp }}/sdk/salts-utils-release
+        run: |
+          set -euxo pipefail
+          cmake -S "$RUNNER_TEMP/databind-repository" \
+            -B "$RUNNER_TEMP/build/databind-release" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon" \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/vcpkg_installed/x64-linux" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=OFF \
+            2>&1 | tee "$RUNNER_TEMP/databind-standalone-configure.log"
+
+      - name: Build standalone DataBind
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build "$RUNNER_TEMP/build/databind-release" -j2 \
+            2>&1 | tee "$RUNNER_TEMP/databind-standalone-build.log"
+
+      - name: Run standalone DataBind suite
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir "$RUNNER_TEMP/build/databind-release/tbe" \
+            --no-tests=error --output-on-failure \
+            2>&1 | tee "$RUNNER_TEMP/databind-standalone-tests.log"
+
+      - name: Install standalone DataBind
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --install "$RUNNER_TEMP/build/databind-release" \
+            --prefix "$RUNNER_TEMP/sdk/databind-release" --component DataBind
+          test -f "$RUNNER_TEMP/sdk/databind-release/lib/cmake/DataBind/DataBindConfig.cmake"
+          test -f "$RUNNER_TEMP/sdk/databind-release/include/data_bind.h"
+          test -x "$RUNNER_TEMP/sdk/databind-release/bin/tbe_compiler"
+          test -d "$RUNNER_TEMP/sdk/databind-release/bin/templates"
+          test ! -e "$RUNNER_TEMP/sdk/databind-release/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+
+      - name: Consume installed Base package without SaltsUtils
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -E env \
+            --unset=SALTS_UTILS_ROOT \
+            "SALTS_ROOT=$RUNNER_TEMP/sdk/salts-release" \
+            cmake --fresh \
+              -S "$RUNNER_TEMP/databind-repository/tests/package_config/databind_repeated_find" \
+              -B "$RUNNER_TEMP/build/databind-base-consumer" -G Ninja \
+              -DDATABIND_PACKAGE_DIR="$RUNNER_TEMP/sdk/databind-release" \
+              -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+              -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/vcpkg_installed/x64-linux" \
+              -DVCPKG_TARGET_TRIPLET=x64-linux
+
+      - name: Consume installed adapter package explicitly
+        shell: bash
+        env:
+          SALTS_ROOT: ${{ runner.temp }}/sdk/salts-release
+          SALTS_UTILS_ROOT: ${{ runner.temp }}/sdk/salts-utils-release
+        run: |
+          set -euxo pipefail
+          cmake --fresh \
+            -S "$RUNNER_TEMP/databind-repository/tests/package_config/databind_adapters" \
+            -B "$RUNNER_TEMP/build/databind-adapter-consumer" -G Ninja \
+            -DDATABIND_PACKAGE_DIR="$RUNNER_TEMP/sdk/databind-release" \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/vcpkg_installed/x64-linux" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux
+
+      - name: Verify committed source remained untouched
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git diff --exit-code
+
+      - name: Upload standalone extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: databind-standalone-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/databind-standalone-*.log
+            ${{ runner.temp }}/databind-repository/EXTRACTION_SOURCE.txt
+            ${{ runner.temp }}/build/databind-release/CMakeCache.txt
+            ${{ runner.temp }}/build/databind-release/tbe/Testing/Temporary/
