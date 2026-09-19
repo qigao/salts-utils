@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/jinja-root-autoescape-selector
+      - fix/jinja-root-environment-policies-green
   workflow_dispatch:
 
 permissions:
