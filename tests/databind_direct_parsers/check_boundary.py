@@ -65,12 +65,12 @@ class DirectParserBoundary(unittest.TestCase):
             cmake,
         )
         self.assertIsNotNone(facade, "DataBind facade link contract not found")
-        self.assertIn("Salts::DataBindCore", facade.group(1))
-        self.assertIn("Salts::DataBindJsonAdapter", facade.group(1))
-        self.assertIn("Salts::DataBindYamlAdapter", facade.group(1))
-        self.assertIn("Salts::DataBindCsvAdapter", facade.group(1))
-        self.assertIn("Salts::DataBindXmlAdapter", facade.group(1))
-        self.assertIn("Salts::DataBindTemporalAdapter", facade.group(1))
+        self.assertIn("DataBind::Core", facade.group(1))
+        self.assertIn("DataBind::JsonAdapter", facade.group(1))
+        self.assertIn("DataBind::YamlAdapter", facade.group(1))
+        self.assertIn("DataBind::CsvAdapter", facade.group(1))
+        self.assertIn("DataBind::XmlAdapter", facade.group(1))
+        self.assertIn("DataBind::TemporalAdapter", facade.group(1))
         self.assertNotIn("Salts::JsonParser", facade.group(1))
         self.assertNotIn("Salts::CsvParser", facade.group(1))
         self.assertNotIn("Salts::XmlParser", facade.group(1))
@@ -85,7 +85,7 @@ class DirectParserBoundary(unittest.TestCase):
             cmake,
         )
         self.assertIsNotNone(json_adapter, "JSON adapter link contract not found")
-        self.assertIn("Salts::DataBindCore", json_adapter.group(1))
+        self.assertIn("DataBind::Core", json_adapter.group(1))
         self.assertIn("Salts::JsonCSerdeAdapter", json_adapter.group(1))
 
         yaml_adapter = re.search(
@@ -93,7 +93,7 @@ class DirectParserBoundary(unittest.TestCase):
             cmake,
         )
         self.assertIsNotNone(yaml_adapter, "YAML adapter link contract not found")
-        self.assertIn("Salts::DataBindCore", yaml_adapter.group(1))
+        self.assertIn("DataBind::Core", yaml_adapter.group(1))
         self.assertIn("Salts::CYamlJsonAdapter", yaml_adapter.group(1))
         self.assertIn("Salts::JsonCSerdeAdapter", yaml_adapter.group(1))
 
@@ -102,7 +102,7 @@ class DirectParserBoundary(unittest.TestCase):
             cmake,
         )
         self.assertIsNotNone(csv_adapter, "CSV adapter link contract not found")
-        self.assertIn("Salts::DataBindCore", csv_adapter.group(1))
+        self.assertIn("DataBind::Core", csv_adapter.group(1))
         self.assertIn("Salts::CsvParser", csv_adapter.group(1))
 
         xml_adapter = re.search(
@@ -110,7 +110,7 @@ class DirectParserBoundary(unittest.TestCase):
             cmake,
         )
         self.assertIsNotNone(xml_adapter, "XML adapter link contract not found")
-        self.assertIn("Salts::DataBindCore", xml_adapter.group(1))
+        self.assertIn("DataBind::Core", xml_adapter.group(1))
         self.assertIn("Salts::XmlParser", xml_adapter.group(1))
 
         temporal_adapter = re.search(
@@ -119,7 +119,7 @@ class DirectParserBoundary(unittest.TestCase):
         )
         self.assertIsNotNone(
             temporal_adapter, "Temporal adapter link contract not found")
-        self.assertIn("Salts::DataBindCore", temporal_adapter.group(1))
+        self.assertIn("DataBind::Core", temporal_adapter.group(1))
         self.assertIn("Salts::DateTimeParser", temporal_adapter.group(1))
 
     def test_incremental_stream_core_owns_no_concrete_parser_state(self):
@@ -233,7 +233,7 @@ class DirectParserBoundary(unittest.TestCase):
 
         for legacy_owner in (
             "Salts::DataBind",
-            "Salts::DataBindCore",
+            "DataBind::Core",
             "Salts::DataBindCMeta",
             "Salts::DataBindCFlow",
             "Salts::TbeSchema",
