@@ -1,0 +1,106 @@
+@PACKAGE_INIT@
+
+if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
+  set(DataBind_FOUND FALSE)
+  set(DataBind_NOT_FOUND_MESSAGE
+      "SALTS_ROOT must name the installed Salts profile")
+  return()
+endif()
+file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
+if(NOT IS_DIRECTORY "${SALTS_ROOT_PATH}")
+  set(DataBind_FOUND FALSE)
+  set(DataBind_NOT_FOUND_MESSAGE
+      "SALTS_ROOT is not a directory: $ENV{SALTS_ROOT}")
+  return()
+endif()
+
+include(CMakeFindDependencyMacro)
+unset(Salts_DIR CACHE)
+unset(Salts_DIR)
+find_dependency(Salts CONFIG REQUIRED
+  PATHS "${SALTS_ROOT_PATH}"
+  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+
+foreach(_DATABIND_REQUIRED_SALTS_TARGET IN ITEMS
+    Salts::Core Salts::CMeta Salts::CSTL Salts::CSerde)
+  if(NOT TARGET ${_DATABIND_REQUIRED_SALTS_TARGET})
+    set(DataBind_FOUND FALSE)
+    set(DataBind_NOT_FOUND_MESSAGE
+        "SALTS_ROOT package is missing required target: ${_DATABIND_REQUIRED_SALTS_TARGET}")
+    return()
+  endif()
+endforeach()
+
+set(_DATABIND_NEEDS_SALTS_UTILS FALSE)
+foreach(_DATABIND_COMPONENT IN LISTS DataBind_FIND_COMPONENTS)
+  if(_DATABIND_COMPONENT MATCHES
+     "^(Runtime|JsonAdapter|YamlAdapter|CsvAdapter|XmlAdapter|TemporalAdapter|CMeta|CFlow)$")
+    set(_DATABIND_NEEDS_SALTS_UTILS TRUE)
+  endif()
+endforeach()
+
+# A component-less lookup exposes the normal runtime package but does not
+# eagerly resolve adapter implementation dependencies. The Runtime shared
+# library's installed interface depends only on DataBind::Core.
+if(_DATABIND_NEEDS_SALTS_UTILS)
+  if(NOT DEFINED ENV{SALTS_UTILS_ROOT} OR "$ENV{SALTS_UTILS_ROOT}" STREQUAL "")
+    set(DataBind_FOUND FALSE)
+    set(DataBind_NOT_FOUND_MESSAGE
+        "SALTS_UTILS_ROOT is required for the requested DataBind runtime/adapter component")
+    return()
+  endif()
+  file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_ROOT_PATH)
+  if(NOT IS_DIRECTORY "${SALTS_UTILS_ROOT_PATH}")
+    set(DataBind_FOUND FALSE)
+    set(DataBind_NOT_FOUND_MESSAGE
+        "SALTS_UTILS_ROOT is not a directory: $ENV{SALTS_UTILS_ROOT}")
+    return()
+  endif()
+  unset(SaltsUtils_DIR CACHE)
+  unset(SaltsUtils_DIR)
+  find_dependency(SaltsUtils CONFIG REQUIRED
+    PATHS "${SALTS_UTILS_ROOT_PATH}"
+    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+endif()
+
+if(NOT TARGET DataBind::Core)
+  include("${CMAKE_CURRENT_LIST_DIR}/DataBindTargets.cmake")
+endif()
+
+set(DataBind_Core_FOUND TRUE)
+set(DataBind_Schema_FOUND TRUE)
+set(DataBind_Runtime_FOUND TRUE)
+set(DataBind_JsonAdapter_FOUND TRUE)
+set(DataBind_YamlAdapter_FOUND TRUE)
+set(DataBind_CsvAdapter_FOUND TRUE)
+set(DataBind_XmlAdapter_FOUND TRUE)
+set(DataBind_TemporalAdapter_FOUND TRUE)
+set(DataBind_CMeta_FOUND TRUE)
+set(DataBind_CFlow_FOUND FALSE)
+
+list(FIND DataBind_FIND_COMPONENTS "CFlow" _DATABIND_CFLOW_COMPONENT_INDEX)
+if(NOT _DATABIND_CFLOW_COMPONENT_INDEX EQUAL -1)
+  if(NOT TARGET Salts::CFlow)
+    set(DataBind_FOUND FALSE)
+    set(DataBind_NOT_FOUND_MESSAGE
+        "DataBind CFlow component requires Salts::CFlow")
+    return()
+  endif()
+  if(NOT TARGET DataBind::CFlow)
+    include("${CMAKE_CURRENT_LIST_DIR}/DataBindCFlowTargets.cmake")
+  endif()
+  set(DataBind_CFlow_FOUND TRUE)
+endif()
+
+foreach(_DATABIND_LEGACY_TARGET IN ITEMS
+    Salts::DataBind Salts::DataBindCore Salts::DataBindCMeta
+    Salts::DataBindCFlow Salts::TbeSchema Salts::SchemaBE)
+  if(TARGET ${_DATABIND_LEGACY_TARGET})
+    set(DataBind_FOUND FALSE)
+    set(DataBind_NOT_FOUND_MESSAGE
+        "Legacy duplicate DataBind ownership is present: ${_DATABIND_LEGACY_TARGET}")
+    return()
+  endif()
+endforeach()
+
+check_required_components(DataBind)
