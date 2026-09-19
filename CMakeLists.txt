@@ -135,6 +135,41 @@ add_subdirectory(tbe)
 # Package Configuration
 include(CMakePackageConfigHelpers)
 
+# DataBind is a sibling package with a distinct installed owner.
+set(DATABIND_PACKAGE_VERSION 3.0.0)
+configure_package_config_file(
+  "${CMAKE_SOURCE_DIR}/cmake/DataBindConfig.cmake.in"
+  "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+write_basic_package_version_file(
+  "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
+  VERSION ${DATABIND_PACKAGE_VERSION}
+  COMPATIBILITY SameMajorVersion)
+
+export(
+  EXPORT DataBindTargets
+  FILE "${CMAKE_BINARY_DIR}/DataBindTargets.cmake"
+  NAMESPACE Salts::)
+export(
+  EXPORT DataBindAdapterTargets
+  FILE "${CMAKE_BINARY_DIR}/DataBindAdapterTargets.cmake"
+  NAMESPACE Salts::)
+
+install(
+  EXPORT DataBindTargets
+  FILE DataBindTargets.cmake
+  NAMESPACE Salts::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+install(
+  EXPORT DataBindAdapterTargets
+  FILE DataBindAdapterTargets.cmake
+  NAMESPACE Salts::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+install(
+  FILES "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
+        "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+
 # Generate the config file
 configure_package_config_file(
   "${CMAKE_SOURCE_DIR}/cmake/SaltsUtilsConfig.cmake.in"
