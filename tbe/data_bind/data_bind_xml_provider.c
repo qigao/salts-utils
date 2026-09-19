@@ -198,11 +198,18 @@ static cserde_status xml_emit_node(
     data_bind_xml_reader *context,
     salts_xml_node node,
     cserde_token *out) {
-  size_t attribute_count = salts_xml_node_attribute_count(node);
-  int has_element_child = xml_node_has_element_child(node);
+  salts_xml_node_kind kind = salts_xml_node_type(node);
+  size_t attribute_count;
+  int has_element_child;
 
-  if (salts_xml_node_type(node) != SALTS_XML_ELEMENT)
-    return CSERDE_UNSUPPORTED;
+  if (kind == SALTS_XML_ATTRIBUTE || kind == SALTS_XML_TEXT) {
+    xml_emit_slice(out, salts_xml_node_text_view(node));
+    return CSERDE_OK;
+  }
+  if (kind != SALTS_XML_ELEMENT) return CSERDE_UNSUPPORTED;
+
+  attribute_count = salts_xml_node_attribute_count(node);
+  has_element_child = xml_node_has_element_child(node);
 
   if (!has_element_child && attribute_count == 0u) {
     xml_emit_slice(out, salts_xml_node_text_view(node));
