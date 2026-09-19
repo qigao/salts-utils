@@ -122,6 +122,56 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertIn("Salts::DataBindCore", temporal_adapter.group(1))
         self.assertIn("Salts::DateTimeParser", temporal_adapter.group(1))
 
+    def test_incremental_stream_core_owns_no_concrete_parser_state(self):
+        source = (BIND / "data_bind.c").read_text()
+        struct_match = re.search(
+            r"struct\s+data_bind_stream_t\s*\{([\s\S]*?)\n\};",
+            source,
+        )
+        self.assertIsNotNone(struct_match, "data_bind_stream_t definition not found")
+        stream_state = struct_match.group(1)
+        forbidden_types = (
+            "csv_doc_t",
+            "dsv_filter_t",
+            "json_sax_parser_t",
+            "json_path_program_t",
+            "json_path_stream_t",
+            "json_value_t",
+            "cyaml_sax_parser_t",
+            "salts_xml_sax_parser_t",
+        )
+        leaked_types = [name for name in forbidden_types if name in stream_state]
+        self.assertEqual(
+            leaked_types,
+            [],
+            "provider-neutral stream state still owns concrete parser/query types: "
+            + ", ".join(leaked_types),
+        )
+
+        destroy_match = re.search(
+            r"void\s+data_bind_stream_destroy\s*\([^)]*\)\s*\{([\s\S]*?)\n\}",
+            source,
+        )
+        self.assertIsNotNone(destroy_match, "data_bind_stream_destroy definition not found")
+        destroy_body = destroy_match.group(1)
+        forbidden_destroy = (
+            "dsv_filter_destroy",
+            "json_path_stream_destroy",
+            "json_path_program_free",
+            "json_sax_parser_destroy",
+            "cyaml_sax_parser_destroy",
+            "salts_xml_sax_parser_destroy",
+            "csv_free",
+            "json_free",
+        )
+        leaked_destroy = [name for name in forbidden_destroy if name in destroy_body]
+        self.assertEqual(
+            leaked_destroy,
+            [],
+            "DataBind stream destroy still owns concrete parser cleanup: "
+            + ", ".join(leaked_destroy),
+        )
+
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
         self.assertNotIn("#include <datetime_parser.h>", header)
