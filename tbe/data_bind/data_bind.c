@@ -6,6 +6,7 @@
 #include "data_bind.h"
 #include "data_bind_internal.h"
 #include "data_bind_schema_internal.h"
+#include "data_bind_temporal_adapter.h"
 #include "fmt.h"
 #include "node_tree.h"
 #include "re.h"
@@ -22,7 +23,6 @@
 #include <cyaml_json_adapter.h>
 #include <xml_parser/xml_parser.h>
 #include <xml_parser/xml_sax.h>
-#include <datetime_parser.h>
 #include <query_vm.h>
 #include <salts_fs.h>
 #include <tstr.h>
@@ -84,20 +84,6 @@ static qvm_limits_t db_query_native_limits(const DataBindQueryLimits *limits) {
   if (!limits) return qvm_default_limits();
   return (qvm_limits_t){limits->max_instructions, limits->max_operands,
                         limits->max_regexes, limits->max_steps};
-}
-
-static DataBindDateTime db_datetime_from_native(datetime_t native) {
-  return (DataBindDateTime){
-      native.year, native.month, native.day, native.hour, native.minute,
-      native.second, native.millisecond, native.tz_offset, native.has_tz,
-      native.day_of_week};
-}
-
-static datetime_t db_datetime_to_native(DataBindDateTime value) {
-  return (datetime_t){
-      value.year, value.month, value.day, value.hour, value.minute,
-      value.second, value.millisecond, value.tz_offset, value.has_tz,
-      value.day_of_week};
 }
 
 typedef enum data_bind_wire_type {
@@ -1539,9 +1525,12 @@ static DataBindValue *dbv_datetime(DataBindDateTime value) {
 }
 
 static DataBindValue *dbv_datetime_text(const char *text) {
-  datetime_t dt;
-  if (text == NULL || datetime_parse(text, strlen(text), &dt) != 0) return NULL;
-  return dbv_datetime(db_datetime_from_native(dt));
+  DataBindDateTime value;
+  if (text == NULL ||
+      data_bind_temporal_parse_datetime(text, strlen(text), &value) !=
+          DATA_BIND_OK)
+    return NULL;
+  return dbv_datetime(value);
 }
 
 static int db_date_valid(int year, int month, int day) {
@@ -1554,7 +1543,6 @@ static int db_date_valid(int year, int month, int day) {
 }
 
 static int db_parse_date_text(const char *text, DataBindDate *out) {
-  datetime_t dt;
   int year = 0, month = 0, day = 0, consumed = 0;
   if (text == NULL || out == NULL) return 0;
   if (sscanf(text, "%d-%d-%d%n", &year, &month, &day, &consumed) == 3 ||
@@ -1565,28 +1553,14 @@ static int db_parse_date_text(const char *text, DataBindDate *out) {
     out->day = day;
     return 1;
   }
-  if (datetime_parse(text, strlen(text), &dt) == 0) {
-    out->year = dt.year;
-    out->month = dt.month;
-    out->day = dt.day;
-    return 1;
-  }
-  return 0;
+  return data_bind_temporal_parse_date(text, strlen(text), out) ==
+         DATA_BIND_OK;
 }
 
 static int db_parse_time_text(const char *text, DataBindTime *out) {
-  datetime_t dt;
-  if (text == NULL || out == NULL) return 0;
-  if (strchr(text, ':') == NULL || datetime_parse(text, strlen(text), &dt) != 0) return 0;
-  if (dt.year != 0 || dt.month != 0 || dt.day != 0 || dt.has_tz || dt.hour < 0 || dt.hour > 23 ||
-      dt.minute < 0 || dt.minute > 59 || dt.second < 0 || dt.second > 60 ||
-      dt.millisecond < 0 || dt.millisecond > 999)
-    return 0;
-  out->hour = dt.hour;
-  out->minute = dt.minute;
-  out->second = dt.second;
-  out->millisecond = dt.millisecond;
-  return 1;
+  if (text == NULL || out == NULL || strchr(text, ':') == NULL) return 0;
+  return data_bind_temporal_parse_time(text, strlen(text), out) ==
+         DATA_BIND_OK;
 }
 
 static int db_parse_duration_text(const char *text, int64_t *out) {
@@ -10720,17 +10694,14 @@ static json_value_t *data_bind_value_to_json(const DataBindValue *value, unsigne
     }
     json = json_create_string(text);
     break;
-  case DATA_BIND_VALUE_DATETIME: {
-    datetime_t native = db_datetime_to_native(value->data.datetime_val);
-    time_t timestamp = datetime_to_time(&native);
-    if (timestamp == (time_t)-1 ||
-        datetime_format_rfc822(timestamp, text, sizeof(text)) < 0) {
+  case DATA_BIND_VALUE_DATETIME:
+    if (data_bind_temporal_format_rfc822(
+            &value->data.datetime_val, text, sizeof(text)) != DATA_BIND_OK) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
       return NULL;
     }
     json = json_create_string(text);
     break;
-  }
   case DATA_BIND_VALUE_DATE:
     if (!db_date_to_text(value->data.date_val, text, sizeof(text))) {
       *status = DATA_BIND_ERR_TYPE_MISMATCH;
@@ -10939,11 +10910,9 @@ static int data_bind_standard_scalar_text(const DataBindValue *value, char *text
     return snprintf(text, size, "%s", value->data.bool_val ? "true" : "false") > 0;
   case DATA_BIND_VALUE_UUID:
     return salts_uuid_format(&value->data.uuid_val, text, size) == SALTS_OK;
-  case DATA_BIND_VALUE_DATETIME: {
-    datetime_t native = db_datetime_to_native(value->data.datetime_val);
-    time_t timestamp = datetime_to_time(&native);
-    return timestamp != (time_t)-1 && datetime_format_rfc822(timestamp, text, size) >= 0;
-  }
+  case DATA_BIND_VALUE_DATETIME:
+    return data_bind_temporal_format_rfc822(
+               &value->data.datetime_val, text, size) == DATA_BIND_OK;
   case DATA_BIND_VALUE_DATE:
     return db_date_to_text(value->data.date_val, text, size);
   case DATA_BIND_VALUE_TIME:
@@ -11665,22 +11634,21 @@ int data_bind_value_as_datetime(const DataBindValue *value, DataBindDateTime *ou
 }
 
 double data_bind_value_as_datetime_timestamp(const DataBindValue *value) {
-  datetime_t native;
+  int64_t seconds;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME) return -1.0;
-  native = db_datetime_to_native(value->data.datetime_val);
-  return (double)datetime_to_time(&native);
+  if (data_bind_temporal_to_unix_seconds(
+          &value->data.datetime_val, &seconds) != DATA_BIND_OK)
+    return -1.0;
+  return (double)seconds;
 }
 
 const char *data_bind_value_as_datetime_string(const DataBindValue *value, char *out, size_t len) {
-  time_t ts;
   if (value == NULL || value->kind != DATA_BIND_VALUE_DATETIME || out == NULL || len < 32)
     return NULL;
-  {
-    datetime_t native = db_datetime_to_native(value->data.datetime_val);
-    ts = datetime_to_time(&native);
-  }
-  if (ts == (time_t)-1 || datetime_format_rfc822(ts, out, len) < 0) return NULL;
-  return out;
+  return data_bind_temporal_format_rfc822(
+             &value->data.datetime_val, out, len) == DATA_BIND_OK
+             ? out
+             : NULL;
 }
 
 int data_bind_value_as_date(const DataBindValue *value, DataBindDate *out) {
