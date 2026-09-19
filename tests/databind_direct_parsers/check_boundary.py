@@ -70,12 +70,14 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertIn("Salts::DataBindYamlAdapter", facade.group(1))
         self.assertIn("Salts::DataBindCsvAdapter", facade.group(1))
         self.assertIn("Salts::DataBindXmlAdapter", facade.group(1))
+        self.assertIn("Salts::DataBindTemporalAdapter", facade.group(1))
         self.assertNotIn("Salts::JsonParser", facade.group(1))
         self.assertNotIn("Salts::CsvParser", facade.group(1))
         self.assertNotIn("Salts::XmlParser", facade.group(1))
         self.assertNotIn("Salts::JsonCSerdeAdapter", facade.group(1))
         self.assertNotIn("Salts::CYaml", facade.group(1))
         self.assertNotIn("Salts::CYamlJsonAdapter", facade.group(1))
+        self.assertNotIn("Salts::DateTimeParser", facade.group(1))
 
         json_adapter = re.search(
             r"target_link_libraries\(\s*\$\{DATA_BIND_JSON_ADAPTER_TARGET\}([\s\S]*?)\)",
@@ -109,6 +111,15 @@ class DirectParserBoundary(unittest.TestCase):
         self.assertIsNotNone(xml_adapter, "XML adapter link contract not found")
         self.assertIn("Salts::DataBindCore", xml_adapter.group(1))
         self.assertIn("Salts::XmlParser", xml_adapter.group(1))
+
+        temporal_adapter = re.search(
+            r"target_link_libraries\(\s*\$\{DATA_BIND_TEMPORAL_ADAPTER_TARGET\}([\s\S]*?)\)",
+            cmake,
+        )
+        self.assertIsNotNone(
+            temporal_adapter, "Temporal adapter link contract not found")
+        self.assertIn("Salts::DataBindCore", temporal_adapter.group(1))
+        self.assertIn("Salts::DateTimeParser", temporal_adapter.group(1))
 
     def test_datetime_is_owned_by_databind_public_abi(self):
         header = (BIND / "data_bind.h").read_text()
