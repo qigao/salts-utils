@@ -28,12 +28,26 @@ typedef void (*DataBindFormatReaderCloseFn)(
     cserde_reader *reader,
     void *owner);
 
+typedef DataBindStatus (*DataBindFormatReaderOpenSelectedFn)(
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    DataBindStreamSelection selection,
+    const char *path,
+    const DataBindQueryLimits *query_limits,
+    DataBindQueryDiagnostic *query_diagnostic,
+    cserde_reader **out_reader,
+    void **out_owner,
+    DataBindError *error);
+
 struct DataBindFormatProvider {
   size_t size;
   uint32_t abi_version;
   DataBindFormat format;
   DataBindFormatReaderOpenFn open_reader;
   DataBindFormatReaderCloseFn close_reader;
+  /** Optional append-only v1 extension for format-owned selection/query. */
+  DataBindFormatReaderOpenSelectedFn open_selected_reader;
 };
 
 typedef struct DataBindFormatReader {
@@ -45,7 +59,12 @@ typedef struct DataBindFormatReader {
 
 #define DATA_BIND_FORMAT_PROVIDER_INIT(format_, open_, close_) \
   { sizeof(DataBindFormatProvider), DATA_BIND_FORMAT_PROVIDER_ABI_VERSION, \
-    (format_), (open_), (close_) }
+    (format_), (open_), (close_), NULL }
+
+#define DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_INIT( \
+    format_, open_, close_, selected_) \
+  { sizeof(DataBindFormatProvider), DATA_BIND_FORMAT_PROVIDER_ABI_VERSION, \
+    (format_), (open_), (close_), (selected_) }
 
 #define DATA_BIND_FORMAT_READER_INIT \
   { sizeof(DataBindFormatReader), NULL, NULL, NULL }
@@ -66,6 +85,27 @@ DataBindStatus data_bind_format_reader_open(
     const char *data,
     size_t len,
     size_t max_depth,
+    DataBindFormatReader *out_reader,
+    DataBindError *error);
+
+/**
+ * Open one explicit provider with provider-owned selection/query semantics.
+ *
+ * PATH_* selections require a non-empty path. ROOT/ALL reject a non-empty
+ * path. Query limits/diagnostics are DataBind-owned records; concrete QueryVM
+ * types never cross this boundary. Providers that do not implement selection
+ * fail with DATA_BIND_ERR_INVALID_ARG rather than falling back to another
+ * provider or parser.
+ */
+DataBindStatus data_bind_format_reader_open_selected(
+    const DataBindFormatProvider *provider,
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    DataBindStreamSelection selection,
+    const char *path,
+    const DataBindQueryLimits *query_limits,
+    DataBindQueryDiagnostic *query_diagnostic,
     DataBindFormatReader *out_reader,
     DataBindError *error);
 
