@@ -135,7 +135,44 @@ add_subdirectory(tbe)
 # Package Configuration
 include(CMakePackageConfigHelpers)
 
-# Generate the config file
+# DataBind is an independent installed package even while its sources remain
+# physically hosted in this repository during the staged extraction.
+set(DATABIND_PACKAGE_VERSION "3.0.0")
+configure_package_config_file(
+  "${CMAKE_SOURCE_DIR}/cmake/DataBindConfig.cmake.in"
+  "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+write_basic_package_version_file(
+  "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
+  VERSION ${DATABIND_PACKAGE_VERSION}
+  COMPATIBILITY SameMajorVersion)
+
+install(FILES
+  "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
+  "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+
+export(
+  EXPORT DataBindTargets
+  FILE "${CMAKE_BINARY_DIR}/DataBindTargets.cmake"
+  NAMESPACE DataBind::)
+export(
+  EXPORT DataBindCFlowTargets
+  FILE "${CMAKE_BINARY_DIR}/DataBindCFlowTargets.cmake"
+  NAMESPACE DataBind::)
+
+install(
+  EXPORT DataBindTargets
+  FILE DataBindTargets.cmake
+  NAMESPACE DataBind::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+install(
+  EXPORT DataBindCFlowTargets
+  FILE DataBindCFlowTargets.cmake
+  NAMESPACE DataBind::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
+
+# Generate the SaltsUtils config file
 configure_package_config_file(
   "${CMAKE_SOURCE_DIR}/cmake/SaltsUtilsConfig.cmake.in"
   "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
