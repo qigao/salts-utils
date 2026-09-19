@@ -244,7 +244,7 @@ struct data_bind_stream_t {
   int canceled;
 };
 
-static data_bind_stream_format_state *data_bind_stream_provider_state(
+static inline data_bind_stream_format_state *data_bind_stream_provider_state(
     data_bind_stream_t *stream) {
   if (stream == NULL) return NULL;
   return (data_bind_stream_format_state *)stream->provider.state;
@@ -9204,8 +9204,11 @@ DataBindStatus data_bind_stream_cancel(data_bind_stream_t *stream) {
                         -1, "Finished stream cannot be canceled");
   if (parser->provider.ops == NULL || parser->provider.ops->cancel == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
-  if (parser->provider.ops->cancel(parser, parser->error) != DATA_BIND_OK)
-    return DATA_BIND_ERR_RUNTIME;
+  {
+    DataBindStatus provider_status =
+        parser->provider.ops->cancel(parser, parser->error);
+    if (provider_status != DATA_BIND_OK) return provider_status;
+  }
   parser->canceled = 1;
   data_bind_stream_discard_results(parser);
   return db_error_set(parser->error, DATA_BIND_ERR_CANCELED, "data_bind_stream_cancel", -1, -1,
