@@ -86,7 +86,7 @@ spec("data_bind public API") {
     DataBindStatus (*feed_file_fn)(data_bind_stream_t *, const char *) =
         data_bind_stream_feed_file;
     DataBindStatus (*finish_fn)(data_bind_stream_t *) = data_bind_stream_finish;
-    check_equal(data_bind_version_string(), "2.5.1");
+    check_equal(data_bind_version_string(), "3.0.0");
     check_equal(data_bind_format_name(DATA_BIND_FORMAT_BINARY), "bin");
     check_equal(data_bind_format_name(DATA_BIND_FORMAT_JSON), "json");
     check_null(data_bind_format_name((DataBindFormat)99));
@@ -2093,7 +2093,7 @@ spec("data_bind public API") {
     check_not_null(codec);
 
     if (codec) {
-      datetime_t dt;
+      DataBindDateTime dt;
       DataBindDate date;
       DataBindTime time;
       int64_t span_ms = 0;
@@ -2682,7 +2682,7 @@ spec("data_bind public API") {
       check_null(value);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic),
                    DATA_BIND_OK);
-      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, DATA_BIND_QUERY_RESOURCE_LIMIT);
       check(strstr(diagnostic.message, "limit") != NULL);
       data_bind_stream_destroy(stream);
       stream = NULL;
@@ -2697,7 +2697,7 @@ spec("data_bind public API") {
       check_equal(data_bind_stream_feed(stream, yaml, strlen(yaml)), DATA_BIND_OK);
       check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, DATA_BIND_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2710,7 +2710,7 @@ spec("data_bind public API") {
       const char *csv = "id_n\n1\n";
       check_equal(data_bind_stream_feed(stream, csv, strlen(csv)), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, DATA_BIND_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
       stream = NULL;
     }
@@ -2724,7 +2724,7 @@ spec("data_bind public API") {
       check_equal(data_bind_stream_feed(stream, xml, strlen(xml)), DATA_BIND_OK);
       check_equal(data_bind_stream_finish(stream), DATA_BIND_ERR_LIMIT);
       check_equal(data_bind_stream_query_diagnostic(stream, &diagnostic), DATA_BIND_OK);
-      check_equal(diagnostic.status, QVM_STATUS_RESOURCE_LIMIT);
+      check_equal(diagnostic.status, DATA_BIND_QUERY_RESOURCE_LIMIT);
       data_bind_stream_destroy(stream);
     }
     data_bind_free(codec);
