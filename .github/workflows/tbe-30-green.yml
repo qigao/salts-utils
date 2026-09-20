@@ -218,65 +218,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error \
-            -R '^(test_data_bind|test_tbe_compiler|test_schema_boundaries|test_tbe_compiler_schema_boundary)$' \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/schema-order.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/schema-order.log"
-
-      # The pinned Core fixes salts#252; CMeta/CFlow and every other TBE target
-      # must now pass. Keep ODR and leak detection enabled and do not allow failure.
-      - name: Run blocking full TBE and DataBind runtime suite
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/tbe.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe.log"
-
-      - name: Verify direct parser dependencies
-        shell: bash
-        run: python3 tests/databind_direct_parsers/check_boundary.py -v
-
-      - name: Run complete Jinja regressions with the allocator-bound SDK
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target jinja/all -j2 \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/jinja-build.log"
-          ctest --test-dir build/linux-gcc-debug/jinja --no-tests=error --output-on-failure \
-            --output-junit "$RUNNER_TEMP/tbe30-evidence/jinja.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/jinja.log"
-
-      - name: Verify committed source was not modified
-        if: always()
-        shell: bash
-        run: |
-          set -euxo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          git diff --exit-code
-
-      - name: Upload exact-head verification evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tbe-descriptor-${{ github.run_id }}-${{ github.run_attempt }}
-          retention-days: 14
-          path: |
-            ${{ runner.temp }}/tbe30-evidence/
-            build/linux-gcc-debug/compile_commands.json
-            build/linux-gcc-debug/CMakeCache.txt
-            build/linux-gcc-debug/Testing/Temporary/
-            build/linux-gcc-debug/tbe/Testing/Temporary/
-            build/linux-gcc-debug/jinja/Testing/Temporary/
- \
-            --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" \
-            2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
       - name: Run blocking schema-order and legacy fixture regressions
         shell: bash
         run: |
