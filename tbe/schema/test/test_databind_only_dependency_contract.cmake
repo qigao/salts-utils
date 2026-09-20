@@ -5,6 +5,7 @@ string(CONCAT FORBIDDEN_SYMBOL "c" "bind_")
 string(CONCAT FORBIDDEN_REVERSE_KIND "tbe_typed_kind_from_" "cmeta_data")
 string(CONCAT FORBIDDEN_REVERSE_GRAPH "tbe_typed_cmeta_graph_" "validate")
 string(CONCAT FORBIDDEN_REVERSE_RECORD "typed_cmeta_validate_" "record")
+string(CONCAT FORBIDDEN_PARENT_TBE_ROOT "$" "{CMAKE_SOURCE_DIR}/tbe/")
 
 file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
   "${PROJECT_SOURCE_DIR}/CMakeLists.txt"
@@ -28,7 +29,8 @@ foreach(FILE_PATH IN LISTS POLICY_FILES)
                              "${FORBIDDEN_MACRO}" "${FORBIDDEN_SYMBOL}"
                              "${FORBIDDEN_REVERSE_KIND}"
                              "${FORBIDDEN_REVERSE_GRAPH}"
-                             "${FORBIDDEN_REVERSE_RECORD}")
+                             "${FORBIDDEN_REVERSE_RECORD}"
+                             "${FORBIDDEN_PARENT_TBE_ROOT}")
     string(FIND "${CONTENT}" "${FORBIDDEN}" POSITION)
     if(NOT POSITION EQUAL -1)
       message(FATAL_ERROR "DataBind-only dependency violation: ${FILE_PATH}")
