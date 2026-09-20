@@ -2,7 +2,7 @@
 /* Sources:
  * GraphemeBreakProperty.txt git blob 19b13571f347af21a499eeb5ac0f27fc4602dacd
  * emoji-data.txt git blob 09a9b5aa8a42157852ad051013491aae1a7fa8e5
- * DerivedCoreProperties.txt filtered Apple copy git blob 0e3609a982b028ef32cac8843d6709b7896d1a6b
+ * DerivedCoreProperties.txt git blob f327784bf3956436efeb85e213fc637d7b3c0207
  * Normative algorithm: UAX #29 revision 47.
  */
 #ifndef SALTS_UNICODE_GRAPHEME_DATA_H
