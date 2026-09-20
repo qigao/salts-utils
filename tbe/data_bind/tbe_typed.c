@@ -971,7 +971,8 @@ static int typed_nonempty(const char *text) { return text != NULL && text[0] != 
 
 static int typed_native_scalar_supported(const cmeta_data_desc *data) {
   const TbeTypedCMetaKindMapping typed_cmeta_kind_mappings[] = {
-      {&cmeta_data_bool, TBE_TYPED_BOOL},        {&salts_int8_cmeta_data, TBE_TYPED_I8},
+      {&cmeta_data_bool, TBE_TYPED_BOOL},        {&cmeta_data_int, TBE_TYPED_I32},
+      {&cmeta_data_long, TBE_TYPED_I64},         {&salts_int8_cmeta_data, TBE_TYPED_I8},
       {&salts_uint8_cmeta_data, TBE_TYPED_U8},   {&salts_int16_cmeta_data, TBE_TYPED_I16},
       {&salts_uint16_cmeta_data, TBE_TYPED_U16}, {&salts_int32_cmeta_data, TBE_TYPED_I32},
       {&salts_uint32_cmeta_data, TBE_TYPED_U32}, {&salts_int64_cmeta_data, TBE_TYPED_I64},
@@ -979,12 +980,16 @@ static int typed_native_scalar_supported(const cmeta_data_desc *data) {
       {&cmeta_data_double, TBE_TYPED_F64},
   };
   size_t i;
-  for (i = 1u; i < sizeof(typed_cmeta_kind_mappings) / sizeof(typed_cmeta_kind_mappings[0]); ++i) {
+  if (data == NULL) return 0;
+  for (i = 0u; i < sizeof(typed_cmeta_kind_mappings) / sizeof(typed_cmeta_kind_mappings[0]); ++i) {
     if (typed_cmeta_scalar_matches(data, typed_cmeta_kind_mappings[i].data)) return 1;
   }
-  if (data != NULL && data->kind == CMETA_DATA_ENUM)
+  if (data->kind == CMETA_DATA_ENUM)
     return cmeta_data_enum_bits_ops_of(data) != NULL;
-  if (data == NULL || cmeta_data_fixed_ops_of(data) == NULL) return 0;
+  if ((data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) &&
+      cmeta_data_buffer_ops_of(data) != NULL)
+    return 1;
+  if (cmeta_data_fixed_ops_of(data) == NULL) return 0;
   return typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) ||
          salts_uuid_cmeta_data_valid(data) || data->kind == CMETA_DATA_BYTES;
 }
@@ -1125,6 +1130,12 @@ static DataBindStatus typed_native_init_value(const cmeta_data_desc *data, void 
                          "Fixed provider did not establish semantic zero");
     return DATA_BIND_OK;
   }
+  if (cmeta_data_buffer_ops_of(data) != NULL) {
+    if (cmeta_data_buffer_init_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Buffer provider did not establish semantic zero");
+    return DATA_BIND_OK;
+  }
   memset(storage, 0, data->storage_type->size);
   if (data->kind == CMETA_DATA_ENUM) {
     if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
@@ -1157,6 +1168,12 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data, void
     if (cmeta_data_fixed_restore_zero(data, storage) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "Fixed provider did not restore semantic zero");
+    return DATA_BIND_OK;
+  }
+  if (cmeta_data_buffer_ops_of(data) != NULL) {
+    if (cmeta_data_buffer_restore_zero(data, storage) != CMETA_OK)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                         "Buffer provider did not restore semantic zero");
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_ENUM) {
