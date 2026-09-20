@@ -1,7 +1,8 @@
 # TBE As A General Schema Format
 
-DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是生成原生 C、现有 C struct
-和动态对象路径的唯一绑定引擎。
+DataBind originates in `qigao/salts-utils`, but this standalone project root builds, installs,
+and exports the canonical `Salts::DataBind` package directly. It remains the single binding engine
+for generated native C, existing C structs, and dynamic-object paths.
 
 Canonical ownership is:
 
