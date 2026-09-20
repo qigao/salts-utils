@@ -2,17 +2,40 @@ cmake_minimum_required(VERSION 3.27)
 
 foreach(required_var IN ITEMS
         PARENT_SOURCE_ROOT
+        PARENT_BUILD_DIR
         PARTITION_ROOT
         TEST_ROOT
         SALTS_ROOT
-        DATABIND_RE2C_EXECUTABLE
-        DATABIND_LEMPAR
-        DATABIND_HOST_LEMON_EXECUTABLE
         CMAKE_GENERATOR_NAME)
   if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
     message(FATAL_ERROR "${required_var} is required")
   endif()
 endforeach()
+
+if(NOT DEFINED ENV{RE2C_ROOT} OR "$ENV{RE2C_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "RE2C_ROOT is required for the standalone proof")
+endif()
+file(TO_CMAKE_PATH "$ENV{RE2C_ROOT}" re2c_root)
+find_program(standalone_re2c
+  NAMES re2c
+  PATHS "${re2c_root}/bin"
+  NO_DEFAULT_PATH
+  REQUIRED)
+
+set(standalone_lempar "${PARENT_SOURCE_ROOT}/tools/lemon/lempar.c")
+if(NOT EXISTS "${standalone_lempar}")
+  message(FATAL_ERROR "parent Lemon template is missing: ${standalone_lempar}")
+endif()
+
+file(GLOB standalone_lemon_candidates
+  "${PARENT_BUILD_DIR}/bin/lemon"
+  "${PARENT_BUILD_DIR}/bin/lemon.exe")
+list(LENGTH standalone_lemon_candidates standalone_lemon_count)
+if(NOT standalone_lemon_count EQUAL 1)
+  message(FATAL_ERROR
+          "standalone proof requires exactly one built host Lemon executable: ${standalone_lemon_candidates}")
+endif()
+list(GET standalone_lemon_candidates 0 standalone_lemon)
 
 set(salts_utils_root "${PARTITION_ROOT}/salts-utils")
 if(NOT EXISTS "${salts_utils_root}/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake")
@@ -38,9 +61,9 @@ set(configure_command
     -S "${PARENT_SOURCE_ROOT}/tbe"
     -B "${standalone_build}"
     -G "${CMAKE_GENERATOR_NAME}"
-    "-DDATABIND_RE2C_EXECUTABLE=${DATABIND_RE2C_EXECUTABLE}"
-    "-DDATABIND_LEMPAR=${DATABIND_LEMPAR}"
-    "-DDATABIND_HOST_LEMON_EXECUTABLE=${DATABIND_HOST_LEMON_EXECUTABLE}"
+    "-DDATABIND_RE2C_EXECUTABLE=${standalone_re2c}"
+    "-DDATABIND_LEMPAR=${standalone_lempar}"
+    "-DDATABIND_HOST_LEMON_EXECUTABLE=${standalone_lemon}"
     -DBUILD_TESTING=OFF
     -DBUILD_BENCHMARKS=OFF)
 
