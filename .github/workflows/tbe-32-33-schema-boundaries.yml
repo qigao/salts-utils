@@ -4,6 +4,8 @@ on:
   push:
     branches: [master, fix/tbe-32-33-schema-boundaries]
     paths:
+      - 'tbe/CMakeLists.txt'
+      - 'tbe/cmake/**'
       - 'tbe/schema/**'
       - 'tbe/tbe_compiler/**'
       - 'tools/lemon/**'
@@ -17,6 +19,8 @@ on:
   pull_request:
     branches: [master]
     paths:
+      - 'tbe/CMakeLists.txt'
+      - 'tbe/cmake/**'
       - 'tbe/schema/**'
       - 'tbe/tbe_compiler/**'
       - 'tools/lemon/**'
