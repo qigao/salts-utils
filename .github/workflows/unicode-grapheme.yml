@@ -1,0 +1,111 @@
+name: Unicode grapheme boundary conformance
+
+on:
+  push:
+    branches:
+      - feature/unicode-grapheme-boundaries
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: salts-utils-unicode-grapheme-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  SALTS_SHA: ce9b57bc166bf86bd311fe6f86b7619dd64673e1
+  VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+jobs:
+  grapheme-red-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact SaltsUtils head
+        uses: actions/checkout@v4
+
+      - name: Checkout exact Salts and vcpkg
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git init salts
+          git -C salts remote add origin https://github.com/qigao/salts.git
+          git -C salts fetch --depth=1 origin "${SALTS_SHA}"
+          git -C salts checkout --detach FETCH_HEAD
+          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          git -C vcpkg checkout --detach "${VCPKG_SHA}"
+
+      - name: Restore vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: unicode-grapheme-vcpkg-x64-linux-b1b19307-v1
+
+      - name: Set up Go for BoringSSL
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "${GITHUB_WORKSPACE}/vcpkg" /opt/vcpkg
+          bash cmake/ci/install-re2c.sh
+
+      - name: Build and expose exact Salts
+        shell: bash
+        working-directory: salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/linux-gcc-debug --target install -j2
+          sudo ln -sfn "${RUNNER_TEMP}/salts-project/external/pkgs/salts/debug" /opt/salts/debug
+
+      - name: Build standalone host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+
+      - name: Configure exact SaltsUtils head
+        shell: bash
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="${GITHUB_WORKSPACE}/build/host-lemon/lemon"
+
+      - name: Build focused grapheme test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target test_salts_unicode_grapheme -j2
+
+      - name: Run focused grapheme test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug -R '^test_salts_unicode_grapheme$' --output-on-failure
+
+      - name: Verify exact head
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
