@@ -1,0 +1,35 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 27,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-ci-debug",
+      "displayName": "DataBind standalone CI (Linux Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-ci-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "BUILD_TESTING": "OFF",
+        "BUILD_BENCHMARKS": "OFF",
+        "DATABIND_RE2C_EXECUTABLE": "$env{DATABIND_RE2C_EXECUTABLE}",
+        "DATABIND_LEMPAR": "$env{DATABIND_LEMPAR}",
+        "DATABIND_HOST_LEMON_EXECUTABLE": "$env{DATABIND_HOST_LEMON_EXECUTABLE}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-ci-debug",
+      "configurePreset": "linux-ci-debug",
+      "jobs": 2,
+      "targets": [
+        "tbe_schema"
+      ]
+    }
+  ]
+}
