@@ -8,6 +8,18 @@ Schema-driven C data binding built on Salts.
 
 DataBind owns schema and binding semantics. Native semantic type identity comes from Salts CMeta; container and serialization primitives come from Salts CSTL/CSerde. Concrete parser adapters and compiler helpers may use SaltsUtils explicitly, but the installed DataBind package remains a distinct owner.
 
+## Provenance
+
+DataBind originates in the `qigao/salts-utils` repository. The standalone repository root is a mechanical extraction of the DataBind/TBE-owned subtree from that source repository; it is not an independently originated implementation.
+
+The extraction contract is tracked in `qigao/salts-utils#89`. The source repository remains the production owner until a dedicated imported repository is established, passes the same standalone gates, and downstream consumers are cut over. No forwarding package, duplicate production owner, compatibility alias, or source-tree fallback is part of that transition.
+
+The validated extraction chain includes:
+
+- `qigao/salts-utils` merge commit `887d490731f3e2340970a14ebb3c7f58d9fb73c2` (#97), which established the standalone DataBind/TBE project root;
+- export branch `staging/databind-repository-root`;
+- exact head `8cf2d7dda745d45fc1d0cd007c9a1dc61cfd8cc3`, which first passed the full repository-root configure/build/55-test/install-ownership gate.
+
 ## Architecture
 
 ```text
