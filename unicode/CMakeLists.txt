@@ -15,6 +15,7 @@ add_custom_command(
 add_library(
   salts_unicode STATIC
   include/salts_unicode.h src/salts_unicode_case.c src/unicode_case_data.h
+  src/salts_unicode_grapheme.c src/unicode_grapheme_data.h
   src/salts_unicode_names.c ${SALTS_UNICODE_LEXER_GEN})
 cmake_config_target(
   salts_unicode
