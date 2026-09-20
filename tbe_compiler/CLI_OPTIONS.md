@@ -1,6 +1,6 @@
 # tbe_compiler Command Line Options
 
-DataBind runtime、公共头和 target 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`。
+DataBind 源自 `qigao/salts-utils`，但当前 standalone project root 直接构建、安装并导出 runtime、公共头和 `Salts::DataBind` target。
 DataBind 是生成 C、现有 C struct 与动态对象的唯一绑定引擎；以下 typed/Lua 输出是当前受支持接口。
 
 Canonical ownership is:
