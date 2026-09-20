@@ -82,7 +82,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
-          ./.ci/deps/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          "$RUNNER_TEMP/databind-deps/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           sudo mkdir -p /opt/salts /opt/salts-utils
           sudo ln -sfn "$RUNNER_TEMP/databind-deps/vcpkg" /opt/vcpkg
 
