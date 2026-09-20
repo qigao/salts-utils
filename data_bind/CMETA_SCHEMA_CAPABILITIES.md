@@ -6,8 +6,9 @@ still requires exact-head CI before closure.
 This document is normative: implementation must not add a second DataBind-private
 type universe where CMeta already provides the structural/data semantic.
 
-DataBind is built, installed, and exported by SaltsUtils as `Salts::DataBind`. It is
-SaltsUtils' sole binding engine for generated/native and dynamic paths.
+DataBind originates in `qigao/salts-utils`, but this standalone project root builds,
+installs, and exports `Salts::DataBind` directly. DataBind remains the sole binding
+engine for generated/native and dynamic paths.
 
 ## Ownership rule
 
