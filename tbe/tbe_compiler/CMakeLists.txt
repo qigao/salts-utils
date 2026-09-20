@@ -28,7 +28,7 @@ cmake_add_executable(tbe_compiler
   LIBS Salts::TbeSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(tbe_compiler
-  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 set_property(TARGET tbe_compiler APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
@@ -80,7 +80,7 @@ cmake_add_test(test_tbe_compiler
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler
-  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
@@ -92,9 +92,9 @@ cmake_add_test(test_tbe_compiler_cmeta_fields
   LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
-  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 target_include_directories(test_tbe_compiler_schema_boundary
-  PRIVATE ${CMAKE_SOURCE_DIR}/tbe/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 if(TARGET test_tbe_compiler_schema_boundary)
   target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
   set_source_files_properties(test_scalar_projection.c
