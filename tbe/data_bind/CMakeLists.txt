@@ -145,9 +145,9 @@ target_include_directories(
   ${DATA_BIND_TARGET}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/tbe/schema/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/include>
     $<INSTALL_INTERFACE:include>
-  PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/tbe/schema/parser>)
+  PRIVATE $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>)
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
@@ -345,7 +345,7 @@ set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)
 cmake_add_test(test_data_bind
   SOURCES test_data_bind.c
   LIBS ${DATA_BIND_TEST_LIBS}
-  INCLUDES ${CMAKE_SOURCE_DIR}/tbe/schema/include
+  INCLUDES ${DATABIND_SOURCE_ROOT}/schema/include
   FOLDER "tbe/data_bind/tests")
 cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
@@ -368,7 +368,7 @@ cmake_add_test(test_data_bind_dynamic_cstl
   SOURCES test_data_bind_dynamic_cstl.c
   LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
        Salts::CsvParser Salts::JsonParser
-  INCLUDES ${CMAKE_SOURCE_DIR}/tbe/schema/include
+  INCLUDES ${DATABIND_SOURCE_ROOT}/schema/include
   FOLDER "tbe/data_bind/tests")
 set_tests_properties(test_data_bind_dynamic_cstl PROPERTIES
   LABELS "databind;cmeta;cstl;dynamic")
@@ -451,13 +451,13 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     OUTPUT "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_SAFETY_GENERATED_DIR}"
     COMMAND $<TARGET_FILE:tbe_compiler>
-            "${CMAKE_SOURCE_DIR}/tbe/tbe_compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/tbe_compiler/example.schema"
             --lang c --output "${TBE_SAFETY_GENERATED_HEADER}"
             --source-output "${TBE_SAFETY_GENERATED_SOURCE}"
     DEPENDS tbe_compiler
-            "${CMAKE_SOURCE_DIR}/tbe/tbe_compiler/example.schema"
-            "${CMAKE_SOURCE_DIR}/tbe/tbe_compiler/templates/c_structs.mustache"
-            "${CMAKE_SOURCE_DIR}/tbe/tbe_compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/tbe_compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/tbe_compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/tbe_compiler/templates/c_typed_source.mustache"
     COMMENT "Generating typed descriptor compatibility fixture"
     VERBATIM)
   cmake_add_test(test_tbe_typed_generated
