@@ -1,4 +1,5 @@
 set(DATABIND_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+include("${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake")
 
 add_subdirectory(schema)
 add_subdirectory(data_bind)
