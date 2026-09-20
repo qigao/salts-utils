@@ -46,7 +46,7 @@ typedef struct ProbeDescriptor {
 static ProbeStorage storage;
 static const cmeta_data_buffer_ops *cleanup_buffer;
 
-static void describe(ProbeDescriptor *probe, const char *name,
+static void probe_describe(ProbeDescriptor *probe, const char *name,
                      const cmeta_data_desc *leaf, size_t size, size_t alignment,
                      size_t field_offset, size_t field_size,
                      size_t field_alignment, TbeTypedKind wire_kind) {
@@ -77,7 +77,7 @@ static void describe(ProbeDescriptor *probe, const char *name,
 }
 
 #define DESCRIBE(PROBE, ROW, FIELD_TYPE, LEAF, WIRE) \
-  describe(&(PROBE), #ROW, (LEAF), sizeof(ROW), _Alignof(ROW), \
+  probe_describe(&(PROBE), #ROW, (LEAF), sizeof(ROW), _Alignof(ROW), \
            offsetof(ROW, value), sizeof(((ROW *)0)->value), \
            _Alignof(FIELD_TYPE), (WIRE))
 
