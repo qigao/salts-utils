@@ -52,3 +52,23 @@ add_test(
 set_tests_properties(
   databind_parent_ownership_transition
   PROPERTIES LABELS "cmake;package-config;databind;transition")
+
+
+add_test(
+  NAME databind_standalone_project_root
+  COMMAND
+    "${CMAKE_COMMAND}"
+    "-DDATABIND_SOURCE_DIR=${CMAKE_SOURCE_DIR}/tbe"
+    "-DSTANDALONE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/databind_standalone"
+    "-DSALTS_ROOT=${SALTS_ROOT_PATH}"
+    "-DSALTS_UTILS_ROOT=${CMAKE_BINARY_DIR}"
+    "-DDATABIND_RE2C_EXECUTABLE=${DATABIND_RE2C_EXECUTABLE}"
+    "-DDATABIND_LEMPAR=${DATABIND_LEMPAR}"
+    "-DDATABIND_HOST_LEMON_EXECUTABLE=${DATABIND_HOST_LEMON_EXECUTABLE}"
+    "-DCMAKE_GENERATOR_NAME=${CMAKE_GENERATOR}"
+    "-DCMAKE_TOOLCHAIN_FILE_PATH=${CMAKE_TOOLCHAIN_FILE}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/databind_standalone_root.cmake")
+
+set_tests_properties(
+  databind_standalone_project_root
+  PROPERTIES LABELS "cmake;package-config;databind;standalone")
