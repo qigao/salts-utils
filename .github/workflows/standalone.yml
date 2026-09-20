@@ -110,7 +110,7 @@ jobs:
           SALTS_ROOT: /opt/salts/debug
         run: |
           set -euxo pipefail
-          cmake --preset linux-dev-user             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"             -DDATABIND_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"
+          cmake --preset linux-dev-user             -DENABLE_SANITIZER_ADDRESS=OFF             -DENABLE_SANITIZER_UNDEFINED=OFF             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"             -DDATABIND_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"
           cmake --build build/linux-gcc-debug --parallel 2
           cmake --install build/linux-gcc-debug             --prefix "$RUNNER_TEMP/sdk/salts-utils-debug"             --component Unspecified
           test -f "$RUNNER_TEMP/sdk/salts-utils-debug/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
