@@ -114,14 +114,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/linux-gcc-debug \
-            -R '^test_salts_unicode_grapheme(_conformance)?
-      - name: Verify exact head
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
- --output-on-failure
+            -R '^test_salts_unicode_grapheme(_conformance)?$' --output-on-failure
 
       - name: Verify exact head
         if: always()
