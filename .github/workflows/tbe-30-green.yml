@@ -214,11 +214,50 @@ jobs:
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
 
+      - name: Verify DataBind and SaltsUtils install partition
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --parallel 2
+          install_root="$RUNNER_TEMP/databind-install-component"
+          salts_utils_root="$install_root/salts-utils"
+          databind_root="$install_root/databind"
+          rm -rf "$install_root"
+          cmake --install build/linux-gcc-debug --prefix "$salts_utils_root" --component Unspecified
+          cmake --install build/linux-gcc-debug --prefix "$databind_root" --component DataBind
+          test -f "$salts_utils_root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$salts_utils_root/lib/cmake/DataBind/DataBindConfig.cmake"
+          test -f "$databind_root/lib/cmake/DataBind/DataBindConfig.cmake"
+          test ! -e "$databind_root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$databind_root/include/data_bind.h"
+          test -f "$databind_root/include/schema_parser_dsl.h"
+          test -x "$databind_root/bin/tbe_compiler"
+          test -d "$databind_root/bin/templates"
+          test "$(realpath "$salts_utils_root")" != "$(realpath "$databind_root")"
+
       - name: Run DataBind package ownership contracts
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition|databind_parent_ownership_transition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_parent_ownership_transition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+      - name: Configure and build standalone DataBind preset
+        shell: bash
+        working-directory: tbe
+        run: |
+          set -euxo pipefail
+          rm -rf build/linux-ci-debug
+          export SALTS_ROOT=/opt/salts/debug
+          export SALTS_UTILS_ROOT="$GITHUB_WORKSPACE/build/linux-gcc-debug"
+          export VCPKG_ROOT="$GITHUB_WORKSPACE/vcpkg"
+          export DATABIND_RE2C_EXECUTABLE="$RE2C_ROOT/bin/re2c"
+          export DATABIND_LEMPAR="$GITHUB_WORKSPACE/tools/lemon/lempar.c"
+          export DATABIND_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon"
+          cmake --preset linux-ci-debug
+          cmake --build --preset linux-ci-debug
+          test -f build/linux-ci-debug/DataBindConfig.cmake
+          test -f build/linux-ci-debug/DataBindTargets.cmake
+          test -f build/linux-ci-debug/DataBindAdapterTargets.cmake
+
       - name: Run blocking schema-order and legacy fixture regressions
         shell: bash
         run: |
