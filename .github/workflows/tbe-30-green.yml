@@ -218,7 +218,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition|databind_parent_ownership_transition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition|databind_parent_ownership_transition|databind_standalone_source_build)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
       - name: Run blocking schema-order and legacy fixture regressions
         shell: bash
         run: |
