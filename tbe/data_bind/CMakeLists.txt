@@ -151,7 +151,7 @@ target_include_directories(
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
-    monocypher
+    databind_monocypher
     Salts::DataBindJsonAdapter
     Salts::DataBindYamlAdapter
     Salts::DataBindCsvAdapter
