@@ -86,7 +86,7 @@ spec("TBE typed canonical scalar matching") {
     expect_scalar(&data);
   }
 
-  it("accepts canonical fixed providers and rejects native Bool/container impostors") {
+  it("accepts canonical Bool/fixed providers and rejects container impostors") {
     static const DeferredNativeDomain deferred[] = {
         {"bool", &cmeta_data_bool, CMETA_DATA_BOOL},
     };
@@ -102,7 +102,7 @@ spec("TBE typed canonical scalar matching") {
                       ? CMETA_DATA_CUSTOM
                       : deferred[i].data->kind);
       check_equal(scalar_descriptor_status(deferred[i].data),
-                  DATA_BIND_ERR_SCHEMA);
+                  DATA_BIND_OK);
     }
     expect_scalar(&salts_bool8_cmeta_data);
     expect_scalar(&salts_uuid_cmeta_data);
