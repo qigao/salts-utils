@@ -214,11 +214,32 @@ jobs:
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
 
+      - name: Verify DataBind and SaltsUtils install partition
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --parallel 2
+          install_root="$RUNNER_TEMP/databind-install-component"
+          salts_utils_root="$install_root/salts-utils"
+          databind_root="$install_root/databind"
+          rm -rf "$install_root"
+          cmake --install build/linux-gcc-debug --prefix "$salts_utils_root" --component Unspecified
+          cmake --install build/linux-gcc-debug --prefix "$databind_root" --component DataBind
+          test -f "$salts_utils_root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$salts_utils_root/lib/cmake/DataBind/DataBindConfig.cmake"
+          test -f "$databind_root/lib/cmake/DataBind/DataBindConfig.cmake"
+          test ! -e "$databind_root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$databind_root/include/data_bind.h"
+          test -f "$databind_root/include/tbe_schema.h"
+          test -x "$databind_root/bin/tbe_compiler"
+          test -d "$databind_root/bin/templates"
+          test "$(realpath "$salts_utils_root")" != "$(realpath "$databind_root")"
+
       - name: Run DataBind package ownership contracts
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_install_component_partition|databind_parent_ownership_transition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
+          ctest --test-dir build/linux-gcc-debug --no-tests=error -R "^(databind_package_config_repeated_find|databind_package_config_adapters|databind_parent_ownership_transition)$" --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/databind-package.xml" 2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/databind-package.log"
       - name: Configure and build standalone DataBind preset
         shell: bash
         working-directory: tbe
