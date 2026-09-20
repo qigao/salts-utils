@@ -19,7 +19,7 @@ add_test(
   COMMAND
     "${CMAKE_COMMAND}" -E env
       "SALTS_ROOT=${SALTS_ROOT_PATH}"
-      "SALTS_UTILS_ROOT=${CMAKE_BINARY_DIR}"
+      "SALTS_UTILS_ROOT=${SALTS_UTILS_ROOT_PATH}"
     "${CMAKE_COMMAND}" --fresh
     -S "${CMAKE_CURRENT_SOURCE_DIR}/databind_adapters"
     -B "${CMAKE_CURRENT_BINARY_DIR}/databind_adapters_build"
