@@ -1,0 +1,12 @@
+# CMake / Ninja build trees
+/build/
+/cmake-build-*/
+
+# Staging CI dependency checkout
+/.ci/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
