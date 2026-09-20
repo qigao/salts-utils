@@ -59,7 +59,7 @@ install(
 
 add_test(NAME test_databind_compiler_tooling_boundary
   COMMAND "${CMAKE_COMMAND}"
-    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_tooling_boundary.cmake")
 set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
