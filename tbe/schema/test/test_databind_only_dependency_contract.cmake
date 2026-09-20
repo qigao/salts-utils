@@ -37,3 +37,42 @@ foreach(FILE_PATH IN LISTS POLICY_FILES)
     endif()
   endforeach()
 endforeach()
+
+
+set(DATABIND_CMAKE_ROOT "${PROJECT_SOURCE_DIR}/tbe")
+file(GLOB_RECURSE DATABIND_CMAKE_FILES LIST_DIRECTORIES FALSE
+  "${DATABIND_CMAKE_ROOT}/CMakeLists.txt"
+  "${DATABIND_CMAKE_ROOT}/*.cmake")
+
+foreach(FILE_PATH IN LISTS DATABIND_CMAKE_FILES)
+  if(FILE_PATH STREQUAL CMAKE_CURRENT_LIST_FILE)
+    continue()
+  endif()
+  file(READ "${FILE_PATH}" CONTENT)
+  foreach(FORBIDDEN_HELPER IN ITEMS
+          "cmake_config_target("
+          "cmake_add_grammar("
+          "cmake_add_source("
+          "cmake_add_executable("
+          "cmake_add_test("
+          "cmake_add_benchmark("
+          "SALTS_UTILS_HOST_LEMON_EXECUTABLE")
+    string(FIND "${CONTENT}" "${FORBIDDEN_HELPER}" POSITION)
+    if(NOT POSITION EQUAL -1)
+      message(FATAL_ERROR
+              "DataBind build-helper ownership violation: ${FILE_PATH}: ${FORBIDDEN_HELPER}")
+    endif()
+  endforeach()
+endforeach()
+
+if(NOT EXISTS "${DATABIND_CMAKE_ROOT}/cmake/DataBindBuild.cmake")
+  message(FATAL_ERROR "DataBind-owned build helper module is missing")
+endif()
+file(READ "${DATABIND_CMAKE_ROOT}/cmake/DataBindBuild.cmake" DATABIND_BUILD_HELPERS)
+string(FIND "${DATABIND_BUILD_HELPERS}"
+            "DATABIND_HOST_LEMON_EXECUTABLE"
+            DATABIND_HOST_LEMON_POSITION)
+if(DATABIND_HOST_LEMON_POSITION EQUAL -1)
+  message(FATAL_ERROR
+          "DataBind build helper does not own the host Lemon configuration")
+endif()

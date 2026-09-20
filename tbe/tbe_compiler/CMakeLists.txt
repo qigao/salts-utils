@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
-cmake_add_executable(tbe_compiler
+databind_add_executable(tbe_compiler
   SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::TbeSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")
@@ -65,7 +65,7 @@ set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
 
 
-cmake_add_test(test_tbe_compiler
+databind_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
@@ -82,12 +82,12 @@ cmake_add_test(test_tbe_compiler
 target_include_directories(test_tbe_compiler
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 
-cmake_add_test(test_tbe_compiler_schema_boundary
+databind_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "tbe/tbe_compiler")
-cmake_add_test(test_tbe_compiler_cmeta_fields
+databind_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::TbeSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "tbe/tbe_compiler")

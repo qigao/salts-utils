@@ -117,6 +117,7 @@ jobs:
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DDATABIND_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/configure.log"
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \

@@ -1,6 +1,6 @@
 set(TARGET_NAME tbe_schema)
 
-cmake_add_grammar(SCHEMA
+databind_add_grammar(SCHEMA
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_grammar.y
   FOLDER "tbe/${TARGET_NAME}/grammar")
@@ -9,7 +9,7 @@ cmake_add_grammar(SCHEMA
 # Library
 # =============================================================================
 
-cmake_add_source(SOURCE_FILES RECURSE
+databind_add_source(SOURCE_FILES RECURSE
   DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
   PATTERNS "*.c*" "*.h*")
 
@@ -27,7 +27,7 @@ target_include_directories(
 
 target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
 
-cmake_config_target(
+databind_config_target(
   ${TARGET_NAME}
   ALIAS Salts::TbeSchema
   FOLDER tbe/schema
@@ -64,7 +64,7 @@ foreach(test_name
         test_tbe_robustness
         test_optional_and_defaults
         test_enum_helpers)
-  cmake_add_test(${test_name}
+  databind_add_test(${test_name}
     SOURCES test/${test_name}.c
     LIBS ${TBE_SCHEMA_TEST_LIBS}
     FOLDER "tbe/schema/tests")
@@ -75,7 +75,7 @@ add_test(NAME test_databind_only_dependency_contract
     "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/test/test_databind_only_dependency_contract.cmake")
 
-cmake_add_test(test_schema_cmeta_public_cpp
+databind_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
   LIBS Salts::TbeSchema
   FOLDER "tbe/schema/tests")
@@ -95,7 +95,7 @@ if(TARGET test_schema_cmeta)
       "${CMAKE_CURRENT_SOURCE_DIR}/test/test_schema_cmeta_profile_contract.cmake")
 endif()
 
-cmake_add_executable(verify_fixes
+databind_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
   LIBS Salts::TbeSchema
   FOLDER tbe/schema/tests)
@@ -129,14 +129,14 @@ add_custom_command(
   VERBATIM)
 
 # 功能测试：枚举增强
-cmake_add_test(test_enum_enhanced_functional
+databind_add_test(test_enum_enhanced_functional
   SOURCES test/test_enum_enhanced_functional.c ${ENUM_ENHANCED_HEADER}
   LIBS ${TBE_SCHEMA_TEST_LIBS}
   INCLUDES ${CMAKE_BINARY_DIR}/bin
   FOLDER "tbe/schema/tests")
 
 # 功能测试：枚举增强（简化版）
-cmake_add_test(test_enum_enhanced_simple_functional
+databind_add_test(test_enum_enhanced_simple_functional
   SOURCES test/test_enum_enhanced_simple_functional.c ${ENUM_ENHANCED_SIMPLE_HEADER}
   LIBS ${TBE_SCHEMA_TEST_LIBS}
   INCLUDES ${CMAKE_BINARY_DIR}/bin
@@ -154,7 +154,7 @@ add_custom_command(
   VERBATIM)
 
 # 功能测试：联合类型
-cmake_add_test(test_union_types_functional
+databind_add_test(test_union_types_functional
   SOURCES test/test_union_types_functional.c ${UNION_TYPES_HEADER}
   LIBS ${TBE_SCHEMA_TEST_LIBS}
   INCLUDES ${CMAKE_BINARY_DIR}/bin
@@ -164,12 +164,12 @@ cmake_add_test(test_union_types_functional
 # Benchmarks
 # =============================================================================
 
-cmake_add_benchmark(benchmark_tbe_simple
+databind_add_benchmark(benchmark_tbe_simple
   SOURCES test/benchmark_tbe_simple.c
   LIBS ${TBE_SCHEMA_TEST_LIBS}
   FOLDER "tbe/schema/benchmarks")
 
-cmake_add_benchmark(benchmark_encoding
+databind_add_benchmark(benchmark_encoding
   SOURCES test/benchmark_encoding.c
   LIBS Salts::TinyTest
   FOLDER "tbe/schema/benchmarks")
