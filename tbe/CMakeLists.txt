@@ -1,6 +1,7 @@
 set(DATABIND_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 include("${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake")
 
+add_subdirectory(vendor/monocypher)
 add_subdirectory(schema)
 add_subdirectory(data_bind)
 add_subdirectory(tbe_compiler)

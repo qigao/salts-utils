@@ -76,3 +76,44 @@ if(DATABIND_HOST_LEMON_POSITION EQUAL -1)
   message(FATAL_ERROR
           "DataBind build helper does not own the host Lemon configuration")
 endif()
+
+
+set(DATABIND_MONOCYPHER_ROOT "${PROJECT_SOURCE_DIR}/tbe/vendor/monocypher")
+foreach(REQUIRED_MONOCYPHER_FILE IN ITEMS CMakeLists.txt monocypher.c monocypher.h)
+  if(NOT EXISTS "${DATABIND_MONOCYPHER_ROOT}/${REQUIRED_MONOCYPHER_FILE}")
+    message(FATAL_ERROR
+            "DataBind private Monocypher ownership is incomplete: ${REQUIRED_MONOCYPHER_FILE}")
+  endif()
+endforeach()
+if(EXISTS "${PROJECT_SOURCE_DIR}/vendor/monocypher")
+  message(FATAL_ERROR
+          "Monocypher still has parent SaltsUtils vendor ownership")
+endif()
+
+file(READ "${PROJECT_SOURCE_DIR}/tbe/data_bind/CMakeLists.txt" DATABIND_RUNTIME_CMAKE)
+string(FIND "${DATABIND_RUNTIME_CMAKE}" "databind_monocypher"
+            DATABIND_MONOCYPHER_TARGET_POSITION)
+if(DATABIND_MONOCYPHER_TARGET_POSITION EQUAL -1)
+  message(FATAL_ERROR
+          "DataBind runtime no longer links its private Monocypher target")
+endif()
+
+file(READ "${DATABIND_MONOCYPHER_ROOT}/CMakeLists.txt" DATABIND_MONOCYPHER_CMAKE)
+string(FIND "${DATABIND_MONOCYPHER_CMAKE}"
+            "add_library(databind_monocypher STATIC"
+            DATABIND_MONOCYPHER_OWNER_POSITION)
+if(DATABIND_MONOCYPHER_OWNER_POSITION EQUAL -1)
+  message(FATAL_ERROR
+          "DataBind private Monocypher target ownership is missing")
+endif()
+
+foreach(LICENSE_FILE IN ITEMS monocypher.c monocypher.h)
+  file(READ "${DATABIND_MONOCYPHER_ROOT}/${LICENSE_FILE}" LICENSE_CONTENT)
+  string(FIND "${LICENSE_CONTENT}"
+              "SPDX-License-Identifier: BSD-2-Clause OR CC0-1.0"
+              LICENSE_POSITION)
+  if(LICENSE_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "Monocypher license provenance missing from ${LICENSE_FILE}")
+  endif()
+endforeach()
