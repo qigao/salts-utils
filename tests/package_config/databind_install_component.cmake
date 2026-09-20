@@ -11,6 +11,13 @@ set(salts_utils_root "${TEST_ROOT}/salts-utils")
 set(databind_root "${TEST_ROOT}/databind")
 
 execute_process(
+  COMMAND "${CMAKE_COMMAND}" --build "${BUILD_DIR}" --parallel 2
+  RESULT_VARIABLE build_result)
+if(NOT build_result EQUAL 0)
+  message(FATAL_ERROR "Build tree is not install-ready")
+endif()
+
+execute_process(
   COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}"
           --prefix "${salts_utils_root}" --component Unspecified
   RESULT_VARIABLE salts_utils_install_result)

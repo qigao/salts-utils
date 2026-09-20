@@ -117,3 +117,58 @@ foreach(LICENSE_FILE IN ITEMS monocypher.c monocypher.h)
             "Monocypher license provenance missing from ${LICENSE_FILE}")
   endif()
 endforeach()
+
+
+set(DATABIND_PACKAGE_ROOT "${PROJECT_SOURCE_DIR}/tbe")
+foreach(REQUIRED_PACKAGE_ASSET IN ITEMS
+        "cmake/DataBindConfig.cmake.in"
+        "cmake/DataBindPackage.cmake"
+        "tests/package_config/CMakeLists.txt"
+        "tests/package_config/databind_repeated_find/CMakeLists.txt"
+        "tests/package_config/databind_adapters/CMakeLists.txt")
+  if(NOT EXISTS "${DATABIND_PACKAGE_ROOT}/${REQUIRED_PACKAGE_ASSET}")
+    message(FATAL_ERROR
+            "DataBind package ownership is incomplete: ${REQUIRED_PACKAGE_ASSET}")
+  endif()
+endforeach()
+
+foreach(FORBIDDEN_PARENT_ASSET IN ITEMS
+        "cmake/DataBindConfig.cmake.in"
+        "tests/package_config/databind_repeated_find/CMakeLists.txt"
+        "tests/package_config/databind_adapters/CMakeLists.txt")
+  if(EXISTS "${PROJECT_SOURCE_DIR}/${FORBIDDEN_PARENT_ASSET}")
+    message(FATAL_ERROR
+            "DataBind package asset still has parent ownership: ${FORBIDDEN_PARENT_ASSET}")
+  endif()
+endforeach()
+
+file(READ "${DATABIND_PACKAGE_ROOT}/cmake/DataBindPackage.cmake"
+          DATABIND_PACKAGE_MODULE)
+foreach(REQUIRED_PACKAGE_FRAGMENT IN ITEMS
+        "configure_package_config_file("
+        "export("
+        "DataBindTargets"
+        "DataBindAdapterTargets"
+        "COMPONENT DataBind")
+  string(FIND "${DATABIND_PACKAGE_MODULE}"
+              "${REQUIRED_PACKAGE_FRAGMENT}"
+              PACKAGE_FRAGMENT_POSITION)
+  if(PACKAGE_FRAGMENT_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "DataBind package module missing ownership fragment: ${REQUIRED_PACKAGE_FRAGMENT}")
+  endif()
+endforeach()
+
+file(READ "${PROJECT_SOURCE_DIR}/CMakeLists.txt" PARENT_CMAKE)
+foreach(FORBIDDEN_PARENT_FRAGMENT IN ITEMS
+        "cmake/DataBindConfig.cmake.in"
+        "EXPORT DataBindTargets"
+        "EXPORT DataBindAdapterTargets")
+  string(FIND "${PARENT_CMAKE}"
+              "${FORBIDDEN_PARENT_FRAGMENT}"
+              PARENT_PACKAGE_POSITION)
+  if(NOT PARENT_PACKAGE_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "Parent CMake still owns DataBind package fragment: ${FORBIDDEN_PARENT_FRAGMENT}")
+  endif()
+endforeach()

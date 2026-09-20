@@ -6,6 +6,12 @@ add_subdirectory(schema)
 add_subdirectory(data_bind)
 add_subdirectory(tbe_compiler)
 
+if(BUILD_TESTING)
+  add_subdirectory(tests/package_config)
+endif()
+
+include("${DATABIND_SOURCE_ROOT}/cmake/DataBindPackage.cmake")
+
 # Benchmark helpers create executable targets unconditionally. Keep the TBE
 # aggregate build faithful to BUILD_BENCHMARKS so CI gates configured with
 # BUILD_BENCHMARKS=OFF do not compile stale/non-gating benchmark consumers.
