@@ -1,0 +1,167 @@
+name: DataBind standalone repository
+
+on:
+  push:
+    branches: [master, staging/databind-repository-root]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databind-standalone-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SALTS_COMMIT: 801202e58c2d86b35202414d4812e79a2fd25bae
+  SALTS_UTILS_COMMIT: 887d490731f3e2340970a14ebb3c7f58d9fb73c2
+  VCPKG_COMMIT: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+
+jobs:
+  standalone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact DataBind source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify repository-root source identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -f CMakeLists.txt
+          test -f CMakePresets.json
+          test ! -d tbe
+          git diff --exit-code
+
+      - name: Checkout pinned Salts
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_COMMIT }}
+          path: .ci/deps/salts
+          persist-credentials: false
+
+      - name: Checkout pinned SaltsUtils build tools
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts-utils
+          ref: ${{ env.SALTS_UTILS_COMMIT }}
+          path: .ci/deps/salts-utils
+          persist-credentials: false
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ env.VCPKG_COMMIT }}
+          path: .ci/deps/vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          ./.ci/deps/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          sudo mkdir -p /opt/salts /opt/salts-utils
+          sudo ln -sfn "$GITHUB_WORKSPACE/.ci/deps/vcpkg" /opt/vcpkg
+
+      - name: Install pinned re2c
+        shell: bash
+        run: bash .ci/deps/salts-utils/cmake/ci/install-re2c.sh
+
+      - name: Build standalone host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S .ci/deps/salts-utils/tools/lemon -B "$RUNNER_TEMP/host-lemon" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/host-lemon" --target lemon -j2
+
+      - name: Build and install pinned Salts
+        shell: bash
+        working-directory: .ci/deps/salts
+        env:
+          PROJECT_ROOT: ${{ runner.temp }}/salts-project
+          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user             -DENABLE_SANITIZER_ADDRESS=OFF             -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/linux-gcc-debug --target install -j2
+          package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
+          test -d "$package/include"
+          test -d "$package/lib"
+          sudo ln -sfn "$package" /opt/salts/debug
+
+      - name: Build pinned SaltsUtils utility package
+        shell: bash
+        working-directory: .ci/deps/salts-utils
+        env:
+          SALTS_ROOT: /opt/salts/debug
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"             -DDATABIND_HOST_LEMON_EXECUTABLE="$RUNNER_TEMP/host-lemon/lemon"
+          cmake --build build/linux-gcc-debug --parallel 2
+          cmake --install build/linux-gcc-debug             --prefix "$RUNNER_TEMP/sdk/salts-utils-debug"             --component Unspecified
+          test -f "$RUNNER_TEMP/sdk/salts-utils-debug/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test ! -e "$RUNNER_TEMP/sdk/salts-utils-debug/lib/cmake/DataBind/DataBindConfig.cmake"
+          sudo ln -sfn "$RUNNER_TEMP/sdk/salts-utils-debug" /opt/salts-utils/debug
+
+      - name: Configure DataBind through repository preset
+        shell: bash
+        env:
+          SALTS_ROOT: /opt/salts/debug
+          SALTS_UTILS_ROOT: /opt/salts-utils/debug
+          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+          DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
+          DATABIND_LEMPAR: ${{ github.workspace }}/.ci/deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-ci-debug -DBUILD_TESTING=ON
+
+      - name: Build and test standalone DataBind
+        shell: bash
+        env:
+          SALTS_ROOT: /opt/salts/debug
+          SALTS_UTILS_ROOT: /opt/salts-utils/debug
+          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+          DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
+          DATABIND_LEMPAR: ${{ github.workspace }}/.ci/deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-ci-debug --parallel 2
+          ctest --test-dir build/linux-ci-debug --no-tests=error --output-on-failure
+
+      - name: Verify standalone install ownership
+        shell: bash
+        run: |
+          set -euxo pipefail
+          root="$RUNNER_TEMP/sdk/databind-debug"
+          cmake --install build/linux-ci-debug --prefix "$root" --component DataBind
+          test -f "$root/lib/cmake/DataBind/DataBindConfig.cmake"
+          test -f "$root/include/data_bind.h"
+          test -f "$root/include/schema_parser_dsl.h"
+          test -x "$root/bin/tbe_compiler"
+          test -d "$root/bin/templates"
+          test ! -e "$root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+
+      - name: Verify committed source remained clean
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git diff --exit-code

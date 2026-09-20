@@ -1,55 +1,35 @@
 {
-    "version": 6,
-    "include": [
-        "presets/BuildPresets.json",
-        "presets/TestPresets.json",
-        "presets/AndroidPresets.json"
-    ],
-    "configurePresets": [
-        {
-            "name": "base-win-dev-user",
-            "hidden": true,
-            "displayName": "Developer Build (Windows, Base)",
-            "inherits": [
-                "dev-win-msvc-ninja",
-                "pkg-vcpkg"
-            ]
-        },
-        {
-            "name": "base-win-release-user",
-            "hidden": true,
-            "displayName": "Release Build (Windows, Base)",
-            "inherits": [
-                "release-win-msvc-ninja",
-                "pkg-vcpkg"
-            ]
-        },
-        {
-            "name": "base-linux-dev-user",
-            "hidden": true,
-            "displayName": "Developer Build (Linux, Base)",
-            "inherits": [
-                "dev-linux-ninja",
-                "pkg-vcpkg"
-            ]
-        },
-        {
-            "name": "base-win-dev-clang-user",
-            "hidden": true,
-            "displayName": "Developer Build (Windows, Clang, Base)",
-            "inherits": [
-                "dev-win-clang-ninja",
-                "pkg-vcpkg"
-            ]
-        },
-        {
-            "name": "base-win-release-clang-user",
-            "hidden": true,
-            "displayName": "Release Build (Windows, Clang, Base)",
-            "inherits": [
-                "release-win-clang-ninja",
-                "pkg-vcpkg"
-            ]
-        }
-    ]
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 27,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "linux-ci-debug",
+      "displayName": "DataBind standalone CI (Linux Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-ci-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "BUILD_TESTING": "OFF",
+        "BUILD_BENCHMARKS": "OFF",
+        "DATABIND_RE2C_EXECUTABLE": "$env{DATABIND_RE2C_EXECUTABLE}",
+        "DATABIND_LEMPAR": "$env{DATABIND_LEMPAR}",
+        "DATABIND_HOST_LEMON_EXECUTABLE": "$env{DATABIND_HOST_LEMON_EXECUTABLE}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-ci-debug",
+      "configurePreset": "linux-ci-debug",
+      "jobs": 2,
+      "targets": [
+        "tbe_schema"
+      ]
+    }
+  ]
 }
