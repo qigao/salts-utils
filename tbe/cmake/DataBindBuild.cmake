@@ -91,7 +91,7 @@ function(databind_add_grammar target_name)
     endif()
     add_custom_command(
       OUTPUT ${LEXER_GEN}
-      COMMAND ${RE2C_EXECUTABLE} ${ARG_LEXER_OPTIONS} -o ${LEXER_GEN} ${ARG_LEXER_RE}
+      COMMAND "${DATABIND_RE2C_EXECUTABLE}" ${ARG_LEXER_OPTIONS} -o ${LEXER_GEN} ${ARG_LEXER_RE}
       DEPENDS ${lexer_depends}
       COMMENT "Generating ${target_name} lexer with re2c"
       VERBATIM)
@@ -105,27 +105,15 @@ function(databind_add_grammar target_name)
   endif()
 
   if(ARG_GRAMMAR_Y)
-    if(DEFINED DATABIND_HOST_LEMON_EXECUTABLE AND
-       NOT "${DATABIND_HOST_LEMON_EXECUTABLE}" STREQUAL "")
-      get_filename_component(
-        lemon_command "${DATABIND_HOST_LEMON_EXECUTABLE}" ABSOLUTE
-        BASE_DIR "${CMAKE_BINARY_DIR}")
-      if(NOT EXISTS "${lemon_command}")
-        message(FATAL_ERROR
-                "DATABIND_HOST_LEMON_EXECUTABLE does not exist: ${lemon_command}")
-      endif()
-      set(lemon_depends "${lemon_command}")
-    else()
-      set(lemon_command "$<TARGET_FILE:lemon>")
-      set(lemon_depends lemon)
-    endif()
+    set(lemon_command "${DATABIND_LEMON_COMMAND}")
+    set(lemon_depends "${DATABIND_LEMON_DEPENDS}")
 
     set(GRAMMAR_GEN "${CMAKE_CURRENT_BINARY_DIR}/${target_name_lower}_grammar_gen.c")
     set(GRAMMAR_Y_GEN "${CMAKE_CURRENT_BINARY_DIR}/${target_name_lower}_grammar_gen.y")
     add_custom_command(
       OUTPUT ${GRAMMAR_GEN} ${GRAMMAR_H}
       COMMAND ${CMAKE_COMMAND} -E copy ${ARG_GRAMMAR_Y} ${GRAMMAR_Y_GEN}
-      COMMAND "${lemon_command}" -T${LEMPAR} ${GRAMMAR_Y_GEN}
+      COMMAND "${lemon_command}" "-T${DATABIND_LEMPAR}" ${GRAMMAR_Y_GEN}
       DEPENDS ${ARG_GRAMMAR_Y} ${lemon_depends}
       COMMENT "Generating ${target_name} parser with lemon"
       VERBATIM)
