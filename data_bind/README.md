@@ -1,8 +1,8 @@
 # DataBind 3.0
 
-DataBind 当前仍由 SaltsUtils 构建、测试和安装，但正在按
-[issue #67](https://github.com/qigao/salts-utils/issues/67) 提取为与 salts-utils / salts-net
-平级的 sibling package。这个迁移不会保留第二个 binder、重复 target owner 或 fallback。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
+DataBind 源自 `qigao/salts-utils`，当前 standalone project root 已可独立构建、测试和安装；
+[issue #67](https://github.com/qigao/salts-utils/issues/67) 与 #89 跟踪其成为 sibling package 的物理迁移。
+迁移完成前 `qigao/salts-utils` 仍是 production source owner；迁移不会保留第二个 binder、重复 target owner 或 fallback。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
 或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
 它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
