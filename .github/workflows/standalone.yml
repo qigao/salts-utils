@@ -67,6 +67,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Move external dependencies outside the DataBind source tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/databind-deps"
+          mv .ci/deps/salts "$RUNNER_TEMP/databind-deps/salts"
+          mv .ci/deps/salts-utils "$RUNNER_TEMP/databind-deps/salts-utils"
+          mv .ci/deps/vcpkg "$RUNNER_TEMP/databind-deps/vcpkg"
+
       - name: Prepare toolchain
         shell: bash
         run: |
@@ -75,25 +84,25 @@ jobs:
           sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
           ./.ci/deps/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo mkdir -p /opt/salts /opt/salts-utils
-          sudo ln -sfn "$GITHUB_WORKSPACE/.ci/deps/vcpkg" /opt/vcpkg
+          sudo ln -sfn "$RUNNER_TEMP/databind-deps/vcpkg" /opt/vcpkg
 
       - name: Install pinned re2c
         shell: bash
-        run: bash .ci/deps/salts-utils/cmake/ci/install-re2c.sh
+        run: bash $RUNNER_TEMP/databind-deps/salts-utils/cmake/ci/install-re2c.sh
 
       - name: Build standalone host Lemon
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S .ci/deps/salts-utils/tools/lemon -B "$RUNNER_TEMP/host-lemon" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S $RUNNER_TEMP/databind-deps/salts-utils/tools/lemon -B "$RUNNER_TEMP/host-lemon" -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/host-lemon" --target lemon -j2
 
       - name: Build and install pinned Salts
         shell: bash
-        working-directory: .ci/deps/salts
+        working-directory: ${{ runner.temp }}/databind-deps/salts
         env:
           PROJECT_ROOT: ${{ runner.temp }}/salts-project
-          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+          VCPKG_ROOT: ${{ runner.temp }}/databind-deps/vcpkg
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user             -DENABLE_SANITIZER_ADDRESS=OFF             -DENABLE_SANITIZER_UNDEFINED=OFF
@@ -105,7 +114,7 @@ jobs:
 
       - name: Build pinned SaltsUtils utility package
         shell: bash
-        working-directory: .ci/deps/salts-utils
+        working-directory: ${{ runner.temp }}/databind-deps/salts-utils
         env:
           SALTS_ROOT: /opt/salts/debug
         run: |
@@ -122,9 +131,9 @@ jobs:
         env:
           SALTS_ROOT: /opt/salts/debug
           SALTS_UTILS_ROOT: /opt/salts-utils/debug
-          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+          VCPKG_ROOT: ${{ runner.temp }}/databind-deps/vcpkg
           DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
-          DATABIND_LEMPAR: ${{ github.workspace }}/.ci/deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_LEMPAR: ${{ github.workspace }}/$RUNNER_TEMP/databind-deps/salts-utils/tools/lemon/lempar.c
           DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
         run: |
           set -euxo pipefail
@@ -135,9 +144,9 @@ jobs:
         env:
           SALTS_ROOT: /opt/salts/debug
           SALTS_UTILS_ROOT: /opt/salts-utils/debug
-          VCPKG_ROOT: ${{ github.workspace }}/.ci/deps/vcpkg
+          VCPKG_ROOT: ${{ runner.temp }}/databind-deps/vcpkg
           DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
-          DATABIND_LEMPAR: ${{ github.workspace }}/.ci/deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_LEMPAR: ${{ github.workspace }}/$RUNNER_TEMP/databind-deps/salts-utils/tools/lemon/lempar.c
           DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
         run: |
           set -euxo pipefail
