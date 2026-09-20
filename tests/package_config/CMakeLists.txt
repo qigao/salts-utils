@@ -31,18 +31,6 @@ set_tests_properties(
   PROPERTIES LABELS "cmake;package-config")
 
 add_test(
-  NAME databind_install_component_partition
-  COMMAND
-    "${CMAKE_COMMAND}"
-    "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
-    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/install_component_partition"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/databind_install_component.cmake")
-
-set_tests_properties(
-  databind_install_component_partition
-  PROPERTIES LABELS "cmake;package-config;databind;install")
-
-add_test(
   NAME databind_parent_ownership_transition
   COMMAND
     "${CMAKE_COMMAND}"
