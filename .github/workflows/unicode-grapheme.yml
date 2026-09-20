@@ -91,17 +91,37 @@ jobs:
             -DENABLE_SANITIZER_UNDEFINED=OFF \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="${GITHUB_WORKSPACE}/build/host-lemon/lemon"
 
-      - name: Build focused grapheme test
+      - name: Verify deterministic Unicode 17 table generation
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target test_salts_unicode_grapheme -j2
+          python3 unicode/tools/generate_grapheme_data.py \
+            --grapheme-break unicode/data/17.0.0/GraphemeBreakProperty.txt \
+            --emoji-data unicode/data/17.0.0/emoji-data.txt \
+            --derived-core unicode/data/17.0.0/DerivedCoreProperties.txt \
+            --output "${RUNNER_TEMP}/unicode_grapheme_data.h"
+          cmp "${RUNNER_TEMP}/unicode_grapheme_data.h" unicode/src/unicode_grapheme_data.h
 
-      - name: Run focused grapheme test
+      - name: Build focused grapheme tests
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug -R '^test_salts_unicode_grapheme$' --output-on-failure
+          cmake --build build/linux-gcc-debug \
+            --target test_salts_unicode_grapheme test_salts_unicode_grapheme_conformance -j2
+
+      - name: Run Unicode 17 grapheme tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug \
+            -R '^test_salts_unicode_grapheme(_conformance)?
+      - name: Verify exact head
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+ --output-on-failure
 
       - name: Verify exact head
         if: always()
