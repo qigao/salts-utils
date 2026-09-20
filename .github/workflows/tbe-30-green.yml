@@ -230,7 +230,7 @@ jobs:
           test -f "$databind_root/lib/cmake/DataBind/DataBindConfig.cmake"
           test ! -e "$databind_root/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$databind_root/include/data_bind.h"
-          test -f "$databind_root/include/tbe_schema.h"
+          test -f "$databind_root/include/schema_parser_dsl.h"
           test -x "$databind_root/bin/tbe_compiler"
           test -d "$databind_root/bin/templates"
           test "$(realpath "$salts_utils_root")" != "$(realpath "$databind_root")"
