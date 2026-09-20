@@ -1193,6 +1193,7 @@ static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data, void
                                           error);
       if (status != DATA_BIND_OK) return status;
     }
+    return DATA_BIND_OK;
   }
   memset(storage, 0, data->storage_type->size);
   return DATA_BIND_OK;
