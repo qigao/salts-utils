@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2026 Salts Project
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef SALTS_SERIAL_H
