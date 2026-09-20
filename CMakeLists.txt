@@ -130,6 +130,13 @@ add_subdirectory(cron)
 add_subdirectory(mustache)
 add_subdirectory(unicode)
 add_subdirectory(jinja)
+
+set(DATABIND_RE2C_EXECUTABLE "${RE2C_EXECUTABLE}")
+set(DATABIND_LEMPAR "${LEMPAR}")
+if(NOT DEFINED DATABIND_HOST_LEMON_EXECUTABLE OR
+   "${DATABIND_HOST_LEMON_EXECUTABLE}" STREQUAL "")
+  set(DATABIND_LEMON_TARGET lemon)
+endif()
 add_subdirectory(tbe)
 
 # Package Configuration
