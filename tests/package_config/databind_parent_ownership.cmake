@@ -37,4 +37,17 @@ if(NOT EXISTS "${PARENT_SOURCE_ROOT}/tbe/vendor/monocypher")
   message(FATAL_ERROR "DataBind private Monocypher ownership is no longer under tbe/")
 endif()
 
+foreach(REQUIRED_TOOL_MAPPING IN ITEMS
+        "set(DATABIND_RE2C_EXECUTABLE \"\${RE2C_EXECUTABLE}\")"
+        "set(DATABIND_LEMPAR \"\${LEMPAR}\")"
+        "set(DATABIND_LEMON_TARGET lemon)")
+  string(FIND "${PARENT_CMAKE}"
+              "${REQUIRED_TOOL_MAPPING}"
+              TOOL_MAPPING_POSITION)
+  if(TOOL_MAPPING_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "SaltsUtils parent no longer maps explicit DataBind tool input: ${REQUIRED_TOOL_MAPPING}")
+  endif()
+endforeach()
+
 message(STATUS "SaltsUtils/DataBind parent ownership transition contract passed")

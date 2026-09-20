@@ -16,6 +16,9 @@ string(CONCAT FORBIDDEN_REVERSE_KIND "tbe_typed_kind_from_" "cmeta_data")
 string(CONCAT FORBIDDEN_REVERSE_GRAPH "tbe_typed_cmeta_graph_" "validate")
 string(CONCAT FORBIDDEN_REVERSE_RECORD "typed_cmeta_validate_" "record")
 string(CONCAT FORBIDDEN_PARENT_TBE_ROOT "$" "{CMAKE_SOURCE_DIR}/tbe/")
+string(CONCAT FORBIDDEN_PARENT_RE2C "$" "{RE2C_EXECUTABLE}")
+string(CONCAT FORBIDDEN_PARENT_LEMPAR "$" "{LEMPAR}")
+string(CONCAT FORBIDDEN_PARENT_LEMON_TARGET "$<TARGET_FILE:" "lemon>")
 
 file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
   "${DATABIND_SOURCE_ROOT}/CMakeLists.txt"
@@ -62,7 +65,11 @@ foreach(FILE_PATH IN LISTS DATABIND_CMAKE_FILES)
           "cmake_add_executable("
           "cmake_add_test("
           "cmake_add_benchmark("
-          "SALTS_UTILS_HOST_LEMON_EXECUTABLE")
+          "SALTS_UTILS_HOST_LEMON_EXECUTABLE"
+          "${FORBIDDEN_PARENT_RE2C}"
+          "${FORBIDDEN_PARENT_LEMPAR}"
+          "${FORBIDDEN_PARENT_LEMON_TARGET}"
+          "set(lemon_depends lemon)")
     string(FIND "${CONTENT}" "${FORBIDDEN_HELPER}" POSITION)
     if(NOT POSITION EQUAL -1)
       message(FATAL_ERROR
@@ -71,17 +78,45 @@ foreach(FILE_PATH IN LISTS DATABIND_CMAKE_FILES)
   endforeach()
 endforeach()
 
-if(NOT EXISTS "${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake")
-  message(FATAL_ERROR "DataBind-owned build helper module is missing")
-endif()
+foreach(REQUIRED_BUILD_MODULE IN ITEMS
+        "cmake/DataBindTools.cmake"
+        "cmake/DataBindBuild.cmake")
+  if(NOT EXISTS "${DATABIND_SOURCE_ROOT}/${REQUIRED_BUILD_MODULE}")
+    message(FATAL_ERROR "DataBind build module is missing: ${REQUIRED_BUILD_MODULE}")
+  endif()
+endforeach()
+
+file(READ "${DATABIND_SOURCE_ROOT}/cmake/DataBindTools.cmake" DATABIND_TOOL_INPUTS)
+foreach(REQUIRED_TOOL_INPUT IN ITEMS
+        "DATABIND_RE2C_EXECUTABLE"
+        "DATABIND_LEMPAR"
+        "DATABIND_HOST_LEMON_EXECUTABLE"
+        "DATABIND_LEMON_TARGET"
+        "DATABIND_LEMON_COMMAND"
+        "DATABIND_LEMON_DEPENDS")
+  string(FIND "${DATABIND_TOOL_INPUTS}"
+              "${REQUIRED_TOOL_INPUT}"
+              TOOL_INPUT_POSITION)
+  if(TOOL_INPUT_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "DataBind tool-input contract is missing: ${REQUIRED_TOOL_INPUT}")
+  endif()
+endforeach()
+
 file(READ "${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake" DATABIND_BUILD_HELPERS)
-string(FIND "${DATABIND_BUILD_HELPERS}"
-            "DATABIND_HOST_LEMON_EXECUTABLE"
-            DATABIND_HOST_LEMON_POSITION)
-if(DATABIND_HOST_LEMON_POSITION EQUAL -1)
-  message(FATAL_ERROR
-          "DataBind build helper does not own the host Lemon configuration")
-endif()
+foreach(REQUIRED_BUILD_INPUT IN ITEMS
+        "DATABIND_RE2C_EXECUTABLE"
+        "DATABIND_LEMPAR"
+        "DATABIND_LEMON_COMMAND"
+        "DATABIND_LEMON_DEPENDS")
+  string(FIND "${DATABIND_BUILD_HELPERS}"
+              "${REQUIRED_BUILD_INPUT}"
+              BUILD_INPUT_POSITION)
+  if(BUILD_INPUT_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "DataBind build helper is missing explicit tool input: ${REQUIRED_BUILD_INPUT}")
+  endif()
+endforeach()
 
 set(DATABIND_MONOCYPHER_ROOT "${DATABIND_SOURCE_ROOT}/vendor/monocypher")
 foreach(REQUIRED_MONOCYPHER_FILE IN ITEMS CMakeLists.txt monocypher.c monocypher.h)
