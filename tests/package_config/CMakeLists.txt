@@ -52,3 +52,23 @@ add_test(
 set_tests_properties(
   databind_parent_ownership_transition
   PROPERTIES LABELS "cmake;package-config;databind;transition")
+
+add_test(
+  NAME databind_standalone_source_build
+  COMMAND
+    "${CMAKE_COMMAND}"
+    "-DPARENT_SOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+    "-DPARENT_BUILD_DIR=${CMAKE_BINARY_DIR}"
+    "-DPARTITION_ROOT=${CMAKE_CURRENT_BINARY_DIR}/install_component_partition"
+    "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/standalone_source"
+    "-DSALTS_ROOT=${SALTS_ROOT_PATH}"
+    "-DCMAKE_GENERATOR_NAME=${CMAKE_GENERATOR}"
+    "-DCMAKE_TOOLCHAIN_FILE_VALUE=${CMAKE_TOOLCHAIN_FILE}"
+    "-DCMAKE_BUILD_TYPE_VALUE=${CMAKE_BUILD_TYPE}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/databind_standalone_source.cmake")
+
+set_tests_properties(
+  databind_standalone_source_build
+  PROPERTIES
+    DEPENDS databind_install_component_partition
+    LABELS "cmake;package-config;databind;standalone")
