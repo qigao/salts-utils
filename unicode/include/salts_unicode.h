@@ -51,6 +51,23 @@ typedef struct salts_unicode_scalar {
   size_t byte_length;
 } salts_unicode_scalar;
 
+typedef enum salts_unicode_grapheme_break {
+  SALTS_UNICODE_GRAPHEME_OTHER = 0,
+  SALTS_UNICODE_GRAPHEME_CR,
+  SALTS_UNICODE_GRAPHEME_LF,
+  SALTS_UNICODE_GRAPHEME_CONTROL,
+  SALTS_UNICODE_GRAPHEME_EXTEND,
+  SALTS_UNICODE_GRAPHEME_ZWJ,
+  SALTS_UNICODE_GRAPHEME_REGIONAL_INDICATOR,
+  SALTS_UNICODE_GRAPHEME_PREPEND,
+  SALTS_UNICODE_GRAPHEME_SPACING_MARK,
+  SALTS_UNICODE_GRAPHEME_L,
+  SALTS_UNICODE_GRAPHEME_V,
+  SALTS_UNICODE_GRAPHEME_T,
+  SALTS_UNICODE_GRAPHEME_LV,
+  SALTS_UNICODE_GRAPHEME_LVT
+} salts_unicode_grapheme_break;
+
 /**
  * Scan one Unicode scalar from an explicit-length borrowed UTF-8 view.
  *
@@ -68,6 +85,33 @@ typedef struct salts_unicode_scalar {
  */
 salts_unicode_status salts_unicode_utf8_next(vstr input, size_t *cursor,
                                              salts_unicode_scalar *out_scalar);
+
+/**
+ * Query the Unicode 17.0.0 Grapheme_Cluster_Break value for one scalar.
+ * Scalars not explicitly assigned by the UCD return OTHER.
+ */
+salts_unicode_status salts_unicode_grapheme_break_class(
+    uint32_t scalar, salts_unicode_grapheme_break *out_class);
+
+/**
+ * Advance one Unicode 17.0.0 extended grapheme cluster (UAX #29).
+ *
+ * On success, *cursor advances to the exclusive end byte offset and *cluster
+ * receives a borrowed subview of input. At end or on error both outputs remain
+ * unchanged. Embedded NUL is ordinary text and no normalization is performed.
+ */
+salts_unicode_status salts_unicode_grapheme_next(vstr input, size_t *cursor,
+                                                 vstr *cluster);
+
+/**
+ * Move backward one Unicode 17.0.0 extended grapheme cluster (UAX #29).
+ *
+ * The input cursor must be 0, input.len, or an extended-grapheme boundary. On
+ * success it moves to the cluster start and *cluster receives a borrowed view.
+ * At start or on error both outputs remain unchanged.
+ */
+salts_unicode_status salts_unicode_grapheme_prev(vstr input, size_t *cursor,
+                                                 vstr *cluster);
 
 /**
  * Query Unicode 17.0.0 properties for one scalar value.
