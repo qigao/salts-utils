@@ -92,6 +92,39 @@ suite("salts_unicode grapheme boundaries") {
     }
   }
 
+  it("applies Unicode 17 Indic conjunct and RI parity rules") {
+    static const unsigned char devanagari_conjunct[] = {
+        0xE0, 0xA4, 0x95, /* U+0915 KA */
+        0xE0, 0xA5, 0x8D, /* U+094D VIRAMA */
+        0xE0, 0xA4, 0x95  /* U+0915 KA */
+    };
+    static const unsigned char three_ri[] = {
+        0xF0, 0x9F, 0x87, 0xA6, /* U+1F1E6 */
+        0xF0, 0x9F, 0x87, 0xA7, /* U+1F1E7 */
+        0xF0, 0x9F, 0x87, 0xA8  /* U+1F1E8 */
+    };
+    size_t cursor = 0u;
+    vstr cluster = {0};
+    vstr input = vstr_from_buf((const char *)devanagari_conjunct,
+                               sizeof(devanagari_conjunct));
+
+    check_equal(salts_unicode_grapheme_next(input, &cursor, &cluster),
+                SALTS_UNICODE_OK);
+    check_equal(cursor, sizeof(devanagari_conjunct));
+    check_view(cluster, devanagari_conjunct, sizeof(devanagari_conjunct));
+
+    input = vstr_from_buf((const char *)three_ri, sizeof(three_ri));
+    cursor = 0u;
+    check_equal(salts_unicode_grapheme_next(input, &cursor, &cluster),
+                SALTS_UNICODE_OK);
+    check_equal(cursor, 8u);
+    check_view(cluster, three_ri, 8u);
+    check_equal(salts_unicode_grapheme_next(input, &cursor, &cluster),
+                SALTS_UNICODE_OK);
+    check_equal(cursor, sizeof(three_ri));
+    check_view(cluster, three_ri + 8u, 4u);
+  }
+
   it("iterates backward over the same cluster boundaries") {
     static const unsigned char input_bytes[] = {
         'A',
