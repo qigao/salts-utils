@@ -265,7 +265,7 @@ salts_unicode_status salts_unicode_grapheme_next(
   if (status != SALTS_UNICODE_OK) return status;
   if (candidate == input.len) return SALTS_UNICODE_END;
 
-  result = *cluster;
+  result = (vstr){0};
   status = salts_unicode_grapheme_next_unchecked(input, &candidate, &result);
   if (status != SALTS_UNICODE_OK) return status;
 
