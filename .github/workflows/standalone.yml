@@ -133,7 +133,7 @@ jobs:
           SALTS_UTILS_ROOT: /opt/salts-utils/debug
           VCPKG_ROOT: ${{ runner.temp }}/databind-deps/vcpkg
           DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
-          DATABIND_LEMPAR: ${{ github.workspace }}/$RUNNER_TEMP/databind-deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_LEMPAR: ${{ runner.temp }}/databind-deps/salts-utils/tools/lemon/lempar.c
           DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
         run: |
           set -euxo pipefail
@@ -146,7 +146,7 @@ jobs:
           SALTS_UTILS_ROOT: /opt/salts-utils/debug
           VCPKG_ROOT: ${{ runner.temp }}/databind-deps/vcpkg
           DATABIND_RE2C_EXECUTABLE: ${{ env.RE2C_ROOT }}/bin/re2c
-          DATABIND_LEMPAR: ${{ github.workspace }}/$RUNNER_TEMP/databind-deps/salts-utils/tools/lemon/lempar.c
+          DATABIND_LEMPAR: ${{ runner.temp }}/databind-deps/salts-utils/tools/lemon/lempar.c
           DATABIND_HOST_LEMON_EXECUTABLE: ${{ runner.temp }}/host-lemon/lemon
         run: |
           set -euxo pipefail
