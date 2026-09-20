@@ -1,3 +1,13 @@
+cmake_minimum_required(VERSION 3.27)
+
+if(NOT DEFINED DATABIND_SOURCE_ROOT OR "${DATABIND_SOURCE_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "DATABIND_SOURCE_ROOT is required")
+endif()
+if(NOT IS_DIRECTORY "${DATABIND_SOURCE_ROOT}")
+  message(FATAL_ERROR "DATABIND_SOURCE_ROOT is not a directory: ${DATABIND_SOURCE_ROOT}")
+endif()
+file(REAL_PATH "${DATABIND_SOURCE_ROOT}" DATABIND_SOURCE_ROOT)
+
 string(CONCAT FORBIDDEN_TARGET "Salts::C" "Bind")
 string(CONCAT FORBIDDEN_INCLUDE "<c" "bind/")
 string(CONCAT FORBIDDEN_MACRO "C" "BIND_")
@@ -8,20 +18,18 @@ string(CONCAT FORBIDDEN_REVERSE_RECORD "typed_cmeta_validate_" "record")
 string(CONCAT FORBIDDEN_PARENT_TBE_ROOT "$" "{CMAKE_SOURCE_DIR}/tbe/")
 
 file(GLOB_RECURSE POLICY_FILES LIST_DIRECTORIES FALSE
-  "${PROJECT_SOURCE_DIR}/CMakeLists.txt"
-  "${PROJECT_SOURCE_DIR}/*.cmake"
-  "${PROJECT_SOURCE_DIR}/*.c"
-  "${PROJECT_SOURCE_DIR}/*.h"
-  "${PROJECT_SOURCE_DIR}/*.cpp"
-  "${PROJECT_SOURCE_DIR}/*.hpp"
-  "${PROJECT_SOURCE_DIR}/*.mustache")
+  "${DATABIND_SOURCE_ROOT}/CMakeLists.txt"
+  "${DATABIND_SOURCE_ROOT}/*.cmake"
+  "${DATABIND_SOURCE_ROOT}/*.c"
+  "${DATABIND_SOURCE_ROOT}/*.h"
+  "${DATABIND_SOURCE_ROOT}/*.cpp"
+  "${DATABIND_SOURCE_ROOT}/*.hpp"
+  "${DATABIND_SOURCE_ROOT}/*.mustache")
 
 foreach(FILE_PATH IN LISTS POLICY_FILES)
-  file(RELATIVE_PATH RELATIVE_FILE_PATH "${PROJECT_SOURCE_DIR}" "${FILE_PATH}")
+  file(RELATIVE_PATH RELATIVE_FILE_PATH "${DATABIND_SOURCE_ROOT}" "${FILE_PATH}")
   if(FILE_PATH STREQUAL CMAKE_CURRENT_LIST_FILE OR
-     RELATIVE_FILE_PATH MATCHES "^(salts|vcpkg)/" OR
-     RELATIVE_FILE_PATH MATCHES "(^|/)(build[^/]*|install|bin|out|cmake-build-[^/]*|\\.vcpkg_installed|vcpkg_installed|conan-cache)/" OR
-     RELATIVE_FILE_PATH MATCHES "^docs/superpowers/")
+     RELATIVE_FILE_PATH MATCHES "(^|/)(build[^/]*|install|bin|out|cmake-build-[^/]*|\\.vcpkg_installed|vcpkg_installed|conan-cache)/")
     continue()
   endif()
   file(READ "${FILE_PATH}" CONTENT)
@@ -38,11 +46,9 @@ foreach(FILE_PATH IN LISTS POLICY_FILES)
   endforeach()
 endforeach()
 
-
-set(DATABIND_CMAKE_ROOT "${PROJECT_SOURCE_DIR}/tbe")
 file(GLOB_RECURSE DATABIND_CMAKE_FILES LIST_DIRECTORIES FALSE
-  "${DATABIND_CMAKE_ROOT}/CMakeLists.txt"
-  "${DATABIND_CMAKE_ROOT}/*.cmake")
+  "${DATABIND_SOURCE_ROOT}/CMakeLists.txt"
+  "${DATABIND_SOURCE_ROOT}/*.cmake")
 
 foreach(FILE_PATH IN LISTS DATABIND_CMAKE_FILES)
   if(FILE_PATH STREQUAL CMAKE_CURRENT_LIST_FILE)
@@ -65,10 +71,10 @@ foreach(FILE_PATH IN LISTS DATABIND_CMAKE_FILES)
   endforeach()
 endforeach()
 
-if(NOT EXISTS "${DATABIND_CMAKE_ROOT}/cmake/DataBindBuild.cmake")
+if(NOT EXISTS "${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake")
   message(FATAL_ERROR "DataBind-owned build helper module is missing")
 endif()
-file(READ "${DATABIND_CMAKE_ROOT}/cmake/DataBindBuild.cmake" DATABIND_BUILD_HELPERS)
+file(READ "${DATABIND_SOURCE_ROOT}/cmake/DataBindBuild.cmake" DATABIND_BUILD_HELPERS)
 string(FIND "${DATABIND_BUILD_HELPERS}"
             "DATABIND_HOST_LEMON_EXECUTABLE"
             DATABIND_HOST_LEMON_POSITION)
@@ -77,20 +83,15 @@ if(DATABIND_HOST_LEMON_POSITION EQUAL -1)
           "DataBind build helper does not own the host Lemon configuration")
 endif()
 
-
-set(DATABIND_MONOCYPHER_ROOT "${PROJECT_SOURCE_DIR}/tbe/vendor/monocypher")
+set(DATABIND_MONOCYPHER_ROOT "${DATABIND_SOURCE_ROOT}/vendor/monocypher")
 foreach(REQUIRED_MONOCYPHER_FILE IN ITEMS CMakeLists.txt monocypher.c monocypher.h)
   if(NOT EXISTS "${DATABIND_MONOCYPHER_ROOT}/${REQUIRED_MONOCYPHER_FILE}")
     message(FATAL_ERROR
             "DataBind private Monocypher ownership is incomplete: ${REQUIRED_MONOCYPHER_FILE}")
   endif()
 endforeach()
-if(EXISTS "${PROJECT_SOURCE_DIR}/vendor/monocypher")
-  message(FATAL_ERROR
-          "Monocypher still has parent SaltsUtils vendor ownership")
-endif()
 
-file(READ "${PROJECT_SOURCE_DIR}/tbe/data_bind/CMakeLists.txt" DATABIND_RUNTIME_CMAKE)
+file(READ "${DATABIND_SOURCE_ROOT}/data_bind/CMakeLists.txt" DATABIND_RUNTIME_CMAKE)
 string(FIND "${DATABIND_RUNTIME_CMAKE}" "databind_monocypher"
             DATABIND_MONOCYPHER_TARGET_POSITION)
 if(DATABIND_MONOCYPHER_TARGET_POSITION EQUAL -1)
@@ -118,31 +119,19 @@ foreach(LICENSE_FILE IN ITEMS monocypher.c monocypher.h)
   endif()
 endforeach()
 
-
-set(DATABIND_PACKAGE_ROOT "${PROJECT_SOURCE_DIR}/tbe")
 foreach(REQUIRED_PACKAGE_ASSET IN ITEMS
         "cmake/DataBindConfig.cmake.in"
         "cmake/DataBindPackage.cmake"
         "tests/package_config/CMakeLists.txt"
         "tests/package_config/databind_repeated_find/CMakeLists.txt"
         "tests/package_config/databind_adapters/CMakeLists.txt")
-  if(NOT EXISTS "${DATABIND_PACKAGE_ROOT}/${REQUIRED_PACKAGE_ASSET}")
+  if(NOT EXISTS "${DATABIND_SOURCE_ROOT}/${REQUIRED_PACKAGE_ASSET}")
     message(FATAL_ERROR
             "DataBind package ownership is incomplete: ${REQUIRED_PACKAGE_ASSET}")
   endif()
 endforeach()
 
-foreach(FORBIDDEN_PARENT_ASSET IN ITEMS
-        "cmake/DataBindConfig.cmake.in"
-        "tests/package_config/databind_repeated_find/CMakeLists.txt"
-        "tests/package_config/databind_adapters/CMakeLists.txt")
-  if(EXISTS "${PROJECT_SOURCE_DIR}/${FORBIDDEN_PARENT_ASSET}")
-    message(FATAL_ERROR
-            "DataBind package asset still has parent ownership: ${FORBIDDEN_PARENT_ASSET}")
-  endif()
-endforeach()
-
-file(READ "${DATABIND_PACKAGE_ROOT}/cmake/DataBindPackage.cmake"
+file(READ "${DATABIND_SOURCE_ROOT}/cmake/DataBindPackage.cmake"
           DATABIND_PACKAGE_MODULE)
 foreach(REQUIRED_PACKAGE_FRAGMENT IN ITEMS
         "configure_package_config_file("
@@ -159,16 +148,4 @@ foreach(REQUIRED_PACKAGE_FRAGMENT IN ITEMS
   endif()
 endforeach()
 
-file(READ "${PROJECT_SOURCE_DIR}/CMakeLists.txt" PARENT_CMAKE)
-foreach(FORBIDDEN_PARENT_FRAGMENT IN ITEMS
-        "cmake/DataBindConfig.cmake.in"
-        "EXPORT DataBindTargets"
-        "EXPORT DataBindAdapterTargets")
-  string(FIND "${PARENT_CMAKE}"
-              "${FORBIDDEN_PARENT_FRAGMENT}"
-              PARENT_PACKAGE_POSITION)
-  if(NOT PARENT_PACKAGE_POSITION EQUAL -1)
-    message(FATAL_ERROR
-            "Parent CMake still owns DataBind package fragment: ${FORBIDDEN_PARENT_FRAGMENT}")
-  endif()
-endforeach()
+message(STATUS "DataBind internal dependency contract passed")

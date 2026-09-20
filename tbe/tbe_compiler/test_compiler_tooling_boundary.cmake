@@ -1,4 +1,13 @@
-file(READ "${PROJECT_SOURCE_DIR}/tbe/tbe_compiler/CMakeLists.txt" COMPILER_CMAKE)
+cmake_minimum_required(VERSION 3.27)
+
+if(NOT DEFINED DATABIND_SOURCE_ROOT OR "${DATABIND_SOURCE_ROOT}" STREQUAL "")
+  message(FATAL_ERROR "DATABIND_SOURCE_ROOT is required")
+endif()
+if(NOT IS_DIRECTORY "${DATABIND_SOURCE_ROOT}")
+  message(FATAL_ERROR "DATABIND_SOURCE_ROOT is not a directory: ${DATABIND_SOURCE_ROOT}")
+endif()
+
+file(READ "${DATABIND_SOURCE_ROOT}/tbe_compiler/CMakeLists.txt" COMPILER_CMAKE)
 
 string(FIND "${COMPILER_CMAKE}"
   "set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)" TOOLING_TARGET_POS)
@@ -33,3 +42,5 @@ if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
     "tbe_compiler does not consume the explicit compiler tooling boundary")
 endif()
+
+message(STATUS "DataBind compiler tooling boundary passed")

@@ -72,7 +72,7 @@ endforeach()
 
 add_test(NAME test_databind_only_dependency_contract
   COMMAND "${CMAKE_COMMAND}"
-    "-DPROJECT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/test/test_databind_only_dependency_contract.cmake")
 
 databind_add_test(test_schema_cmeta_public_cpp
