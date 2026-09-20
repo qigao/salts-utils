@@ -79,6 +79,7 @@ add_subdirectory(tbe_compiler)
 
 if(BUILD_TESTING)
   add_subdirectory(tests/package_config)
+  add_subdirectory(tests/native_storage)
 endif()
 
 include("${DATABIND_SOURCE_ROOT}/cmake/DataBindPackage.cmake")
