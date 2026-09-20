@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2026 Salts Project
- * SPDX-License-Identifier: Apache-2.0
  */
 
 #if defined(_WIN32) || defined(__CYGWIN__)
