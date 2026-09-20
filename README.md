@@ -184,3 +184,9 @@ Windows uses the corresponding `win-*` presets.
 ---
 
 **Salts provides the semantics. SaltsUtils turns them into reusable higher-level tools.**
+
+## License
+
+SaltsUtils first-party code is licensed under the Apache License 2.0. See
+[LICENSE](LICENSE). Bundled third-party software and data retain their upstream
+licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
