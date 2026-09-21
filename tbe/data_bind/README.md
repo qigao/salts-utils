@@ -1,13 +1,14 @@
 # DataBind 3.0
 
-DataBind 当前仍由 SaltsUtils 构建、测试和安装，但正在按
-[issue #67](https://github.com/qigao/salts-utils/issues/67) 提取为与 salts-utils / salts-net
-平级的 sibling package。这个迁移不会保留第二个 binder、重复 target owner 或 fallback。生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
+DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和发布均由 SaltsUtils 负责。
+消费者通过 `find_package(SaltsUtils)` 使用唯一公开目标 `Salts::Databind`，
+不使用独立 DataBind package/root，也不组装内部目标或补造兼容 alias。
+生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
 或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
 它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
 
-DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
+DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
 运行时也不要求 C/C++ 编译器。
 
@@ -20,8 +21,9 @@ DataBind 是独立的 schema 驱动纯 C 运行时。它解析 schema、构造�
 ## 设计边界
 
 DataBind owns schema overlay, dynamic values and typed conversion semantics. CMeta remains the
-canonical native semantic type model. The target sibling runtime boundary depends on Salts
-foundation primitives; concrete format/query utilities remain adapters above that core boundary.
+canonical native semantic type model. Within SaltsUtils, the format-neutral conversion core
+uses Salts foundation primitives; concrete format/query utilities remain adapters above that
+internal boundary. This decomposition does not introduce another package owner.
 
 规范所有权边界为：
 
@@ -48,17 +50,14 @@ DataBind 3.0 makes the public ABI independent of parser/query implementation hea
 `DataBindQueryLimits`, and `DataBindQueryDiagnostic`; callers do not include
 `datetime_parser.h` or `query_vm.h`.
 
-The runtime migration now exposes a Salts-only `Salts::DataBindCore` plus
-explicit JSON, YAML, CSV, XML and temporal adapter targets. Concrete parser and
-QueryVM types remain above the core boundary; format providers expose bounded
-CSerde readers and own their native path-query translation without a registry
-or fallback path.
+SaltsUtils owns the format-neutral conversion core and the JSON, YAML, CSV, XML
+and temporal adapters. Concrete parser and QueryVM types remain above the internal
+core boundary; format providers expose bounded CSerde readers and own their native
+path-query translation without a registry or fallback path.
 
-The existing `Salts::DataBind` facade still contains the mature
-schema/dynamic-binding and incremental-stream code while that orchestration is
-moved onto the new provider boundary. Therefore this target split is an active
-migration boundary, not a claim that every legacy format-specific code path has
-already been removed.
+Applications consume the complete DataBind component through `Salts::Databind`.
+SaltsUtils encapsulates the schema/dynamic-binding, incremental-stream and adapter
+implementation dependencies; consumers do not link internal DataBind targets.
 
 JSON/CSV 文档、YAML 文档与选择结果、XML 文档与节点列表均由各自 Salts parser 创建和释放。
 DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于 `Salts::XmlParser`，
@@ -185,7 +184,7 @@ data_bind_free(codec);
 ```cmake
 add_library(order_schema STATIC generated/order.c)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC Salts::DataBind)
+target_link_libraries(order_schema PUBLIC Salts::Databind)
 ```
 
 ### 编译动态库
@@ -194,7 +193,7 @@ target_link_libraries(order_schema PUBLIC Salts::DataBind)
 add_library(order_schema SHARED generated/order.c)
 target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC Salts::DataBind)
+target_link_libraries(order_schema PUBLIC Salts::Databind)
 
 target_compile_definitions(my_app PRIVATE TBE_GENERATED_USE_SHARED) # Windows consumer
 target_link_libraries(my_app PRIVATE order_schema)
@@ -311,15 +310,16 @@ data_bind_free(codec);
 
 ## CMeta / CFlow / Reactive 可选适配
 
-DataBind 核心 target 的依赖与 ABI 保持不变。需要把已解析的不可变动态值接入 CMeta
-或 CFlow 时，显式链接可选适配库：
+通过 SaltsUtils 的唯一公开目标 `Salts::Databind` 使用 DataBind，包括将已解析的
+不可变动态值接入 CMeta 或 CFlow 的适配 API。内部依赖由 SaltsUtils 封装：
 
 ```cmake
-target_link_libraries(my_app PRIVATE Salts::DataBindCFlow)
+find_package(SaltsUtils CONFIG REQUIRED
+  PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
+target_link_libraries(my_app PRIVATE Salts::Databind)
 ```
 
-`Salts::DataBindCFlow` 传递链接 `Salts::DataBindCMeta`；只需要同步
-`cmeta_range` 时可单独链接后者。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
+消费者不直接链接内部 CMeta/CFlow 适配目标。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
 `DataBindFieldRef`，MAP 映射为 `DataBindMapEntryRef`。三者均有稳定的 CMeta type
 identity，并保持 DataBind 的 encounter/schema order。
 
