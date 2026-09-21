@@ -67,6 +67,9 @@ foreach(pre_migration_target IN ITEMS
 endforeach()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
+# DataBind/TBE are components of this installation, not a second package.
+include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsDataBindTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsDataBindAdapterTargets.cmake")
 
 set_property(GLOBAL PROPERTY SALTS_UTILS_CONFIG_LOADED TRUE)
 check_required_components(SaltsUtils)

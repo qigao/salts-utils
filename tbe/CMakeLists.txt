@@ -1,71 +1,8 @@
 cmake_minimum_required(VERSION 3.27)
 
-set(DATABIND_STANDALONE_PROJECT OFF)
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-  set(DATABIND_STANDALONE_PROJECT ON)
-  project(
-    DataBind
-    VERSION 3.0.0
-    DESCRIPTION "Schema-driven C data binding built on Salts"
-    LANGUAGES C CXX)
-
-  set(CMAKE_C_STANDARD 11)
-  set(CMAKE_C_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-
-  include(CTest)
-  include(GNUInstallDirs)
-  option(BUILD_BENCHMARKS "Build DataBind benchmarks" OFF)
-
-  if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
-    message(FATAL_ERROR "SALTS_ROOT must name the installed Salts profile")
-  endif()
-  file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" SALTS_ROOT_PATH)
-  if(NOT IS_DIRECTORY "${SALTS_ROOT_PATH}")
-    message(FATAL_ERROR "SALTS_ROOT is not a directory: $ENV{SALTS_ROOT}")
-  endif()
-  find_package(Salts CONFIG REQUIRED
-    PATHS "${SALTS_ROOT_PATH}"
-    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-  if(NOT DEFINED ENV{SALTS_UTILS_ROOT} OR "$ENV{SALTS_UTILS_ROOT}" STREQUAL "")
-    message(FATAL_ERROR
-      "SALTS_UTILS_ROOT is required to build DataBind adapters/compiler")
-  endif()
-  file(TO_CMAKE_PATH "$ENV{SALTS_UTILS_ROOT}" SALTS_UTILS_ROOT_PATH)
-  if(NOT IS_DIRECTORY "${SALTS_UTILS_ROOT_PATH}")
-    message(FATAL_ERROR
-      "SALTS_UTILS_ROOT is not a directory: $ENV{SALTS_UTILS_ROOT}")
-  endif()
-  find_package(SaltsUtils CONFIG REQUIRED
-    PATHS "${SALTS_UTILS_ROOT_PATH}"
-    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-
-  foreach(required_target IN ITEMS
-          Salts::Core
-          Salts::CMeta
-          Salts::CSTL
-          Salts::CSerde
-          Salts::CFlow
-          Salts::TinyTest
-          Salts::JsonCSerdeAdapter
-          Salts::CYamlJsonAdapter
-          Salts::CsvParser
-          Salts::XmlParser
-          Salts::DateTimeParser
-          Salts::CmdParser
-          Salts::Mustache)
-    if(NOT TARGET ${required_target})
-      message(FATAL_ERROR
-        "Standalone DataBind build is missing required target ${required_target}")
-    endif()
-  endforeach()
+  message(FATAL_ERROR
+    "DataBind/TBE are SaltsUtils components; configure the SaltsUtils repository root")
 endif()
 
 set(DATABIND_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
