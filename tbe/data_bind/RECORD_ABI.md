@@ -9,7 +9,7 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 - C ABI: `9`
 - schema codec provider ABI: `tbe_schema_codec_v1_t`
 - public datetime/query diagnostic types are DataBind-owned and do not expose SaltsUtils parser/query headers
-- concrete parser/query implementations remain private implementation dependencies during the sibling-package migration
+- concrete parser/query implementations remain private implementation dependencies of the SaltsUtils DataBind component
 - 旧的运行时 IR、缓存和产物加载接口已删除，不提供兼容层
 - 2.5 在版本化 `DataBindStreamConfig` 尾部追加 query budgets，并新增
   query-limit setter/diagnostic accessor；旧尺寸配置仍按 2.4 行为读取
@@ -47,7 +47,7 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 - 使用 Windows DLL 时定义 `TBE_GENERATED_USE_SHARED`。
 - 构建或使用静态库时无需定义二者。
 
-生成库仍链接 `Salts::DataBind`；它不包含 C 编译器，也不在运行时编译
+生成库通过 SaltsUtils 包链接唯一公开目标 `Salts::Databind`；它不包含 C 编译器，也不在运行时编译
 schema。
 
 ## RulesForge/TurboScript 集成
