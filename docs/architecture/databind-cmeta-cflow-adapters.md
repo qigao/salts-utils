@@ -2,14 +2,14 @@
 
 ## 背景
 
-DataBind 当前以不可变 `DataBindValue` 树提供动态数据访问，并另有 callback 驱动的增量流接口。CMeta、CFlow 与 Reactive 已经提供类型描述、同步 range、流构造、按需拉取和取消协议，但 DataBind 尚无稳定的桥接边界。直接把这些依赖加入 `Salts::DataBind` 会扩大核心库 ABI 和传递依赖，也会把异步生命周期问题混入格式解析实现。
+SaltsUtils 的 DataBind 组件以不可变 `DataBindValue` 树提供动态数据访问，并另有 callback 驱动的增量流接口。CMeta、CFlow 与 Reactive 提供类型描述、同步 range、流构造、按需拉取和取消协议；适配层将这些生命周期协议与格式解析实现分开。
 
 ## 决策
 
-新增两个可选共享库，保持现有 `Salts::DataBind` 的 API、ABI 和链接依赖不变：
+DataBind 适配 API 由 SaltsUtils 提供，消费者统一链接唯一公开目标 `Salts::Databind`，不组装内部适配 targets。内部职责分为：
 
-- `Salts::DataBindCMeta`：把不可变的 LIST/SET、OBJECT、MAP 暴露为 `cmeta_range`。
-- `Salts::DataBindCFlow`：复用 CFlow 的 range factory，从同一适配 range 创建 `cflow_stream` 或 Reactive `cflow_publisher`。
+- CMeta 适配：把不可变的 LIST/SET、OBJECT、MAP 暴露为 `cmeta_range`。
+- CFlow 适配：复用 CFlow 的 range factory，从同一适配 range 创建 `cflow_stream` 或 Reactive `cflow_publisher`。
 
 适配器输出三种小型平凡值：value ref、field ref、map-entry ref。它们只借用根 `DataBindValue` 及其内部字符串，不取得所有权。CMeta `Schema/Replay` 生成对应的稳定语义 identity、type descriptor 和公开 descriptor getter，避免三份元数据声明漂移。
 
@@ -33,7 +33,7 @@ DataBind 当前以不可变 `DataBindValue` 树提供动态数据访问，并另
 
 ## 接口与兼容性
 
-新增头文件与可选 target，不修改既有枚举值、数据格式、one-shot/stream 解析语义或安装时的核心依赖。应用只有显式链接新 target 时才引入 CMeta/CFlow。回滚只需移除两个适配 target 和头文件，不影响 `Salts::DataBind`。
+适配 API 不修改既有枚举值、数据格式或 one-shot/stream 解析语义。应用通过显式选定的 SaltsUtils 安装链接 `Salts::Databind`，内部依赖由 SaltsUtils 封装；不提供独立 DataBind package/root、替代 target 拼写或兼容 alias。
 
 ## 验证范围
 
