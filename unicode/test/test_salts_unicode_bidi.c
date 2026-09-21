@@ -14,6 +14,10 @@ spec("salts_unicode Unicode 17 bidi primitives") {
     check_equal(salts_unicode_bidi_class_of(0x05D0u, &value), SALTS_UNICODE_OK);
     check_equal(value, SALTS_UNICODE_BIDI_R);
 
+    /* U+0590 has no explicit record; Unicode 17 @missing assigns Hebrew R. */
+    check_equal(salts_unicode_bidi_class_of(0x0590u, &value), SALTS_UNICODE_OK);
+    check_equal(value, SALTS_UNICODE_BIDI_R);
+
     check_equal(salts_unicode_bidi_class_of(0x0627u, &value), SALTS_UNICODE_OK);
     check_equal(value, SALTS_UNICODE_BIDI_AL);
 
