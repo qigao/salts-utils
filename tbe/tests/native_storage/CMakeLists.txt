@@ -32,7 +32,8 @@ add_test(NAME test_data_bind_reader_probe COMMAND test_data_bind_reader_probe)
 set_tests_properties(test_data_bind_reader_probe PROPERTIES TIMEOUT 60)
 
 # #99 interface-first consumers: intentionally no fallback header or test decoder.
-add_executable(test_data_bind_native_reader native_reader_contract_test.c)
+add_executable(test_data_bind_native_reader native_reader_contract_test.c
+  native_reader_preflight_test.c)
 add_executable(test_data_bind_native_reader_cpp native_reader_cpp_contract.cpp)
 foreach(target IN ITEMS test_data_bind_native_reader test_data_bind_native_reader_cpp)
   target_link_libraries(${target} PRIVATE Salts::DataBindCore Salts::Core)
