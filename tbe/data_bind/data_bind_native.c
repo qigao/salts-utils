@@ -481,6 +481,9 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
                      "Canonical descriptor kind is outside native reader v1");
 }
 
+static DataBindStatus native_restore_value(const cmeta_data_desc *data,
+                                                  void *storage);
+
 static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
                                         const cmeta_data_desc *data, void *storage,
                                         const char *path) {
@@ -513,14 +516,17 @@ static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
                                  (unsigned char *)storage + shape->fields[i].offset,
                                  child_path);
       if (status != DATA_BIND_OK) {
+        DataBindStatus rollback_status = DATA_BIND_OK;
         while (i != 0u) {
           --i;
-          if (shape->fields[i].value->kind == CMETA_DATA_STRING ||
-              shape->fields[i].value->kind == CMETA_DATA_BYTES)
-            (void)cmeta_data_buffer_restore_zero(
-                shape->fields[i].value,
-                (unsigned char *)storage + shape->fields[i].offset);
+          if (native_restore_value(
+                  shape->fields[i].value,
+                  (unsigned char *)storage + shape->fields[i].offset) != DATA_BIND_OK)
+            rollback_status = DATA_BIND_ERR_RUNTIME;
         }
+        if (rollback_status != DATA_BIND_OK)
+          return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+                             "Native initialization rollback did not restore semantic zero");
         return status;
       }
     }
@@ -826,6 +832,128 @@ static int native_diagnostic_header_valid(const DataBindNativeDiagnostic *diagno
     return 0;
   return diagnostic->size >= sizeof(DataBindNativeDiagnostic) &&
          diagnostic->abi_version == DATA_BIND_NATIVE_ABI_VERSION;
+}
+
+static DataBindStatus native_lifecycle_preflight(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic, const char **out_path) {
+  NativeArena arena;
+  NativePlan plan;
+  const cmeta_data_desc **ancestors;
+  size_t ancestor_bytes;
+  const char *root_path;
+  DataBindStatus status;
+
+  if (out_path != NULL) *out_path = NULL;
+  if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  if (options == NULL ||
+      options->size < offsetof(DataBindNativeOptions, abi_version) +
+                          sizeof(options->abi_version))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native options record is missing its ABI header");
+  if (options->size < sizeof(DataBindNativeOptions) ||
+      options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native options ABI is incompatible");
+  if (shape == NULL || destination == NULL || options->workspace == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native lifecycle arguments must be non-null");
+  if (!cmeta_data_desc_valid(shape))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, NULL,
+                       "Invalid canonical CMeta root descriptor");
+  if (shape->storage_type == NULL || !cmeta_type_desc_valid(shape->storage_type))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, NULL,
+                       "Native root descriptor has no valid storage type");
+  root_path = shape->display_name;
+
+  if (destination_bytes < shape->storage_type->size ||
+      shape->storage_type->align == 0u ||
+      (uintptr_t)destination % shape->storage_type->align != 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
+                       "Destination storage size or alignment is invalid");
+  if (!native_range_valid(options->workspace, options->workspace_bytes, NULL, NULL) ||
+      !native_range_valid(destination, destination_bytes, NULL, NULL))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
+                       "Native workspace or destination range overflows address space");
+  if (native_ranges_overlap(options->workspace, options->workspace_bytes,
+                            destination, destination_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
+                       "Native workspace overlaps destination storage");
+  if (diagnostic != NULL &&
+      (native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             options->workspace, options->workspace_bytes) ||
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             destination, destination_bytes)))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (native_ranges_overlap(options, sizeof(*options),
+                            options->workspace, options->workspace_bytes) ||
+      native_ranges_overlap(options, sizeof(*options), destination, destination_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
+                       "Native control records alias mutable lifecycle storage");
+
+  native_reset_diagnostic(diagnostic);
+  if (options->max_depth == 0u || options->max_items == 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native depth and item budgets must be nonzero");
+
+  arena.base = (unsigned char *)options->workspace;
+  arena.size = options->workspace_bytes;
+  arena.offset = 0u;
+  if (!native_size_mul(options->max_depth, sizeof(*ancestors), &ancestor_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native depth workspace size overflow");
+  ancestors = (const cmeta_data_desc **)native_arena_alloc(
+      &arena, ancestor_bytes, _Alignof(const cmeta_data_desc *));
+  if (ancestors == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Workspace cannot hold descriptor traversal state");
+
+  memset(&plan, 0, sizeof(plan));
+  plan.options = options;
+  plan.diagnostic = diagnostic;
+  plan.ancestors = ancestors;
+  status = native_preflight(&plan, shape, 1u, 0u, root_path);
+  if (status != DATA_BIND_OK) return status;
+  if (out_path != NULL) *out_path = root_path;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_native_init(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  const char *root_path = NULL;
+  DataBindStatus status = native_lifecycle_preflight(
+      options, shape, destination, destination_bytes, diagnostic, &root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  status = native_init_value(diagnostic, shape, destination, root_path);
+  if (status != DATA_BIND_OK) return status;
+  if (!native_value_is_zero(shape, destination)) {
+    (void)native_restore_value(shape, destination);
+    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
+                       "Native initialization did not establish semantic zero");
+  }
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_native_clear(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  const char *root_path = NULL;
+  DataBindStatus status = native_lifecycle_preflight(
+      options, shape, destination, destination_bytes, diagnostic, &root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  status = native_restore_value(shape, destination);
+  if (status != DATA_BIND_OK || !native_value_is_zero(shape, destination))
+    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
+                       "Native clear did not restore semantic zero");
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
 }
 
 DataBindStatus data_bind_native_decode(
