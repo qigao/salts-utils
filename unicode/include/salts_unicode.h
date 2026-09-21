@@ -148,6 +148,33 @@ typedef enum salts_unicode_line_break_opportunity {
   SALTS_UNICODE_LINE_BREAK_MANDATORY = 1
 } salts_unicode_line_break_opportunity;
 
+
+typedef enum salts_unicode_bidi_class {
+  SALTS_UNICODE_BIDI_L = 0,
+  SALTS_UNICODE_BIDI_R,
+  SALTS_UNICODE_BIDI_AL,
+  SALTS_UNICODE_BIDI_EN,
+  SALTS_UNICODE_BIDI_ES,
+  SALTS_UNICODE_BIDI_ET,
+  SALTS_UNICODE_BIDI_AN,
+  SALTS_UNICODE_BIDI_CS,
+  SALTS_UNICODE_BIDI_NSM,
+  SALTS_UNICODE_BIDI_BN,
+  SALTS_UNICODE_BIDI_B,
+  SALTS_UNICODE_BIDI_S,
+  SALTS_UNICODE_BIDI_WS,
+  SALTS_UNICODE_BIDI_ON,
+  SALTS_UNICODE_BIDI_LRE,
+  SALTS_UNICODE_BIDI_LRO,
+  SALTS_UNICODE_BIDI_RLE,
+  SALTS_UNICODE_BIDI_RLO,
+  SALTS_UNICODE_BIDI_PDF,
+  SALTS_UNICODE_BIDI_LRI,
+  SALTS_UNICODE_BIDI_RLI,
+  SALTS_UNICODE_BIDI_FSI,
+  SALTS_UNICODE_BIDI_PDI
+} salts_unicode_bidi_class;
+
 /**
  * Scan one Unicode scalar from an explicit-length borrowed UTF-8 view.
  *
@@ -240,6 +267,21 @@ salts_unicode_status salts_unicode_line_break_class(
 salts_unicode_status salts_unicode_line_break_next(
     vstr input, size_t *cursor, size_t *break_offset,
     salts_unicode_line_break_opportunity *opportunity);
+
+
+/** Query the Unicode 17.0.0 Bidi_Class value for one scalar. */
+salts_unicode_status salts_unicode_bidi_class_of(
+    uint32_t scalar, salts_unicode_bidi_class *out_class);
+
+/**
+ * Determine the default UAX #9 P2/P3 paragraph embedding level.
+ *
+ * Isolate contents are ignored while searching for the first strong type.
+ * Returns level 0 for LTR/no-strong paragraphs and level 1 for R/AL.
+ * The complete input is UTF-8 validated before success is reported.
+ */
+salts_unicode_status salts_unicode_bidi_paragraph_level(
+    vstr input, uint8_t *out_level);
 
 /**
  * Query Unicode 17.0.0 properties for one scalar value.
