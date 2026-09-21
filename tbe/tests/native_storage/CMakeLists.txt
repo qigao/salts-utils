@@ -35,7 +35,11 @@ set_tests_properties(test_data_bind_reader_probe PROPERTIES TIMEOUT 60)
 add_executable(test_data_bind_native_reader native_reader_contract_test.c
   native_reader_preflight_test.c)
 add_executable(test_data_bind_native_reader_cpp native_reader_cpp_contract.cpp)
-foreach(target IN ITEMS test_data_bind_native_reader test_data_bind_native_reader_cpp)
+add_executable(test_data_bind_native_lifecycle native_lifecycle_contract_test.c)
+foreach(target IN ITEMS
+    test_data_bind_native_reader
+    test_data_bind_native_reader_cpp
+    test_data_bind_native_lifecycle)
   target_link_libraries(${target} PRIVATE Salts::DataBindCore Salts::Core)
   set_target_properties(${target} PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -50,3 +54,4 @@ foreach(target IN ITEMS test_data_bind_native_reader test_data_bind_native_reade
   set_tests_properties(${target} PROPERTIES TIMEOUT 60)
 endforeach()
 target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
+target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)

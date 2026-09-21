@@ -10,6 +10,12 @@ static_assert(std::is_standard_layout<DataBindNativeDiagnostic>::value, "diagnos
 using Decode = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
                                  cserde_reader *, void *, size_t, DataBindNativeDiagnostic *);
 static_assert(std::is_same<decltype(&data_bind_native_decode), Decode>::value, "decode signature drift");
+using Lifecycle = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
+                                     void *, size_t, DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_init), Lifecycle>::value,
+              "native init signature drift");
+static_assert(std::is_same<decltype(&data_bind_native_clear), Lifecycle>::value,
+              "native clear signature drift");
 
 int main() {
   enum { workspace_bytes = 4096, max_depth = 8, max_items = 64, max_owned_bytes = 32 };

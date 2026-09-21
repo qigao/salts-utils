@@ -43,6 +43,29 @@ typedef struct DataBindNativeDiagnostic {
   }
 
 /**
+ * Initialize raw native storage to the descriptor-defined semantic-zero state.
+ *
+ * The complete plain-CMeta graph is validated before mutation. Workspace is
+ * borrowed only for bounded graph traversal and retained nowhere.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_init(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic);
+
+/**
+ * Restore a live native value to the descriptor-defined semantic-zero state.
+ *
+ * The complete plain-CMeta graph is validated before cleanup. Provider-owned
+ * state is released through its canonical CMeta lifecycle; parent Struct
+ * storage is never blanket-zeroed after provider restoration.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_clear(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic);
+
+/**
  * Decode exactly one CSerde value into canonical CMeta native storage.
  *
  * The destination must already be in the descriptor-defined semantic-zero
