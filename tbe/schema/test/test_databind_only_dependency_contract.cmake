@@ -155,31 +155,29 @@ foreach(LICENSE_FILE IN ITEMS monocypher.c monocypher.h)
 endforeach()
 
 foreach(REQUIRED_PACKAGE_ASSET IN ITEMS
-        "cmake/DataBindConfig.cmake.in"
         "cmake/DataBindPackage.cmake"
         "tests/package_config/CMakeLists.txt"
         "tests/package_config/databind_repeated_find/CMakeLists.txt"
         "tests/package_config/databind_adapters/CMakeLists.txt")
   if(NOT EXISTS "${DATABIND_SOURCE_ROOT}/${REQUIRED_PACKAGE_ASSET}")
     message(FATAL_ERROR
-            "DataBind package ownership is incomplete: ${REQUIRED_PACKAGE_ASSET}")
+            "SaltsUtils DataBind component is incomplete: ${REQUIRED_PACKAGE_ASSET}")
   endif()
 endforeach()
 
 file(READ "${DATABIND_SOURCE_ROOT}/cmake/DataBindPackage.cmake"
           DATABIND_PACKAGE_MODULE)
 foreach(REQUIRED_PACKAGE_FRAGMENT IN ITEMS
-        "configure_package_config_file("
         "export("
-        "DataBindTargets"
-        "DataBindAdapterTargets"
-        "COMPONENT DataBind")
+        "SaltsUtilsDataBindTargets.cmake"
+        "SaltsUtilsDataBindAdapterTargets.cmake"
+        "cmake/SaltsUtils")
   string(FIND "${DATABIND_PACKAGE_MODULE}"
               "${REQUIRED_PACKAGE_FRAGMENT}"
               PACKAGE_FRAGMENT_POSITION)
   if(PACKAGE_FRAGMENT_POSITION EQUAL -1)
     message(FATAL_ERROR
-            "DataBind package module missing ownership fragment: ${REQUIRED_PACKAGE_FRAGMENT}")
+            "SaltsUtils component export missing: ${REQUIRED_PACKAGE_FRAGMENT}")
   endif()
 endforeach()
 
