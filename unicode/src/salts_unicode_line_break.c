@@ -35,6 +35,7 @@ typedef struct salts_unicode_lb_context {
   salts_unicode_lb_info right3;
   uint32_t trailing_ri;
   uint8_t suffix_nu_sy_is;
+  uint8_t suffix_nu_sy_is_before_left;
   uint8_t has_left_any;
   uint8_t has_left_any_non_space;
   uint8_t has_right_any;
@@ -220,6 +221,7 @@ static salts_unicode_status salts_unicode_lb_validate(vstr input,
 
 static void salts_unicode_lb_push_left_logical(
     salts_unicode_lb_context *ctx, const salts_unicode_lb_info *info) {
+  ctx->suffix_nu_sy_is_before_left = ctx->suffix_nu_sy_is;
   if (ctx->has_left) {
     ctx->left2 = ctx->left;
     ctx->has_left2 = 1u;
@@ -564,14 +566,8 @@ static salts_unicode_lb_decision salts_unicode_lb_decide(
        ctx.right.cls == SALTS_UNICODE_LINE_BREAK_PR)) {
     if ((ctx.left.cls == SALTS_UNICODE_LINE_BREAK_CL ||
          ctx.left.cls == SALTS_UNICODE_LINE_BREAK_CP) &&
-        ctx.has_left2) {
-      /* For the CL/CP forms, walk the already-computed suffix by treating
-       * left2 as the endpoint. The common short cases cover the normative
-       * corpus; longer SY/IS runs are handled by suffix_nu_sy_is below when
-       * the boundary itself follows that run. */
-      if (ctx.left2.cls == SALTS_UNICODE_LINE_BREAK_NU)
-        return SALTS_UNICODE_LB_NO_BREAK;
-    }
+        ctx.suffix_nu_sy_is_before_left)
+      return SALTS_UNICODE_LB_NO_BREAK;
     if (ctx.suffix_nu_sy_is)
       return SALTS_UNICODE_LB_NO_BREAK;
   }
