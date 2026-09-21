@@ -71,3 +71,14 @@ cmake_add_test(test_salts_unicode_bidi
   FOLDER "unicode/tests")
 set_tests_properties(test_salts_unicode_bidi
   PROPERTIES LABELS "unicode;bidi")
+
+
+cmake_add_test(test_salts_unicode_bidi_conformance
+  SOURCES test_salts_unicode_bidi_conformance.c
+  LIBS Salts::Unicode Salts::TinyTest
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  FOLDER "unicode/tests")
+target_compile_definitions(test_salts_unicode_bidi_conformance
+  PRIVATE SALTS_UNICODE_BIDI_PARAGRAPH_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/../data/17.0.0/BidiParagraphTest.txt")
+set_tests_properties(test_salts_unicode_bidi_conformance
+  PROPERTIES LABELS "unicode;bidi;conformance")
