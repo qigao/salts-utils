@@ -58,7 +58,11 @@ static inline NativeReaderProbeStep native_reader_probe_error(cserde_status stat
 }
 
 static inline cserde_status native_reader_probe_next(void *context, cserde_token *out) {
-  NativeReaderProbe *probe = (NativeReaderProbe *)context;
+#ifdef __cplusplus
+  NativeReaderProbe *probe = static_cast<NativeReaderProbe *>(context);
+#else
+  NativeReaderProbe *probe = context;
+#endif
   const NativeReaderProbeStep *step;
   if (probe == NULL || out == NULL) return CSERDE_SOURCE_ERROR;
   ++probe->calls;
