@@ -91,6 +91,63 @@ typedef enum salts_unicode_word_break {
   SALTS_UNICODE_WORD_REGIONAL_INDICATOR
 } salts_unicode_word_break;
 
+typedef enum salts_unicode_line_break {
+  SALTS_UNICODE_LINE_BREAK_OP = 0,
+  SALTS_UNICODE_LINE_BREAK_CL,
+  SALTS_UNICODE_LINE_BREAK_CP,
+  SALTS_UNICODE_LINE_BREAK_QU,
+  SALTS_UNICODE_LINE_BREAK_GL,
+  SALTS_UNICODE_LINE_BREAK_NS,
+  SALTS_UNICODE_LINE_BREAK_EX,
+  SALTS_UNICODE_LINE_BREAK_SY,
+  SALTS_UNICODE_LINE_BREAK_IS,
+  SALTS_UNICODE_LINE_BREAK_PR,
+  SALTS_UNICODE_LINE_BREAK_PO,
+  SALTS_UNICODE_LINE_BREAK_NU,
+  SALTS_UNICODE_LINE_BREAK_AL,
+  SALTS_UNICODE_LINE_BREAK_HL,
+  SALTS_UNICODE_LINE_BREAK_ID,
+  SALTS_UNICODE_LINE_BREAK_IN,
+  SALTS_UNICODE_LINE_BREAK_HY,
+  SALTS_UNICODE_LINE_BREAK_BA,
+  SALTS_UNICODE_LINE_BREAK_BB,
+  SALTS_UNICODE_LINE_BREAK_B2,
+  SALTS_UNICODE_LINE_BREAK_ZW,
+  SALTS_UNICODE_LINE_BREAK_CM,
+  SALTS_UNICODE_LINE_BREAK_WJ,
+  SALTS_UNICODE_LINE_BREAK_H2,
+  SALTS_UNICODE_LINE_BREAK_H3,
+  SALTS_UNICODE_LINE_BREAK_JL,
+  SALTS_UNICODE_LINE_BREAK_JV,
+  SALTS_UNICODE_LINE_BREAK_JT,
+  SALTS_UNICODE_LINE_BREAK_RI,
+  SALTS_UNICODE_LINE_BREAK_EB,
+  SALTS_UNICODE_LINE_BREAK_EM,
+  SALTS_UNICODE_LINE_BREAK_ZWJ,
+  SALTS_UNICODE_LINE_BREAK_AK,
+  SALTS_UNICODE_LINE_BREAK_AP,
+  SALTS_UNICODE_LINE_BREAK_AS,
+  SALTS_UNICODE_LINE_BREAK_VF,
+  SALTS_UNICODE_LINE_BREAK_VI,
+  SALTS_UNICODE_LINE_BREAK_HH,
+  SALTS_UNICODE_LINE_BREAK_CB,
+  SALTS_UNICODE_LINE_BREAK_AI,
+  SALTS_UNICODE_LINE_BREAK_BK,
+  SALTS_UNICODE_LINE_BREAK_CJ,
+  SALTS_UNICODE_LINE_BREAK_CR,
+  SALTS_UNICODE_LINE_BREAK_LF,
+  SALTS_UNICODE_LINE_BREAK_NL,
+  SALTS_UNICODE_LINE_BREAK_SA,
+  SALTS_UNICODE_LINE_BREAK_SG,
+  SALTS_UNICODE_LINE_BREAK_SP,
+  SALTS_UNICODE_LINE_BREAK_XX
+} salts_unicode_line_break;
+
+typedef enum salts_unicode_line_break_opportunity {
+  SALTS_UNICODE_LINE_BREAK_ALLOWED = 0,
+  SALTS_UNICODE_LINE_BREAK_MANDATORY = 1
+} salts_unicode_line_break_opportunity;
+
 /**
  * Scan one Unicode scalar from an explicit-length borrowed UTF-8 view.
  *
@@ -165,6 +222,24 @@ salts_unicode_status salts_unicode_word_next(vstr input, size_t *cursor,
  */
 salts_unicode_status salts_unicode_word_prev(vstr input, size_t *cursor,
                                              vstr *segment);
+
+/**
+ * Query the raw Unicode 17.0.0 Line_Break value for one scalar.
+ */
+salts_unicode_status salts_unicode_line_break_class(
+    uint32_t scalar, salts_unicode_line_break *out_class);
+
+/**
+ * Find the next default Unicode 17.0.0 line-break opportunity (UAX #14).
+ *
+ * On success, *cursor and *break_offset receive the same exclusive byte
+ * boundary and *opportunity reports whether the break is soft or mandatory.
+ * At end or on error all outputs remain unchanged. The complete input is
+ * validated before success is reported.
+ */
+salts_unicode_status salts_unicode_line_break_next(
+    vstr input, size_t *cursor, size_t *break_offset,
+    salts_unicode_line_break_opportunity *opportunity);
 
 /**
  * Query Unicode 17.0.0 properties for one scalar value.
