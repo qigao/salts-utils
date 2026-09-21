@@ -71,6 +71,28 @@ static void require_pair_layout(bool overlap) {
     check_equal(output.a, 0);
     check_equal(output.b, 0);
   } else {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    DataBindNativeOptions limited = options;
+    check_equal(data_bind_native_workspace_requirements(&options, &shape, &required,
+                  &diagnostic), DATA_BIND_OK);
+    check_equal(required.descriptor_depth, 2u);
+    check_equal(required.descriptor_nodes, 3u);
+    check_equal(required.field_tracking_bytes, 2u);
+    check_equal(required.workspace_bytes, required.traversal_bytes +
+                  required.staging_bytes + required.field_tracking_bytes);
+    check_equal(probe.calls, 0u);
+    memcpy(&before, &required, sizeof(before));
+    limited.max_depth = 1u;
+    check_equal(data_bind_native_workspace_requirements(&limited, &shape, &required,
+                  &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    limited = options;
+    limited.max_items = 2u;
+    check_equal(data_bind_native_workspace_requirements(&limited, &shape, &required,
+                  &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    check_equal(probe.calls, 0u);
     check_equal(data_bind_native_decode(&options, &shape, &reader, &output,
                 sizeof(output), &diagnostic), DATA_BIND_OK);
     check_equal(output.a, 7);
@@ -182,4 +204,189 @@ spec("DataBind native preflight preserves canonical storage and control records"
   it("does not write an error through a diagnostic overlapping destination") {
     require_diagnostic_alias_rejection(false);
   }
+}
+
+
+spec("DataBind native workspace requirements use the production graph validator") {
+  before_each() {
+    memset(&workspace, 0, sizeof(workspace));
+    memset(&probe, 0, sizeof(probe));
+    memset(&reader, 0, sizeof(reader));
+    options = (DataBindNativeOptions)DATA_BIND_NATIVE_OPTIONS_INIT;
+    diagnostic = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    options.max_depth = PREFLIGHT_DEPTH;
+    options.max_items = PREFLIGHT_ITEMS;
+  }
+
+  it("measures a scalar without caller workspace or source callbacks") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeOptions before;
+    memcpy(&before, &options, sizeof(before));
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_OK);
+    check_equal(required.descriptor_depth, 1u);
+    check_equal(required.descriptor_nodes, 1u);
+    check_equal(required.field_tracking_bytes, 0u);
+    check_equal(required.traversal_bytes, PREFLIGHT_DEPTH * sizeof(const cmeta_data_desc *));
+    check_true(required.staging_bytes >= sizeof(int32_t));
+    check_equal(required.workspace_bytes, required.traversal_bytes + required.staging_bytes);
+    check_equal(required.workspace_alignment % _Alignof(int32_t), 0u);
+    check_equal(required.workspace_alignment % _Alignof(const cmeta_data_desc *), 0u);
+    check_equal(memcmp(&options, &before, sizeof(before)), 0);
+    check_equal(probe.calls, 0u);
+  }
+
+  it("ignores a supplied workspace while measuring and never mutates it") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    unsigned char byte = 0xa5u;
+    options.workspace = &byte;
+    options.workspace_bytes = 1u;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_OK);
+    check_equal(byte, (unsigned char)0xa5u);
+    check_equal(options.workspace_bytes, 1u);
+  }
+
+  it("decodes with exactly the measured aligned storage") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(300)};
+    int32_t value = 91;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_OK);
+    check_true(required.workspace_bytes <= sizeof(workspace.bytes));
+    check_equal((uintptr_t)workspace.bytes % required.workspace_alignment, 0u);
+    options.workspace = workspace.bytes;
+    options.workspace_bytes = required.workspace_bytes;
+    open_preflight_source(steps, 1u);
+    check_equal(data_bind_native_init(&options, &salts_int32_cmeta_data, &value,
+                  sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_equal(value, 0);
+    check_equal(data_bind_native_decode(&options, &salts_int32_cmeta_data, &reader,
+                  &value, sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_equal(value, 300);
+    check_equal(probe.calls, 1u);
+    check_equal(data_bind_native_clear(&options, &salts_int32_cmeta_data, &value,
+                  sizeof(value), &diagnostic), DATA_BIND_OK);
+    check_equal(value, 0);
+  }
+
+  it("rejects one byte below the measured decode storage before reading") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(300)};
+    int32_t value = 0;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_OK);
+    check_true(required.workspace_bytes > 0u);
+    options.workspace = workspace.bytes;
+    options.workspace_bytes = required.workspace_bytes - 1u;
+    open_preflight_source(steps, 1u);
+    check_equal(data_bind_native_decode(&options, &salts_int32_cmeta_data, &reader,
+                  &value, sizeof(value), &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_equal(value, 0);
+    check_equal(probe.calls, 0u);
+  }
+
+  it("preserves output on a descriptor traversal multiplication overflow") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    required.workspace_bytes = 123u;
+    memcpy(&before, &required, sizeof(before));
+    options.max_depth = SIZE_MAX;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    check_equal(probe.calls, 0u);
+  }
+
+  it("preserves output on zero native depth and item budgets") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    memcpy(&before, &required, sizeof(before));
+    options.max_depth = 0u;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_ERR_LIMIT);
+    options.max_depth = PREFLIGHT_DEPTH;
+    options.max_items = 0u;
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_ERR_LIMIT);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+  }
+
+  it("rejects a scalar graph that the production preflight cannot admit") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    memcpy(&before, &required, sizeof(before));
+    cmeta_data_desc shape = salts_int32_cmeta_data;
+    const cmeta_data_integer_shape integer = {8u};
+    shape.shape = &integer;
+    check_equal(data_bind_native_workspace_requirements(&options, &shape, &required,
+                  &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    check_equal(probe.calls, 0u);
+  }
+
+  it("rejects an incompatible requirements ABI without changing its record") {
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    required.abi_version += 1u;
+    memcpy(&before, &required, sizeof(before));
+    check_equal(data_bind_native_workspace_requirements(&options, &salts_int32_cmeta_data,
+                  &required, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    check_equal(probe.calls, 0u);
+  }
+  it("rejects a cyclic graph without caller workspace and without reader calls") {
+    cmeta_data_desc shape = {0};
+    const cmeta_type_identity identity = CMETA_TYPE_ID_ATOM_INIT("test.requirements.Cycle");
+    const cmeta_type_desc type = {
+        .name = "Cycle", .size = sizeof(int32_t), .align = _Alignof(int32_t),
+        .kind = CMETA_T_OBJECT, .identity = &identity};
+    const cmeta_field_desc field = {
+        .name = "self", .type_name = "Cycle", .offset = 0u,
+        .size = sizeof(int32_t), .align = _Alignof(int32_t), .type = &type};
+    const cmeta_struct_desc layout = {
+        "Cycle", sizeof(int32_t), _Alignof(int32_t), &field, 1u};
+    const cmeta_data_field_desc value = {"test.requirements.self", "self", 0u, &shape};
+    const cmeta_data_struct_shape record = {&layout, &value, 1u};
+    DataBindNativeWorkspaceRequirements required = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+    DataBindNativeWorkspaceRequirements before;
+    memcpy(&before, &required, sizeof(before));
+    int32_t destination = 0;
+    shape.struct_size = sizeof(shape);
+    shape.abi_version = CMETA_DATA_DESC_ABI_VERSION;
+    shape.stable_id = "test.requirements.Cycle.data";
+    shape.display_name = "Cycle";
+    shape.kind = CMETA_DATA_STRUCT;
+    shape.storage_type = &type;
+    shape.shape = &record;
+    check_true(cmeta_data_desc_valid(&shape));
+    check_equal(data_bind_native_workspace_requirements(&options, &shape, &required,
+                  &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_equal(memcmp(&required, &before, sizeof(before)), 0);
+    options.workspace = workspace.bytes;
+    options.workspace_bytes = sizeof(workspace.bytes);
+    check_equal(data_bind_native_decode(&options, &shape, &reader, &destination,
+                  sizeof(destination), &diagnostic), DATA_BIND_ERR_SCHEMA);
+    check_equal(destination, 0);
+    check_equal(probe.calls, 0u);
+  }
+
+  it("rejects an output record aliasing options without mutating either record") {
+    union AliasedControls {
+      max_align_t alignment;
+      unsigned char bytes[sizeof(DataBindNativeWorkspaceRequirements) + sizeof(DataBindNativeOptions)];
+    } storage;
+    unsigned char before[sizeof(storage)];
+    DataBindNativeOptions *aliased_options = (DataBindNativeOptions *)(void *)storage.bytes;
+    DataBindNativeWorkspaceRequirements *aliased_requirements =
+        (DataBindNativeWorkspaceRequirements *)(void *)storage.bytes;
+    memset(&storage, 0, sizeof(storage));
+    aliased_options->size = sizeof(storage);
+    aliased_options->abi_version = DATA_BIND_NATIVE_ABI_VERSION;
+    memcpy(before, &storage, sizeof(storage));
+    check_equal(data_bind_native_workspace_requirements(aliased_options, &salts_int32_cmeta_data,
+                  aliased_requirements, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(before, &storage, sizeof(storage)), 0);
+  }
+
 }

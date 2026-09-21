@@ -15,12 +15,19 @@ typedef struct NativeArena {
   size_t offset;
 } NativeArena;
 
+typedef struct NativePlanFrame {
+  const cmeta_data_desc *data;
+  const struct NativePlanFrame *parent;
+} NativePlanFrame;
+
 typedef struct NativePlan {
   const DataBindNativeOptions *options;
   DataBindNativeDiagnostic *diagnostic;
   const cmeta_data_desc **ancestors;
   size_t nodes;
   size_t seen_peak;
+  size_t depth_peak;
+  const NativePlanFrame *active_frame;
 } NativePlan;
 
 typedef struct NativeDecode {
@@ -384,9 +391,38 @@ range:
                      "Numeric value is outside native storage range");
 }
 
+static DataBindStatus native_preflight_body(
+    NativePlan *plan, const cmeta_data_desc *data, size_t depth,
+    size_t active_seen, const char *path);
+
 static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *data,
                                        size_t depth, size_t active_seen,
                                        const char *path) {
+  NativePlanFrame frame;
+  const NativePlanFrame *ancestor;
+  DataBindStatus status;
+  if (plan->ancestors != NULL)
+    return native_preflight_body(plan, data, depth, active_seen, path);
+
+  /* A measurement has no workspace yet. Reuse the same validator with a
+   * linked ancestry on its already-bounded recursion, not a second graph walk
+   * with different admission rules. Every return restores the parent's link. */
+  for (ancestor = plan->active_frame; ancestor != NULL; ancestor = ancestor->parent) {
+    if (ancestor->data == data)
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                         "Canonical native descriptor graph contains a cycle");
+  }
+  frame.data = data;
+  frame.parent = plan->active_frame;
+  plan->active_frame = &frame;
+  status = native_preflight_body(plan, data, depth, active_seen, path);
+  plan->active_frame = frame.parent;
+  return status;
+}
+
+static DataBindStatus native_preflight_body(
+    NativePlan *plan, const cmeta_data_desc *data, size_t depth,
+    size_t active_seen, const char *path) {
   size_t i;
   if (depth == 0u || depth > plan->options->max_depth)
     return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
@@ -395,16 +431,19 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Native descriptor node count exceeds configured limit");
   ++plan->nodes;
+  if (depth > plan->depth_peak) plan->depth_peak = depth;
   if (!cmeta_data_desc_valid(data))
     return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                        "Invalid canonical CMeta descriptor");
 
-  for (i = 0u; i + 1u < depth; ++i) {
-    if (plan->ancestors[i] == data)
-      return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                         "Canonical native descriptor graph contains a cycle");
+  if (plan->ancestors != NULL) {
+    for (i = 0u; i + 1u < depth; ++i) {
+      if (plan->ancestors[i] == data)
+        return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                           "Canonical native descriptor graph contains a cycle");
+    }
+    plan->ancestors[depth - 1u] = data;
   }
-  plan->ancestors[depth - 1u] = data;
 
   if (native_scalar_supported(data)) return DATA_BIND_OK;
 
@@ -1045,6 +1084,86 @@ static DataBindStatus native_lifecycle_preflight(
   return DATA_BIND_OK;
 }
 
+DataBindStatus data_bind_native_workspace_requirements(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    DataBindNativeWorkspaceRequirements *requirements,
+    DataBindNativeDiagnostic *diagnostic) {
+  DataBindNativeWorkspaceRequirements result = DATA_BIND_NATIVE_WORKSPACE_REQUIREMENTS_INIT;
+  NativePlan plan;
+  DataBindStatus status;
+  const size_t pointer_alignment = _Alignof(const cmeta_data_desc *);
+  size_t padding;
+  size_t root_alignment;
+  size_t gcd;
+  size_t remainder;
+
+  if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  if (options == NULL || requirements == NULL || shape == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Workspace measurement arguments must be non-null");
+  if (options->size < sizeof(*options) ||
+      options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
+      requirements->size < sizeof(*requirements) ||
+      requirements->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return DATA_BIND_ERR_INVALID_ARG;
+  /* Do not write even the diagnostic through an aliased input/output record. */
+  if (native_ranges_overlap(options, sizeof(*options), requirements, sizeof(*requirements)) ||
+      native_ranges_overlap(shape, sizeof(*shape), requirements, sizeof(*requirements)) ||
+      (diagnostic != NULL &&
+       (native_ranges_overlap(diagnostic, sizeof(*diagnostic), options, sizeof(*options)) ||
+        native_ranges_overlap(diagnostic, sizeof(*diagnostic), shape, sizeof(*shape)) ||
+        native_ranges_overlap(diagnostic, sizeof(*diagnostic), requirements, sizeof(*requirements)))))
+    return DATA_BIND_ERR_INVALID_ARG;
+  native_reset_diagnostic(diagnostic);
+  if (!cmeta_data_desc_valid(shape) || shape->storage_type == NULL ||
+      !cmeta_type_desc_valid(shape->storage_type))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, NULL,
+                       "Invalid canonical CMeta root descriptor");
+  if (options->max_depth == 0u || options->max_items == 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, shape->display_name,
+                       "Native depth and item budgets must be nonzero");
+  if (!native_size_mul(options->max_depth, sizeof(const cmeta_data_desc *),
+                        &result.traversal_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, shape->display_name,
+                       "Native depth workspace size overflow");
+
+  memset(&plan, 0, sizeof(plan));
+  plan.options = options;
+  plan.diagnostic = diagnostic;
+  status = native_preflight(&plan, shape, 1u, 0u, shape->display_name);
+  if (status != DATA_BIND_OK) return status;
+
+  root_alignment = shape->storage_type->align;
+  if (root_alignment == 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, shape->display_name,
+                       "Native root alignment is invalid");
+  /* A common multiple also handles a descriptor alignment without assuming
+   * that selecting the larger value is always sufficient. */
+  gcd = root_alignment;
+  remainder = pointer_alignment;
+  while (remainder != 0u) {
+    size_t next = gcd % remainder;
+    gcd = remainder;
+    remainder = next;
+  }
+  if (!native_size_mul(root_alignment / gcd, pointer_alignment,
+                        &result.workspace_alignment))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, shape->display_name,
+                       "Native workspace alignment overflow");
+  padding = shape->storage_type->size % pointer_alignment;
+  if (padding != 0u) padding = pointer_alignment - padding;
+  if (!native_size_add(shape->storage_type->size, padding, &result.staging_bytes) ||
+      !native_size_add(result.staging_bytes, result.traversal_bytes, &result.workspace_bytes) ||
+      !native_size_add(result.workspace_bytes, plan.seen_peak, &result.workspace_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, shape->display_name,
+                       "Native workspace requirement size overflow");
+  result.field_tracking_bytes = plan.seen_peak;
+  result.descriptor_depth = plan.depth_peak;
+  result.descriptor_nodes = plan.nodes;
+  *requirements = result;
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_native_init(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     void *destination, size_t destination_bytes,
@@ -1199,7 +1318,7 @@ DataBindStatus data_bind_native_decode(
     if (status != DATA_BIND_OK &&
         native_restore_value(shape, destination) != DATA_BIND_OK)
       status = native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
-                           "Destination rollback did not restore semantic zero");
+                         "Destination rollback did not restore semantic zero");
   }
 
   if (native_restore_value(shape, temporary) != DATA_BIND_OK && status == DATA_BIND_OK)
