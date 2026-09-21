@@ -51,3 +51,7 @@ endif()
 cmake_config_target(salts_cxml
   NO_INSTALL
   FOLDER "parser/xml_parser/vendor")
+
+# This private engine is embedded in multiple shared libraries. Its globals and
+# functions must not escape those images or interpose on another engine copy.
+set_target_properties(salts_cxml PROPERTIES C_VISIBILITY_PRESET hidden)

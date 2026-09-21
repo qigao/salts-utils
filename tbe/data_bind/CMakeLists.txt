@@ -2,7 +2,9 @@ set(DATA_BIND_CORE_TARGET data_bind_core)
 add_library(
   ${DATA_BIND_CORE_TARGET} STATIC
   data_bind_format_provider.c
-  data_bind_format_provider.h)
+  data_bind_format_provider.h
+  data_bind_native.c
+  data_bind_native.h)
 target_include_directories(
   ${DATA_BIND_CORE_TARGET}
   PUBLIC
@@ -226,6 +228,7 @@ install(
   FILES
     data_bind.h
     data_bind_format_provider.h
+    data_bind_native.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
     data_bind_csv_provider.h
