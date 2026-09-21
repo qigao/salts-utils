@@ -1,48 +1,29 @@
-# DataBind package ownership.
-#
-# This module lives inside the movable DataBind subtree so package generation,
-# build-tree exports, and install-tree exports move with the runtime.
+# SaltsUtils-owned export sets for its DataBind/TBE component.
+# These files are implementation details of SaltsUtilsConfig.cmake. They are
+# installed together with SaltsUtils; no DataBind package/config is generated.
 
-include(CMakePackageConfigHelpers)
-
-set(DATABIND_PACKAGE_VERSION 3.0.0)
-
-configure_package_config_file(
-  "${DATABIND_SOURCE_ROOT}/cmake/DataBindConfig.cmake.in"
-  "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
-  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind")
-
-write_basic_package_version_file(
-  "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
-  VERSION ${DATABIND_PACKAGE_VERSION}
-  COMPATIBILITY SameMajorVersion)
+# Name the existing concrete runtime in the public SaltsUtils contract.
+# This changes its actual export, not a compatibility/forwarding target.
+set_target_properties(data_bind PROPERTIES EXPORT_NAME Databind)
 
 export(
   EXPORT DataBindTargets
-  FILE "${CMAKE_BINARY_DIR}/DataBindTargets.cmake"
+  FILE "${CMAKE_BINARY_DIR}/SaltsUtilsDataBindTargets.cmake"
   NAMESPACE Salts::)
 
 export(
   EXPORT DataBindAdapterTargets
-  FILE "${CMAKE_BINARY_DIR}/DataBindAdapterTargets.cmake"
+  FILE "${CMAKE_BINARY_DIR}/SaltsUtilsDataBindAdapterTargets.cmake"
   NAMESPACE Salts::)
 
 install(
   EXPORT DataBindTargets
-  FILE DataBindTargets.cmake
+  FILE SaltsUtilsDataBindTargets.cmake
   NAMESPACE Salts::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind"
-  COMPONENT DataBind)
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
 
 install(
   EXPORT DataBindAdapterTargets
-  FILE DataBindAdapterTargets.cmake
+  FILE SaltsUtilsDataBindAdapterTargets.cmake
   NAMESPACE Salts::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind"
-  COMPONENT DataBind)
-
-install(
-  FILES "${CMAKE_BINARY_DIR}/DataBindConfig.cmake"
-        "${CMAKE_BINARY_DIR}/DataBindConfigVersion.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/DataBind"
-  COMPONENT DataBind)
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
