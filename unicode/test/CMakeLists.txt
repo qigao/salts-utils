@@ -64,3 +64,10 @@ target_compile_definitions(test_salts_unicode_line_break_conformance
   PRIVATE SALTS_UNICODE_LINE_BREAK_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/../data/17.0.0/LineBreakTest.txt")
 set_tests_properties(test_salts_unicode_line_break_conformance
   PROPERTIES LABELS "unicode;line-break;conformance")
+cmake_add_test(test_salts_unicode_bidi
+  SOURCES test_salts_unicode_bidi.c
+  LIBS Salts::Unicode Salts::TinyTest
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  FOLDER "unicode/tests")
+set_tests_properties(test_salts_unicode_bidi
+  PROPERTIES LABELS "unicode;bidi")
