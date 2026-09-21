@@ -49,5 +49,12 @@ int main() {
   if (native_reader_probe_open(&probe, steps, 1u, &reader) != CSERDE_OK) return 1;
   if (data_bind_native_decode(&options, &cmeta_data_int, &reader, &value, sizeof(value),
                               &diagnostic) != DATA_BIND_OK) return 1;
-  return value == 7 && probe.calls == 1u && diagnostic.error.code == DATA_BIND_OK ? 0 : 1;
+  if (value != 7 || probe.calls != 1u || diagnostic.error.code != DATA_BIND_OK) return 1;
+  if (data_bind_native_clear(&options, &cmeta_data_int, &value, sizeof(value), &diagnostic) != DATA_BIND_OK) return 1;
+  NativeReaderProbe bounded_probe = {};
+  cserde_reader bounded_reader = {};
+  if (native_reader_probe_open(&bounded_probe, steps, 1u, &bounded_reader) != CSERDE_OK) return 1;
+  if (data_bind_native_decode_bounded(&options, &cmeta_data_int, &bounded_reader, &value,
+                                      sizeof(value), 0u, &diagnostic) != DATA_BIND_OK) return 1;
+  return value == 7 && bounded_probe.calls == 1u && diagnostic.error.code == DATA_BIND_OK ? 0 : 1;
 }

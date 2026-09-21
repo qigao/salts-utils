@@ -241,7 +241,7 @@ static void require_measured_pair(bool nested, bool short_depth, bool short_item
   PreflightPair output = {0, 0};
   const size_t depth = nested ? 3u : 2u;
   const size_t nodes = nested ? 4u : 3u;
-  const size_t tracking = nested ? 3u : 2u;
+  const size_t tracking = nested ? 2u : 1u;
   options.max_depth = depth - (short_depth ? 1u : 0u);
   options.max_items = nodes - (short_items ? 1u : 0u);
   if (short_depth || short_items) {
@@ -251,6 +251,7 @@ static void require_measured_pair(bool nested, bool short_depth, bool short_item
   check_equal(data_bind_native_measure(&options, shape, &measured, &diagnostic),
               DATA_BIND_OK);
   check_equal(measured.descriptor_depth, depth);
+  check_equal(measured.container_depth, nested ? 2u : 1u);
   check_equal(measured.descriptor_nodes, nodes);
   check_equal(measured.field_tracking_bytes, tracking);
   check_equal(measured.staging_bytes, sizeof(output));
@@ -423,5 +424,85 @@ spec("DataBind native workspace measurement before source dispatch") {
     check_equal(out.base.staging_bytes, sizeof(tstr));
     check_equal(out.base.descriptor_nodes, 1u);
     check_equal(diagnostic.error.code, DATA_BIND_OK);
+  }
+}
+
+static void require_buffer_bounds(const char *left, const char *right,
+                                   size_t aggregate, size_t per_value,
+                                   DataBindStatus expected) {
+  typedef struct BufferPair { tstr left; tstr right; } BufferPair;
+  BufferPair output = {NULL, NULL};
+  const cmeta_type_identity identity = CMETA_TYPE_ID_ATOM_INIT("test.budget.BufferPair");
+  const cmeta_type_desc type = {.name = "BufferPair", .size = sizeof(output),
+      .align = _Alignof(BufferPair), .kind = CMETA_T_OBJECT, .identity = &identity};
+  const cmeta_field_desc fields[] = {
+      {.name = "left", .type_name = "tstr", .offset = offsetof(BufferPair, left),
+       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &salts_tstr_cmeta_type},
+      {.name = "right", .type_name = "tstr", .offset = offsetof(BufferPair, right),
+       .size = sizeof(tstr), .align = _Alignof(tstr), .type = &salts_tstr_cmeta_type}};
+  const cmeta_struct_desc layout = {"BufferPair", sizeof(output), _Alignof(BufferPair), fields, 2u};
+  const cmeta_data_field_desc values[] = {
+      {"pair.left", "left", offsetof(BufferPair, left), &salts_tstr_cmeta_data},
+      {"pair.right", "right", offsetof(BufferPair, right), &salts_tstr_cmeta_data}};
+  const cmeta_data_struct_shape record = {&layout, values, 2u};
+  const cmeta_data_desc shape = {.struct_size = sizeof(cmeta_data_desc),
+      .abi_version = CMETA_DATA_DESC_ABI_VERSION, .stable_id = "test.budget.pair",
+      .display_name = "BufferPair", .kind = CMETA_DATA_STRUCT,
+      .storage_type = &type, .shape = &record};
+  const NativeReaderProbeStep steps[] = {
+      native_reader_probe_token(CSERDE_MAP_BEGIN),
+      native_reader_probe_slice(CSERDE_STRING, (const unsigned char *)"left", 4u, CSERDE_VIEW_STABLE),
+      native_reader_probe_slice(CSERDE_STRING, (const unsigned char *)left, strlen(left), CSERDE_VIEW_TRANSIENT),
+      native_reader_probe_slice(CSERDE_STRING, (const unsigned char *)"right", 5u, CSERDE_VIEW_STABLE),
+      native_reader_probe_slice(CSERDE_STRING, (const unsigned char *)right, strlen(right), CSERDE_VIEW_TRANSIENT),
+      native_reader_probe_token(CSERDE_MAP_END)};
+  PreflightWorkspace memory;
+  DataBindNativeOptions limits = DATA_BIND_NATIVE_OPTIONS_INIT;
+  DataBindNativeDiagnostic error = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  NativeReaderProbe source = {0};
+  cserde_reader input = {0};
+  limits.workspace = memory.bytes;
+  limits.workspace_bytes = sizeof(memory.bytes);
+  limits.max_depth = 2u;
+  limits.max_items = 3u;
+  limits.max_owned_bytes = aggregate;
+  check_equal(native_reader_probe_open(&source, steps, 6u, &input), CSERDE_OK);
+  const DataBindStatus status = data_bind_native_decode_bounded(
+      &limits, &shape, &input, &output, sizeof(output), per_value, &error);
+  check_equal(status, expected);
+  if (expected == DATA_BIND_OK) {
+    check_equal(tstr_len(output.left), strlen(left));
+    check_equal(tstr_len(output.right), strlen(right));
+    if (strlen(left) != 0u) check_equal(memcmp(output.left, left, strlen(left)), 0);
+    if (strlen(right) != 0u) check_equal(memcmp(output.right, right, strlen(right)), 0);
+    check_equal(source.calls, 6u);
+  } else {
+    check_null(output.left);
+    check_null(output.right);
+    check_equal(error.error.code, DATA_BIND_ERR_LIMIT);
+  }
+  check_equal(data_bind_native_clear(&limits, &shape, &output, sizeof(output), &error), DATA_BIND_OK);
+  check_null(output.left);
+  check_null(output.right);
+}
+
+spec("DataBind per-value payload bounds preserve aggregate accounting and rollback") {
+  it("allows two separately bounded values whose sum exceeds the per-value bound") {
+    require_buffer_bounds("abc", "def", 6u, 3u, DATA_BIND_OK);
+  }
+  it("rejects one-over per-value size after an earlier owned value") {
+    require_buffer_bounds("abc", "defg", 7u, 3u, DATA_BIND_ERR_LIMIT);
+  }
+  it("keeps the aggregate limit even when each value fits") {
+    require_buffer_bounds("abc", "def", 5u, 3u, DATA_BIND_ERR_LIMIT);
+  }
+  it("allows empty owned values at zero per-value and aggregate limits") {
+    require_buffer_bounds("", "", 0u, 0u, DATA_BIND_OK);
+  }
+  it("rejects nonempty payload at a zero per-value limit") {
+    require_buffer_bounds("", "x", SIZE_MAX, 0u, DATA_BIND_ERR_LIMIT);
+  }
+  it("accepts the exact per-value boundary with the address-space aggregate bound") {
+    require_buffer_bounds("abc", "def", SIZE_MAX, 3u, DATA_BIND_OK);
   }
 }

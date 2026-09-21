@@ -54,11 +54,12 @@ typedef struct DataBindNativeRequirements {
   size_t field_tracking_bytes;
   size_t descriptor_depth;
   size_t descriptor_nodes;
+  size_t container_depth;
 } DataBindNativeRequirements;
 
 #define DATA_BIND_NATIVE_REQUIREMENTS_INIT                                      \
   { sizeof(DataBindNativeRequirements), DATA_BIND_NATIVE_ABI_VERSION,             \
-    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u }
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u }
 
 /**
  * Return enough probe bytes for max_depth descriptor pointers at any address.
@@ -80,11 +81,14 @@ DATA_BIND_API DataBindStatus data_bind_native_probe_workspace_size(
  *
  * Returned lifecycle_bytes and decode_bytes are exact for a workspace base
  * aligned to workspace_alignment (including root staging, traversal and the
- * peak simultaneously active field tracking). For another base, reserve up to
+ * peak simultaneously active field bitmaps). For another base, reserve up to
  * workspace_alignment - 1 extra bytes and align it before calling native APIs.
  * Bounds, graph and ABI must remain unchanged when using the result. Provider
  * payload allocations and the bounded recursive C call stack are not included.
  *
+ * container_depth counts only Struct nodes (zero for scalar/enum/buffer roots).
+ * field_tracking_bytes counts the actual active field bitmaps. The requirements
+ * record is evolving within this unreleased feature; callers must use its INIT.
  * This does not translate caller-defined scratch/container/per-value budgets:
  * v1 max_depth includes scalar descriptor leaves; max_items is a whole-graph
  * node budget; max_owned_bytes is aggregate logical payload, not heap capacity.
@@ -133,6 +137,16 @@ DATA_BIND_API DataBindStatus data_bind_native_decode(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
     DataBindNativeDiagnostic *diagnostic);
+
+/** Same native decoder with an additional per-owned-value payload limit.
+ * Both the aggregate max_owned_bytes and max_buffer_bytes are enforced before
+ * provider assignment. Zero permits empty values only. No buffer can borrow
+ * source storage; rollback, one-value consumption and ABI checks are unchanged.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_decode_bounded(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic);
 
 #ifdef __cplusplus
 }

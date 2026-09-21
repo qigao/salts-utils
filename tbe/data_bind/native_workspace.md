@@ -1,104 +1,104 @@
-# Native workspace measurement
+# Native workspace and row-budget accounting
 
-Refs: qigao/turbodb#58, qigao/turbodb#56, SaltsUtils #99.
+Refs: qigao/turbodb#58, qigao/turbodb#56, SaltsUtils #99/#111.
 
-DataBind remains a SaltsUtils component. Its only consumer target is
-`Salts::Databind`, obtained through `find_package(SaltsUtils CONFIG REQUIRED)`
-from the explicit SaltsUtils installation. This change adds no independent
-package, alternate target, consumer binder, adapter, or fallback.
+DataBind is a SaltsUtils component. Consumers use only `Salts::Databind` from
+an explicitly selected SaltsUtils installation. There is no separate package,
+root, alternate target, CBind fallback or second decoder.
 
-## Scope of this slice
+## Prepare before source dispatch
 
-The two additive functions in `data_bind_native.h` allow a caller to validate a
-native-v1 graph and provision its private workspace **before opening a native
-cursor or dispatching source I/O**. Existing options, diagnostics, ABI version,
-lifecycle and decode policies are unchanged. Measurement reuses their production
-graph validator and calls neither a reader nor provider lifecycle functions.
+`data_bind_native_probe_workspace_size(max_depth, &bytes)` returns checked
+traversal capacity for any base address. `data_bind_native_measure()` uses that
+probe to validate the same canonical graph as native init/decode and publish
+workspace requirements only after success. Neither function invokes a reader,
+provider lifecycle or allocator, and neither retains pointers. All control
+records and immutable descriptor storage must be disjoint from mutable storage.
 
-1. `data_bind_native_probe_workspace_size(max_depth, &bytes)` checks the pointer
-   count multiplication and alignment padding. It returns enough temporary
-   traversal storage for an arbitrary base address. Zero depth and overflow
-   return `DATA_BIND_ERR_LIMIT`; the output remains unchanged on failure.
-2. Allocate that probe storage with the caller's existing allocator, and set the
-   ordinary native options. `data_bind_native_measure()` validates the complete
-   supported graph, including cycles, layout, canonical providers, paths, depth
-   and node limits. It publishes the requirements only after complete success.
-3. Release the probe; allocate the measured private decode workspace with the
-   reported alignment. Keep the same graph and limits. The runtime still
-   validates each init/clear/decode; this is sizing information, not a retained
-   plan or bypass of admission. Allocation failure stays a caller-side OOM and
-   must precede native dispatch.
+A caller allocates the probe, measures, frees the probe, and allocates the exact
+private workspace with the reported alignment. Every lifecycle/decode call still
+validates the graph; the measurement is not a cached admission bypass. Allocation
+failure remains OOM, and callers can complete all preparation before opening a
+native cursor. Descriptor lifetime and immutability remain caller obligations.
 
-The probe and control records are borrowed. Immutable descriptors must remain
-valid and disjoint from mutable storage. No pointer is retained. Measurement
-requires only traversal storage, not an already allocated staging row. Thus the
-caller does not have to guess a large buffer or retry with growing allocations.
+## Actual resource use
 
-## Resource accounting
-
-Let `P = sizeof(const cmeta_data_desc *)`, `A` be its alignment, `D` the native
-`max_depth`, `R` the root native size and `F` the sum of field counts on the
-largest simultaneously active Struct path. Returned requirements are:
+Let `P` and `A` be descriptor-pointer size and alignment, `D` the native depth
+limit, `R` the root native size, and `F` the maximum sum of `ceil(field_count / 8)`
+over simultaneously active Struct frames. The decoder now uses actual one-bit
+field tracking, including duplicate and missing-field detection.
 
 - `traversal_bytes = lifecycle_bytes = D * P`.
 - `staging_bytes = R`; `field_tracking_bytes = F`.
 - `decode_bytes = align_up(R, A) + D * P + F`.
 - `workspace_alignment = lcm(root_alignment, A)`.
 
-All arithmetic is checked. The LCM deliberately avoids introducing an assumption
-that every shallow-valid canonical alignment is a power of two. Sizes are exact
-for a base aligned to `workspace_alignment`. An allocator that does not provide
-that alignment must check addition of `workspace_alignment - 1`, overallocate,
-and align within its owned allocation. The caller retains the original pointer
-for freeing. Do not call aligned-allocation APIs without satisfying their own
-alignment and size constraints.
+Arithmetic is checked; the LCM does not assume power-of-two canonical alignment.
+These capacities are exact for a suitably aligned base. To align an arbitrary
+allocation, check `decode_bytes + workspace_alignment - 1`, align within it, and
+retain the original pointer for freeing. An aligned probe needs `D * P`; the
+bootstrap query includes `A - 1` extra bytes for an arbitrary probe address.
 
-For an already aligned probe base, `D * P` bytes suffice. The separate bootstrap
-query returns `D * P + A - 1` so an unaligned probe is also safe. Source tests
-exercise each pointer-alignment residue and fail exactly one byte below its
-actual traversal requirement.
+The requirements exclude provider heap capacity/headers, output storage and C
+stack frames. Depth bounds recursive traversal. Static descriptor metadata bounds
+its node set; native options also enforce an explicit total node budget. Unknown,
+cyclic, overlapping, mismatched and unsupported graphs still fail validation.
+Measurement cannot predict payload-dependent allocation success.
 
-Requirements exclude logical payload, provider-specific heap capacity/headers,
-the caller's output row, and recursive C stack frames. `max_depth`/`max_items`
-remain necessary bounds on the recursive validator. Provider allocation and
-source data failures still occur at decode time and retain failure-atomic
-rollback. Measurement cannot predict data-dependent allocation success.
+`container_depth` counts only Struct frames, zero for scalar/enum/buffer roots;
+`descriptor_depth` includes scalar leaves. The requirements record is new in the
+unreleased #111 feature, so its added field must be consumed with the matching
+header and `DATA_BIND_NATIVE_REQUIREMENTS_INIT`. Existing options/diagnostic
+records and their ABI are unchanged.
 
-## Native-v1 limits are not ORM limits
+## Aggregate and per-value limits share one decoder
 
-| Native option | Meaning | Zero behavior |
-| --- | --- | --- |
-| `workspace_bytes` | Private traversal, staging and field tracking capacity | Insufficient for a valid nonzero-depth probe |
-| `max_depth` | Descriptor/value depth, root is 1; scalar leaves count | LIMIT |
-| `max_items` | Whole-graph descriptor nodes / whole-value visited nodes | LIMIT |
-| `max_owned_bytes` | Aggregate logical string/bytes payload per decode, not heap capacity | Only zero-length owned payload is permitted |
+The original `data_bind_native_decode()` retains its aggregate
+`options.max_owned_bytes` policy. The additive
+`data_bind_native_decode_bounded(..., max_buffer_bytes, diagnostic)` uses exactly
+the same graph validator, native decoder, publication and rollback path. It adds
+a per-owned-value limit without weakening the aggregate bound. Before each
+provider assignment the limit is `min(aggregate_remaining, max_buffer_bytes)`.
+Zero permits empty payload only. Both limits count logical string/bytes payload,
+not allocator headers or spare capacity. The sum cannot wrap.
 
-The supported graph remains scalar, canonical enum, owned buffer and Struct.
-Unsupported container/optional/variant graphs still fail explicitly; measurement
-does not expand the capability matrix.
+Two three-byte values with aggregate six and per-value three succeed; a single
+four-byte value fails even when aggregate capacity remains. An aggregate of five
+still rejects two three-byte values. The tests exercise these separately,
+including zero-length payload and late-field rollback to semantic zero.
 
-TurboDB's previous row contract instead used active Struct field **bitmaps** for
-caller scratch, container-only depth, a per-container item bound and a
-**per-value** buffer bound. In particular, a two-scalar flat row with
-`scratch_bytes=1`, `max_depth=1` is not represented by direct native-v1 option
-assignments. Raising the fixture budget, setting a large multiplier, or calling
-these requirements the caller's scratch would silently change that contract.
+## ORM translation
 
-This slice intentionally does **not** make that translation. The remaining #58
-work must preserve those meanings with an explicit SaltsUtils-owned capability,
-check it before cursor configuration/open/next, retain no-partial-publication
-and ownership behavior, and test exact/one-over per-value and nested bounds.
-TurboDB's dependency pin, fixtures, five root-suite failures and #59/#60 gates
-are not changed or declared fixed by this prerequisite.
+TurboDB's row contract is preserved rather than mapped by similarly named fields:
 
-## Validation
+| ORM limit | Translation |
+| --- | --- |
+| `scratch_bytes` | Actual simultaneously active field bitmaps; compare with measured `field_tracking_bytes`. Private traversal/staging is measured and allocated separately, not charged as caller scratch. |
+| `max_depth` | Container-only bound. Check addition of one for native leaf-inclusive depth and independently reject measured `container_depth` over the original bound, including empty Struct nesting. |
+| `max_container_items` | Per dynamic collection. The supported native-v1 graph has no dynamic collections; static Struct fields are not collection elements. Unsupported collection/optional kinds are rejected rather than silently admitted. |
+| `max_buffer_bytes` | Pass unchanged to the bounded decoder as a per-value logical payload limit. Aggregate accounting remains overflow-safe at the address-space ceiling. |
 
-The existing C reader/preflight target contains the sizing tests; the existing
-C++17 target checks layout, signature, C linkage and calls both new functions.
-There is no new workflow, standalone project, test framework or source-policy
-substitute for native execution. Original tests and their assertions remain.
+For the supported static graph, ORM measures the canonical node count and uses
+that exact count as its runtime total-node limit. It does not multiply the caller's
+collection limit or expand its meaning. A two-field scalar row with scratch one,
+depth one and collection limit zero is therefore valid, while scratch zero is not.
 
-Acceptance still requires the normal exact-head SaltsUtils installed-package
-CI, followed by the unchanged exact-tuple TurboDB Windows/Linux Debug/Release
-matrix once a complete row-budget translation is integrated. Local source-only
-ASan/UBSan results are not those installed-package or cross-platform results.
+ORM uses a private prepare/publish pair. Preparation validates and allocates before
+backend `open_cursor`, shape configuration or `next`; publish configures and moves
+the cursor only on success. Failures leave unconsumed preparation/cursor owned by
+the caller. The existing connection reservation and query/transaction holds cover
+native creation and cleanup; the binder creates no lock, queue or owner registry.
+
+## Validation boundaries
+
+Existing canonical graph, lifecycle and enum behavior remains tested. Measurement
+boundary assertions reflect the smaller *actual* bitmap storage, not inflated
+capacity. New per-value/aggregate C cases and the existing C++17 consumer exercise
+the shared bounded decoder. ORM retains original budgets and behavioral assertions;
+only fixture reflection entries that lacked canonical `size_t`/`tstr` identities
+are bound to the actual canonical metadata during setup.
+
+Local source-level sanitizer results do not replace installed-package or complete
+Windows/Linux acceptance. #58/#59/#60 remain subject to the original exact-head
+consumer matrix, ownership/race/failure regressions, real PostgreSQL and unfiltered
+root suite. Dynamic container/optional support is not added by this fix.

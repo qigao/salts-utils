@@ -21,6 +21,7 @@ typedef struct NativePlan {
   const cmeta_data_desc **ancestors;
   size_t nodes;
   size_t depth_peak;
+  size_t container_depth;
   size_t seen_peak;
 } NativePlan;
 
@@ -30,6 +31,7 @@ typedef struct NativeDecode {
   cserde_reader *reader;
   size_t items;
   size_t owned_bytes;
+  size_t max_buffer_bytes;
 } NativeDecode;
 
 static void native_copy_text(char *destination, size_t capacity, const char *source) {
@@ -385,6 +387,11 @@ range:
                      "Numeric value is outside native storage range");
 }
 
+/* One bit per declared field, not one byte; active nested frames add. */
+static size_t native_bitmap_bytes(size_t fields) {
+  return fields / 8u + (fields % 8u != 0u);
+}
+
 static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *data,
                                        size_t depth, size_t active_seen,
                                        const char *path) {
@@ -429,13 +436,14 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
     const cmeta_struct_desc *layout = shape == NULL ? NULL : shape->layout;
     size_t seen_here;
+    if (depth > plan->container_depth) plan->container_depth = depth;
     if (shape == NULL || layout == NULL || data->storage_type == NULL ||
         layout->size != data->storage_type->size ||
         layout->align != data->storage_type->align ||
         shape->field_count != layout->field_count)
       return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                          "Struct descriptor does not exactly describe native storage");
-    if (!native_size_add(active_seen, shape->field_count, &seen_here))
+    if (!native_size_add(active_seen, native_bitmap_bytes(shape->field_count), &seen_here))
       return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                          "Struct field workspace size overflow");
     if (seen_here > plan->seen_peak) plan->seen_peak = seen_here;
@@ -721,6 +729,7 @@ static DataBindStatus native_decode_struct(NativeDecode *decode,
   cserde_token token;
   unsigned char *seen;
   size_t mark = scratch->offset;
+  const size_t bitmap_bytes = native_bitmap_bytes(shape->field_count);
   size_t i;
   DataBindStatus status = native_next(decode, &token, path);
   if (status != DATA_BIND_OK) return status;
@@ -728,11 +737,11 @@ static DataBindStatus native_decode_struct(NativeDecode *decode,
     return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
                        "Expected map token for native Struct");
 
-  seen = (unsigned char *)native_arena_alloc(scratch, shape->field_count, 1u);
+  seen = (unsigned char *)native_arena_alloc(scratch, bitmap_bytes, 1u);
   if (shape->field_count != 0u && seen == NULL)
     return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Workspace is too small for Struct field tracking");
-  if (shape->field_count != 0u) memset(seen, 0, shape->field_count);
+  if (bitmap_bytes != 0u) memset(seen, 0, bitmap_bytes);
 
   for (;;) {
     size_t field_index = 0u;
@@ -760,7 +769,7 @@ static DataBindStatus native_decode_struct(NativeDecode *decode,
       return native_fail(decode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                          "Native field path exceeds diagnostic capacity");
     }
-    if (seen[field_index] != 0u) {
+    if ((seen[field_index / 8u] & (1u << (field_index % 8u))) != 0u) {
       scratch->offset = mark;
       return native_fail(decode->diagnostic, DATA_BIND_ERR_PARSE, CSERDE_OK, child_path,
                          "Duplicate native Struct field");
@@ -772,11 +781,11 @@ static DataBindStatus native_decode_struct(NativeDecode *decode,
       scratch->offset = mark;
       return status;
     }
-    seen[field_index] = 1u;
+    seen[field_index / 8u] |= (unsigned char)(1u << (field_index % 8u));
   }
 
   for (i = 0u; i < shape->field_count; ++i) {
-    if (seen[i] == 0u) {
+    if ((seen[i / 8u] & (1u << (i % 8u))) == 0u) {
       if (!native_path_join((char[sizeof(((DataBindError *)0)->path)]){0},
                             sizeof(((DataBindError *)0)->path), path,
                             shape->fields[i].name)) {
@@ -928,9 +937,10 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
       return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                          "Owned payload accounting exceeded configured limit");
     remaining = decode->options->max_owned_bytes - decode->owned_bytes;
+    if (decode->max_buffer_bytes < remaining) remaining = decode->max_buffer_bytes;
     if (token.value.slice.size > remaining)
       return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
-                         "Owned payload exceeds configured byte limit");
+                         "Owned payload exceeds aggregate or per-value byte limit");
     buffer_status = cmeta_data_buffer_assign(
         data, storage, token.value.slice.data, token.value.slice.size, remaining);
     if (buffer_status != CMETA_OK) {
@@ -1060,6 +1070,7 @@ DataBindStatus data_bind_native_measure(
   measured.field_tracking_bytes = plan.seen_peak;
   measured.descriptor_depth = plan.depth_peak;
   measured.descriptor_nodes = plan.nodes;
+  measured.container_depth = plan.container_depth;
   measured.lifecycle_bytes = measured.traversal_bytes;
   padding = measured.staging_bytes % _Alignof(const cmeta_data_desc *);
   if (padding != 0u) padding = _Alignof(const cmeta_data_desc *) - padding;
@@ -1202,10 +1213,10 @@ DataBindStatus data_bind_native_clear(
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_native_decode(
+static DataBindStatus native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
-    DataBindNativeDiagnostic *diagnostic) {
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
   NativeArena arena;
   NativeArena scratch;
   NativePlan plan;
@@ -1313,6 +1324,7 @@ DataBindStatus data_bind_native_decode(
   decode.options = options;
   decode.diagnostic = diagnostic;
   decode.reader = reader;
+  decode.max_buffer_bytes = max_buffer_bytes;
   status = native_decode_value(&decode, shape, temporary, 1u, root_path, &scratch);
   if (status == DATA_BIND_OK) {
     status = native_publish_value(diagnostic, shape, destination, temporary, root_path);
@@ -1327,4 +1339,22 @@ DataBindStatus data_bind_native_decode(
                          "Temporary native storage did not restore semantic zero");
   if (status == DATA_BIND_OK) native_reset_diagnostic(diagnostic);
   return status;
+}
+
+/* Both entry points use the same validator, decoder and rollback path. The
+ * additive per-value bound does not relax the aggregate bound in options. */
+DataBindStatus data_bind_native_decode(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  return native_decode_bounded(options, shape, reader, destination,
+                               destination_bytes, SIZE_MAX, diagnostic);
+}
+
+DataBindStatus data_bind_native_decode_bounded(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
+  return native_decode_bounded(options, shape, reader, destination,
+                               destination_bytes, max_buffer_bytes, diagnostic);
 }
