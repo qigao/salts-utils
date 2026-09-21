@@ -190,6 +190,91 @@ static int native_scalar_supported(const cmeta_data_desc *data) {
       return 0;
   }
 }
+static const cmeta_data_enum_bits_ops *native_enum_bits_ops(
+    const cmeta_data_desc *data) {
+  if (data == NULL || data->kind != CMETA_DATA_ENUM || data->shape != NULL ||
+      data->enum_ops != NULL)
+    return NULL;
+  return cmeta_data_enum_bits_ops_of(data);
+}
+
+static int native_enum_slice_equal(const cserde_slice *slice, const char *text) {
+  size_t length;
+  if (slice == NULL || text == NULL) return 0;
+  length = strlen(text);
+  return slice->size == length &&
+         (length == 0u || memcmp(slice->data, text, length) == 0);
+}
+
+static int native_enum_width_mask(uint8_t bits, uint64_t *mask) {
+  if (mask == NULL) return 0;
+  switch (bits) {
+    case 8u: *mask = UINT8_MAX; return 1;
+    case 16u: *mask = UINT16_MAX; return 1;
+    case 32u: *mask = UINT32_MAX; return 1;
+    case 64u: *mask = UINT64_MAX; return 1;
+    default: return 0;
+  }
+}
+
+static DataBindStatus native_enum_bits_from_token(
+    DataBindNativeDiagnostic *diagnostic, const cmeta_data_desc *data,
+    const cserde_token *token, uint64_t *out, const char *path) {
+  const cmeta_data_enum_bits_ops *ops = native_enum_bits_ops(data);
+  const cmeta_enum_domain *domain;
+  uint64_t mask;
+  size_t i;
+  if (ops == NULL || out == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Invalid canonical enum-bits descriptor");
+  domain = ops->domain;
+  if (domain == NULL || !native_enum_width_mask(domain->bits, &mask))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Invalid canonical enum domain");
+
+  if (token->kind == CSERDE_STRING) {
+    for (i = 0u; i < domain->count; ++i) {
+      const cmeta_enum_bits_item *item = &domain->items[i];
+      if (native_enum_slice_equal(&token->value.slice, item->symbol) ||
+          native_enum_slice_equal(&token->value.slice, item->text)) {
+        *out = item->bits;
+        return DATA_BIND_OK;
+      }
+    }
+    return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                       "Unknown canonical enum symbol or text");
+  }
+
+  if (token->kind == CSERDE_UINT) {
+    if ((token->value.uint & ~mask) != 0u)
+      return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                         "Unsigned enum value exceeds canonical width");
+    *out = token->value.uint;
+    return DATA_BIND_OK;
+  }
+
+  if (token->kind == CSERDE_SINT) {
+    if (domain->signedness == CMETA_ENUM_UNSIGNED) {
+      if (token->value.sint < 0 || ((uint64_t)token->value.sint & ~mask) != 0u)
+        return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                           "Signed enum token is outside unsigned canonical domain");
+      *out = (uint64_t)token->value.sint;
+      return DATA_BIND_OK;
+    }
+    if (domain->bits < 64u) {
+      const int64_t limit = INT64_C(1) << (domain->bits - 1u);
+      if (token->value.sint < -limit || token->value.sint >= limit)
+        return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                           "Signed enum value exceeds canonical width");
+    }
+    *out = (uint64_t)token->value.sint & mask;
+    return DATA_BIND_OK;
+  }
+
+  return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
+                     "Expected integer or string token for canonical enum");
+}
+
 
 static int native_scalar_zero(const cmeta_data_desc *data, void *storage) {
   if (native_data_matches(data, &cmeta_data_bool)) {
@@ -408,6 +493,13 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
 
   if (native_scalar_supported(data)) return DATA_BIND_OK;
 
+  if (data->kind == CMETA_DATA_ENUM) {
+    if (native_enum_bits_ops(data) == NULL)
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                         "Direct native reader requires canonical enum-bits provider");
+    return DATA_BIND_OK;
+  }
+
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     const cmeta_data_buffer_ops *ops = cmeta_data_buffer_ops_of(data);
     if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED)
@@ -500,6 +592,12 @@ static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
                          "Could not initialize native scalar semantic zero");
     return DATA_BIND_OK;
   }
+  if (data->kind == CMETA_DATA_ENUM) {
+    if (cmeta_data_enum_bits_restore_zero(data, storage) == CMETA_OK)
+      return DATA_BIND_OK;
+    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+                       "Canonical enum provider could not establish semantic zero");
+  }
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     cmeta_status status = cmeta_data_buffer_init_zero(data, storage);
     if (status == CMETA_OK) return DATA_BIND_OK;
@@ -553,6 +651,10 @@ static DataBindStatus native_restore_value(const cmeta_data_desc *data, void *st
   size_t i;
   if (native_scalar_supported(data))
     return native_scalar_zero(data, storage) ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;
+  if (data->kind == CMETA_DATA_ENUM)
+    return cmeta_data_enum_bits_restore_zero(data, storage) == CMETA_OK
+               ? DATA_BIND_OK
+               : DATA_BIND_ERR_RUNTIME;
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)
     return cmeta_data_buffer_restore_zero(data, storage) == CMETA_OK
                ? DATA_BIND_OK
@@ -577,6 +679,10 @@ static DataBindStatus native_restore_value(const cmeta_data_desc *data, void *st
 static int native_value_is_zero(const cmeta_data_desc *data, const void *storage) {
   size_t i;
   if (native_scalar_supported(data)) return native_scalar_is_zero(data, storage);
+  if (data->kind == CMETA_DATA_ENUM) {
+    bool zero = false;
+    return cmeta_data_enum_bits_is_zero(data, storage, &zero) == CMETA_OK && zero;
+  }
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     bool zero = false;
     return cmeta_data_buffer_is_zero(data, storage, &zero) == CMETA_OK && zero;
@@ -604,6 +710,17 @@ static DataBindStatus native_publish_value(DataBindNativeDiagnostic *diagnostic,
   if (native_scalar_supported(data)) {
     memcpy(destination, source, data->storage_type->size);
     (void)native_scalar_zero(data, source);
+    return DATA_BIND_OK;
+  }
+  if (data->kind == CMETA_DATA_ENUM) {
+    uint64_t bits = 0u;
+    if (cmeta_data_enum_read_bits(data, source, &bits) != CMETA_OK ||
+        cmeta_data_enum_assign_bits(data, destination, bits) != CMETA_OK)
+      return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+                         "Canonical enum provider failed during publication");
+    if (cmeta_data_enum_bits_restore_zero(data, source) != CMETA_OK)
+      return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+                         "Canonical enum staging value did not restore semantic zero");
     return DATA_BIND_OK;
   }
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
