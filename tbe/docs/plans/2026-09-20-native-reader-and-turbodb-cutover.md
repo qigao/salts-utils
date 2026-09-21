@@ -3,7 +3,9 @@
 日期：2026-09-20。
 关联：[规范](../specs/2026-09-20-native-reader-and-turbodb-cutover.md)、[DataBind #99](https://github.com/qigao/salts-utils/issues/99)、[TurboDB #52](https://github.com/qigao/turbodb/issues/52)、[Salts #305](https://github.com/qigao/salts/issues/305)。
 
-本文件是实施计划，不是测试完成报告。方向已批准；生产实现、直接 reader 公共 ABI、能力等价和消费者切换均尚未验收。所有未勾选项都不得在 issue/PR 中写成完成。
+本文件保留 2026-09-20 的计划状态，不是当前验收报告；后续结果以关联 issue/PR 的精确提交和测试为准。
+
+DataBind 是 SaltsUtils 的组成部分，唯一公开消费目标是 `Salts::Databind`，不设独立 DataBind package/root。
 
 ## Task 1 — 建立精确能力与消费者基线
 
@@ -48,11 +50,11 @@
 
 所属 #99；依赖 Task 3。
 
-- [ ] 复用既有 DataBindCore 和独立 package 的 owner；导出真实已实现的接口与版本要求。
+- [ ] 在 SaltsUtils 内复用 DataBind 转换实现，通过唯一公开目标 `Salts::Databind` 导出真实已实现的接口与版本要求；不让消费者组装内部 targets。
 - [ ] 用现有构建流程编译C/C++直接-reader消费者，核对真实链接/动态依赖，不只是 PUBLIC targets。
-- [ ] 证明 direct native 路径不链接 CBind、具体parser、schema compiler、SaltsUtils runtime 或 CFlow；可选 DataBindCFlow 不成为 core 的反向依赖。
+- [ ] 验证内部 direct native 转换不依赖 CBind、具体 parser、schema compiler 或 CFlow；可选适配不成为内部 core 的反向依赖。该检查属于 SaltsUtils 的实现闭包验证，不改变 `Salts::Databind` 的唯一公开消费入口。
 - [ ] Windows/Linux、static/shared的适用组合与既有sanitizer验证通过；不把某配置下未构建的backend列成已验证。
-- [ ] 同步 #89：物理抽仓可能改变路径，但不能生成第二份运行时、forwarding包或兼容别名。
+- [ ] 通过正式 SaltsUtils 安装消费 DataBind；不得生成第二份运行时、独立 package/root、forwarding 包或兼容别名。
 
 禁止为此新增 CMake install/verify框架或Python行为测试。需要的失败检查放在实际配置入口，功能证据来自编译与真实运行。
 
@@ -91,4 +93,4 @@ Binder变更本身不关闭 #28 的ABI5/最终cleanup门槛，也不完成 #30 S
 
 本机未提供 `codegraph` 可执行程序；本阶段使用GitHub连接器直接阅读已知源码/设计/issue，没有声称完成调用图或完整消费者盘点。
 
-文档提交不修改生产代码、workflow、测试注册、依赖pin、公共ABI或PR #44分支。实现任务保持未完成，不声称新的runtime或CI绿色结果。
+当时的文档提交未修改生产代码、workflow、测试注册、依赖 pin、公共 ABI 或 PR #44 分支，也未取得新的 runtime 或 CI 绿色结果。后续实现状态由其独立的精确提交和验证记录决定；本次归属文字修正不改写历史结果。
