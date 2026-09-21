@@ -1,16 +1,15 @@
 # DataBind 直接 Reader 转换与 TurboDB 单引擎迁移
 
 日期：2026-09-20。
-状态：用户已批准 DataBind-only 方向；本文件落实迁移契约，进入实现前审查。尚未发布新的公共 API，尚未完成生产切换。
+状态：保留 2026-09-20 的设计与验收基线；后续实施以关联 issue/PR 的精确提交和测试为准。DataBind 属于 SaltsUtils，唯一公开消费目标为 `Salts::Databind`。
 
 任务归属：
 
 - [DataBind 转换入口：salts-utils #99](https://github.com/qigao/salts-utils/issues/99)。
 - [TurboDB 消费方迁移：turbodb #52](https://github.com/qigao/turbodb/issues/52)。
 - [CBind 消费者盘点与退役：salts #305](https://github.com/qigao/salts/issues/305)。
-- [既有 DataBind 独立包：salts-utils #67](https://github.com/qigao/salts-utils/issues/67)；[物理抽仓：#89](https://github.com/qigao/salts-utils/issues/89)。
 
-本规范放在 DataBind 的可移动 `tbe/` 子树内。物理抽仓时随唯一实现迁移，不在两个仓库维持同一运行时或转发包。
+本规范位于 SaltsUtils 的 `tbe/` 组件目录。DataBind 的源码、构建、安装、发布与问题跟踪均归属 SaltsUtils；不设独立项目、package/root 或转发包。
 
 ## 1. 决策与已核对的事实
 
@@ -24,7 +23,7 @@
 | turbodb `a37c1183ec53e4d1bb9a7b938b50d86d9688a3b2` | `orm/src/flow/orm_cbind_publisher.c` 直接调用 `cbind_decode()`，同时持有 cursor 和 Publisher 生命周期状态。 |
 | turbodb PR #44 的现有报告 | run `35506650767` 记录新 28 例中 14 通过/14 失败，旧 93 例通过；这是已记录的 post-construction RED，不是本次重新运行。 |
 
-依赖目标名或 PUBLIC 链接列表不能代替实际运行时闭包证据。包已经独立，也不能推导出直接 reader 的轻量转换入口已经完成。
+依赖目标名或 PUBLIC 链接列表不能代替实际运行时闭包证据。SaltsUtils 导出消费目标，也不能单独证明直接 reader 的轻量转换入口已经完成。
 
 ## 2. 唯一职责归属
 
@@ -103,9 +102,9 @@ TurboDB 普通行结果不能逃逸一个在下一次 `next/cancel/destroy` 后�
 
 ## 5. 最小依赖闭包
 
-优先将通用转换与回滚归并到现有 `Salts::DataBindCore`，不再引入一个与它并列的通用 binder target。格式 facade 依赖 core；core 不反向依赖 facade、具体 parser、schema compiler 或 CFlow。
+通用转换与回滚归并到 SaltsUtils 的 DataBind 内部实现，不再引入并列的通用 binder。格式 facade 依赖内部 core；core 不反向依赖 facade、具体 parser、schema compiler 或 CFlow。
 
-消费者仍通过独立 DataBind package 获取目标。是否需要 Base 组件或版本约束，以实际 DataBindConfig 和新 ABI 审查结果为准；不能仅把 `Salts::CBind` 文本替换成聚合 `Salts::DataBind` 就宣布轻量迁移完成。
+消费者通过显式 `SALTS_UTILS_ROOT` 下的 `find_package(SaltsUtils CONFIG REQUIRED)` 获取唯一公开目标 `Salts::Databind`。SaltsUtils 封装内部依赖，消费者不拼接内部 targets、不引入独立 DataBind package/root 或兼容 alias。版本约束以实际公共 ABI 为准；仅替换链接目标名称不能证明轻量迁移完成。
 
 验证以真实头文件、链接符号、目标闭包和适用平台的动态依赖为证据。复用现有构建/测试路径，不新增 CMake install/verify 框架、Python 行为测试、自动下载 fallback 或兼容 package。
 
