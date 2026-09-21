@@ -47,3 +47,10 @@ target_compile_definitions(test_salts_unicode_word_conformance
   PRIVATE SALTS_UNICODE_WORD_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/../data/17.0.0/WordBreakTest.txt")
 set_tests_properties(test_salts_unicode_word_conformance
   PROPERTIES LABELS "unicode;word;conformance")
+cmake_add_test(test_salts_unicode_line_break
+  SOURCES test_salts_unicode_line_break.c
+  LIBS Salts::Unicode Salts::TinyTest
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  FOLDER "unicode/tests")
+set_tests_properties(test_salts_unicode_line_break
+  PROPERTIES LABELS "unicode;line-break")
