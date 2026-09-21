@@ -14,7 +14,7 @@ find_package(SaltsUtils CONFIG REQUIRED)
 foreach(required_target IN ITEMS
     Salts::TbeSchema
     Salts::DataBindCore
-    Salts::DataBind
+    Salts::Databind
     Salts::DataBindCMeta
     Salts::DataBindCFlow
     Salts::JsonParser
@@ -28,3 +28,7 @@ foreach(required_target IN ITEMS
       "SaltsUtils package is missing component target ${required_target}")
   endif()
 endforeach()
+
+if(TARGET Salts::DataBind)
+  message(FATAL_ERROR "SaltsUtils must export Salts::Databind, not a spelling alias")
+endif()
