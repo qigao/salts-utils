@@ -12,6 +12,12 @@ VALUE_NAMES = (
     "LRE LRO RLE RLO PDF LRI RLI FSI PDI"
 ).split()
 VALUE_TO_ID = {name: i for i, name in enumerate(VALUE_NAMES)}
+MISSING_VALUE_ALIASES = {
+    "Left_To_Right": "L",
+    "Right_To_Left": "R",
+    "Arabic_Letter": "AL",
+    "European_Terminator": "ET",
+}
 
 def parse_range(text: str) -> tuple[int, int]:
     parts = text.strip().split("..")
@@ -46,10 +52,11 @@ def main() -> None:
             continue
         payload = stripped[len("# @missing:"):].strip()
         range_text, value_text = [part.strip() for part in payload.split(";", 1)]
-        if value_text not in VALUE_TO_ID:
+        value_name = MISSING_VALUE_ALIASES.get(value_text, value_text)
+        if value_name not in VALUE_TO_ID:
             raise ValueError(f"unknown @missing Bidi_Class: {value_text}")
         first, last = parse_range(range_text)
-        values[first:last + 1] = array("B", [VALUE_TO_ID[value_text]]) * (last - first + 1)
+        values[first:last + 1] = array("B", [VALUE_TO_ID[value_name]]) * (last - first + 1)
 
     for raw in text.splitlines():
         payload = raw.split("#", 1)[0].strip()
