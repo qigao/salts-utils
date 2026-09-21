@@ -139,11 +139,29 @@ static int native_path_join(char *out, size_t capacity,
 
 static int native_data_matches(const cmeta_data_desc *data,
                                const cmeta_data_desc *canonical) {
-  return data != NULL && canonical != NULL && data->kind == canonical->kind &&
-         data->storage_type != NULL && canonical->storage_type != NULL &&
-         data->storage_type->size == canonical->storage_type->size &&
-         data->storage_type->align == canonical->storage_type->align &&
-         cmeta_type_equal(data->storage_type, canonical->storage_type);
+  if (data == NULL || canonical == NULL || data->kind != canonical->kind ||
+      data->storage_type == NULL || canonical->storage_type == NULL ||
+      data->storage_type->kind != canonical->storage_type->kind ||
+      data->storage_type->size != canonical->storage_type->size ||
+      data->storage_type->align != canonical->storage_type->align ||
+      !cmeta_type_equal(data->storage_type, canonical->storage_type))
+    return 0;
+
+  if (data->kind == CMETA_DATA_SINT || data->kind == CMETA_DATA_UINT) {
+    const cmeta_data_integer_shape *actual =
+        (const cmeta_data_integer_shape *)data->shape;
+    const cmeta_data_integer_shape *expected =
+        (const cmeta_data_integer_shape *)canonical->shape;
+    return actual != NULL && expected != NULL && actual->bits == expected->bits;
+  }
+  if (data->kind == CMETA_DATA_FLOAT) {
+    const cmeta_data_float_shape *actual =
+        (const cmeta_data_float_shape *)data->shape;
+    const cmeta_data_float_shape *expected =
+        (const cmeta_data_float_shape *)canonical->shape;
+    return actual != NULL && expected != NULL && actual->bits == expected->bits;
+  }
+  return 1;
 }
 
 static int native_scalar_supported(const cmeta_data_desc *data) {
@@ -436,9 +454,19 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
         return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
                            "Native Struct field layout disagrees with canonical CMeta");
       for (j = 0u; j < i; ++j) {
-        if (strcmp(shape->fields[j].name, field->name) == 0)
+        const cmeta_data_field_desc *previous = &shape->fields[j];
+        size_t previous_end;
+        if (strcmp(previous->name, field->name) == 0)
           return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
                              "Native Struct contains duplicate field names");
+        if (previous->value == NULL || previous->value->storage_type == NULL ||
+            !native_size_add(previous->offset, previous->value->storage_type->size,
+                             &previous_end))
+          return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
+                             "Native Struct field range is invalid");
+        if (field->offset < previous_end && previous->offset < end)
+          return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
+                             "Native Struct fields overlap");
       }
       {
         DataBindStatus status =
@@ -849,17 +877,18 @@ DataBindStatus data_bind_native_decode(
                             destination, destination_bytes))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
                        "Native workspace overlaps destination storage");
+  if (diagnostic != NULL &&
+      (native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             options->workspace, options->workspace_bytes) ||
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             destination, destination_bytes)))
+    return DATA_BIND_ERR_INVALID_ARG;
   if (native_ranges_overlap(options, sizeof(*options),
                             options->workspace, options->workspace_bytes) ||
       native_ranges_overlap(options, sizeof(*options), destination, destination_bytes) ||
       native_ranges_overlap(reader, sizeof(*reader),
                             options->workspace, options->workspace_bytes) ||
-      native_ranges_overlap(reader, sizeof(*reader), destination, destination_bytes) ||
-      (diagnostic != NULL &&
-       (native_ranges_overlap(diagnostic, sizeof(*diagnostic),
-                              options->workspace, options->workspace_bytes) ||
-        native_ranges_overlap(diagnostic, sizeof(*diagnostic),
-                              destination, destination_bytes))))
+      native_ranges_overlap(reader, sizeof(*reader), destination, destination_bytes))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
                        "Native control records alias mutable decode storage");
 
