@@ -1,7 +1,6 @@
-# DataBind-owned CMake helpers.
-#
-# Keep this module self-contained so the DataBind/TBE subtree can move to a
-# sibling repository without depending on SaltsUtils' cmake/CmakeUtils.cmake.
+# Private CMake helpers for the DataBind/TBE component within SaltsUtils.
+# This module organizes component-local build helpers; source, build and
+# package ownership remain with SaltsUtils.
 
 function(databind_config_target target_name)
   set(options)
