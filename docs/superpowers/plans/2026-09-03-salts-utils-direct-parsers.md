@@ -1,5 +1,7 @@
 # Salts Utils Direct Parsers Implementation Plan
 
+> Historical plan (2026-09-03). The direction to retire DataBind in favor of CBind has been withdrawn. DataBind is part of SaltsUtils and is consumed through `Salts::Databind`; the checked items below retain the historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rename the TurboParser package to SaltsUtils, remove the aggregate `turbo_parser` facade, and make every remaining utility consume installed `Salts::*` parser components directly.
