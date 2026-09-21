@@ -117,6 +117,58 @@ jobs:
           ctest --test-dir build/linux-gcc-debug \
             -R '^test_salts_unicode_line_break(_conformance)?$' --output-on-failure
 
+      - name: Install exact SaltsUtils head
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target install -j2
+
+      - name: Verify C and C++ install-tree Unicode consumers
+        shell: bash
+        env:
+          SALTS_ROOT: /opt/salts/debug
+        run: |
+          set -euxo pipefail
+          consumer="${RUNNER_TEMP}/unicode-line-break-consumer"
+          mkdir -p "${consumer}"
+
+          cat > "${consumer}/CMakeLists.txt" <<'EOF'
+          cmake_minimum_required(VERSION 3.27)
+          project(SaltsUnicodeInstallConsumer LANGUAGES C CXX)
+          find_package(SaltsUtils CONFIG REQUIRED)
+          add_executable(unicode_consumer_c main.c)
+          add_executable(unicode_consumer_cpp main.cpp)
+          target_link_libraries(unicode_consumer_c PRIVATE Salts::Unicode)
+          target_link_libraries(unicode_consumer_cpp PRIVATE Salts::Unicode)
+          EOF
+
+          cat > "${consumer}/main.c" <<'EOF'
+          #include <salts_unicode.h>
+          int main(void) {
+            salts_unicode_line_break value = SALTS_UNICODE_LINE_BREAK_XX;
+            return salts_unicode_line_break_class(0x2010u, &value) == SALTS_UNICODE_OK &&
+                           value == SALTS_UNICODE_LINE_BREAK_HH
+                       ? 0
+                       : 1;
+          }
+          EOF
+
+          cat > "${consumer}/main.cpp" <<'EOF'
+          #include <salts_unicode.h>
+          int main() {
+            salts_unicode_line_break value = SALTS_UNICODE_LINE_BREAK_XX;
+            return salts_unicode_line_break_class(0x2060u, &value) == SALTS_UNICODE_OK &&
+                           value == SALTS_UNICODE_LINE_BREAK_WJ
+                       ? 0
+                       : 1;
+          }
+          EOF
+
+          cmake -S "${consumer}" -B "${consumer}/build" -G Ninja             -DCMAKE_PREFIX_PATH="/opt/salts-utils/debug;${GITHUB_WORKSPACE}/vcpkg_installed/x64-linux/debug"
+          cmake --build "${consumer}/build" -j2
+          "${consumer}/build/unicode_consumer_c"
+          "${consumer}/build/unicode_consumer_cpp"
+
       - name: Verify exact head
         if: always()
         shell: bash
