@@ -33,7 +33,7 @@ set_tests_properties(test_data_bind_reader_probe PROPERTIES TIMEOUT 60)
 
 # #99 interface-first consumers: intentionally no fallback header or test decoder.
 add_executable(test_data_bind_native_reader native_reader_contract_test.c
-  native_reader_preflight_test.c)
+  native_reader_preflight_test.c native_reader_bitmap_test.c)
 add_executable(test_data_bind_native_reader_cpp native_reader_cpp_contract.cpp)
 add_executable(test_data_bind_native_lifecycle native_lifecycle_contract_test.c)
 add_executable(test_data_bind_native_enum native_enum_contract_test.c)
