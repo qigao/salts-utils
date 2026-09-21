@@ -68,6 +68,29 @@ typedef enum salts_unicode_grapheme_break {
   SALTS_UNICODE_GRAPHEME_LVT
 } salts_unicode_grapheme_break;
 
+
+typedef enum salts_unicode_word_break {
+  SALTS_UNICODE_WORD_OTHER = 0,
+  SALTS_UNICODE_WORD_CR,
+  SALTS_UNICODE_WORD_LF,
+  SALTS_UNICODE_WORD_NEWLINE,
+  SALTS_UNICODE_WORD_EXTEND,
+  SALTS_UNICODE_WORD_FORMAT,
+  SALTS_UNICODE_WORD_ZWJ,
+  SALTS_UNICODE_WORD_WSEG_SPACE,
+  SALTS_UNICODE_WORD_ALETTER,
+  SALTS_UNICODE_WORD_HEBREW_LETTER,
+  SALTS_UNICODE_WORD_NUMERIC,
+  SALTS_UNICODE_WORD_KATAKANA,
+  SALTS_UNICODE_WORD_EXTEND_NUM_LET,
+  SALTS_UNICODE_WORD_MID_LETTER,
+  SALTS_UNICODE_WORD_MID_NUM,
+  SALTS_UNICODE_WORD_MID_NUM_LET,
+  SALTS_UNICODE_WORD_SINGLE_QUOTE,
+  SALTS_UNICODE_WORD_DOUBLE_QUOTE,
+  SALTS_UNICODE_WORD_REGIONAL_INDICATOR
+} salts_unicode_word_break;
+
 /**
  * Scan one Unicode scalar from an explicit-length borrowed UTF-8 view.
  *
@@ -112,6 +135,36 @@ salts_unicode_status salts_unicode_grapheme_next(vstr input, size_t *cursor,
  */
 salts_unicode_status salts_unicode_grapheme_prev(vstr input, size_t *cursor,
                                                  vstr *cluster);
+
+
+/**
+ * Query the Unicode 17.0.0 Word_Break value for one scalar.
+ * Scalars not explicitly assigned by the UCD return OTHER.
+ */
+salts_unicode_status salts_unicode_word_break_class(
+    uint32_t scalar, salts_unicode_word_break *out_class);
+
+/**
+ * Advance one Unicode 17.0.0 default word-boundary segment (UAX #29).
+ *
+ * This is boundary segmentation, not lexical tokenization: whitespace and
+ * punctuation can be returned as segments. On success, *cursor advances to the
+ * exclusive end byte offset and *segment receives a borrowed subview of input.
+ * At end or on error both outputs remain unchanged. No locale tailoring,
+ * normalization, allocation, or source-lifetime extension is performed.
+ */
+salts_unicode_status salts_unicode_word_next(vstr input, size_t *cursor,
+                                             vstr *segment);
+
+/**
+ * Move backward one Unicode 17.0.0 default word-boundary segment (UAX #29).
+ *
+ * The input cursor must be 0, input.len, or a default word boundary. On success
+ * it moves to the segment start and *segment receives a borrowed input view.
+ * At start or on error both outputs remain unchanged.
+ */
+salts_unicode_status salts_unicode_word_prev(vstr input, size_t *cursor,
+                                             vstr *segment);
 
 /**
  * Query Unicode 17.0.0 properties for one scalar value.
