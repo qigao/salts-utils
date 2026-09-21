@@ -1,0 +1,38 @@
+name: DataBind source review snapshot
+on:
+  push:
+    branches: [fix/databind-saltsutils-contract]
+    paths: ['.github/workflows/databind-source-review.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/salts-utils
+          ref: 5020f0017545f4d28a7366436988a1d9ccc9194b
+          path: salts-utils
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/turbodb
+          ref: 130875106dc941d48f44c32671b8c8feb26e27b1
+          path: turbodb
+          persist-credentials: false
+      - name: Archive exact unmodified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          test "$(git -C salts-utils rev-parse HEAD)" = 5020f0017545f4d28a7366436988a1d9ccc9194b
+          test "$(git -C turbodb rev-parse HEAD)" = 130875106dc941d48f44c32671b8c8feb26e27b1
+          git -C salts-utils archive HEAD > evidence/salts-utils.tar
+          git -C turbodb archive HEAD > evidence/turbodb.tar
+          sha256sum evidence/*.tar > evidence/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: databind-source-review
+          path: evidence/
+          retention-days: 3
