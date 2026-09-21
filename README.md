@@ -2,9 +2,11 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared type, ownership, execution, and error semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, and related utilities. DataBind now has an independent installed package owner even though its sources are still physically hosted in this repository during staged extraction.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared type, ownership, execution, and error semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, and DataBind schema/compiler/native-dynamic binding.
 
-It deliberately does **not** create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
+**DataBind is part of SaltsUtils. Its source, build, installation, release, and public target export are owned by this repository.** It is not a separate project or package.
+
+SaltsUtils does not create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
 
 **Tags:** C11 · utilities · parsers · query-engine · crypto · filesystem · process · templates · unicode · data-binding · code-generation
 
@@ -24,15 +26,14 @@ This keeps higher-level utilities compatible with the same explicit ownership, b
 
 ```text
 Salts
-  ├── salts-utils        parsers / QueryVM / crypto / FS / Process / templates / Unicode / helpers
-  ├── salts-net          protocol and network tooling
-  └── DataBind           schema / compiler / native-dynamic binding
+  ├── salts-utils
+  │     ├── parsers / QueryVM / crypto / filesystem / process
+  │     ├── templates / Unicode / media / helpers
+  │     └── DataBind: schema / compiler / native-dynamic binding
+  └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the **general-purpose extension layer**. Protocol networking belongs in
-[salts-net](https://github.com/qigao/salts-net). DataBind is already a sibling **package owner** for schema/compiler/data-binding concerns; only the physical repository extraction remains staged.
-
-The DataBind sources and compiler are still physically built from this repository, but `SaltsUtilsTargets` no longer owns or exports DataBind/TBE targets. Consumers resolve the independent `DataBindConfig.cmake` package explicitly.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind's implementation lives under `tbe/`, and its runtime and compiler are built and installed with SaltsUtils.
 
 ## Main capabilities
 
@@ -46,40 +47,39 @@ The DataBind sources and compiler are still physically built from this repositor
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
-| DataBind source hosting | DataBind/TBE sources and compiler remain physically hosted here during repository extraction; package ownership is independent |
+| DataBind | `Salts::Databind`; schema, native/dynamic binding, rollback, and compiler/code generation |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
 ## Ownership boundaries
-
-The intended semantic boundaries are:
 
 ```text
 CMeta
   native structure, semantic type identity, traits, ranges        (Salts)
 
 CSTL
-  concrete container storage                                      (Salts)
+  concrete container storage                                     (Salts)
 
 CSerde
-  canonical format-neutral token contract                         (Salts)
+  canonical format-neutral token contract                        (Salts)
 
 QueryVM / parsers / utility adapters
-  high-level format, protocol, query, template, and utility work   (SaltsUtils)
+  high-level format, query, template, and utility work            (SaltsUtils)
 
 DataBind
   schema overlay, compiler, native/dynamic conversion,
-  rollback, format orchestration                                  (sibling boundary; extraction in progress)
+  rollback, format orchestration                                 (SaltsUtils)
 ```
 
-External names, presence/defaults, wire layout, validation, and schema fingerprints belong to the schema/binding layer; they are not a second CMeta type system.
+External names, presence/defaults, wire layout, validation, and schema fingerprints belong to the schema/binding component; they are not a second CMeta type system.
 
 ## CMake
 
-Configure against a matching installed Salts profile through `SALTS_ROOT`.
+Build SaltsUtils against a matching installed Salts profile through `SALTS_ROOT`. Consumers explicitly select the SaltsUtils installation through `SALTS_UTILS_ROOT`:
 
 ```cmake
-find_package(SaltsUtils CONFIG REQUIRED)
+find_package(SaltsUtils CONFIG REQUIRED
+  PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
 
 target_link_libraries(app PRIVATE
   Salts::JsonParser
@@ -96,36 +96,23 @@ target_link_libraries(app PRIVATE
 
 The package is fail-fast by design. It does not silently search unrelated prefixes, source trees, compatibility shims, or fallback implementations when the required installed Salts profile is missing.
 
-### Independent DataBind package
+### DataBind consumption
 
-DataBind is resolved from its own package root:
+The exact public consumption target is **`Salts::Databind`**:
 
 ```cmake
-find_package(DataBind 3 CONFIG REQUIRED
-  PATHS "$ENV{DATABIND_ROOT}"
-  NO_DEFAULT_PATH)
-
-target_link_libraries(app PRIVATE
-  Salts::TbeSchema
-  Salts::DataBind
-  Salts::DataBindCFlow)
+find_package(SaltsUtils CONFIG REQUIRED
+  PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
+target_link_libraries(app PRIVATE Salts::Databind)
 ```
 
-The canonical target namespace remains `Salts::`, but ownership comes from `DataBindConfig.cmake`, not `SaltsUtilsConfig.cmake`. Base DataBind discovery requires Salts only; concrete adapter components resolve SaltsUtils explicitly when requested. There is no forwarding package or fallback through SaltsUtils.
+SaltsUtils exports the actual runtime and owns its internal dependency closure. Consumers do not assemble internal Core/CMeta/CFlow/format-adapter targets, introduce alternate target spellings, or manufacture aliases to conceal a missing export. There is one SaltsUtils installation and release, with no independent DataBind package/root or fallback lookup.
 
 ## Selected modules
 
 ### Filesystem
 
-`Salts::FS` provides bounded filesystem services, native watch support, and typed watch publishers.
-
-Public headers include:
-
-```text
-<salts/fs.h>
-<salts/fs_watch.h>
-<salts/fs_watch_publisher.h>
-```
+`Salts::FS` provides bounded filesystem services, native watch support, and typed watch publishers. Public headers include `<salts/fs.h>`, `<salts/fs_watch.h>`, and `<salts/fs_watch_publisher.h>`.
 
 ### Process
 
@@ -139,20 +126,13 @@ Mustache and Jinja CMeta have independent source, tests, documentation, and inst
 
 The Unicode component uses generated data with a fixed Unicode version and exposes UTF-8 scalar and identifier/whitespace property APIs without embedding template-engine semantics.
 
-## Schema / DataBind transition
+### DataBind and the TBE compiler
 
-The current repository still physically contains the TBE compiler and DataBind implementation, but the installed package boundary is already a sibling **DataBind** owner focused on:
+The SaltsUtils DataBind component provides schema definition and validation, compiler/code generation, native and dynamic value binding, rollback/failure-atomic conversion, and format orchestration over parser/token contracts. It reuses CMeta, CSTL, CSerde, and CFlow without duplicating their semantic foundations.
 
-- schema definition and validation;
-- compiler/code generation;
-- native and dynamic value binding;
-- rollback/failure-atomic conversion;
-- format orchestration over parser/token contracts;
-- adapters to CMeta, CSTL, CSerde, and CFlow.
+**CMeta owns native type identity; DataBind owns schema/binding concerns within SaltsUtils.**
 
-The remaining physical repository extraction must preserve one semantic source of truth: **CMeta owns native type identity; DataBind owns schema/binding concerns.**
-
-Current detailed documentation remains available at:
+Detailed documentation:
 
 - [TBE compiler CLI options](tbe/tbe_compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/tbe-database-ddl-generation.md)
@@ -160,9 +140,7 @@ Current detailed documentation remains available at:
 
 ## Build and test
 
-Use the repository presets with the same profile as the installed Salts SDK.
-
-Typical flow:
+Use the repository root presets with the same profile as the installed Salts SDK. Build and install the complete SaltsUtils package, including DataBind and its compiler:
 
 ```sh
 cmake --preset linux-release-user
@@ -171,13 +149,13 @@ ctest --preset linux-release-user
 cmake --build --preset install-linux-release-user
 ```
 
-Windows uses the corresponding `win-*` presets.
+Windows uses the corresponding `win-*` presets. The `tbe/` subtree is a component, not an alternative standalone configure/install entry point.
 
 ## Design rules
 
 - Reuse Salts semantic/runtime contracts instead of introducing parallel ones.
 - Keep ownership, capacity, backpressure, rollback, and error propagation explicit.
-- Prefer independent component targets over broad facades.
+- Keep internal implementation decomposition behind the documented public consumption contract.
 - Do not add compatibility aliases or hidden fallback paths for migrated capabilities.
 - Keep package boundaries acyclic: Salts is the foundation; SaltsUtils is an extension consumer.
 
