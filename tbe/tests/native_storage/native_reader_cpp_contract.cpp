@@ -17,6 +17,13 @@ static_assert(std::is_same<decltype(&data_bind_native_init), Lifecycle>::value,
 static_assert(std::is_same<decltype(&data_bind_native_clear), Lifecycle>::value,
               "native clear signature drift");
 
+static_assert(std::is_standard_layout<DataBindNativeRequirements>::value,
+              "requirements must have C layout");
+using Measure = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
+                                   DataBindNativeRequirements *, DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_measure), Measure>::value,
+              "native measurement signature drift");
+
 int main() {
   enum { workspace_bytes = 4096, max_depth = 8, max_items = 64, max_owned_bytes = 32 };
   alignas(std::max_align_t) unsigned char workspace[workspace_bytes] = {};
@@ -31,6 +38,14 @@ int main() {
   cserde_reader reader = {};
   const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
   int value = 0;
+  size_t probe_bytes = 0u;
+  DataBindNativeRequirements requirements = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  if (data_bind_native_probe_workspace_size(max_depth, &probe_bytes) != DATA_BIND_OK ||
+      probe_bytes > sizeof(workspace)) return 1;
+  if (data_bind_native_measure(&options, &cmeta_data_int, &requirements,
+                               &diagnostic) != DATA_BIND_OK) return 1;
+  if (requirements.descriptor_depth != 1u || requirements.descriptor_nodes != 1u ||
+      requirements.decode_bytes > sizeof(workspace) || probe.calls != 0u) return 1;
   if (native_reader_probe_open(&probe, steps, 1u, &reader) != CSERDE_OK) return 1;
   if (data_bind_native_decode(&options, &cmeta_data_int, &reader, &value, sizeof(value),
                               &diagnostic) != DATA_BIND_OK) return 1;

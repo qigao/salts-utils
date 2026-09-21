@@ -20,6 +20,7 @@ typedef struct NativePlan {
   DataBindNativeDiagnostic *diagnostic;
   const cmeta_data_desc **ancestors;
   size_t nodes;
+  size_t depth_peak;
   size_t seen_peak;
 } NativePlan;
 
@@ -395,6 +396,7 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Native descriptor node count exceeds configured limit");
   ++plan->nodes;
+  if (depth > plan->depth_peak) plan->depth_peak = depth;
   if (!cmeta_data_desc_valid(data))
     return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                        "Invalid canonical CMeta descriptor");
@@ -958,6 +960,124 @@ static int native_diagnostic_header_valid(const DataBindNativeDiagnostic *diagno
     return 0;
   return diagnostic->size >= sizeof(DataBindNativeDiagnostic) &&
          diagnostic->abi_version == DATA_BIND_NATIVE_ABI_VERSION;
+}
+
+DataBindStatus data_bind_native_probe_workspace_size(
+    size_t max_depth, size_t *out_bytes) {
+  size_t bytes;
+  if (out_bytes == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  if (max_depth == 0u ||
+      !native_size_mul(max_depth, sizeof(const cmeta_data_desc *), &bytes) ||
+      !native_size_add(bytes, _Alignof(const cmeta_data_desc *) - 1u, &bytes))
+    return DATA_BIND_ERR_LIMIT;
+  *out_bytes = bytes;
+  return DATA_BIND_OK;
+}
+
+/* Use an LCM rather than assuming canonical storage alignment is a power of 2.
+ * The existing canonical descriptor validator only requires nonzero alignment. */
+static int native_common_alignment(size_t left, size_t right, size_t *out) {
+  size_t a = left;
+  size_t b = right;
+  if (a == 0u || b == 0u) return 0;
+  while (b != 0u) {
+    size_t remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return native_size_mul(left / a, right, out);
+}
+
+DataBindStatus data_bind_native_measure(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    DataBindNativeRequirements *requirements,
+    DataBindNativeDiagnostic *diagnostic) {
+  DataBindNativeRequirements measured = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  NativeArena arena;
+  NativePlan plan;
+  size_t padding;
+  const char *root_path;
+  DataBindStatus status;
+
+  if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  if (requirements == NULL || requirements->size < sizeof(*requirements) ||
+      requirements->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
+      options == NULL || options->size < sizeof(*options) ||
+      options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return DATA_BIND_ERR_INVALID_ARG;
+  /* Do not even write a diagnostic when outputs alias inputs or one another. */
+  if (native_ranges_overlap(requirements, sizeof(*requirements),
+                            options, sizeof(*options)) ||
+      (diagnostic != NULL &&
+       (native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                              requirements, sizeof(*requirements)) ||
+        native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                              options, sizeof(*options)))))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (!native_range_valid(options->workspace, options->workspace_bytes, NULL, NULL))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (native_ranges_overlap(requirements, sizeof(*requirements),
+                            options->workspace, options->workspace_bytes) ||
+      native_ranges_overlap(options, sizeof(*options),
+                            options->workspace, options->workspace_bytes) ||
+      (diagnostic != NULL &&
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             options->workspace, options->workspace_bytes)))
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  native_reset_diagnostic(diagnostic);
+  if (shape == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native measurement requires a descriptor");
+  if (!cmeta_data_desc_valid(shape) || shape->storage_type == NULL ||
+      !cmeta_type_desc_valid(shape->storage_type))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, NULL,
+                       "Invalid canonical CMeta root descriptor");
+  root_path = shape->display_name;
+  if (options->max_depth == 0u || options->max_items == 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native depth and item budgets must be nonzero");
+  if (!native_size_mul(options->max_depth, sizeof(*plan.ancestors),
+                       &measured.traversal_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native depth workspace size overflow");
+
+  arena.base = (unsigned char *)options->workspace;
+  arena.size = options->workspace_bytes;
+  arena.offset = 0u;
+  memset(&plan, 0, sizeof(plan));
+  plan.options = options;
+  plan.diagnostic = diagnostic;
+  plan.ancestors = (const cmeta_data_desc **)native_arena_alloc(
+      &arena, measured.traversal_bytes, _Alignof(const cmeta_data_desc *));
+  if (plan.ancestors == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Workspace cannot hold descriptor traversal state");
+  status = native_preflight(&plan, shape, 1u, 0u, root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  measured.staging_bytes = shape->storage_type->size;
+  measured.field_tracking_bytes = plan.seen_peak;
+  measured.descriptor_depth = plan.depth_peak;
+  measured.descriptor_nodes = plan.nodes;
+  measured.lifecycle_bytes = measured.traversal_bytes;
+  padding = measured.staging_bytes % _Alignof(const cmeta_data_desc *);
+  if (padding != 0u) padding = _Alignof(const cmeta_data_desc *) - padding;
+  if (!native_common_alignment(shape->storage_type->align,
+                               _Alignof(const cmeta_data_desc *),
+                               &measured.workspace_alignment) ||
+      !native_size_add(measured.staging_bytes, padding, &measured.decode_bytes) ||
+      !native_size_add(measured.decode_bytes, measured.traversal_bytes,
+                       &measured.decode_bytes) ||
+      !native_size_add(measured.decode_bytes, measured.field_tracking_bytes,
+                       &measured.decode_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native measured workspace size overflow");
+  /* Preserve a caller's larger size header for forward-compatible records. */
+  measured.size = requirements->size;
+  *requirements = measured;
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
 }
 
 static DataBindStatus native_lifecycle_preflight(
