@@ -82,6 +82,16 @@ salts_unicode_status salts_unicode_grapheme_break_class(
   return SALTS_UNICODE_OK;
 }
 
+
+salts_unicode_status salts_unicode_is_extended_pictographic(
+    uint32_t scalar, int *result) {
+  if (result == NULL || scalar > 0x10ffffu ||
+      (scalar >= 0xd800u && scalar <= 0xdfffu))
+    return SALTS_UNICODE_ERR_INVALID_ARGUMENT;
+  *result = salts_unicode_lookup_extended_pictographic(scalar) != 0u;
+  return SALTS_UNICODE_OK;
+}
+
 static int salts_unicode_is_control(salts_unicode_grapheme_break value) {
   return value == SALTS_UNICODE_GRAPHEME_CONTROL ||
          value == SALTS_UNICODE_GRAPHEME_CR ||
