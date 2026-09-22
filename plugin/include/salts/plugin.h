@@ -56,10 +56,10 @@ typedef struct salts_plugin_version {
     uint32_t patch;
 } salts_plugin_version;
 
-typedef salts_plugin_status (*salts_plugin_start_fn)(void *self);
-typedef salts_plugin_status (*salts_plugin_request_stop_fn)(void *self);
-typedef bool (*salts_plugin_is_quiescent_fn)(const void *self);
-typedef void (*salts_plugin_destroy_fn)(void *self);
+typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_start_fn)(void *self);
+typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_request_stop_fn)(void *self);
+typedef bool (SALTS_PLUGIN_CALL *salts_plugin_is_quiescent_fn)(const void *self);
+typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
 
 /*
  * One immutable semantic export row.
@@ -118,8 +118,17 @@ typedef struct salts_plugin_manifest {
     salts_plugin_destroy_fn destroy;
 } salts_plugin_manifest;
 
-#define SALTS_PLUGIN_EXPORT_V1_SIZE ((uint32_t)sizeof(salts_plugin_export))
-#define SALTS_PLUGIN_MANIFEST_V1_SIZE ((uint32_t)sizeof(salts_plugin_manifest))
+/*
+ * V1 minimum readable prefixes. These markers intentionally end at the last
+ * V1 field rather than using sizeof(struct), so a future tail extension can
+ * keep validating V1 prefixes without silently changing the V1 contract.
+ */
+#define SALTS_PLUGIN_EXPORT_V1_SIZE \
+    ((uint32_t)(offsetof(salts_plugin_export, callable) + \
+                sizeof(((salts_plugin_export *)0)->callable)))
+#define SALTS_PLUGIN_MANIFEST_V1_SIZE \
+    ((uint32_t)(offsetof(salts_plugin_manifest, destroy) + \
+                sizeof(((salts_plugin_manifest *)0)->destroy)))
 
 typedef const salts_plugin_manifest *(SALTS_PLUGIN_CALL *salts_plugin_query_fn)(
     uint32_t host_abi);
