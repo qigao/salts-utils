@@ -8,6 +8,10 @@ static_assert(std::is_standard_layout<salts_plugin_export>::value,
               "plugin export must be a C-compatible ABI row");
 static_assert(std::is_standard_layout<salts_plugin_manifest>::value,
               "plugin manifest must be a C-compatible ABI row");
+static_assert(std::is_same<
+                  decltype(salts_plugin_export{}.interface_value),
+                  void *>::value,
+              "interface export must expose a mutable borrowed handle");
 
 SALTS_PLUGIN_QUERY_EXPORT
 const salts_plugin_manifest *SALTS_PLUGIN_CALL
