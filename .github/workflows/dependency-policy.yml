@@ -13,8 +13,7 @@ on:
       - "tests/dependency_manifest_test.py"
       - ".github/workflows/**"
   push:
-    branches:
-      - "work/boringssl-migration"
+    branches: [master]
     paths:
       - "vcpkg.json"
       - "tests/dependency_manifest_test.py"
