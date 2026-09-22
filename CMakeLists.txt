@@ -62,6 +62,7 @@ find_package(Salts 1.2.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
 foreach(required_salts_target IN ITEMS
         Salts::Platform
         Salts::Core
+        Salts::CMeta
         Salts::CFlow
         Salts::CSTL
         Salts::CSerde
@@ -112,6 +113,7 @@ add_subdirectory(vendor)
 add_subdirectory(parser)
 add_subdirectory(tools/junit_to_html)
 add_subdirectory(crypto)
+add_subdirectory(plugin)
 add_subdirectory(cflow-fs)
 add_subdirectory(cflow-process)
 add_subdirectory(playback)
