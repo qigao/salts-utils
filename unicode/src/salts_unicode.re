@@ -1,5 +1,6 @@
 // re2c --lang c --utf8 --encoding-policy fail
 #include "salts_unicode.h"
+#include "salts_unicode_emoji.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -94,7 +95,8 @@ accept: {
     size_t length = (size_t)(YYCURSOR - token_start);
     if (length > copied) return SALTS_UNICODE_ERR_INVALID_UTF8;
     result->value = salts_unicode_decode_scalar(token_start, length);
-    result->properties = properties;
+    result->properties =
+        properties | salts_unicode_emoji_properties(result->value);
     result->byte_offset = offset;
     result->byte_length = length;
     return SALTS_UNICODE_OK;
