@@ -83,8 +83,6 @@ jobs:
             vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
             echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
           fi
-          cache="$GITHUB_WORKSPACE/build/vcpkg-binary-cache"
-          mkdir -p "$cache"
           echo "image=${ImageOS:-linux}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
@@ -166,8 +164,6 @@ jobs:
           esac
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
           echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
-          cache="$GITHUB_WORKSPACE/build/vcpkg-binary-cache"
-          mkdir -p "$cache"
       - uses: actions/cache@v4
         with:
           path: build/vcpkg-binary-cache
@@ -320,8 +316,6 @@ jobs:
             echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
           fi
           test -n "${ANDROID_NDK_HOME:-}"
-          cache="$GITHUB_WORKSPACE/build/vcpkg-binary-cache"
-          mkdir -p "$cache"
       - uses: actions/cache@v4
         with:
           path: build/vcpkg-binary-cache
