@@ -31,7 +31,7 @@ Plugin discovery, version policy and unload semantics stay out of CMeta/CFlow.
 Every dynamic plugin exports exactly one well-known query symbol:
 
 ```c
-SALTS_PLUGIN_ENTRY
+SALTS_PLUGIN_QUERY_EXPORT
 const salts_plugin_manifest *SALTS_PLUGIN_CALL
 salts_plugin_query(uint32_t host_abi) {
     if (host_abi != SALTS_PLUGIN_ABI_VERSION)
@@ -41,7 +41,9 @@ salts_plugin_query(uint32_t host_abi) {
 ```
 
 The fixed symbol name is `SALTS_PLUGIN_QUERY_SYMBOL`, currently
-`"salts_plugin_query"`.
+`"salts_plugin_query"`. `SALTS_PLUGIN_QUERY_EXPORT` combines platform
+visibility/export with C linkage, so the symbol remains unmangled when a plugin
+implementation is compiled as C++.
 
 The query returns borrowed immutable metadata. The host must keep the DSO loaded
 while it reads the manifest, export rows, CMeta descriptors/interface values, or
