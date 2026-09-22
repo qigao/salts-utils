@@ -13,6 +13,7 @@ on:
       - 'CMake*.cmake'
       - 'CMake*Presets.json'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
       - '.github/workflows/tbe-32-33-schema-boundaries.yml'
   pull_request:
     branches: [master]
@@ -26,6 +27,7 @@ on:
       - 'CMake*.cmake'
       - 'CMake*Presets.json'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
       - '.github/workflows/tbe-32-33-schema-boundaries.yml'
   workflow_dispatch:
 
@@ -62,6 +64,11 @@ jobs:
           git rev-parse HEAD | tee "$RUNNER_TEMP/tbe-schema-evidence/head.txt"
           git diff --exit-code
 
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
       - name: Checkout vcpkg at the manifest baseline
         uses: actions/checkout@v4
         with:
@@ -71,11 +78,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Cache vcpkg binary archives
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vcpkg/archives
-          key: tbe-schema-vcpkg-x64-linux-b1b19307-v1
 
       - uses: actions/setup-dotnet@v4
         with:
