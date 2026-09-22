@@ -27,9 +27,6 @@ concurrency:
   group: salts-utils-unicode-bidi-${{ github.ref_name }}
   cancel-in-progress: true
 
-env:
-  VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-
 jobs:
   bidi-red-green:
     runs-on: ubuntu-latest
@@ -42,15 +39,6 @@ jobs:
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
-
-      - name: Checkout vcpkg at manifest baseline
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          path: vcpkg
-          fetch-depth: 0
-          persist-credentials: false
 
 
       - uses: actions/setup-dotnet@v4
@@ -69,8 +57,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+          sudo ln -sfn "$VCPKG_ROOT" /opt/vcpkg
 
       - name: Restore Salts 1.2.0 and re2c 4.6.3
         shell: bash
@@ -95,8 +82,6 @@ jobs:
 
       - name: Configure exact SaltsUtils head
         shell: bash
-        env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user \
