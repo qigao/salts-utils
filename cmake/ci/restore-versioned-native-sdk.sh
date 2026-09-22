@@ -9,7 +9,7 @@ set -euo pipefail
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
 salts_version="${SALTS_SDK_VERSION:-1.1.0}"
-re2c_version="${RE2C_TOOLS_VERSION:-4.6.1}"
+re2c_version="${RE2C_TOOLS_VERSION:-4.6.2}"
 packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
 config="$RUNNER_TEMP/qigao-nuget.config"
 project="$RUNNER_TEMP/qigao-native-sdk-restore.csproj"
