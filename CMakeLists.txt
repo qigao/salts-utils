@@ -8,14 +8,10 @@ endif()
 
 project(
   SaltsUtils
-  VERSION 2.0.1
+  VERSION 2.0.2
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
-
-if(ANDROID)
-  add_compile_definitions(CSTL_NO_LEGACY_STACK_T=1)
-endif()
 
 # Project configuration - output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -60,7 +56,7 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts 1.1.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts 1.2.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 foreach(required_salts_target IN ITEMS
