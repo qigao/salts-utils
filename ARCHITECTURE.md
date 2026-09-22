@@ -24,6 +24,7 @@ package 消费它。
 `find_package(SaltsUtils CONFIG REQUIRED)` 导出 SaltsUtils 的高层能力，包括：
 
 - `Salts::Crypto`
+- `Salts::Plugin`
 - `Salts::FS`
 - `Salts::Process`
 - `Salts::QueryVM`
@@ -51,6 +52,8 @@ package 消费它。
 - `Salts::CFlow`、`Salts::Platform`
 - `Salts::CSerde`
 - `Salts::UriParser`
+
+`Salts::Plugin` 复用 `Salts::CMeta` 的 Interface、Callable 与语义身份，拥有 plugin manifest/export ABI、版本准入和后续 loader/registry/lifecycle policy；Plugin 语义不进入 CMeta/CFlow core。当前基础 target 不依赖 CFlow，后续执行适配由独立 `Salts::PluginCFlow` target 承担。
 
 `Salts::FS` 组合 Salts 的同步文件系统 API 与 CFlow bounded execution；`Salts::Process`
 组合 Salts 的 process owner 与 CFlow native byte-pipe execution。`Salts::Crypto` 依赖
