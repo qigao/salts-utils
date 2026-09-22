@@ -80,7 +80,10 @@ typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
  * types, requires a contract_version change.
  *
  * interface_desc/interface_value and callable are borrowed representations
- * owned by the loaded plugin and are never pointer identities. Current CMeta
+ * owned by the loaded plugin and are never pointer identities. interface_value
+ * is a mutable borrowed CMeta interface handle because normal interface methods
+ * and D0 destruction may update the handle/state; the export row itself remains
+ * immutable. Current CMeta
  * interface metadata records name, return spelling and arity, but not parameter
  * type spellings; descriptor comparison is therefore a structural consistency
  * check, not a substitute for contract_id/version discipline.
@@ -97,7 +100,7 @@ typedef struct salts_plugin_export {
     /* INTERFACE: both are required and callable must be NULL. interface_value
      * points at the concrete CMeta interface value (for example ImageCodec). */
     const cmeta_interface_desc *interface_desc;
-    const void *interface_value;
+    void *interface_value;
 
     /* CALLABLE: required and interface fields must be NULL. */
     const cmeta_callable *callable;
