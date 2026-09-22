@@ -72,7 +72,7 @@ jobs:
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
 
-      - name: Restore Salts 1.1.0 and re2c 4.6.3
+      - name: Restore Salts 1.2.0 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
