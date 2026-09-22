@@ -123,8 +123,10 @@ typed_any(value, int, normalize_score, (int value)) {
 ```
 
 The export points at that callable. Callable compatibility uses the bound CMeta
-signature, effects, properties and dispatch contract. Function pointer identity
-and capture bytes are implementation facts, not the semantic contract.
+signature, effects and properties. Dispatch mode, function/adapter target
+addresses and capture bytes are implementation representation, not the semantic
+contract. This permits, for example, an adapter-backed implementation to satisfy
+the same declared callable contract as a canonical raw implementation.
 
 ## ABI admission
 
@@ -132,6 +134,9 @@ V1 is exact and fail-fast:
 
 - `SALTS_PLUGIN_ABI_VERSION == 1`;
 - manifest and export rows carry `struct_size` and `abi_version`;
+- V1 size constants mark the last readable V1 field rather than aliasing a
+  future `sizeof(struct)`, so later tail extensions cannot silently redefine
+  the V1 prefix;
 - IDs are non-empty bounded strings;
 - export count is bounded by `SALTS_PLUGIN_MAX_EXPORTS`;
 - interface method metadata is bounded and validated;
@@ -152,6 +157,8 @@ without changing these semantic rows.
 ## Lifecycle fields
 
 The manifest reserves explicit `start`, `request_stop`, `is_quiescent` and
-`destroy` callbacks. ABI validation never invokes them. Their ordering,
+`destroy` callbacks. Query and lifecycle callbacks share the explicit
+`SALTS_PLUGIN_CALL` calling convention across the DSO boundary. ABI validation
+never invokes them. Their ordering,
 generation-safe handles, in-flight accounting and quiescent unload are owned by
 the lifecycle work, not by this contract validator.
