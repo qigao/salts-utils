@@ -86,10 +86,14 @@ bool salts_plugin_callable_contract_equal(const cmeta_callable *left,
         !cmeta_callable_contract_valid(bound_right))
         return false;
 
+    /*
+     * Dispatch mode, target address and capture storage are implementation
+     * representation. Plugin semantic compatibility is the CMeta signature
+     * plus declared effects/properties under contract_id/version.
+     */
     return bound_left.meta.sig == bound_right.meta.sig &&
            bound_left.meta.effects == bound_right.meta.effects &&
-           bound_left.meta.properties == bound_right.meta.properties &&
-           bound_left.dispatch == bound_right.dispatch;
+           bound_left.meta.properties == bound_right.meta.properties;
 }
 
 static salts_plugin_status validate_export(const salts_plugin_export *entry) {
