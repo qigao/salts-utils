@@ -17,7 +17,7 @@ cmake_add_test(test_json_parser_re
              ${SIMDE_INCLUDE_DIRS}
 )
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   cmake_add_test(test_json_cserde_reader
       SOURCES test_json_cserde_reader.c
       FOLDER "parser/${TARGET_NAME}/test"
