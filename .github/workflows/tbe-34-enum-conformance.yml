@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: tbe-enums-${{ github.head_ref || github.ref_name }}
@@ -37,87 +38,61 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           git rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/head.txt"
           git archive --format=tar.gz HEAD > "$RUNNER_TEMP/enum-evidence/source.tar.gz"
-      - uses: actions/checkout@v4
-        with:
-          repository: qigao/salts
-          ref: c4197712261a563ed7e238152b34cb50a2ef98a9
-          path: salts
-          persist-credentials: false
-      - uses: actions/checkout@v4
+      - name: Checkout vcpkg at the manifest baseline
+        uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
           ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
           path: vcpkg
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/cache@v4
+
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v4
         with:
           path: ~/.cache/vcpkg/archives
           key: tbe-30-vcpkg-x64-linux-b1b19307-v1
-      - uses: actions/setup-go@v5
+
+      - uses: actions/setup-dotnet@v4
         with:
-          go-version: '1.24.x'
-          cache: false
-      - name: Toolchain and host generator
+          dotnet-version: "8.0.x"
+
+      - name: Prepare versioned SDK toolchain
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          sudo apt-get install -y ninja-build pkg-config nasm
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+
+      - name: Restore Salts 1.1.0 and re2c 4.6.3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Expose versioned Salts SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$SALTS_ROOT" /opt/salts/debug
+
+      - name: Build the standalone host parser generator
+        shell: bash
+        run: |
+          set -euxo pipefail
           cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/host-lemon --target lemon -j2
-      - name: Record Salts cache toolchain
-        id: salts-toolchain
-        shell: bash
-        run: echo "key=gcc-$(gcc -dumpfullversion -dumpversion)" >> "$GITHUB_OUTPUT"
-      - name: Restore pinned Salts debug package
-        id: salts-package-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
-          key: salts-pkg-v2-enum-preset-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-c4197712261a563ed7e238152b34cb50a2ef98a9-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-      - name: Install pinned re2c 4.6 and Unicode data
-        shell: bash
-        run: bash cmake/ci/install-re2c.sh
-      - name: Install pinned Core
-        if: steps.salts-package-cache.outputs.cache-hit != 'true'
-        working-directory: salts
-        env:
-          PROJECT_ROOT: ${{ runner.temp }}/salts-project
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-        shell: bash
-        run: |
-          set -euxo pipefail
-          test "$(git rev-parse HEAD)" = c4197712261a563ed7e238152b34cb50a2ef98a9
-          git rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
-          cmake --preset linux-dev-user
-          cmake --build build/linux-gcc-debug --target install -j2
-      - name: Save pinned Salts debug package
-        if: steps.salts-package-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
-          key: salts-pkg-v2-enum-preset-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-c4197712261a563ed7e238152b34cb50a2ef98a9-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-      - name: Use pinned Salts debug package
-        shell: bash
-        run: |
-          set -euxo pipefail
-          package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
-          test -d "$package/include"
-          test -d "$package/lib"
-          test "$(git -C salts rev-parse HEAD)" = c4197712261a563ed7e238152b34cb50a2ef98a9
-          git -C salts rev-parse HEAD > "$RUNNER_TEMP/enum-evidence/salts-head.txt"
-          sudo ln -sfn "$package" /opt/salts/debug
+
       - name: Build production compiler and complete TBE tests
         shell: bash
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user -DENABLE_SANITIZER_UNDEFINED=ON \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
-            -DDATABIND_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/configure.log"
           cmake --build build/linux-gcc-debug --target tbe/all -j2 \
