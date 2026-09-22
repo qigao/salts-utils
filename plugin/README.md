@@ -109,8 +109,11 @@ CMETA_IMPLEMENTS(ImageCodec, png_codec, IMAGE_CODEC_CAN_DECODE,
     .probe = png_probe);
 ```
 
-The plugin export row carries the semantic contract ID plus borrowed CMeta
-interface descriptor/value. After Plugin admission, the typed host still uses
+The plugin export row carries the semantic contract ID plus a borrowed CMeta
+interface descriptor and mutable interface handle. The row/descriptor metadata
+remain immutable, while the handle is intentionally mutable because ordinary
+CMeta interface methods (including an owning `D0` destructor) may mutate state
+or invalidate the handle. After Plugin admission, the typed host still uses
 `ImageCodec_valid()` before normal typed dispatch. Plugin does not invent a
 second vtable or method metadata system.
 
