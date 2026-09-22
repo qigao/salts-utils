@@ -11,6 +11,29 @@ static void check_view(vstr actual, const unsigned char *bytes, size_t length) {
 }
 
 suite("salts_unicode grapheme boundaries") {
+  it("reports pinned Extended_Pictographic facts") {
+    int result = 7;
+
+    check_equal(salts_unicode_is_extended_pictographic(0x1F469u, &result),
+                SALTS_UNICODE_OK);
+    check_equal(result, 1);
+
+    check_equal(salts_unicode_is_extended_pictographic(0x00A9u, &result),
+                SALTS_UNICODE_OK);
+    check_equal(result, 1);
+
+    check_equal(salts_unicode_is_extended_pictographic('A', &result),
+                SALTS_UNICODE_OK);
+    check_equal(result, 0);
+
+    result = 9;
+    check_equal(salts_unicode_is_extended_pictographic(0xD800u, &result),
+                SALTS_UNICODE_ERR_INVALID_ARGUMENT);
+    check_equal(result, 9);
+    check_equal(salts_unicode_is_extended_pictographic('A', NULL),
+                SALTS_UNICODE_ERR_INVALID_ARGUMENT);
+  }
+
   it("reports pinned grapheme break classes") {
     salts_unicode_grapheme_break value = SALTS_UNICODE_GRAPHEME_OTHER;
 

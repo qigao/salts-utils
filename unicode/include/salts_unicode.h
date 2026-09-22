@@ -200,6 +200,16 @@ salts_unicode_status salts_unicode_utf8_next(vstr input, size_t *cursor,
 salts_unicode_status salts_unicode_grapheme_break_class(
     uint32_t scalar, salts_unicode_grapheme_break *out_class);
 
+
+/**
+ * Query Unicode 17.0.0 Extended_Pictographic for one scalar.
+ *
+ * @param scalar Unicode scalar value; surrogates and values above U+10FFFF are invalid.
+ * @param result Receives zero or one on success and is unchanged on error.
+ */
+salts_unicode_status salts_unicode_is_extended_pictographic(
+    uint32_t scalar, int *result);
+
 /**
  * Advance one Unicode 17.0.0 extended grapheme cluster (UAX #29).
  *
