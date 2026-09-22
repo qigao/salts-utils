@@ -10,7 +10,7 @@ if ([string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) { throw "GITHUB_ENV is requir
 if ([string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) { throw "GITHUB_PATH is required" }
 
 $saltsVersion = if ($env:SALTS_SDK_VERSION) { $env:SALTS_SDK_VERSION } else { "1.2.0" }
-$re2cVersion = if ($env:RE2C_TOOLS_VERSION) { $env:RE2C_TOOLS_VERSION } else { "4.6.3" }
+$re2cVersion = if ($env:RE2C_BINARY_VERSION) { $env:RE2C_BINARY_VERSION } else { "4.6.3" }
 $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } else { Join-Path $env:RUNNER_TEMP "qigao-nuget" }
 $config = Join-Path $env:RUNNER_TEMP "qigao-nuget.config"
 $project = Join-Path $env:RUNNER_TEMP "qigao-native-sdk-restore.csproj"
@@ -30,7 +30,7 @@ if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Salts.Native" Version="[$saltsVersion]" />
-    <PackageReference Include="Qigao.Re2c.Tools" Version="[$re2cVersion]" />
+    <PackageReference Include="Qigao.Re2c.Binary" Version="[$re2cVersion]" />
   </ItemGroup>
 </Project>
 "@ | Set-Content -LiteralPath $project
@@ -39,7 +39,7 @@ dotnet restore $project --packages $packages --configfile $config --no-cache
 if ($LASTEXITCODE -ne 0) { throw "failed to restore versioned native SDKs" }
 
 $saltsRoot = Join-Path $packages "salts.native\$saltsVersion\sdk\$SaltsRid"
-$re2cRoot = Join-Path $packages "qigao.re2c.tools\$re2cVersion\tools\$Re2cRid"
+$re2cRoot = Join-Path $packages "qigao.re2c.binary\$re2cVersion\tools\$Re2cRid"
 $saltsConfig = Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"
 $re2cExe = Join-Path $re2cRoot "bin\re2c.exe"
 $unicodeCategories = Join-Path $re2cRoot "share\re2c\stdlib\unicode_categories.re"

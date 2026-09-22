@@ -9,7 +9,7 @@ set -euo pipefail
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
 salts_version="${SALTS_SDK_VERSION:-1.2.0}"
-re2c_version="${RE2C_TOOLS_VERSION:-4.6.3}"
+re2c_version="${RE2C_BINARY_VERSION:-4.6.3}"
 packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
 config="$RUNNER_TEMP/qigao-nuget.config"
 project="$RUNNER_TEMP/qigao-native-sdk-restore.csproj"
@@ -30,7 +30,7 @@ cat > "$project" <<EOF
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Salts.Native" Version="[$salts_version]" />
-    <PackageReference Include="Qigao.Re2c.Tools" Version="[$re2c_version]" />
+    <PackageReference Include="Qigao.Re2c.Binary" Version="[$re2c_version]" />
   </ItemGroup>
 </Project>
 EOF
@@ -38,10 +38,10 @@ EOF
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache
 
 salts_package="$packages/salts.native/$salts_version"
-re2c_package="$packages/qigao.re2c.tools/$re2c_version"
+re2c_package="$packages/qigao.re2c.binary/$re2c_version"
 fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 [ -d "$salts_package" ] || fail "missing Salts.Native package root: $salts_package"
-[ -d "$re2c_package" ] || fail "missing Qigao.Re2c.Tools package root: $re2c_package"
+[ -d "$re2c_package" ] || fail "missing Qigao.Re2c.Binary package root: $re2c_package"
 salts_root="$salts_package/sdk/$salts_rid"
 re2c_root="$re2c_package/tools/$re2c_rid"
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
