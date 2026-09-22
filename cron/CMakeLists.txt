@@ -43,6 +43,6 @@ install(FILES ${CRON_HEADERS} DESTINATION include/cron)
 
 add_subdirectory(examples)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
   add_subdirectory(tests)
 endif()
