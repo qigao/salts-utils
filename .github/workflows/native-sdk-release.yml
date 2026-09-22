@@ -391,7 +391,18 @@ jobs:
           set -euo pipefail
           dotnet restore packaging/nuget/SaltsUtils.Native.csproj --configfile "$NUGET_CONFIG" --packages "$RUNNER_TEMP/pack-nuget"
           dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ needs.metadata.outputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
-          test -f "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
+          nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
+          test -f "$nupkg"
+          unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/bin/tbe_compiler" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/bin/tbe_compiler.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          if grep -Fxq "sdk/macos-arm64/bin/tbe_compiler" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+            :
+          else
+            grep -Fx "sdk/macos-x64/bin/tbe_compiler" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-native-nuget
