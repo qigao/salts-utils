@@ -16,6 +16,6 @@ target_include_directories(${TARGET_NAME}
 )
 
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
