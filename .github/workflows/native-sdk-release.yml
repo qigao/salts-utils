@@ -23,6 +23,10 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: salts-utils-native-sdk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   SALTS_SDK_VERSION: "1.1.0"
   RE2C_TOOLS_VERSION: "4.6.3"
