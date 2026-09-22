@@ -44,7 +44,7 @@ endif()
 # Tests
 # =============================================================================
 
-if(ENABLE_TESTS OR BUILD_TESTS)
+if(BUILD_TESTS)
 
 
   add_subdirectory(tests)
