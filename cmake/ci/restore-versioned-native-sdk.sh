@@ -37,17 +37,12 @@ EOF
 
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache
 
-echo "Restored package tree:"
-find "$packages" -maxdepth 8 -type f -print | sort
-
 salts_package="$packages/salts.native/$salts_version"
 re2c_package="$packages/qigao.re2c.tools/$re2c_version"
 test -d "$salts_package"
 test -d "$re2c_package"
 salts_root="$salts_package/sdk/$salts_rid"
 re2c_root="$re2c_package/tools/$re2c_rid"
-echo "SALTS_ROOT candidate: $salts_root"
-echo "RE2C_ROOT candidate: $re2c_root"
 test -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake"
 test -f "$re2c_root/share/re2c/stdlib/unicode_categories.re"
 test -f "$re2c_root/share/re2c/stdlib/unicode_properties.re"
