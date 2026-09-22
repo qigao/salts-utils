@@ -40,11 +40,11 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
-# Enable testing
-include(CTest)
-enable_testing()
-
 include(CMakeOptions.cmake)
+
+if(BUILD_TESTS)
+  enable_testing()
+endif()
 include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
@@ -104,7 +104,7 @@ foreach(pre_migration_target IN ITEMS
   endif()
 endforeach()
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(tests/runtime_path)
   add_subdirectory(tests/package_config)
 endif()
