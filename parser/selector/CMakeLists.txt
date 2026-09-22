@@ -31,7 +31,7 @@ install(TARGETS ${TARGET_NAME}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/salts_selector.h DESTINATION include/selector)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   cmake_add_test(test_salts_selector
     SOURCES test/test_salts_selector.c
     LIBS ${TARGET_NAME} Salts::TinyTest

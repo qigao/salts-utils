@@ -39,20 +39,22 @@ target_link_libraries(${TARGET_NAME}
 # Examples
 # =============================================================================
 
-cmake_add_executable(production_example
-  SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/example/production_example.c
-  LIBS ${TARGET_NAME}
-  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}
-  FOLDER "parser/tlv_parser/examples")
-if(UNIX)
-    target_link_libraries(production_example PRIVATE Threads::Threads)
+if(BUILD_EXAMPLES)
+  cmake_add_executable(production_example
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/example/production_example.c
+    LIBS ${TARGET_NAME}
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}
+    FOLDER "parser/tlv_parser/examples")
+  if(UNIX)
+      target_link_libraries(production_example PRIVATE Threads::Threads)
+  endif()
 endif()
 
 # =============================================================================
 # Tests
 # =============================================================================
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
 if(BUILD_BENCHMARKS)

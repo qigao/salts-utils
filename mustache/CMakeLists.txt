@@ -28,19 +28,22 @@ target_link_libraries(
   PRIVATE Salts::JsonParser Salts::XmlParser
   PUBLIC Salts::Core)
 
-# Example executable
+# Examples
+if(BUILD_EXAMPLES)
+  cmake_add_executable(mustache_json_example
+    SOURCES examples/json_example.c
+    LIBS Salts::Mustache Salts::JsonParser
+    FOLDER "mustache/examples")
 
-cmake_add_executable(mustache_json_example
-  SOURCES examples/json_example.c
-  LIBS Salts::Mustache Salts::JsonParser
-  FOLDER "mustache/examples")
+  cmake_add_executable(mustache_xml_example
+    SOURCES examples/xml_example.c
+    LIBS Salts::Mustache Salts::XmlParser
+    FOLDER "mustache/examples")
 
-cmake_add_executable(mustache_xml_example
-  SOURCES examples/xml_example.c
-  LIBS Salts::Mustache Salts::XmlParser
-  FOLDER "mustache/examples")
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+endif()
+
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
 if(BUILD_BENCHMARKS OR BUILD_TESTS)

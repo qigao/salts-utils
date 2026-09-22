@@ -13,7 +13,7 @@ add_custom_command(
   COMMENT "Copying JUnit dashboard template"
   VERBATIM)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   add_test(
     NAME junit_to_html_test
     COMMAND ${CMAKE_COMMAND}

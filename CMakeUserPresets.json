@@ -109,7 +109,7 @@
         {
             "name": "win-release-user",
             "cacheVariables": {
-                "ENABLE_TESTS": true,
+                "BUILD_TESTS": true,
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },
@@ -200,7 +200,6 @@
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-linux",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release",
                 "ENABLE_SANITIZER_ADDRESS": "OFF",
-                "ENABLE_TESTS": "OFF",
                 "BUILD_TESTS": "OFF",
                 "BUILD_EXAMPLES": "OFF"
             },
@@ -304,7 +303,7 @@
             "name": "win-clang-release-user",
             "cacheVariables": {
                 "ENABLE_SANITIZER_ADDRESS": "OFF",
-                "ENABLE_TESTS": "ON",
+                "BUILD_TESTS": "ON",
                 "CMAKE_PREFIX_PATH": "$env{VCPKG_INSTALLED_DIR}/x64-windows",
                 "CMAKE_INSTALL_PREFIX": "$env{PKG_ROOT}/salts-utils/release"
             },

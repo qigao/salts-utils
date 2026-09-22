@@ -48,7 +48,7 @@ target_include_directories(json_cserde_adapter
 target_link_libraries(json_cserde_adapter
   PUBLIC Salts::JsonParser Salts::CSerde)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   get_target_property(JSON_PARSER_PUBLIC_LINKS
                       ${TARGET_NAME} INTERFACE_LINK_LIBRARIES)
   if(JSON_PARSER_PUBLIC_LINKS MATCHES "CSerde")
@@ -68,7 +68,7 @@ if(BUILD_TESTING)
   endif()
 endif()
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
 if(BUILD_BENCHMARKS)

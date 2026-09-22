@@ -17,7 +17,7 @@ target_link_libraries(
     Salts::CMeta
     Salts::CSTL
     Salts::CSerde)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_CORE_TARGET}
   ALIAS Salts::DataBindCore
   FOLDER "tbe/data_bind"
@@ -38,7 +38,7 @@ target_link_libraries(
   PUBLIC
     Salts::DataBindCore
     Salts::JsonCSerdeAdapter)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_JSON_ADAPTER_TARGET}
   ALIAS Salts::DataBindJsonAdapter
   FOLDER "tbe/data_bind"
@@ -60,7 +60,7 @@ target_link_libraries(
     Salts::DataBindCore
     Salts::CYamlJsonAdapter
     Salts::JsonCSerdeAdapter)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_YAML_ADAPTER_TARGET}
   ALIAS Salts::DataBindYamlAdapter
   FOLDER "tbe/data_bind"
@@ -81,7 +81,7 @@ target_link_libraries(
   PUBLIC
     Salts::DataBindCore
     Salts::CsvParser)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_CSV_ADAPTER_TARGET}
   ALIAS Salts::DataBindCsvAdapter
   FOLDER "tbe/data_bind"
@@ -102,7 +102,7 @@ target_link_libraries(
   PUBLIC
     Salts::DataBindCore
     Salts::XmlParser)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_XML_ADAPTER_TARGET}
   ALIAS Salts::DataBindXmlAdapter
   FOLDER "tbe/data_bind"
@@ -122,7 +122,7 @@ target_link_libraries(
   ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
   PUBLIC Salts::DataBindCore
   PRIVATE Salts::DateTimeParser)
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
   ALIAS Salts::DataBindTemporalAdapter
   FOLDER "tbe/data_bind"
@@ -163,7 +163,7 @@ target_link_libraries(
   PUBLIC
     Salts::DataBindCore)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   get_target_property(DATA_BIND_PUBLIC_LINKS
     ${DATA_BIND_TARGET} INTERFACE_LINK_LIBRARIES)
   if(DATA_BIND_PUBLIC_LINKS MATCHES
@@ -174,11 +174,11 @@ if(BUILD_TESTING)
   endif()
 endif()
 
-databind_config_target(
+cmake_config_target(
   ${DATA_BIND_TARGET}
   ALIAS Salts::DataBind
   FOLDER "tbe/data_bind"
-  EXPORT_NAME DataBind)
+  EXPORT_NAME Databind)
 
 add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
 target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
@@ -187,7 +187,7 @@ target_include_directories(data_bind_cmeta
          $<INSTALL_INTERFACE:include>)
 target_link_libraries(data_bind_cmeta
   PUBLIC Salts::DataBind Salts::CMeta)
-databind_config_target(
+cmake_config_target(
   data_bind_cmeta
   ALIAS Salts::DataBindCMeta
   FOLDER tbe/data_bind
@@ -200,7 +200,7 @@ target_include_directories(data_bind_cflow
          $<INSTALL_INTERFACE:include>)
 target_link_libraries(data_bind_cflow
   PUBLIC Salts::DataBindCMeta Salts::CFlow)
-databind_config_target(
+cmake_config_target(
   data_bind_cflow
   ALIAS Salts::DataBindCFlow
   FOLDER tbe/data_bind
@@ -209,7 +209,7 @@ databind_config_target(
 install(
   TARGETS ${DATA_BIND_CORE_TARGET}
           ${DATA_BIND_TARGET} data_bind_cmeta data_bind_cflow
-  EXPORT DataBindTargets
+  EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind)
@@ -220,7 +220,7 @@ install(
           ${DATA_BIND_CSV_ADAPTER_TARGET}
           ${DATA_BIND_XML_ADAPTER_TARGET}
           ${DATA_BIND_TEMPORAL_ADAPTER_TARGET}
-  EXPORT DataBindAdapterTargets
+  EXPORT SaltsUtilsTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind)
@@ -240,7 +240,7 @@ install(
   DESTINATION include
   COMPONENT DataBind)
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
 target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
@@ -302,12 +302,12 @@ add_test(NAME test_data_bind_temporal_adapter
   COMMAND test_data_bind_temporal_adapter)
 
 set(DATA_BIND_TEST_LIBS Salts::DataBind Salts::TinyTest)
-databind_add_test(test_data_bind
+cmake_add_test(test_data_bind
   SOURCES test_data_bind.c
   LIBS ${DATA_BIND_TEST_LIBS}
   INCLUDES ${DATABIND_SOURCE_ROOT}/schema/include
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_public_api
+cmake_add_test(test_data_bind_public_api
   SOURCES test_data_bind_public_api.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
@@ -320,11 +320,11 @@ set_target_properties(test_data_bind_public_header_boundary
   PROPERTIES FOLDER "tbe/data_bind/tests")
 add_test(NAME test_data_bind_public_header_boundary
   COMMAND test_data_bind_public_header_boundary)
-databind_add_test(test_data_bind_value_boundary
+cmake_add_test(test_data_bind_value_boundary
   SOURCES test_data_bind_value_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_dynamic_cstl
+cmake_add_test(test_data_bind_dynamic_cstl
   SOURCES test_data_bind_dynamic_cstl.c
   LIBS Salts::DataBind Salts::DataBindCMeta Salts::TinyTest
        Salts::CsvParser Salts::JsonParser
@@ -332,78 +332,78 @@ databind_add_test(test_data_bind_dynamic_cstl
   FOLDER "tbe/data_bind/tests")
 set_tests_properties(test_data_bind_dynamic_cstl PROPERTIES
   LABELS "databind;cmeta;cstl;dynamic")
-databind_add_test(test_data_bind_schema_reflection_contract
+cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_cmeta_reflection
+cmake_add_test(test_data_bind_cmeta_reflection
   SOURCES test_data_bind_cmeta_reflection.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_cmeta_public
+cmake_add_test(test_data_bind_cmeta_public
   SOURCES test_data_bind_cmeta_public.c
   LIBS Salts::DataBind
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_cmeta_public_cpp
+cmake_add_test(test_data_bind_cmeta_public_cpp
   SOURCES test_data_bind_cmeta_public_cpp.cpp
   LIBS Salts::DataBind
   FOLDER "tbe/data_bind/tests")
 set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 
-databind_add_test(test_data_bind_cmeta
+cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
   LIBS Salts::DataBindCMeta Salts::TbeSchema Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_cmeta_kind
+cmake_add_test(test_data_bind_cmeta_kind
   SOURCES test_data_bind_cmeta_kind.c
   LIBS Salts::DataBindCMeta Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
 
-databind_add_test(test_data_bind_cflow
+cmake_add_test(test_data_bind_cflow
   SOURCES test_data_bind_cflow.c
   LIBS Salts::DataBindCFlow Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
 
-databind_add_test(test_data_bind_adapters_cpp
+cmake_add_test(test_data_bind_adapters_cpp
   SOURCES test_data_bind_adapters_cpp.cpp
   LIBS Salts::DataBindCFlow Salts::TinyTest
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_record
+cmake_add_test(test_data_bind_record
   SOURCES test_data_bind_record.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_data_bind_pool
+cmake_add_test(test_data_bind_pool
   SOURCES test_data_bind_pool.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_tbe_typed
+cmake_add_test(test_tbe_typed
   SOURCES test_tbe_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_tbe_typed_cmeta_mapping
+cmake_add_test(test_tbe_typed_cmeta_mapping
   SOURCES test_tbe_typed_cmeta_mapping.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
 # Only the first test translation unit owns TinyTest's generated main.
 set_property(SOURCE test_tbe_typed_optional_edges.c APPEND
   PROPERTY COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
-databind_add_test(test_tbe_typed_optional_binary
+cmake_add_test(test_tbe_typed_optional_binary
   SOURCES test_tbe_typed_optional_binary.c test_tbe_typed_optional_edges.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_tbe_typed_descriptor_safety
+cmake_add_test(test_tbe_typed_descriptor_safety
   SOURCES test_tbe_typed_descriptor_safety.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
-databind_add_test(test_tbe_typed_descriptor_boundary
+cmake_add_test(test_tbe_typed_descriptor_boundary
   SOURCES test_tbe_typed_descriptor_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
 
 # This fixture executes tbe_compiler during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
-if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
   set(TBE_SAFETY_GENERATED_HEADER "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.h")
   set(TBE_SAFETY_GENERATED_SOURCE "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.c")
@@ -420,7 +420,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
             "${DATABIND_SOURCE_ROOT}/tbe_compiler/templates/c_typed_source.mustache"
     COMMENT "Generating typed descriptor compatibility fixture"
     VERBATIM)
-  databind_add_test(test_tbe_typed_generated
+  cmake_add_test(test_tbe_typed_generated
     SOURCES test_tbe_typed_generated.c
             "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     LIBS ${DATA_BIND_TEST_LIBS}
@@ -440,7 +440,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_custom_target(tbe_cmeta_graph_generation
     DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c")
-  databind_add_test(test_tbe_typed_cmeta_graph
+  cmake_add_test(test_tbe_typed_cmeta_graph
     SOURCES test_tbe_typed_cmeta_graph.c
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
@@ -461,7 +461,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   add_dependencies(tbe_cmeta_graph_public_fixture tbe_cmeta_graph_generation)
   set_target_properties(tbe_cmeta_graph_public_fixture PROPERTIES FOLDER "tbe/data_bind/tests")
 
-  databind_add_test(test_tbe_cmeta_acceptance
+  cmake_add_test(test_tbe_cmeta_acceptance
     SOURCES test_tbe_cmeta_acceptance.c
     LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema Salts::TinyTest
     FOLDER "tbe/data_bind/tests")
@@ -471,13 +471,13 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
 
-  databind_add_test(test_tbe_typed_cmeta_public
+  cmake_add_test(test_tbe_typed_cmeta_public
     SOURCES test_tbe_typed_cmeta_public.c
     LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema
     FOLDER "tbe/data_bind/tests")
   set_tests_properties(test_tbe_typed_cmeta_public PROPERTIES
     LABELS "databind;cmeta;typed-contract")
-  databind_add_test(test_tbe_typed_cmeta_public_cpp
+  cmake_add_test(test_tbe_typed_cmeta_public_cpp
     SOURCES test_tbe_typed_cmeta_public_cpp.cpp
     LIBS tbe_cmeta_graph_public_fixture Salts::TbeSchema
     FOLDER "tbe/data_bind/tests")
@@ -487,15 +487,15 @@ endif()
 
 endif()
 
-databind_add_benchmark(benchmark_data_bind_pool
+cmake_add_benchmark(benchmark_data_bind_pool
   SOURCES benchmark_data_bind_pool.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/benchmarks")
-databind_add_benchmark(benchmark_data_bind_json_path
+cmake_add_benchmark(benchmark_data_bind_json_path
   SOURCES benchmark_data_bind_json_path.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/benchmarks")
-databind_add_benchmark(benchmark_tbe_typed
+cmake_add_benchmark(benchmark_tbe_typed
   SOURCES benchmark_tbe_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/benchmarks")

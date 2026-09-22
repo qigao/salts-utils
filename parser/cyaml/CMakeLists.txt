@@ -70,7 +70,7 @@ cmake_config_target(cyaml_json_adapter
   EXPORT_NAME CYamlJsonAdapter
   FOLDER "${TARGET_FOLDER}/adapter")
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   cmake_add_test(test_api
     SOURCES tests/test_api.c
     LIBS ${TARGET_NAME} Salts::TinyTest

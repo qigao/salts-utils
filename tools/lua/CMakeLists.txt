@@ -25,6 +25,6 @@ target_include_directories(salts_lua_bind INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(salts_lua_bind INTERFACE c11_lua_bind cpp_lua_bind)
 add_library(Salts::LuaBind ALIAS salts_lua_bind)
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()

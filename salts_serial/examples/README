@@ -52,7 +52,7 @@ SaltsSerial tests include the public ABI test, libserialport regression tests,
 and a mocked backend test that drives the async SPSC pump without hardware:
 
 ```text
-cmake -S . -B build\Msvc-Release -DENABLE_TESTS=ON -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON
+cmake -S . -B build\Msvc-Release -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON
 cmake --build --preset win-release-user --target salts_serial test_serialport test_salts_serial_public_abi test_salts_serial_mock
 ctest --preset win-release-user -R "test_serialport|test_salts_serial_public_abi|test_salts_serial_mock" --output-on-failure
 ```

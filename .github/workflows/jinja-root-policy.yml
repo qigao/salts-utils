@@ -1,21 +1,33 @@
 name: Jinja root environment policy verification
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/jinja-root-policy.yml"
   push:
-    branches:
-      - fix/jinja-root-autoescape-selector
-      - fix/jinja-root-environment-policies-green
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/jinja-root-policy.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: salts-utils-jinja-root-policy-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
-  SALTS_SHA: c4197712261a563ed7e238152b34cb50a2ef98a9
   VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
 
 jobs:
@@ -36,16 +48,14 @@ jobs:
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
 
-      - name: Checkout exact Salts and vcpkg
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git init salts
-          git -C salts remote add origin https://github.com/qigao/salts.git
-          git -C salts fetch --depth=1 origin "${SALTS_SHA}"
-          git -C salts checkout --detach FETCH_HEAD
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
-          git -C vcpkg checkout --detach "${VCPKG_SHA}"
+      - name: Checkout vcpkg at manifest baseline
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Restore vcpkg binary archives
         uses: actions/cache@v4
@@ -53,36 +63,38 @@ jobs:
           path: ~/.cache/vcpkg/archives
           key: jinja-root-policy-vcpkg-x64-linux-b1b19307-v1
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
       - name: Set up Go for BoringSSL
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.x"
           cache: false
 
-      - name: Prepare toolchain
+      - name: Prepare versioned SDK toolchain
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          sudo apt-get install -y ninja-build pkg-config nasm
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo mkdir -p /opt/salts
-          sudo ln -sfn "${GITHUB_WORKSPACE}/vcpkg" /opt/vcpkg
-          bash cmake/ci/install-re2c.sh
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
 
-      - name: Build and expose exact Salts
+      - name: Restore Salts 1.1.0 and re2c 4.6.3
         shell: bash
-        working-directory: salts
         env:
-          PROJECT_ROOT: ${{ runner.temp }}/salts-project
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Expose versioned Salts SDK
+        shell: bash
         run: |
           set -euxo pipefail
-          cmake --preset linux-dev-user \
-            -DENABLE_SANITIZER_ADDRESS=OFF \
-            -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/linux-gcc-debug --target install -j2
-          sudo ln -sfn "${RUNNER_TEMP}/salts-project/external/pkgs/salts/debug" /opt/salts/debug
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$SALTS_ROOT" /opt/salts/debug
 
       - name: Build standalone host Lemon
         shell: bash

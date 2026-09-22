@@ -45,6 +45,6 @@ install(FILES include/salts_unicode.h DESTINATION include/unicode)
 install(FILES data/LICENSE.txt
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/salts_unicode)
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()

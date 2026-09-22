@@ -3,12 +3,17 @@ name: dependency-policy
 on:
   pull_request:
     paths:
+      - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
+      - "CMakeUserPresets.json"
+      - "cmake/**"
+      - "presets/**"
+      - "tbe/**"
       - "vcpkg.json"
       - "tests/dependency_manifest_test.py"
-      - ".github/workflows/dependency-policy.yml"
+      - ".github/workflows/**"
   push:
-    branches:
-      - "work/boringssl-migration"
+    branches: [master]
     paths:
       - "vcpkg.json"
       - "tests/dependency_manifest_test.py"
@@ -29,6 +34,30 @@ jobs:
           python-version: "3.x"
       - name: Verify crypto dependency policy
         run: python tests/dependency_manifest_test.py
+      - name: Verify SaltsUtils package and test-switch boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e tbe/cmake
+          test ! -e cmake/ci/install-re2c.sh
+          test ! -e docs/superpowers
+          test ! -e tbe/docs
+          if git grep -n -E 'ENABLE_TESTS|BUILD_TESTING' -- ':(glob)**/CMakeLists.txt' CMakeOptions.cmake CMakeUserPresets.json 'presets/*.json'; then
+            echo "BUILD_TESTS must be the only SaltsUtils test switch" >&2
+            exit 1
+          fi
+          if git grep -n -E 'databind_(add|config|set)_' -- ':(glob)**/CMakeLists.txt'; then
+            echo "TBE/DataBind must use shared SaltsUtils CMake helpers" >&2
+            exit 1
+          fi
+          if git grep -n -E 'EXPORT DataBind(Targets|AdapterTargets)' -- ':(glob)**/CMakeLists.txt'; then
+            echo "TBE/DataBind must export only through SaltsUtilsTargets" >&2
+            exit 1
+          fi
+          if git grep -n -E 'SaltsUtilsDataBind(Targets|AdapterTargets)\.cmake' -- cmake ':(glob)**/CMakeLists.txt'; then
+            echo "independent DataBind package exports are forbidden" >&2
+            exit 1
+          fi
       - name: Checkout vcpkg at the manifest baseline
         uses: actions/checkout@v4
         with:

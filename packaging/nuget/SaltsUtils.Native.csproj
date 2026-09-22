@@ -4,7 +4,7 @@
     <IsPackable>true</IsPackable>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <PackageId>SaltsUtils.Native</PackageId>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">2.0.0</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">2.0.1</PackageVersion>
     <Authors>qigao</Authors>
     <Description>Prebuilt SaltsUtils C/C++ SDK install trees for native consumers.</Description>
     <PackageTags>salts-utils;native;c;cpp;cmake;android</PackageTags>

@@ -8,7 +8,7 @@ endif()
 
 project(
   SaltsUtils
-  VERSION 2.0.0
+  VERSION 2.0.1
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
@@ -40,11 +40,11 @@ endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "cmake")
 
-# Enable testing
-include(CTest)
-enable_testing()
-
 include(CMakeOptions.cmake)
+
+if(BUILD_TESTS)
+  enable_testing()
+endif()
 include(Sanitizers)
 include(CmakeUtils)
 include(GNUInstallDirs)
@@ -104,7 +104,7 @@ foreach(pre_migration_target IN ITEMS
   endif()
 endforeach()
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(tests/runtime_path)
   add_subdirectory(tests/package_config)
 endif()
@@ -131,12 +131,6 @@ add_subdirectory(mustache)
 add_subdirectory(unicode)
 add_subdirectory(jinja)
 
-set(DATABIND_RE2C_EXECUTABLE "${RE2C_EXECUTABLE}")
-set(DATABIND_LEMPAR "${LEMPAR}")
-if(NOT DEFINED DATABIND_HOST_LEMON_EXECUTABLE OR
-   "${DATABIND_HOST_LEMON_EXECUTABLE}" STREQUAL "")
-  set(DATABIND_LEMON_TARGET lemon)
-endif()
 add_subdirectory(tbe)
 
 # Package Configuration

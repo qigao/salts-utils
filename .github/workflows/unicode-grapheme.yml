@@ -1,20 +1,33 @@
 name: Unicode grapheme boundary conformance
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-grapheme.yml"
   push:
-    branches:
-      - feature/unicode-grapheme-boundaries
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-grapheme.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: salts-utils-unicode-grapheme-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
-  SALTS_SHA: ce9b57bc166bf86bd311fe6f86b7619dd64673e1
   VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
 
 jobs:
@@ -25,16 +38,14 @@ jobs:
       - name: Checkout exact SaltsUtils head
         uses: actions/checkout@v4
 
-      - name: Checkout exact Salts and vcpkg
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git init salts
-          git -C salts remote add origin https://github.com/qigao/salts.git
-          git -C salts fetch --depth=1 origin "${SALTS_SHA}"
-          git -C salts checkout --detach FETCH_HEAD
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
-          git -C vcpkg checkout --detach "${VCPKG_SHA}"
+      - name: Checkout vcpkg at manifest baseline
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
+          path: vcpkg
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Restore vcpkg binary archives
         uses: actions/cache@v4
@@ -42,36 +53,38 @@ jobs:
           path: ~/.cache/vcpkg/archives
           key: unicode-grapheme-vcpkg-x64-linux-b1b19307-v1
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
       - name: Set up Go for BoringSSL
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.x"
           cache: false
 
-      - name: Prepare toolchain
+      - name: Prepare versioned SDK toolchain
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          sudo apt-get install -y ninja-build pkg-config nasm
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo mkdir -p /opt/salts
-          sudo ln -sfn "${GITHUB_WORKSPACE}/vcpkg" /opt/vcpkg
-          bash cmake/ci/install-re2c.sh
+          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
 
-      - name: Build and expose exact Salts
+      - name: Restore Salts 1.1.0 and re2c 4.6.3
         shell: bash
-        working-directory: salts
         env:
-          PROJECT_ROOT: ${{ runner.temp }}/salts-project
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Expose versioned Salts SDK
+        shell: bash
         run: |
           set -euxo pipefail
-          cmake --preset linux-dev-user \
-            -DENABLE_SANITIZER_ADDRESS=OFF \
-            -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/linux-gcc-debug --target install -j2
-          sudo ln -sfn "${RUNNER_TEMP}/salts-project/external/pkgs/salts/debug" /opt/salts/debug
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$SALTS_ROOT" /opt/salts/debug
 
       - name: Build standalone host Lemon
         shell: bash
