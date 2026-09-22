@@ -36,17 +36,21 @@ target_include_directories(${TARGET_NAME} PRIVATE ${SIMDE_INCLUDE_DIRS})
 # Tools / Examples (Optional)
 # =============================================================================
 
-cmake_add_executable(toml2json
-  SOURCES tools/toml2json.c
-  LIBS Salts::TomlParser
-  FOLDER "parser/${TARGET_NAME}/examples")
+if(BUILD_EXAMPLES)
+  cmake_add_executable(toml2json
+    SOURCES tools/toml2json.c
+    LIBS Salts::TomlParser
+    FOLDER "parser/${TARGET_NAME}/examples")
+endif()
 
-cmake_add_executable(toml-c-test
-  SOURCES tools/toml-c-test.c
-  LIBS Salts::TomlParser
-  FOLDER "parser/${TARGET_NAME}/examples")
+if(BUILD_TESTS)
+  cmake_add_executable(toml-c-test
+    SOURCES tools/toml-c-test.c
+    LIBS Salts::TomlParser
+    FOLDER "parser/${TARGET_NAME}/tests")
 
-cmake_add_executable(test_toml
-  SOURCES tests/test_toml.c
-  LIBS Salts::TomlParser Salts::TinyTest
-  FOLDER "parser/${TARGET_NAME}/tests")
+  cmake_add_test(test_toml
+    SOURCES tests/test_toml.c
+    LIBS Salts::TomlParser Salts::TinyTest
+    FOLDER "parser/${TARGET_NAME}/tests")
+endif()
