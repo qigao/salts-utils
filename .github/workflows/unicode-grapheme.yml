@@ -1,9 +1,22 @@
 name: Unicode grapheme boundary conformance
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-grapheme.yml"
   push:
-    branches:
-      - feature/unicode-grapheme-boundaries
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-grapheme.yml"
   workflow_dispatch:
 
 permissions:
