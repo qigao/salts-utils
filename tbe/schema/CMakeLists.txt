@@ -51,8 +51,8 @@ install(
 # Tests
 # =============================================================================
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
+if(BUILD_TESTS)
 set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
