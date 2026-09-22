@@ -7,8 +7,7 @@ on:
       - "tests/dependency_manifest_test.py"
       - ".github/workflows/crypto-boringssl-backend.yml"
   push:
-    branches:
-      - refactor/crypto-boringssl-backend
+    branches: [master]
     paths:
       - "crypto/**"
       - "tests/dependency_manifest_test.py"
