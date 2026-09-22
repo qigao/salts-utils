@@ -1,9 +1,22 @@
 name: Unicode word boundary conformance
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-word.yml"
   push:
-    branches:
-      - feature/unicode-word-boundaries
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-word.yml"
   workflow_dispatch:
 
 permissions:
