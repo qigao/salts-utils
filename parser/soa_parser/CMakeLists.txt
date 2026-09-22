@@ -22,4 +22,6 @@ target_link_libraries(${TARGET_NAME}
 
 )
 
-add_subdirectory(test)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+  add_subdirectory(test)
+endif()
