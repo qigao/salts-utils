@@ -25,6 +25,10 @@ typed_any(value, int, plugin_test_decrement, (int value)) {
     return value - 1;
 }
 
+typed_any(value, long, plugin_test_widen, (int value)) {
+    return (long)value;
+}
+
 static salts_plugin_manifest make_manifest(
     salts_plugin_export exports[2],
     plugin_test_codec *codec) {
@@ -88,6 +92,18 @@ describe("manifest admission") {
                     12);
         check_true(salts_plugin_export_has_capabilities(found, 1u));
         check_false(salts_plugin_export_has_capabilities(found, 2u));
+        check_equal(salts_plugin_export_require_interface(
+                        found, "test.codec", 1u, 1u,
+                        plugin_test_interface_b()),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_export_require_interface(
+                        found, "test.codec", 2u, 1u,
+                        plugin_test_interface_b()),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        check_equal(salts_plugin_export_require_interface(
+                        found, "test.codec", 1u, 2u,
+                        plugin_test_interface_b()),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
 
         check_equal(salts_plugin_manifest_find_export(
                         &manifest, "missing", &found),
@@ -205,6 +221,15 @@ describe("semantic identity") {
             *left_callable.callable, *right_callable.callable));
         check_true(salts_plugin_export_contract_equal(
             &left_callable, &right_callable));
+
+        check_equal(salts_plugin_export_require_callable(
+                        &left_callable, "test.transform", 1u, 0u,
+                        &plugin_test_decrement),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_export_require_callable(
+                        &left_callable, "test.transform", 1u, 0u,
+                        &plugin_test_widen),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
 
         right_callable.contract_version = 2u;
         check_false(salts_plugin_export_contract_equal(
