@@ -93,7 +93,7 @@ install(
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/jinja_cmeta.h include/jinja_cmeta_runtime.h DESTINATION include/jinja)
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
 
