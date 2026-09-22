@@ -43,15 +43,6 @@ jobs:
         with:
           mode: read
 
-      - name: Checkout vcpkg at the manifest baseline
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          path: vcpkg
-          fetch-depth: 0
-          persist-credentials: false
-
 
       - uses: actions/setup-dotnet@v4
         with:

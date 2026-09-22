@@ -27,7 +27,6 @@ concurrency:
   group: salts-utils-jinja-root-policy-${{ github.ref_name }}
   cancel-in-progress: true
 
-env:
 jobs:
   red-gate:
     runs-on: ubuntu-latest
@@ -50,15 +49,6 @@ jobs:
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
-
-      - name: Checkout vcpkg at manifest baseline
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-          path: vcpkg
-          fetch-depth: 0
-          persist-credentials: false
 
 
       - uses: actions/setup-dotnet@v4
@@ -102,7 +92,6 @@ jobs:
 
       - name: Configure exact SaltsUtils head
         shell: bash
-        env:
         run: |
           set -euxo pipefail
           cmake --preset linux-dev-user \
