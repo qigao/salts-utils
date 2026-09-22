@@ -138,6 +138,20 @@ bool salts_plugin_export_contract_equal(const salts_plugin_export *left,
 bool salts_plugin_export_has_capabilities(const salts_plugin_export *entry,
                                           uint64_t required);
 
+salts_plugin_status salts_plugin_export_require_interface(
+    const salts_plugin_export *entry,
+    const char *contract_id,
+    uint32_t contract_version,
+    uint64_t required_capabilities,
+    const cmeta_interface_desc *expected_interface);
+
+salts_plugin_status salts_plugin_export_require_callable(
+    const salts_plugin_export *entry,
+    const char *contract_id,
+    uint32_t contract_version,
+    uint64_t required_capabilities,
+    const cmeta_callable *expected_callable);
+
 salts_plugin_status salts_plugin_manifest_validate(
     const salts_plugin_manifest *manifest,
     uint32_t host_abi);
