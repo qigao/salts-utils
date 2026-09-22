@@ -28,6 +28,6 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(test)
 endif()
