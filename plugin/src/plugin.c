@@ -149,6 +149,67 @@ bool salts_plugin_export_has_capabilities(const salts_plugin_export *entry,
     return entry != NULL && (entry->capabilities & required) == required;
 }
 
+static bool contract_key_equal(const salts_plugin_export *entry,
+                               const char *contract_id,
+                               uint32_t contract_version) {
+    return entry != NULL && contract_version != 0u &&
+           bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) &&
+           entry->contract_version == contract_version &&
+           bounded_string_equal(entry->contract_id, contract_id,
+                                SALTS_PLUGIN_CONTRACT_ID_MAX);
+}
+
+salts_plugin_status salts_plugin_export_require_interface(
+    const salts_plugin_export *entry,
+    const char *contract_id,
+    uint32_t contract_version,
+    uint64_t required_capabilities,
+    const cmeta_interface_desc *expected_interface) {
+    salts_plugin_status status = validate_export(entry);
+
+    if (status != SALTS_PLUGIN_OK) return status;
+    if (contract_version == 0u ||
+        !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
+        !salts_plugin_interface_desc_valid(expected_interface))
+        return SALTS_PLUGIN_INVALID_ARGUMENT;
+
+    if (entry->kind != SALTS_PLUGIN_EXPORT_INTERFACE ||
+        !contract_key_equal(entry, contract_id, contract_version) ||
+        !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
+        !salts_plugin_interface_desc_equal(entry->interface_desc,
+                                           expected_interface))
+        return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
+
+    return SALTS_PLUGIN_OK;
+}
+
+salts_plugin_status salts_plugin_export_require_callable(
+    const salts_plugin_export *entry,
+    const char *contract_id,
+    uint32_t contract_version,
+    uint64_t required_capabilities,
+    const cmeta_callable *expected_callable) {
+    cmeta_callable bound;
+    salts_plugin_status status = validate_export(entry);
+
+    if (status != SALTS_PLUGIN_OK) return status;
+    if (contract_version == 0u ||
+        !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
+        expected_callable == NULL ||
+        !cmeta_callable_bind(*expected_callable, &bound) ||
+        !cmeta_callable_contract_valid(bound))
+        return SALTS_PLUGIN_INVALID_ARGUMENT;
+
+    if (entry->kind != SALTS_PLUGIN_EXPORT_CALLABLE ||
+        !contract_key_equal(entry, contract_id, contract_version) ||
+        !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
+        !salts_plugin_callable_contract_equal(entry->callable,
+                                              expected_callable))
+        return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
+
+    return SALTS_PLUGIN_OK;
+}
+
 salts_plugin_status salts_plugin_manifest_validate(
     const salts_plugin_manifest *manifest,
     uint32_t host_abi) {
