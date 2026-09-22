@@ -30,6 +30,26 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Checkout exact SaltsUtils head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify source ownership boundary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          python tests/dependency_manifest_test.py
+          ! grep -n 'monocypher' crypto/CMakeLists.txt
+          ! grep -R -n 'libecc/hash/sha256\|src/hash/sha256.c\|WITH_HASH_SHA256' crypto --exclude-dir=vendor
+          ! grep -R -n 'crypto_wipe' crypto/src
+          grep -n 'OpenSSL::Crypto' crypto/CMakeLists.txt
+          grep -n 'SHA256_Update' crypto/src/crypto_sha256.c
+          grep -n 'OPENSSL_cleanse' crypto/src/crypto_sha256.c crypto/src/crypto_ed448.c
+          git diff --check
+
       - name: Checkout vcpkg at manifest baseline
         uses: actions/checkout@v4
         with:
