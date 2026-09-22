@@ -203,6 +203,7 @@ describe("semantic identity") {
             .callable = &plugin_test_increment,
         };
         salts_plugin_export right_callable = left_callable;
+        cmeta_callable adapter_callable = plugin_test_decrement;
 
         right_interface.export_id = "right";
         right_interface.interface_desc = plugin_test_interface_b();
@@ -222,9 +223,21 @@ describe("semantic identity") {
         check_true(salts_plugin_export_contract_equal(
             &left_callable, &right_callable));
 
+        /*
+         * Dispatch is execution representation, not the semantic callable
+         * contract. The adapter form remains compatible with the same
+         * signature/effects/properties and contract_id/version.
+         */
+        adapter_callable.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;
+        check_true(cmeta_callable_contract_valid(adapter_callable));
+        check_true(plugin_test_increment.dispatch != adapter_callable.dispatch);
+        right_callable.callable = &adapter_callable;
+        check_true(salts_plugin_export_contract_equal(
+            &left_callable, &right_callable));
+
         check_equal(salts_plugin_export_require_callable(
                         &left_callable, "test.transform", 1u, 0u,
-                        &plugin_test_decrement),
+                        &adapter_callable),
                     SALTS_PLUGIN_OK);
         check_equal(salts_plugin_export_require_callable(
                         &left_callable, "test.transform", 1u, 0u,
@@ -234,6 +247,21 @@ describe("semantic identity") {
         right_callable.contract_version = 2u;
         check_false(salts_plugin_export_contract_equal(
             &left_callable, &right_callable));
+    }
+}
+
+describe("ABI layout contract") {
+    it("pins V1 readable prefixes independently of future tail padding") {
+        check_true(SALTS_PLUGIN_EXPORT_V1_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_export));
+        check_true(SALTS_PLUGIN_MANIFEST_V1_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_manifest));
+        check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
+                    (uint32_t)(offsetof(salts_plugin_export, callable) +
+                               sizeof(((salts_plugin_export *)0)->callable)));
+        check_equal(SALTS_PLUGIN_MANIFEST_V1_SIZE,
+                    (uint32_t)(offsetof(salts_plugin_manifest, destroy) +
+                               sizeof(((salts_plugin_manifest *)0)->destroy)));
     }
 }
 
