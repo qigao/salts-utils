@@ -37,7 +37,7 @@ cmake --build --preset win-release-user --target cyaml
 ctest --preset win-release-user -R "^(test_api|test_ypath_lexer|test_ypath_ast|test_cyaml_json_adapter|ypath_test)$"
 ```
 
-Use `linux-release-user` on Linux. Tests follow the global `BUILD_TESTING`
+Use `linux-release-user` on Linux. Tests follow the global `BUILD_TESTS`
 setting and benchmarks follow `BUILD_BENCHMARKS`.
 
 ## Usage
