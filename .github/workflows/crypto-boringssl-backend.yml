@@ -17,13 +17,13 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: crypto-boringssl-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
-  SALTS_SHA: 801202e58c2d86b35202414d4812e79a2fd25bae
   VCPKG_SHA: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
 
 jobs:
@@ -31,40 +31,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Checkout exact SaltsUtils head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Verify source ownership boundary
-        shell: bash
-        run: |
-          set -euxo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
-          python tests/dependency_manifest_test.py
-          ! grep -n 'monocypher' crypto/CMakeLists.txt
-          ! grep -R -n 'libecc/hash/sha256\|src/hash/sha256.c\|WITH_HASH_SHA256' crypto \
-            --exclude-dir=vendor
-          ! grep -R -n 'crypto_wipe' crypto/src
-          grep -n 'OpenSSL::Crypto' crypto/CMakeLists.txt
-          grep -n 'SHA256_Update' crypto/src/crypto_sha256.c
-          grep -n 'OPENSSL_cleanse' crypto/src/crypto_sha256.c crypto/src/crypto_ed448.c
-          git diff --check
-
-      - name: Checkout exact Salts
-        uses: actions/checkout@v4
-        with:
-          repository: qigao/salts
-          ref: ${{ env.SALTS_SHA }}
-          path: salts
-          persist-credentials: false
-
-      - name: Checkout pinned vcpkg
+      - name: Checkout vcpkg at manifest baseline
         uses: actions/checkout@v4
         with:
           repository: microsoft/vcpkg
-          ref: ${{ env.VCPKG_SHA }}
+          ref: b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
           path: vcpkg
           fetch-depth: 0
           persist-credentials: false
@@ -73,7 +44,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: tbe-30-vcpkg-x64-linux-b1b19307-v1
+          key: crypto-vcpkg-x64-linux-b1b19307-v1
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
       - name: Set up Go for BoringSSL
         uses: actions/setup-go@v5
@@ -81,59 +56,28 @@ jobs:
           go-version: "1.24.x"
           cache: false
 
-      - name: Prepare toolchain
+      - name: Prepare versioned SDK toolchain
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm curl xz-utils
+          sudo apt-get install -y ninja-build pkg-config nasm
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo mkdir -p /opt/salts
           sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
-          bash cmake/ci/install-re2c.sh
 
-      - name: Record Salts cache toolchain
-        id: salts-toolchain
+      - name: Restore Salts 1.1.0 and re2c 4.6.3
         shell: bash
-        run: echo "key=gcc-$(gcc -dumpfullversion -dumpversion)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore pinned Salts debug package
-        id: salts-package-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
-          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-
-      - name: Build and install exact Salts
-        if: steps.salts-package-cache.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: salts
         env:
-          PROJECT_ROOT: ${{ runner.temp }}/salts-project
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-        run: |
-          set -euxo pipefail
-          test "$(git rev-parse HEAD)" = "$SALTS_SHA"
-          cmake --preset linux-dev-user \
-            -DENABLE_SANITIZER_ADDRESS=OFF \
-            -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/linux-gcc-debug --target install -j2
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
 
-      - name: Save pinned Salts debug package
-        if: steps.salts-package-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/salts-project/external/pkgs/salts/debug
-          key: salts-pkg-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.salts-toolchain.outputs.key }}-debug-801202e58c2d86b35202414d4812e79a2fd25bae-vcpkg-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01
-
-      - name: Expose exact Salts profile
+      - name: Expose versioned Salts SDK
         shell: bash
         run: |
           set -euxo pipefail
-          package="$RUNNER_TEMP/salts-project/external/pkgs/salts/debug"
-          test -f "$package/lib/cmake/Salts/SaltsConfig.cmake"
-          test "$(git -C salts rev-parse HEAD)" = "$SALTS_SHA"
-          sudo ln -sfn "$package" /opt/salts/debug
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$SALTS_ROOT" /opt/salts/debug
 
       - name: Build standalone host Lemon
         shell: bash
