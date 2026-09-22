@@ -104,7 +104,7 @@ foreach(pre_migration_target IN ITEMS
   endif()
 endforeach()
 
-if(BUILD_TESTING)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
   add_subdirectory(tests/runtime_path)
   add_subdirectory(tests/package_config)
 endif()
