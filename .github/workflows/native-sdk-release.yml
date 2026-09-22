@@ -83,13 +83,7 @@ jobs:
             vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
             echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
           fi
-          echo "image=${ImageOS:-linux}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        with:
-          path: build/vcpkg-binary-cache
-          key: salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.env.outputs.image }}-x64-linux-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.env.outputs.image }}-x64-linux-
+
       - name: Restore versioned Salts and re2c SDKs
         shell: bash
         env:
@@ -164,12 +158,7 @@ jobs:
           esac
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
           echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        with:
-          path: build/vcpkg-binary-cache
-          key: salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.env.outputs.triplet }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ steps.env.outputs.triplet }}-
+
       - name: Restore versioned Salts and re2c SDKs
         shell: bash
         env:
@@ -238,12 +227,7 @@ jobs:
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
           $cache = Join-Path $env:GITHUB_WORKSPACE "build\vcpkg-binary-cache"
           New-Item -ItemType Directory -Force -Path $cache | Out-Null
-      - uses: actions/cache@v4
-        with:
-          path: build/vcpkg-binary-cache
-          key: salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-x64-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            salts-utils-vcpkg-${{ runner.os }}-${{ runner.arch }}-x64-windows-
+
       - name: Restore versioned Salts and re2c SDKs
         shell: pwsh
         env:
@@ -316,12 +300,7 @@ jobs:
             echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
           fi
           test -n "${ANDROID_NDK_HOME:-}"
-      - uses: actions/cache@v4
-        with:
-          path: build/vcpkg-binary-cache
-          key: salts-utils-vcpkg-android-arm64-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            salts-utils-vcpkg-android-arm64-
+
       - name: Restore versioned target Salts and host re2c SDKs
         shell: bash
         env:
