@@ -22,6 +22,12 @@ extern "C" {
 #define SALTS_PLUGIN_MAX_INTERFACE_METHODS 64u
 #define SALTS_PLUGIN_INTERFACE_TOKEN_MAX 127u
 
+#if defined(__cplusplus)
+#  define SALTS_PLUGIN_EXTERN_C extern "C"
+#else
+#  define SALTS_PLUGIN_EXTERN_C
+#endif
+
 #if defined(_WIN32)
 #  define SALTS_PLUGIN_ENTRY __declspec(dllexport)
 #  define SALTS_PLUGIN_CALL __cdecl
@@ -32,6 +38,10 @@ extern "C" {
 #  define SALTS_PLUGIN_ENTRY
 #  define SALTS_PLUGIN_CALL
 #endif
+
+/* Define the one well-known DSO query entry with C linkage even when the
+ * plugin implementation is compiled as C++. */
+#define SALTS_PLUGIN_QUERY_EXPORT SALTS_PLUGIN_EXTERN_C SALTS_PLUGIN_ENTRY
 
 typedef enum salts_plugin_status {
     SALTS_PLUGIN_OK = 0,
