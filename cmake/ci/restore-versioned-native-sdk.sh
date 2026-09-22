@@ -47,7 +47,13 @@ re2c_root="$re2c_package/tools/$re2c_rid"
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"
-[ -f "$re2c_root/bin/re2c" ] || fail "missing host re2c executable under $re2c_root"
+if [ ! -f "$re2c_root/bin/re2c" ]; then
+  nupkg="$re2c_package/qigao.re2c.tools.$re2c_version.nupkg"
+  [ -f "$nupkg" ] || fail "missing cached re2c nupkg: $nupkg"
+  mkdir -p "$re2c_root/bin"
+  unzip -p "$nupkg" "tools/$re2c_rid/bin/re2c" > "$re2c_root/bin/re2c" ||
+    fail "cannot materialize tools/$re2c_rid/bin/re2c from $nupkg"
+fi
 chmod +x "$re2c_root/bin/re2c"
 actual_re2c="$("$re2c_root/bin/re2c" --version)" || fail "cannot execute $re2c_root/bin/re2c"
 [ "$actual_re2c" = "re2c 4.6" ] || fail "unexpected re2c version: $actual_re2c"
