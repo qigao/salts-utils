@@ -9,9 +9,16 @@ static_assert(std::is_standard_layout<salts_plugin_export>::value,
 static_assert(std::is_standard_layout<salts_plugin_manifest>::value,
               "plugin manifest must be a C-compatible ABI row");
 
+SALTS_PLUGIN_QUERY_EXPORT
+const salts_plugin_manifest *SALTS_PLUGIN_CALL
+salts_plugin_query(uint32_t host_abi) {
+    (void)host_abi;
+    return nullptr;
+}
+
 int main() {
     salts_plugin_manifest manifest{};
-    salts_plugin_query_fn query = nullptr;
+    salts_plugin_query_fn query = &salts_plugin_query;
     const salts_plugin_export *entry = nullptr;
 
     (void)query;
