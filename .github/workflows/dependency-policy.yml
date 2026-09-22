@@ -29,8 +29,6 @@ permissions:
 jobs:
   manifest:
     runs-on: ubuntu-latest
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,7 +81,6 @@ jobs:
           set -euo pipefail
           baseline="$(python -c 'import json; print(json.load(open("vcpkg.json"))["builtin-baseline"])')"
           test "$(git -C "$VCPKG_ROOT" rev-parse HEAD)" = "$baseline"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
       - name: Verify vcpkg manifest resolves
         run: |
           "$VCPKG_ROOT/vcpkg" install --x-manifest-root="$GITHUB_WORKSPACE" --triplet x64-linux --dry-run

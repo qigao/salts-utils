@@ -89,8 +89,7 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          sudo ln -sfn "$GITHUB_WORKSPACE/vcpkg" /opt/vcpkg
+          sudo ln -sfn "$VCPKG_ROOT" /opt/vcpkg
 
       - name: Restore Salts 1.2.0 and re2c 4.6.3
         shell: bash
