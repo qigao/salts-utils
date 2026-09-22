@@ -25,7 +25,7 @@ permissions:
 
 env:
   SALTS_SDK_VERSION: "1.1.0"
-  RE2C_TOOLS_VERSION: "4.6.2"
+  RE2C_TOOLS_VERSION: "4.6.3"
 
 jobs:
   metadata:
