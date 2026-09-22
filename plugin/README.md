@@ -69,10 +69,16 @@ CMeta representation      Interface or Callable
 
 A host and plugin can compile the same `CMETA_INTERFACE(...)` declaration into
 different translation units/DSOs and receive different descriptor addresses.
-`salts_plugin_interface_desc_equal()` compares the generated interface
-metadata by content. `salts_plugin_export_contract_equal()` additionally
-requires the same contract ID/version and compares the CMeta contract without
-using implementation addresses.
+`salts_plugin_interface_desc_equal()` compares the CMeta metadata that exists
+today (interface/method names, return spellings and arity) by content. CMeta's
+current interface descriptor does not encode parameter type spellings, so this
+comparison is intentionally only a structural consistency check.
+
+The authoritative cross-DSO contract is `contract_id + contract_version`.
+**Every ABI-significant change, including a parameter type change, must advance
+`contract_version`.** `salts_plugin_export_contract_equal()` requires that
+declared identity first and then applies the available CMeta structural check;
+it never treats descriptor/vtable/function addresses as identity.
 
 ## Interface export
 
