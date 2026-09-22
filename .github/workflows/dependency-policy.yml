@@ -10,14 +10,21 @@ on:
       - "presets/**"
       - "tbe/**"
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "tests/dependency_manifest_test.py"
       - ".github/workflows/**"
   push:
     branches: [master]
     paths:
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
       - "tests/dependency_manifest_test.py"
       - ".github/workflows/dependency-policy.yml"
+
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   manifest:
@@ -58,6 +65,11 @@ jobs:
             echo "independent DataBind package exports are forbidden" >&2
             exit 1
           fi
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
       - name: Checkout vcpkg at the manifest baseline
         uses: actions/checkout@v4
         with:

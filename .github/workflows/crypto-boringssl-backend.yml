@@ -50,6 +50,11 @@ jobs:
           grep -n 'OPENSSL_cleanse' crypto/src/crypto_sha256.c crypto/src/crypto_ed448.c
           git diff --check
 
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
       - name: Checkout vcpkg at manifest baseline
         uses: actions/checkout@v4
         with:
@@ -59,11 +64,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Restore vcpkg binary archives
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vcpkg/archives
-          key: crypto-vcpkg-x64-linux-b1b19307-v1
 
       - uses: actions/setup-dotnet@v4
         with:

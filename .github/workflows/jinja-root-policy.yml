@@ -48,6 +48,11 @@ jobs:
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
 
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
       - name: Checkout vcpkg at manifest baseline
         uses: actions/checkout@v4
         with:
@@ -57,11 +62,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Restore vcpkg binary archives
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vcpkg/archives
-          key: jinja-root-policy-vcpkg-x64-linux-b1b19307-v1
 
       - uses: actions/setup-dotnet@v4
         with:
