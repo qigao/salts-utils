@@ -83,6 +83,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Restore vcpkg binary archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: parser-migration-vcpkg-ubuntu24-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01-${{ env.SALTS_CUTOVER_SHA }}-v1
+          restore-keys: |
+            parser-migration-vcpkg-ubuntu24-b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01-
+
       - name: Prepare toolchain
         shell: bash
         run: |
