@@ -31,4 +31,6 @@ target_include_directories(
 
 target_link_libraries(${TARGET_NAME} PRIVATE Salts::DotEnvParser)
 
-add_subdirectory(test)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+  add_subdirectory(test)
+endif()
