@@ -17,7 +17,7 @@ install(
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/query_vm.h DESTINATION include/query_vm)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   cmake_add_test(test_query_vm
     SOURCES test/test_query_vm.c
     LIBS ${TARGET_NAME} Salts::TinyTest
