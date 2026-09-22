@@ -57,7 +57,7 @@ install(
 # Tests
 # =============================================================================
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
 add_test(NAME test_databind_compiler_tooling_boundary
   COMMAND "${CMAKE_COMMAND}"
     "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
