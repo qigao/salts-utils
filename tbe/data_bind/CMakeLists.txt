@@ -163,7 +163,7 @@ target_link_libraries(
   PUBLIC
     Salts::DataBindCore)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   get_target_property(DATA_BIND_PUBLIC_LINKS
     ${DATA_BIND_TARGET} INTERFACE_LINK_LIBRARIES)
   if(DATA_BIND_PUBLIC_LINKS MATCHES
@@ -240,7 +240,7 @@ install(
   DESTINATION include
   COMPONENT DataBind)
 
-if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS)
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
 target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
@@ -403,7 +403,7 @@ databind_add_test(test_tbe_typed_descriptor_boundary
 
 # This fixture executes tbe_compiler during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
-if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
   set(TBE_SAFETY_GENERATED_HEADER "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.h")
   set(TBE_SAFETY_GENERATED_SOURCE "${TBE_SAFETY_GENERATED_DIR}/tbe30_generated.c")
