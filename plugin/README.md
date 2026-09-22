@@ -47,6 +47,15 @@ The query returns borrowed immutable metadata. The host must keep the DSO loaded
 while it reads the manifest, export rows, CMeta descriptors/interface values, or
 callables.
 
+### Salts/CMeta ABI prerequisite
+
+Plugin ABI V1 does not replace the CMeta ABI contract. In particular,
+`cmeta_callable` contains the finite CMeta signature universe, and changing the
+configured callable type/relation lists changes that ABI. Host and plugin must
+therefore be compiled against the same compatible installed Salts/CMeta SDK
+profile and callable universe. A Plugin ABI version match is not permission to
+mix unrelated CMeta builds or per-plugin type-universe overrides.
+
 ## Semantic identity
 
 Addresses are representation facts, not plugin identities:
@@ -130,6 +139,12 @@ V1 is exact and fail-fast:
 - callable contracts must bind and validate through CMeta;
 - unsupported ABI is distinct from malformed metadata;
 - there is no compatibility shim or silent fallback.
+
+The generic admission helpers `salts_plugin_export_require_interface()` and
+`salts_plugin_export_require_callable()` return
+`SALTS_PLUGIN_INCOMPATIBLE_CONTRACT` for contract ID/version, capability, or
+available CMeta-structure mismatches. They do not execute plugin lifecycle
+callbacks.
 
 The loader/registry will add duplicate plugin-ID and resource ownership checks
 without changing these semantic rows.
