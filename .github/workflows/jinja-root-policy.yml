@@ -1,10 +1,22 @@
 name: Jinja root environment policy verification
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/jinja-root-policy.yml"
   push:
-    branches:
-      - fix/jinja-root-autoescape-selector
-      - fix/jinja-root-environment-policies-green
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/jinja-root-policy.yml"
   workflow_dispatch:
 
 permissions:
