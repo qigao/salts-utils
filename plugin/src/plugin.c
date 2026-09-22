@@ -298,6 +298,14 @@ const char *salts_plugin_status_string(salts_plugin_status status) {
     case SALTS_PLUGIN_UNKNOWN_EXPORT: return "unknown_export";
     case SALTS_PLUGIN_INCOMPATIBLE_CONTRACT: return "incompatible_contract";
     case SALTS_PLUGIN_CAPACITY_EXCEEDED: return "capacity_exceeded";
+    case SALTS_PLUGIN_ALLOCATION_FAILED: return "allocation_failed";
+    case SALTS_PLUGIN_LOAD_FAILED: return "load_failed";
+    case SALTS_PLUGIN_QUERY_MISSING: return "query_missing";
+    case SALTS_PLUGIN_QUERY_REJECTED: return "query_rejected";
+    case SALTS_PLUGIN_UNKNOWN_PLUGIN: return "unknown_plugin";
+    case SALTS_PLUGIN_STALE: return "stale";
+    case SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED: return "lifecycle_unsupported";
+    case SALTS_PLUGIN_UNLOAD_FAILED: return "unload_failed";
     default: return "unknown";
     }
 }
