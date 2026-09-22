@@ -14,7 +14,7 @@ add_subdirectory(schema)
 add_subdirectory(data_bind)
 add_subdirectory(tbe_compiler)
 
-if(BUILD_TESTING)
+if(BUILD_TESTS)
   add_subdirectory(tests/package_config)
   add_subdirectory(tests/native_storage)
 endif()
