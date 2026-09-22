@@ -1,9 +1,22 @@
 name: Unicode line-break conformance
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-line-break.yml"
   push:
-    branches:
-      - feature/unicode-line-break
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-line-break.yml"
   workflow_dispatch:
 
 permissions:
