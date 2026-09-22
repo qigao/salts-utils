@@ -21,6 +21,7 @@ extern "C" {
 #define SALTS_PLUGIN_CONTRACT_ID_MAX 255u
 #define SALTS_PLUGIN_MAX_INTERFACE_METHODS 64u
 #define SALTS_PLUGIN_INTERFACE_TOKEN_MAX 127u
+#define SALTS_PLUGIN_PATH_MAX 4095u
 
 #if defined(__cplusplus)
 #  define SALTS_PLUGIN_EXTERN_C extern "C"
@@ -52,7 +53,15 @@ typedef enum salts_plugin_status {
     SALTS_PLUGIN_DUPLICATE_EXPORT,
     SALTS_PLUGIN_UNKNOWN_EXPORT,
     SALTS_PLUGIN_INCOMPATIBLE_CONTRACT,
-    SALTS_PLUGIN_CAPACITY_EXCEEDED
+    SALTS_PLUGIN_CAPACITY_EXCEEDED,
+    SALTS_PLUGIN_ALLOCATION_FAILED,
+    SALTS_PLUGIN_LOAD_FAILED,
+    SALTS_PLUGIN_QUERY_MISSING,
+    SALTS_PLUGIN_QUERY_REJECTED,
+    SALTS_PLUGIN_UNKNOWN_PLUGIN,
+    SALTS_PLUGIN_STALE,
+    SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED,
+    SALTS_PLUGIN_UNLOAD_FAILED
 } salts_plugin_status;
 
 typedef enum salts_plugin_export_kind {
@@ -146,6 +155,26 @@ typedef struct salts_plugin_manifest {
 typedef const salts_plugin_manifest *(SALTS_PLUGIN_CALL *salts_plugin_query_fn)(
     uint32_t host_abi);
 
+/* Stable public registry reference. slot is 1-based; zero fields are invalid.
+ * generation is reserved now so lifecycle/unload can make stale references
+ * explicit without changing this ABI later. */
+typedef struct salts_plugin_ref {
+    uint32_t slot;
+    uint32_t generation;
+} salts_plugin_ref;
+
+typedef struct salts_plugin_registry_config {
+    size_t capacity;
+} salts_plugin_registry_config;
+
+typedef struct salts_plugin_registry {
+    void *impl;
+} salts_plugin_registry;
+
+static inline bool salts_plugin_ref_valid(salts_plugin_ref ref) {
+    return ref.slot != 0u && ref.generation != 0u;
+}
+
 const char *salts_plugin_status_string(salts_plugin_status status);
 
 bool salts_plugin_interface_desc_valid(const cmeta_interface_desc *desc);
@@ -182,6 +211,44 @@ salts_plugin_status salts_plugin_manifest_find_export(
     const salts_plugin_manifest *manifest,
     const char *export_id,
     const salts_plugin_export **out_export);
+
+/*
+ * Bounded dynamic-plugin registry.
+ *
+ * Control-plane calls are externally serialized in V1. init allocates the
+ * fixed slot table once; load never grows or replaces it. path is borrowed for
+ * the call only, must be non-empty UTF-8/no more than SALTS_PLUGIN_PATH_MAX
+ * bytes, and is not retained. Platform library handles remain private.
+ *
+ * #129 admits passive manifests only: lifecycle callbacks are rejected until
+ * #130 defines start/stop/quiescent-unload orchestration.
+ */
+salts_plugin_status salts_plugin_registry_init(
+    salts_plugin_registry *registry,
+    const salts_plugin_registry_config *config);
+
+salts_plugin_status salts_plugin_registry_load(
+    salts_plugin_registry *registry,
+    const char *path,
+    salts_plugin_ref *out_ref);
+
+salts_plugin_status salts_plugin_registry_find(
+    const salts_plugin_registry *registry,
+    const char *plugin_id,
+    salts_plugin_ref *out_ref);
+
+salts_plugin_status salts_plugin_registry_manifest(
+    const salts_plugin_registry *registry,
+    salts_plugin_ref ref,
+    const salts_plugin_manifest **out_manifest);
+
+size_t salts_plugin_registry_count(const salts_plugin_registry *registry);
+
+/* Close every merely-loaded passive DSO. Successful closes are settled once.
+ * If an OS close fails, successfully closed slots remain stale while the
+ * registry stays live so the caller may retry the remaining close. */
+salts_plugin_status salts_plugin_registry_destroy(
+    salts_plugin_registry *registry);
 
 #ifdef __cplusplus
 }
