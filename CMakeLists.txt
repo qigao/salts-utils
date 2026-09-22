@@ -60,7 +60,7 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts 1.1.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 foreach(required_salts_target IN ITEMS
@@ -104,7 +104,7 @@ foreach(pre_migration_target IN ITEMS
   endif()
 endforeach()
 
-if(BUILD_TESTING)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
   add_subdirectory(tests/runtime_path)
   add_subdirectory(tests/package_config)
 endif()

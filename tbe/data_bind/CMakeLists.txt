@@ -240,6 +240,7 @@ install(
   DESTINATION include
   COMPONENT DataBind)
 
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
 target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
@@ -482,6 +483,8 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     FOLDER "tbe/data_bind/tests")
   set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+endif()
+
 endif()
 
 databind_add_benchmark(benchmark_data_bind_pool

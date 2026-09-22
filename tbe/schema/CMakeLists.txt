@@ -51,6 +51,8 @@ install(
 # Tests
 # =============================================================================
 
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
 set(TBE_SCHEMA_TEST_LIBS Salts::TbeSchema Salts::TinyTest)
 foreach(test_name
         test_tbe_parser
@@ -160,6 +162,8 @@ databind_add_test(test_union_types_functional
   INCLUDES ${CMAKE_BINARY_DIR}/bin
   FOLDER "tbe/schema/tests")
 
+endif()
+
 # =============================================================================
 # Benchmarks
 # =============================================================================
@@ -190,3 +194,5 @@ add_custom_command(
   DEPENDS tbe_compiler ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating benchmark headers with tbe_compiler"
   VERBATIM)
+
+endif()

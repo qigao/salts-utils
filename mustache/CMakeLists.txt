@@ -40,7 +40,9 @@ cmake_add_executable(mustache_xml_example
   LIBS Salts::Mustache Salts::XmlParser
   FOLDER "mustache/examples")
 
-add_subdirectory(test)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+  add_subdirectory(test)
+endif()
 if(BUILD_BENCHMARKS OR BUILD_TESTS)
   add_subdirectory(benchmarks)
 endif()

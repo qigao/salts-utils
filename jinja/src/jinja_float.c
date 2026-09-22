@@ -39,7 +39,18 @@ static double jinja_float_strtod(const char *text, char **end) {
 #if defined(_WIN32)
   return _strtod_l(text, end, jinja_float_c_locale);
 #else
-  return strtod_l(text, end, jinja_float_c_locale);
+  locale_t previous = uselocale(jinja_float_c_locale);
+  double value;
+  if (previous == (locale_t)0) {
+    if (end != NULL) *end = (char *)text;
+    return 0.0;
+  }
+  value = strtod(text, end);
+  if (uselocale(previous) == (locale_t)0) {
+    if (end != NULL) *end = (char *)text;
+    return 0.0;
+  }
+  return value;
 #endif
 }
 

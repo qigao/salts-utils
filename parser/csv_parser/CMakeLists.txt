@@ -49,4 +49,6 @@ target_link_libraries(${TARGET_NAME} PUBLIC Salts::QueryVM)
 # Tests
 # =============================================================================
 
-add_subdirectory(test)
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
+  add_subdirectory(test)
+endif()

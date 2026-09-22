@@ -57,6 +57,7 @@ install(
 # Tests
 # =============================================================================
 
+if(BUILD_TESTS AND ENABLE_TESTS AND BUILD_TESTING)
 add_test(NAME test_databind_compiler_tooling_boundary
   COMMAND "${CMAKE_COMMAND}"
     "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
@@ -99,4 +100,5 @@ if(TARGET test_tbe_compiler_schema_boundary)
   target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
   set_source_files_properties(test_scalar_projection.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
+endif()
 endif()
