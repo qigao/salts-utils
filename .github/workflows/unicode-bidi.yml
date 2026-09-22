@@ -1,9 +1,22 @@
 name: Unicode bidi conformance
 
 on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-bidi.yml"
   push:
-    branches:
-      - feature/unicode-bidi
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-bidi.yml"
   workflow_dispatch:
 
 permissions:
