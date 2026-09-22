@@ -40,6 +40,7 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Area | Public capability |
 | --- | --- |
 | Crypto | `Salts::Crypto` |
+| Plugin ABI | `Salts::Plugin`; CMeta Interface/Callable manifests and semantic admission |
 | Filesystem | `Salts::FS` |
 | Process adapters | `Salts::Process` |
 | Query | `Salts::QueryVM` |
@@ -85,6 +86,7 @@ target_link_libraries(app PRIVATE
   Salts::JsonParser
   Salts::XmlParser
   Salts::Crypto
+  Salts::Plugin
   Salts::FS
   Salts::Process
   Salts::Playback
@@ -109,6 +111,10 @@ target_link_libraries(app PRIVATE Salts::Databind)
 SaltsUtils exports the actual runtime and owns its internal dependency closure. Consumers do not assemble internal Core/CMeta/CFlow/format-adapter targets, introduce alternate target spellings, or manufacture aliases to conceal a missing export. There is one SaltsUtils installation and release, with no independent DataBind package/root or fallback lookup.
 
 ## Selected modules
+
+### Plugin
+
+`Salts::Plugin` defines a finite CMeta-based plugin manifest/export ABI. Stable `contract_id`/version values carry semantic identity across translation units and DSOs; descriptor, vtable, callable and load addresses remain representation facts. Dynamic loading/registry and optional CFlow execution adapters are layered above this contract rather than added to CMeta/CFlow core.
 
 ### Filesystem
 
