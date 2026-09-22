@@ -65,9 +65,15 @@ typedef void (*salts_plugin_destroy_fn)(void *self);
  * One immutable semantic export row.
  *
  * export_id is unique within one manifest. contract_id + contract_version are
- * the cross-DSO semantic identity. interface_desc/interface_value and callable
- * are borrowed representations owned by the loaded plugin and are never used as
- * semantic identities.
+ * the authoritative cross-DSO semantic identity asserted by the domain
+ * contract. Any ABI-significant contract change, including method parameter
+ * types, requires a contract_version change.
+ *
+ * interface_desc/interface_value and callable are borrowed representations
+ * owned by the loaded plugin and are never pointer identities. Current CMeta
+ * interface metadata records name, return spelling and arity, but not parameter
+ * type spellings; descriptor comparison is therefore a structural consistency
+ * check, not a substitute for contract_id/version discipline.
  */
 typedef struct salts_plugin_export {
     uint32_t struct_size;
