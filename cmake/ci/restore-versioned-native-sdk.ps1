@@ -10,7 +10,7 @@ if ([string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) { throw "GITHUB_ENV is requir
 if ([string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) { throw "GITHUB_PATH is required" }
 
 $saltsVersion = if ($env:SALTS_SDK_VERSION) { $env:SALTS_SDK_VERSION } else { "1.1.0" }
-$re2cVersion = if ($env:RE2C_TOOLS_VERSION) { $env:RE2C_TOOLS_VERSION } else { "4.6.2" }
+$re2cVersion = if ($env:RE2C_TOOLS_VERSION) { $env:RE2C_TOOLS_VERSION } else { "4.6.3" }
 $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } else { Join-Path $env:RUNNER_TEMP "qigao-nuget" }
 $config = Join-Path $env:RUNNER_TEMP "qigao-nuget.config"
 $project = Join-Path $env:RUNNER_TEMP "qigao-native-sdk-restore.csproj"
