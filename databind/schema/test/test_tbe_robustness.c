@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tbe_wire.h"
 #include "tbe_version.h"
@@ -109,17 +109,17 @@ suite("tbe_robustness") {
             Node *root = create_node_map("root");
             DataBindSchemaError err;
             
-            int rc = parse_schema(NULL, 0, root, &err);
+            int rc = data_bind_schema_parse(NULL, 0, root, &err);
             check_equal(rc, -1);
             check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
-            rc = parse_schema("test", 4, NULL, &err);
+            rc = data_bind_schema_parse("test", 4, NULL, &err);
             check_equal(rc, -1);
             check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
             // Test with extremely large input
             char large_text[] = "message Test { uint32 x; }";
-            rc = parse_schema(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
+            rc = data_bind_schema_parse(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
             check_equal(rc, -1);
             check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
@@ -188,7 +188,7 @@ suite("tbe_robustness") {
             
             Node *root = create_node_map("root");
             DataBindSchemaError err;
-            int rc = parse_schema(large_schema, strlen(large_schema), root, &err);
+            int rc = data_bind_schema_parse(large_schema, strlen(large_schema), root, &err);
             
             check_equal(rc, 0);
             
@@ -245,7 +245,7 @@ suite("tbe_robustness") {
             DataBindSchemaError err;
 
             data_bind_schema_error_init(&err);
-            check_equal(parse_schema(schema_text, strlen(schema_text), root, &err), -1);
+            check_equal(data_bind_schema_parse(schema_text, strlen(schema_text), root, &err), -1);
             check_equal(err.code, DATA_BIND_SCHEMA_ERR_SYNTAX);
             check(err.line > 0);
             check(err.column > 0);
