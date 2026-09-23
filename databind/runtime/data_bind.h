@@ -490,7 +490,7 @@ DATA_BIND_API const char *data_bind_format_name(DataBindFormat format);
  * data_bind_free().
  *
  * Codec creation and all binding operations use the pure C runtime. This entry
- * point requires no tbe_compiler invocation and no generated headers or
+ * point requires no databindc invocation and no generated headers or
  * sources; the schema text is parsed directly at runtime. Only load schemas
  * from trusted sources.
  */
@@ -508,7 +508,7 @@ DATA_BIND_API DataBindStatus data_bind_create(const char *schema_path, DataBind 
  *
  * Codec creation and all binding operations use the pure C runtime. Use this
  * entry point when the schema is already available in memory (for example,
- * embedded or supplied at runtime); it requires no tbe_compiler invocation and
+ * embedded or supplied at runtime); it requires no databindc invocation and
  * no generated headers or sources.
  */
 DATA_BIND_API DataBindStatus data_bind_create_from_text(const char *schema_text, size_t len,
