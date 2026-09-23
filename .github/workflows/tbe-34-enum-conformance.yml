@@ -3,10 +3,10 @@ name: TBE enum conformance
 on:
   push:
     branches: [master, fix/tbe-34-enum-conformance]
-    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+    paths: ['databind/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
   pull_request:
     branches: [master]
-    paths: ['tbe/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
+    paths: ['databind/**', 'cmake/**', '.github/workflows/tbe-34-enum-conformance.yml']
   workflow_dispatch:
 
 permissions:
@@ -89,8 +89,8 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/tbe-build.log"
           cp build/linux-gcc-debug/compile_commands.json "$RUNNER_TEMP/enum-evidence/"
           tar -czf "$RUNNER_TEMP/enum-evidence/parser-tools.tar.gz" \
-            build/linux-gcc-debug/tbe/schema/schema_lexer_gen.c \
-            build/linux-gcc-debug/tbe/schema/schema_grammar_gen.h
+            build/linux-gcc-debug/databind/schema/schema_lexer_gen.c \
+            build/linux-gcc-debug/databind/schema/schema_grammar_gen.h
       - name: Run complete TBE suite
         shell: bash
         run: |
@@ -101,8 +101,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          python3 tbe/tbe_compiler/test/enum_conformance.py \
-            --compiler build/linux-gcc-debug/bin/tbe_compiler \
+          python3 databind/compiler/test/enum_conformance.py \
+            --compiler build/linux-gcc-debug/bin/databindc \
             --source "$GITHUB_WORKSPACE" --salts-include /opt/salts/debug/include \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/enum-conformance.log"
       - name: Verify unchanged source
