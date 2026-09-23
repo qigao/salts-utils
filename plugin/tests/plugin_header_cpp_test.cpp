@@ -6,6 +6,16 @@ static_assert(std::is_standard_layout<salts_plugin_version>::value,
               "plugin version must be a C-compatible value");
 static_assert(std::is_standard_layout<salts_plugin_export>::value,
               "plugin export must be a C-compatible ABI row");
+static_assert(std::is_standard_layout<salts_plugin_function_adapter>::value,
+              "plugin function adapter must be a C-compatible ABI value");
+static_assert(std::is_same<
+                  decltype(salts_plugin_export{}.function),
+                  const cmeta_function_desc *>::value,
+              "Function export must publish canonical FunctionMeta");
+static_assert(std::is_same<
+                  decltype(salts_plugin_export{}.function_abi),
+                  const cmeta_function_abi_desc *>::value,
+              "Function export must publish canonical FunctionAbi");
 static_assert(std::is_standard_layout<salts_plugin_manifest>::value,
               "plugin manifest must be a C-compatible ABI row");
 static_assert(std::is_same<
