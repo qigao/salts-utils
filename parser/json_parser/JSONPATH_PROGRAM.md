@@ -162,8 +162,8 @@ SIMD 统一走 vcpkg 的 SIMDe 头（`simde/x86/sse2.h`），不写平台 intrin
 - `src/re.c`：`re_match_borrowed` 对“首原子为单个必选字面量字节且无顶层分支”
   的模式先用 SIMDe 扫描候选起始字节，只在候选位置进入回溯匹配。
 
-`src/re.c` 是从 `tbe/data_bind/re.c` 复制的本地副本，上述前缀跳过为本地新增
-优化；`tbe/data_bind/re.c` 保持原样。前缀跳过的唯一可观察差异：大文本无命中时
+`src/re.c` 是从 `databind/runtime/re.c` 复制的本地副本，上述前缀跳过为本地新增
+优化；`databind/runtime/re.c` 保持原样。前缀跳过的唯一可观察差异：大文本无命中时
 返回 `RE_STATUS_NO_MATCH` 而非耗尽 step 预算返回 `RE_STATUS_STEP_LIMIT`，
 JSONPath 层对两者都视为“不匹配”。
 
