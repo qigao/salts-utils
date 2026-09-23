@@ -239,8 +239,7 @@ salts_plugin_status salts_plugin_export_require_function(
     uint64_t required_capabilities);
 
 salts_plugin_status salts_plugin_manifest_validate(
-    const salts_plugin_manifest *manifest,
-    uint32_t host_abi);
+    const salts_plugin_manifest *manifest);
 
 salts_plugin_status salts_plugin_manifest_find_export(
     const salts_plugin_manifest *manifest,
