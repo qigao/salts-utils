@@ -1,4 +1,5 @@
 #include <salts/plugin.h>
+#include <salts/thread.h>
 
 FunctionDecl(value, int, fixture_plugin_double,
     (int, value, CMETA_PARAM_IN));
@@ -25,20 +26,25 @@ static bool SALTS_PLUGIN_CALL fixture_plugin_double_invoke(
     return true;
 }
 
-static const salts_plugin_export fixture_export = {
-    .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-    .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
-    .contract_version = 1u,
-    .capabilities = 1u,
-    .export_id = "test.loader.math.double",
-    .contract_id = "test.loader.math",
-    .value.function = {
-        .desc = FunctionMeta(fixture_plugin_double),
-        .abi = FunctionAbi(fixture_plugin_double),
-        .context = NULL,
-        .invoke = fixture_plugin_double_invoke,
-    },
-};
+static salts_plugin_export fixture_export;
+static salts_once_t fixture_export_once = SALTS_ONCE_INIT;
+
+static void fixture_export_init(void) {
+    fixture_export = (salts_plugin_export){
+        .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+        .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
+        .contract_version = 1u,
+        .capabilities = 1u,
+        .export_id = "test.loader.math.double",
+        .contract_id = "test.loader.math",
+        .value.function = {
+            .desc = FunctionMeta(fixture_plugin_double),
+            .abi = FunctionAbi(fixture_plugin_double),
+            .context = NULL,
+            .invoke = fixture_plugin_double_invoke,
+        },
+    };
+}
 
 static const salts_plugin_manifest fixture_manifest = {
     .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,
@@ -52,5 +58,8 @@ static const salts_plugin_manifest fixture_manifest = {
 SALTS_PLUGIN_QUERY_EXPORT
 const salts_plugin_manifest *SALTS_PLUGIN_CALL
 salts_plugin_query(uint32_t host_abi) {
-    return host_abi == SALTS_PLUGIN_ABI_VERSION ? &fixture_manifest : NULL;
+    if (host_abi != SALTS_PLUGIN_ABI_VERSION)
+        return NULL;
+    salts_once(&fixture_export_once, fixture_export_init);
+    return &fixture_manifest;
 }
