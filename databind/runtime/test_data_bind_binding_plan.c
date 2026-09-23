@@ -661,6 +661,63 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
+  it("rejects malformed native optional-presence bindings") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http =
+        projection("http-v1", &scratch, http_project);
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+
+    const DataBindNativePresenceBinding required_presence[] = {
+        {sizeof(DataBindNativePresenceBinding), "left",
+         offsetof(AddRequest, presence), 1u}};
+    DataBindNativeTypeBinding bad_required = ADD_REQUEST_NATIVE;
+    DataBindServiceNativeBinding native;
+
+    bad_required.presence = required_presence;
+    bad_required.presence_count = 1u;
+    native = (DataBindServiceNativeBinding)
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(calc_add_root), &bad_required, &ADD_RESPONSE_NATIVE);
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &http, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_equal(diagnostic.schema_field, "left");
+
+    {
+      const DataBindNativePresenceBinding duplicate_presence[] = {
+          {sizeof(DataBindNativePresenceBinding), "scale",
+           offsetof(AddRequest, presence), 0u},
+          {sizeof(DataBindNativePresenceBinding), "scale",
+           offsetof(AddRequest, presence), 0u}};
+      DataBindNativeTypeBinding bad_duplicate = ADD_REQUEST_NATIVE;
+
+      bad_duplicate.presence = duplicate_presence;
+      bad_duplicate.presence_count = 2u;
+      diagnostic =
+          (DataBindBindingPlanDiagnostic)DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+      native = (DataBindServiceNativeBinding)
+          DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+              FunctionMeta(calc_add_root), &bad_duplicate,
+              &ADD_RESPONSE_NATIVE);
+
+      check_equal(data_bind_binding_plan_compile_service(
+                      codec, "Calc", "Add", &http, &native,
+                      &plan, &diagnostic),
+                  DATA_BIND_ERR_SCHEMA);
+      check_null(plan);
+      check_equal(diagnostic.schema_field, "scale");
+      check(strstr(diagnostic.message, "Duplicate") != NULL);
+    }
+
+    data_bind_free(codec);
+  }
+
   it("rejects ambiguous pointer-return response ownership") {
     DataBind *codec = create_codec();
     ProjectionScratch scratch = {{0}, {0}};
