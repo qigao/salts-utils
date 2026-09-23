@@ -9,6 +9,9 @@
 #ifndef PLUGIN_VALID_CPP_PATH
 #error "PLUGIN_VALID_CPP_PATH is required"
 #endif
+#ifndef PLUGIN_FUNCTION_PATH
+#error "PLUGIN_FUNCTION_PATH is required"
+#endif
 #ifndef PLUGIN_MISSING_QUERY_PATH
 #error "PLUGIN_MISSING_QUERY_PATH is required"
 #endif
@@ -90,6 +93,57 @@ describe("bounded registry") {
         check_equal(found.slot, cpp_ref.slot);
         check_equal(found.generation, cpp_ref.generation);
 
+        destroy_registry(&registry);
+    }
+
+    it("loads a FunctionDesc manifest tail and invokes only through an exact typed cast") {
+        salts_plugin_registry registry = make_registry(1u);
+        salts_plugin_ref ref = {0};
+        salts_plugin_lease lease = {0};
+        const salts_plugin_manifest *manifest = NULL;
+        const salts_plugin_function_export *function_export = NULL;
+        const cmeta_function_desc *function = NULL;
+        const cmeta_function_abi_desc *abi = NULL;
+        salts_plugin_function_entry entry = NULL;
+        bool quiescent = false;
+        typedef int (*fixture_add_fn)(int, int);
+        fixture_add_fn add;
+
+        check_equal(salts_plugin_registry_load(
+                        &registry, PLUGIN_FUNCTION_PATH, &ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_start(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_acquire(
+                        &registry, ref, &lease, &manifest),
+                    SALTS_PLUGIN_OK);
+        check_not_null(manifest);
+        check_true(manifest->struct_size >= SALTS_PLUGIN_MANIFEST_V2_SIZE);
+        check_equal(salts_plugin_manifest_find_function_export(
+                        manifest, "test.math.Add", &function_export),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_function_export_require(
+                        function_export, "test.math.Add", 1u, 1u,
+                        &function, &abi, &entry),
+                    SALTS_PLUGIN_OK);
+        check_not_null(function);
+        check_not_null(abi);
+        check_not_null(entry);
+        check_true(abi->function == function);
+
+        add = (fixture_add_fn)entry;
+        check_equal(add(19, 23), 42);
+
+        check_equal(salts_plugin_registry_release(&registry, &lease),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_poll_quiescent(
+                        &registry, ref, &quiescent),
+                    SALTS_PLUGIN_OK);
+        check_true(quiescent);
+        check_equal(salts_plugin_registry_unload(&registry, ref),
+                    SALTS_PLUGIN_OK);
         destroy_registry(&registry);
     }
 
