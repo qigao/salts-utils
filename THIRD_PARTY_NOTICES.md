@@ -9,7 +9,7 @@ The components and data sets below retain their upstream license terms.
 | libecc | `crypto/vendor/libecc/` | BSD-2-Clause OR GPL-2.0-or-later | SaltsUtils selects the BSD license for redistribution. See `crypto/vendor/libecc/LICENSE`. |
 | cyaml | `parser/cyaml/` | MIT | See `parser/cyaml/LICENSE`. |
 | cxml | `parser/xml_parser/vendor/cxml/` | MIT | See `parser/xml_parser/vendor/cxml/LICENSE.txt`. |
-| Monocypher | `tbe/vendor/monocypher/` | BSD-2-Clause OR CC0-1.0 | License notices are embedded in the upstream source. |
+| Monocypher | `databind/vendor/monocypher/` | BSD-2-Clause OR CC0-1.0 | License notices are embedded in the upstream source. |
 | Unicode Character Database | `unicode/data/` and generated Unicode tables | Unicode-3.0 | See `unicode/data/LICENSE.txt`; generated tables retain the data-license attribution. |
 | SQLite Lemon parser generator | `tools/lemon/` | Public-domain dedication | The source headers explicitly disclaim copyright. |
 
