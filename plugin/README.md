@@ -1,9 +1,9 @@
 # Salts Plugin
 
 `Salts::Plugin` is the CMeta-based plugin contract layer owned by SaltsUtils.
-It defines the portable manifest/export ABI and validates semantic contracts. It
-does **not** load shared libraries yet; POSIX/Windows loading and the bounded
-registry are tracked separately.
+It defines the portable manifest/export ABI, validates semantic contracts, and
+provides the bounded POSIX/Windows dynamic loader registry. Lifecycle execution
+and optional CFlow adapters remain separate follow-up layers.
 
 ## Boundary
 
@@ -15,9 +15,7 @@ Salts::CMeta
        Salts::Plugin
   manifest / export ABI
   semantic admission
-             |
-             v
-   future loader / registry
+  bounded loader / registry
 
 optional later:
 Salts::PluginCFlow
@@ -167,3 +165,55 @@ The manifest reserves explicit `start`, `request_stop`, `is_quiescent` and
 never invokes them. Their ordering,
 generation-safe handles, in-flight accounting and quiescent unload are owned by
 the lifecycle work, not by this contract validator.
+
+
+## Bounded loader and registry
+
+The loader/registry layer keeps platform library handles private and publishes
+only generation-bearing `salts_plugin_ref` values.
+
+```text
+borrowed UTF-8 path
+      ↓
+platform open
+      ↓
+resolve exact salts_plugin_query
+      ↓
+query(SALTS_PLUGIN_ABI_VERSION)
+      ↓
+manifest validation
+      ↓
+duplicate plugin_id check
+      ↓
+publish bounded slot + generation
+```
+
+`salts_plugin_registry_init()` allocates the fixed slot table once. Load never
+grows or replaces it, and lookup is intentionally bounded O(capacity) rather
+than hiding a second dynamically growing registry. Registry control-plane calls
+are externally serialized in V1; the module creates no worker thread and does
+no background polling.
+
+Paths are borrowed only for one load call, must be non-empty strict UTF-8, and
+are never retained. POSIX uses `dlopen(..., RTLD_NOW | RTLD_LOCAL)`; Windows
+converts UTF-8 to UTF-16 and uses `LoadLibraryW`. `dlopen` handles,
+`HMODULE`, `FARPROC`, loader flags, and native error objects never enter the
+public ABI.
+
+Admission is transactional: failures before publication close the newly opened
+library and leave registry count/refs unchanged. Missing files, missing query
+symbols, query rejection, unsupported ABI, duplicate plugin IDs, capacity
+exhaustion, and invalid arguments stay distinguishable.
+
+### Temporary #129 lifecycle boundary
+
+Until the lifecycle/quiescence work in #130 lands, the loader admits **passive
+manifests only**. A manifest containing `start`, `request_stop`,
+`is_quiescent`, or `destroy` is rejected with
+`SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED`.
+
+This is deliberate: #129 must not guess callback ordering or call
+`dlclose`/`FreeLibrary` while lifecycle-owned work may still exist. #130 will
+replace this temporary admission restriction with the explicit
+`LOADED → STARTED → STOPPING → QUIESCENT → UNLOADED` contract without changing
+the already-reserved `salts_plugin_ref { slot, generation }` ABI.

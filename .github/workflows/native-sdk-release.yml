@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - "CMakeLists.txt"
+      - "plugin/**"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
@@ -14,6 +15,7 @@ on:
     branches: [master]
     paths:
       - "CMakeLists.txt"
+      - "plugin/**"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
