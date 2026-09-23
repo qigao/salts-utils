@@ -33,14 +33,14 @@ string(FIND "${COMPILER_CMAKE}"
   "LIBS Salts::DataBindSchema Salts::CmdParser Salts::Mustache Salts::Core" DIRECT_LINK_POS)
 if(NOT DIRECT_LINK_POS EQUAL -1)
   message(FATAL_ERROR
-    "tbe_compiler still directly owns SaltsUtils CmdParser/Mustache dependencies")
+    "databindc still directly owns SaltsUtils CmdParser/Mustache dependencies")
 endif()
 
 string(FIND "${COMPILER_CMAKE}"
   "LIBS Salts::DataBindSchema \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
-    "tbe_compiler does not consume the explicit compiler tooling boundary")
+    "databindc does not consume the explicit compiler tooling boundary")
 endif()
 
 message(STATUS "DataBind compiler tooling boundary passed")
