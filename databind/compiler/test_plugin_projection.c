@@ -152,6 +152,8 @@ describe("generated publication") {
     check_true(text_contains(
         generated, "CMETA_FUNCTION_METADATA_AS_ABI("));
     check_true(text_contains(
+        generated, ", unknown, &cmeta_type_int, CMETA_ABI_SCALAR,"));
+    check_true(text_contains(
         generated, "CMETA_ABI_SCALAR"));
     check_true(text_contains(
         generated, "CMETA_ABI_POINTER"));
