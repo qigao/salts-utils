@@ -50,3 +50,42 @@ Artifact projections such as NATIVE, PLUGIN, WASM, OPENAPI and MOCK are compiler
 Transport runtimes such as CHTTP, CRPC, Flowie, FlowMQ and CNet retain connection/session/protocol ownership. DataBind compiles contracts and bindings; it does not become a network framework.
 
 The canonical architecture decision is tracked by salts-utils issue #141.
+
+
+## Generic BindingPlan IR
+
+The canonical compiled provider vocabulary is transport-neutral:
+
+```text
+VALUE
+METADATA
+PAYLOAD
+PART
+RESULT
+ERROR
+```
+
+A projection adapter runs at compile/control time and maps a Service/Channel
+field to one of those logical classes plus an opaque selector. Examples:
+
+```text
+HTTP path/query      -> VALUE
+HTTP header/cookie   -> METADATA
+HTTP body            -> PAYLOAD
+
+MQTT topic/property  -> VALUE / METADATA
+MQTT payload         -> PAYLOAD
+
+FlowMQ multipart     -> PART / PAYLOAD
+service response     -> RESULT
+typed service error  -> ERROR
+```
+
+The immutable BindingPlan copies the projection result. Runtime providers only
+consume `binding_class + selector`; they do not inspect DataBind schema AST,
+HTTP/RPC enums, CHTTP types, FlowMQ sockets, MQTT session state, or TBE typed
+descriptors.
+
+Native binding is defined by CMeta `cmeta_function_desc` and
+`cmeta_data_desc` plus DataBind-owned optional-presence metadata. TBE remains
+a format backend and is not the native BindingPlan authority.
