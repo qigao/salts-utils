@@ -240,8 +240,16 @@ salts_plugin_status salts_plugin_manifest_validate(
                     manifest->request_stop != NULL ||
                     manifest->is_quiescent != NULL ||
                     manifest->destroy != NULL;
-    if (has_lifecycle && manifest->self == NULL)
+    if (has_lifecycle) {
+        if (manifest->self == NULL ||
+            manifest->start == NULL ||
+            manifest->request_stop == NULL ||
+            manifest->is_quiescent == NULL ||
+            manifest->destroy == NULL)
+            return SALTS_PLUGIN_INVALID_MANIFEST;
+    } else if (manifest->self != NULL) {
         return SALTS_PLUGIN_INVALID_MANIFEST;
+    }
 
     for (index = 0u; index < manifest->export_count; ++index) {
         salts_plugin_status status = validate_export(&manifest->exports[index]);
