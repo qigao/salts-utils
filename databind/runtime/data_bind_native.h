@@ -28,6 +28,11 @@ typedef struct DataBindNativeDiagnostic {
   size_t size;
   uint32_t abi_version;
   DataBindError error;
+  /**
+   * CSerde endpoint status associated with the failure. Historical field name
+   * is retained for ABI/source compatibility: decode records reader/source
+   * status; encode records writer/sink status.
+   */
   cserde_status source_status;
 } DataBindNativeDiagnostic;
 
