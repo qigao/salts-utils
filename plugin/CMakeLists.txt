@@ -28,6 +28,8 @@ install(
   DESTINATION include
   FILES_MATCHING PATTERN "*.h")
 
+add_subdirectory(cflow)
+
 if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()
