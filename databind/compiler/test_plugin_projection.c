@@ -98,12 +98,12 @@ describe("canonical native Service API") {
 
     check_true(text_contains(
         header,
-        "int Image_Codec_Decode(\n"
+        "int databind_5_Image_5_Codec_6_Decode(\n"
         "    const DecodeRequest_t *request,\n"
         "    DecodeResponse_t *response);"));
     check_true(text_contains(
         header,
-        "int Image_Codec_Encode(\n"
+        "int databind_5_Image_5_Codec_6_Encode(\n"
         "    const EncodeRequest_t *request,\n"
         "    EncodeResponse_t *response);"));
 
@@ -161,10 +161,10 @@ describe("generated publication") {
         generated, "CMETA_PARAM_OUT | CMETA_PARAM_BORROWED"));
 
     check_true(text_contains(
-        generated, "extern int Image_Codec_Decode("
+        generated, "extern int databind_5_Image_5_Codec_6_Decode("
                    "const DecodeRequest_t *request, DecodeResponse_t *response);"));
     check_true(text_contains(
-        generated, "extern int Image_Codec_Encode("
+        generated, "extern int databind_5_Image_5_Codec_6_Encode("
                    "const EncodeRequest_t *request, EncodeResponse_t *response);"));
 
     check_true(text_contains(
