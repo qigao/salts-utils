@@ -20,7 +20,7 @@ foreach(FORBIDDEN_EXPORT IN ITEMS
   endif()
 endforeach()
 
-if(EXISTS "${PARENT_SOURCE_ROOT}/tbe/cmake")
+if(EXISTS "${PARENT_SOURCE_ROOT}/databind/cmake")
   message(FATAL_ERROR "databind/cmake must not exist; DataBind uses SaltsUtils build helpers")
 endif()
 
