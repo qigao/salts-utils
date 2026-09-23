@@ -341,11 +341,6 @@ salts_plugin_status salts_plugin_registry_start(
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
     }
-    if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-        status = slot->failure;
-        salts_mutex_unlock(&impl->lock);
-        return status;
-    }
     if (slot->state == SALTS_PLUGIN_LIFECYCLE_STARTED) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_ALREADY;
@@ -417,11 +412,6 @@ salts_plugin_status salts_plugin_registry_acquire(
     if (impl->destroying || slot->unloading) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
-    }
-    if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-        status = slot->failure;
-        salts_mutex_unlock(&impl->lock);
-        return status;
     }
     if (slot->state != SALTS_PLUGIN_LIFECYCLE_STARTED) {
         salts_mutex_unlock(&impl->lock);
@@ -509,11 +499,6 @@ salts_plugin_status salts_plugin_registry_request_stop(
     if (impl->destroying || slot->unloading) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
-    }
-    if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-        status = slot->failure;
-        salts_mutex_unlock(&impl->lock);
-        return status;
     }
     if (slot->state == SALTS_PLUGIN_LIFECYCLE_STOPPING ||
         slot->state == SALTS_PLUGIN_LIFECYCLE_QUIESCENT) {
