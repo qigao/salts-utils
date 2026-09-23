@@ -96,6 +96,57 @@ describe("bounded registry") {
         destroy_registry(&registry);
     }
 
+    it("executes a reflected Function export through a real DSO lease") {
+        salts_plugin_registry registry = make_registry(1u);
+        salts_plugin_ref ref = {0};
+        salts_plugin_lease lease = {0};
+        const salts_plugin_manifest *manifest = NULL;
+        const salts_plugin_export *entry = NULL;
+        void *params[1];
+        int input = 9;
+        int output = 0;
+        bool quiescent = false;
+
+        check_equal(salts_plugin_registry_load(
+                        &registry, PLUGIN_VALID_C_PATH, &ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_start(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_acquire(
+                        &registry, ref, &lease, &manifest),
+                    SALTS_PLUGIN_OK);
+        check_true(salts_plugin_lease_valid(lease));
+        check_not_null(manifest);
+
+        check_equal(salts_plugin_manifest_find_export(
+                        manifest, "test.loader.math.double", &entry),
+                    SALTS_PLUGIN_OK);
+        check_not_null(entry);
+        check_equal(salts_plugin_export_require_function(
+                        entry, "test.loader.math", 1u, 1u),
+                    SALTS_PLUGIN_OK);
+        check_true(cmeta_function_desc_valid(entry->function));
+        check_true(cmeta_function_abi_desc_valid(entry->function_abi));
+        check_true(entry->function_abi->function == entry->function);
+
+        params[0] = &input;
+        check_true(entry->function_adapter->invoke(
+            entry->function_adapter->context, &output, params, 1u));
+        check_equal(output, 18);
+
+        check_equal(salts_plugin_registry_release(&registry, &lease),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_poll_quiescent(
+                        &registry, ref, &quiescent),
+                    SALTS_PLUGIN_OK);
+        check_true(quiescent);
+        check_equal(salts_plugin_registry_unload(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        destroy_registry(&registry);
+    }
+
     it("reports stale generation without exposing slot storage") {
         salts_plugin_registry registry = make_registry(1u);
         salts_plugin_ref ref = {0};
