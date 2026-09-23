@@ -10,6 +10,11 @@ static_assert(std::is_standard_layout<DataBindNativeDiagnostic>::value, "diagnos
 using Decode = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
                                  cserde_reader *, void *, size_t, DataBindNativeDiagnostic *);
 static_assert(std::is_same<decltype(&data_bind_native_decode), Decode>::value, "decode signature drift");
+using Encode = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
+                                  const void *, size_t, cserde_writer *,
+                                  DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_encode), Encode>::value,
+              "encode signature drift");
 using Lifecycle = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_data_desc *,
                                      void *, size_t, DataBindNativeDiagnostic *);
 static_assert(std::is_same<decltype(&data_bind_native_init), Lifecycle>::value,

@@ -28,6 +28,11 @@ typedef struct DataBindNativeDiagnostic {
   size_t size;
   uint32_t abi_version;
   DataBindError error;
+  /**
+   * CSerde endpoint status associated with the failure. Historical field name
+   * is retained for ABI/source compatibility: decode records reader/source
+   * status; encode records writer/sink status.
+   */
   cserde_status source_status;
 } DataBindNativeDiagnostic;
 
@@ -147,6 +152,27 @@ DATA_BIND_API DataBindStatus data_bind_native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
     size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic);
+
+/**
+ * Encode exactly one canonical native CMeta value to a CSerde writer.
+ *
+ * The complete descriptor graph is validated before the first writer token.
+ * source is borrowed and never mutated. The writer remains caller-owned and is
+ * not finished by this function, allowing callers to compose outer framing or
+ * transactional provider semantics around the emitted value.
+ *
+ * max_depth/max_items/max_owned_bytes use the same policy as native decode:
+ * max_items bounds semantic descriptor/value nodes; max_owned_bytes bounds the
+ * aggregate STRING/BYTES payload exposed through canonical CMeta buffer reads.
+ *
+ * Writer/provider failure may leave already-emitted tokens in the writer; this
+ * function does not claim transport-level transactionality. BindingPlan
+ * begin/write/commit/abort remains the publication transaction boundary.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_encode(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    const void *source, size_t source_bytes, cserde_writer *writer,
+    DataBindNativeDiagnostic *diagnostic);
 
 #ifdef __cplusplus
 }
