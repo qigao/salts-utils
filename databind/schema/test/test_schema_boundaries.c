@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,11 +43,11 @@ suite("schema_boundaries") {
           "group Level { uint64 price; } "
           "message Valid { uint32 seq; group<Level> levels; string symbol; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
-      check_equal(err.code, TBE_OK);
+      check_equal(err.code, DATA_BIND_SCHEMA_OK);
       node_free(root);
     }
 
@@ -56,7 +56,7 @@ suite("schema_boundaries") {
           "group Level { uint64 price; } "
           "message Broken { string symbol; group<Level> levels; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -70,7 +70,7 @@ suite("schema_boundaries") {
           "group Level { uint64 price; } "
           "message Broken { group<Level> levels; uint32 seq; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -82,7 +82,7 @@ suite("schema_boundaries") {
     it("rejects a fixed field after variable data") {
       const char *schema = "message Broken { string symbol; uint32 seq; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -96,18 +96,18 @@ suite("schema_boundaries") {
     it("accepts a large representable fixed array length") {
       const char *schema = "message Large { uint8[2147483647] values; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
-      check_equal(err.code, TBE_OK);
+      check_equal(err.code, DATA_BIND_SCHEMA_OK);
       node_free(root);
     }
 
     it("rejects a fixed array length at SIZE_MAX-scale") {
       const char *schema = "message Huge { uint8[18446744073709551615] values; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -119,7 +119,7 @@ suite("schema_boundaries") {
     it("rejects a fixed array length that overflows unsigned conversion") {
       const char *schema = "message Huge { uint8[18446744073709551616] values; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -133,7 +133,7 @@ suite("schema_boundaries") {
     it("rejects scalar varint before metadata generation") {
       const char *schema = "message Bad { varint value; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -145,7 +145,7 @@ suite("schema_boundaries") {
     it("rejects varint nested in collections") {
       const char *schema = "message Bad { list<varint> values; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -157,7 +157,7 @@ suite("schema_boundaries") {
     it("rejects varint as an enum underlying type") {
       const char *schema = "enum Bad <varint> { A = 1; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -173,7 +173,7 @@ suite("schema_boundaries") {
       char value_type[LONG_MAP_VALUE_LEN + 1u];
       char schema[LONG_MAP_SCHEMA_CAPACITY];
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       Node *field;
       Node *key_node;
       Node *value_node;
@@ -192,7 +192,7 @@ suite("schema_boundaries") {
 
       rc = parse_schema(schema, strlen(schema), root, &err);
       check_equal(rc, 0);
-      check_equal(err.code, TBE_OK);
+      check_equal(err.code, DATA_BIND_SCHEMA_OK);
 
       field = first_message_field(root);
       check_not_null(field);
