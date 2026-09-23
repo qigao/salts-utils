@@ -85,7 +85,7 @@ jobs:
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/configure.log"
-          cmake --build build/linux-gcc-debug --target tbe/all -j2 \
+          cmake --build build/linux-gcc-debug --target databind/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/enum-evidence/tbe-build.log"
           cp build/linux-gcc-debug/compile_commands.json "$RUNNER_TEMP/enum-evidence/"
           tar -czf "$RUNNER_TEMP/enum-evidence/parser-tools.tar.gz" \
@@ -118,4 +118,4 @@ jobs:
           retention-days: 14
           path: |
             ${{ runner.temp }}/enum-evidence/
-            build/linux-gcc-debug/tbe/Testing/Temporary/
+            build/linux-gcc-debug/databind/Testing/Temporary/
