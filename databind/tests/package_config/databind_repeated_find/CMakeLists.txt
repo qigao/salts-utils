@@ -14,7 +14,7 @@ find_package(SaltsUtils CONFIG REQUIRED)
 foreach(required_target IN ITEMS
     Salts::DataBindSchema
     Salts::DataBindCore
-    Salts::Databind
+    Salts::DataBind
     Salts::DataBindCMeta
     Salts::DataBindCFlow
     Salts::JsonParser
@@ -29,6 +29,6 @@ foreach(required_target IN ITEMS
   endif()
 endforeach()
 
-if(TARGET Salts::DataBind)
-  message(FATAL_ERROR "SaltsUtils must export Salts::Databind, not a spelling alias")
+if(TARGET Salts::Databind)
+  message(FATAL_ERROR "SaltsUtils 3.x must not export obsolete Salts::Databind spelling")
 endif()
