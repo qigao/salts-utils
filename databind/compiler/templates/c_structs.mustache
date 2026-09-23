@@ -5,15 +5,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef TBE_GENERATED_API
-#if defined(_WIN32) && defined(TBE_GENERATED_BUILD_SHARED)
-#define TBE_GENERATED_API __declspec(dllexport)
-#elif defined(_WIN32) && defined(TBE_GENERATED_USE_SHARED)
-#define TBE_GENERATED_API __declspec(dllimport)
-#elif defined(__GNUC__) && defined(TBE_GENERATED_BUILD_SHARED)
-#define TBE_GENERATED_API __attribute__((visibility("default")))
+#ifndef DATABIND_GENERATED_API
+#if defined(_WIN32) && defined(DATABIND_GENERATED_BUILD_SHARED)
+#define DATABIND_GENERATED_API __declspec(dllexport)
+#elif defined(_WIN32) && defined(DATABIND_GENERATED_USE_SHARED)
+#define DATABIND_GENERATED_API __declspec(dllimport)
+#elif defined(__GNUC__) && defined(DATABIND_GENERATED_BUILD_SHARED)
+#define DATABIND_GENERATED_API __attribute__((visibility("default")))
 #else
-#define TBE_GENERATED_API
+#define DATABIND_GENERATED_API
 #endif
 #endif
 
@@ -41,9 +41,9 @@ static inline size_t tbe_generated_strlen(const char *text) {
     return (size_t)(end - text);
 }
 
-#define TBE_GENERATED_MEMCPY tbe_generated_memcpy
-#define TBE_GENERATED_STRCMP tbe_generated_strcmp
-#define TBE_GENERATED_STRLEN tbe_generated_strlen
+#define DATABIND_GENERATED_MEMCPY tbe_generated_memcpy
+#define DATABIND_GENERATED_STRCMP tbe_generated_strcmp
+#define DATABIND_GENERATED_STRLEN tbe_generated_strlen
 #ifndef SALTS_UUID_H
 #define SALTS_UUID_H
 #define SALTS_UUID_SIZE 16U
@@ -54,9 +54,9 @@ typedef struct salts_uuid_s {
 #else
 #include <string.h>
 #include "salts_uuid.h"
-#define TBE_GENERATED_MEMCPY memcpy
-#define TBE_GENERATED_STRCMP strcmp
-#define TBE_GENERATED_STRLEN strlen
+#define DATABIND_GENERATED_MEMCPY memcpy
+#define DATABIND_GENERATED_STRCMP strcmp
+#define DATABIND_GENERATED_STRLEN strlen
 #endif
 
 {{#typed_source_enabled}}
@@ -178,21 +178,21 @@ struct cmeta_data_desc;
  * Unsupported storage returns DATA_BIND_ERR_SCHEMA without changing *out.
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
  * This graph seam does not itself promise native decode/encode behavior. */
-{{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#composites}}DATABIND_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}DATABIND_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/composites}}
-{{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#groups}}DATABIND_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}DATABIND_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/groups}}
-{{#messages}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#messages}}DATABIND_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
+{{#typed_cmeta_runtime_supported}}DATABIND_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/messages}}
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
-TBE_GENERATED_API const char *{{schema.schema_name}}_schema_text(void);
-TBE_GENERATED_API const tbe_schema_codec_v1_t *{{schema.schema_name}}_schema_codec(void);
+DATABIND_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
+DATABIND_GENERATED_API const char *{{schema.schema_name}}_schema_text(void);
+DATABIND_GENERATED_API const tbe_schema_codec_v1_t *{{schema.schema_name}}_schema_codec(void);
 {{/typed_source_enabled}}
 
 /* ========================================================================= */
@@ -230,7 +230,7 @@ static inline bool {{enum_name}}_from_string(const char* str, {{enum_name}}_t* o
     if (!str || !out) return false;
     
 {{#items}}
-    if (TBE_GENERATED_STRCMP(str, "{{name}}") == 0) { *out = {{enum_name}}_{{name}}; return true; }
+    if (DATABIND_GENERATED_STRCMP(str, "{{name}}") == 0) { *out = {{enum_name}}_{{name}}; return true; }
 {{/items}}
     return false;
 }
@@ -396,25 +396,25 @@ typedef struct {{name}}_s {
 
 {{#typed_source_enabled}}
 /** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
-TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
-TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
-TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API void {{name}}_init({{name}}_t *object);
+DATABIND_GENERATED_API void {{name}}_clear({{name}}_t *object);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
+DATABIND_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
+DATABIND_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
@@ -555,7 +555,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -566,7 +566,7 @@ static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -596,7 +596,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
     return true;
 }
 
@@ -752,25 +752,25 @@ typedef struct {{name}}_s {
 
 {{#typed_source_enabled}}
 /** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
-TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
-TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
-TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API void {{name}}_init({{name}}_t *object);
+DATABIND_GENERATED_API void {{name}}_clear({{name}}_t *object);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
+DATABIND_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
+DATABIND_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
@@ -1143,7 +1143,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1154,7 +1154,7 @@ static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1184,7 +1184,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
     return true;
 }
 
@@ -1351,25 +1351,25 @@ typedef struct {{name}}_s {
 
 {{#typed_source_enabled}}
 /** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
-TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
-TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
-TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API void {{name}}_init({{name}}_t *object);
+DATABIND_GENERATED_API void {{name}}_clear({{name}}_t *object);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_json(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_yaml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_csv(DataBind *codec, {{name}}_t *object, const char *data, size_t len, size_t row, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_xml(DataBind *codec, {{name}}_t *object, const char *data, size_t len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin(const {{name}}_t *object, uint8_t **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_bin_into(const {{name}}_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
+DATABIND_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
+DATABIND_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
+DATABIND_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
+DATABIND_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
 {{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
@@ -1741,7 +1741,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, value->bytes, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1752,7 +1752,7 @@ static inline bool {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
+    DATABIND_GENERATED_MEMCPY(value->bytes, view->data + {{offset}}, SALTS_UUID_SIZE);
     return true;
 }
 
@@ -1782,7 +1782,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    TBE_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
+    DATABIND_GENERATED_MEMCPY(view->data + {{offset}}, data, {{size_bytes}});
     return true;
 }
 
@@ -1922,7 +1922,7 @@ static inline bool {{owner_name}}_{{name}}_get_or(const {{owner_name}}_view_t *v
     }
     // Return default string
     out->data = (const uint8_t *)default_str;
-    out->size = TBE_GENERATED_STRLEN(default_str);
+    out->size = DATABIND_GENERATED_STRLEN(default_str);
     return true;
 }
 
@@ -2025,7 +2025,7 @@ typedef struct {{schema.schema_name}}_lua_api_s {
  * @return DATA_BIND_OK with one module table pushed, or an error with the Lua
  * stack restored to its original height.
  */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_push_module(
+DATABIND_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_push_module(
     struct lua_State *L, const {{schema.schema_name}}_lua_api_t *api,
     const {{schema.schema_name}}_lua_limits_t *limits);
 {{/has_lua_operations}}
@@ -2048,7 +2048,7 @@ typedef struct {{schema.schema_name}}_lua_client_s
  * close; executor must outlive the client and every Future. module_index is
  * inspected but not consumed. limits is copied. out must point to NULL.
  */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_create(
+DATABIND_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_create(
     {{schema.schema_name}}_lua_client_t **out, salts_lua_executor_t *executor,
     int module_index, const {{schema.schema_name}}_lua_limits_t *limits,
     DataBindError *error);
@@ -2058,7 +2058,7 @@ TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_create(
  * Accepted commands retain the client until terminal dispatch. On failure the
  * client remains open. Producers must be quiescent before this call.
  */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_close(
+DATABIND_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_close(
     {{schema.schema_name}}_lua_client_t *client, DataBindError *error);
 
 {{#messages}}{{#lua_import_enabled}}
@@ -2069,7 +2069,7 @@ TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_close(
  * borrowed for the call. response must be initialized; it is replaced only on
  * success and remains unchanged on failure. The Lua stack is always restored.
  */
-TBE_GENERATED_API DataBindStatus
+DATABIND_GENERATED_API DataBindStatus
 {{schema.schema_name}}_lua_client_{{lua_import_name}}_on_owner(
     {{schema.schema_name}}_lua_client_t *client, const {{name}}_t *request,
     {{lua_response_type}}_t *response, DataBindError *error);
@@ -2086,7 +2086,7 @@ typedef struct {{schema.schema_name}}_lua_{{lua_import_name}}_future_s
  * Future reference; the executor owns the command reference until dispatch.
  * Producer threads may call this while the client remains open.
  */
-TBE_GENERATED_API DataBindStatus
+DATABIND_GENERATED_API DataBindStatus
 {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
     {{schema.schema_name}}_lua_client_t *client,
     const {{name}}_t *request,
@@ -2094,12 +2094,12 @@ TBE_GENERATED_API DataBindStatus
     DataBindError *error);
 
 /** Return nonzero after success, failure, or cancellation becomes observable. */
-TBE_GENERATED_API int
+DATABIND_GENERATED_API int
 {{schema.schema_name}}_lua_{{lua_import_name}}_future_done(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
 
 /** Request cancellation. Returns nonzero only for the first pending request. */
-TBE_GENERATED_API int
+DATABIND_GENERATED_API int
 {{schema.schema_name}}_lua_{{lua_import_name}}_future_cancel(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
 
@@ -2110,13 +2110,13 @@ TBE_GENERATED_API int
  * Terminal success moves the response to the initialized output exactly once.
  * Terminal failure/cancellation leaves response unchanged and returns its code.
  */
-TBE_GENERATED_API DataBindStatus
+DATABIND_GENERATED_API DataBindStatus
 {{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future,
     int *out_done, {{lua_response_type}}_t *response, DataBindError *error);
 
 /** Cancel if pending and release the caller reference; NULL is accepted. */
-TBE_GENERATED_API void
+DATABIND_GENERATED_API void
 {{schema.schema_name}}_lua_{{lua_import_name}}_future_destroy(
     {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
 
@@ -2308,8 +2308,8 @@ using {{name}}Owner = Owner<{{name}}_t, {{name}}_init, {{name}}_clear, {{name}}_
 } /* namespace {{schema.schema_name}}_typed */
 #endif
 
-#undef TBE_GENERATED_MEMCPY
-#undef TBE_GENERATED_STRCMP
-#undef TBE_GENERATED_STRLEN
+#undef DATABIND_GENERATED_MEMCPY
+#undef DATABIND_GENERATED_STRCMP
+#undef DATABIND_GENERATED_STRLEN
 
 #endif /* {{schema.schema_name}}_GENERATED_H */
