@@ -102,3 +102,21 @@ Local source-level sanitizer results do not replace installed-package or complet
 Windows/Linux acceptance. #58/#59/#60 remain subject to the original exact-head
 consumer matrix, ownership/race/failure regressions, real PostgreSQL and unfiltered
 root suite. Dynamic container/optional support is not added by this fix.
+
+
+## Encode path
+
+The native writer uses the same `DataBindNativeOptions` graph and budget
+policy as the direct-reader path. `data_bind_native_encode()` calls the
+existing native measurement/preflight logic before the first CSerde writer
+callback, so descriptor validation is not duplicated.
+
+The encoder does not need staging storage because it never mutates the source.
+The configured workspace is still required for bounded descriptor traversal.
+`max_depth` and `max_items` bound the same canonical graph, while
+`max_owned_bytes` bounds the aggregate STRING/BYTES payload exposed through
+CMeta buffer read views.
+
+The CSerde writer remains caller-owned and is left READY on successful encode;
+the caller decides when outer framing is complete and when to call
+`cserde_writer_finish()`.
