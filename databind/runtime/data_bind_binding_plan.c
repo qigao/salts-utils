@@ -1078,3 +1078,445 @@ const char *data_bind_binding_plan_error_at(
   if (plan == NULL || index >= plan->error_count) return NULL;
   return plan->errors[index];
 }
+
+
+typedef struct PlanDefaultReaderContext {
+  const cserde_token *token;
+  int emitted;
+} PlanDefaultReaderContext;
+
+static cserde_status plan_default_reader_next(void *context,
+                                               cserde_token *out) {
+  PlanDefaultReaderContext *state = (PlanDefaultReaderContext *)context;
+  if (state == NULL || out == NULL || state->token == NULL)
+    return CSERDE_INVALID_ARGUMENT;
+  if (state->emitted) return CSERDE_DONE;
+  *out = *state->token;
+  state->emitted = 1;
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops PLAN_DEFAULT_READER_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION,
+    plan_default_reader_next};
+
+static int plan_provider_valid_for_input(
+    const DataBindBindingProvider *provider) {
+  return provider != NULL && provider->size >= sizeof(*provider) &&
+         provider->abi_version == DATA_BIND_BINDING_PLAN_ABI_VERSION &&
+         provider->open_input != NULL;
+}
+
+static int plan_provider_valid_for_output(
+    const DataBindBindingProvider *provider) {
+  return provider != NULL && provider->size >= sizeof(*provider) &&
+         provider->abi_version == DATA_BIND_BINDING_PLAN_ABI_VERSION &&
+         provider->begin_output != NULL &&
+         provider->write_output != NULL &&
+         provider->commit_output != NULL &&
+         provider->abort_output != NULL;
+}
+
+static DataBindStatus plan_runtime_fail_error(
+    DataBindBindingPlanDiagnostic *diagnostic, DataBindStatus status,
+    const DataBindBindingPlanEntry *entry, const DataBindError *error,
+    const char *fallback) {
+  const char *message = fallback;
+  if (error != NULL && error->message[0] != '\0') message = error->message;
+  return plan_diag_fail(
+      diagnostic, status,
+      entry != NULL ? entry->schema_field : NULL,
+      entry != NULL ? entry->function_param : NULL,
+      "%s", message != NULL ? message : "BindingPlan runtime failure");
+}
+
+static DataBindStatus plan_frame_preflight(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  size_t i;
+
+  if (plan == NULL || frame == NULL || frame->size < sizeof(*frame))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan call frame");
+
+  if (frame->param_count < plan->param_count)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Call frame exposes too few function parameters");
+
+  if (plan->has_request_root_param) {
+    size_t required = plan->request->data->storage_type->size;
+    if (frame->request == NULL || frame->request_bytes < required)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[plan->request_root_param].name,
+          "Request root staging storage is missing or too small");
+  }
+
+  for (i = 0u; i < plan->param_count; ++i) {
+    const cmeta_data_desc *data = plan->param_data[i];
+    if (data == NULL) continue;
+    if (frame->params == NULL || frame->param_bytes == NULL ||
+        frame->params[i] == NULL || data->storage_type == NULL ||
+        frame->param_bytes[i] < data->storage_type->size)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[i].name,
+          "Function parameter '%s' staging storage is missing or too small",
+          plan->function->params[i].name);
+  }
+
+  if (plan->response_uses_return) {
+    size_t required = plan->response->data->storage_type->size;
+    if (frame->return_value == NULL || frame->return_bytes < required)
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                            "Return-value staging storage is missing or too small");
+  }
+
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus plan_native_init(
+    const DataBindNativeOptions *options, const cmeta_data_desc *data,
+    void *storage, size_t storage_bytes,
+    DataBindBindingPlanDiagnostic *diagnostic,
+    const char *schema_field, const char *function_param) {
+  DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+
+  if (data == NULL || data->storage_type == NULL || storage == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                          schema_field, function_param,
+                          "Native staging descriptor/storage is incomplete");
+
+  status = data_bind_native_init(options, data, storage, storage_bytes, &native);
+  if (status != DATA_BIND_OK)
+    return plan_diag_fail(
+        diagnostic, status, schema_field, function_param, "%s",
+        native.error.message[0] != '\0'
+            ? native.error.message
+            : "Native staging initialization failed");
+  return DATA_BIND_OK;
+}
+
+static void plan_native_clear_noexcept(
+    const DataBindNativeOptions *options, const cmeta_data_desc *data,
+    void *storage, size_t storage_bytes) {
+  DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  if (data == NULL || storage == NULL) return;
+  (void)data_bind_native_clear(options, data, storage, storage_bytes, &native);
+}
+
+static void *plan_ingress_destination(
+    const DataBindBindingPlan *plan, const DataBindBindingPlanEntry *entry,
+    DataBindBindingCallFrame *frame, size_t *out_bytes) {
+  unsigned char *base = NULL;
+  size_t bytes = 0u;
+
+  if (plan->has_request_root_param &&
+      entry->function_param_index == plan->request_root_param) {
+    base = (unsigned char *)frame->request;
+    bytes = frame->request_bytes;
+  } else if (entry->function_param_index < frame->param_count &&
+             frame->params != NULL && frame->param_bytes != NULL) {
+    base = (unsigned char *)frame->params[entry->function_param_index];
+    bytes = frame->param_bytes[entry->function_param_index];
+  }
+
+  if (base == NULL || bytes < entry->native_offset ||
+      entry->data == NULL || entry->data->storage_type == NULL ||
+      bytes - entry->native_offset < entry->data->storage_type->size)
+    return NULL;
+
+  if (out_bytes != NULL)
+    *out_bytes = entry->data->storage_type->size;
+  return base + entry->native_offset;
+}
+
+static const void *plan_egress_source(
+    const DataBindBindingPlan *plan, const DataBindBindingPlanEntry *entry,
+    const DataBindBindingCallFrame *frame, size_t *out_bytes) {
+  const unsigned char *base = NULL;
+  size_t bytes = 0u;
+
+  if (entry->target_is_return) {
+    base = (const unsigned char *)frame->return_value;
+    bytes = frame->return_bytes;
+  } else if (entry->function_param_index < frame->param_count &&
+             frame->params != NULL && frame->param_bytes != NULL) {
+    base = (const unsigned char *)frame->params[entry->function_param_index];
+    bytes = frame->param_bytes[entry->function_param_index];
+  }
+
+  (void)plan;
+  if (base == NULL || bytes < entry->native_offset ||
+      entry->data == NULL || entry->data->storage_type == NULL ||
+      bytes - entry->native_offset < entry->data->storage_type->size)
+    return NULL;
+
+  if (out_bytes != NULL)
+    *out_bytes = entry->data->storage_type->size;
+  return base + entry->native_offset;
+}
+
+static void plan_reset_request_presence(
+    const DataBindBindingPlan *plan, DataBindBindingCallFrame *frame) {
+  size_t i;
+  if (!plan->has_request_root_param || frame->request == NULL) return;
+  for (i = 0u; i < plan->ingress_count; ++i) {
+    const DataBindBindingPlanEntry *entry = &plan->ingress[i].view;
+    if (entry->has_presence) {
+      unsigned char *presence =
+          (unsigned char *)frame->request + entry->presence_offset;
+      *presence &=
+          (unsigned char)~(1u << entry->presence_bit);
+    }
+  }
+}
+
+static void plan_cleanup_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindNativeOptions *options,
+    DataBindBindingCallFrame *frame,
+    size_t initialized_params,
+    int request_initialized) {
+  size_t i = initialized_params;
+
+  while (i != 0u) {
+    --i;
+    if (plan->param_data[i] != NULL &&
+        frame->params != NULL && frame->param_bytes != NULL)
+      plan_native_clear_noexcept(
+          options, plan->param_data[i], frame->params[i],
+          frame->param_bytes[i]);
+  }
+
+  if (request_initialized) {
+    plan_native_clear_noexcept(
+        options, plan->request->data, frame->request, frame->request_bytes);
+    plan_reset_request_presence(plan, frame);
+  }
+}
+
+DataBindStatus data_bind_binding_plan_bind_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  size_t i;
+  size_t initialized_params = 0u;
+  int request_initialized = 0;
+  DataBindStatus status;
+
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (plan == NULL || native_options == NULL || frame == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan ingress arguments");
+
+  if (plan->ingress_count != 0u && !plan_provider_valid_for_input(provider))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan input provider");
+
+  status = plan_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  if (plan->has_request_root_param) {
+    status = plan_native_init(
+        native_options, plan->request->data, frame->request,
+        frame->request_bytes, diagnostic, NULL,
+        plan->function->params[plan->request_root_param].name);
+    if (status != DATA_BIND_OK) return status;
+    request_initialized = 1;
+    plan_reset_request_presence(plan, frame);
+  }
+
+  for (i = 0u; i < plan->param_count; ++i) {
+    if (plan->param_data[i] != NULL) {
+      status = plan_native_init(
+          native_options, plan->param_data[i], frame->params[i],
+          frame->param_bytes[i], diagnostic, NULL,
+          plan->function->params[i].name);
+      if (status != DATA_BIND_OK) {
+        plan_cleanup_inputs(
+            plan, native_options, frame, i, request_initialized);
+        return status;
+      }
+    }
+    initialized_params = i + 1u;
+  }
+
+  for (i = 0u; i < plan->ingress_count; ++i) {
+    DataBindBindingPlanEntryOwned *owned =
+        (DataBindBindingPlanEntryOwned *)&plan->ingress[i];
+    const DataBindBindingPlanEntry *entry = &owned->view;
+    cserde_reader reader = {0};
+    PlanDefaultReaderContext default_context = {0};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    void *destination;
+    size_t destination_bytes = 0u;
+    int present = 0;
+    int provider_present = 0;
+
+    destination =
+        plan_ingress_destination(plan, entry, frame, &destination_bytes);
+    if (destination == NULL) {
+      status = plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Compiled ingress entry has no native staging destination");
+      goto fail;
+    }
+
+    status = provider->open_input(
+        provider->context, entry, &reader, &present, &error);
+    if (status != DATA_BIND_OK) {
+      status = plan_runtime_fail_error(
+          diagnostic, status, entry, &error, "Input provider failed");
+      goto fail;
+    }
+    provider_present = present;
+
+    if (!present) {
+      if (owned->has_default_token) {
+        default_context.token = &owned->default_token;
+        if (cserde_reader_init(
+                &reader, &PLAN_DEFAULT_READER_OPS,
+                &default_context) != CSERDE_OK) {
+          status = plan_diag_fail(
+              diagnostic, DATA_BIND_ERR_RUNTIME,
+              entry->schema_field, entry->function_param,
+              "Could not initialize compiled default reader");
+          goto fail;
+        }
+      } else if (!entry->required) {
+        continue;
+      } else {
+        status = plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND,
+            entry->schema_field, entry->function_param,
+            "Required logical input is absent");
+        goto fail;
+      }
+    }
+
+    status = data_bind_native_decode(
+        native_options, entry->data, &reader, destination,
+        destination_bytes, &native);
+    if (status != DATA_BIND_OK) {
+      status = plan_diag_fail(
+          diagnostic, status, entry->schema_field,
+          entry->function_param, "%s",
+          native.error.message[0] != '\0'
+              ? native.error.message
+              : "Native input decode failed");
+      goto fail;
+    }
+
+    if (entry->has_presence && provider_present) {
+      unsigned char *presence =
+          (unsigned char *)frame->request + entry->presence_offset;
+      *presence |= (unsigned char)(1u << entry->presence_bit);
+    }
+  }
+
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+
+fail:
+  plan_cleanup_inputs(
+      plan, native_options, frame, initialized_params, request_initialized);
+  return status;
+}
+
+DataBindStatus data_bind_binding_plan_write_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  size_t i;
+
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (plan == NULL || frame == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan output arguments");
+
+  if (plan->egress_count != 0u && !plan_provider_valid_for_output(provider))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan output provider");
+
+  status = plan_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+  if (plan->egress_count == 0u) return DATA_BIND_OK;
+
+  status = provider->begin_output(provider->context, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, NULL, &error,
+        "Output transaction could not begin");
+
+  for (i = 0u; i < plan->egress_count; ++i) {
+    const DataBindBindingPlanEntry *entry = &plan->egress[i].view;
+    const void *source;
+    size_t source_bytes = 0u;
+
+    if (entry->has_presence) {
+      const unsigned char *base = NULL;
+      if (entry->target_is_return) {
+        base = (const unsigned char *)frame->return_value;
+      } else if (entry->function_param_index < frame->param_count &&
+                 frame->params != NULL) {
+        base = (const unsigned char *)
+            frame->params[entry->function_param_index];
+      }
+      if (base == NULL) {
+        provider->abort_output(provider->context);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_INVALID_ARG,
+            entry->schema_field, entry->function_param,
+            "Optional output presence storage is unavailable");
+      }
+      if ((base[entry->presence_offset] &
+           (unsigned char)(1u << entry->presence_bit)) == 0u)
+        continue;
+    }
+
+    source = plan_egress_source(plan, entry, frame, &source_bytes);
+    if (source == NULL) {
+      provider->abort_output(provider->context);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Compiled egress entry has no native source");
+    }
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    status = provider->write_output(
+        provider->context, entry, source, source_bytes, &error);
+    if (status != DATA_BIND_OK) {
+      provider->abort_output(provider->context);
+      return plan_runtime_fail_error(
+          diagnostic, status, entry, &error, "Output provider write failed");
+    }
+  }
+
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = provider->commit_output(provider->context, &error);
+  if (status != DATA_BIND_OK) {
+    provider->abort_output(provider->context);
+    return plan_runtime_fail_error(
+        diagnostic, status, NULL, &error,
+        "Output transaction commit failed");
+  }
+
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
