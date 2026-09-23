@@ -20,60 +20,6 @@ static bool bounded_string_equal(const char *left, const char *right,
     return false;
 }
 
-static bool interface_method_valid(const cmeta_interface_method_desc *method) {
-    return method != NULL &&
-           bounded_string_valid(method->name, SALTS_PLUGIN_INTERFACE_TOKEN_MAX) &&
-           bounded_string_valid(method->return_type,
-                                SALTS_PLUGIN_INTERFACE_TOKEN_MAX) &&
-           method->arity <= 4u;
-}
-
-bool salts_plugin_interface_desc_valid(const cmeta_interface_desc *desc) {
-    size_t index;
-    size_t other;
-
-    if (desc == NULL ||
-        !bounded_string_valid(desc->name, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        desc->method_count > SALTS_PLUGIN_MAX_INTERFACE_METHODS ||
-        (desc->method_count != 0u && desc->methods == NULL))
-        return false;
-
-    for (index = 0u; index < desc->method_count; ++index) {
-        if (!interface_method_valid(&desc->methods[index])) return false;
-        for (other = 0u; other < index; ++other) {
-            if (bounded_string_equal(desc->methods[index].name,
-                                     desc->methods[other].name,
-                                     SALTS_PLUGIN_INTERFACE_TOKEN_MAX))
-                return false;
-        }
-    }
-    return true;
-}
-
-bool salts_plugin_interface_desc_equal(const cmeta_interface_desc *left,
-                                       const cmeta_interface_desc *right) {
-    size_t index;
-
-    if (!salts_plugin_interface_desc_valid(left) ||
-        !salts_plugin_interface_desc_valid(right) ||
-        left->method_count != right->method_count ||
-        !bounded_string_equal(left->name, right->name,
-                              SALTS_PLUGIN_CONTRACT_ID_MAX))
-        return false;
-
-    for (index = 0u; index < left->method_count; ++index) {
-        const cmeta_interface_method_desc *a = &left->methods[index];
-        const cmeta_interface_method_desc *b = &right->methods[index];
-        if (a->arity != b->arity ||
-            !bounded_string_equal(a->name, b->name,
-                                  SALTS_PLUGIN_INTERFACE_TOKEN_MAX) ||
-            !bounded_string_equal(a->return_type, b->return_type,
-                                  SALTS_PLUGIN_INTERFACE_TOKEN_MAX))
-            return false;
-    }
-    return true;
-}
-
 static bool function_abi_complete(const cmeta_function_abi_desc *abi) {
     size_t index;
 
@@ -101,7 +47,7 @@ static salts_plugin_status validate_export(const salts_plugin_export *entry) {
     switch (entry->kind) {
     case SALTS_PLUGIN_EXPORT_INTERFACE:
         if (entry->value.interface.value == NULL ||
-            !salts_plugin_interface_desc_valid(entry->value.interface.desc))
+            !cmeta_interface_desc_valid(entry->value.interface.desc))
             return SALTS_PLUGIN_INVALID_MANIFEST;
         break;
 
@@ -146,13 +92,13 @@ salts_plugin_status salts_plugin_export_require_interface(
     if (status != SALTS_PLUGIN_OK) return status;
     if (contract_version == 0u ||
         !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        !salts_plugin_interface_desc_valid(expected_interface))
+        !cmeta_interface_desc_valid(expected_interface))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
     if (entry->kind != SALTS_PLUGIN_EXPORT_INTERFACE ||
         !contract_key_equal(entry, contract_id, contract_version) ||
         !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
-        !salts_plugin_interface_desc_equal(entry->value.interface.desc,
+        !cmeta_interface_desc_equal(entry->value.interface.desc,
                                            expected_interface))
         return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
 
