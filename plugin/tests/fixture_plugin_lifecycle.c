@@ -105,8 +105,10 @@ salts_plugin_query(uint32_t host_abi) {
             .capabilities = 1u,
             .export_id = "service",
             .contract_id = "test.lifecycle.service",
-            .interface_desc = plugin_lifecycle_test_api_interface(),
-            .interface_value = &fixture_api,
+            .value.interface = {
+                .desc = plugin_lifecycle_test_api_interface(),
+                .value = &fixture_api,
+            },
         };
         fixture_manifest.exports = &fixture_export;
         fixture_manifest.export_count = 1u;
