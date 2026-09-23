@@ -1,6 +1,6 @@
 /* #99 prerequisite: exercise the real canonical DataBind storage boundary.
  * These are migration requirements, not a direct-reader decode implementation. */
-#include "tbe_typed.h"
+#include "data_bind_typed.h"
 #include <salts_cmeta_data.h>
 #include <tinytest.h>
 
@@ -38,9 +38,9 @@ typedef struct ProbeDescriptor {
   cmeta_data_field_desc field;
   cmeta_data_struct_shape shape;
   cmeta_data_desc data;
-  TbeTypedField wire;
-  TbeTypedType overlay;
-  TbeTypedDescriptor descriptor;
+  DataBindTypedField wire;
+  DataBindTypedType overlay;
+  DataBindTypedDescriptor descriptor;
 } ProbeDescriptor;
 
 static ProbeStorage storage;
@@ -49,7 +49,7 @@ static const cmeta_data_buffer_ops *cleanup_buffer;
 static void probe_describe(ProbeDescriptor *probe, const char *name,
                      const cmeta_data_desc *leaf, size_t size, size_t alignment,
                      size_t field_offset, size_t field_size,
-                     size_t field_alignment, TbeTypedKind wire_kind) {
+                     size_t field_alignment, DataBindTypedKind wire_kind) {
   memset(probe, 0, sizeof(*probe));
   probe->identity = (cmeta_type_identity)CMETA_TYPE_ID_ATOM_INIT(name);
   probe->type = (cmeta_type_desc){
@@ -69,10 +69,10 @@ static void probe_describe(ProbeDescriptor *probe, const char *name,
       .abi_version = CMETA_DATA_DESC_ABI_VERSION,
       .stable_id = name, .display_name = name, .kind = CMETA_DATA_STRUCT,
       .storage_type = &probe->type, .shape = &probe->shape};
-  probe->wire = (TbeTypedField){.name = "value", .wire_kind = wire_kind};
-  probe->overlay = (TbeTypedType){
+  probe->wire = (DataBindTypedField){.name = "value", .wire_kind = wire_kind};
+  probe->overlay = (DataBindTypedType){
       .name = name, .size = size, .fields = &probe->wire, .field_count = 1u};
-  probe->descriptor = (TbeTypedDescriptor)TBE_TYPED_DESCRIPTOR_INIT(
+  probe->descriptor = (DataBindTypedDescriptor)DATA_BIND_TYPED_DESCRIPTOR_INIT(
       &probe->overlay, &probe->data);
 }
 
@@ -85,12 +85,12 @@ static void require_storage(ProbeDescriptor *probe) {
   DataBindError error = DATA_BIND_ERROR_INIT;
   check_true(cmeta_data_desc_valid(probe->field.value));
   check_true(cmeta_data_desc_valid(&probe->data));
-  const DataBindStatus status = tbe_typed_descriptor_validate(&probe->descriptor, &error);
+  const DataBindStatus status = data_bind_typed_descriptor_validate(&probe->descriptor, &error);
   (void)printf("NATIVE_REQUIREMENT name=%s status=%d path=%s message=%s\n",
                 probe->type.name, (int)status, error.path, error.message);
   check_equal(status, DATA_BIND_OK);
-  check_equal(tbe_typed_descriptor_init(&probe->descriptor, &storage, &error), DATA_BIND_OK);
-  check_equal(tbe_typed_descriptor_clear(&probe->descriptor, &storage, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_init(&probe->descriptor, &storage, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_clear(&probe->descriptor, &storage, &error), DATA_BIND_OK);
 }
 
 static void require_owned_buffer(cmeta_data_kind kind) {
@@ -100,21 +100,21 @@ static void require_owned_buffer(cmeta_data_kind kind) {
   leaf.stable_id = kind == CMETA_DATA_STRING ? "test.reader.owned-text" : "test.reader.owned-bytes";
   leaf.display_name = leaf.stable_id;
   DESCRIBE(probe, ProbeBuffer, tstr, &leaf,
-           kind == CMETA_DATA_STRING ? TBE_TYPED_STRING : TBE_TYPED_BYTES);
+           kind == CMETA_DATA_STRING ? DATA_BIND_TYPED_STRING : DATA_BIND_TYPED_BYTES);
   require_storage(&probe);
 
   DataBindError error = DATA_BIND_ERROR_INIT;
-  check_equal(tbe_typed_descriptor_init(&probe.descriptor, &storage, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_init(&probe.descriptor, &storage, &error), DATA_BIND_OK);
   cleanup_buffer = leaf.buffer_ops;
   check_true(cleanup_buffer->is_zero(&storage.buffer.value));
   static const unsigned char payload[] = {0u, 'A', 'B'};
   check_equal(cleanup_buffer->assign(&storage.buffer.value, payload, sizeof(payload), sizeof(payload)),
               CMETA_OK);
   check_false(cleanup_buffer->is_zero(&storage.buffer.value));
-  check_equal(tbe_typed_descriptor_clear(&probe.descriptor, &storage, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_clear(&probe.descriptor, &storage, &error), DATA_BIND_OK);
   check_true(cleanup_buffer->is_zero(&storage.buffer.value));
   /* A second clear must not free the same owning value twice. */
-  check_equal(tbe_typed_descriptor_clear(&probe.descriptor, &storage, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_clear(&probe.descriptor, &storage, &error), DATA_BIND_OK);
   check_true(cleanup_buffer->is_zero(&storage.buffer.value));
 }
 
@@ -123,10 +123,10 @@ static void reject_without_touching(ProbeDescriptor *probe) {
   unsigned char before[sizeof(storage)];
   memset(&storage, 0xa5, sizeof(storage));
   memcpy(before, &storage, sizeof(storage));
-  check_equal(tbe_typed_descriptor_validate(&probe->descriptor, &error), DATA_BIND_ERR_SCHEMA);
-  check_equal(tbe_typed_descriptor_init(&probe->descriptor, &storage, &error), DATA_BIND_ERR_SCHEMA);
+  check_equal(data_bind_typed_descriptor_validate(&probe->descriptor, &error), DATA_BIND_ERR_SCHEMA);
+  check_equal(data_bind_typed_descriptor_init(&probe->descriptor, &storage, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(before, &storage, sizeof(storage)), 0);
-  check_equal(tbe_typed_descriptor_clear(&probe->descriptor, &storage, &error), DATA_BIND_ERR_SCHEMA);
+  check_equal(data_bind_typed_descriptor_clear(&probe->descriptor, &storage, &error), DATA_BIND_ERR_SCHEMA);
   check_equal(memcmp(before, &storage, sizeof(storage)), 0);
   check_not_null(strstr(error.path, "value"));
 }
@@ -145,38 +145,38 @@ spec("DataBind native storage requirements before reader cutover") {
 
   it("preserves canonical fixed-width signed storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, DATA_BIND_TYPED_I32);
     require_storage(&probe);
   }
   it("preserves canonical fixed-width unsigned storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeU64, uint64_t, &salts_uint64_cmeta_data, TBE_TYPED_U64);
+    DESCRIBE(probe, ProbeU64, uint64_t, &salts_uint64_cmeta_data, DATA_BIND_TYPED_U64);
     require_storage(&probe);
   }
   it("preserves the existing explicit bool8 provider") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeBool8, uint8_t, &salts_bool8_cmeta_data, TBE_TYPED_BOOL);
+    DESCRIBE(probe, ProbeBool8, uint8_t, &salts_bool8_cmeta_data, DATA_BIND_TYPED_BOOL);
     require_storage(&probe);
   }
   it("preserves canonical double storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeDouble, double, &cmeta_data_double, TBE_TYPED_F64);
+    DESCRIBE(probe, ProbeDouble, double, &cmeta_data_double, DATA_BIND_TYPED_F64);
     require_storage(&probe);
   }
   it("accepts native C int without replacing its semantic identity") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeInt, int, &cmeta_data_int, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeInt, int, &cmeta_data_int, DATA_BIND_TYPED_I32);
     require_storage(&probe);
   }
   it("accepts native C long independently of the platform width") {
     ProbeDescriptor probe;
     DESCRIBE(probe, ProbeLong, long, &cmeta_data_long,
-             sizeof(long) == sizeof(int32_t) ? TBE_TYPED_I32 : TBE_TYPED_I64);
+             sizeof(long) == sizeof(int32_t) ? DATA_BIND_TYPED_I32 : DATA_BIND_TYPED_I64);
     require_storage(&probe);
   }
   it("accepts C bool without substituting bool8 storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeBool, bool, &cmeta_data_bool, TBE_TYPED_BOOL);
+    DESCRIBE(probe, ProbeBool, bool, &cmeta_data_bool, DATA_BIND_TYPED_BOOL);
     require_storage(&probe);
   }
   it("initializes and clears canonical owned text through its buffer provider") {
@@ -189,20 +189,20 @@ spec("DataBind native storage requirements before reader cutover") {
     ProbeDescriptor probe;
     cmeta_data_desc leaf = salts_tstr_cmeta_data;
     leaf.buffer_ops = NULL;
-    DESCRIBE(probe, ProbeBuffer, tstr, &leaf, TBE_TYPED_STRING);
+    DESCRIBE(probe, ProbeBuffer, tstr, &leaf, DATA_BIND_TYPED_STRING);
     reject_without_touching(&probe);
   }
   it("rejects a field offset mismatch without touching destination storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, DATA_BIND_TYPED_I32);
     ++probe.field.offset;
     reject_without_touching(&probe);
   }
   it("takes native layout from CMeta rather than obsolete overlay offsets") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, DATA_BIND_TYPED_I32);
     probe.wire.offset = SIZE_MAX;
-    probe.wire.kind = TBE_TYPED_STRING;
+    probe.wire.kind = DATA_BIND_TYPED_STRING;
     require_storage(&probe);
   }
 }
@@ -332,30 +332,30 @@ static void require_tagged_record_clear(cmeta_data_kind kind, bool nested) {
   const cmeta_data_desc leaf = tagged_data(kind);
   ProbeDescriptor row;
   ProbeDescriptor outer;
-  const TbeTypedDescriptor *descriptor;
+  const DataBindTypedDescriptor *descriptor;
   void *destination;
   ProbeTaggedBuffer *buffer = &tagged_root.value.value;
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBindStatus status;
 
   DESCRIBE(row, ProbeTaggedRow, ProbeTaggedBuffer, &leaf,
-           kind == CMETA_DATA_STRING ? TBE_TYPED_STRING : TBE_TYPED_BYTES);
+           kind == CMETA_DATA_STRING ? DATA_BIND_TYPED_STRING : DATA_BIND_TYPED_BYTES);
   descriptor = &row.descriptor;
   destination = &tagged_root.value;
   if (nested) {
-    DESCRIBE(outer, ProbeTaggedOuter, ProbeTaggedRow, &row.data, TBE_TYPED_OBJECT);
+    DESCRIBE(outer, ProbeTaggedOuter, ProbeTaggedRow, &row.data, DATA_BIND_TYPED_OBJECT);
     outer.wire.nested_overlay = &row.overlay;
     descriptor = &outer.descriptor;
     destination = &tagged_root;
   }
   check_true(cmeta_data_desc_valid(&leaf));
-  check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_OK);
-  check_equal(tbe_typed_descriptor_init(descriptor, destination, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_validate(descriptor, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_init(descriptor, destination, &error), DATA_BIND_OK);
   check_true(tagged_is_zero(buffer));
   check_equal(cmeta_data_buffer_assign(&leaf, buffer, tagged_payload,
                                        sizeof(tagged_payload), sizeof(tagged_payload)), CMETA_OK);
   check_tagged_payload(buffer);
-  status = tbe_typed_descriptor_clear(descriptor, destination, &error);
+  status = data_bind_typed_descriptor_clear(descriptor, destination, &error);
   (void)printf("SEMANTIC_ZERO kind=%s nested=%d clear_status=%d releases=%zu tag=%u zero=%d\n",
                kind == CMETA_DATA_STRING ? "text" : "bytes", (int)nested, (int)status,
                tagged_releases, buffer->tag, (int)tagged_is_zero(buffer));
@@ -363,7 +363,7 @@ static void require_tagged_record_clear(cmeta_data_kind kind, bool nested) {
   check_equal(tagged_releases, 1u);
   check_true(tagged_is_zero(buffer));
   check_equal(buffer->tag, (unsigned)PROBE_BUFFER_ZERO_TAG);
-  check_equal(tbe_typed_descriptor_clear(descriptor, destination, &error), DATA_BIND_OK);
+  check_equal(data_bind_typed_descriptor_clear(descriptor, destination, &error), DATA_BIND_OK);
   check_true(tagged_is_zero(buffer));
   check_equal(tagged_releases, 1u);
 }
