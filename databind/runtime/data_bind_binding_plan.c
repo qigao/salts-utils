@@ -214,6 +214,50 @@ static DataBindStatus plan_validate_native_type(
         "Native field count does not match DataBind IDL type '%s'",
         expected_name);
 
+  if (binding->presence_count != 0u && binding->presence == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+        "Native presence_count is nonzero without presence metadata");
+
+  for (i = 0u; i < binding->presence_count; ++i) {
+    const DataBindNativePresenceBinding *left = &binding->presence[i];
+    DataBindSchemaField reflected = DATA_BIND_SCHEMA_FIELD_INIT;
+    int found_optional = 0;
+    size_t j;
+
+    if (left->size < sizeof(*left) || left->field_name == NULL ||
+        left->field_name[0] == '\0' || left->bit > 7u ||
+        left->byte_offset >= binding->data->storage_type->size)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+          "Invalid native optional-presence metadata");
+
+    for (j = 0u; j < schema_type.field_count; ++j) {
+      reflected = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
+      if (data_bind_schema_field_at(codec, expected_name, j, &reflected) &&
+          reflected.name != NULL &&
+          strcmp(reflected.name, left->field_name) == 0) {
+        found_optional = reflected.is_optional != 0;
+        break;
+      }
+    }
+
+    if (!found_optional)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+          "Presence metadata must reference an optional IDL field");
+
+    for (j = 0u; j < i; ++j) {
+      const DataBindNativePresenceBinding *right = &binding->presence[j];
+      if (strcmp(left->field_name, right->field_name) == 0 ||
+          (left->byte_offset == right->byte_offset &&
+           left->bit == right->bit))
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+            "Duplicate native optional-presence metadata");
+    }
+  }
+
   for (i = 0u; i < schema_type.field_count; ++i) {
     DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
     const cmeta_data_field_desc *native_field;
