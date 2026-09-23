@@ -16,13 +16,13 @@
 #define TBE_LUA_DEFINE_DESCRIPTOR_RECORD(name)                                     \
     DataBindStatus name##_push_lua(struct lua_State *L, const name##_t *object,    \
                                     size_t max_depth) {                             \
-        return c11_lua_push_tbe_typed_descriptor(                                  \
+        return c11_lua_push_data_bind_typed_descriptor(                                  \
             L, name##_typed_descriptor(), object, max_depth);                      \
     }                                                                               \
     DataBindStatus name##_from_lua(struct lua_State *L, int index,                 \
                                     name##_t *object, size_t max_depth,             \
                                     size_t max_dynamic_items) {                     \
-        return c11_lua_read_tbe_typed_descriptor(                                  \
+        return c11_lua_read_data_bind_typed_descriptor(                                  \
             L, index, name##_typed_descriptor(), object, max_depth,                \
             max_dynamic_items);                                                     \
     }
@@ -1006,10 +1006,10 @@ DataBindStatus {{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
     future->status = DATA_BIND_OK;
     future->state = {{schema.schema_name}}_LUA_CLIENT_FUTURE_PENDING;
 
-    status = tbe_typed_serialize_binary({{name}}_typed_type(), request,
+    status = data_bind_typed_serialize_binary({{name}}_typed_type(), request,
                                         &wire, &wire_size, error);
     if (status == DATA_BIND_OK) {
-        status = tbe_typed_parse_binary({{name}}_typed_type(), wire, wire_size,
+        status = data_bind_typed_parse_binary({{name}}_typed_type(), wire, wire_size,
                                         &future->request, error);
     }
     free(wire);
