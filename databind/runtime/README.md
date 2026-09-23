@@ -1,7 +1,7 @@
 # DataBind 3.0
 
 DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和发布均由 SaltsUtils 负责。
-消费者通过 `find_package(SaltsUtils)` 使用唯一公开目标 `Salts::Databind`，
+消费者通过 `find_package(SaltsUtils)` 使用唯一公开目标 `Salts::DataBind`，
 不使用独立 DataBind package/root，也不组装内部目标或补造兼容 alias。
 生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
@@ -55,7 +55,7 @@ and temporal adapters. Concrete parser and QueryVM types remain above the intern
 core boundary; format providers expose bounded CSerde readers and own their native
 path-query translation without a registry or fallback path.
 
-Applications consume the complete DataBind component through `Salts::Databind`.
+Applications consume the complete DataBind component through `Salts::DataBind`.
 SaltsUtils encapsulates the schema/dynamic-binding, incremental-stream and adapter
 implementation dependencies; consumers do not link internal DataBind targets.
 
@@ -239,7 +239,7 @@ data_bind_free(codec);
 ```cmake
 add_library(order_schema STATIC generated/order.c)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC Salts::Databind)
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 ```
 
 ### 编译动态库
@@ -248,7 +248,7 @@ target_link_libraries(order_schema PUBLIC Salts::Databind)
 add_library(order_schema SHARED generated/order.c)
 target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC generated)
-target_link_libraries(order_schema PUBLIC Salts::Databind)
+target_link_libraries(order_schema PUBLIC Salts::DataBind)
 
 target_compile_definitions(my_app PRIVATE TBE_GENERATED_USE_SHARED) # Windows consumer
 target_link_libraries(my_app PRIVATE order_schema)
@@ -365,13 +365,13 @@ data_bind_free(codec);
 
 ## CMeta / CFlow / Reactive 可选适配
 
-通过 SaltsUtils 的唯一公开目标 `Salts::Databind` 使用 DataBind，包括将已解析的
+通过 SaltsUtils 的唯一公开目标 `Salts::DataBind` 使用 DataBind，包括将已解析的
 不可变动态值接入 CMeta 或 CFlow 的适配 API。内部依赖由 SaltsUtils 封装：
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
   PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
-target_link_libraries(my_app PRIVATE Salts::Databind)
+target_link_libraries(my_app PRIVATE Salts::DataBind)
 ```
 
 消费者不直接链接内部 CMeta/CFlow 适配目标。LIST/SET 映射为 `DataBindValueRef`，OBJECT 映射为
