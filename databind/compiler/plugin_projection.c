@@ -110,21 +110,19 @@ static int plugin_write_type_desc(
 }
 
 static int plugin_operation_symbols(
-    const char *schema_name, const char *service_name, const Node *operation,
+    const Node *operation,
     char *business_symbol, size_t business_symbol_size,
     char *meta_symbol, size_t meta_symbol_size,
     char *request_symbol, size_t request_symbol_size,
     char *response_symbol, size_t response_symbol_size) {
-  const char *operation_name = plugin_string(operation, "name");
+  const char *native_symbol = plugin_string(operation, "native_c_symbol");
   int written;
 
-  if (!plugin_identifier_valid(schema_name) ||
-      !plugin_identifier_valid(service_name) ||
-      !plugin_identifier_valid(operation_name))
+  if (!plugin_identifier_valid(native_symbol))
     return 0;
 
-  written = snprintf(business_symbol, business_symbol_size, "%s_%s_%s",
-                     schema_name, service_name, operation_name);
+  written = snprintf(business_symbol, business_symbol_size, "%s",
+                     native_symbol);
   if (written < 0 || (size_t)written >= business_symbol_size) return 0;
 
   written = snprintf(meta_symbol, meta_symbol_size, "%s_plugin_meta",
@@ -156,7 +154,7 @@ static int plugin_write_operation_support(
       strcmp(request_type, "void") == 0 ||
       strcmp(response_type, "void") == 0 ||
       !plugin_operation_symbols(
-          schema_name, service_name, operation,
+          operation,
           symbol, sizeof(symbol),
           meta_symbol, sizeof(meta_symbol),
           request_symbol, sizeof(request_symbol),
@@ -219,7 +217,7 @@ static int plugin_write_export_initializer(
   int written;
 
   if (!plugin_operation_symbols(
-          schema_name, service_name, operation,
+          operation,
           symbol, sizeof(symbol),
           meta_symbol, sizeof(meta_symbol),
           request_symbol, sizeof(request_symbol),
