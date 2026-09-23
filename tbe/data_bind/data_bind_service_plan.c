@@ -134,6 +134,19 @@ static const cmeta_data_field_desc *plan_native_field(
   return NULL;
 }
 
+static const TbeTypedField *plan_overlay_field(
+    const TbeTypedDescriptor *descriptor, const char *name) {
+  size_t i;
+  if (descriptor == NULL || descriptor->overlay == NULL || name == NULL)
+    return NULL;
+  for (i = 0u; i < descriptor->overlay->field_count; ++i) {
+    const TbeTypedField *field = &descriptor->overlay->fields[i];
+    if (field->name != NULL && strcmp(field->name, name) == 0)
+      return field;
+  }
+  return NULL;
+}
+
 static const cmeta_type_desc *plan_param_value_type(
     const cmeta_param_desc *param, int *indirect) {
   if (indirect != NULL) *indirect = 0;
@@ -641,6 +654,20 @@ static DataBindStatus plan_compile_ingress(
         &field, native_field, param, param_index, indirect, wire_name,
         diagnostic);
     if (status != DATA_BIND_OK) return status;
+    if (whole_param != SIZE_MAX && field.is_optional) {
+      const TbeTypedField *typed_field =
+          plan_overlay_field(request, field.name);
+      if (typed_field == NULL ||
+          (typed_field->flags & TBE_TYPED_FIELD_OPTIONAL) == 0u)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Optional schema field '%s' lacks native presence metadata",
+            field.name);
+      plan->ingress[i].view.has_presence = 1;
+      plan->ingress[i].view.presence_offset =
+          request->overlay->presence_offset;
+      plan->ingress[i].view.optional_bit = typed_field->optional_bit;
+    }
     plan->ingress_count = i + 1u;
   }
 
@@ -1229,6 +1256,9 @@ DataBindStatus data_bind_service_plan_bind_inputs(
       goto fail;
     }
 
+    {
+      const int provider_present = present;
+
     if (!present) {
       if (owned->has_default_token) {
         PlanDefaultReaderContext context = {&owned->default_token, 0};
@@ -1263,6 +1293,14 @@ DataBindStatus data_bind_service_plan_bind_inputs(
           diagnostic, status, entry->schema_field, entry->function_param,
           &native.error, "Native service input decode failed");
       goto fail;
+    }
+
+    if (entry->has_presence && provider_present) {
+      unsigned char *presence =
+          (unsigned char *)frame->request + entry->presence_offset;
+      presence[entry->optional_bit / 8u] |=
+          (unsigned char)(1u << (entry->optional_bit % 8u));
+    }
     }
   }
 
