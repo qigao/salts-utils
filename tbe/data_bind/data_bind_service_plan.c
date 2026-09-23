@@ -750,6 +750,7 @@ static DataBindStatus plan_compile_ingress(
         &field, native_field, param, param_index, indirect, wire_name,
         diagnostic);
     if (status != DATA_BIND_OK) return status;
+    plan->ingress_count = i + 1u;
     if (target == DATA_BIND_SERVICE_TARGET_FUNCTION_PARAM &&
         whole_param == SIZE_MAX)
       plan->ingress[i].view.native_offset = 0u;
@@ -767,7 +768,6 @@ static DataBindStatus plan_compile_ingress(
           request->overlay->presence_offset;
       plan->ingress[i].view.optional_bit = typed_field->optional_bit;
     }
-    plan->ingress_count = i + 1u;
   }
 
   for (i = 0u; i < function->param_count; ++i) {
