@@ -1,0 +1,6 @@
+schema Image;
+message DecodeRequest { uint32 id; }
+message DecodeResponse { uint32 width; }
+service Codec {
+  Decode: DecodeRequest -> DecodeResponse;
+}
