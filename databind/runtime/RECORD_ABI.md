@@ -32,7 +32,7 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 
 1. schema 生成 `.h/.c`：生成代码公开 owning struct、typed descriptor 和格式
    入口。生成源可编译进静态库或动态库。
-2. schema 映射现有 C struct：应用通过 `TBE_TYPED_*` 宏声明 descriptor，
+2. schema 映射现有 C struct：应用通过 `DATA_BIND_TYPED_*` 宏声明 descriptor，
    不生成业务头文件，仍复用相同 DataBind 格式适配器。
 
 两条路线都以 schema 为格式与名称的唯一事实源。`[name]` 和 `[alias]` 决定
