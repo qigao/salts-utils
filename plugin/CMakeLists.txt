@@ -20,7 +20,7 @@ target_include_directories(salts_plugin PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(salts_plugin
   PUBLIC Salts::CMeta
-  PRIVATE Salts::Core ${CMAKE_DL_LIBS})
+  PRIVATE Salts::Core Salts::Platform ${CMAKE_DL_LIBS})
 
 install(TARGETS salts_plugin EXPORT SaltsUtilsTargets)
 install(

@@ -22,6 +22,7 @@ extern "C" {
 #define SALTS_PLUGIN_MAX_INTERFACE_METHODS 64u
 #define SALTS_PLUGIN_INTERFACE_TOKEN_MAX 127u
 #define SALTS_PLUGIN_PATH_MAX 4095u
+#define SALTS_PLUGIN_MAX_LEASES_PER_PLUGIN 64u
 
 #if defined(__cplusplus)
 #  define SALTS_PLUGIN_EXTERN_C extern "C"
@@ -61,7 +62,10 @@ typedef enum salts_plugin_status {
     SALTS_PLUGIN_UNKNOWN_PLUGIN,
     SALTS_PLUGIN_STALE,
     SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED,
-    SALTS_PLUGIN_UNLOAD_FAILED
+    SALTS_PLUGIN_UNLOAD_FAILED,
+    SALTS_PLUGIN_ALREADY,
+    SALTS_PLUGIN_BUSY,
+    SALTS_PLUGIN_INVALID_STATE
 } salts_plugin_status;
 
 typedef enum salts_plugin_export_kind {
@@ -131,8 +135,9 @@ typedef struct salts_plugin_manifest {
     const salts_plugin_export *exports;
     size_t export_count;
 
-    /* Optional lifecycle surface. The Plugin core does not invoke these during
-     * ABI validation. Later lifecycle orchestration owns start/stop/quiescence. */
+    /* Optional lifecycle surface. It is all-or-none: passive plugins set self
+     * and all callbacks to NULL; managed plugins provide self plus all four
+     * callbacks. ABI validation never invokes them. */
     void *self;
     salts_plugin_start_fn start;
     salts_plugin_request_stop_fn request_stop;
@@ -163,6 +168,27 @@ typedef struct salts_plugin_ref {
     uint32_t generation;
 } salts_plugin_ref;
 
+typedef enum salts_plugin_lifecycle_state {
+    SALTS_PLUGIN_LIFECYCLE_LOADED = 1,
+    SALTS_PLUGIN_LIFECYCLE_STARTING,
+    SALTS_PLUGIN_LIFECYCLE_STARTED,
+    SALTS_PLUGIN_LIFECYCLE_STOPPING,
+    SALTS_PLUGIN_LIFECYCLE_QUIESCENT
+} salts_plugin_lifecycle_state;
+
+typedef struct salts_plugin_lease {
+    salts_plugin_ref plugin;
+    uint32_t slot;
+    uint32_t generation;
+} salts_plugin_lease;
+
+typedef struct salts_plugin_lifecycle_info {
+    salts_plugin_lifecycle_state state;
+    size_t active_leases;
+    size_t callbacks_inflight;
+    salts_plugin_status failure;
+} salts_plugin_lifecycle_info;
+
 typedef struct salts_plugin_registry_config {
     size_t capacity;
 } salts_plugin_registry_config;
@@ -173,6 +199,11 @@ typedef struct salts_plugin_registry {
 
 static inline bool salts_plugin_ref_valid(salts_plugin_ref ref) {
     return ref.slot != 0u && ref.generation != 0u;
+}
+
+static inline bool salts_plugin_lease_valid(salts_plugin_lease lease) {
+    return salts_plugin_ref_valid(lease.plugin) &&
+           lease.slot != 0u && lease.generation != 0u;
 }
 
 const char *salts_plugin_status_string(salts_plugin_status status);
@@ -213,15 +244,28 @@ salts_plugin_status salts_plugin_manifest_find_export(
     const salts_plugin_export **out_export);
 
 /*
- * Bounded dynamic-plugin registry.
+ * Bounded dynamic-plugin registry and lifecycle.
  *
- * Control-plane calls are externally serialized in V1. init allocates the
- * fixed slot table once; load never grows or replaces it. path is borrowed for
- * the call only, must be non-empty UTF-8/no more than SALTS_PLUGIN_PATH_MAX
- * bytes, and is not retained. Platform library handles remain private.
+ * The registry allocates a fixed slot table once. Paths are borrowed only for
+ * one load call, must be strict non-empty UTF-8, and are never retained.
+ * Platform library handles remain private.
  *
- * #129 admits passive manifests only: lifecycle callbacks are rejected until
- * #130 defines start/stop/quiescent-unload orchestration.
+ * load() publishes state LOADED. start() transitions to STARTED. Managed
+ * start() failure is failure-atomic and transitions directly to QUIESCENT so
+ * cleanup remains possible. Plugin-owned Interface/Callable/manifest pointers
+ * may be used only while holding an explicit lease acquired from a STARTED
+ * plugin. request_stop() atomically closes new lease admission before invoking
+ * the plugin stop callback. A stop callback failure is recorded as the first
+ * lifecycle failure but the state remains STOPPING so quiescence can still be
+ * observed and the DSO can still be unloaded safely.
+ *
+ * poll_quiescent() reaches QUIESCENT only after host leases/in-flight lifecycle
+ * callbacks are zero and the optional plugin is_quiescent callback agrees.
+ * unload() is allowed only for never-started LOADED plugins or QUIESCENT
+ * plugins. Successful unload invalidates the generation-bearing ref.
+ *
+ * Registry operations are internally synchronized. destroy() is a final
+ * control-plane operation and must not race new API calls.
  */
 salts_plugin_status salts_plugin_registry_init(
     salts_plugin_registry *registry,
@@ -237,16 +281,40 @@ salts_plugin_status salts_plugin_registry_find(
     const char *plugin_id,
     salts_plugin_ref *out_ref);
 
-salts_plugin_status salts_plugin_registry_manifest(
+salts_plugin_status salts_plugin_registry_start(
+    salts_plugin_registry *registry,
+    salts_plugin_ref ref);
+
+salts_plugin_status salts_plugin_registry_acquire(
+    salts_plugin_registry *registry,
+    salts_plugin_ref ref,
+    salts_plugin_lease *out_lease,
+    const salts_plugin_manifest **out_manifest);
+
+salts_plugin_status salts_plugin_registry_release(
+    salts_plugin_registry *registry,
+    salts_plugin_lease *lease);
+
+salts_plugin_status salts_plugin_registry_request_stop(
+    salts_plugin_registry *registry,
+    salts_plugin_ref ref);
+
+salts_plugin_status salts_plugin_registry_poll_quiescent(
+    salts_plugin_registry *registry,
+    salts_plugin_ref ref,
+    bool *out_quiescent);
+
+salts_plugin_status salts_plugin_registry_get_lifecycle(
     const salts_plugin_registry *registry,
     salts_plugin_ref ref,
-    const salts_plugin_manifest **out_manifest);
+    salts_plugin_lifecycle_info *out_info);
+
+salts_plugin_status salts_plugin_registry_unload(
+    salts_plugin_registry *registry,
+    salts_plugin_ref ref);
 
 size_t salts_plugin_registry_count(const salts_plugin_registry *registry);
 
-/* Close every merely-loaded passive DSO. Successful closes are settled once.
- * If an OS close fails, successfully closed slots remain stale while the
- * registry stays live so the caller may retry the remaining close. */
 salts_plugin_status salts_plugin_registry_destroy(
     salts_plugin_registry *registry);
 
