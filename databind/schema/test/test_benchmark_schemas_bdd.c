@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
