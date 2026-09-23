@@ -1,9 +1,9 @@
 # Salts Plugin
 
 `Salts::Plugin` is the CMeta-based plugin contract layer owned by SaltsUtils.
-It defines the portable manifest/export ABI and validates semantic contracts. It
-does **not** load shared libraries yet; POSIX/Windows loading and the bounded
-registry are tracked separately.
+It defines the portable manifest/export ABI, validates semantic contracts, and
+provides the bounded POSIX/Windows dynamic loader registry. Lifecycle execution
+and optional CFlow adapters remain separate follow-up layers.
 
 ## Boundary
 
@@ -15,9 +15,7 @@ Salts::CMeta
        Salts::Plugin
   manifest / export ABI
   semantic admission
-             |
-             v
-   future loader / registry
+  bounded loader / registry
 
 optional later:
 Salts::PluginCFlow
