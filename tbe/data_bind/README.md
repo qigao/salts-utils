@@ -115,6 +115,61 @@ JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前
 预算在 stream 创建/设置时复制，诊断由 stream 持有；不存在进程全局 DataBind 策略，
 也不允许 DataBind 绕过前端直接构造或执行 QVM 指令。
 
+## DataBind IDL Service Contract
+
+DataBind IDL 可以在同一份数据类型定义中声明 transport-neutral service contract：
+
+```text
+message GetUserRequest {
+  [path] uint64 id;
+  optional [query] string expand default "summary";
+  [header("Authorization")] string authorization;
+}
+
+message GetUserResponse {
+  string name;
+}
+
+message NotFoundError {
+  string resource;
+}
+
+service UserService {
+  [GET("/users/{id}"), rpc]
+  GetUser: GetUserRequest -> GetUserResponse throws NotFoundError;
+}
+```
+
+Service 的逻辑事实只有：
+
+```text
+Operation: Request -> Response [throws Error...]
+```
+
+`GET/POST/.../rpc` 是 transport projection，不是 Service 本身。字段复用既有
+attribute 机制表达 `path/query/header/cookie/body`；bare attribute 默认使用字段名，
+只有外部名称不同才显式写名字，例如 `[header("X-Request-ID")]`。
+
+bare `[rpc]` 的 effective wire name 为 `Service.Operation`；兼容既有协议时可用
+`[rpc("legacy.method")]` 覆盖。HTTP route 采用 `/users/{id}` 形式，并在 schema
+admission 时校验每个 placeholder 与 request message 中恰好一个 required `[path]`
+字段双向匹配。
+
+Service reflection 通过 `DataBindService` / `DataBindServiceOperation` 和
+`data_bind_service_*` API 暴露。所有字符串均借用 immutable codec schema tree，
+有效期到 `data_bind_free()`；结构体保持 size-versioned prefix 规则。
+
+这一层只描述 IDL/wire contract：
+
+- DataBind 不绑定 C implementation symbol；
+- CMeta 仍是 native type/function semantics 的事实源；
+- callable/function adapter、CFlow graph、scheduler、retry/cache/auth policy 都属于后续
+  binding/execution 层；
+- CHTTP/CRPC 只消费 projection，不成为 DataBind runtime dependency。
+
+后续编译 binding plan 时使用同一份 Service Contract 与 CMeta
+`cmeta_function_desc` 做 compatibility join；请求 hot path 不重新解释 schema AST。
+
 ## Schema 注解标准
 
 字段映射通过 schema 注解定义：
