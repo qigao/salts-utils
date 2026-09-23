@@ -102,7 +102,7 @@ describe("bounded registry") {
         salts_plugin_lease lease = {0};
         const salts_plugin_manifest *manifest = NULL;
         const salts_plugin_export *entry = NULL;
-        void *params[1];
+        const void *params[1];
         int input = 9;
         int output = 0;
         bool quiescent = false;
@@ -125,13 +125,13 @@ describe("bounded registry") {
         check_equal(salts_plugin_export_require_function(
                         entry, "test.loader.math", 1u, 1u),
                     SALTS_PLUGIN_OK);
-        check_true(cmeta_function_desc_valid(entry->function));
-        check_true(cmeta_function_abi_desc_valid(entry->function_abi));
-        check_true(entry->function_abi->function == entry->function);
+        check_true(cmeta_function_desc_valid(entry->value.function.desc));
+        check_true(cmeta_function_abi_desc_valid(entry->value.function.abi));
+        check_true(entry->value.function.abi->function == entry->value.function.desc);
 
         params[0] = &input;
-        check_true(entry->function_adapter->invoke(
-            entry->function_adapter->context, &output, params, 1u));
+        check_true(entry->value.function.invoke(
+            entry->value.function.context, &output, params, 1u));
         check_equal(output, 18);
 
         check_equal(salts_plugin_registry_release(&registry, &lease),
