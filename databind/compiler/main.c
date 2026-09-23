@@ -1,13 +1,13 @@
 /**
  * @file main.c
- * @brief tbe_compiler — code generator from schema definitions.
+ * @brief databindc — DataBind IDL/compiler frontend.
  *
  * Reads a .schema file, parses it, and renders output through a Mustache
  * template.  Supports multiple target languages by selecting different
  * template files (built-in or custom).
  *
  * CLI (via cmd_arger):
- *   tbe_compiler <file> [--template <file>]
+ *   databindc <file> [--template <file>]
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     char resource_dir[SALTS_FS_MAX_PATH];
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
-        fprintf(stderr, "Failed to locate tbe_compiler resource directory\n");
+        fprintf(stderr, "Failed to locate databindc resource directory\n");
         return 1;
     }
 
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
                     (uint32_t)(sizeof(optional_args) / sizeof(optional_args[0])),
                     required_args,
                     (uint32_t)(sizeof(required_args) / sizeof(required_args[0])),
-                    argc, argv, "tbe_compiler 1.0", cmd_arger_true);
+                    argc, argv, "databindc 3.0", cmd_arger_true);
 
     if (lang_name != NULL &&
         tbe_compiler_parse_language_name(lang_name, &lang_enum) != 0) {
