@@ -48,7 +48,7 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
-| DataBind | `Salts::Databind`; schema, native/dynamic binding, rollback, and compiler/code generation |
+| DataBind | `Salts::DataBind`; schema, native/dynamic binding, rollback, and compiler/code generation |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
@@ -100,12 +100,12 @@ The package is fail-fast by design. It does not silently search unrelated prefix
 
 ### DataBind consumption
 
-The exact public consumption target is **`Salts::Databind`**:
+The exact public consumption target is **`Salts::DataBind`**:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
   PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
-target_link_libraries(app PRIVATE Salts::Databind)
+target_link_libraries(app PRIVATE Salts::DataBind)
 ```
 
 SaltsUtils exports the actual runtime and owns its internal dependency closure. Consumers do not assemble internal Core/CMeta/CFlow/format-adapter targets, introduce alternate target spellings, or manufacture aliases to conceal a missing export. There is one SaltsUtils installation and release, with no independent DataBind package/root or fallback lookup.
