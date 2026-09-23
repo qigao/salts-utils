@@ -29,7 +29,7 @@ fixture_destroy(void *self) {
 }
 
 static const salts_plugin_manifest fixture_manifest = {
-    .struct_size = SALTS_PLUGIN_MANIFEST_V1_SIZE,
+    .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,
     .abi_version = SALTS_PLUGIN_ABI_VERSION,
     .plugin_id = "test.lifecycle.stop_fail",
     .version = {1u, 0u, 0u},
