@@ -87,7 +87,6 @@ static salts_plugin_manifest make_manifest(
     plugin_test_codec *codec) {
     exports[0] = (salts_plugin_export){
         .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-        .abi_version = SALTS_PLUGIN_ABI_VERSION,
         .kind = SALTS_PLUGIN_EXPORT_INTERFACE,
         .contract_version = 1u,
         .capabilities = 1u,
@@ -98,7 +97,6 @@ static salts_plugin_manifest make_manifest(
     };
     exports[1] = (salts_plugin_export){
         .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-        .abi_version = SALTS_PLUGIN_ABI_VERSION,
         .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
         .contract_version = 1u,
         .capabilities = 2u,
@@ -215,12 +213,6 @@ describe("manifest admission") {
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_INVALID_MANIFEST);
-
-        manifest = make_manifest(exports, &codec);
-        exports[1].abi_version = SALTS_PLUGIN_ABI_VERSION + 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
-                    SALTS_PLUGIN_UNSUPPORTED_ABI);
     }
 
     it("requires complete FunctionAbi and a matching exact adapter") {
@@ -287,7 +279,6 @@ describe("semantic identity") {
     it("uses contract identity independently from Function/adapter addresses") {
         salts_plugin_export left = {
             .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-            .abi_version = SALTS_PLUGIN_ABI_VERSION,
             .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
             .contract_version = 1u,
             .capabilities = 2u,
@@ -299,7 +290,6 @@ describe("semantic identity") {
         };
         salts_plugin_export right = {
             .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-            .abi_version = SALTS_PLUGIN_ABI_VERSION,
             .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
             .contract_version = 1u,
             .capabilities = 2u,
