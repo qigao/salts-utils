@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target tbe/all -j2 \
+          cmake --build build/linux-gcc-debug --target databind/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
 
       - name: Verify the SaltsUtils installation owns DataBind
@@ -249,5 +249,5 @@ jobs:
             build/linux-gcc-debug/compile_commands.json
             build/linux-gcc-debug/CMakeCache.txt
             build/linux-gcc-debug/Testing/Temporary/
-            build/linux-gcc-debug/tbe/Testing/Temporary/
+            build/linux-gcc-debug/databind/Testing/Temporary/
             build/linux-gcc-debug/jinja/Testing/Temporary/
