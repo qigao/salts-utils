@@ -63,7 +63,7 @@ static void lifecycle_send_worker(void *arg) {
     lifecycle_worker *worker = (lifecycle_worker *)arg;
     unsigned index;
 
-    for (index = 0u; index < 20000u; ++index) {
+    for (index = 0u; index < 1000000u; ++index) {
         salts_plugin_lease lease = {0};
         const salts_plugin_manifest *manifest = NULL;
         const salts_plugin_export *entry = NULL;
@@ -112,7 +112,11 @@ static void lifecycle_send_worker(void *arg) {
             return;
         }
         atomic_fetch_add(&worker->successful, 1u);
+        salts_thread_yield();
     }
+
+    /* The worker is expected to terminate because stop closes admission. */
+    atomic_store(&worker->unexpected, (int)SALTS_PLUGIN_BUSY);
 }
 
 static void lifecycle_stop_worker(void *arg) {
@@ -318,7 +322,7 @@ describe("concurrent stop boundaries") {
         check_equal(salts_plugin_registry_start(&registry, ref),
                     SALTS_PLUGIN_OK);
 
-        atomic_store(&worker.status, -1);
+        atomic_init(&worker.status, -1);
         check_equal(salts_thread_create(
                         &thread, lifecycle_stop_worker, &worker), 0);
         check_not_null(thread);
@@ -368,8 +372,8 @@ describe("concurrent stop boundaries") {
         check_equal(salts_plugin_registry_start(&registry, ref),
                     SALTS_PLUGIN_OK);
 
-        atomic_store(&worker.successful, 0u);
-        atomic_store(&worker.unexpected, 0);
+        atomic_init(&worker.successful, 0u);
+        atomic_init(&worker.unexpected, 0);
         check_equal(salts_thread_create(
                         &thread, lifecycle_send_worker, &worker), 0);
         check_not_null(thread);
