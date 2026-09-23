@@ -55,5 +55,9 @@ $manifest = Join-Path $Destination "salts-utils-sdk-manifest.txt"
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
   throw "published SaltsUtils SDK manifest is missing: $manifest"
 }
+$manifestText = Get-Content -LiteralPath $manifest -Raw
+if ($manifestText -notmatch "(?m)^version=$([regex]::Escape($Version))$") {
+  throw "published SaltsUtils SDK manifest does not identify version $Version"
+}
 
 Write-Host "Restored published SaltsUtils.Native $Version ($Rid) to $Destination"
