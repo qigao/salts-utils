@@ -138,6 +138,8 @@ add_library(
   data_bind_schema.c
   data_bind_schema_internal.h
   data_bind_record.c
+  data_bind_service_plan.c
+  data_bind_service_plan.h
   data_bind_stream_format_state.c
   data_bind_stream_format_state_internal.h
   tbe_typed.c
@@ -229,6 +231,7 @@ install(
     data_bind.h
     data_bind_format_provider.h
     data_bind_native.h
+    data_bind_service_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
     data_bind_csv_provider.h
@@ -336,6 +339,12 @@ cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "tbe/data_bind/tests")
+cmake_add_test(test_data_bind_service_plan
+  SOURCES test_data_bind_service_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "tbe/data_bind/tests")
+set_tests_properties(test_data_bind_service_plan PROPERTIES
+  LABELS "databind;cmeta;service-contract")
 cmake_add_test(test_data_bind_cmeta_reflection
   SOURCES test_data_bind_cmeta_reflection.c
   LIBS ${DATA_BIND_TEST_LIBS}
