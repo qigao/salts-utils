@@ -3497,7 +3497,7 @@ spec("tbe_compiler") {
       check_contains(output, "enum { Payloads_sides_OFFSET = 48 };");
       check_contains(output, "static inline bool Payloads_digest_set(");
       check_contains(output, "size != 16");
-      check_contains(output, "TBE_GENERATED_MEMCPY(view->data + 0, data, 16);");
+      check_contains(output, "DATABIND_GENERATED_MEMCPY(view->data + 0, data, 16);");
       check_contains(output, "static inline bool Payloads_points_builder_at(");
       check_contains(output, "Point_builder_t *value");
       check_contains(output, "index >= 2");
