@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -695,7 +695,7 @@ suite("tbe_parser") {
       const char *schema = "group Level { uint64 price; } "
                            "message Broken { string symbol; group<Level> bids; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
@@ -708,7 +708,7 @@ suite("tbe_parser") {
     it("should parse flags without underlying type") {
       const char *schema = "flags Permissions { Read; Write; Execute; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
@@ -733,7 +733,7 @@ suite("tbe_parser") {
     it("should parse flags with underlying type") {
       const char *schema = "flags OrderFlags <uint8> { IOC = 1; FOK = 2; PostOnly = 4; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
@@ -756,7 +756,7 @@ suite("tbe_parser") {
     it("should auto-increment flags as powers of 2") {
       const char *schema = "flags Status { Active; Pending; Completed; Cancelled; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
@@ -777,7 +777,7 @@ suite("tbe_parser") {
     it("should handle mixed explicit and auto values in flags") {
       const char *schema = "flags Mixed { A = 1; B; C = 16; D; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
@@ -799,29 +799,29 @@ suite("tbe_parser") {
     it("should report detailed error for lexer errors") {
       const char *schema = "composite Point { int32 x; @invalid }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
-      check_not_equal(err.code, TBE_OK);
+      check_not_equal(err.code, DATA_BIND_SCHEMA_OK);
       check_greater(err.line, 0);
       node_free(root);
     }
 
     it("should report error for invalid arguments") {
-      tbe_error_t err;
+      DataBindSchemaError err;
       int rc = parse_schema(NULL, 0, NULL, &err);
 
       check_equal(rc, -1);
-      check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
+      check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
       node_free(NULL);  // Should handle NULL gracefully
     }
 
     it("should handle empty schema") {
       const char *schema = "";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, 0, root, &err);
 
@@ -832,7 +832,7 @@ suite("tbe_parser") {
     it("should handle whitespace-only schema") {
       const char *schema = "   \n\t  \n  ";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       int rc = parse_schema(schema, strlen(schema), root, &err);
 
