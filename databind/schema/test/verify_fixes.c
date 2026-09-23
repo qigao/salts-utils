@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tbe_version.h"
 #include "tbe_wire.h"
 #include <stdio.h>
@@ -28,15 +28,15 @@ int main() {
     
     // Test 3: Error handling improvements
     printf("3. Testing enhanced error handling...\n");
-    tbe_error_t err;
-    tbe_error_init(&err);
+    DataBindSchemaError err;
+    data_bind_schema_error_init(&err);
     
     // Test with very long message
     char long_msg[500];
     memset(long_msg, 'X', sizeof(long_msg) - 1);
     long_msg[sizeof(long_msg) - 1] = '\0';
     
-    tbe_error_set(&err, TBE_ERR_SYNTAX_ERROR, 1, 1, long_msg);
+    data_bind_schema_error_set(&err, DATA_BIND_SCHEMA_ERR_SYNTAX, 1, 1, long_msg);
     printf("   Long message truncation: %s\n", strlen(err.message) <= 255 ? "PASS" : "FAIL");
     
     // Test 4: Deep structure handling
@@ -64,7 +64,7 @@ int main() {
     Node *test_root = create_node_map("test");
     
     int rc = parse_schema(NULL, 0, test_root, &err);
-    printf("   NULL input rejection: %s\n", (rc == -1 && err.code == TBE_ERR_INVALID_ARGUMENT) ? "PASS" : "FAIL");
+    printf("   NULL input rejection: %s\n", (rc == -1 && err.code == DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT) ? "PASS" : "FAIL");
     
     const char *valid_schema = "composite Point { int32 x; int32 y; }";
     rc = parse_schema(valid_schema, strlen(valid_schema), test_root, &err);
