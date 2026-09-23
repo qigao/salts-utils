@@ -875,9 +875,9 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor field_default { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
 %destructor attr_values { (void)ctx; node_free($$); }
-%destructor attr_value { (void)ctx; node_free($); }
-%destructor service_errors { (void)ctx; node_free($); }
-%destructor error_types { (void)ctx; node_free($); }
+%destructor attr_value { (void)ctx; node_free($$); }
+%destructor service_errors { (void)ctx; node_free($$); }
+%destructor error_types { (void)ctx; node_free($$); }
 
 %token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE THROWS COLON ARROW.
 
