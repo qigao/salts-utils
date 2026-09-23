@@ -11,6 +11,7 @@ typedef struct AddRequest {
   uint32_t left;
   uint32_t right;
   uint32_t scale;
+  uint8_t presence;
 } AddRequest;
 
 typedef struct AddResponse {
@@ -61,7 +62,9 @@ static const TbeTypedType ADD_REQUEST_OVERLAY = {
     .name = "AddRequest",
     .size = sizeof(AddRequest),
     .fields = ADD_REQUEST_OVERLAY_FIELDS,
-    .field_count = 3u};
+    .field_count = 3u,
+    .presence_offset = offsetof(AddRequest, presence),
+    .presence_size = sizeof(((AddRequest *)0)->presence)};
 static const TbeTypedDescriptor ADD_REQUEST_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&ADD_REQUEST_OVERLAY, &ADD_REQUEST_DATA);
 
@@ -149,6 +152,7 @@ static const cserde_reader_ops ONE_TOKEN_OPS = {
 
 typedef struct TestProvider {
   OneTokenReader reader;
+  int provide_scale;
   int fail_write;
   size_t begin_calls;
   size_t write_calls;
@@ -171,8 +175,11 @@ static DataBindStatus test_open_input(
   else if (strcmp(entry->wire_name, "right") == 0)
     value = 4u;
   else if (strcmp(entry->wire_name, "scale") == 0) {
-    *present = 0;
-    return DATA_BIND_OK;
+    if (!provider->provide_scale) {
+      *present = 0;
+      return DATA_BIND_OK;
+    }
+    value = 2u;
   } else {
     return DATA_BIND_ERR_TYPE_NOT_FOUND;
   }
@@ -439,7 +446,7 @@ spec("DataBind compiled service binding plan") {
     DataBindServicePlanDiagnostic diagnostic =
         DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
     DataBindServicePlan *plan = NULL;
-    TestProvider state = {0};
+    TestProvider state = {.provide_scale = 1};
     DataBindServiceProvider provider = provider_for(&state);
     unsigned char workspace[4096];
     DataBindNativeOptions options =
@@ -464,13 +471,14 @@ spec("DataBind compiled service binding plan") {
                 DATA_BIND_OK);
     check_equal(request.left, 3u);
     check_equal(request.right, 4u);
-    check_equal(request.scale, 1u);
+    check_equal(request.scale, 2u);
+    check_true((request.presence & 1u) != 0u);
 
     response.sum = request.left + request.right * request.scale;
     check_equal(data_bind_service_plan_write_outputs(
                     plan, &provider, &frame, &diagnostic),
                 DATA_BIND_OK);
-    check_equal(state.published_sum, 7u);
+    check_equal(state.published_sum, 11u);
 
     check_equal(tbe_typed_descriptor_clear(
                     &ADD_REQUEST_DESCRIPTOR, &request, NULL),
