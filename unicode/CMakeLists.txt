@@ -19,6 +19,7 @@ add_library(
   src/salts_unicode_word.c src/unicode_word_data.h
   src/salts_unicode_line_break.c src/unicode_line_break_data.h
   src/salts_unicode_bidi.c src/unicode_bidi_data.h
+  src/salts_unicode_emoji.c src/salts_unicode_emoji.h src/unicode_emoji_data.h
   src/salts_unicode_names.c ${SALTS_UNICODE_LEXER_GEN})
 cmake_config_target(
   salts_unicode
