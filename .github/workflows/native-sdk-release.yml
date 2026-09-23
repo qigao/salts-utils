@@ -10,7 +10,6 @@ on:
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
-      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
@@ -24,7 +23,6 @@ on:
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
-      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
@@ -40,7 +38,6 @@ concurrency:
 
 env:
   SALTS_SDK_VERSION: "1.3.0"
-  SALTS_UTILS_BASELINE_VERSION: "3.0.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -292,8 +289,15 @@ jobs:
     name: Windows x64 SDK
     needs: metadata
     runs-on: windows-2022
+    env:
+      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure compiler object cache
+        uses: Mozilla-Actions/sccache-action@v0.0.11
+        with:
+          version: "v0.16.0"
 
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
@@ -304,7 +308,6 @@ jobs:
           dotnet-version: "8.0.x"
 
       - uses: actions/setup-go@v5
-        if: github.event_name != 'pull_request'
         with:
           go-version: "1.24.x"
           cache: false
@@ -342,39 +345,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
-      - name: Restore published SaltsUtils baseline for PR overlay
-        if: github.event_name == 'pull_request'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $prefix = Join-Path $env:GITHUB_WORKSPACE "stage\sdk\windows-x64"
-          ./cmake/ci/restore-versioned-saltsutils-sdk.ps1 -Version $env:SALTS_UTILS_BASELINE_VERSION -Rid windows-x64 -Destination $prefix
-
-      - name: Configure and overlay DataBind onto published SDK
-        if: github.event_name == 'pull_request'
-        shell: cmd
-        run: |
-          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          if errorlevel 1 exit /b 1
-          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1"
-          if errorlevel 1 exit /b 1
-          set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
-          if errorlevel 1 exit /b 1
-          findstr /C:"SALTS_UTILS_ENABLE_CAPTURE:BOOL=OFF" build\native-sdk\CMakeCache.txt >nul
-          if errorlevel 1 exit /b 1
-          if exist build\native-sdk\capture exit /b 1
-          cmake --build build\native-sdk --target databind_schema data_bind_core data_bind_json_adapter data_bind_yaml_adapter data_bind_csv_adapter data_bind_xml_adapter data_bind_temporal_adapter data_bind data_bind_cmeta data_bind_cflow databindc --parallel
-          if errorlevel 1 exit /b 1
-          cmake --install build\native-sdk --component DataBind
-          if errorlevel 1 exit /b 1
-          cmake --install build\native-sdk --component Development
-          if errorlevel 1 exit /b 1
-
-      - name: Configure, build and install full SaltsUtils SDK
-        if: github.event_name != 'pull_request'
+      - name: Configure, build and install SaltsUtils SDK
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
@@ -383,12 +354,18 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
           if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
+
+      - name: Report compiler cache statistics
+        shell: pwsh
+        run: |
+          & $env:SCCACHE_PATH --show-stats
+          if ($LASTEXITCODE -ne 0) { throw "sccache stats failed" }
 
       - name: Verify Windows SDK
         shell: pwsh
@@ -407,10 +384,6 @@ jobs:
             "arch=x64"
             "profile=release"
           )
-          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
-            $manifest += "baseline=$env:SALTS_UTILS_BASELINE_VERSION"
-            $manifest += "overlay=DataBind"
-          }
           $manifest | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
 
       - uses: actions/upload-artifact@v4
