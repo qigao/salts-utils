@@ -80,7 +80,9 @@ contract_id + contract_version
 capabilities
 ```
 
-CMeta owns native type/function semantics.
+CMeta owns native type/function/interface semantics, including canonical
+Interface validation and semantic equality. Plugin does not maintain a second
+Interface descriptor validator or comparator.
 
 ## Function export
 
