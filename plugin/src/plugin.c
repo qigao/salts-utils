@@ -190,16 +190,13 @@ salts_plugin_status salts_plugin_export_require_function(
 }
 
 salts_plugin_status salts_plugin_manifest_validate(
-    const salts_plugin_manifest *manifest,
-    uint32_t host_abi) {
+    const salts_plugin_manifest *manifest) {
     size_t index;
     size_t other;
     bool has_lifecycle;
 
-    if (manifest == NULL || host_abi == 0u)
+    if (manifest == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    if (host_abi != SALTS_PLUGIN_ABI_VERSION)
-        return SALTS_PLUGIN_UNSUPPORTED_ABI;
     if (manifest->struct_size != SALTS_PLUGIN_MANIFEST_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
     if (manifest->abi_version != SALTS_PLUGIN_ABI_VERSION)
@@ -255,8 +252,7 @@ salts_plugin_status salts_plugin_manifest_find_export(
     if (!bounded_string_valid(export_id, SALTS_PLUGIN_EXPORT_ID_MAX))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
-    status = salts_plugin_manifest_validate(
-        manifest, SALTS_PLUGIN_ABI_VERSION);
+    status = salts_plugin_manifest_validate(manifest);
     if (status != SALTS_PLUGIN_OK) return status;
 
     for (index = 0u; index < manifest->export_count; ++index) {
