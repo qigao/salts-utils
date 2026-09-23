@@ -5,7 +5,6 @@ static const salts_plugin_manifest fixture_manifest = {
     SALTS_PLUGIN_ABI_VERSION,
     "test.loader.cpp",
     {1u, 0u, 0u},
-    0u,
     nullptr,
     0u,
     nullptr,
