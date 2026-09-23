@@ -1,6 +1,6 @@
 /**
  * @file schema_grammar.y
- * @brief Schema Grammar for tbe_compiler (Lemon)
+ * @brief DataBind IDL grammar for databindc (Lemon)
  *
  * Supports the TBE-like declarations:
  *   schema Market [id(7), version(2), byte_order(little)];
