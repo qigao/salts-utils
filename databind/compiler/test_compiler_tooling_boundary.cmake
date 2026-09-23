@@ -7,7 +7,7 @@ if(NOT IS_DIRECTORY "${DATABIND_SOURCE_ROOT}")
   message(FATAL_ERROR "DATABIND_SOURCE_ROOT is not a directory: ${DATABIND_SOURCE_ROOT}")
 endif()
 
-file(READ "${DATABIND_SOURCE_ROOT}/tbe_compiler/CMakeLists.txt" COMPILER_CMAKE)
+file(READ "${DATABIND_SOURCE_ROOT}/compiler/CMakeLists.txt" COMPILER_CMAKE)
 
 string(FIND "${COMPILER_CMAKE}"
   "set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)" TOOLING_TARGET_POS)
@@ -30,14 +30,14 @@ foreach(REQUIRED IN ITEMS "Salts::CmdParser" "Salts::Mustache")
 endforeach()
 
 string(FIND "${COMPILER_CMAKE}"
-  "LIBS Salts::TbeSchema Salts::CmdParser Salts::Mustache Salts::Core" DIRECT_LINK_POS)
+  "LIBS Salts::DataBindSchema Salts::CmdParser Salts::Mustache Salts::Core" DIRECT_LINK_POS)
 if(NOT DIRECT_LINK_POS EQUAL -1)
   message(FATAL_ERROR
     "tbe_compiler still directly owns SaltsUtils CmdParser/Mustache dependencies")
 endif()
 
 string(FIND "${COMPILER_CMAKE}"
-  "LIBS Salts::TbeSchema \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
+  "LIBS Salts::DataBindSchema \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
     "tbe_compiler does not consume the explicit compiler tooling boundary")
