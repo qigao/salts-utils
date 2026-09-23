@@ -8,7 +8,7 @@ endif()
 
 project(
   SaltsUtils
-  VERSION 2.0.2
+  VERSION 3.0.0
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
