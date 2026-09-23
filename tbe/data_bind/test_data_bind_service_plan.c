@@ -369,6 +369,10 @@ spec("DataBind compiled service binding plan") {
                     &native, &plan, &diagnostic),
                 DATA_BIND_OK);
 
+    /* Runtime must execute the immutable plan without re-reading the codec AST. */
+    data_bind_free(codec);
+    codec = NULL;
+
     frame.params = params;
     frame.param_bytes = param_bytes;
     frame.param_count = 4u;
@@ -415,7 +419,6 @@ spec("DataBind compiled service binding plan") {
                 DATA_BIND_OK);
 
     data_bind_service_plan_free(plan);
-    data_bind_free(codec);
   }
 
   it("restores native input staging to semantic zero after decode failure") {
