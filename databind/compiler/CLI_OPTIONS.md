@@ -1,4 +1,4 @@
-# tbe_compiler Command Line Options
+# databindc Command Line Options
 
 DataBind runtime、公共头和 target 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`。
 DataBind 是生成 C、现有 C struct 与动态对象的唯一绑定引擎；以下 typed/Lua 输出是当前受支持接口。
@@ -19,12 +19,12 @@ overlay-only.
 
 ## Overview
 
-`tbe_compiler` generates code, bootstrap database DDL, and DSL declarations from TBE schema files for multiple target languages and RulesForge integration.
+`databindc` generates code, bootstrap database DDL, and DSL declarations from DataBind IDL/schema files for multiple target languages and RulesForge integration.
 
 ## Basic Usage
 
 ```bash
-tbe_compiler <schema_file> [options]
+databindc <schema_file> [options]
 ```
 
 ## Options
@@ -111,7 +111,7 @@ tbe_compiler <schema_file> [options]
 
 ## Database DDL Generation
 
-`tbe_compiler` can generate deterministic bootstrap DDL for empty SQLite or PostgreSQL
+`databindc` can generate deterministic bootstrap DDL for empty SQLite or PostgreSQL
 databases. This is a build-time feature only: TurboDB, ORM, and generated runtime code do
 not parse TBE at runtime and do not gain a SaltsUtils dependency from these outputs.
 
@@ -147,10 +147,10 @@ message Order {
 ### Database Commands
 
 ```bash
-tbe_compiler accounts.schema --lang sqlite --output accounts.sqlite.sql
-tbe_compiler accounts.schema --lang postgresql --output accounts.postgresql.sql
-tbe_compiler accounts.schema --lang postgres --output accounts.postgresql.sql
-tbe_compiler accounts.schema --lang sqlite --template custom_sqlite.mustache --output accounts.sql
+databindc accounts.schema --lang sqlite --output accounts.sqlite.sql
+databindc accounts.schema --lang postgresql --output accounts.postgresql.sql
+databindc accounts.schema --lang postgres --output accounts.postgresql.sql
+databindc accounts.schema --lang sqlite --template custom_sqlite.mustache --output accounts.sql
 ```
 
 ### Database Annotation Contract
@@ -281,19 +281,19 @@ must not depend on `is_last`.
 ### Example 1: Generate C Header Only
 
 ```bash
-tbe_compiler order.schema --output order.h
+databindc order.schema --output order.h
 ```
 
 ### Example 2: Generate DSL Type Declarations
 
 ```bash
-tbe_compiler order.schema --dsl-output order.rfl
+databindc order.schema --dsl-output order.rfl
 ```
 
 ### Example 2a: Generate Strong Typed C Bindings
 
 ```bash
-tbe_compiler order.schema --lang c --output order.h --source-output order.c
+databindc order.schema --lang c --output order.h --source-output order.c
 ```
 
 Add `--lua-output order_lua.c` to generate direct Lua table adapters from the same typed
@@ -388,7 +388,7 @@ not a runtime fallback. `--lang cpp` without `--source-output` continues to gene
 ### Example 2b: Generate a Wasm Guest Adapter
 
 ```bash
-tbe_compiler order.schema --lang c --output order.h --guest-output order_guest.c
+databindc order.schema --lang c --output order.h --guest-output order_guest.c
 ```
 
 Compile `order_guest.c` together with the guest application. The guest supplies a
@@ -409,7 +409,7 @@ the same fixed 16-byte `salts_uuid_t` value layout:
 
 ```bash
 clang --target=wasm32-unknown-unknown -DTBE_WASM_GUEST=1 -O2 -nostdlib \
-  -Igenerated -Ipath/to/tbe/schema/include -c order_guest.c
+  -Igenerated -Ipath/to/databind/schema/include -c order_guest.c
 ```
 
 Initialize an object before its first use, clear it when finished, and release serialized
@@ -456,37 +456,37 @@ end
 ### Example 3: Generate Both
 
 ```bash
-tbe_compiler order.schema --output order.h --dsl-output order.rfl
+databindc order.schema --output order.h --dsl-output order.rfl
 ```
 
 ### Example 4: Generate C++ Types
 
 ```bash
-tbe_compiler order.schema --lang cpp --output order.hpp
+databindc order.schema --lang cpp --output order.hpp
 ```
 
 ### Example 5: Generate Go Types
 
 ```bash
-tbe_compiler order.schema --lang go --output order.go
+databindc order.schema --lang go --output order.go
 ```
 
 ### Example 6: Generate TypeScript Types
 
 ```bash
-tbe_compiler order.schema --lang ts --output order.ts
+databindc order.schema --lang ts --output order.ts
 ```
 
 ### Example 7: Generate Rust Types
 
 ```bash
-tbe_compiler order.schema --lang rust --output order.rs
+databindc order.schema --lang rust --output order.rs
 ```
 
 ### Example 8: Generate Python Types
 
 ```bash
-tbe_compiler order.schema --lang py --output order.py
+databindc order.schema --lang py --output order.py
 ```
 
 ### Example 9: Compile Generated C as a Static Library
