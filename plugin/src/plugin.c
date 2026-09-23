@@ -89,11 +89,6 @@ static bool function_abi_complete(const cmeta_function_abi_desc *abi) {
     return true;
 }
 
-static bool function_adapter_valid(
-    const salts_plugin_function_adapter *adapter) {
-    return adapter != NULL && adapter->invoke != NULL;
-}
-
 static salts_plugin_status validate_export(const salts_plugin_export *entry) {
     if (entry == NULL || entry->struct_size != SALTS_PLUGIN_EXPORT_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
@@ -105,21 +100,16 @@ static salts_plugin_status validate_export(const salts_plugin_export *entry) {
 
     switch (entry->kind) {
     case SALTS_PLUGIN_EXPORT_INTERFACE:
-        if (entry->interface_value == NULL ||
-            !salts_plugin_interface_desc_valid(entry->interface_desc) ||
-            entry->function != NULL ||
-            entry->function_abi != NULL ||
-            entry->function_adapter != NULL)
+        if (entry->value.interface.value == NULL ||
+            !salts_plugin_interface_desc_valid(entry->value.interface.desc))
             return SALTS_PLUGIN_INVALID_MANIFEST;
         break;
 
     case SALTS_PLUGIN_EXPORT_FUNCTION:
-        if (entry->interface_desc != NULL ||
-            entry->interface_value != NULL ||
-            !cmeta_function_desc_valid(entry->function) ||
-            !function_abi_complete(entry->function_abi) ||
-            entry->function_abi->function != entry->function ||
-            !function_adapter_valid(entry->function_adapter))
+        if (!cmeta_function_desc_valid(entry->value.function.desc) ||
+            !function_abi_complete(entry->value.function.abi) ||
+            entry->value.function.abi->function != entry->value.function.desc ||
+            entry->value.function.invoke == NULL)
             return SALTS_PLUGIN_INVALID_MANIFEST;
         break;
 
@@ -162,7 +152,7 @@ salts_plugin_status salts_plugin_export_require_interface(
     if (entry->kind != SALTS_PLUGIN_EXPORT_INTERFACE ||
         !contract_key_equal(entry, contract_id, contract_version) ||
         !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
-        !salts_plugin_interface_desc_equal(entry->interface_desc,
+        !salts_plugin_interface_desc_equal(entry->value.interface.desc,
                                            expected_interface))
         return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
 
@@ -283,7 +273,6 @@ const char *salts_plugin_status_string(salts_plugin_status status) {
     case SALTS_PLUGIN_QUERY_REJECTED: return "query_rejected";
     case SALTS_PLUGIN_UNKNOWN_PLUGIN: return "unknown_plugin";
     case SALTS_PLUGIN_STALE: return "stale";
-    case SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED: return "lifecycle_unsupported";
     case SALTS_PLUGIN_UNLOAD_FAILED: return "unload_failed";
     case SALTS_PLUGIN_ALREADY: return "already";
     case SALTS_PLUGIN_BUSY: return "busy";
