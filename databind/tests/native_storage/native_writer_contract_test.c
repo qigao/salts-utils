@@ -18,9 +18,8 @@ enum {
   WRITER_MAX_TOKENS = 32
 };
 
-typedef union WriterWorkspace {
-  max_align_t alignment;
-  unsigned char bytes[WRITER_WORKSPACE_BYTES];
+typedef struct WriterWorkspace {
+  unsigned char storage[WRITER_WORKSPACE_BYTES];
 } WriterWorkspace;
 
 typedef struct TokenSink {
@@ -30,11 +29,11 @@ typedef struct TokenSink {
   size_t finish_calls;
 } TokenSink;
 
-typedef struct TokenSource {
+typedef struct NativeWriterTokenSource {
   const cserde_token *tokens;
   size_t count;
   size_t index;
-} TokenSource;
+} NativeWriterTokenSource;
 
 static cserde_status token_sink_write(void *context,
                                       const cserde_token *token) {
@@ -60,7 +59,7 @@ static const cserde_writer_ops TOKEN_SINK_OPS = {
     token_sink_finish};
 
 static cserde_status token_source_next(void *context, cserde_token *out) {
-  TokenSource *source = (TokenSource *)context;
+  NativeWriterTokenSource *source = (NativeWriterTokenSource *)context;
   if (source == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
   if (source->index == source->count) return CSERDE_DONE;
   *out = source->tokens[source->index++];
@@ -80,8 +79,8 @@ static void reset_native(void) {
   memset(&workspace, 0, sizeof(workspace));
   options = (DataBindNativeOptions)DATA_BIND_NATIVE_OPTIONS_INIT;
   diagnostic = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
-  options.workspace = workspace.bytes;
-  options.workspace_bytes = sizeof(workspace.bytes);
+  options.workspace = workspace.storage;
+  options.workspace_bytes = sizeof(workspace.storage);
   options.max_depth = WRITER_MAX_DEPTH;
   options.max_items = WRITER_MAX_ITEMS;
   options.max_owned_bytes = WRITER_MAX_OWNED_BYTES;
@@ -94,7 +93,7 @@ static void open_writer(TokenSink *sink, cserde_writer *writer) {
   check_equal(cserde_writer_init(writer, &TOKEN_SINK_OPS, sink), CSERDE_OK);
 }
 
-static void open_reader(const TokenSink *sink, TokenSource *source,
+static void open_reader(const TokenSink *sink, NativeWriterTokenSource *source,
                         cserde_reader *reader) {
   source->tokens = sink->tokens;
   source->count = sink->count;
@@ -219,7 +218,7 @@ spec("DataBind native writer contract") {
     int32_t source = -123;
     int32_t destination = 0;
     TokenSink sink;
-    TokenSource token_source;
+    NativeWriterTokenSource token_source;
     cserde_writer writer;
     cserde_reader reader;
 
@@ -245,7 +244,7 @@ spec("DataBind native writer contract") {
     NativeEnumBox source = {1u, true};
     NativeEnumBox destination = {0u, false};
     TokenSink sink;
-    TokenSource token_source;
+    NativeWriterTokenSource token_source;
     cserde_writer writer;
     cserde_reader reader;
 
@@ -275,7 +274,7 @@ spec("DataBind native writer contract") {
     tstr raw = NULL;
     tstr decoded_raw = NULL;
     TokenSink sink;
-    TokenSource token_source;
+    NativeWriterTokenSource token_source;
     cserde_writer writer;
     cserde_reader reader;
 
@@ -336,7 +335,7 @@ spec("DataBind native writer contract") {
     WriterRow source = {0};
     WriterRow destination = {0};
     TokenSink sink;
-    TokenSource token_source;
+    NativeWriterTokenSource token_source;
     cserde_writer writer;
     cserde_reader reader;
 
