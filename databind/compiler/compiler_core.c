@@ -3,7 +3,7 @@
 #include "database_schema.h"
 #include "mustache.h"
 #include "mustache_helpers.h"
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
@@ -1665,7 +1665,7 @@ int data_bind_compiler_parse_schema_file(const char *schema_path, Node **out_roo
     return 1;
   }
 
-  if (parse_schema(schema_data, strlen(schema_data), root, &parse_err) != 0) {
+  if (data_bind_schema_parse(schema_data, strlen(schema_data), root, &parse_err) != 0) {
     if (parse_err.line >= 0) {
       fprintf(stderr, "Parse error at line %d: %s\n", parse_err.line,
               parse_err.message);
