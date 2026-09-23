@@ -52,7 +52,7 @@ static int projection_equal(const char *alias, const char *canonical, const char
     size_t i;
     for (i = 0; i < PROJECTION_COUNT(roots); ++i) {
         char schema[PROJECTION_SCHEMA_CAPACITY];
-        tbe_error_t error;
+        DataBindSchemaError error;
         int length = snprintf(schema, sizeof(schema), format, names[i]);
         if (length <= 0 || (size_t)length >= sizeof(schema)) goto done;
         roots[i] = create_node_map("root");
@@ -91,7 +91,7 @@ static int projection_float_is(const char *type, const char *cpp, const char *go
     char schema[PROJECTION_SCHEMA_CAPACITY];
     Node *root = create_node_map("root");
     Node *field;
-    tbe_error_t error;
+    DataBindSchemaError error;
     int ok = 0;
     int length = snprintf(schema, sizeof(schema), "message Scalar { %s value; }", type);
     if (root == NULL || length <= 0 || (size_t)length >= sizeof(schema) ||
