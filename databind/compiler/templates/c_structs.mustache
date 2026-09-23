@@ -60,7 +60,7 @@ typedef struct salts_uuid_s {
 #endif
 
 {{#typed_source_enabled}}
-#include "tbe_typed.h"
+#include "data_bind_typed.h"
 
 {{#lua_output_enabled}}
 struct lua_State;
@@ -179,15 +179,15 @@ struct cmeta_data_desc;
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
  * This graph seam does not itself promise native decode/encode behavior. */
 {{#composites}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/composites}}
 {{#groups}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/groups}}
 {{#messages}}TBE_GENERATED_API DataBindStatus {{name}}_cmeta_data(const struct cmeta_data_desc **out, DataBindError *error);
-{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const TbeTypedDescriptor *{{name}}_typed_descriptor(void);
+{{#typed_cmeta_runtime_supported}}TBE_GENERATED_API const DataBindTypedDescriptor *{{name}}_typed_descriptor(void);
 {{/typed_cmeta_runtime_supported}}
 {{/messages}}
 TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_codec_create(DataBind **out_codec, DataBindError *error);
@@ -342,10 +342,10 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -395,7 +395,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
@@ -411,7 +411,7 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
@@ -698,10 +698,10 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -751,7 +751,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
@@ -767,7 +767,7 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
@@ -1286,10 +1286,10 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+DATA_BIND_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -1350,7 +1350,7 @@ typedef struct {{name}}_s {
 } {{name}}_t;
 
 {{#typed_source_enabled}}
-/** Owning lifecycle and schema serialization API; serialized buffers use tbe_typed_serialized_free. */
+/** Owning lifecycle and schema serialization API; serialized buffers use data_bind_typed_serialized_free. */
 TBE_GENERATED_API void {{name}}_init({{name}}_t *object);
 TBE_GENERATED_API void {{name}}_clear({{name}}_t *object);
 TBE_GENERATED_API DataBindStatus {{name}}_from_bin(DataBind *codec, {{name}}_t *object, const void *data, size_t len, DataBindError *error);
@@ -1366,7 +1366,7 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 {{#lua_output_enabled}}
 {{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
+TBE_GENERATED_API const DataBindTypedType *{{name}}_typed_type(void);
 {{/typed_cmeta_runtime_supported}}
 TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
 TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
