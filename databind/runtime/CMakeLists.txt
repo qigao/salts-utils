@@ -142,8 +142,8 @@ add_library(
   data_bind_binding_plan.h
   data_bind_stream_format_state.c
   data_bind_stream_format_state_internal.h
-  tbe_typed.c
-  tbe_typed.h)
+  data_bind_typed.c
+  data_bind_typed.h)
 target_compile_definitions(${DATA_BIND_TARGET} PRIVATE DATA_BIND_BUILD_DLL)
 target_include_directories(
   ${DATA_BIND_TARGET}
@@ -240,7 +240,7 @@ install(
     data_bind_temporal_adapter.h
     data_bind_cflow.h
     data_bind_cmeta.h
-    tbe_typed.h
+    data_bind_typed.h
   DESTINATION include
   COMPONENT DataBind)
 
@@ -387,27 +387,27 @@ cmake_add_test(test_data_bind_pool
   SOURCES test_data_bind_pool.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
-cmake_add_test(test_tbe_typed
-  SOURCES test_tbe_typed.c
+cmake_add_test(test_data_bind_typed
+  SOURCES test_data_bind_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
-cmake_add_test(test_tbe_typed_cmeta_mapping
-  SOURCES test_tbe_typed_cmeta_mapping.c
+cmake_add_test(test_data_bind_typed_cmeta_mapping
+  SOURCES test_data_bind_typed_cmeta_mapping.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
 # Only the first test translation unit owns TinyTest's generated main.
-set_property(SOURCE test_tbe_typed_optional_edges.c APPEND
+set_property(SOURCE test_data_bind_typed_optional_edges.c APPEND
   PROPERTY COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
-cmake_add_test(test_tbe_typed_optional_binary
-  SOURCES test_tbe_typed_optional_binary.c test_tbe_typed_optional_edges.c
+cmake_add_test(test_data_bind_typed_optional_binary
+  SOURCES test_data_bind_typed_optional_binary.c test_data_bind_typed_optional_edges.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
-cmake_add_test(test_tbe_typed_descriptor_safety
-  SOURCES test_tbe_typed_descriptor_safety.c
+cmake_add_test(test_data_bind_typed_descriptor_safety
+  SOURCES test_data_bind_typed_descriptor_safety.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
-cmake_add_test(test_tbe_typed_descriptor_boundary
-  SOURCES test_tbe_typed_descriptor_boundary.c
+cmake_add_test(test_data_bind_typed_descriptor_boundary
+  SOURCES test_data_bind_typed_descriptor_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
 
@@ -430,8 +430,8 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
             "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
     COMMENT "Generating typed descriptor compatibility fixture"
     VERBATIM)
-  cmake_add_test(test_tbe_typed_generated
-    SOURCES test_tbe_typed_generated.c
+  cmake_add_test(test_data_bind_typed_generated
+    SOURCES test_data_bind_typed_generated.c
             "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_SAFETY_GENERATED_DIR}"
@@ -450,14 +450,14 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_target(tbe_cmeta_graph_generation
     DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c")
-  cmake_add_test(test_tbe_typed_cmeta_graph
-    SOURCES test_tbe_typed_cmeta_graph.c
+  cmake_add_test(test_data_bind_typed_cmeta_graph
+    SOURCES test_data_bind_typed_cmeta_graph.c
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
             "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_CMETA_GRAPH_DIR}"
     FOLDER "databind/runtime/tests")
-  add_dependencies(test_tbe_typed_cmeta_graph tbe_cmeta_graph_generation)
+  add_dependencies(test_data_bind_typed_cmeta_graph tbe_cmeta_graph_generation)
 
   # Compile the real CLI-generated implementation once as C. Neither public
   # consumer includes it or the private runtime validation header.
@@ -481,17 +481,17 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
       "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
 
-  cmake_add_test(test_tbe_typed_cmeta_public
-    SOURCES test_tbe_typed_cmeta_public.c
+  cmake_add_test(test_data_bind_typed_cmeta_public
+    SOURCES test_data_bind_typed_cmeta_public.c
     LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
     FOLDER "databind/runtime/tests")
-  set_tests_properties(test_tbe_typed_cmeta_public PROPERTIES
+  set_tests_properties(test_data_bind_typed_cmeta_public PROPERTIES
     LABELS "databind;cmeta;typed-contract")
-  cmake_add_test(test_tbe_typed_cmeta_public_cpp
-    SOURCES test_tbe_typed_cmeta_public_cpp.cpp
+  cmake_add_test(test_data_bind_typed_cmeta_public_cpp
+    SOURCES test_data_bind_typed_cmeta_public_cpp.cpp
     LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
     FOLDER "databind/runtime/tests")
-  set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
+  set_target_properties(test_data_bind_typed_cmeta_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 endif()
 
@@ -505,7 +505,7 @@ cmake_add_benchmark(benchmark_data_bind_json_path
   SOURCES benchmark_data_bind_json_path.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/benchmarks")
-cmake_add_benchmark(benchmark_tbe_typed
-  SOURCES benchmark_tbe_typed.c
+cmake_add_benchmark(benchmark_data_bind_typed
+  SOURCES benchmark_data_bind_typed.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/benchmarks")
