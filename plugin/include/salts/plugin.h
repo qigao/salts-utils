@@ -128,9 +128,10 @@ typedef struct salts_plugin_export {
  * this publication/discovery envelope; service/channel semantics remain in the
  * producing contract system (for example DataBind).
  */
-typedef enum salts_plugin_publication_kind {
-    SALTS_PLUGIN_PUBLICATION_FUNCTION = 1
-} salts_plugin_publication_kind;
+typedef uint32_t salts_plugin_publication_kind;
+enum {
+    SALTS_PLUGIN_PUBLICATION_FUNCTION = 1u
+};
 
 typedef struct salts_plugin_publication {
     uint32_t struct_size; /* full concrete row size */
