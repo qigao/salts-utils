@@ -2,7 +2,7 @@
 #define SCHEMA_PARSER_H
 
 #include "node_tree.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 
 /**
  * @brief Parse a schema text into a mustache-ready Node tree.
@@ -19,6 +19,6 @@
  * @param err    Optional error structure to receive detailed error information (can be NULL).
  * @return 0 on success, -1 on parse error.
  */
-int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err);
+int parse_schema(const char *text, size_t len, Node *root, DataBindSchemaError *err);
 
 #endif /* SCHEMA_PARSER_H */
