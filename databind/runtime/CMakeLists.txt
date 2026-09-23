@@ -178,7 +178,7 @@ cmake_config_target(
   ${DATA_BIND_TARGET}
   ALIAS Salts::DataBind
   FOLDER "databind/runtime"
-  EXPORT_NAME Databind)
+  EXPORT_NAME DataBind)
 
 add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
 target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
