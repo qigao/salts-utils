@@ -378,8 +378,13 @@ salts_plugin_status salts_plugin_registry_start(
     if (status == SALTS_PLUGIN_OK) {
         slot->state = SALTS_PLUGIN_LIFECYCLE_STARTED;
     } else {
-        slot->state = SALTS_PLUGIN_LIFECYCLE_FAILED;
-        slot->failure = status;
+        /*
+         * start() is failure-atomic by contract: a failed start has not
+         * published service work and must remain destroyable/unloadable.
+         */
+        slot->state = SALTS_PLUGIN_LIFECYCLE_QUIESCENT;
+        if (slot->failure == SALTS_PLUGIN_OK)
+            slot->failure = status;
     }
     salts_mutex_unlock(&impl->lock);
     return status;
@@ -535,10 +540,8 @@ salts_plugin_status salts_plugin_registry_request_stop(
 
     salts_mutex_lock(&impl->lock);
     --slot->callbacks_inflight;
-    if (status != SALTS_PLUGIN_OK) {
-        slot->state = SALTS_PLUGIN_LIFECYCLE_FAILED;
+    if (status != SALTS_PLUGIN_OK && slot->failure == SALTS_PLUGIN_OK)
         slot->failure = status;
-    }
     salts_mutex_unlock(&impl->lock);
     return status;
 }
@@ -569,11 +572,6 @@ salts_plugin_status salts_plugin_registry_poll_quiescent(
     if (impl->destroying || slot->unloading) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
-    }
-    if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-        status = slot->failure;
-        salts_mutex_unlock(&impl->lock);
-        return status;
     }
     if (slot->state == SALTS_PLUGIN_LIFECYCLE_QUIESCENT) {
         *out_quiescent = true;
@@ -660,11 +658,6 @@ salts_plugin_status salts_plugin_registry_unload(
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
     }
-    if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-        status = slot->failure;
-        salts_mutex_unlock(&impl->lock);
-        return status;
-    }
     if (slot->state != SALTS_PLUGIN_LIFECYCLE_LOADED &&
         slot->state != SALTS_PLUGIN_LIFECYCLE_QUIESCENT) {
         salts_mutex_unlock(&impl->lock);
@@ -739,11 +732,6 @@ salts_plugin_status salts_plugin_registry_destroy(
         const salts_plugin_registry_slot *slot = &impl->slots[index];
         if (!slot->occupied)
             continue;
-        if (slot->state == SALTS_PLUGIN_LIFECYCLE_FAILED) {
-            salts_plugin_status failure = slot->failure;
-            salts_mutex_unlock(&impl->lock);
-            return failure;
-        }
         if (slot->unloading ||
             slot->active_leases != 0u ||
             slot->callbacks_inflight != 0u ||
