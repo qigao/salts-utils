@@ -156,7 +156,7 @@ suite("compiler_cmeta_field_projection") {
             map_add(field, create_node_string("key_type", "string"));
             map_add(field, create_node_string("value_type", "int32"));
             if (cases[i].flag) map_add(field, create_node_string(cases[i].flag, "1"));
-            tbe_compiler_annotate_language_types(root);
+            data_bind_compiler_annotate_language_types(root);
             kind = field_projection_text(field, "cmeta_kind");
             check_not_null(kind);
             if (kind) check_equal(atoi(kind), cases[i].kind);
@@ -199,7 +199,7 @@ suite("compiler_cmeta_field_projection") {
             }
         }
 
-        tbe_compiler_annotate_language_types(root);
+        data_bind_compiler_annotate_language_types(root);
 
         for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
             Node *record = field_projection_record(root, "messages", names[i]);
@@ -244,7 +244,7 @@ suite("compiler_cmeta_field_projection") {
         check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
         check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
 
-        tbe_compiler_annotate_language_types(root);
+        data_bind_compiler_annotate_language_types(root);
 
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "deferred_container");
@@ -278,7 +278,7 @@ suite("compiler_cmeta_field_projection") {
         check_equal(map_add(right_field, create_node_string("is_fixed_size", "1")), 0);
         check_equal(map_add(right_field, create_node_string("size_bytes", "4")), 0);
 
-        tbe_compiler_annotate_language_types(root);
+        data_bind_compiler_annotate_language_types(root);
         left_symbol = field_projection_text(left_field, "native_fixed_bytes_name");
         right_symbol = field_projection_text(right_field, "native_fixed_bytes_name");
         check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
@@ -315,7 +315,7 @@ suite("compiler_cmeta_field_projection") {
             node_free(root);
             return;
         }
-        tbe_compiler_annotate_language_types(root);
+        data_bind_compiler_annotate_language_types(root);
         left_symbol = field_projection_text(left, "native_enum_symbol");
         right_symbol = field_projection_text(right, "native_enum_symbol");
         long_symbol = field_projection_text(long_enum, "native_enum_symbol");
@@ -441,7 +441,7 @@ suite("compiler_cmeta_field_projection") {
             }
         }
 
-        tbe_compiler_annotate_language_types(root);
+        data_bind_compiler_annotate_language_types(root);
 
         check_not_null(field_projection_child(
             field_projection_record(root, "composites", "Point"),
