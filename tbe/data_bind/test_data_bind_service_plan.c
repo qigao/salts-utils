@@ -549,9 +549,66 @@ spec("DataBind compiled service binding plan") {
                 DATA_BIND_OK);
     check_equal(state.published_sum, 11u);
 
-    check_equal(tbe_typed_descriptor_clear(
-                    &ADD_REQUEST_DESCRIPTOR, &request, NULL),
+    {
+      DataBindNativeDiagnostic native_diagnostic =
+          DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+      check_equal(data_bind_native_clear(
+                      &options, &ADD_REQUEST_DATA,
+                      &request, sizeof(request), &native_diagnostic),
+                  DATA_BIND_OK);
+      request.presence = 0u;
+      native_diagnostic =
+          (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+      check_equal(data_bind_native_clear(
+                      &options, &ADD_RESPONSE_DATA,
+                      &response, sizeof(response), &native_diagnostic),
+                  DATA_BIND_OK);
+    }
+    data_bind_service_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("restores root request fields and presence after decode failure") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_root),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+    TestProvider state = {.fail_right_type = 1, .provide_scale = 1};
+    DataBindServiceProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest request = {
+        .left = 91u, .right = 92u, .scale = 93u, .presence = 0xffu};
+    AddResponse response = {.sum = 94u};
+    DataBindServiceCallFrame frame = DATA_BIND_SERVICE_CALL_FRAME_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
                 DATA_BIND_OK);
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.return_value = &response;
+    frame.return_bytes = sizeof(response);
+    frame.param_count = 1u;
+
+    check_equal(data_bind_service_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(diagnostic.schema_field, "right");
+    check_equal(request.left, 0u);
+    check_equal(request.right, 0u);
+    check_equal(request.scale, 0u);
+    check_equal(request.presence, 0u);
+    check_equal(response.sum, 0u);
+
     data_bind_service_plan_free(plan);
     data_bind_free(codec);
   }
