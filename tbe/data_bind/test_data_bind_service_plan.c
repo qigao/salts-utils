@@ -153,6 +153,7 @@ static const cserde_reader_ops ONE_TOKEN_OPS = {
 typedef struct TestProvider {
   OneTokenReader reader;
   int provide_scale;
+  int fail_right_type;
   int fail_write;
   size_t begin_calls;
   size_t write_calls;
@@ -172,9 +173,21 @@ static DataBindStatus test_open_input(
   *present = 1;
   if (strcmp(entry->wire_name, "left") == 0)
     value = 3u;
-  else if (strcmp(entry->wire_name, "right") == 0)
+  else if (strcmp(entry->wire_name, "right") == 0) {
+    if (provider->fail_right_type) {
+      static const unsigned char invalid_right[] = "bad";
+      provider->reader.token =
+          (cserde_token){.kind = CSERDE_STRING,
+                         .value.slice = {invalid_right, 3u,
+                                         CSERDE_VIEW_STABLE}};
+      provider->reader.emitted = 0;
+      return cserde_reader_init(reader, &ONE_TOKEN_OPS, &provider->reader) ==
+                     CSERDE_OK
+                 ? DATA_BIND_OK
+                 : DATA_BIND_ERR_RUNTIME;
+    }
     value = 4u;
-  else if (strcmp(entry->wire_name, "scale") == 0) {
+  } else if (strcmp(entry->wire_name, "scale") == 0) {
     if (!provider->provide_scale) {
       *present = 0;
       return DATA_BIND_OK;
@@ -393,6 +406,50 @@ spec("DataBind compiled service binding plan") {
                     &options, &salts_uint32_cmeta_data,
                     &sum, sizeof(sum), &native_diagnostic),
                 DATA_BIND_OK);
+
+    data_bind_service_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("restores native input staging to semantic zero after decode failure") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_fields),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+    TestProvider state = {.fail_right_type = 1};
+    DataBindServiceProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    uint32_t left = 91u, right = 92u, scale = 93u, sum = 94u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindServiceCallFrame frame = DATA_BIND_SERVICE_CALL_FRAME_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_OK);
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_service_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(diagnostic.schema_field, "right");
+    check_equal(diagnostic.function_param, "right");
+    check_equal(left, 0u);
+    check_equal(right, 0u);
+    check_equal(scale, 0u);
+    check_equal(sum, 0u);
 
     data_bind_service_plan_free(plan);
     data_bind_free(codec);
