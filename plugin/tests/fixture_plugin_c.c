@@ -10,7 +10,7 @@ int fixture_plugin_double(int value) {
 static bool SALTS_PLUGIN_CALL fixture_plugin_double_invoke(
     void *context,
     void *return_storage,
-    void *const *params,
+    const void *const *params,
     size_t param_count) {
     int input;
     int result;
@@ -25,10 +25,6 @@ static bool SALTS_PLUGIN_CALL fixture_plugin_double_invoke(
     return true;
 }
 
-static const salts_plugin_function_adapter fixture_adapter = {
-    NULL, fixture_plugin_double_invoke
-};
-
 static const salts_plugin_export fixture_export = {
     .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
     .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
@@ -36,9 +32,12 @@ static const salts_plugin_export fixture_export = {
     .capabilities = 1u,
     .export_id = "test.loader.math.double",
     .contract_id = "test.loader.math",
-    .function = FunctionMeta(fixture_plugin_double),
-    .function_abi = FunctionAbi(fixture_plugin_double),
-    .function_adapter = &fixture_adapter,
+    .value.function = {
+        .desc = FunctionMeta(fixture_plugin_double),
+        .abi = FunctionAbi(fixture_plugin_double),
+        .context = NULL,
+        .invoke = fixture_plugin_double_invoke,
+    },
 };
 
 static const salts_plugin_manifest fixture_manifest = {
@@ -46,7 +45,6 @@ static const salts_plugin_manifest fixture_manifest = {
     .abi_version = SALTS_PLUGIN_ABI_VERSION,
     .plugin_id = "test.loader.c",
     .version = {1u, 0u, 0u},
-    .capabilities = 1u,
     .exports = &fixture_export,
     .export_count = 1u,
 };
