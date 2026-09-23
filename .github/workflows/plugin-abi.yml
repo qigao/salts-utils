@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/plugin-abi -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"             -DVCPKG_TARGET_TRIPLET=x64-linux             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DBUILD_TESTS=ON             -DBUILD_BENCHMARKS=OFF             -DBUILD_EXAMPLES=OFF             -DSALTS_UTILS_ENABLE_CAPTURE=OFF             -DENABLE_SANITIZER_ADDRESS=OFF             -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake -S . -B build/plugin-abi -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"             -DVCPKG_TARGET_TRIPLET=x64-linux             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching             -DBUILD_TESTS=ON             -DBUILD_BENCHMARKS=OFF             -DBUILD_EXAMPLES=OFF             -DSALTS_UTILS_ENABLE_CAPTURE=OFF             -DENABLE_SANITIZER_ADDRESS=OFF             -DENABLE_SANITIZER_UNDEFINED=OFF
 
       - name: Build Plugin contract tests
         shell: bash
