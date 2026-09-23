@@ -47,12 +47,15 @@ int plugin_test_add_other(int left, int right) {
 
 static salts_plugin_function_export make_function_export(void) {
     return (salts_plugin_function_export){
-        .struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE,
-        .abi_version = SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION,
-        .contract_version = 1u,
-        .capabilities = 4u,
-        .export_id = "add",
-        .contract_id = "test.math.Add",
+        .publication = {
+            .struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE,
+            .abi_version = SALTS_PLUGIN_PUBLICATION_ABI_VERSION,
+            .kind = SALTS_PLUGIN_PUBLICATION_FUNCTION,
+            .contract_version = 1u,
+            .capabilities = 4u,
+            .export_id = "add",
+            .contract_id = "test.math.Add",
+        },
         .function = FunctionMeta(plugin_test_add),
         .function_abi = FunctionAbi(plugin_test_add),
         .function_entry = (salts_plugin_function_entry)plugin_test_add,
@@ -199,8 +202,8 @@ describe("FunctionDesc publication") {
             plugin_test_codec_impl_as_plugin_test_codec(&state);
         salts_plugin_export exports[2];
         salts_plugin_function_export function_export = make_function_export();
-        const salts_plugin_function_export *function_exports[] = {
-            &function_export
+        const salts_plugin_publication *publications[] = {
+            &function_export.publication
         };
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
         const salts_plugin_function_export *found = NULL;
@@ -211,8 +214,8 @@ describe("FunctionDesc publication") {
         plugin_test_add_fn exact;
 
         manifest.struct_size = SALTS_PLUGIN_MANIFEST_V2_SIZE;
-        manifest.function_exports = function_exports;
-        manifest.function_export_count = 1u;
+        manifest.publications = publications;
+        manifest.publication_count = 1u;
 
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
@@ -247,15 +250,15 @@ describe("FunctionDesc publication") {
             plugin_test_codec_impl_as_plugin_test_codec(&state);
         salts_plugin_export exports[2];
         salts_plugin_function_export function_export = make_function_export();
-        const salts_plugin_function_export *function_exports[] = {
-            &function_export
+        const salts_plugin_publication *publications[] = {
+            &function_export.publication
         };
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
         const salts_plugin_function_export *found =
             (const salts_plugin_function_export *)(uintptr_t)1u;
 
-        manifest.function_exports = function_exports;
-        manifest.function_export_count = 1u;
+        manifest.publications = publications;
+        manifest.publication_count = 1u;
         check_equal(manifest.struct_size, SALTS_PLUGIN_MANIFEST_V1_SIZE);
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
@@ -272,24 +275,24 @@ describe("FunctionDesc publication") {
             plugin_test_codec_impl_as_plugin_test_codec(&state);
         salts_plugin_export exports[2];
         salts_plugin_function_export function_export = make_function_export();
-        const salts_plugin_function_export *function_exports[] = {
-            &function_export
+        const salts_plugin_publication *publications[] = {
+            &function_export.publication
         };
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
         cmeta_function_abi_desc mismatched_abi = *FunctionAbi(plugin_test_add);
 
         manifest.struct_size = SALTS_PLUGIN_MANIFEST_V2_SIZE;
-        manifest.function_exports = function_exports;
-        manifest.function_export_count = 1u;
+        manifest.publications = publications;
+        manifest.publication_count = 1u;
 
-        function_export.struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE - 1u;
+        function_export.publication.struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE - 1u;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         function_export = make_function_export();
-        function_export.abi_version =
-            SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION + 1u;
+        function_export.publication.abi_version =
+            SALTS_PLUGIN_PUBLICATION_ABI_VERSION + 1u;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_UNSUPPORTED_ABI);
@@ -308,13 +311,13 @@ describe("FunctionDesc publication") {
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         function_export = make_function_export();
-        function_export.export_id = exports[0].export_id;
+        function_export.publication.export_id = exports[0].export_id;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_DUPLICATE_EXPORT);
 
         function_export = make_function_export();
-        function_exports[0] = NULL;
+        publications[0] = NULL;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_INVALID_MANIFEST);
@@ -417,6 +420,8 @@ describe("ABI layout contract") {
                    (uint32_t)sizeof(salts_plugin_manifest));
         check_true(SALTS_PLUGIN_MANIFEST_V2_SIZE <=
                    (uint32_t)sizeof(salts_plugin_manifest));
+        check_true(SALTS_PLUGIN_PUBLICATION_V1_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_publication));
         check_true(SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE <=
                    (uint32_t)sizeof(salts_plugin_function_export));
         check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
@@ -425,6 +430,10 @@ describe("ABI layout contract") {
         check_equal(SALTS_PLUGIN_MANIFEST_V1_SIZE,
                     (uint32_t)(offsetof(salts_plugin_manifest, destroy) +
                                sizeof(((salts_plugin_manifest *)0)->destroy)));
+        check_equal(SALTS_PLUGIN_PUBLICATION_V1_SIZE,
+                    (uint32_t)(offsetof(salts_plugin_publication, contract_id) +
+                               sizeof(((salts_plugin_publication *)0)
+                                          ->contract_id)));
         check_equal(SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE,
                     (uint32_t)(offsetof(salts_plugin_function_export,
                                        function_entry) +
@@ -432,9 +441,9 @@ describe("ABI layout contract") {
                                           ->function_entry)));
         check_equal(SALTS_PLUGIN_MANIFEST_V2_SIZE,
                     (uint32_t)(offsetof(salts_plugin_manifest,
-                                       function_export_count) +
+                                       publication_count) +
                                sizeof(((salts_plugin_manifest *)0)
-                                          ->function_export_count)));
+                                          ->publication_count)));
     }
 }
 
