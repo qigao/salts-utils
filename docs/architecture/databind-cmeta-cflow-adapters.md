@@ -6,7 +6,7 @@ SaltsUtils 的 DataBind 组件以不可变 `DataBindValue` 树提供动态数据
 
 ## 决策
 
-DataBind 适配 API 由 SaltsUtils 提供，消费者统一链接唯一公开目标 `Salts::Databind`，不组装内部适配 targets。内部职责分为：
+DataBind 适配 API 由 SaltsUtils 提供，消费者统一链接唯一公开目标 `Salts::DataBind`，不组装内部适配 targets。内部职责分为：
 
 - CMeta 适配：把不可变的 LIST/SET、OBJECT、MAP 暴露为 `cmeta_range`。
 - CFlow 适配：复用 CFlow 的 range factory，从同一适配 range 创建 `cflow_stream` 或 Reactive `cflow_publisher`。
@@ -33,7 +33,7 @@ DataBind 适配 API 由 SaltsUtils 提供，消费者统一链接唯一公开目
 
 ## 接口与兼容性
 
-适配 API 不修改既有枚举值、数据格式或 one-shot/stream 解析语义。应用通过显式选定的 SaltsUtils 安装链接 `Salts::Databind`，内部依赖由 SaltsUtils 封装；不提供独立 DataBind package/root、替代 target 拼写或兼容 alias。
+适配 API 不修改既有枚举值、数据格式或 one-shot/stream 解析语义。应用通过显式选定的 SaltsUtils 安装链接 `Salts::DataBind`，内部依赖由 SaltsUtils 封装；不提供独立 DataBind package/root、替代 target 拼写或兼容 alias。
 
 ## 验证范围
 
