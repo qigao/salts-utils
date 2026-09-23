@@ -8,7 +8,7 @@ Salts 是基础能力的唯一事实源，安装并导出 Core、CSTL、CMeta、
 
 ```text
 application -> SaltsUtils parser/query/utility capability -> installed Salts foundation
-            \---------------------------------------------> SaltsUtils DataBind/TBE
+            \---------------------------------------------> SaltsUtils DataBind
 
 Salts::CNet -> Salts::UriParser
 Salts -/-> SaltsUtils
@@ -40,7 +40,7 @@ package 消费它。
 - `Salts::Selector`
 - `Salts::Cron`
 - `Salts::Mustache`
-- `Salts::DataBindSchema`（以及 `Salts::SchemaBE` 兼容别名）
+- `Salts::DataBindSchema`
 - `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
 - `Salts::Serial`
 - `Salts::Playback`
