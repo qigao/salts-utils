@@ -52,6 +52,7 @@ set(plugin_fixture_targets
   salts_plugin_fixture_cpp
   salts_plugin_fixture_missing_query
   salts_plugin_fixture_rejected
+  salts_plugin_fixture_obsolete
   salts_plugin_fixture_invalid
   salts_plugin_fixture_lifecycle
   salts_plugin_fixture_partial_lifecycle
@@ -65,6 +66,8 @@ add_library(salts_plugin_fixture_missing_query SHARED
   fixture_plugin_missing_query.c)
 add_library(salts_plugin_fixture_rejected SHARED
   fixture_plugin_rejected.c)
+add_library(salts_plugin_fixture_obsolete SHARED
+  fixture_plugin_obsolete.c)
 add_library(salts_plugin_fixture_invalid SHARED
   fixture_plugin_invalid.c)
 add_library(salts_plugin_fixture_lifecycle SHARED
@@ -90,6 +93,7 @@ set_target_properties(
   salts_plugin_fixture_c
   salts_plugin_fixture_missing_query
   salts_plugin_fixture_rejected
+  salts_plugin_fixture_obsolete
   salts_plugin_fixture_invalid
   salts_plugin_fixture_lifecycle
   salts_plugin_fixture_partial_lifecycle
@@ -116,6 +120,7 @@ cmake_add_test(salts_plugin_loader_test
     "PLUGIN_VALID_CPP_PATH=\"$<TARGET_FILE:salts_plugin_fixture_cpp>\""
     "PLUGIN_MISSING_QUERY_PATH=\"$<TARGET_FILE:salts_plugin_fixture_missing_query>\""
     "PLUGIN_REJECTED_PATH=\"$<TARGET_FILE:salts_plugin_fixture_rejected>\""
+    "PLUGIN_OBSOLETE_PATH=\"$<TARGET_FILE:salts_plugin_fixture_obsolete>\""
     "PLUGIN_INVALID_PATH=\"$<TARGET_FILE:salts_plugin_fixture_invalid>\""
     "PLUGIN_LIFECYCLE_PATH=\"$<TARGET_FILE:salts_plugin_fixture_lifecycle>\""
   RUNTIME_TARGETS ${plugin_fixture_targets}
