@@ -17,24 +17,77 @@ static int plugin_test_transform(void *self, int value) {
 CMETA_IMPLEMENTS(plugin_test_codec, plugin_test_codec_impl, 1u,
     .transform = plugin_test_transform);
 
-typed_any(value, int, plugin_test_increment, (int value)) {
+FunctionDecl(value, int, plugin_test_increment,
+    (int, value, CMETA_PARAM_IN));
+
+int plugin_test_increment(int value) {
     return value + 1;
 }
 
-typed_any(value, int, plugin_test_decrement, (int value)) {
+FunctionDecl(value, int, plugin_test_decrement,
+    (int, value, CMETA_PARAM_IN));
+
+int plugin_test_decrement(int value) {
     return value - 1;
 }
 
-typed_any(value, long, plugin_test_widen, (int value)) {
+FunctionDecl(value, long, plugin_test_widen,
+    (int, value, CMETA_PARAM_IN));
+
+long plugin_test_widen(int value) {
     return (long)value;
 }
+
+static bool SALTS_PLUGIN_CALL plugin_test_increment_adapter(
+    void *context,
+    void *return_storage,
+    void *const *params,
+    size_t param_count) {
+    int value;
+    int result;
+
+    if (context != NULL || return_storage == NULL || params == NULL ||
+        param_count != 1u || params[0] == NULL)
+        return false;
+
+    value = *(const int *)params[0];
+    result = plugin_test_increment(value);
+    *(int *)return_storage = result;
+    return true;
+}
+
+static bool SALTS_PLUGIN_CALL plugin_test_decrement_adapter(
+    void *context,
+    void *return_storage,
+    void *const *params,
+    size_t param_count) {
+    int value;
+    int result;
+
+    if (context != NULL || return_storage == NULL || params == NULL ||
+        param_count != 1u || params[0] == NULL)
+        return false;
+
+    value = *(const int *)params[0];
+    result = plugin_test_decrement(value);
+    *(int *)return_storage = result;
+    return true;
+}
+
+static const salts_plugin_function_adapter increment_adapter = {
+    NULL, plugin_test_increment_adapter
+};
+
+static const salts_plugin_function_adapter decrement_adapter = {
+    NULL, plugin_test_decrement_adapter
+};
 
 static salts_plugin_manifest make_manifest(
     salts_plugin_export exports[2],
     plugin_test_codec *codec) {
     exports[0] = (salts_plugin_export){
-        .struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE,
-        .abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION,
+        .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+        .abi_version = SALTS_PLUGIN_ABI_VERSION,
         .kind = SALTS_PLUGIN_EXPORT_INTERFACE,
         .contract_version = 1u,
         .capabilities = 1u,
@@ -42,23 +95,22 @@ static salts_plugin_manifest make_manifest(
         .contract_id = "test.codec",
         .interface_desc = plugin_test_interface_a(),
         .interface_value = codec,
-        .callable = NULL,
     };
     exports[1] = (salts_plugin_export){
-        .struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE,
-        .abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION,
-        .kind = SALTS_PLUGIN_EXPORT_CALLABLE,
+        .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+        .abi_version = SALTS_PLUGIN_ABI_VERSION,
+        .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
         .contract_version = 1u,
         .capabilities = 2u,
-        .export_id = "increment",
+        .export_id = "test.transform.increment",
         .contract_id = "test.transform",
-        .interface_desc = NULL,
-        .interface_value = NULL,
-        .callable = &plugin_test_increment,
+        .function = FunctionMeta(plugin_test_increment),
+        .function_abi = FunctionAbi(plugin_test_increment),
+        .function_adapter = &increment_adapter,
     };
 
     return (salts_plugin_manifest){
-        .struct_size = SALTS_PLUGIN_MANIFEST_V1_SIZE,
+        .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,
         .abi_version = SALTS_PLUGIN_ABI_VERSION,
         .plugin_id = "test.plugin",
         .version = {1u, 2u, 3u},
@@ -68,19 +120,23 @@ static salts_plugin_manifest make_manifest(
     };
 }
 
-spec("Salts Plugin ABI contract") {
+spec("Salts Plugin current ABI contract") {
 describe("manifest admission") {
-    it("accepts finite Interface and Callable exports") {
+    it("accepts Interface and reflected Function exports") {
         plugin_test_codec_state state = {7};
         plugin_test_codec codec =
             plugin_test_codec_impl_as_plugin_test_codec(&state);
         salts_plugin_export exports[2];
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
         const salts_plugin_export *found = NULL;
+        void *params[1];
+        int input = 5;
+        int output = 0;
 
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_OK);
+
         check_equal(salts_plugin_manifest_find_export(
                         &manifest, "codec", &found),
                     SALTS_PLUGIN_OK);
@@ -90,20 +146,29 @@ describe("manifest admission") {
         check_equal(plugin_test_codec_transform(
                         (plugin_test_codec *)found->interface_value, 5),
                     12);
-        check_true(salts_plugin_export_has_capabilities(found, 1u));
-        check_false(salts_plugin_export_has_capabilities(found, 2u));
         check_equal(salts_plugin_export_require_interface(
                         found, "test.codec", 1u, 1u,
                         plugin_test_interface_b()),
                     SALTS_PLUGIN_OK);
-        check_equal(salts_plugin_export_require_interface(
-                        found, "test.codec", 2u, 1u,
-                        plugin_test_interface_b()),
-                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
-        check_equal(salts_plugin_export_require_interface(
-                        found, "test.codec", 1u, 2u,
-                        plugin_test_interface_b()),
-                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+
+        check_equal(salts_plugin_manifest_find_export(
+                        &manifest, "test.transform.increment", &found),
+                    SALTS_PLUGIN_OK);
+        check_true(found == &exports[1]);
+        check_not_null(found->function);
+        check_not_null(found->function_abi);
+        check_not_null(found->function_adapter);
+        check_true(cmeta_function_desc_valid(found->function));
+        check_true(cmeta_function_abi_desc_valid(found->function_abi));
+        check_true(found->function_abi->function == found->function);
+        check_equal(salts_plugin_export_require_function(
+                        found, "test.transform", 1u, 2u),
+                    SALTS_PLUGIN_OK);
+
+        params[0] = &input;
+        check_true(found->function_adapter->invoke(
+            found->function_adapter->context, &output, params, 1u));
+        check_equal(output, 6);
 
         check_equal(salts_plugin_manifest_find_export(
                         &manifest, "missing", &found),
@@ -111,12 +176,16 @@ describe("manifest admission") {
         check_null(found);
     }
 
-    it("rejects ABI and structural mismatches before lifecycle use") {
+    it("rejects any non-current ABI or non-exact struct layout") {
         plugin_test_codec_state state = {0};
         plugin_test_codec codec =
             plugin_test_codec_impl_as_plugin_test_codec(&state);
         salts_plugin_export exports[2];
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
+
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION + 1u),
+                    SALTS_PLUGIN_UNSUPPORTED_ABI);
 
         manifest.abi_version = SALTS_PLUGIN_ABI_VERSION + 1u;
         check_equal(salts_plugin_manifest_validate(
@@ -124,22 +193,62 @@ describe("manifest admission") {
                     SALTS_PLUGIN_UNSUPPORTED_ABI);
 
         manifest = make_manifest(exports, &codec);
-        manifest.struct_size = SALTS_PLUGIN_MANIFEST_V1_SIZE - 1u;
+        manifest.struct_size = SALTS_PLUGIN_MANIFEST_SIZE - 1u;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
-        exports[0].struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE - 1u;
+        manifest.struct_size = SALTS_PLUGIN_MANIFEST_SIZE + 1u;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
-        exports[1].abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION + 1u;
+        exports[0].struct_size = SALTS_PLUGIN_EXPORT_SIZE - 1u;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        manifest = make_manifest(exports, &codec);
+        exports[0].struct_size = SALTS_PLUGIN_EXPORT_SIZE + 1u;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        manifest = make_manifest(exports, &codec);
+        exports[1].abi_version = SALTS_PLUGIN_ABI_VERSION + 1u;
         check_equal(salts_plugin_manifest_validate(
                         &manifest, SALTS_PLUGIN_ABI_VERSION),
                     SALTS_PLUGIN_UNSUPPORTED_ABI);
+    }
+
+    it("requires complete FunctionAbi and a matching exact adapter") {
+        plugin_test_codec_state state = {0};
+        plugin_test_codec codec =
+            plugin_test_codec_impl_as_plugin_test_codec(&state);
+        salts_plugin_export exports[2];
+        salts_plugin_manifest manifest = make_manifest(exports, &codec);
+        cmeta_function_abi_desc incomplete = *FunctionAbi(plugin_test_increment);
+
+        exports[1].function_abi = FunctionAbi(plugin_test_widen);
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        manifest = make_manifest(exports, &codec);
+        incomplete.return_carrier = CMETA_ABI_UNSPECIFIED;
+        exports[1].function_abi = &incomplete;
+        check_true(cmeta_function_abi_desc_valid(&incomplete));
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        manifest = make_manifest(exports, &codec);
+        exports[1].function_adapter = NULL;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
     }
 
     it("rejects duplicate exports and bounded-capacity overflow") {
@@ -175,93 +284,59 @@ describe("semantic identity") {
         check_true(salts_plugin_interface_desc_equal(left, right));
     }
 
-    it("does not use descriptor, implementation, or callable addresses as contract identity") {
-        plugin_test_codec_state left_state = {1};
-        plugin_test_codec_state right_state = {2};
-        plugin_test_codec left_codec =
-            plugin_test_codec_impl_as_plugin_test_codec(&left_state);
-        plugin_test_codec right_codec =
-            plugin_test_codec_impl_as_plugin_test_codec(&right_state);
-        salts_plugin_export left_interface = {
-            .struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE,
-            .abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION,
-            .kind = SALTS_PLUGIN_EXPORT_INTERFACE,
+    it("uses contract identity independently from Function/adapter addresses") {
+        salts_plugin_export left = {
+            .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+            .abi_version = SALTS_PLUGIN_ABI_VERSION,
+            .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
             .contract_version = 1u,
-            .export_id = "left",
-            .contract_id = "test.codec",
-            .interface_desc = plugin_test_interface_a(),
-            .interface_value = &left_codec,
-        };
-        salts_plugin_export right_interface = left_interface;
-        salts_plugin_export left_callable = {
-            .struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE,
-            .abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION,
-            .kind = SALTS_PLUGIN_EXPORT_CALLABLE,
-            .contract_version = 1u,
-            .export_id = "inc",
+            .capabilities = 2u,
+            .export_id = "test.transform.increment",
             .contract_id = "test.transform",
-            .callable = &plugin_test_increment,
+            .function = FunctionMeta(plugin_test_increment),
+            .function_abi = FunctionAbi(plugin_test_increment),
+            .function_adapter = &increment_adapter,
         };
-        salts_plugin_export right_callable = left_callable;
-        cmeta_callable adapter_callable = plugin_test_decrement;
+        salts_plugin_export right = {
+            .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+            .abi_version = SALTS_PLUGIN_ABI_VERSION,
+            .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
+            .contract_version = 1u,
+            .capabilities = 2u,
+            .export_id = "test.transform.decrement",
+            .contract_id = "test.transform",
+            .function = FunctionMeta(plugin_test_decrement),
+            .function_abi = FunctionAbi(plugin_test_decrement),
+            .function_adapter = &decrement_adapter,
+        };
 
-        right_interface.export_id = "right";
-        right_interface.interface_desc = plugin_test_interface_b();
-        right_interface.interface_value = &right_codec;
-        check_true(left_interface.interface_desc !=
-                   right_interface.interface_desc);
-        check_true(left_interface.interface_value !=
-                   right_interface.interface_value);
-        check_true(salts_plugin_export_contract_equal(
-            &left_interface, &right_interface));
+        check_true(left.function != right.function);
+        check_true(left.function_abi != right.function_abi);
+        check_true(left.function_adapter != right.function_adapter);
 
-        right_callable.export_id = "dec";
-        right_callable.callable = &plugin_test_decrement;
-        check_true(left_callable.callable != right_callable.callable);
-        check_false(cmeta_callable_same(
-            *left_callable.callable, *right_callable.callable));
-        check_true(salts_plugin_export_contract_equal(
-            &left_callable, &right_callable));
-
-        /*
-         * Dispatch is execution representation, not the semantic callable
-         * contract. The adapter form remains compatible with the same
-         * signature/effects/properties and contract_id/version.
-         */
-        adapter_callable.dispatch = CMETA_CALLABLE_DISPATCH_ADAPTER;
-        check_true(cmeta_callable_contract_valid(adapter_callable));
-        check_true(plugin_test_increment.dispatch != adapter_callable.dispatch);
-        right_callable.callable = &adapter_callable;
-        check_true(salts_plugin_export_contract_equal(
-            &left_callable, &right_callable));
-
-        check_equal(salts_plugin_export_require_callable(
-                        &left_callable, "test.transform", 1u, 0u,
-                        &adapter_callable),
+        check_equal(salts_plugin_export_require_function(
+                        &left, "test.transform", 1u, 2u),
                     SALTS_PLUGIN_OK);
-        check_equal(salts_plugin_export_require_callable(
-                        &left_callable, "test.transform", 1u, 0u,
-                        &plugin_test_widen),
-                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        check_equal(salts_plugin_export_require_function(
+                        &right, "test.transform", 1u, 2u),
+                    SALTS_PLUGIN_OK);
 
-        right_callable.contract_version = 2u;
-        check_false(salts_plugin_export_contract_equal(
-            &left_callable, &right_callable));
+        check_equal(salts_plugin_export_require_function(
+                        &left, "test.transform", 2u, 2u),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        check_equal(salts_plugin_export_require_function(
+                        &left, "test.transform", 1u, 4u),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
     }
 }
 
 describe("ABI layout contract") {
-    it("pins V1 readable prefixes independently of future tail padding") {
-        check_true(SALTS_PLUGIN_EXPORT_V1_SIZE <=
-                   (uint32_t)sizeof(salts_plugin_export));
-        check_true(SALTS_PLUGIN_MANIFEST_V1_SIZE <=
-                   (uint32_t)sizeof(salts_plugin_manifest));
-        check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
-                    (uint32_t)(offsetof(salts_plugin_export, callable) +
-                               sizeof(((salts_plugin_export *)0)->callable)));
-        check_equal(SALTS_PLUGIN_MANIFEST_V1_SIZE,
-                    (uint32_t)(offsetof(salts_plugin_manifest, destroy) +
-                               sizeof(((salts_plugin_manifest *)0)->destroy)));
+    it("uses exact current layouts rather than compatibility prefixes") {
+        check_equal(SALTS_PLUGIN_EXPORT_SIZE,
+                    (uint32_t)sizeof(salts_plugin_export));
+        check_equal(SALTS_PLUGIN_MANIFEST_SIZE,
+                    (uint32_t)sizeof(salts_plugin_manifest));
+        check_equal((unsigned)SALTS_PLUGIN_ABI_VERSION, 2u);
     }
 }
 
