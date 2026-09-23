@@ -3,6 +3,7 @@
 
 #include <cmeta/cmeta.h>
 #include <cmeta/function.h>
+#include <cmeta/interface.h>
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -26,8 +27,6 @@ extern "C" {
 #define SALTS_PLUGIN_ID_MAX 255u
 #define SALTS_PLUGIN_EXPORT_ID_MAX 255u
 #define SALTS_PLUGIN_CONTRACT_ID_MAX 255u
-#define SALTS_PLUGIN_MAX_INTERFACE_METHODS 64u
-#define SALTS_PLUGIN_INTERFACE_TOKEN_MAX 127u
 #define SALTS_PLUGIN_PATH_MAX 4095u
 #define SALTS_PLUGIN_MAX_LEASES_PER_PLUGIN 64u
 
@@ -222,10 +221,6 @@ static inline bool salts_plugin_lease_valid(salts_plugin_lease lease) {
 }
 
 const char *salts_plugin_status_string(salts_plugin_status status);
-
-bool salts_plugin_interface_desc_valid(const cmeta_interface_desc *desc);
-bool salts_plugin_interface_desc_equal(const cmeta_interface_desc *left,
-                                       const cmeta_interface_desc *right);
 
 bool salts_plugin_export_has_capabilities(const salts_plugin_export *entry,
                                           uint64_t required);
