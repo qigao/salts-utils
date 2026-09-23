@@ -106,7 +106,7 @@ as the reflected function:
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_function_invoke_fn)(
     void *context,
     void *return_storage,
-    const void *const *params,
+    void *const *params,
     size_t param_count);
 ```
 
