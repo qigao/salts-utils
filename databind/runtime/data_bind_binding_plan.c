@@ -520,7 +520,8 @@ static int plan_return_value_safe(const cmeta_data_desc *data) {
 
 static DataBindStatus plan_compile_ingress(
     DataBind *codec, const DataBindServiceOperation *operation,
-    const char *projection_id, const DataBindServiceNativeBinding *native,
+    const DataBindBindingProjection *projection,
+    const DataBindServiceNativeBinding *native,
     DataBindBindingPlan *plan, unsigned char *param_used,
     DataBindBindingPlanDiagnostic *diagnostic) {
   const cmeta_data_struct_shape *shape = plan_struct_shape(native->request);
@@ -552,9 +553,7 @@ static DataBindStatus plan_compile_ingress(
     const cmeta_data_field_desc *native_field;
     const DataBindNativePresenceBinding *presence;
     const cmeta_param_desc *param;
-    DataBindBindingClass binding_class = 0;
-    const char *space = NULL;
-    const char *name = NULL;
+    DataBindBindingAddress projected = DATA_BIND_BINDING_ADDRESS_INIT;
     size_t param_index;
     int indirect = 0;
     DataBindStatus status;
@@ -573,8 +572,9 @@ static DataBindStatus plan_compile_ingress(
                             "Native request field '%s' is unavailable",
                             field.name);
 
-    status = plan_input_address(projection_id, &field, &binding_class,
-                                &space, &name, diagnostic);
+    status = plan_project_address(
+        projection, operation, &field, DATA_BIND_BINDING_INGRESS,
+        &projected, diagnostic);
     if (status != DATA_BIND_OK) return status;
 
     if (root_param != SIZE_MAX) {
@@ -582,6 +582,7 @@ static DataBindStatus plan_compile_ingress(
       param = &native->function->params[param_index];
       indirect = root_indirect;
       param_used[param_index] = 1u;
+      plan->param_ingress[param_index] = 1u;
     } else {
       param_index = plan_find_param_by_name(native->function, field.name);
       if (param_index == SIZE_MAX)
@@ -600,12 +601,14 @@ static DataBindStatus plan_compile_ingress(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Function parameter '%s' is bound more than once", param->name);
       param_used[param_index] = 1u;
+      plan->param_ingress[param_index] = 1u;
     }
 
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
     entry->direction = DATA_BIND_BINDING_INGRESS;
-    entry->address.binding_class = binding_class;
-    entry->address.ordinal = i;
+    entry->address.binding_class = projected.binding_class;
+    entry->address.ordinal =
+        projected.ordinal != SIZE_MAX ? projected.ordinal : i;
     entry->function_param_index = param_index;
     entry->data = native_field->value;
     entry->native_offset = root_param != SIZE_MAX ? native_field->offset : 0u;
@@ -621,11 +624,13 @@ static DataBindStatus plan_compile_ingress(
     }
 
     if (!plan_entry_set_strings(
-            owned, space, name, field.name, param->name,
+            owned, projected.space, projected.name, field.name, param->name,
             field.has_default ? field.default_value : NULL, field.format))
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, field.name,
                             param->name,
                             "Could not copy ingress BindingPlan metadata");
+    status = plan_compile_default_token(owned, diagnostic);
+    if (status != DATA_BIND_OK) return status;
   }
 
   return DATA_BIND_OK;
@@ -633,7 +638,8 @@ static DataBindStatus plan_compile_ingress(
 
 static DataBindStatus plan_compile_egress(
     DataBind *codec, const DataBindServiceOperation *operation,
-    const char *projection_id, const DataBindServiceNativeBinding *native,
+    const DataBindBindingProjection *projection,
+    const DataBindServiceNativeBinding *native,
     DataBindBindingPlan *plan, unsigned char *param_used,
     DataBindBindingPlanDiagnostic *diagnostic) {
   const cmeta_data_struct_shape *shape;
@@ -690,6 +696,7 @@ static DataBindStatus plan_compile_egress(
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                           "Could not allocate egress BindingPlan");
   plan->egress_count = field_count;
+  plan->response_uses_return = use_return;
 
   for (i = 0u; i < field_count; ++i) {
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
@@ -697,9 +704,7 @@ static DataBindStatus plan_compile_egress(
     DataBindBindingPlanEntry *entry = &owned->view;
     const cmeta_data_field_desc *native_field;
     const cmeta_param_desc *param = NULL;
-    DataBindBindingClass binding_class = 0;
-    const char *space = NULL;
-    const char *name = NULL;
+    DataBindBindingAddress projected = DATA_BIND_BINDING_ADDRESS_INIT;
     size_t param_index = SIZE_MAX;
     int indirect = 0;
     DataBindStatus status;
@@ -718,8 +723,9 @@ static DataBindStatus plan_compile_egress(
                             "Native response field '%s' is unavailable",
                             field.name);
 
-    status = plan_output_address(projection_id, field.name, &binding_class,
-                                 &space, &name, diagnostic);
+    status = plan_project_address(
+        projection, operation, &field, DATA_BIND_BINDING_EGRESS,
+        &projected, diagnostic);
     if (status != DATA_BIND_OK) return status;
 
     if (root_param != SIZE_MAX) {
@@ -727,6 +733,7 @@ static DataBindStatus plan_compile_egress(
       param = &native->function->params[param_index];
       indirect = root_indirect;
       param_used[param_index] = 1u;
+      plan->param_ingress[param_index] = 1u;
     } else if (!use_return) {
       param_index = plan_find_param_by_name(native->function, field.name);
       if (param_index == SIZE_MAX)
@@ -745,12 +752,14 @@ static DataBindStatus plan_compile_egress(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Function parameter '%s' is bound more than once", param->name);
       param_used[param_index] = 1u;
+      plan->param_ingress[param_index] = 1u;
     }
 
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
     entry->direction = DATA_BIND_BINDING_EGRESS;
-    entry->address.binding_class = binding_class;
-    entry->address.ordinal = i;
+    entry->address.binding_class = projected.binding_class;
+    entry->address.ordinal =
+        projected.ordinal != SIZE_MAX ? projected.ordinal : i;
     entry->function_param_index = param_index;
     entry->data = native_field->value;
     entry->native_offset =
@@ -760,7 +769,7 @@ static DataBindStatus plan_compile_egress(
     entry->required = 1;
 
     if (!plan_entry_set_strings(
-            owned, space, name, field.name,
+            owned, projected.space, projected.name, field.name,
             param != NULL ? param->name : NULL, NULL, field.format))
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, field.name,
                             param != NULL ? param->name : NULL,
@@ -804,6 +813,9 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
   for (i = 0u; i < plan->error_count; ++i)
     free(plan->errors[i]);
   free(plan->errors);
+  free(plan->param_data);
+  free(plan->param_ingress);
+  free(plan->param_egress);
   free(plan->ingress);
   free(plan->egress);
   free(plan->operation_id);
@@ -811,9 +823,10 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
   free(plan);
 }
 
-DataBindStatus data_bind_service_binding_plan_compile(
+DataBindStatus data_bind_binding_plan_compile_service(
     DataBind *codec, const char *service_name, const char *operation_name,
-    const char *projection_id, const DataBindServiceNativeBinding *native,
+    const DataBindBindingProjection *projection,
+    const DataBindServiceNativeBinding *native,
     DataBindBindingPlan **out_plan,
     DataBindBindingPlanDiagnostic *diagnostic) {
   DataBindServiceOperation operation = DATA_BIND_SERVICE_OPERATION_INIT;
@@ -828,7 +841,10 @@ DataBindStatus data_bind_service_binding_plan_compile(
   if (out_plan != NULL) *out_plan = NULL;
   if (codec == NULL || service_name == NULL || service_name[0] == '\0' ||
       operation_name == NULL || operation_name[0] == '\0' ||
-      projection_id == NULL || projection_id[0] == '\0' ||
+      projection == NULL || projection->size < sizeof(*projection) ||
+      projection->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION ||
+      projection->id == NULL || projection->id[0] == '\0' ||
+      projection->project_field == NULL ||
       native == NULL || out_plan == NULL ||
       native->size <
           offsetof(DataBindServiceNativeBinding, response) +
@@ -845,9 +861,6 @@ DataBindStatus data_bind_service_binding_plan_compile(
         diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND, NULL, NULL,
         "DataBind Service operation '%s.%s' was not found",
         service_name, operation_name);
-
-  status = plan_projection_validate(&operation, projection_id, diagnostic);
-  if (status != DATA_BIND_OK) return status;
 
   status = plan_validate_native_type(
       codec, native->request, operation.request_type, diagnostic);
@@ -873,7 +886,7 @@ DataBindStatus data_bind_service_binding_plan_compile(
                           "Could not allocate DataBind BindingPlan");
 
   plan->operation_id = plan_operation_id(service_name, operation_name);
-  plan->projection_id = plan_strdup(projection_id);
+  plan->projection_id = plan_strdup(projection->id);
   plan->function = native->function;
   plan->request = native->request;
   plan->response = native->response;
@@ -883,19 +896,36 @@ DataBindStatus data_bind_service_binding_plan_compile(
     goto fail;
   }
 
+  plan->param_count = native->function->param_count;
+  if (plan->param_count != 0u) {
+    plan->param_data = (const cmeta_data_desc **)calloc(
+        plan->param_count, sizeof(*plan->param_data));
+    plan->param_ingress = (unsigned char *)calloc(
+        plan->param_count, sizeof(*plan->param_ingress));
+    plan->param_egress = (unsigned char *)calloc(
+        plan->param_count, sizeof(*plan->param_egress));
+    if (plan->param_data == NULL || plan->param_ingress == NULL ||
+        plan->param_egress == NULL) {
+      status = plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
+                              "Could not allocate function runtime binding map");
+      goto fail;
+    }
+  }
+
   param_used = (unsigned char *)calloc(
-      native->function->param_count, sizeof(*param_used));
-  if (native->function->param_count != 0u && param_used == NULL) {
+      native->function->param_count != 0u ? native->function->param_count : 1u,
+      sizeof(*param_used));
+  if (param_used == NULL) {
     status = plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                             "Could not allocate function binding map");
     goto fail;
   }
 
-  status = plan_compile_ingress(codec, &operation, projection_id, native,
+  status = plan_compile_ingress(codec, &operation, projection, native,
                                 plan, param_used, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
-  status = plan_compile_egress(codec, &operation, projection_id, native,
+  status = plan_compile_egress(codec, &operation, projection, native,
                                plan, param_used, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
