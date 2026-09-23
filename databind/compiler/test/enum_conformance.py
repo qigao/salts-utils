@@ -58,7 +58,7 @@ class EnumConformance(unittest.TestCase):
                           '"\nint main(void) {\n' + body + '\nreturn 0;\n}\n')
         result = self.run_command(['c++' if cpp else 'cc', '-std=c++17' if cpp else '-std=c11',
                                   '-Wall', '-Wextra', '-Werror', '-pedantic',
-                                  '-I' + str(ARGS.source / 'tbe/schema/include'),
+                                  '-I' + str(ARGS.source / 'databind/schema/include'),
                                   '-I' + str(ARGS.salts_include), source, '-o', 'probe'])
         self.assertEqual(result.returncode, 0, result.stdout)
         result = self.run_command([self.path / 'probe'])
@@ -136,8 +136,8 @@ class EnumConformance(unittest.TestCase):
         for source in (generated, consumer):
             result = self.run_command([
                 'cc', '-std=c11', '-Werror=implicit-function-declaration',
-                '-I' + str(ARGS.source / 'tbe/schema/include'),
-                '-I' + str(ARGS.source / 'tbe/data_bind'),
+                '-I' + str(ARGS.source / 'databind/schema/include'),
+                '-I' + str(ARGS.source / 'databind/runtime'),
                 '-I' + str(ARGS.source / 'parser/query_vm/include'),
                 '-I' + str(ARGS.source / 'parser/datetime_parser/include'),
                 '-I' + str(ARGS.salts_include), '-c', source,
