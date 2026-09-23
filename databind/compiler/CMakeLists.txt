@@ -127,6 +127,96 @@ set_target_properties(test_databind_plugin_projection PROPERTIES
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF)
 
+set(DATABIND_PLUGIN_FIXTURE_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/plugin-fixture")
+set(DATABIND_PLUGIN_FIXTURE_HEADER
+  "${DATABIND_PLUGIN_FIXTURE_DIR}/image.generated.h")
+set(DATABIND_PLUGIN_FIXTURE_SOURCE
+  "${DATABIND_PLUGIN_FIXTURE_DIR}/image.generated.c")
+set(DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE
+  "${DATABIND_PLUGIN_FIXTURE_DIR}/image.plugin.c")
+
+cmake_add_executable(test_databind_plugin_fixture_generator
+  SOURCES
+    test_plugin_projection_generator.c
+    plugin_projection.c
+    projection.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  FOLDER "databind/compiler/tests")
+target_include_directories(test_databind_plugin_fixture_generator PRIVATE
+  ${DATABIND_SOURCE_ROOT}/schema/src
+  ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(test_databind_plugin_fixture_generator PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_PLUGIN_FIXTURE_HEADER}"
+    "${DATABIND_PLUGIN_FIXTURE_SOURCE}"
+    "${DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+          "${DATABIND_PLUGIN_FIXTURE_DIR}"
+  COMMAND "$<TARGET_FILE:test_databind_plugin_fixture_generator>"
+          "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+          "${DATABIND_PLUGIN_FIXTURE_HEADER}"
+          "${DATABIND_PLUGIN_FIXTURE_SOURCE}"
+          "${DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE}"
+  DEPENDS
+    test_databind_plugin_fixture_generator
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
+  VERBATIM)
+
+set_source_files_properties(
+  "${DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE}"
+  PROPERTIES GENERATED TRUE)
+
+add_library(test_databind_generated_plugin SHARED
+  "${DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE}"
+  test_plugin_projection_business.c)
+target_include_directories(test_databind_generated_plugin PRIVATE
+  "${DATABIND_PLUGIN_FIXTURE_DIR}")
+target_link_libraries(test_databind_generated_plugin PRIVATE
+  Salts::Plugin
+  Salts::DataBind)
+set_target_properties(test_databind_generated_plugin PROPERTIES
+  FOLDER "databind/compiler/tests"
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+cmake_add_test(test_databind_plugin_projection_dso
+  SOURCES test_plugin_projection_dso.c
+  LIBS
+    Salts::Plugin
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_PLUGIN_FIXTURE_DIR}"
+  DEFS
+    "DATABIND_GENERATED_PLUGIN_PATH=\"$<TARGET_FILE:test_databind_generated_plugin>\""
+  RUNTIME_TARGETS
+    test_databind_generated_plugin
+  FOLDER "databind/compiler/tests")
+add_dependencies(
+  test_databind_plugin_projection_dso
+  test_databind_generated_plugin)
+set_target_properties(test_databind_plugin_projection_dso PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
