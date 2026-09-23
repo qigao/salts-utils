@@ -58,7 +58,7 @@ static int projection_equal(const char *alias, const char *canonical, const char
         roots[i] = create_node_map("root");
         if (roots[i] == NULL || parse_schema(schema, (size_t)length, roots[i], &error) != 0)
             goto done;
-        tbe_compiler_annotate_language_types(roots[i]);
+        data_bind_compiler_annotate_language_types(roots[i]);
         fields[i] = projection_field(roots[i]);
         if (fields[i] == NULL) goto done;
     }
@@ -96,7 +96,7 @@ static int projection_float_is(const char *type, const char *cpp, const char *go
     int length = snprintf(schema, sizeof(schema), "message Scalar { %s value; }", type);
     if (root == NULL || length <= 0 || (size_t)length >= sizeof(schema) ||
         parse_schema(schema, (size_t)length, root, &error) != 0) goto done;
-    tbe_compiler_annotate_language_types(root);
+    data_bind_compiler_annotate_language_types(root);
     field = projection_field(root);
     if (field != NULL) {
         const char *keys[] = {"cpp_type", "go_type", "rust_type", "typed_kind",
