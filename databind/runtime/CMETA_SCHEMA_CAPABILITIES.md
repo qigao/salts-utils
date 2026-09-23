@@ -54,7 +54,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | decimal/money/bigint | `CMETA_DATA_CUSTOM` domain classification | canonical numeric/domain provider required | semantic classification only; native mapping gated | Do not approximate with platform integers/floats or create private canonical identities. |
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
 
-Scalar helper regression coverage is in `tbe/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_tbe_typed_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
+Scalar helper regression coverage is in `databind/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_tbe_typed_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
 
 ## Production shared scalar profiles
 
@@ -62,7 +62,7 @@ The existing `schema_builtin_type_find` entry point, consumed by the grammar and
 
 Wire octets, reader names and host-language projections remain explicit schema rules, not native `sizeof`. In particular, BOOL retains its one-octet `u8`/`uint8_t` wire projection without acquiring UINT semantics. A valid UUID text adapter does not imply a numeric wire profile. Unknown names, UUID and storage-unselected STRING/BYTES return no scalar profile, with no alternate lookup or storage fallback. The existing UUID domain classifier and enum implementation are unchanged.
 
-`tbe/schema/test/test_schema_cmeta_profiles.c` checks the 30 aliases, canonical native identity/kind, exact wire projections, BOOL/byte separation, unsupported names, and the real `parse_schema` path's spelling, offsets, fixed widths and numeric annotations. The shared profile no longer stores `is_integer`/`is_unsigned`/`is_float`. Grammar numeric annotations and DataBind runtime metadata initialization derive those properties from the borrowed descriptor's `kind`; runtime metadata remains a derived cache, not another independent type classifier. The profile test consumes the returned descriptor directly and checks its kind, semantic native identity, layout and stable data identity. Wire annotations and the separate UUID domain classifier retain their existing semantics. This shared profile selection does not complete structural reflection, buffers, containers or generated/native binding convergence.
+`databind/schema/test/test_schema_cmeta_profiles.c` checks the 30 aliases, canonical native identity/kind, exact wire projections, BOOL/byte separation, unsupported names, and the real `parse_schema` path's spelling, offsets, fixed widths and numeric annotations. The shared profile no longer stores `is_integer`/`is_unsigned`/`is_float`. Grammar numeric annotations and DataBind runtime metadata initialization derive those properties from the borrowed descriptor's `kind`; runtime metadata remains a derived cache, not another independent type classifier. The profile test consumes the returned descriptor directly and checks its kind, semantic native identity, layout and stable data identity. Wire annotations and the separate UUID domain classifier retain their existing semantics. This shared profile selection does not complete structural reflection, buffers, containers or generated/native binding convergence.
 
 ## Production compiler scalar projections
 
@@ -70,7 +70,7 @@ Wire octets, reader names and host-language projections remain explicit schema r
 
 The actual parser-to-compiler annotation path now treats `f32` as `float` and `f64` as `double`, including list/set elements and map values, while leaving the schema's original `type` spelling and wire layout unchanged. BOOL retains its existing backend-specific representation, including `uint8_t` storage for generated C, without becoming UINT. UUID and string/bytes retain their existing explicit backend mappings; no buffer ownership is inferred.
 
-`tbe/tbe_compiler/test_scalar_projection.c` covers all 25 integer aliases, independent floating backend expectations, source spelling, typed metadata and collection-element projections through `parse_schema` followed by `tbe_compiler_annotate_language_types`. `test_tbe_cmeta_acceptance` compares all 29 numeric spellings against separately compiled generated C fields. This does not claim every generated language consumer or concrete container storage has migrated.
+`databind/compiler/test_scalar_projection.c` covers all 25 integer aliases, independent floating backend expectations, source spelling, typed metadata and collection-element projections through `parse_schema` followed by `databindc_annotate_language_types`. `test_tbe_cmeta_acceptance` compares all 29 numeric spellings against separately compiled generated C fields. This does not claim every generated language consumer or concrete container storage has migrated.
 
 ## Production enum/flags normalization
 
@@ -80,7 +80,7 @@ Wire reader names, host-language spellings, declaration order, flags progression
 
 `schema_cmeta_data_kind("uuid")` classifies the domain scalar as `CMETA_DATA_CUSTOM`, while Core's canonical UUID descriptor uses `CMETA_DATA_STRING` for its text adapter over fixed UUID storage. Both runtime reflection and generated native graph projection preserve this split through the shared resolver and existing UUID provider. An unconditional copy of `data.kind` would conflate these contracts; no fallback or alternate UUID descriptor exists.
 
-`tbe/schema/test/test_schema_enum_conformance.c` exercises the actual parser for all 25 integer aliases: exact signed/unsigned limits, enum and flags declaration order, adjacent out-of-domain rejection, noninteger rejection, and preservation of an existing enum/message graph after a later enum fails. Independent decimal literals prevent the range oracle from repeating the implementation's width arithmetic.
+`databind/schema/test/test_schema_enum_conformance.c` exercises the actual parser for all 25 integer aliases: exact signed/unsigned limits, enum and flags declaration order, adjacent out-of-domain rejection, noninteger rejection, and preservation of an existing enum/message graph after a later enum fails. Independent decimal literals prevent the range oracle from repeating the implementation's width arithmetic.
 
 The `parse_schema` implementation applies integer-domain validation and records wire layout
 in the schema overlay; generated providers supply native enum metadata. Neither infers
@@ -231,7 +231,7 @@ until a provider slice proves the actual native storage contract.
 
 ## Internal buffer lowering
 
-`schema_cmeta_buffer_data` in `tbe/schema/src/schema_cmeta_buffer.h` is an internal, non-installed builder for #45. The caller supplies STRING/BYTES semantics and a complete storage type, buffer shape and adapter. CMeta validates semantic type identity, exact layout, callbacks and ownership agreement before the caller-owned descriptor is published. Invalid inputs and custom ownership return zero without changing the output. No new type/ownership enum, allocator, buffer callback or fallback is introduced.
+`schema_cmeta_buffer_data` in `databind/schema/src/schema_cmeta_buffer.h` is an internal, non-installed builder for #45. The caller supplies STRING/BYTES semantics and a complete storage type, buffer shape and adapter. CMeta validates semantic type identity, exact layout, callbacks and ownership agreement before the caller-owned descriptor is published. Invalid inputs and custom ownership return zero without changing the output. No new type/ownership enum, allocator, buffer callback or fallback is introduced.
 
 The descriptor borrows all input metadata; names, type, shape and ops must remain immutable and outlive its use. Construction allocates no buffer and invokes no provider callbacks. Runtime storage remains governed by its provider:
 
@@ -244,7 +244,7 @@ The buffer provider owns assignment and semantic-zero restoration. DataBind owns
 quotas, transactional rollback, and orchestration; a read view expires when its provider
 storage changes or is released, and borrowed source bytes must remain alive throughout use.
 
-`tbe/schema/test/test_schema_cmeta_buffer.c` covers owned/borrowed provider combinations for
+`databind/schema/test/test_schema_cmeta_buffer.c` covers owned/borrowed provider combinations for
 distinct string/bytes semantics, semantic-identity metadata copies with embedded-NUL
 assignment/restoration, and invalid mappings with atomic non-publication. It runs within
 `test_schema_cmeta` without a foreign binding-engine dependency.
