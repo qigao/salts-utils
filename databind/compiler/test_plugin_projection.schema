@@ -1,0 +1,11 @@
+schema Image [version(3)];
+message DecodeRequest { uint32 id; }
+message DecodeResponse { uint32 width; }
+message EncodeRequest { uint32 quality; }
+message EncodeResponse { uint32 bytes; }
+service Codec {
+  [GET("/decode"), rpc("legacy.decode")]
+  Decode: DecodeRequest -> DecodeResponse;
+  [POST("/encode")]
+  Encode: EncodeRequest -> EncodeResponse;
+}
