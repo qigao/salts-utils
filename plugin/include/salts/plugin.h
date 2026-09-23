@@ -127,7 +127,6 @@ typedef struct salts_plugin_function_adapter {
  */
 typedef struct salts_plugin_export {
     uint32_t struct_size;
-    uint32_t abi_version;
     salts_plugin_export_kind kind;
     uint32_t contract_version;
     uint64_t capabilities;
