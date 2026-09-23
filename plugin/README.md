@@ -10,7 +10,7 @@ separate follow-up layer.
 
 ```text
 Salts::CMeta
-  Type Identity / Interface / Callable
+  Type Identity / Interface / FunctionDesc / Callable
              |
              v
        Salts::Plugin
@@ -45,8 +45,8 @@ visibility/export with C linkage, so the symbol remains unmangled when a plugin
 implementation is compiled as C++.
 
 The query returns borrowed immutable metadata. The host must keep the DSO loaded
-while it reads the manifest, export rows, CMeta descriptors/interface values, or
-callables.
+while it reads the manifest, legacy export rows, Function export rows, CMeta
+metadata/interface values, function entries, or callables.
 
 ### Salts/CMeta ABI prerequisite
 
@@ -74,7 +74,7 @@ export_id                 unique inside one plugin
 contract_id               stable cross-DSO semantic identity
 contract_version          exact V1 contract version
 capabilities              finite positive capabilities
-CMeta representation      Interface or Callable
+CMeta representation      V1 Interface/Callable or V2-tail Function
 ```
 
 A host and plugin can compile the same `CMETA_INTERFACE(...)` declaration into
@@ -116,6 +116,40 @@ or invalidate the handle. After Plugin admission, the typed host still uses
 `ImageCodec_valid()` before normal typed dispatch. Plugin does not invent a
 second vtable or method metadata system.
 
+## Function export
+
+Reflected service operations use a manifest tail rather than extending the
+existing V1 `exports[]` element. This is required for binary compatibility:
+old plugins lay out `exports[]` using the old `sizeof(salts_plugin_export)`, so
+growing that array element would change host pointer-arithmetic stride even when
+each row carries `struct_size`.
+
+The V1 export array is therefore frozen. A manifest whose `struct_size` reaches
+`SALTS_PLUGIN_MANIFEST_V2_SIZE` may publish an additional pointer table:
+
+```text
+manifest.function_exports[i]
+        |
+        v
+salts_plugin_function_export
+        |
+        +-- contract_id + contract_version
+        +-- cmeta_function_desc
+        +-- cmeta_function_abi_desc
+        '-- function-pointer entry carrier
+```
+
+The table is an array of pointers so each pointed-to Function row may remain
+independently size-versioned without changing table stride. The Plugin runtime
+validates and discovers these rows but never generically invokes the entry.
+Generated DataBind/native glue converts the function-pointer carrier back to the
+known exact function type only after Plugin and CMeta admission.
+
+The query/manifest ABI number remains V1: new hosts still call
+`salts_plugin_query(1)`. Old V1 plugins therefore remain loadable. Old hosts may
+load the V1 prefix of a newer manifest but cannot discover Function-only tail
+capabilities.
+
 ## Callable export
 
 Algorithms can be exported directly as existing `cmeta_callable` values:
@@ -134,13 +168,15 @@ the same declared callable contract as a canonical raw implementation.
 
 ## ABI admission
 
-V1 is exact and fail-fast:
+The query ABI remains exact and fail-fast while publication evolves through a
+readable manifest tail:
 
-- `SALTS_PLUGIN_ABI_VERSION == 1`;
-- manifest and export rows carry `struct_size` and `abi_version`;
-- V1 size constants mark the last readable V1 field rather than aliasing a
-  future `sizeof(struct)`, so later tail extensions cannot silently redefine
-  the V1 prefix;
+- `SALTS_PLUGIN_ABI_VERSION == 1` remains the single query/manifest handshake;
+- legacy `salts_plugin_export` V1 layout and array stride are frozen;
+- `SALTS_PLUGIN_MANIFEST_V1_SIZE` ends at `destroy`;
+- `SALTS_PLUGIN_MANIFEST_V2_SIZE` gates the optional Function pointer table;
+- Function rows carry their own `struct_size` and
+  `SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION`;
 - IDs are non-empty bounded strings;
 - export count is bounded by `SALTS_PLUGIN_MAX_EXPORTS`;
 - interface method metadata is bounded and validated;
@@ -247,8 +283,9 @@ the plugin becomes quiescent.
 
 ### Lease rule
 
-Plugin-owned manifest/export/interface/callable pointers may be dereferenced
-only while holding a live `salts_plugin_lease` returned by
+Plugin-owned manifest/export/interface/callable/Function pointers and native
+function entries may be dereferenced or invoked only while holding a live
+`salts_plugin_lease` returned by
 `salts_plugin_registry_acquire()`. The lease must remain live across every
 callback into plugin code and is returned with
 `salts_plugin_registry_release()`.
