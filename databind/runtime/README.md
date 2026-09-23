@@ -246,15 +246,15 @@ target_link_libraries(order_schema PUBLIC Salts::DataBind)
 
 ```cmake
 add_library(order_schema SHARED generated/order.c)
-target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
+target_compile_definitions(order_schema PRIVATE DATABIND_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC generated)
 target_link_libraries(order_schema PUBLIC Salts::DataBind)
 
-target_compile_definitions(my_app PRIVATE TBE_GENERATED_USE_SHARED) # Windows consumer
+target_compile_definitions(my_app PRIVATE DATABIND_GENERATED_USE_SHARED) # Windows consumer
 target_link_libraries(my_app PRIVATE order_schema)
 ```
 
-Linux/macOS shared library 构建也定义 `TBE_GENERATED_BUILD_SHARED`，生成头会设置默认
+Linux/macOS shared library 构建也定义 `DATABIND_GENERATED_BUILD_SHARED`，生成头会设置默认
 symbol visibility。静态库不定义这两个宏。
 
 ## 路线二：映射现有 C struct
