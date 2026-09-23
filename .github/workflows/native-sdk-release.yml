@@ -9,6 +9,7 @@ on:
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
   push:
@@ -19,6 +20,7 @@ on:
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
   workflow_dispatch:
@@ -33,6 +35,7 @@ concurrency:
 
 env:
   SALTS_SDK_VERSION: "1.3.0"
+  SALTS_UTILS_BASELINE_VERSION: "3.0.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -237,7 +240,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
-      - name: Configure, build and install SaltsUtils
+      - name: Restore published SaltsUtils baseline for PR overlay
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $prefix = Join-Path $env:GITHUB_WORKSPACE "stage\sdk\windows-x64"
+          ./cmake/ci/restore-versioned-saltsutils-sdk.ps1 -Version $env:SALTS_UTILS_BASELINE_VERSION -Rid windows-x64 -Destination $prefix
+      - name: Configure and overlay DataBind onto published SDK
+        if: github.event_name == 'pull_request'
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
@@ -245,7 +257,22 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
-          cmake --build build\native-sdk --parallel 2
+          cmake --build build\native-sdk --target databind_schema data_bind_core data_bind_json_adapter data_bind_yaml_adapter data_bind_csv_adapter data_bind_xml_adapter data_bind_temporal_adapter data_bind data_bind_cmeta data_bind_cflow databindc --parallel
+          if errorlevel 1 exit /b 1
+          cmake --install build\native-sdk --component DataBind
+          if errorlevel 1 exit /b 1
+          cmake --install build\native-sdk --component Development
+          if errorlevel 1 exit /b 1
+      - name: Configure, build and install full SaltsUtils SDK
+        if: github.event_name != 'pull_request'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
+          if errorlevel 1 exit /b 1
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          if errorlevel 1 exit /b 1
+          cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
