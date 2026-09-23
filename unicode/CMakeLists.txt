@@ -32,6 +32,7 @@ cmake_config_target(
 
 target_include_directories(
   salts_unicode
+  PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include> $<INSTALL_INTERFACE:include/unicode>)
 target_link_libraries(salts_unicode PUBLIC Salts::Core)
