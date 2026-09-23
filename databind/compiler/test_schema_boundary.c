@@ -27,17 +27,17 @@ static int file_exists(const char *path) {
   return 1;
 }
 
-spec("tbe_compiler_schema_boundary") {
+spec("data_bind_compiler_schema_boundary") {
   it("rejects varint before every language target can publish output") {
     static const int64_t languages[] = {
-        TBE_COMPILER_LANG_C,
-        TBE_COMPILER_LANG_PYTHON,
-        TBE_COMPILER_LANG_RUST,
-        TBE_COMPILER_LANG_CPP,
-        TBE_COMPILER_LANG_GO,
-        TBE_COMPILER_LANG_TS,
-        TBE_COMPILER_LANG_SQLITE,
-        TBE_COMPILER_LANG_POSTGRESQL,
+        DATABIND_COMPILER_LANG_C,
+        DATABIND_COMPILER_LANG_PYTHON,
+        DATABIND_COMPILER_LANG_RUST,
+        DATABIND_COMPILER_LANG_CPP,
+        DATABIND_COMPILER_LANG_GO,
+        DATABIND_COMPILER_LANG_TS,
+        DATABIND_COMPILER_LANG_SQLITE,
+        DATABIND_COMPILER_LANG_POSTGRESQL,
     };
     static const char *const output_paths[] = {
         "test_varint_boundary_c.out",
@@ -58,16 +58,16 @@ spec("tbe_compiler_schema_boundary") {
     check_equal(write_text_file(schema_path, schema), 0);
 
     for (size_t i = 0; i < sizeof(languages) / sizeof(languages[0]); ++i) {
-      tbe_compiler_options_t options = {
+      data_bind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_paths[i],
-          .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+          .resource_dir = DATABIND_COMPILER_RESOURCE_DIR,
           .lang_enum = languages[i],
       };
       int status;
 
       remove(output_paths[i]);
-      status = tbe_compiler_run(&options);
+      status = data_bind_compiler_run(&options);
       info("language=%lld output=%s", (long long)languages[i], output_paths[i]);
       check_not_equal(status, 0);
       check_false(file_exists(output_paths[i]));
@@ -108,7 +108,7 @@ static size_t default_occurrences(const char *text, const char *needle) {
   return count;
 }
 
-spec("tbe_compiler_default_type_identity") {
+spec("data_bind_compiler_default_type_identity") {
   it("does not classify enum or flags defaults by substrings in their declared names") {
     static const char *const names[] = {"Paint", "uintMode", "floatMode", "doubleMode"};
     static const char *const declarations[] = {"enum", "flags"};
@@ -156,11 +156,11 @@ spec("tbe_compiler_default_type_identity") {
     static const char schema[] =
         "enum Paint <uint8> { Red=1; } "
         "message Settings { optional Paint color default Red; }";
-    tbe_compiler_options_t options = {
+    data_bind_compiler_options_t options = {
         .schema_path = schema_path,
         .output_path = output_path,
-        .resource_dir = TBE_COMPILER_RESOURCE_DIR,
-        .lang_enum = TBE_COMPILER_LANG_C,
+        .resource_dir = DATABIND_COMPILER_RESOURCE_DIR,
+        .lang_enum = DATABIND_COMPILER_LANG_C,
     };
     char *output;
     int status, qualified = 0;
@@ -168,8 +168,8 @@ spec("tbe_compiler_default_type_identity") {
     remove(schema_path);
     remove(output_path);
     check_equal(write_text_file(schema_path, schema), 0);
-    status = tbe_compiler_run(&options);
-    output = tbe_compiler_read_file(output_path);
+    status = data_bind_compiler_run(&options);
+    output = data_bind_compiler_read_file(output_path);
     if (output != NULL) {
       definitions = default_occurrences(output, "#define Settings_color_DEFAULT ");
       qualified = strstr(output, "#define Settings_color_DEFAULT Paint_Red") != NULL;
