@@ -185,6 +185,10 @@ set_source_files_properties(
 add_library(test_databind_generated_plugin SHARED
   "${DATABIND_PLUGIN_FIXTURE_PLUGIN_SOURCE}"
   test_plugin_projection_business.c)
+set_source_files_properties(
+  test_plugin_projection_business.c
+  PROPERTIES
+    OBJECT_DEPENDS "${DATABIND_PLUGIN_FIXTURE_HEADER}")
 target_include_directories(test_databind_generated_plugin PRIVATE
   "${DATABIND_PLUGIN_FIXTURE_DIR}")
 target_link_libraries(test_databind_generated_plugin PRIVATE
