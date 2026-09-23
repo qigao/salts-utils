@@ -162,6 +162,7 @@ target_link_libraries(
     Salts::DataBindXmlAdapter
     Salts::DataBindTemporalAdapter
     Salts::DataBindSchema
+    Salts::DataBindTbeFormat
   PUBLIC
     Salts::DataBindCore)
 
