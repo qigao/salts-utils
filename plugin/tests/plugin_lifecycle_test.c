@@ -213,6 +213,8 @@ describe("lease-owned DSO access") {
         check_equal(salts_plugin_registry_unload(&registry, ref),
                     SALTS_PLUGIN_OK);
         check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
+        check_equal(salts_plugin_registry_unload(&registry, ref),
+                    SALTS_PLUGIN_STALE);
         check_equal(lifecycle_info(&registry, ref, &info),
                     SALTS_PLUGIN_STALE);
 
