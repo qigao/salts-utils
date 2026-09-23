@@ -285,7 +285,7 @@ jobs:
           $bindingPlanHeader = Join-Path $prefix "include\data_bind_binding_plan.h"
           if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { throw "missing $config" }
           if (-not (Test-Path -LiteralPath $bindingPlanHeader -PathType Leaf)) { throw "missing $bindingPlanHeader" }
-          @(
+          $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
             "salts=$env:SALTS_SDK_VERSION"
@@ -293,7 +293,12 @@ jobs:
             "os=windows"
             "arch=x64"
             "profile=release"
-          ) | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
+          )
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $manifest += "baseline=$env:SALTS_UTILS_BASELINE_VERSION"
+            $manifest += "overlay=DataBind"
+          }
+          $manifest | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-windows-x64
