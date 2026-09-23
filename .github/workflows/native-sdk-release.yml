@@ -102,25 +102,22 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/binding-plan -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
-            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
-          cmake --build build/binding-plan \
-            --target test_data_bind_binding_plan test_data_bind_cmeta_public_cpp \
-            --parallel 2
+          cmake -S . -B build/binding-plan -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/binding-plan --target test_data_bind_binding_plan test_data_bind_cmeta_public_cpp --parallel 2
 
       - name: Run canonical BindingPlan runtime contract
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_cmeta_public_cpp)
+          ctest --test-dir build/binding-plan --no-tests=error -R '^(test_data_bind_binding_plan|test_data_bind_cmeta_public_cpp)$' --output-on-failure
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  linux:
+    name: Linux x64 SDK
+    needs: metadata
+    runs-on: ubuntu-24.04
+    steps:
       - uses: actions/checkout@v4
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
@@ -139,11 +136,9 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          if [ -n "${VCPKG_ROOT:-}" ] &&
-             [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
+          if [ -n "${VCPKG_ROOT:-}" ] && [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
             true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] &&
-               [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
+          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] && [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
             echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
           else
             vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
@@ -160,14 +155,7 @@ jobs:
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/sdk/linux-x64"
-          cmake -S . -B build/native-sdk -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
-            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake -S . -B build/native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/native-sdk --parallel 2
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
