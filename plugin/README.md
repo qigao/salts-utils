@@ -7,6 +7,14 @@ It intentionally has **one current ABI only**. There are no parallel legacy/curr
 ABI negotiation, readable-prefix compatibility, or fallback to an older
 manifest. Plugins built against an obsolete ABI must be rebuilt.
 
+## Current semantic baseline
+
+The single current Plugin ABI requires **Salts.Native 1.5.0** or newer within
+the same declared package contract. That release provides the canonical CMeta
+Function/FunctionAbi and Interface reflection/equality used by Plugin admission.
+
+Plugin does not carry private compatibility copies of those semantics.
+
 ## Architecture
 
 ```text
