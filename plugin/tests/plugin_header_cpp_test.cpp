@@ -6,6 +6,8 @@ static_assert(std::is_standard_layout<salts_plugin_version>::value,
               "plugin version must be a C-compatible value");
 static_assert(std::is_standard_layout<salts_plugin_export>::value,
               "plugin export must be a C-compatible ABI row");
+static_assert(std::is_standard_layout<salts_plugin_publication>::value,
+              "plugin publication must be a C-compatible ABI row");
 static_assert(std::is_standard_layout<salts_plugin_function_export>::value,
               "plugin Function export must be a C-compatible ABI row");
 static_assert(std::is_pointer<salts_plugin_function_entry>::value,
