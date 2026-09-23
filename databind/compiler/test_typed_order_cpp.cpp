@@ -11,9 +11,9 @@ struct CppMacroRecord {
   std::uint32_t id;
 };
 
-TBE_TYPED_DEFINE_STRUCT(CPP_MACRO_RECORD_BINDING, CppMacroRecord, "CppMacroRecord",
-                        TBE_TYPED_FIELD(CppMacroRecord, id, "id", TBE_TYPED_U32,
-                                        TBE_TYPED_REQUIRED));
+DATA_BIND_TYPED_DEFINE_STRUCT(CPP_MACRO_RECORD_BINDING, CppMacroRecord, "CppMacroRecord",
+                        DATA_BIND_TYPED_FIELD(CppMacroRecord, id, "id", DATA_BIND_TYPED_U32,
+                                        DATA_BIND_TYPED_REQUIRED));
 
 spec("generated typed Order C++ owner") {
   it("should expose the C struct API through an owning RAII wrapper") {
@@ -59,8 +59,8 @@ spec("generated typed Order C++ owner") {
         check_equal(decoded->routing_hint, 12u);
         check_equal(decoded->client_tag, "cpp");
       }
-      tbe_typed_serialized_free(serialized);
-      tbe_typed_serialized_free(wire);
+      data_bind_typed_serialized_free(serialized);
+      data_bind_typed_serialized_free(wire);
     }
     data_bind_free(codec);
   }
@@ -69,11 +69,11 @@ spec("generated typed Order C++ owner") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     CppMacroRecord record;
 
-    check_equal(TBE_TYPED_BIND_INIT(CPP_MACRO_RECORD_BINDING, &record, &error), DATA_BIND_OK);
+    check_equal(DATA_BIND_TYPED_BIND_INIT(CPP_MACRO_RECORD_BINDING, &record, &error), DATA_BIND_OK);
     record.id = 7;
     check_equal(CPP_MACRO_RECORD_BINDING.name, "CppMacroRecord");
     check_equal(CPP_MACRO_RECORD_BINDING.size, sizeof(CppMacroRecord));
     check_equal(record.id, 7u);
-    TBE_TYPED_BIND_CLEAR(CPP_MACRO_RECORD_BINDING, &record);
+    DATA_BIND_TYPED_BIND_CLEAR(CPP_MACRO_RECORD_BINDING, &record);
   }
 }
