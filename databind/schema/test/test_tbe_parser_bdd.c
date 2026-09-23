@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -29,7 +29,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, NULL);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
           check_equal(rc, 0);
@@ -56,7 +56,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, NULL);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
           check_equal(rc, 0);
@@ -80,7 +80,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, NULL);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
           check_equal(rc, 0);
@@ -103,7 +103,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, NULL);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
           check_equal(rc, 0);
@@ -135,7 +135,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, NULL);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
         then("should parse successfully") {
           check_equal(rc, 0);
@@ -169,7 +169,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, NULL);
+        data_bind_schema_parse(schema, strlen(schema), root, NULL);
         Node *composites = find_child(root, "composites");
         Node *data = composites->data.list.items[0];
         Node *fields = find_child(data, "fields");
@@ -207,7 +207,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, NULL);
+        data_bind_schema_parse(schema, strlen(schema), root, NULL);
         Node *messages = find_child(root, "messages");
         Node *coll = messages->data.list.items[0];
         Node *fields = find_child(coll, "fields");
@@ -248,7 +248,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, NULL);
+        data_bind_schema_parse(schema, strlen(schema), root, NULL);
         Node *enums = find_child(root, "enums");
         Node *color = enums->data.list.items[0];
         Node *items = find_child(color, "items");
@@ -276,7 +276,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, NULL);
+        data_bind_schema_parse(schema, strlen(schema), root, NULL);
         Node *messages = find_child(root, "messages");
         Node *quote = messages->data.list.items[0];
         Node *fields = find_child(quote, "fields");
@@ -312,7 +312,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, NULL);
+        data_bind_schema_parse(schema, strlen(schema), root, NULL);
         Node *groups = find_child(root, "groups");
         Node *level = groups->data.list.items[0];
 
@@ -336,7 +336,7 @@ suite("TBE Schema Parser") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, &err);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
         then("should fail") {
           check_equal(rc, -1);
@@ -354,7 +354,7 @@ suite("TBE Schema Parser") {
       DataBindSchemaError err;
 
       when("calling parse_schema with NULL") {
-        int rc = parse_schema(NULL, 0, NULL, &err);
+        int rc = data_bind_schema_parse(NULL, 0, NULL, &err);
 
         then("should return error") {
           check_equal(rc, -1);
@@ -371,7 +371,7 @@ suite("TBE Schema Parser") {
       Node *root = create_node_map("root");
 
       when("parsing empty schema") {
-        int rc = parse_schema(schema, 0, root, NULL);
+        int rc = data_bind_schema_parse(schema, 0, root, NULL);
 
         then("should succeed") {
           check_equal(rc, 0);
@@ -388,10 +388,10 @@ suite("TBE Schema Parser") {
       map_add(root, create_node_string("marker", "keep"));
 
       when("parsing first schema") {
-        parse_schema("composite First { int32 x; }", strlen("composite First { int32 x; }"), root, NULL);
+        data_bind_schema_parse("composite First { int32 x; }", strlen("composite First { int32 x; }"), root, NULL);
 
         when("parsing second schema") {
-          parse_schema("enum State { Idle = 1; } message Second { int32 y; }",
+          data_bind_schema_parse("enum State { Idle = 1; } message Second { int32 y; }",
                       strlen("enum State { Idle = 1; } message Second { int32 y; }"), root, NULL);
 
           then("should keep non-schema nodes") {
