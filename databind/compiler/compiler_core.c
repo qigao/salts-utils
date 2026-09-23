@@ -1,3 +1,7 @@
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "compiler_core.h"
 
 #include "database_schema.h"
@@ -1813,6 +1817,25 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
+
+  /*
+   * Artifact backends consume the same immutable parse/normalize result before
+   * any legacy language renderer annotates it with backend-specific generation
+   * state. The current CLI passes an empty request set, so this is behaviorally
+   * inert until the unified #144 frontend selects projections.
+   */
+  if (options->projection_count != 0u) {
+    if (databind_compiler_projection_run(
+            root,
+            options->projection_requests,
+            options->projection_count,
+            options->projection_backends,
+            options->projection_backend_count) != 0) {
+      status = 1;
+      goto cleanup;
+    }
+  }
+
   if (!tbe_compiler_validate_enum_backend(root, options)) {
     status = 1;
     goto cleanup;
