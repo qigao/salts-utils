@@ -135,8 +135,9 @@ typedef struct salts_plugin_manifest {
     const salts_plugin_export *exports;
     size_t export_count;
 
-    /* Optional lifecycle surface. The Plugin core does not invoke these during
-     * ABI validation. Later lifecycle orchestration owns start/stop/quiescence. */
+    /* Optional lifecycle surface. It is all-or-none: passive plugins set self
+     * and all callbacks to NULL; managed plugins provide self plus all four
+     * callbacks. ABI validation never invokes them. */
     void *self;
     salts_plugin_start_fn start;
     salts_plugin_request_stop_fn request_stop;
@@ -250,10 +251,14 @@ salts_plugin_status salts_plugin_manifest_find_export(
  * one load call, must be strict non-empty UTF-8, and are never retained.
  * Platform library handles remain private.
  *
- * load() publishes state LOADED. start() transitions to STARTED. Plugin-owned
- * Interface/Callable/manifest pointers may be used only while holding an
- * explicit lease acquired from a STARTED plugin. request_stop() atomically
- * closes new lease admission before invoking the plugin stop callback.
+ * load() publishes state LOADED. start() transitions to STARTED. Managed
+ * start() failure is failure-atomic and transitions directly to QUIESCENT so
+ * cleanup remains possible. Plugin-owned Interface/Callable/manifest pointers
+ * may be used only while holding an explicit lease acquired from a STARTED
+ * plugin. request_stop() atomically closes new lease admission before invoking
+ * the plugin stop callback. A stop callback failure is recorded as the first
+ * lifecycle failure but the state remains STOPPING so quiescence can still be
+ * observed and the DSO can still be unloaded safely.
  *
  * poll_quiescent() reaches QUIESCENT only after host leases/in-flight lifecycle
  * callbacks are zero and the optional plugin is_quiescent callback agrees.
