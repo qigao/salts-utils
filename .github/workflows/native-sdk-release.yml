@@ -388,11 +388,20 @@ jobs:
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
 
-      - name: Report compiler cache statistics
+      - name: Report and verify compiler cache statistics
         shell: pwsh
         run: |
           ccache --show-stats
           if ($LASTEXITCODE -ne 0) { throw "ccache stats failed" }
+          $stats = ccache --print-stats --format json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "ccache machine-readable stats failed" }
+          $hits = [int64]$stats.direct_cache_hit + [int64]$stats.preprocessed_cache_hit
+          $misses = [int64]$stats.cache_miss
+          $cacheable = $hits + $misses
+          Write-Host "ccache cacheable=$cacheable hits=$hits misses=$misses"
+          if ($cacheable -le 0) {
+            throw "ccache did not observe any cacheable SaltsUtils compiler calls"
+          }
 
       - name: Verify Windows SDK
         shell: pwsh
