@@ -3,6 +3,8 @@
 #include "salts_fs.h"
 #include "salts_uuid.h"
 
+#include <salts/plugin.h>
+
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -29,6 +31,8 @@
 #endif
 
 #define PLUGIN_TEMP_OUTPUT_ATTEMPTS 16u
+#define PLUGIN_NATIVE_SYMBOL_MAX \
+  (SALTS_PLUGIN_ID_MAX + SALTS_PLUGIN_EXPORT_ID_MAX + 96u)
 
 static int plugin_create_temporary_output(
     const char *output_path, char **out_temporary_path, FILE **out_file) {
@@ -122,6 +126,18 @@ static const char *plugin_string(const Node *parent, const char *name) {
   return child != NULL && child->type == NODE_STRING
              ? child->data.string_val
              : NULL;
+}
+
+static int plugin_header_path_valid(const char *value) {
+  size_t i;
+  if (value == NULL || value[0] == '\0') return 0;
+  for (i = 0u; value[i] != '\0'; ++i) {
+    unsigned char ch = (unsigned char)value[i];
+    if (!(isalnum(ch) || ch == '_' || ch == '-' || ch == '.' || ch == '/'))
+      return 0;
+    if (i >= SALTS_PLUGIN_PATH_MAX) return 0;
+  }
+  return 1;
 }
 
 static int plugin_identifier_valid(const char *value) {
@@ -232,10 +248,10 @@ static int plugin_write_operation_support(
   const char *operation_name = plugin_string(operation, "name");
   const char *request_type = plugin_string(operation, "request_type");
   const char *response_type = plugin_string(operation, "response_type");
-  char symbol[512];
-  char meta_symbol[560];
-  char request_symbol[600];
-  char response_symbol[600];
+  char symbol[PLUGIN_NATIVE_SYMBOL_MAX + 1u];
+  char meta_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 32u];
+  char request_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 48u];
+  char response_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 48u];
 
   if (!plugin_identifier_valid(request_type) ||
       !plugin_identifier_valid(response_type) ||
@@ -297,10 +313,10 @@ static int plugin_write_export_initializer(
     FILE *out, const char *schema_name, uint32_t contract_version,
     const char *service_name, const Node *operation, int trailing_comma) {
   const char *operation_name = plugin_string(operation, "name");
-  char symbol[512];
-  char meta_symbol[560];
-  char request_symbol[600];
-  char response_symbol[600];
+  char symbol[PLUGIN_NATIVE_SYMBOL_MAX + 1u];
+  char meta_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 32u];
+  char request_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 48u];
+  char response_symbol[PLUGIN_NATIVE_SYMBOL_MAX + 48u];
   char export_id[520];
   int written;
 
@@ -377,7 +393,7 @@ static int plugin_validate_ir(
   if (canonical_ir == NULL || config == NULL || request == NULL ||
       request->kind != DATABIND_COMPILER_PROJECTION_PLUGIN ||
       request->output == NULL || request->output[0] == '\0' ||
-      config->generated_header == NULL || config->generated_header[0] == '\0')
+      !plugin_header_path_valid(config->generated_header))
     return 0;
 
   schema = plugin_child(canonical_ir, "schema");
@@ -385,6 +401,7 @@ static int plugin_validate_ir(
   schema_name = plugin_string(schema, "schema_name");
   schema_version = plugin_string(schema, "schema_version");
   if (!plugin_identifier_valid(schema_name) ||
+      strlen(schema_name) > SALTS_PLUGIN_ID_MAX ||
       !plugin_positive_u32(schema_version, out_contract_version) ||
       services == NULL || services->type != NODE_LIST)
     return 0;
@@ -399,6 +416,7 @@ static int plugin_validate_ir(
     const char *service_name = plugin_string(service, "name");
     size_t j;
     if (!plugin_identifier_valid(service_name) ||
+        strlen(service_name) > SALTS_PLUGIN_CONTRACT_ID_MAX ||
         operations == NULL || operations->type != NODE_LIST ||
         operations->data.list.count == 0u)
       return 0;
@@ -407,11 +425,21 @@ static int plugin_validate_ir(
       const char *name = plugin_string(op, "name");
       const char *request_type = plugin_string(op, "request_type");
       const char *response_type = plugin_string(op, "response_type");
+      size_t service_length;
+      size_t operation_length;
+
       if (!plugin_identifier_valid(name) ||
           !plugin_identifier_valid(request_type) ||
           !plugin_identifier_valid(response_type) ||
           strcmp(request_type, "void") == 0 ||
           strcmp(response_type, "void") == 0)
+        return 0;
+
+      service_length = strlen(service_name);
+      operation_length = strlen(name);
+      if (service_length > SALTS_PLUGIN_EXPORT_ID_MAX - 1u ||
+          operation_length >
+              SALTS_PLUGIN_EXPORT_ID_MAX - service_length - 1u)
         return 0;
     }
   }
