@@ -54,7 +54,7 @@ Traits, callable/`typed_any`, interface/implements, Range, Collector, effect/pro
 | decimal/money/bigint | `CMETA_DATA_CUSTOM` domain classification | canonical numeric/domain provider required | semantic classification only; native mapping gated | Do not approximate with platform integers/floats or create private canonical identities. |
 | null | no standalone native storage type | n/a | not a standalone schema type | Null is a value/presence token; a concrete target type must define how it is represented. |
 
-Scalar helper regression coverage is in `databind/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_tbe_typed_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
+Scalar helper regression coverage is in `databind/schema/test/test_schema_cmeta.c`. Production acceptance adds `test_tbe_cmeta_acceptance.c` and `test_data_bind_typed_cmeta_graph.c`, using the real parser/compiler CLI fixture `test_cmeta_graph.schema`, not test-only lowering. Public C/C++ consumers link the generated C implementation as a static archive; installed consumers repeat that boundary with installed targets and compiler.
 
 ## Production shared scalar profiles
 
@@ -103,7 +103,7 @@ Structs through depth 32. ABI-v2 joins exactly one schema overlay and one native
 graph:
 
 ```c
-TBE_TYPED_DESCRIPTOR_INIT(&Record_TYPED_TYPE, &Record_CMETA_DATA)
+DATA_BIND_TYPED_DESCRIPTOR_INIT(&Record_TYPED_TYPE, &Record_CMETA_DATA)
 ```
 
 Descriptor-routed lifecycle, text and binary wrappers all consume that same object.
@@ -149,11 +149,11 @@ the raw/deferred route.
 For supported rows, native size, alignment, semantic kind, field order, native
 name and native offset come only from CMeta. The overlay supplies external names,
 aliases, defaults, validation, presence policy and wire layout. Descriptor code
-does not read `TbeTypedType.size`, `TbeTypedField.kind`, native `offset`, or
+does not read `DataBindTypedType.size`, `DataBindTypedField.kind`, native `offset`, or
 `object_type`; nested association uses `nested_overlay`. Semantic type comparison
 uses `cmeta_type_equal`, never descriptor address equality.
 
-`test_tbe_typed_cmeta_graph` and the public C/C++ fixture compile against the real
+`test_data_bind_typed_cmeta_graph` and the public C/C++ fixture compile against the real
 CLI-generated header/archive. They cover copied semantic identities, enum
 operations, native padding versus wire offsets, supported depth 32, rejected depth
 33, generated Bool and wide-enum rejection, optional/UUID structural publication,
@@ -176,7 +176,7 @@ The append-only `DataBindSchemaField.has_cmeta_kind`, `.cmeta_kind`, and
 labels such as group/composite/message remain schema presentation metadata, not
 new structural identities. Unknown names have no canonical kind or descriptor.
 The original size-prefix protocol is unchanged. `DataBindSchemaType` still
-describes schema declarations. `TbeTypedDescriptor` ABI v2 requires both the
+describes schema declarations. `DataBindTypedDescriptor` ABI v2 requires both the
 schema overlay and canonical native CMeta root; ABI-v1 or graphless values fail.
 
 Canonical sequence/set/map descriptors are valid kind-only metadata with NULL
