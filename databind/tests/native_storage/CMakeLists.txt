@@ -4,7 +4,7 @@ target_link_libraries(test_data_bind_native_storage_requirements
   PRIVATE Salts::DataBind Salts::Core Salts::TinyTest)
 set_target_properties(test_data_bind_native_storage_requirements PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  LINKER_LANGUAGE CXX FOLDER "tbe/tests")
+  LINKER_LANGUAGE CXX FOLDER "databind/tests")
 if(MSVC)
   target_compile_options(test_data_bind_native_storage_requirements PRIVATE /W4 /WX /Zc:preprocessor)
 else()
@@ -21,7 +21,7 @@ target_link_libraries(test_data_bind_reader_probe
   PRIVATE Salts::CSerde Salts::TinyTest)
 set_target_properties(test_data_bind_reader_probe PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
-  LINKER_LANGUAGE CXX FOLDER "tbe/tests")
+  LINKER_LANGUAGE CXX FOLDER "databind/tests")
 if(MSVC)
   target_compile_options(test_data_bind_reader_probe PRIVATE /W4 /WX /Zc:preprocessor)
 else()
@@ -46,7 +46,7 @@ foreach(target IN ITEMS
   set_target_properties(${target} PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
-    LINKER_LANGUAGE CXX FOLDER "tbe/tests")
+    LINKER_LANGUAGE CXX FOLDER "databind/tests")
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /Zc:preprocessor)
   else()
