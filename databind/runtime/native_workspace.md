@@ -2,7 +2,7 @@
 
 Refs: qigao/turbodb#58, qigao/turbodb#56, SaltsUtils #99/#111.
 
-DataBind is a SaltsUtils component. Consumers use only `Salts::Databind` from
+DataBind is a SaltsUtils component. Consumers use only `Salts::DataBind` from
 an explicitly selected SaltsUtils installation. There is no separate package,
 root, alternate target, CBind fallback or second decoder.
 
