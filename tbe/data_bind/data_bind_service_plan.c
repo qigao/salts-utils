@@ -183,6 +183,19 @@ static int plan_type_matches_data(const cmeta_type_desc *type,
          cmeta_type_equal(type, data->storage_type);
 }
 
+static int plan_data_semantically_equal(const cmeta_data_desc *left,
+                                        const cmeta_data_desc *right) {
+  if (left == right) return left != NULL && cmeta_data_desc_valid(left);
+  if (!cmeta_data_desc_valid(left) || !cmeta_data_desc_valid(right) ||
+      left->kind != right->kind || left->storage_type == NULL ||
+      right->storage_type == NULL ||
+      !cmeta_type_equal(left->storage_type, right->storage_type))
+    return 0;
+  if (left->stable_id == NULL || right->stable_id == NULL)
+    return 0;
+  return strcmp(left->stable_id, right->stable_id) == 0;
+}
+
 static DataBindStatus plan_validate_descriptor(
     DataBind *codec, const TbeTypedDescriptor *descriptor,
     const char *expected_name,
@@ -326,12 +339,10 @@ static DataBindStatus plan_validate_schema_native_field(
   status = data_bind_schema_field_cmeta_data(codec, record_name, field_index,
                                              &schema_data, &error);
   if (status == DATA_BIND_OK) {
-    if (schema_data == NULL || schema_data->storage_type == NULL ||
-        !cmeta_type_equal(schema_data->storage_type,
-                          native_field->value->storage_type))
+    if (!plan_data_semantically_equal(schema_data, native_field->value))
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name, NULL,
-          "Schema field '%s' native storage disagrees with its typed descriptor",
+          "Schema field '%s' canonical data disagrees with its typed descriptor",
           field->name);
   } else if (!field->has_cmeta_kind ||
              field->cmeta_kind != native_field->value->kind) {
@@ -725,7 +736,8 @@ static DataBindStatus plan_compile_ingress(
       target = DATA_BIND_SERVICE_TARGET_FUNCTION_PARAM;
       plan->param_ingress[param_index] = 1u;
       if (plan->param_data[param_index] != NULL &&
-          plan->param_data[param_index] != native_field->value)
+          !plan_data_semantically_equal(plan->param_data[param_index],
+                                      native_field->value))
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, param->name,
             "Function parameter '%s' receives incompatible service fields",
@@ -926,7 +938,8 @@ static DataBindStatus plan_compile_egress(
       target = DATA_BIND_SERVICE_TARGET_FUNCTION_PARAM;
       plan->param_egress[param_index] = 1u;
       if (plan->param_data[param_index] != NULL &&
-          plan->param_data[param_index] != native_field->value)
+          !plan_data_semantically_equal(plan->param_data[param_index],
+                                      native_field->value))
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, param->name,
             "INOUT parameter '%s' maps incompatible request/response storage",
