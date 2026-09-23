@@ -32,7 +32,11 @@ cmake_add_executable(databindc
     database_schema.c
     mustache_helpers.c
     ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS Salts::DataBindSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  LIBS
+    Salts::DataBindSchema
+    Salts::Plugin
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
@@ -108,6 +112,7 @@ cmake_add_test(test_databind_plugin_projection
   LIBS
     Salts::DataBindSchema
     Salts::TinyTest
+    Salts::Plugin
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   DEFS
@@ -146,6 +151,7 @@ cmake_add_executable(test_databind_plugin_fixture_generator
     mustache_helpers.c
   LIBS
     Salts::DataBindSchema
+    Salts::Plugin
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   DEFS
