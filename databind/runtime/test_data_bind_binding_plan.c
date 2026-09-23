@@ -395,6 +395,105 @@ static DataBindBindingProvider provider_for(TestProvider *state) {
   return provider;
 }
 
+
+typedef struct EncodeWriterContext {
+  cserde_token token;
+  size_t write_calls;
+} EncodeWriterContext;
+
+typedef struct EncodeOutputProvider {
+  DataBindNativeOptions *options;
+  DataBindNativeDiagnostic native_diagnostic;
+  EncodeWriterContext writer_context;
+  cserde_writer writer;
+  size_t begin_calls;
+  size_t write_calls;
+  size_t commit_calls;
+  size_t abort_calls;
+  uint32_t published_sum;
+} EncodeOutputProvider;
+
+static cserde_status encode_writer_write(
+    void *context, const cserde_token *token) {
+  EncodeWriterContext *writer = (EncodeWriterContext *)context;
+  if (writer == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
+  ++writer->write_calls;
+  writer->token = *token;
+  return CSERDE_OK;
+}
+
+static cserde_status encode_writer_finish(void *context) {
+  (void)context;
+  return CSERDE_OK;
+}
+
+static const cserde_writer_ops ENCODE_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    encode_writer_write, encode_writer_finish};
+
+static DataBindStatus encode_provider_begin(
+    void *context, DataBindError *error) {
+  EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
+  (void)error;
+  if (provider == NULL || provider->options == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  ++provider->begin_calls;
+  provider->writer_context = (EncodeWriterContext){0};
+  provider->writer = (cserde_writer){0};
+  provider->native_diagnostic =
+      (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  return cserde_writer_init(
+             &provider->writer, &ENCODE_WRITER_OPS,
+             &provider->writer_context) == CSERDE_OK
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
+}
+
+static DataBindStatus encode_provider_write(
+    void *context, const DataBindBindingPlanEntry *entry,
+    const void *value, size_t value_bytes, DataBindError *error) {
+  EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
+  DataBindStatus status;
+  ++provider->write_calls;
+  status = data_bind_native_encode(
+      provider->options, entry->data, value, value_bytes,
+      &provider->writer, &provider->native_diagnostic);
+  if (status != DATA_BIND_OK && error != NULL)
+    *error = provider->native_diagnostic.error;
+  return status;
+}
+
+static DataBindStatus encode_provider_commit(
+    void *context, DataBindError *error) {
+  EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
+  (void)error;
+  ++provider->commit_calls;
+  if (provider->writer_context.write_calls != 1u ||
+      provider->writer_context.token.kind != CSERDE_UINT ||
+      provider->writer.state != CSERDE_WRITER_READY)
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  provider->published_sum =
+      (uint32_t)provider->writer_context.token.value.uint;
+  return DATA_BIND_OK;
+}
+
+static void encode_provider_abort(void *context) {
+  EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
+  ++provider->abort_calls;
+  provider->published_sum = 0u;
+}
+
+static DataBindBindingProvider encode_provider_for(
+    EncodeOutputProvider *state) {
+  DataBindBindingProvider provider = DATA_BIND_BINDING_PROVIDER_INIT;
+  provider.context = state;
+  provider.begin_output = encode_provider_begin;
+  provider.write_output = encode_provider_write;
+  provider.commit_output = encode_provider_commit;
+  provider.abort_output = encode_provider_abort;
+  return provider;
+}
+
 static DataBindNativeOptions native_options(
     unsigned char *workspace, size_t workspace_bytes) {
   DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
@@ -617,6 +716,55 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(request.scale, 0u);
     check_equal(request.presence, 0u);
     check_equal(response.sum, 0u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("publishes BindingPlan egress through the format-neutral native encoder") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-v1", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_fields));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    EncodeOutputProvider state = {
+        .options = &options,
+        .native_diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT};
+    DataBindBindingProvider provider = encode_provider_for(&state);
+    uint32_t left = 0u, right = 0u, scale = 0u, sum = 17u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_binding_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.begin_calls, 1u);
+    check_equal(state.write_calls, 1u);
+    check_equal(state.commit_calls, 1u);
+    check_equal(state.abort_calls, 0u);
+    check_equal(state.writer_context.write_calls, 1u);
+    check_true(state.writer_context.token.kind == CSERDE_UINT);
+    check_equal(state.writer_context.token.value.uint, UINT64_C(17));
+    check_equal(state.published_sum, 17u);
+    check_true(state.writer.state == CSERDE_WRITER_READY);
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
