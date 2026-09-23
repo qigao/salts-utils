@@ -501,7 +501,7 @@ target_link_libraries(order_schema PUBLIC Salts::DataBind)
 
 ```cmake
 add_library(order_schema SHARED order.c)
-target_compile_definitions(order_schema PRIVATE TBE_GENERATED_BUILD_SHARED)
+target_compile_definitions(order_schema PRIVATE DATABIND_GENERATED_BUILD_SHARED)
 target_include_directories(order_schema PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(order_schema PUBLIC Salts::DataBind)
 ```
