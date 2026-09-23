@@ -2,6 +2,7 @@
 #include "schema_builtin_type.h"
 #include "schema_size.h"
 #include "schema_enum.h"
+#include "schema_service.h"
 #include "schema_lexer.h"
 #include "schema_types.h"
 #include "schema_grammar_gen.h"
@@ -1187,6 +1188,8 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     Node *composites_list;
     Node *groups_list;
     Node *enums_list;
+    Node *services_list;
+    Node *unions_list;
 
     temp_root = create_node_map(NULL);
     schema_node = NULL;
@@ -1194,8 +1197,11 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     composites_list = create_node_list("composites");
     groups_list = create_node_list("groups");
     enums_list = create_node_list("enums");
-    Node *unions_list = create_node_list("unions");
-    if (!temp_root || !messages_list || !composites_list || !groups_list || !enums_list || !unions_list) {
+    unions_list = create_node_list("unions");
+    services_list = create_node_list("services");
+    if (!temp_root || !messages_list || !composites_list || !groups_list ||
+        !enums_list || !unions_list || !services_list) {
+        node_free(services_list);
         node_free(unions_list);
         node_free(enums_list);
         node_free(groups_list);
@@ -1212,7 +1218,8 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         map_add(temp_root, composites_list) != 0 ||
         map_add(temp_root, groups_list) != 0 ||
         map_add(temp_root, enums_list) != 0 ||
-        map_add(temp_root, unions_list) != 0) {
+        map_add(temp_root, unions_list) != 0 ||
+        map_add(temp_root, services_list) != 0) {
         node_free(temp_root);
         if (err) {
             tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to add child nodes");
@@ -1228,6 +1235,9 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     ctx.groups_list = groups_list;
     ctx.enums_list   = enums_list;
     ctx.unions_list  = unions_list;
+    ctx.services_list = services_list;
+    ctx.cur_service = NULL;
+    ctx.cur_operations = NULL;
     ctx.cur_record   = NULL;
     ctx.cur_fields   = NULL;
     ctx.cur_enum     = NULL;
@@ -1322,9 +1332,9 @@ static int annotate_schema_tree(Node *root) {
 }
 
 static int merge_schema_into_root(Node *root, Node *parsed) {
-    Node *generated_children[6];
+    Node *generated_children[7];
     const char *generated_names[] = {
-        "schema", "messages", "composites", "groups", "enums", "unions"
+        "schema", "messages", "composites", "groups", "enums", "unions", "services"
     };
 
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
@@ -1340,6 +1350,13 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
         map_remove_named_children(root, generated_names[i]);
         if (generated_children[i]) {
+            if (strcmp(generated_names[i], "services") == 0 &&
+                generated_children[i]->type == NODE_LIST &&
+                generated_children[i]->data.list.count == 0u) {
+                node_free(generated_children[i]);
+                generated_children[i] = NULL;
+                continue;
+            }
             if (map_add(root, generated_children[i]) != 0) {
                 node_free(generated_children[i]);
                 for (size_t j = i + 1; j < sizeof(generated_children) / sizeof(generated_children[0]); ++j) {
@@ -1388,6 +1405,11 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
             tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1,
                           "Failed to annotate parsed schema");
         }
+        return -1;
+    }
+
+    if (!schema_validate_services(parsed, err)) {
+        node_free(parsed);
         return -1;
     }
 

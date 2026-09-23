@@ -33,6 +33,9 @@ typedef struct {
     Node *groups_list;    /**< the "groups" list hanging off root              */
     Node *enums_list;     /**< the "enums" list hanging off root               */
     Node *unions_list;    /**< the "unions" list hanging off root              */
+    Node *services_list;   /**< the "services" list hanging off root            */
+    Node *cur_service;     /**< current service map being built                 */
+    Node *cur_operations;  /**< current service operation list                  */
     Node *cur_record;     /**< current record-like map being built             */
     Node *cur_fields;     /**< current "fields" list being built               */
     Node *cur_enum;       /**< current enum map being built                    */

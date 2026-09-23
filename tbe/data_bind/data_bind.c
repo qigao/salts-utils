@@ -2294,6 +2294,41 @@ static const char *node_attribute_value(Node *node, const char *name) {
   return node_attribute_value_at(node, name, 0);
 }
 
+static Node *node_attribute_node(Node *node, const char *name) {
+  Node *attrs;
+  size_t i;
+  if (node == NULL || name == NULL) return NULL;
+  attrs = find_child(node, "attributes");
+  if (attrs == NULL || attrs->type != NODE_LIST) return NULL;
+  for (i = 0; i < attrs->data.list.count; ++i) {
+    Node *attr = attrs->data.list.items[i];
+    const char *attr_name = get_string_val(find_child(attr, "name"));
+    if (attr_name != NULL && strcmp(attr_name, name) == 0) return attr;
+  }
+  return NULL;
+}
+
+static const char *field_transport_binding_kind(Node *field) {
+  static const char *const kinds[] = {
+      "path", "query", "header", "cookie", "body"
+  };
+  size_t i;
+  for (i = 0u; i < sizeof(kinds) / sizeof(kinds[0]); ++i)
+    if (node_attribute_node(field, kinds[i]) != NULL) return kinds[i];
+  return NULL;
+}
+
+static const char *field_transport_binding_name(Node *field,
+                                                const char *kind) {
+  Node *attr;
+  const char *name;
+  if (field == NULL || kind == NULL) return NULL;
+  attr = node_attribute_node(field, kind);
+  if (attr == NULL) return NULL;
+  name = get_string_val(find_child(field, "name"));
+  return field_flag(attr, "bare") ? name : node_attribute_value(field, kind);
+}
+
 static const char *field_format(Node *field) { return node_attribute_value(field, "format"); }
 
 static const char *field_binding_name(Node *field) {
@@ -5183,6 +5218,13 @@ static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField
   if (resolved) {
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_kind, semantic.kind);
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_data, semantic.data);
+  }
+  {
+    const char *binding_kind = field_transport_binding_kind(field);
+    DB_REFLECT_SET(DataBindSchemaField, out, out_size, binding_kind,
+                   binding_kind);
+    DB_REFLECT_SET(DataBindSchemaField, out, out_size, binding_name,
+                   field_transport_binding_name(field, binding_kind));
   }
   return name != NULL;
 }
@@ -11885,6 +11927,180 @@ DataBindStatus data_bind_value_get_money(const DataBindValue *value, DataBindMon
   if (value->kind != DATA_BIND_VALUE_MONEY) return DATA_BIND_ERR_TYPE_MISMATCH;
   *out = value->data.money_val;
   return DATA_BIND_OK;
+}
+
+static Node *data_bind_service_node(DataBind *codec,
+                                   const char *service_name) {
+  if (codec == NULL || codec->schema_root == NULL || service_name == NULL)
+    return NULL;
+  return find_named_record(codec->schema_root, "services", service_name);
+}
+
+static Node *data_bind_service_operations(Node *service) {
+  Node *operations = find_child(service, "operations");
+  return operations != NULL && operations->type == NODE_LIST ? operations : NULL;
+}
+
+static Node *data_bind_service_operation_node(DataBind *codec,
+                                              const char *service_name,
+                                              const char *operation_name) {
+  Node *service = data_bind_service_node(codec, service_name);
+  Node *operations = data_bind_service_operations(service);
+  size_t i;
+  if (operations == NULL || operation_name == NULL) return NULL;
+  for (i = 0u; i < operations->data.list.count; ++i) {
+    Node *operation = operations->data.list.items[i];
+    const char *name = get_string_val(find_child(operation, "name"));
+    if (name != NULL && strcmp(name, operation_name) == 0) return operation;
+  }
+  return NULL;
+}
+
+static int fill_data_bind_service(Node *service, DataBindService *out) {
+  Node *operations;
+  size_t out_size;
+  const char *name;
+  if (service == NULL || out == NULL) return 0;
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  name = get_string_val(find_child(service, "name"));
+  operations = data_bind_service_operations(service);
+  DB_REFLECT_SET(DataBindService, out, out_size, size, out_size);
+  DB_REFLECT_SET(DataBindService, out, out_size, name, name);
+  DB_REFLECT_SET(DataBindService, out, out_size, operation_count,
+                 operations != NULL ? operations->data.list.count : 0u);
+  return name != NULL;
+}
+
+static int fill_data_bind_service_operation(Node *operation,
+                                            DataBindServiceOperation *out) {
+  Node *errors;
+  size_t out_size;
+  const char *name;
+  const char *http_method;
+  const char *http_path;
+  const char *rpc_name;
+  if (operation == NULL || out == NULL) return 0;
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  name = get_string_val(find_child(operation, "name"));
+  errors = find_child(operation, "errors");
+  http_method = get_string_val(find_child(operation, "http_method"));
+  http_path = get_string_val(find_child(operation, "http_path"));
+  rpc_name = get_string_val(find_child(operation, "rpc_name"));
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, size, out_size);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, service_name,
+                 get_string_val(find_child(operation, "service_name")));
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, name, name);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, request_type,
+                 get_string_val(find_child(operation, "request_type")));
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, response_type,
+                 get_string_val(find_child(operation, "response_type")));
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, error_count,
+                 errors != NULL && errors->type == NODE_LIST
+                     ? errors->data.list.count
+                     : 0u);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, has_http,
+                 http_method != NULL && http_path != NULL);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, http_method,
+                 http_method);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, http_path,
+                 http_path);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, has_rpc,
+                 rpc_name != NULL);
+  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, rpc_name,
+                 rpc_name);
+  return name != NULL;
+}
+
+size_t data_bind_service_count(DataBind *codec) {
+  Node *services;
+  if (codec == NULL || codec->schema_root == NULL) return 0u;
+  services = find_child(codec->schema_root, "services");
+  return services != NULL && services->type == NODE_LIST
+             ? services->data.list.count
+             : 0u;
+}
+
+int data_bind_service_at(DataBind *codec, size_t index,
+                         DataBindService *out) {
+  Node *services;
+  if (codec == NULL || codec->schema_root == NULL || out == NULL) return 0;
+  services = find_child(codec->schema_root, "services");
+  if (services == NULL || services->type != NODE_LIST ||
+      index >= services->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_service(services->data.list.items[index], out);
+}
+
+int data_bind_service_find(DataBind *codec, const char *name,
+                           DataBindService *out) {
+  Node *service;
+  if (codec == NULL || name == NULL || out == NULL) return 0;
+  service = data_bind_service_node(codec, name);
+  if (service == NULL) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_service(service, out);
+}
+
+size_t data_bind_service_operation_count(DataBind *codec,
+                                         const char *service_name) {
+  Node *operations =
+      data_bind_service_operations(data_bind_service_node(codec, service_name));
+  return operations != NULL ? operations->data.list.count : 0u;
+}
+
+int data_bind_service_operation_at(DataBind *codec,
+                                   const char *service_name,
+                                   size_t index,
+                                   DataBindServiceOperation *out) {
+  Node *operations;
+  if (codec == NULL || service_name == NULL || out == NULL) return 0;
+  operations =
+      data_bind_service_operations(data_bind_service_node(codec, service_name));
+  if (operations == NULL || index >= operations->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_service_operation(operations->data.list.items[index],
+                                          out);
+}
+
+int data_bind_service_operation_find(DataBind *codec,
+                                     const char *service_name,
+                                     const char *operation_name,
+                                     DataBindServiceOperation *out) {
+  Node *operation;
+  if (codec == NULL || service_name == NULL ||
+      operation_name == NULL || out == NULL)
+    return 0;
+  operation =
+      data_bind_service_operation_node(codec, service_name, operation_name);
+  if (operation == NULL) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_service_operation(operation, out);
+}
+
+const char *data_bind_service_operation_error_at(
+    DataBind *codec, const char *service_name, const char *operation_name,
+    size_t index) {
+  Node *operation =
+      data_bind_service_operation_node(codec, service_name, operation_name);
+  Node *errors = find_child(operation, "errors");
+  Node *item;
+  if (errors == NULL || errors->type != NODE_LIST ||
+      index >= errors->data.list.count)
+    return NULL;
+  item = errors->data.list.items[index];
+  return item != NULL && item->type == NODE_STRING
+             ? item->data.string_val
+             : NULL;
 }
 
 const char *data_bind_schema_kind_name(DataBindSchemaKind kind) {

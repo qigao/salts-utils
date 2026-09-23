@@ -646,6 +646,204 @@ static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_t
     return attr;
 }
 
+static Node *create_bare_attribute_node(schema_parse_ctx_t *ctx,
+                                        schema_token_t key_tok) {
+    char *key = tok_strdup(key_tok);
+    Node *attr = NULL;
+    Node *values = NULL;
+    Node *marker = NULL;
+
+    if (ctx->error || key == NULL) {
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    attr = create_node_map(key);
+    values = create_node_list("values");
+    marker = create_node_string(NULL, "1");
+    if (attr == NULL || values == NULL || marker == NULL) {
+        node_free(attr);
+        node_free(values);
+        node_free(marker);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    add_string(ctx, attr, "name", key);
+    add_string(ctx, attr, "value", "1");
+    add_true(ctx, attr, "bare");
+    if (ctx->error) {
+        node_free(attr);
+        node_free(values);
+        node_free(marker);
+        free(key);
+        return NULL;
+    }
+    if (list_add(values, marker) != 0) {
+        node_free(marker);
+        node_free(values);
+        node_free(attr);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    marker = NULL;
+    if (map_add(attr, values) != 0) {
+        node_free(values);
+        node_free(attr);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    values = NULL;
+
+    free(key);
+    return attr;
+}
+
+static void begin_service(schema_parse_ctx_t *ctx, const char *name) {
+    Node *service;
+    Node *operations;
+    Node *operations_view;
+
+    ctx->cur_service = NULL;
+    ctx->cur_operations = NULL;
+    if (ctx->error || name == NULL) return;
+
+    service = create_node_map(NULL);
+    operations = create_node_list("operations");
+    if (service == NULL || operations == NULL) {
+        node_free(service);
+        node_free(operations);
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_name_nodes(ctx, service, "service_name", name);
+    if (ctx->error) {
+        node_free(operations);
+        node_free(service);
+        return;
+    }
+    operations_view = operations;
+    if (map_add(service, operations) != 0) {
+        node_free(operations);
+        node_free(service);
+        grammar_oom(ctx);
+        return;
+    }
+    operations = NULL;
+    if (list_add(ctx->services_list, service) != 0) {
+        node_free(service);
+        grammar_oom(ctx);
+        return;
+    }
+
+    ctx->cur_service = service;
+    ctx->cur_operations = operations_view;
+}
+
+static Node *create_error_type_list(schema_parse_ctx_t *ctx,
+                                    schema_token_t type_tok) {
+    char *type_name = tok_strdup(type_tok);
+    Node *errors = create_node_list("errors");
+    Node *item = NULL;
+
+    if (type_name != NULL)
+        item = create_node_string(NULL, type_name);
+    free(type_name);
+
+    if (errors == NULL || item == NULL || list_add(errors, item) != 0) {
+        node_free(errors);
+        node_free(item);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    return errors;
+}
+
+static void append_error_type(schema_parse_ctx_t *ctx, Node *errors,
+                              schema_token_t type_tok) {
+    char *type_name;
+    Node *item;
+
+    if (ctx->error || errors == NULL) return;
+    type_name = tok_strdup(type_tok);
+    item = type_name != NULL ? create_node_string(NULL, type_name) : NULL;
+    free(type_name);
+    if (item == NULL || list_add(errors, item) != 0) {
+        node_free(item);
+        grammar_oom(ctx);
+    }
+}
+
+static void add_service_operation(schema_parse_ctx_t *ctx,
+                                  const char *name,
+                                  const char *request_type,
+                                  const char *response_type,
+                                  Node *attrs,
+                                  Node *errors) {
+    Node *operation;
+
+    if (ctx->error || ctx->cur_service == NULL ||
+        ctx->cur_operations == NULL || name == NULL ||
+        request_type == NULL || response_type == NULL) {
+        node_free(attrs);
+        node_free(errors);
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+
+    operation = create_node_map(NULL);
+    if (operation == NULL) {
+        node_free(attrs);
+        node_free(errors);
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_string(ctx, operation, "name", name);
+    add_string(ctx, operation, "operation_name", name);
+    add_string(ctx, operation, "service_name",
+               map_get_string_value(ctx->cur_service, "name"));
+    add_string(ctx, operation, "request_type", request_type);
+    add_string(ctx, operation, "response_type", response_type);
+
+    if (errors == NULL)
+        errors = create_node_list("errors");
+    if (errors == NULL || ctx->error) {
+        node_free(operation);
+        node_free(attrs);
+        node_free(errors);
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+    if (attrs != NULL) {
+        if (map_add(operation, attrs) != 0) {
+            node_free(attrs);
+            node_free(errors);
+            node_free(operation);
+            grammar_oom(ctx);
+            return;
+        }
+        attrs = NULL;
+    }
+    if (map_add(operation, errors) != 0) {
+        node_free(errors);
+        node_free(operation);
+        grammar_oom(ctx);
+        return;
+    }
+    errors = NULL;
+    if (list_add(ctx->cur_operations, operation) != 0) {
+        node_free(operation);
+        grammar_oom(ctx);
+        return;
+    }
+}
+
 static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *value) {
     Node *item;
     if (ctx->error) return;
@@ -669,17 +867,26 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %type attr_value {Node *}
 %type field_default {char *}
 %type field_qualifier {int}
+%type service_errors {Node *}
+%type error_types {Node *}
+%type idl_ident {schema_token_t}
 %destructor attribute_list { (void)ctx; node_free($$); }
 %destructor attr_items { (void)ctx; node_free($$); }
 %destructor field_default { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
 %destructor attr_values { (void)ctx; node_free($$); }
 %destructor attr_value { (void)ctx; node_free($$); }
+%destructor service_errors { (void)ctx; node_free($$); }
+%destructor error_types { (void)ctx; node_free($$); }
 
-%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE THROWS COLON ARROW.
 
 start ::= schema.
 schema ::= decl_list.
+
+idl_ident(A) ::= IDENT(B). { A = B; }
+idl_ident(A) ::= SERVICE(B). { A = B; }
+idl_ident(A) ::= THROWS(B). { A = B; }
 
 decl_list ::= decl_list decl.
 decl_list ::= .
@@ -691,6 +898,7 @@ decl ::= composite_decl.
 decl ::= group_decl.
 decl ::= schema_decl.
 decl ::= union_decl.
+decl ::= service_decl.
 
 attribute_list(A) ::= LBRACKET attr_items(B) RBRACKET. { A = B; }
 attribute_list(A) ::= . { A = NULL; }
@@ -712,8 +920,11 @@ attr_items(A) ::= attr_item(B). {
     }
 }
 
-attr_item(A) ::= IDENT(K) LPAREN attr_values(V) RPAREN. {
+attr_item(A) ::= idl_ident(K) LPAREN attr_values(V) RPAREN. {
     A = create_attribute_node(ctx, K, V);
+}
+attr_item(A) ::= idl_ident(K). {
+    A = create_bare_attribute_node(ctx, K);
 }
 
 attr_values(A) ::= attr_values(B) COMMA attr_value(C). {
@@ -733,11 +944,11 @@ attr_values(A) ::= attr_value(B). {
     }
 }
 
-attr_value(A) ::= IDENT(V). { A = create_attribute_value_node(ctx, V); }
+attr_value(A) ::= idl_ident(V). { A = create_attribute_value_node(ctx, V); }
 attr_value(A) ::= NUMBER(V). { A = create_attribute_value_node(ctx, V); }
 attr_value(A) ::= STRING(V). { A = create_attribute_value_node(ctx, V); }
 
-schema_decl ::= SCHEMA IDENT(N) attribute_list(A) SEMI. {
+schema_decl ::= SCHEMA idl_ident(N) attribute_list(A) SEMI. {
     if (ctx->schema_node != NULL) {
         node_free(A);
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
@@ -768,6 +979,41 @@ schema_decl ::= SCHEMA IDENT(N) attribute_list(A) SEMI. {
     }
 }
 
+service_decl ::= service_header service_body RBRACE. {
+    ctx->cur_service = NULL;
+    ctx->cur_operations = NULL;
+}
+
+service_header ::= SERVICE idl_ident(N) LBRACE. {
+    char *service_name = tok_strdup(N);
+    begin_service(ctx, service_name);
+    free(service_name);
+}
+
+service_body ::= service_body service_operation.
+service_body ::= .
+
+service_operation ::= attribute_list(A) idl_ident(N) COLON idl_ident(I) ARROW idl_ident(O) service_errors(E) SEMI. {
+    char *operation_name = tok_strdup(N);
+    char *request_type = tok_strdup(I);
+    char *response_type = tok_strdup(O);
+    add_service_operation(ctx, operation_name, request_type, response_type, A, E);
+    free(operation_name);
+    free(request_type);
+    free(response_type);
+}
+
+service_errors(A) ::= THROWS error_types(B). { A = B; }
+service_errors(A) ::= . { A = NULL; }
+
+error_types(A) ::= error_types(B) COMMA idl_ident(T). {
+    A = B;
+    append_error_type(ctx, A, T);
+}
+error_types(A) ::= idl_ident(T). {
+    A = create_error_type_list(ctx, T);
+}
+
 enum_decl ::= attribute_list(A) enum_header enum_body RBRACE. {
     if (A && ctx->cur_enum != NULL) {
         if (map_add(ctx->cur_enum, A) != 0) {
@@ -779,13 +1025,13 @@ enum_decl ::= attribute_list(A) enum_header enum_body RBRACE. {
     }
 }
 
-enum_header ::= ENUM IDENT(N) LBRACE. {
+enum_header ::= ENUM idl_ident(N) LBRACE. {
     char *enum_name = tok_strdup(N);
     begin_enum_like(ctx, enum_name, NULL, 0);
     free(enum_name);
 }
 
-enum_header ::= ENUM IDENT(N) LT IDENT(T) GT LBRACE. {
+enum_header ::= ENUM idl_ident(N) LT idl_ident(T) GT LBRACE. {
     char *enum_name = tok_strdup(N);
     char *underlying_type = tok_strdup(T);
     begin_enum_like(ctx, enum_name, underlying_type, 0);
@@ -799,7 +1045,7 @@ enum_body ::= .
 enum_literal(A) ::= NUMBER(N). { A = N; }
 enum_literal(A) ::= DEFAULT_NUMBER(N). { A = N; }
 
-enum_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
+enum_item ::= idl_ident(K) EQUALS enum_literal(V) SEMI. {
     char *key = tok_strdup(K);
     char *value = tok_strdup(V);
     add_enum_item(ctx, key, value);
@@ -807,7 +1053,7 @@ enum_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
     free(value);
 }
 
-enum_item ::= IDENT(K) SEMI. {
+enum_item ::= idl_ident(K) SEMI. {
     char *key = tok_strdup(K);
     /* Resolve omitted values only after the storage domain is known. */
     add_enum_item(ctx, key, "");
@@ -826,13 +1072,13 @@ flags_decl ::= attribute_list(A) flags_header flags_body RBRACE. {
     }
 }
 
-flags_header ::= FLAGS IDENT(N) LBRACE. {
+flags_header ::= FLAGS idl_ident(N) LBRACE. {
     char *flags_name = tok_strdup(N);
     begin_enum_like(ctx, flags_name, NULL, 1);
     free(flags_name);
 }
 
-flags_header ::= FLAGS IDENT(N) LT IDENT(T) GT LBRACE. {
+flags_header ::= FLAGS idl_ident(N) LT idl_ident(T) GT LBRACE. {
     char *flags_name = tok_strdup(N);
     char *underlying_type = tok_strdup(T);
     begin_enum_like(ctx, flags_name, underlying_type, 1);
@@ -843,7 +1089,7 @@ flags_header ::= FLAGS IDENT(N) LT IDENT(T) GT LBRACE. {
 flags_body ::= flags_body flags_item.
 flags_body ::= .
 
-flags_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
+flags_item ::= idl_ident(K) EQUALS enum_literal(V) SEMI. {
     char *key = tok_strdup(K);
     char *value = tok_strdup(V);
     add_enum_item(ctx, key, value);
@@ -851,7 +1097,7 @@ flags_item ::= IDENT(K) EQUALS enum_literal(V) SEMI. {
     free(value);
 }
 
-flags_item ::= IDENT(K) SEMI. {
+flags_item ::= idl_ident(K) SEMI. {
     char *key = tok_strdup(K);
     add_enum_item(ctx, key, "");
     free(key);
@@ -879,7 +1125,7 @@ union_decl ::= attribute_list(A) union_header union_body RBRACE. {
     }
 }
 
-union_header ::= UNION IDENT(N) LBRACE. {
+union_header ::= UNION idl_ident(N) LBRACE. {
     char *record_name = tok_strdup(N);
     begin_record(ctx, ctx->unions_list, SCHEMA_RECORD_UNION, "union_name", record_name);
     free(record_name);
@@ -888,7 +1134,7 @@ union_header ::= UNION IDENT(N) LBRACE. {
 union_body ::= union_body union_variant.
 union_body ::= .
 
-union_variant ::= attribute_list(A) IDENT(T) IDENT(N) SEMI. {
+union_variant ::= attribute_list(A) idl_ident(T) idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
     add_field(ctx, type_name, field_name, 0, "", "", A, 0, 0, NULL);
@@ -896,7 +1142,7 @@ union_variant ::= attribute_list(A) IDENT(T) IDENT(N) SEMI. {
     free(field_name);
 }
 
-composite_header ::= COMPOSITE IDENT(N) LBRACE. {
+composite_header ::= COMPOSITE idl_ident(N) LBRACE. {
     char *record_name = tok_strdup(N);
     begin_record(ctx, ctx->composites_list, SCHEMA_RECORD_COMPOSITE, "composite_name",
                  record_name);
@@ -914,7 +1160,7 @@ group_decl ::= attribute_list(A) group_header field_list RBRACE. {
     }
 }
 
-group_header ::= GROUP IDENT(N) LBRACE. {
+group_header ::= GROUP idl_ident(N) LBRACE. {
     char *record_name = tok_strdup(N);
     begin_record(ctx, ctx->groups_list, SCHEMA_RECORD_GROUP, "group_name", record_name);
     free(record_name);
@@ -931,7 +1177,7 @@ message_decl ::= attribute_list(A) message_header field_list RBRACE. {
     }
 }
 
-message_header ::= MESSAGE IDENT(N) LBRACE. {
+message_header ::= MESSAGE idl_ident(N) LBRACE. {
     char *record_name = tok_strdup(N);
     begin_record(ctx, ctx->messages_list, SCHEMA_RECORD_MESSAGE, "message_name",
                  record_name);
@@ -941,7 +1187,7 @@ message_header ::= MESSAGE IDENT(N) LBRACE. {
 field_list ::= field_list field_decl.
 field_list ::= .
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) IDENT(N) field_default(D) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) idl_ident(N) field_default(D) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
     int is_optional = (Q == 1);
@@ -956,10 +1202,10 @@ field_default(D) ::= DEFAULT DEFAULT_NUMBER(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT STRING(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT TRUE(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT FALSE(V). { D = tok_strdup(V); }
-field_default(D) ::= DEFAULT IDENT(V). { D = tok_strdup(V); }
+field_default(D) ::= DEFAULT idl_ident(V). { D = tok_strdup(V); }
 field_default(D) ::= . { D = NULL; }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LPAREN IDENT(L) RPAREN IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LPAREN idl_ident(L) RPAREN idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
@@ -970,7 +1216,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LPAREN IDENT(L) RPA
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LPAREN NUMBER(L) RPAREN IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LPAREN NUMBER(L) RPAREN idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
@@ -981,7 +1227,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LPAREN NUMBER(L) RP
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) GROUP LT IDENT(I) GT IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) GROUP LT idl_ident(I) GT idl_ident(N) SEMI. {
     char *group_type = tok_strdup(I);
     char *field_name = tok_strdup(N);
     int is_optional = (Q == 1);
@@ -990,7 +1236,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) GROUP LT IDENT(I) GT IDENT(N
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LBRACKET IDENT(L) RBRACKET IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LBRACKET idl_ident(L) RBRACKET idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
@@ -1001,7 +1247,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LBRACKET IDENT(L) R
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LBRACKET NUMBER(L) RBRACKET IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LBRACKET NUMBER(L) RBRACKET idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
@@ -1012,7 +1258,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LBRACKET NUMBER(L) 
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LT IDENT(I) GT IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(I) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *inner_type = tok_strdup(I);
     char *field_name = tok_strdup(N);
@@ -1023,7 +1269,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LT IDENT(I) GT IDEN
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) IDENT(T) LT IDENT(K) COMMA IDENT(V) GT IDENT(N) SEMI. {
+field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(K) COMMA idl_ident(V) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
     char *key_type = tok_strdup(K);

@@ -410,6 +410,12 @@ typedef struct DataBindSchemaField {
   int has_cmeta_kind;
   cmeta_data_kind cmeta_kind;
   const cmeta_data_desc *cmeta_data;
+  /** Optional transport/logical binding projected from field attributes.
+   * binding_kind is one of path/query/header/cookie/body. binding_name is the
+   * explicit wire name or the canonical field name when the attribute is bare.
+   */
+  const char *binding_kind;
+  const char *binding_name;
 } DataBindSchemaField;
 
 #define DATA_BIND_SCHEMA_CMETA_REFLECTION 1
@@ -426,10 +432,35 @@ typedef struct DataBindSchemaAttribute {
   const char *value;
 } DataBindSchemaAttribute;
 
+/** Immutable reflected service declaration owned by one DataBind codec. */
+typedef struct DataBindService {
+  size_t size;
+  const char *name;
+  size_t operation_count;
+} DataBindService;
+
+/** Immutable reflected service operation and initial transport projections. */
+typedef struct DataBindServiceOperation {
+  size_t size;
+  const char *service_name;
+  const char *name;
+  const char *request_type;
+  const char *response_type;
+  size_t error_count;
+  int has_http;
+  const char *http_method;
+  const char *http_path;
+  int has_rpc;
+  /** Effective wire name. Bare [rpc] resolves to Service.Operation. */
+  const char *rpc_name;
+} DataBindServiceOperation;
+
 #define DATA_BIND_SCHEMA_TYPE_INIT {sizeof(DataBindSchemaType)}
 #define DATA_BIND_SCHEMA_FIELD_INIT {sizeof(DataBindSchemaField)}
 #define DATA_BIND_SCHEMA_ENUM_ITEM_INIT {sizeof(DataBindSchemaEnumItem)}
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
+#define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
+#define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
 #define DATA_BIND_ERROR_INIT {sizeof(DataBindError), DATA_BIND_OK, -1, -1, {0}, {0}}
 
 /**
@@ -1289,6 +1320,52 @@ DATA_BIND_API DataBindStatus data_bind_value_get_bigint(const DataBindValue *val
                                                         const char **text, size_t *len);
 DATA_BIND_API DataBindStatus data_bind_value_get_money(const DataBindValue *value,
                                                        DataBindMoney *out);
+
+/**
+ * @brief Return the number of service declarations in the DataBind IDL.
+ */
+DATA_BIND_API size_t data_bind_service_count(DataBind *codec);
+
+/**
+ * @brief Read immutable service reflection by index.
+ * @return 1 when out was filled, 0 when arguments or index are invalid
+ */
+DATA_BIND_API int data_bind_service_at(DataBind *codec, size_t index,
+                                      DataBindService *out);
+
+/**
+ * @brief Find immutable service reflection by name.
+ * @return 1 when out was filled, 0 when not found or arguments are invalid
+ */
+DATA_BIND_API int data_bind_service_find(DataBind *codec, const char *name,
+                                        DataBindService *out);
+
+/** Return the number of operations declared by one service. */
+DATA_BIND_API size_t data_bind_service_operation_count(DataBind *codec,
+                                                       const char *service_name);
+
+/**
+ * @brief Read one service operation by index.
+ */
+DATA_BIND_API int data_bind_service_operation_at(
+    DataBind *codec, const char *service_name, size_t index,
+    DataBindServiceOperation *out);
+
+/**
+ * @brief Find one service operation by service and operation name.
+ */
+DATA_BIND_API int data_bind_service_operation_find(
+    DataBind *codec, const char *service_name, const char *operation_name,
+    DataBindServiceOperation *out);
+
+/**
+ * @brief Return one typed error name from a service operation.
+ *
+ * The returned pointer is borrowed from the immutable codec schema tree.
+ */
+DATA_BIND_API const char *data_bind_service_operation_error_at(
+    DataBind *codec, const char *service_name, const char *operation_name,
+    size_t index);
 
 /**
  * @brief Return a stable string name for a schema kind.
