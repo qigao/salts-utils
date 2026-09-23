@@ -1,6 +1,6 @@
 #include "compiler_core.h"
 #include "tinytest.h"
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -126,7 +126,7 @@ spec("data_bind_compiler_default_type_identity") {
         int status;
         check_not_null(root);
         check_true(count > 0 && (size_t)count < sizeof(schema));
-        status = parse_schema(schema, (size_t)count, root, NULL);
+        status = data_bind_schema_parse(schema, (size_t)count, root, NULL);
         messages = default_child(root, "messages");
         if (messages != NULL && messages->type == NODE_LIST && messages->data.list.count == 1u) {
           defaults = default_child(messages->data.list.items[0], "default_value_fields");
