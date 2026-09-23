@@ -14,12 +14,15 @@ option(BUILD_TESTS "Build test suite" ON)
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
 
-option(SALTS_UTILS_ENABLE_CAPTURE
-       "Build the optional native audio/video/screen capture component" OFF)
 if(WIN32)
-  set(SALTS_UTILS_ENABLE_CAPTURE ON CACHE BOOL
-      "Build the native audio/video/screen capture component" FORCE)
+  set(_SALTS_UTILS_CAPTURE_DEFAULT ON)
+else()
+  set(_SALTS_UTILS_CAPTURE_DEFAULT OFF)
 endif()
+option(SALTS_UTILS_ENABLE_CAPTURE
+       "Build the optional native audio/video/screen capture component"
+       ${_SALTS_UTILS_CAPTURE_DEFAULT})
+unset(_SALTS_UTILS_CAPTURE_DEFAULT)
 
 option(SALTS_UTILS_ENABLE_CFLOW_USB
        "Build the optional libusb-backed CFlow device adapter" OFF)
