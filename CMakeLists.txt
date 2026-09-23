@@ -149,7 +149,8 @@ write_basic_package_version_file(
 # Install the config files
 install(FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
               "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
+        COMPONENT Development)
 
 # Install the export set
 export(
@@ -161,4 +162,5 @@ install(
   EXPORT SaltsUtilsTargets
   FILE SaltsUtilsTargets.cmake
   NAMESPACE Salts::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils")
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
+  COMPONENT Development)
