@@ -2156,6 +2156,21 @@ TBE_GENERATED_API void
 #undef TBE_GUEST_DECLARE_RECORD
 {{/guest_adapter_enabled}}
 
+{{#typed_source_enabled}}
+/* ========================================================================= */
+/* Service Native API                                                        */
+/* ========================================================================= */
+
+{{#services}}
+{{#operations}}
+/** Native implementation contract for {{service_name}}.{{operation_name}}. */
+TBE_GENERATED_API int {{native_c_symbol}}(
+    const {{request_type}}_t *request,
+    {{response_type}}_t *response);
+{{/operations}}
+{{/services}}
+{{/typed_source_enabled}}
+
 /* ========================================================================= */
 /* Union Types                                                               */
 /* ========================================================================= */
