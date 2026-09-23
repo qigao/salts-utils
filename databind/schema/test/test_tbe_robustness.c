@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tbe_wire.h"
 #include "tbe_version.h"
 #include "tinytest.h"
@@ -107,21 +107,21 @@ suite("tbe_robustness") {
         it("should handle allocation failures gracefully") {
             // Test error handling with invalid arguments
             Node *root = create_node_map("root");
-            tbe_error_t err;
+            DataBindSchemaError err;
             
             int rc = parse_schema(NULL, 0, root, &err);
             check_equal(rc, -1);
-            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
             rc = parse_schema("test", 4, NULL, &err);
             check_equal(rc, -1);
-            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
             // Test with extremely large input
             char large_text[] = "message Test { uint32 x; }";
             rc = parse_schema(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
             check_equal(rc, -1);
-            check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
             
             node_free(root);
         }
@@ -129,18 +129,18 @@ suite("tbe_robustness") {
 
     describe("Buffer Safety") {
         it("should handle very long error messages safely") {
-            tbe_error_t err;
-            tbe_error_init(&err);
+            DataBindSchemaError err;
+            data_bind_schema_error_init(&err);
             
             // Create a very long message
             char long_msg[1000];
             memset(long_msg, 'A', sizeof(long_msg) - 1);
             long_msg[sizeof(long_msg) - 1] = '\0';
             
-            tbe_error_set(&err, TBE_ERR_SYNTAX_ERROR, 1, 1, long_msg);
+            data_bind_schema_error_set(&err, DATA_BIND_SCHEMA_ERR_SYNTAX, 1, 1, long_msg);
             
             // Message should be truncated but not cause buffer overflow
-            check_equal(err.code, TBE_ERR_SYNTAX_ERROR);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_SYNTAX);
             check_equal(err.line, 1);
             check_equal(err.column, 1);
             check_less_equal(strlen(err.message), 255);  // Should be truncated
@@ -150,17 +150,17 @@ suite("tbe_robustness") {
         }
         
         it("should handle empty and null error messages") {
-            tbe_error_t err;
-            tbe_error_init(&err);
+            DataBindSchemaError err;
+            data_bind_schema_error_init(&err);
             
             // Test with empty string
-            tbe_error_set(&err, TBE_ERR_IO_ERROR, -1, -1, "");
-            check_equal(err.code, TBE_ERR_IO_ERROR);
+            data_bind_schema_error_set(&err, DATA_BIND_SCHEMA_ERR_IO, -1, -1, "");
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_IO);
             check_equal(err.message, "I/O error");  // Should use default
             
             // Test with NULL message
-            tbe_error_set(&err, TBE_ERR_LEXER_ERROR, -1, -1, NULL);
-            check_equal(err.code, TBE_ERR_LEXER_ERROR);
+            data_bind_schema_error_set(&err, DATA_BIND_SCHEMA_ERR_LEXER, -1, -1, NULL);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_LEXER);
             check_equal(err.message, "Lexer error");  // Should use default
         }
     }
@@ -187,7 +187,7 @@ suite("tbe_robustness") {
             }
             
             Node *root = create_node_map("root");
-            tbe_error_t err;
+            DataBindSchemaError err;
             int rc = parse_schema(large_schema, strlen(large_schema), root, &err);
             
             check_equal(rc, 0);
@@ -242,11 +242,11 @@ suite("tbe_robustness") {
         it("should report syntax error position and message") {
             const char *schema_text = "message Bad { uint32 seq; \n uint32; }\n";
             Node *root = create_node_map("root");
-            tbe_error_t err;
+            DataBindSchemaError err;
 
-            tbe_error_init(&err);
+            data_bind_schema_error_init(&err);
             check_equal(parse_schema(schema_text, strlen(schema_text), root, &err), -1);
-            check_equal(err.code, TBE_ERR_SYNTAX_ERROR);
+            check_equal(err.code, DATA_BIND_SCHEMA_ERR_SYNTAX);
             check(err.line > 0);
             check(err.column > 0);
             check_equal(err.message, "Syntax error at line 2, column 8");
