@@ -24,7 +24,14 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES
+    main.c
+    compiler_core.c
+    projection.c
+    plugin_projection.c
+    database_schema.c
+    mustache_helpers.c
+    ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -86,6 +93,34 @@ cmake_add_test(test_databind_projection_registry
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_projection_registry PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+cmake_add_test(test_databind_plugin_projection
+  SOURCES
+    test_plugin_projection.c
+    plugin_projection.c
+    projection.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    PLUGIN_PROJECTION_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+    PLUGIN_PROJECTION_NO_VERSION_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection_no_version.schema"
+    PLUGIN_PROJECTION_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/test_plugin_projection.generated.c"
+    PLUGIN_PROJECTION_INVALID_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/test_plugin_projection.invalid.c"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_plugin_projection PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF)
