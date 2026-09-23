@@ -162,7 +162,8 @@ static int plan_type_matches_data(const cmeta_type_desc *type,
 }
 
 static DataBindStatus plan_validate_descriptor(
-    const TbeTypedDescriptor *descriptor, const char *expected_name,
+    DataBind *codec, const TbeTypedDescriptor *descriptor,
+    const char *expected_name,
     DataBindServicePlanDiagnostic *diagnostic) {
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBindStatus status;
@@ -190,6 +191,13 @@ static DataBindStatus plan_validate_descriptor(
   if (plan_struct_shape(descriptor) == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
                           "Service request/response descriptors must be CMeta Struct roots");
+
+  status = tbe_typed_validate_schema(codec, expected_name, descriptor->overlay,
+                                     &error);
+  if (status != DATA_BIND_OK)
+    return plan_diag_from_error(
+        diagnostic, status, expected_name, NULL, &error,
+        "Typed wire overlay does not match the DataBind Service Schema");
 
   return DATA_BIND_OK;
 }
@@ -881,13 +889,13 @@ DataBindStatus data_bind_service_plan_compile(
                           operation_name, NULL,
                           "Unknown service projection");
 
-  status = plan_validate_descriptor(native->request, operation.request_type,
-                                    diagnostic);
+  status = plan_validate_descriptor(codec, native->request,
+                                    operation.request_type, diagnostic);
   if (status != DATA_BIND_OK) return status;
 
   if (strcmp(operation.response_type, "void") != 0) {
-    status = plan_validate_descriptor(native->response, operation.response_type,
-                                      diagnostic);
+    status = plan_validate_descriptor(codec, native->response,
+                                      operation.response_type, diagnostic);
     if (status != DATA_BIND_OK) return status;
   } else if (native->response != NULL) {
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
