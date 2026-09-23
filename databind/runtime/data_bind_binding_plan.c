@@ -1,5 +1,8 @@
 #include "data_bind_binding_plan.h"
 
+#include <cmeta/type_traits.h>
+
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +16,8 @@ typedef struct DataBindBindingPlanEntryOwned {
   char *function_param;
   char *default_value;
   char *format;
+  cserde_token default_token;
+  int has_default_token;
 } DataBindBindingPlanEntryOwned;
 
 struct DataBindBindingPlan {
@@ -29,6 +34,17 @@ struct DataBindBindingPlan {
 
   char **errors;
   size_t error_count;
+
+  const cmeta_data_desc **param_data;
+  unsigned char *param_ingress;
+  unsigned char *param_egress;
+  size_t param_count;
+
+  size_t request_root_param;
+  int has_request_root_param;
+  size_t response_root_param;
+  int has_response_root_param;
+  int response_uses_return;
 };
 
 static size_t plan_out_size(size_t requested, size_t full_size) {
