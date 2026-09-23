@@ -41,7 +41,7 @@ long plugin_test_widen(int value) {
 static bool SALTS_PLUGIN_CALL plugin_test_increment_adapter(
     void *context,
     void *return_storage,
-    const void *const *params,
+    void *const *params,
     size_t param_count) {
     int value;
     int result;
@@ -59,7 +59,7 @@ static bool SALTS_PLUGIN_CALL plugin_test_increment_adapter(
 static bool SALTS_PLUGIN_CALL plugin_test_decrement_adapter(
     void *context,
     void *return_storage,
-    const void *const *params,
+    void *const *params,
     size_t param_count) {
     int value;
     int result;
@@ -123,7 +123,7 @@ describe("manifest admission") {
         salts_plugin_export exports[2];
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
         const salts_plugin_export *found = NULL;
-        const void *params[1];
+        void *params[1];
         int input = 5;
         int output = 0;
 
