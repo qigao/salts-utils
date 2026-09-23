@@ -71,6 +71,7 @@ spec("DataBind schema reflection contract") {
         "message PingRequest { uint64 nonce; }"
         "message PingResponse { uint64 nonce; }"
         "message NotFoundError { string resource; }"
+        "message service { uint64 throws; }"
         "service UserService {"
         "  [GET(\"/users/{id}\"), rpc]"
         "  GetUser: GetUserRequest -> GetUserResponse throws NotFoundError;"
@@ -78,6 +79,9 @@ spec("DataBind schema reflection contract") {
         "  CreateUser: CreateUserRequest -> CreateUserResponse;"
         "  [rpc(\"legacy.ping\")]"
         "  Ping: PingRequest -> PingResponse;"
+        "}"
+        "service KeywordService {"
+        "  [rpc] Echo: service -> service;"
         "}";
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -89,7 +93,7 @@ spec("DataBind schema reflection contract") {
                 DATA_BIND_OK);
     check_not_null(codec);
 
-    check_equal(data_bind_service_count(codec), 1u);
+    check_equal(data_bind_service_count(codec), 2u);
     check(data_bind_service_find(codec, "UserService", &service) == 1);
     check_equal(service.name, "UserService");
     check_equal(service.operation_count, 3u);
@@ -123,6 +127,17 @@ spec("DataBind schema reflection contract") {
     check_true(operation.has_rpc);
     check_equal(operation.rpc_name, "legacy.ping");
 
+    operation = (DataBindServiceOperation)DATA_BIND_SERVICE_OPERATION_INIT;
+    check(data_bind_service_operation_find(codec, "KeywordService", "Echo",
+                                           &operation) == 1);
+    check_equal(operation.request_type, "service");
+    check_equal(operation.response_type, "service");
+    check_equal(operation.rpc_name, "KeywordService.Echo");
+
+    check(data_bind_schema_field_at(codec, "service", 0u, &field) == 1);
+    check_equal(field.name, "throws");
+
+    field = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
     check(data_bind_schema_field_at(codec, "GetUserRequest", 0u, &field) == 1);
     check_equal(field.binding_kind, "path");
     check_equal(field.binding_name, "id");
@@ -148,6 +163,17 @@ spec("DataBind schema reflection contract") {
     check_equal(service.size, offsetof(DataBindService, operation_count));
     check_equal(service.name, "UserService");
 
+    operation = (DataBindServiceOperation)DATA_BIND_SERVICE_OPERATION_INIT;
+    operation.size = offsetof(DataBindServiceOperation, error_count);
+    check(data_bind_service_operation_find(codec, "UserService", "GetUser",
+                                           &operation) == 1);
+    check_equal(operation.size,
+                offsetof(DataBindServiceOperation, error_count));
+    check_equal(operation.service_name, "UserService");
+    check_equal(operation.name, "GetUser");
+    check_equal(operation.request_type, "GetUserRequest");
+    check_equal(operation.response_type, "GetUserResponse");
+
     data_bind_free(codec);
   }
 
@@ -168,6 +194,19 @@ spec("DataBind schema reflection contract") {
         "message Res { uint64 id; }"
         "service A { [rpc(\"same.call\")] One: Req -> Res; }"
         "service B { [rpc(\"same.call\")] Two: Req -> Res; }";
+    static const char duplicate_service[] =
+        "message Req { uint64 id; }"
+        "message Res { uint64 id; }"
+        "service Same { One: Req -> Res; }"
+        "service Same { Two: Req -> Res; }";
+    static const char duplicate_operation[] =
+        "message Req { uint64 id; }"
+        "message Res { uint64 id; }"
+        "service Same { One: Req -> Res; One: Req -> Res; }";
+    static const char path_mismatch[] =
+        "message Req { [path] uint64 other; }"
+        "message Res { uint64 id; }"
+        "service Bad { [GET(\"/bad/{id}\")] Read: Req -> Res; }";
     static const char conflicting_binding[] =
         "message Req { [path, query] uint64 id; }"
         "message Res { uint64 id; }"
@@ -197,6 +236,27 @@ spec("DataBind schema reflection contract") {
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(data_bind_create_from_text(duplicate_rpc, strlen(duplicate_rpc),
+                                           &invalid, &error),
+                DATA_BIND_ERR_PARSE);
+    check_null(invalid);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_create_from_text(duplicate_service,
+                                           strlen(duplicate_service),
+                                           &invalid, &error),
+                DATA_BIND_ERR_PARSE);
+    check_null(invalid);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_create_from_text(duplicate_operation,
+                                           strlen(duplicate_operation),
+                                           &invalid, &error),
+                DATA_BIND_ERR_PARSE);
+    check_null(invalid);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_create_from_text(path_mismatch,
+                                           strlen(path_mismatch),
                                            &invalid, &error),
                 DATA_BIND_ERR_PARSE);
     check_null(invalid);
