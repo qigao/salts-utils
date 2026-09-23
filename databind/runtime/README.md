@@ -5,7 +5,7 @@ DataBind 是 SaltsUtils 的组成部分，源码、构建、测试、安装和�
 不使用独立 DataBind package/root，也不组装内部目标或补造兼容 alias。
 生成代码、现有原生 C struct 与动态对象均通过 DataBind 绑定；不存在
 DataBind 私有的 owning dynamic-container compatibility engine、storage fallback、第二 binder
-或格式 fallback。仍受支持的 `TBE_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
+或格式 fallback。仍受支持的 `DATA_BIND_TYPED_*` raw typed 路线直接绑定调用方拥有的 C struct，
 它是下文所述的独立 typed API，不是动态容器兼容引擎或 fallback。
 
 DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema、构造动态值、校验字段，
@@ -67,7 +67,7 @@ DataBind 只保留转换后的领域值；流式 XML 的增量词法解析属于
 DataBind 3.0 defines two strongly typed routes:
 
 1. schema 生成 `.h/.c`，自动 bind、序列化和反序列化。
-2. schema 映射现有 C struct，通过 `TBE_TYPED_*` 宏声明 raw typed metadata，自动
+2. schema 映射现有 C struct，通过 `DATA_BIND_TYPED_*` 宏声明 raw typed metadata，自动
    bind、序列化和反序列化。
 
 动态 `DataBindObject` / `DataBindValue` 是显式的宿主程序集成与 runtime-schema 路线，
@@ -79,9 +79,9 @@ wire layout、外部名称、presence、defaults、validation 与 fingerprint �
 ### 公开 API 分层
 
 - 新生成代码：使用 schema 生成的 `Type_from_*` / `Type_to_*`；生成实现通过
-  `TbeTypedDescriptor` 校验 descriptor ABI。
-- 已有 C struct：deferred storage 使用 `TBE_TYPED_*` raw metadata 和 enum-based
-  `TBE_TYPED_BIND_PARSE_EX` / `TBE_TYPED_BIND_SERIALIZE_EX`。
+  `DataBindTypedDescriptor` 校验 descriptor ABI。
+- 已有 C struct：deferred storage 使用 `DATA_BIND_TYPED_*` raw metadata 和 enum-based
+  `DATA_BIND_TYPED_BIND_PARSE_EX` / `DATA_BIND_TYPED_BIND_SERIALIZE_EX`。
 - ABI-v2 native descriptor：调用方必须同时提供显式 schema overlay 与通过校验的
   canonical CMeta graph；graphless descriptor 与 ABI-v1 一律返回 schema error。
 - 未知 schema、脚本与插件宿主：使用 owning `DataBindObject` 或动态
@@ -200,7 +200,7 @@ message Order {
 }
 ```
 
-调用普通 `data_bind_object_serialize_*()` 或 `tbe_typed_serialize()` 即应用映射，
+调用普通 `data_bind_object_serialize_*()` 或 `data_bind_typed_serialize()` 即应用映射，
 不再存在单独的 `_mapped` 序列化入口。
 
 ## 路线一：生成 `.h/.c`
@@ -229,7 +229,7 @@ if (Order_from_json(codec, &order, input, input_len, &error) != DATA_BIND_OK) re
 printf("%llu\n", (unsigned long long)order.order_id);
 
 if (Order_to_json(codec, &order, &json, &json_len, &error) != DATA_BIND_OK) return 1;
-tbe_typed_serialized_free(json);
+data_bind_typed_serialized_free(json);
 Order_clear(&order);
 data_bind_free(codec);
 ```
@@ -260,17 +260,17 @@ symbol visibility。静态库不定义这两个宏。
 ## 路线二：映射现有 C struct
 
 ```c
-#include "tbe_typed.h"
+#include "data_bind_typed.h"
 
 typedef struct Order {
   uint64_t order_id;
   tstr symbol;
 } Order;
 
-TBE_TYPED_DEFINE_STRUCT(
+DATA_BIND_TYPED_DEFINE_STRUCT(
     ORDER_BINDING, Order, "Order",
-    TBE_TYPED_FIELD(Order, order_id, "id", TBE_TYPED_U64, TBE_TYPED_REQUIRED),
-    TBE_TYPED_FIELD(Order, symbol, "symbol", TBE_TYPED_STRING, TBE_TYPED_REQUIRED));
+    DATA_BIND_TYPED_FIELD(Order, order_id, "id", DATA_BIND_TYPED_U64, DATA_BIND_TYPED_REQUIRED),
+    DATA_BIND_TYPED_FIELD(Order, symbol, "symbol", DATA_BIND_TYPED_STRING, DATA_BIND_TYPED_REQUIRED));
 ```
 
 应用先加载同一 schema，再验证 descriptor 并操作对象：
@@ -282,18 +282,18 @@ Order order;
 char *json = NULL;
 
 if (data_bind_create("order.schema", &codec, &error) != DATA_BIND_OK) return 1;
-if (tbe_typed_validate_schema(codec, "Order", &ORDER_BINDING, &error) != DATA_BIND_OK) return 1;
-if (TBE_TYPED_BIND_INIT(ORDER_BINDING, &order, &error) != DATA_BIND_OK) return 1;
-if (TBE_TYPED_BIND_PARSE_EX(codec, ORDER_BINDING, DATA_BIND_FORMAT_JSON,
+if (data_bind_typed_validate_schema(codec, "Order", &ORDER_BINDING, &error) != DATA_BIND_OK) return 1;
+if (DATA_BIND_TYPED_BIND_INIT(ORDER_BINDING, &order, &error) != DATA_BIND_OK) return 1;
+if (DATA_BIND_TYPED_BIND_PARSE_EX(codec, ORDER_BINDING, DATA_BIND_FORMAT_JSON,
                             input, input_len, 0, &order, &error) != DATA_BIND_OK) return 1;
 
 printf("%llu\n", (unsigned long long)order.order_id);
 
-if (TBE_TYPED_BIND_SERIALIZE_EX(codec, ORDER_BINDING, &order,
+if (DATA_BIND_TYPED_BIND_SERIALIZE_EX(codec, ORDER_BINDING, &order,
                                 DATA_BIND_FORMAT_JSON, &json, NULL,
                                 &error) != DATA_BIND_OK) return 1;
-tbe_typed_serialized_free(json);
-TBE_TYPED_BIND_CLEAR(ORDER_BINDING, &order);
+data_bind_typed_serialized_free(json);
+DATA_BIND_TYPED_BIND_CLEAR(ORDER_BINDING, &order);
 data_bind_free(codec);
 ```
 
@@ -302,7 +302,7 @@ data_bind_free(codec);
 
 这些宏不会合成 ABI-v2 descriptor。若现有 struct 要进入 CMeta-authoritative
 descriptor 路线，必须显式提供 canonical `cmeta_data_desc` 根，并使用
-`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`。ABI-v1 或缺少 native graph
+`DATA_BIND_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`。ABI-v1 或缺少 native graph
 直接失败；不会转入 raw 路线。当前自动 descriptor slice 只覆盖固定宽度整数、
 F32/F64、带完整 CMeta operations 的非 flags enum，以及非 optional 的嵌套 Struct。
 
@@ -445,7 +445,7 @@ final output。
 - 已发布的 owning dynamic root 保留不可变的语义 metadata，可在创建它的
   `DataBind *codec` 释放后继续读取、clone 和释放；需要 schema overlay 的后续操作仍须
   传入匹配 codec。
-- owning object/value 必须使用对应的 DataBind/TBE typed 释放函数。
+- owning object/value 必须使用对应的 DataBind/DataBind typed 释放函数。
 - accessor 返回的 child/string 指针以及 range/view 都借用 owning root；root 释放后其
   所有 descendants/views 立即失效。
 - `data_bind_value_clone()` 创建独立 owning storage；源与 clone 可分别释放。不可变的
