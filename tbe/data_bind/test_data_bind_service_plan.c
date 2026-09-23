@@ -607,7 +607,9 @@ spec("DataBind compiled service binding plan") {
     check_equal(request.right, 0u);
     check_equal(request.scale, 0u);
     check_equal(request.presence, 0u);
-    check_equal(response.sum, 0u);
+    /* bind_inputs owns request/parameter staging only; the return slot is
+     * untouched until the exact-ABI adapter executes the native function. */
+    check_equal(response.sum, 94u);
 
     data_bind_service_plan_free(plan);
     data_bind_free(codec);
