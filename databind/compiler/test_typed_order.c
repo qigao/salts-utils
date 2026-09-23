@@ -146,7 +146,7 @@ spec("generated typed Order") {
       check_null(strstr(encoded, "\"routing_hint\""));
       check_null(strstr(encoded, "\"client_tag\""));
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_typed_serialized_free(encoded);
   }
 
   it("should bound optional presence helpers by field and bitmap size") {
@@ -196,8 +196,8 @@ spec("generated typed Order") {
     check_equal(decoded.routing_hint, 9u);
     check_equal(decoded.client_tag, "edge-a");
 
-    tbe_typed_serialized_free(wire);
-    tbe_typed_serialized_free(encoded);
+    data_bind_typed_serialized_free(wire);
+    data_bind_typed_serialized_free(encoded);
     Order_clear(&decoded);
     Order_clear(&present);
   }
@@ -214,7 +214,7 @@ spec("generated typed Order") {
       check_status_ok(Order_from_bin(codec, &decoded, encoded, encoded_len, &error), &error);
       check_order(&decoded);
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_typed_serialized_free(encoded);
     Order_clear(&decoded);
   }
 
@@ -229,7 +229,7 @@ spec("generated typed Order") {
                    DATA_BIND_ERR_PARSE);
       check_order(&order);
     }
-    tbe_typed_serialized_free(encoded);
+    data_bind_typed_serialized_free(encoded);
   }
 
   it("should reject a generated descriptor used with a different schema") {
@@ -276,7 +276,7 @@ spec("generated typed Order") {
       check_status_ok(status, &error);
       check_not_null(encoded);
       if (status == DATA_BIND_OK) check_order(&decoded);
-      tbe_typed_serialized_free(encoded);
+      data_bind_typed_serialized_free(encoded);
       Order_clear(&decoded);
     }
   }
@@ -297,10 +297,10 @@ spec("generated typed Order") {
     check_status_ok(Order_to_xml(codec, &order, &xml_output, &output_len, &error), &error);
     check_contains(xml_output, "<orderId>42</orderId>");
 
-    tbe_typed_serialized_free(json_output);
-    tbe_typed_serialized_free(yaml_output);
-    tbe_typed_serialized_free(csv_output);
-    tbe_typed_serialized_free(xml_output);
+    data_bind_typed_serialized_free(json_output);
+    data_bind_typed_serialized_free(yaml_output);
+    data_bind_typed_serialized_free(csv_output);
+    data_bind_typed_serialized_free(xml_output);
   }
 
   it("should expose a schema-specific host codec for runtime providers") {
@@ -397,7 +397,7 @@ spec("generated typed Order") {
     check(encoded_len <= TEST_GUEST_WIRE_CAPACITY);
     check(encoded_len <= UINT32_MAX);
     if (encoded == NULL || encoded_len > TEST_GUEST_WIRE_CAPACITY || encoded_len > UINT32_MAX) {
-      tbe_typed_serialized_free(encoded);
+      data_bind_typed_serialized_free(encoded);
     } else {
       context.wire = encoded;
       context.wire_size = (uint32_t)encoded_len;
@@ -451,7 +451,7 @@ spec("generated typed Order") {
           Order_guest_from_json(&bridge, json, strlen(json), guest_wire, 1, &output_len, &view),
           TEST_BRIDGE_CAPACITY_ERROR);
       check_equal(output_len, encoded_len);
-      tbe_typed_serialized_free(encoded);
+      data_bind_typed_serialized_free(encoded);
     }
   }
 }
