@@ -305,17 +305,17 @@ static const char *tbe_compiler_native_requirement_name(
 
 /* Native symbol spellings project the same canonical records into generated C. */
 static const tbe_compiler_scalar_projection_t TBE_COMPILER_SCALAR_PROJECTIONS[] = {
-    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "TBE_TYPED_BOOL", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
-    {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "TBE_TYPED_I8", "salts_int8_cmeta_data", "salts_int8_cmeta_type"},
-    {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "TBE_TYPED_U8", "salts_uint8_cmeta_data", "salts_uint8_cmeta_type"},
-    {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "TBE_TYPED_I16", "salts_int16_cmeta_data", "salts_int16_cmeta_type"},
-    {&salts_uint16_cmeta_data, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "TBE_TYPED_U16", "salts_uint16_cmeta_data", "salts_uint16_cmeta_type"},
-    {&salts_int32_cmeta_data, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "TBE_TYPED_I32", "salts_int32_cmeta_data", "salts_int32_cmeta_type"},
-    {&salts_uint32_cmeta_data, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "TBE_TYPED_U32", "salts_uint32_cmeta_data", "salts_uint32_cmeta_type"},
-    {&salts_int64_cmeta_data, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "TBE_TYPED_I64", "salts_int64_cmeta_data", "salts_int64_cmeta_type"},
-    {&salts_uint64_cmeta_data, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "TBE_TYPED_U64", "salts_uint64_cmeta_data", "salts_uint64_cmeta_type"},
-    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "TBE_TYPED_F32", "cmeta_data_float", "cmeta_type_float"},
-    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "TBE_TYPED_F64", "cmeta_data_double", "cmeta_type_double"},
+    {&cmeta_data_bool, "uint8_t", "bool", "bool", "bool", "boolean", "bool", "boolean", "DATA_BIND_TYPED_BOOL", "salts_bool8_cmeta_data", "salts_bool8_cmeta_type"},
+    {&salts_int8_cmeta_data, "int8_t", "std::int8_t", "int8", "i8", "number", "int", "int", "DATA_BIND_TYPED_I8", "salts_int8_cmeta_data", "salts_int8_cmeta_type"},
+    {&salts_uint8_cmeta_data, "uint8_t", "std::uint8_t", "uint8", "u8", "number", "int", "int", "DATA_BIND_TYPED_U8", "salts_uint8_cmeta_data", "salts_uint8_cmeta_type"},
+    {&salts_int16_cmeta_data, "int16_t", "std::int16_t", "int16", "i16", "number", "int", "int", "DATA_BIND_TYPED_I16", "salts_int16_cmeta_data", "salts_int16_cmeta_type"},
+    {&salts_uint16_cmeta_data, "uint16_t", "std::uint16_t", "uint16", "u16", "number", "int", "int", "DATA_BIND_TYPED_U16", "salts_uint16_cmeta_data", "salts_uint16_cmeta_type"},
+    {&salts_int32_cmeta_data, "int32_t", "std::int32_t", "int32", "i32", "number", "int", "int", "DATA_BIND_TYPED_I32", "salts_int32_cmeta_data", "salts_int32_cmeta_type"},
+    {&salts_uint32_cmeta_data, "uint32_t", "std::uint32_t", "uint32", "u32", "number", "int", "int", "DATA_BIND_TYPED_U32", "salts_uint32_cmeta_data", "salts_uint32_cmeta_type"},
+    {&salts_int64_cmeta_data, "int64_t", "std::int64_t", "int64", "i64", "number", "int", "long", "DATA_BIND_TYPED_I64", "salts_int64_cmeta_data", "salts_int64_cmeta_type"},
+    {&salts_uint64_cmeta_data, "uint64_t", "std::uint64_t", "uint64", "u64", "number", "int", "uint64", "DATA_BIND_TYPED_U64", "salts_uint64_cmeta_data", "salts_uint64_cmeta_type"},
+    {&cmeta_data_float, "float", "float", "float32", "f32", "number", "float", "float", "DATA_BIND_TYPED_F32", "cmeta_data_float", "cmeta_type_float"},
+    {&cmeta_data_double, "double", "double", "float64", "f64", "number", "float", "double", "DATA_BIND_TYPED_F64", "cmeta_data_double", "cmeta_type_double"},
 };
 
 static const tbe_compiler_scalar_projection_t *tbe_compiler_scalar_projection(const char *type) {
@@ -413,7 +413,7 @@ static const char *tbe_compiler_typed_kind(const char *type) {
   if (!type) return NULL;
   projection = tbe_compiler_scalar_projection(type);
   if (projection) return projection->typed_kind;
-  if (strcmp(type, "uuid") == 0) return "TBE_TYPED_UUID";
+  if (strcmp(type, "uuid") == 0) return "DATA_BIND_TYPED_UUID";
   return NULL;
 }
 
@@ -447,12 +447,12 @@ static const char *tbe_compiler_typed_named_kind(Node *root, const char *type,
   if (type && strcmp(type, "string") == 0) {
     snprintf(c_type, c_type_size, "tstr");
     descriptor[0] = '\0';
-    return "TBE_TYPED_STRING";
+    return "DATA_BIND_TYPED_STRING";
   }
   if (type && strcmp(type, "bytes") == 0) {
     snprintf(c_type, c_type_size, "tbe_bytes_t");
     descriptor[0] = '\0';
-    return "TBE_TYPED_BYTES";
+    return "DATA_BIND_TYPED_BYTES";
   }
   if (kind && scalar) {
     snprintf(c_type, c_type_size, "%s", scalar);
@@ -463,7 +463,7 @@ static const char *tbe_compiler_typed_named_kind(Node *root, const char *type,
   if (record) {
     snprintf(c_type, c_type_size, "%s_t", type);
     descriptor[0] = '\0';
-    return "TBE_TYPED_ENUM";
+    return "DATA_BIND_TYPED_ENUM";
   }
   record = tbe_compiler_find_record(root, "composites", type);
   if (!record) record = tbe_compiler_find_record(root, "groups", type);
@@ -471,7 +471,7 @@ static const char *tbe_compiler_typed_named_kind(Node *root, const char *type,
   if (record) {
     snprintf(c_type, c_type_size, "%s_t", type);
     snprintf(descriptor, descriptor_size, "&%s_TYPED_TYPE", type);
-    return "TBE_TYPED_OBJECT";
+    return "DATA_BIND_TYPED_OBJECT";
   }
   c_type[0] = '\0';
   descriptor[0] = '\0';
@@ -484,7 +484,7 @@ static const char *tbe_compiler_typed_wire_kind(Node *root, const char *type,
   if (record) {
     const char *underlying = tbe_compiler_string_value(record, "underlying_type");
     const char *kind = tbe_compiler_typed_kind(underlying ? underlying : "int32");
-    return kind ? kind : "TBE_TYPED_I32";
+    return kind ? kind : "DATA_BIND_TYPED_I32";
   }
   return fallback;
 }
@@ -615,9 +615,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     snprintf(descriptor, sizeof(descriptor), "&%s_TYPED_TYPE", group_type ? group_type : "unknown");
     snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
     snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
-    tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_LIST");
-    tbe_compiler_set_string(field, "typed_element_kind", "TBE_TYPED_OBJECT");
-    tbe_compiler_set_string(field, "typed_element_wire_kind", "TBE_TYPED_OBJECT");
+    tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_LIST");
+    tbe_compiler_set_string(field, "typed_element_kind", "DATA_BIND_TYPED_OBJECT");
+    tbe_compiler_set_string(field, "typed_element_wire_kind", "DATA_BIND_TYPED_OBJECT");
     tbe_compiler_set_string(field, "typed_element_c_type", c_type);
     tbe_compiler_set_string(field, "typed_object_descriptor", descriptor);
     tbe_compiler_set_string(field, "typed_vector_type", vector_type);
@@ -634,8 +634,8 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       int written;
       snprintf(declaration, sizeof(declaration), "uint8_t %s[%s];", c_name,
                count ? count : "0");
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_BYTES");
-      tbe_compiler_set_string(field, "typed_wire_kind", "TBE_TYPED_FIXED_BYTES");
+      tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_FIXED_BYTES");
+      tbe_compiler_set_string(field, "typed_wire_kind", "DATA_BIND_TYPED_FIXED_BYTES");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
       written = snprintf(base, sizeof(base), "tbe_fixed_bytes_%zu_%s_%zu_%s",
                          strlen(owner), owner, strlen(c_name), c_name);
@@ -664,7 +664,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
       snprintf(declaration, sizeof(declaration), "tbe_bytes_t %s;", c_name);
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_BYTES");
+      tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_BYTES");
       tbe_compiler_set_string(field, "typed_is_var_data", "1");
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
@@ -688,7 +688,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       const char *count = tbe_compiler_string_value(field, "length_field");
       snprintf(declaration, sizeof(declaration), "%s %s[%s];", c_type, c_name,
                count ? count : "0");
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_FIXED_ARRAY");
+      tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_FIXED_ARRAY");
       tbe_compiler_set_string(field, "typed_fixed_count", count ? count : "0");
     } else if (semantic->kind == CMETA_DATA_MAP) {
       const char *key_type = tbe_compiler_string_value(field, "key_type");
@@ -708,7 +708,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       snprintf(entry_type, sizeof(entry_type), "%s_%s_entry_t", owner, name);
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
-      tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_MAP");
+      tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_MAP");
       tbe_compiler_set_string(field, "typed_map_entry_type", entry_type);
       tbe_compiler_set_string(field, "typed_map_value_kind", value_kind);
       tbe_compiler_set_string(field, "typed_map_value_wire_kind",
@@ -724,8 +724,8 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
       tbe_compiler_set_string(field, "typed_kind",
-                              semantic->kind == CMETA_DATA_SET ? "TBE_TYPED_SET"
-                                                              : "TBE_TYPED_LIST");
+                              semantic->kind == CMETA_DATA_SET ? "DATA_BIND_TYPED_SET"
+                                                              : "DATA_BIND_TYPED_LIST");
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
     }
@@ -734,7 +734,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   }
   if (semantic && semantic->kind == CMETA_DATA_STRING) {
     snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
-    tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
+    tbe_compiler_set_string(field, "typed_kind", "DATA_BIND_TYPED_STRING");
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -760,11 +760,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "native_type_symbol", "salts_uuid_cmeta_type");
       tbe_compiler_set_string(field, "native_external", "1");
       tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_ENUM") == 0) {
+    } else if (strcmp(kind, "DATA_BIND_TYPED_ENUM") == 0) {
       if (tbe_compiler_set_enum_symbol(field, "native_data_symbol", type, "Data") == 0 &&
           tbe_compiler_set_enum_symbol(field, "native_type_symbol", type, "Type") == 0)
         tbe_compiler_set_string(field, "native_c_type", c_type);
-    } else if (strcmp(kind, "TBE_TYPED_OBJECT") == 0) {
+    } else if (strcmp(kind, "DATA_BIND_TYPED_OBJECT") == 0) {
       snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", type);
       tbe_compiler_set_string(field, "native_data_symbol", symbol);
       snprintf(symbol, sizeof(symbol), "%s_CMETA_TYPE", type);
@@ -1020,8 +1020,8 @@ static int tbe_compiler_cmeta_classify_record(
                "fixed_value") == 0 &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
-         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+        (strcmp(kind, "DATA_BIND_TYPED_UUID") == 0 ||
+         strcmp(kind, "DATA_BIND_TYPED_FIXED_BYTES") == 0))
       continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);
