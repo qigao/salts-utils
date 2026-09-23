@@ -74,7 +74,7 @@ static bool wait_for_marker(const char *path, uint32_t timeout_ms) {
 }
 
 static bool wait_for_atomic_true(
-    const atomic_bool *value, uint32_t timeout_ms) {
+    atomic_bool *value, uint32_t timeout_ms) {
     uint32_t elapsed = 0u;
     while (elapsed < timeout_ms) {
         if (atomic_load(value))
@@ -206,12 +206,13 @@ describe("transactional admission") {
             SALTS_PLUGIN_INVALID_STATE, {0}
         };
         plugin_destroy_context destroy = {
-            &registry, SALTS_PLUGIN_INVALID_STATE, ATOMIC_VAR_INIT(false)
+            &registry, SALTS_PLUGIN_INVALID_STATE
         };
         salts_thread_t load_thread = NULL;
         salts_thread_t destroy_thread = NULL;
         bool destroy_completed;
 
+        atomic_init(&destroy.done, false);
         (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
         (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
 
