@@ -209,6 +209,8 @@ static void prepare_row_descriptor(void) {
 }
 
 spec("DataBind native writer contract") {
+  (void)ttest_config__;
+
   before_each() {
     reset_native();
     prepare_row_descriptor();
