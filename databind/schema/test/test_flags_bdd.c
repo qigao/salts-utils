@@ -1,4 +1,4 @@
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "schema_parser_dsl.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -19,7 +19,7 @@ suite("Flags Feature") {
     given("a flags declaration without underlying type") {
       const char *schema = "flags Permissions { Read; Write; Execute; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
@@ -51,7 +51,7 @@ suite("Flags Feature") {
     given("a flags declaration with underlying type") {
       const char *schema = "flags OrderFlags <uint8> { IOC = 1; FOK = 2; PostOnly = 4; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
@@ -83,7 +83,7 @@ suite("Flags Feature") {
     given("flags without explicit values") {
       const char *schema = "flags Status { Active; Pending; Completed; Cancelled; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         parse_schema(schema, strlen(schema), root, &err);
@@ -107,7 +107,7 @@ suite("Flags Feature") {
     given("flags with mixed explicit and auto values") {
       const char *schema = "flags Mixed { A = 1; B; C = 16; D; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         parse_schema(schema, strlen(schema), root, &err);
@@ -135,7 +135,7 @@ suite("Flags Feature") {
       const char *schema = "enum Side <uint8> { Buy = 1; Sell = 2; } "
                            "flags Permissions { Read; Write; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
@@ -168,7 +168,7 @@ suite("Flags Feature") {
     given("flags with single item") {
       const char *schema = "flags Single { Only; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
@@ -189,7 +189,7 @@ suite("Flags Feature") {
     given("flags with large power of 2") {
       const char *schema = "flags Large { A = 1024; B; }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         parse_schema(schema, strlen(schema), root, &err);
