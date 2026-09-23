@@ -539,21 +539,22 @@ static DataBindStatus plan_compile_ingress(
         "More than one reflected IN parameter matches request type '%s'",
         operation->request_type);
 
+  plan->has_request_root_param = root_param != SIZE_MAX;
+  plan->request_root_param = root_param;
   plan->ingress = (DataBindBindingPlanEntryOwned *)calloc(
       field_count, sizeof(*plan->ingress));
   if (field_count != 0u && plan->ingress == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                           "Could not allocate ingress BindingPlan");
-  plan->ingress_count = field_count;
 
   for (i = 0u; i < field_count; ++i) {
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     DataBindBindingPlanEntryOwned *owned = &plan->ingress[i];
     DataBindBindingPlanEntry *entry = &owned->view;
+    DataBindBindingAddress address = DATA_BIND_BINDING_ADDRESS_INIT;
     const cmeta_data_field_desc *native_field;
     const DataBindNativePresenceBinding *presence;
     const cmeta_param_desc *param;
-    DataBindBindingAddress projected = DATA_BIND_BINDING_ADDRESS_INIT;
     size_t param_index;
     int indirect = 0;
     DataBindStatus status;
@@ -566,7 +567,7 @@ static DataBindStatus plan_compile_ingress(
     if (native_field->name == NULL ||
         strcmp(native_field->name, field.name) != 0)
       native_field = plan_native_field(native->request, field.name);
-    if (native_field == NULL)
+    if (native_field == NULL || native_field->value == NULL)
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
                             field.name, NULL,
                             "Native request field '%s' is unavailable",
@@ -574,8 +575,11 @@ static DataBindStatus plan_compile_ingress(
 
     status = plan_project_address(
         projection, operation, &field, DATA_BIND_BINDING_INGRESS,
-        &projected, diagnostic);
+        &address, diagnostic);
     if (status != DATA_BIND_OK) return status;
+    address.ordinal = i;
+
+    presence = plan_presence(native->request, field.name);
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
@@ -583,6 +587,12 @@ static DataBindStatus plan_compile_ingress(
       indirect = root_indirect;
       param_used[param_index] = 1u;
       plan->param_ingress[param_index] = 1u;
+
+      if (field.is_optional && presence == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Optional root request field '%s' lacks native presence metadata",
+            field.name);
     } else {
       param_index = plan_find_param_by_name(native->function, field.name);
       if (param_index == SIZE_MAX)
@@ -600,23 +610,28 @@ static DataBindStatus plan_compile_ingress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Function parameter '%s' is bound more than once", param->name);
+      if (field.is_optional && !field.has_default)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Direct optional parameter '%s' has no native presence/default "
+            "representation", param->name);
       param_used[param_index] = 1u;
       plan->param_ingress[param_index] = 1u;
+      plan->param_data[param_index] = native_field->value;
+      presence = NULL;
     }
 
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
     entry->direction = DATA_BIND_BINDING_INGRESS;
-    entry->address.binding_class = projected.binding_class;
-    entry->address.ordinal =
-        projected.ordinal != SIZE_MAX ? projected.ordinal : i;
+    entry->address = address;
     entry->function_param_index = param_index;
     entry->data = native_field->value;
-    entry->native_offset = root_param != SIZE_MAX ? native_field->offset : 0u;
+    entry->native_offset =
+        root_param != SIZE_MAX ? native_field->offset : 0u;
     entry->parameter_indirect = indirect;
     entry->required = !field.is_optional && !field.has_default;
     entry->has_default = field.has_default;
 
-    presence = plan_presence(native->request, field.name);
     if (presence != NULL) {
       entry->has_presence = 1;
       entry->presence_offset = presence->byte_offset;
@@ -624,11 +639,13 @@ static DataBindStatus plan_compile_ingress(
     }
 
     if (!plan_entry_set_strings(
-            owned, projected.space, projected.name, field.name, param->name,
+            owned, address.space, address.name, field.name, param->name,
             field.has_default ? field.default_value : NULL, field.format))
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, field.name,
                             param->name,
                             "Could not copy ingress BindingPlan metadata");
+    plan->ingress_count = i + 1u;
+
     status = plan_compile_default_token(owned, diagnostic);
     if (status != DATA_BIND_OK) return status;
   }
@@ -649,7 +666,15 @@ static DataBindStatus plan_compile_egress(
   int use_return = 0;
   size_t i;
 
-  if (strcmp(operation->response_type, "void") == 0) return DATA_BIND_OK;
+  if (strcmp(operation->response_type, "void") == 0) {
+    if (native->function->return_type == NULL ||
+        !cmeta_type_equal(native->function->return_type, &cmeta_type_void))
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+          operation->response_type, NULL,
+          "void Service response requires a void native return type");
+    return DATA_BIND_OK;
+  }
   if (native->response == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
                           operation->response_type, NULL,
@@ -681,8 +706,15 @@ static DataBindStatus plan_compile_egress(
   if (native->function->return_type != NULL &&
       native->function->return_type->kind != CMETA_T_POINTER &&
       cmeta_type_equal(native->function->return_type,
-                       native->response->data->storage_type))
+                       native->response->data->storage_type)) {
+    if (!plan_return_value_safe(native->response->data))
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+          operation->response_type, NULL,
+          "By-value response '%s' lacks trivial copy/destroy ownership traits",
+          operation->response_type);
     use_return = 1;
+  }
 
   if (root_param != SIZE_MAX && use_return)
     return plan_diag_fail(
@@ -690,21 +722,24 @@ static DataBindStatus plan_compile_egress(
         "Response '%s' is represented by both return value and OUT parameter",
         operation->response_type);
 
+  plan->response_uses_return = use_return;
+  plan->has_response_root_param = root_param != SIZE_MAX;
+  plan->response_root_param = root_param;
+
   plan->egress = (DataBindBindingPlanEntryOwned *)calloc(
       field_count, sizeof(*plan->egress));
   if (field_count != 0u && plan->egress == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                           "Could not allocate egress BindingPlan");
-  plan->egress_count = field_count;
-  plan->response_uses_return = use_return;
 
   for (i = 0u; i < field_count; ++i) {
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
     DataBindBindingPlanEntry *entry = &owned->view;
+    DataBindBindingAddress address = DATA_BIND_BINDING_ADDRESS_INIT;
     const cmeta_data_field_desc *native_field;
+    const DataBindNativePresenceBinding *presence;
     const cmeta_param_desc *param = NULL;
-    DataBindBindingAddress projected = DATA_BIND_BINDING_ADDRESS_INIT;
     size_t param_index = SIZE_MAX;
     int indirect = 0;
     DataBindStatus status;
@@ -717,7 +752,7 @@ static DataBindStatus plan_compile_egress(
     if (native_field->name == NULL ||
         strcmp(native_field->name, field.name) != 0)
       native_field = plan_native_field(native->response, field.name);
-    if (native_field == NULL)
+    if (native_field == NULL || native_field->value == NULL)
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
                             field.name, NULL,
                             "Native response field '%s' is unavailable",
@@ -725,15 +760,25 @@ static DataBindStatus plan_compile_egress(
 
     status = plan_project_address(
         projection, operation, &field, DATA_BIND_BINDING_EGRESS,
-        &projected, diagnostic);
+        &address, diagnostic);
     if (status != DATA_BIND_OK) return status;
+    address.ordinal = i;
+
+    presence = plan_presence(native->response, field.name);
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
       param = &native->function->params[param_index];
       indirect = root_indirect;
       param_used[param_index] = 1u;
-      plan->param_ingress[param_index] = 1u;
+      plan->param_egress[param_index] = 1u;
+      plan->param_data[param_index] = native->response->data;
+
+      if (field.is_optional && presence == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Optional root response field '%s' lacks native presence metadata",
+            field.name);
     } else if (!use_return) {
       param_index = plan_find_param_by_name(native->function, field.name);
       if (param_index == SIZE_MAX)
@@ -751,15 +796,25 @@ static DataBindStatus plan_compile_egress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Function parameter '%s' is bound more than once", param->name);
+      if (field.is_optional)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Direct optional OUT parameter '%s' has no native presence "
+            "representation", param->name);
       param_used[param_index] = 1u;
-      plan->param_ingress[param_index] = 1u;
+      plan->param_egress[param_index] = 1u;
+      plan->param_data[param_index] = native_field->value;
+      presence = NULL;
+    } else if (field.is_optional && presence == NULL) {
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field.name, NULL,
+          "Optional returned response field '%s' lacks native presence metadata",
+          field.name);
     }
 
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
     entry->direction = DATA_BIND_BINDING_EGRESS;
-    entry->address.binding_class = projected.binding_class;
-    entry->address.ordinal =
-        projected.ordinal != SIZE_MAX ? projected.ordinal : i;
+    entry->address = address;
     entry->function_param_index = param_index;
     entry->data = native_field->value;
     entry->native_offset =
@@ -768,12 +823,19 @@ static DataBindStatus plan_compile_egress(
     entry->target_is_return = use_return;
     entry->required = 1;
 
+    if (presence != NULL) {
+      entry->has_presence = 1;
+      entry->presence_offset = presence->byte_offset;
+      entry->presence_bit = presence->bit;
+    }
+
     if (!plan_entry_set_strings(
-            owned, projected.space, projected.name, field.name,
+            owned, address.space, address.name, field.name,
             param != NULL ? param->name : NULL, NULL, field.format))
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, field.name,
                             param != NULL ? param->name : NULL,
                             "Could not copy egress BindingPlan metadata");
+    plan->egress_count = i + 1u;
   }
 
   return DATA_BIND_OK;
