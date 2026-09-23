@@ -96,17 +96,31 @@ bool salts_plugin_callable_contract_equal(const cmeta_callable *left,
            bound_left.meta.properties == bound_right.meta.properties;
 }
 
-static salts_plugin_status validate_function_export(
-    const salts_plugin_function_export *entry) {
-    if (entry == NULL ||
-        entry->struct_size < SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE)
+static salts_plugin_status validate_publication(
+    const salts_plugin_publication *entry) {
+    if (entry == NULL || entry->struct_size < SALTS_PLUGIN_PUBLICATION_V1_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
-    if (entry->abi_version != SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION)
+    if (entry->abi_version != SALTS_PLUGIN_PUBLICATION_ABI_VERSION)
         return SALTS_PLUGIN_UNSUPPORTED_ABI;
-    if (!bounded_string_valid(entry->export_id, SALTS_PLUGIN_EXPORT_ID_MAX) ||
+    if (entry->kind <= 0 ||
+        !bounded_string_valid(entry->export_id, SALTS_PLUGIN_EXPORT_ID_MAX) ||
         !bounded_string_valid(entry->contract_id,
                               SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        entry->contract_version == 0u ||
+        entry->contract_version == 0u)
+        return SALTS_PLUGIN_INVALID_MANIFEST;
+    return SALTS_PLUGIN_OK;
+}
+
+static salts_plugin_status validate_function_export(
+    const salts_plugin_function_export *entry) {
+    salts_plugin_status status;
+
+    if (entry == NULL)
+        return SALTS_PLUGIN_INVALID_MANIFEST;
+    status = validate_publication(&entry->publication);
+    if (status != SALTS_PLUGIN_OK) return status;
+    if (entry->publication.kind != SALTS_PLUGIN_PUBLICATION_FUNCTION ||
+        entry->publication.struct_size < SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE ||
         entry->function == NULL ||
         entry->function_abi == NULL ||
         entry->function_entry == NULL)
@@ -240,10 +254,12 @@ static bool function_contract_key_equal(
     const salts_plugin_function_export *entry,
     const char *contract_id,
     uint32_t contract_version) {
-    return entry != NULL && contract_version != 0u &&
+    const salts_plugin_publication *publication =
+        entry == NULL ? NULL : &entry->publication;
+    return publication != NULL && contract_version != 0u &&
            bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) &&
-           entry->contract_version == contract_version &&
-           bounded_string_equal(entry->contract_id, contract_id,
+           publication->contract_version == contract_version &&
+           bounded_string_equal(publication->contract_id, contract_id,
                                 SALTS_PLUGIN_CONTRACT_ID_MAX);
 }
 
@@ -270,7 +286,8 @@ salts_plugin_status salts_plugin_function_export_require(
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
     if (!function_contract_key_equal(entry, contract_id, contract_version) ||
-        (entry->capabilities & required_capabilities) != required_capabilities)
+        (entry->publication.capabilities & required_capabilities) !=
+            required_capabilities)
         return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
 
     *out_function = entry->function;
@@ -329,19 +346,25 @@ salts_plugin_status salts_plugin_manifest_validate(
     }
 
     if (manifest->struct_size >= SALTS_PLUGIN_MANIFEST_V2_SIZE) {
-        if (manifest->function_export_count > SALTS_PLUGIN_MAX_EXPORTS ||
+        if (manifest->publication_count > SALTS_PLUGIN_MAX_EXPORTS ||
             manifest->export_count >
-                SALTS_PLUGIN_MAX_EXPORTS - manifest->function_export_count)
+                SALTS_PLUGIN_MAX_EXPORTS - manifest->publication_count)
             return SALTS_PLUGIN_CAPACITY_EXCEEDED;
-        if (manifest->function_export_count != 0u &&
-            manifest->function_exports == NULL)
+        if (manifest->publication_count != 0u &&
+            manifest->publications == NULL)
             return SALTS_PLUGIN_INVALID_MANIFEST;
 
-        for (index = 0u; index < manifest->function_export_count; ++index) {
-            const salts_plugin_function_export *entry =
-                manifest->function_exports[index];
-            salts_plugin_status status = validate_function_export(entry);
+        for (index = 0u; index < manifest->publication_count; ++index) {
+            const salts_plugin_publication *entry =
+                manifest->publications[index];
+            salts_plugin_status status = validate_publication(entry);
             if (status != SALTS_PLUGIN_OK) return status;
+
+            if (entry->kind == SALTS_PLUGIN_PUBLICATION_FUNCTION) {
+                status = validate_function_export(
+                    (const salts_plugin_function_export *)entry);
+                if (status != SALTS_PLUGIN_OK) return status;
+            }
 
             for (other = 0u; other < manifest->export_count; ++other) {
                 if (bounded_string_equal(entry->export_id,
@@ -352,7 +375,7 @@ salts_plugin_status salts_plugin_manifest_validate(
             for (other = 0u; other < index; ++other) {
                 if (bounded_string_equal(
                         entry->export_id,
-                        manifest->function_exports[other]->export_id,
+                        manifest->publications[other]->export_id,
                         SALTS_PLUGIN_EXPORT_ID_MAX))
                     return SALTS_PLUGIN_DUPLICATE_EXPORT;
             }
@@ -362,16 +385,16 @@ salts_plugin_status salts_plugin_manifest_validate(
     return SALTS_PLUGIN_OK;
 }
 
-salts_plugin_status salts_plugin_manifest_find_function_export(
+salts_plugin_status salts_plugin_manifest_find_publication(
     const salts_plugin_manifest *manifest,
     const char *export_id,
-    const salts_plugin_function_export **out_export) {
+    const salts_plugin_publication **out_publication) {
     size_t index;
     salts_plugin_status status;
 
-    if (out_export == NULL)
+    if (out_publication == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    *out_export = NULL;
+    *out_publication = NULL;
 
     if (!bounded_string_valid(export_id, SALTS_PLUGIN_EXPORT_ID_MAX))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
@@ -382,17 +405,37 @@ salts_plugin_status salts_plugin_manifest_find_function_export(
     if (manifest->struct_size < SALTS_PLUGIN_MANIFEST_V2_SIZE)
         return SALTS_PLUGIN_UNKNOWN_EXPORT;
 
-    for (index = 0u; index < manifest->function_export_count; ++index) {
-        const salts_plugin_function_export *entry =
-            manifest->function_exports[index];
+    for (index = 0u; index < manifest->publication_count; ++index) {
+        const salts_plugin_publication *entry = manifest->publications[index];
         if (bounded_string_equal(entry->export_id, export_id,
                                  SALTS_PLUGIN_EXPORT_ID_MAX)) {
-            *out_export = entry;
+            *out_publication = entry;
             return SALTS_PLUGIN_OK;
         }
     }
 
     return SALTS_PLUGIN_UNKNOWN_EXPORT;
+}
+
+salts_plugin_status salts_plugin_manifest_find_function_export(
+    const salts_plugin_manifest *manifest,
+    const char *export_id,
+    const salts_plugin_function_export **out_export) {
+    const salts_plugin_publication *publication = NULL;
+    salts_plugin_status status;
+
+    if (out_export == NULL)
+        return SALTS_PLUGIN_INVALID_ARGUMENT;
+    *out_export = NULL;
+
+    status = salts_plugin_manifest_find_publication(
+        manifest, export_id, &publication);
+    if (status != SALTS_PLUGIN_OK) return status;
+    if (publication->kind != SALTS_PLUGIN_PUBLICATION_FUNCTION)
+        return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
+
+    *out_export = (const salts_plugin_function_export *)publication;
+    return SALTS_PLUGIN_OK;
 }
 
 salts_plugin_status salts_plugin_manifest_find_export(
