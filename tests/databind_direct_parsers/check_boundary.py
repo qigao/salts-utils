@@ -4,7 +4,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-BIND = ROOT / "tbe" / "data_bind"
+BIND = ROOT / "databind" / "runtime"
 
 
 class DirectParserBoundary(unittest.TestCase):
@@ -18,7 +18,7 @@ class DirectParserBoundary(unittest.TestCase):
             r'\b(?:turbo_(?:json|csv|xml|yaml|query|dsv|datetime|parse|free)_\w*|'
             r'TURBO_(?:JSON|CSV|XML|YAML|QUERY)_\w*)\b')
         violations = []
-        for source in sorted((ROOT / "tbe").rglob("*")):
+        for source in sorted((ROOT / "databind").rglob("*")):
             if source.suffix not in {".c", ".h", ".cpp", ".mustache"}:
                 continue
             for number, line in enumerate(source.read_text().splitlines(), 1):
