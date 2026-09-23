@@ -1,6 +1,6 @@
 #include "image.generated.h"
 
-int Image_Codec_Decode(
+int databind_5_Image_5_Codec_6_Decode(
     const DecodeRequest_t *request,
     DecodeResponse_t *response) {
   if (request == NULL || response == NULL) return -1;
@@ -8,7 +8,7 @@ int Image_Codec_Decode(
   return 0;
 }
 
-int Image_Codec_Encode(
+int databind_5_Image_5_Codec_6_Encode(
     const EncodeRequest_t *request,
     EncodeResponse_t *response) {
   if (request == NULL || response == NULL) return -1;
