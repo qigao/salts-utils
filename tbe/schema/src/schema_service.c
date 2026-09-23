@@ -3,6 +3,7 @@
 #include "schema_builtin_type.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -279,7 +280,12 @@ static int service_field_binding_valid(Node *field, const char *kind,
     }
 
     if (!service_attribute_is_bare(attr) && values != 1u)
-        return service_error(err, "Field binding accepts at most one wire name");
+        return service_error(err, "Field binding accepts exactly one wire name");
+    if (!service_attribute_is_bare(attr)) {
+        const char *wire_name = service_attribute_value_at(attr, 0u);
+        if (wire_name == NULL || wire_name[0] == '\0')
+            return service_error(err, "Field binding wire name must not be empty");
+    }
 
     if ((strcmp(kind, "path") == 0 || strcmp(kind, "query") == 0 ||
          strcmp(kind, "header") == 0 || strcmp(kind, "cookie") == 0) &&
