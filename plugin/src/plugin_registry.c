@@ -89,6 +89,23 @@ static salts_plugin_status close_rejected_library(
     return close_status == SALTS_PLUGIN_OK ? rejection : close_status;
 }
 
+static void release_load_reservation(
+    salts_plugin_registry_impl *impl) {
+    salts_mutex_lock(&impl->lock);
+    --impl->loads_inflight;
+    salts_mutex_unlock(&impl->lock);
+}
+
+static salts_plugin_status close_rejected_load(
+    salts_plugin_registry_impl *impl,
+    salts_plugin_library *library,
+    salts_plugin_status rejection) {
+    salts_plugin_status status =
+        close_rejected_library(library, rejection);
+    release_load_reservation(impl);
+    return status;
+}
+
 static salts_plugin_registry_impl *registry_impl(
     const salts_plugin_registry *registry) {
     return registry == NULL
@@ -245,21 +262,14 @@ salts_plugin_status salts_plugin_registry_load(
 
     manifest = query(SALTS_PLUGIN_ABI_VERSION);
     if (manifest == NULL) {
-        salts_mutex_lock(&impl->lock);
-        --impl->loads_inflight;
-        salts_mutex_unlock(&impl->lock);
-        return close_rejected_library(
-            &library, SALTS_PLUGIN_QUERY_REJECTED);
+        return close_rejected_load(
+            impl, &library, SALTS_PLUGIN_QUERY_REJECTED);
     }
 
     status = salts_plugin_manifest_validate(
         manifest, SALTS_PLUGIN_ABI_VERSION);
-    if (status != SALTS_PLUGIN_OK) {
-        salts_mutex_lock(&impl->lock);
-        --impl->loads_inflight;
-        salts_mutex_unlock(&impl->lock);
-        return close_rejected_library(&library, status);
-    }
+    if (status != SALTS_PLUGIN_OK)
+        return close_rejected_load(impl, &library, status);
 
     /*
      * Publication is the only second locked phase. Re-check registry state and
@@ -313,9 +323,8 @@ salts_plugin_status salts_plugin_registry_load(
     return SALTS_PLUGIN_OK;
 
 reject_locked:
-    --impl->loads_inflight;
     salts_mutex_unlock(&impl->lock);
-    return close_rejected_library(&library, status);
+    return close_rejected_load(impl, &library, status);
 }
 
 salts_plugin_status salts_plugin_registry_find(
