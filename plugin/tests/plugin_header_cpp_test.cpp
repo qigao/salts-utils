@@ -6,20 +6,24 @@ static_assert(std::is_standard_layout<salts_plugin_version>::value,
               "plugin version must be a C-compatible value");
 static_assert(std::is_standard_layout<salts_plugin_export>::value,
               "plugin export must be a C-compatible ABI row");
-static_assert(std::is_standard_layout<salts_plugin_function_adapter>::value,
-              "plugin function adapter must be a C-compatible ABI value");
+static_assert(std::is_standard_layout<salts_plugin_interface_export>::value,
+              "plugin interface payload must be C-compatible");
+static_assert(std::is_standard_layout<salts_plugin_function_export>::value,
+              "plugin function payload must be C-compatible");
+static_assert(std::is_standard_layout<salts_plugin_export_value>::value,
+              "plugin capability union must be C-compatible");
 static_assert(std::is_same<
-                  decltype(salts_plugin_export{}.function),
+                  decltype(salts_plugin_export{}.value.function.desc),
                   const cmeta_function_desc *>::value,
               "Function export must publish canonical FunctionMeta");
 static_assert(std::is_same<
-                  decltype(salts_plugin_export{}.function_abi),
+                  decltype(salts_plugin_export{}.value.function.abi),
                   const cmeta_function_abi_desc *>::value,
               "Function export must publish canonical FunctionAbi");
 static_assert(std::is_standard_layout<salts_plugin_manifest>::value,
               "plugin manifest must be a C-compatible ABI row");
 static_assert(std::is_same<
-                  decltype(salts_plugin_export{}.interface_value),
+                  decltype(salts_plugin_export{}.value.interface.value),
                   void *>::value,
               "interface export must expose a mutable borrowed handle");
 static_assert(std::is_standard_layout<salts_plugin_ref>::value,
