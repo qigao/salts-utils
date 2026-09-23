@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error --output-on-failure \
+          ctest --test-dir build/linux-gcc-debug/databind --no-tests=error --output-on-failure \
             --output-junit "$RUNNER_TEMP/enum-evidence/tbe.xml"
       - name: Compile and execute generated enum consumers
         shell: bash
