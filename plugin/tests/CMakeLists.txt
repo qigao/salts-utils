@@ -123,6 +123,7 @@ set_target_properties(salts_plugin_fixture_cpp PROPERTIES
   CXX_STANDARD_REQUIRED ON
   CXX_EXTENSIONS OFF)
 
+target_link_libraries(salts_plugin_fixture_c PRIVATE Salts::Platform)
 target_link_libraries(salts_plugin_fixture_slow_stop PRIVATE Salts::Platform)
 target_link_libraries(salts_plugin_fixture_slow_query_a PRIVATE Salts::Platform)
 target_link_libraries(salts_plugin_fixture_slow_query_b PRIVATE Salts::Platform)
