@@ -40,7 +40,8 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Area | Public capability |
 | --- | --- |
 | Crypto | `Salts::Crypto` |
-| Plugin ABI | `Salts::Plugin`; CMeta Interface/Callable manifests and semantic admission |
+| Plugin ABI | `Salts::Plugin`; CMeta Interface/Callable manifests, loader, lifecycle and semantic admission |
+| Plugin + CFlow | `Salts::PluginCFlow`; lease-owned Publisher/Executor/Scheduler bindings |
 | Filesystem | `Salts::FS` |
 | Process adapters | `Salts::Process` |
 | Query | `Salts::QueryVM` |
@@ -114,7 +115,7 @@ SaltsUtils exports the actual runtime and owns its internal dependency closure. 
 
 ### Plugin
 
-`Salts::Plugin` defines a finite CMeta-based plugin manifest/export ABI. Stable `contract_id`/version values carry semantic identity across translation units and DSOs; descriptor, vtable, callable and load addresses remain representation facts. Dynamic loading/registry and optional CFlow execution adapters are layered above this contract rather than added to CMeta/CFlow core.
+`Salts::Plugin` defines a finite CMeta-based plugin manifest/export ABI plus bounded loading and explicit lifecycle. Stable `contract_id`/version values carry semantic identity across translation units and DSOs; descriptor, vtable, callable and load addresses remain representation facts. `Salts::PluginCFlow` is a separate adapter target that acquires Plugin leases and exposes plugin-owned `cflow_publisher`, `cflow_executor`, and `cflow_scheduler` interfaces without moving or destroying those owners.
 
 ### Filesystem
 
