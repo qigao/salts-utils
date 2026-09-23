@@ -312,6 +312,13 @@ spec("DataBind compiled service binding plan") {
     check_true(entry.source == DATA_BIND_SERVICE_SOURCE_QUERY);
     check_equal(entry.function_param, "left");
     check_equal(entry.function_param_index, 0u);
+    check_equal(entry.native_offset, 0u);
+
+    entry = (DataBindServicePlanEntry)DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
+    check(data_bind_service_plan_ingress_at(http, 1u, &entry) == 1);
+    check_equal(entry.schema_field, "right");
+    check_equal(entry.function_param, "right");
+    check_equal(entry.native_offset, 0u);
 
     entry = (DataBindServicePlanEntry)DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
     check(data_bind_service_plan_ingress_at(http, 2u, &entry) == 1);
@@ -503,6 +510,7 @@ spec("DataBind compiled service binding plan") {
     DataBindServicePlanDiagnostic diagnostic =
         DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
     DataBindServicePlan *plan = NULL;
+    DataBindServicePlanEntry entry = DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
     TestProvider state = {.provide_scale = 1};
     DataBindServiceProvider provider = provider_for(&state);
     unsigned char workspace[4096];
@@ -517,6 +525,10 @@ spec("DataBind compiled service binding plan") {
                     DATA_BIND_SERVICE_PROJECTION_HTTP,
                     &native, &plan, &diagnostic),
                 DATA_BIND_OK);
+    check(data_bind_service_plan_ingress_at(plan, 1u, &entry) == 1);
+    check_true(entry.target == DATA_BIND_SERVICE_TARGET_REQUEST_FIELD);
+    check_equal(entry.native_offset, offsetof(AddRequest, right));
+
     frame.request = &request;
     frame.request_bytes = sizeof(request);
     frame.return_value = &response;
