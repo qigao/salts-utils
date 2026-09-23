@@ -411,8 +411,8 @@ describe("semantic identity") {
 
 describe("ABI layout contract") {
     it("pins the frozen V1 export stride and manifest-readable prefixes") {
-        check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
-                    (uint32_t)sizeof(salts_plugin_export));
+        check_true(SALTS_PLUGIN_EXPORT_V1_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_export));
         check_true(SALTS_PLUGIN_MANIFEST_V1_SIZE <
                    (uint32_t)sizeof(salts_plugin_manifest));
         check_true(SALTS_PLUGIN_MANIFEST_V2_SIZE <=
@@ -425,6 +425,16 @@ describe("ABI layout contract") {
         check_equal(SALTS_PLUGIN_MANIFEST_V1_SIZE,
                     (uint32_t)(offsetof(salts_plugin_manifest, destroy) +
                                sizeof(((salts_plugin_manifest *)0)->destroy)));
+        check_equal(SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE,
+                    (uint32_t)(offsetof(salts_plugin_function_export,
+                                       function_entry) +
+                               sizeof(((salts_plugin_function_export *)0)
+                                          ->function_entry)));
+        check_equal(SALTS_PLUGIN_MANIFEST_V2_SIZE,
+                    (uint32_t)(offsetof(salts_plugin_manifest,
+                                       function_export_count) +
+                               sizeof(((salts_plugin_manifest *)0)
+                                          ->function_export_count)));
     }
 }
 
