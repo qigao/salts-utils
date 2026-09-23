@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -333,7 +333,7 @@ suite("TBE Schema Parser") {
     given("invalid schema syntax") {
       const char *schema = "message Bad { int32 missing_semi }";
       Node *root = create_node_map("root");
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("parsing the schema") {
         int rc = parse_schema(schema, strlen(schema), root, &err);
@@ -343,7 +343,7 @@ suite("TBE Schema Parser") {
         }
 
         then("should provide error information") {
-          check_not_equal(err.code, TBE_OK);
+          check_not_equal(err.code, DATA_BIND_SCHEMA_OK);
         }
       }
 
@@ -351,7 +351,7 @@ suite("TBE Schema Parser") {
     }
 
     given("NULL arguments") {
-      tbe_error_t err;
+      DataBindSchemaError err;
 
       when("calling parse_schema with NULL") {
         int rc = parse_schema(NULL, 0, NULL, &err);
@@ -361,7 +361,7 @@ suite("TBE Schema Parser") {
         }
 
         then("should set error code") {
-          check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
+          check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
         }
       }
     }
