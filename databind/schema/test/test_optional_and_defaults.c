@@ -1,5 +1,5 @@
 #include "schema_parser_dsl.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +51,7 @@ suite("optional_fields_and_defaults") {
                                 "optional string email; "
                                 "}";
             Node *root = create_node_map("root");
-            tbe_error_t err;
+            DataBindSchemaError err;
             int rc = parse_schema(schema, strlen(schema), root, &err);
 
             check_equal(rc, 0);
@@ -112,7 +112,7 @@ suite("optional_fields_and_defaults") {
                                 "uint32 retries default 3; "
                                 "}";
             Node *root = create_node_map("root");
-            tbe_error_t err;
+            DataBindSchemaError err;
             int rc = parse_schema(schema, strlen(schema), root, &err);
 
             if (rc != 0) {
