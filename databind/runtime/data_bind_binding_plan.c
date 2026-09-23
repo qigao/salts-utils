@@ -232,6 +232,23 @@ static DataBindStatus plan_validate_native_type(
           diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
           "Invalid native optional-presence metadata");
 
+    for (j = 0u; j < shape->field_count; ++j) {
+      const cmeta_data_field_desc *native_field = &shape->fields[j];
+      size_t field_size;
+      if (native_field->value == NULL ||
+          native_field->value->storage_type == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+            "Native field metadata is incomplete while validating presence");
+      field_size = native_field->value->storage_type->size;
+      if (left->byte_offset >= native_field->offset &&
+          left->byte_offset - native_field->offset < field_size)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+            "Optional presence storage overlaps native field '%s'",
+            native_field->name != NULL ? native_field->name : "<unnamed>");
+    }
+
     for (j = 0u; j < schema_type.field_count; ++j) {
       reflected = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
       if (data_bind_schema_field_at(codec, expected_name, j, &reflected) &&
