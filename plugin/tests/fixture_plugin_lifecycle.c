@@ -77,7 +77,7 @@ fixture_destroy(void *self) {
 }
 
 static salts_plugin_manifest fixture_manifest = {
-    .struct_size = SALTS_PLUGIN_MANIFEST_V1_SIZE,
+    .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,
     .abi_version = SALTS_PLUGIN_ABI_VERSION,
     .plugin_id = "test.loader.lifecycle",
     .version = {1u, 0u, 0u},
@@ -99,8 +99,8 @@ salts_plugin_query(uint32_t host_abi) {
             lifecycle_fixture_api_impl_as_plugin_lifecycle_test_api(
                 &fixture_state);
         fixture_export = (salts_plugin_export){
-            .struct_size = SALTS_PLUGIN_EXPORT_V1_SIZE,
-            .abi_version = SALTS_PLUGIN_EXPORT_ABI_VERSION,
+            .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
+            .abi_version = SALTS_PLUGIN_ABI_VERSION,
             .kind = SALTS_PLUGIN_EXPORT_INTERFACE,
             .contract_version = 1u,
             .capabilities = 1u,
