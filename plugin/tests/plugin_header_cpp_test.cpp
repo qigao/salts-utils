@@ -18,6 +18,10 @@ static_assert(std::is_standard_layout<salts_plugin_registry_config>::value,
               "registry config must remain a C-compatible value");
 static_assert(std::is_standard_layout<salts_plugin_registry>::value,
               "registry handle must remain a C-compatible value");
+static_assert(std::is_standard_layout<salts_plugin_lease>::value,
+              "plugin lease must remain a C-compatible value");
+static_assert(std::is_standard_layout<salts_plugin_lifecycle_info>::value,
+              "lifecycle info must remain a C-compatible value");
 
 SALTS_PLUGIN_QUERY_EXPORT
 const salts_plugin_manifest *SALTS_PLUGIN_CALL
@@ -31,6 +35,8 @@ int main() {
     salts_plugin_registry registry{};
     salts_plugin_registry_config config{1u};
     salts_plugin_ref ref{};
+    salts_plugin_lease lease{};
+    salts_plugin_lifecycle_info lifecycle{};
     salts_plugin_query_fn query = &salts_plugin_query;
     const salts_plugin_export *entry = nullptr;
 
@@ -38,6 +44,8 @@ int main() {
     (void)registry;
     (void)config;
     (void)ref;
+    (void)lease;
+    (void)lifecycle;
     return salts_plugin_manifest_find_export(
                &manifest, "missing", &entry) == SALTS_PLUGIN_INVALID_MANIFEST
                ? 0
