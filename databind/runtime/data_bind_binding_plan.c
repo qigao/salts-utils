@@ -210,7 +210,7 @@ static DataBindStatus plan_validate_native_type(
                             expected_name);
 
     native_field = plan_native_field(binding, schema_field.name);
-    if (native_field == NULL || native_field->data == NULL)
+    if (native_field == NULL || native_field->value == NULL)
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
           "Native type '%s' is missing field '%s'", expected_name,
@@ -226,7 +226,7 @@ static DataBindStatus plan_validate_native_type(
           expected_name,
           schema_field.name != NULL ? schema_field.name : "");
 
-    if (!plan_data_semantically_equal(schema_data, native_field->data))
+    if (!plan_data_semantically_equal(schema_data, native_field->value))
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
           "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
@@ -512,7 +512,7 @@ static DataBindStatus plan_compile_ingress(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, NULL,
             "No reflected IN parameter binds request field '%s'", field.name);
       param = &native->function->params[param_index];
-      if (!plan_param_type_matches_data(param, native_field->data,
+      if (!plan_param_type_matches_data(param, native_field->value,
                                         CMETA_PARAM_IN, &indirect))
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, param->name,
@@ -530,7 +530,7 @@ static DataBindStatus plan_compile_ingress(
     entry->address.binding_class = binding_class;
     entry->address.ordinal = i;
     entry->function_param_index = param_index;
-    entry->data = native_field->data;
+    entry->data = native_field->value;
     entry->native_offset = root_param != SIZE_MAX ? native_field->offset : 0u;
     entry->parameter_indirect = indirect;
     entry->required = !field.is_optional && !field.has_default;
@@ -657,7 +657,7 @@ static DataBindStatus plan_compile_egress(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, NULL,
             "No reflected OUT parameter binds response field '%s'", field.name);
       param = &native->function->params[param_index];
-      if (!plan_param_type_matches_data(param, native_field->data,
+      if (!plan_param_type_matches_data(param, native_field->value,
                                         CMETA_PARAM_OUT, &indirect))
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field.name, param->name,
@@ -675,7 +675,7 @@ static DataBindStatus plan_compile_egress(
     entry->address.binding_class = binding_class;
     entry->address.ordinal = i;
     entry->function_param_index = param_index;
-    entry->data = native_field->data;
+    entry->data = native_field->value;
     entry->native_offset =
         (root_param != SIZE_MAX || use_return) ? native_field->offset : 0u;
     entry->parameter_indirect = indirect;
