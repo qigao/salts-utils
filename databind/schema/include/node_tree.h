@@ -21,7 +21,7 @@ typedef enum {
   SALTS_NODE_LIST,
   SALTS_NODE_MAP,
 
-  /* Compatibility aliases for tbe_compiler */
+  /* Compiler tree aliases retained for DataBind compiler internals */
   NODE_ROOT   = SALTS_NODE_ROOT,
   NODE_STRING = SALTS_NODE_STRING,
   NODE_LIST   = SALTS_NODE_LIST,
