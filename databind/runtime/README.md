@@ -472,3 +472,37 @@ DataBind 3.0 的 ABI 版本为 9。2.3 将 stream 的 `feed`、`feed_file`、`fi
 配置继续使用原行为，既有符号保留。
 详细所有权与生成库边界见
 [`RECORD_ABI.md`](RECORD_ABI.md)。
+
+
+## Canonical BindingPlan
+
+Service/native binding follows the canonical #141 split:
+
+```text
+DataBind IDL Service Contract
+        +
+CMeta type/function reflection
+        ↓
+DataBind BindingPlan
+```
+
+`DataBindBindingPlan` is format-neutral and transport-runtime-neutral. It does not require
+TBE wire descriptors and does not expose a closed HTTP/RPC protocol enum.
+
+Transport-specific IDL facts compile into generic logical addresses:
+
+```text
+VALUE / METADATA / PAYLOAD / PART / RESULT / ERROR
+        +
+provider-owned space/name/ordinal
+```
+
+For example, HTTP query/header bindings may compile to `VALUE:http.query` and
+`METADATA:http.header`; RPC parameters compile to `VALUE:rpc.param`.
+Future FlowMQ/Flowie/semantic-record adapters consume the same ABI by defining their own
+admitted spaces rather than extending DataBind core with transport runtime state.
+
+CMeta remains authoritative for native type/function semantics. DataBind owns only the
+IDL-to-native projection, defaults/optional presence, logical operation identity, and the
+immutable compiled plan. Invocation remains exact-ABI generated code or another admitted
+execution adapter.
