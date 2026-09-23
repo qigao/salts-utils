@@ -112,23 +112,14 @@ static salts_plugin_status acquire_interface(
 }
 
 static salts_plugin_status release_binding(
-    salts_plugin_registry **registry,
+    salts_plugin_registry *registry,
     salts_plugin_lease *lease,
-    void **provider) {
-    salts_plugin_status status;
-
+    const void *provider) {
     if (registry == NULL || lease == NULL || provider == NULL ||
-        *registry == NULL || *provider == NULL ||
         !salts_plugin_lease_valid(*lease))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
-    status = salts_plugin_registry_release(*registry, lease);
-    if (status != SALTS_PLUGIN_OK)
-        return status;
-
-    *registry = NULL;
-    *provider = NULL;
-    return SALTS_PLUGIN_OK;
+    return salts_plugin_registry_release(registry, lease);
 }
 
 salts_plugin_status salts_plugin_cflow_acquire_publisher(
@@ -165,10 +156,15 @@ salts_plugin_status salts_plugin_cflow_release_publisher(
     salts_plugin_cflow_publisher_binding *binding) {
     if (binding == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    return release_binding(
-        &binding->registry,
-        &binding->lease,
-        (void **)&binding->publisher);
+    {
+        salts_plugin_status status = release_binding(
+            binding->registry, &binding->lease, binding->publisher);
+        if (status == SALTS_PLUGIN_OK) {
+            binding->registry = NULL;
+            binding->publisher = NULL;
+        }
+        return status;
+    }
 }
 
 salts_plugin_status salts_plugin_cflow_acquire_executor(
@@ -205,10 +201,15 @@ salts_plugin_status salts_plugin_cflow_release_executor(
     salts_plugin_cflow_executor_binding *binding) {
     if (binding == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    return release_binding(
-        &binding->registry,
-        &binding->lease,
-        (void **)&binding->executor);
+    {
+        salts_plugin_status status = release_binding(
+            binding->registry, &binding->lease, binding->executor);
+        if (status == SALTS_PLUGIN_OK) {
+            binding->registry = NULL;
+            binding->executor = NULL;
+        }
+        return status;
+    }
 }
 
 salts_plugin_status salts_plugin_cflow_acquire_scheduler(
@@ -245,8 +246,13 @@ salts_plugin_status salts_plugin_cflow_release_scheduler(
     salts_plugin_cflow_scheduler_binding *binding) {
     if (binding == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    return release_binding(
-        &binding->registry,
-        &binding->lease,
-        (void **)&binding->scheduler);
+    {
+        salts_plugin_status status = release_binding(
+            binding->registry, &binding->lease, binding->scheduler);
+        if (status == SALTS_PLUGIN_OK) {
+            binding->registry = NULL;
+            binding->scheduler = NULL;
+        }
+        return status;
+    }
 }
