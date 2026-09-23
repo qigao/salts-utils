@@ -30,6 +30,16 @@ static int text_contains(const char *text, const char *needle) {
   return text != NULL && needle != NULL && strstr(text, needle) != NULL;
 }
 
+static int write_text(const char *path, const char *text) {
+  FILE *file = fopen(path, "wb");
+  size_t length = text != NULL ? strlen(text) : 0u;
+  int ok;
+  if (file == NULL) return 0;
+  ok = fwrite(text, 1u, length, file) == length &&
+       fflush(file) == 0 && fclose(file) == 0;
+  return ok;
+}
+
 static int file_exists(const char *path) {
   FILE *file = fopen(path, "rb");
   if (file == NULL) return 0;
@@ -202,15 +212,28 @@ describe("generated publication") {
 }
 
 describe("projection admission") {
-  it("requires an explicit positive schema contract version") {
+  it("requires an explicit version without touching an existing output") {
+    char *preserved;
+    static const char sentinel[] = "previous generated artifact\n";
+
     (void)remove(PLUGIN_PROJECTION_INVALID_OUTPUT_FILE);
+    check_true(write_text(
+        PLUGIN_PROJECTION_INVALID_OUTPUT_FILE, sentinel));
 
     check_equal(generate_plugin(
                     PLUGIN_PROJECTION_NO_VERSION_SCHEMA_FILE,
                     PLUGIN_PROJECTION_INVALID_OUTPUT_FILE,
                     4u, 0u, 0u),
                 -1);
-    check_false(file_exists(PLUGIN_PROJECTION_INVALID_OUTPUT_FILE));
+    check_true(file_exists(PLUGIN_PROJECTION_INVALID_OUTPUT_FILE));
+
+    preserved = tbe_compiler_read_file(
+        PLUGIN_PROJECTION_INVALID_OUTPUT_FILE);
+    check_not_null(preserved);
+    check_equal(strcmp(preserved, sentinel), 0);
+    free(preserved);
+
+    (void)remove(PLUGIN_PROJECTION_INVALID_OUTPUT_FILE);
   }
 
   it("rejects a PLUGIN request without an output path") {
