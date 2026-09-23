@@ -173,8 +173,7 @@ typedef enum salts_plugin_lifecycle_state {
     SALTS_PLUGIN_LIFECYCLE_STARTING,
     SALTS_PLUGIN_LIFECYCLE_STARTED,
     SALTS_PLUGIN_LIFECYCLE_STOPPING,
-    SALTS_PLUGIN_LIFECYCLE_QUIESCENT,
-    SALTS_PLUGIN_LIFECYCLE_FAILED
+    SALTS_PLUGIN_LIFECYCLE_QUIESCENT
 } salts_plugin_lifecycle_state;
 
 typedef struct salts_plugin_lease {
