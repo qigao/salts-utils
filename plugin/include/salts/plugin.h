@@ -14,7 +14,7 @@ extern "C" {
 
 #define SALTS_PLUGIN_ABI_VERSION 1u
 #define SALTS_PLUGIN_EXPORT_ABI_VERSION 1u
-#define SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION 1u
+#define SALTS_PLUGIN_PUBLICATION_ABI_VERSION 1u
 #define SALTS_PLUGIN_QUERY_SYMBOL "salts_plugin_query"
 
 #define SALTS_PLUGIN_MAX_EXPORTS 256u
@@ -85,7 +85,7 @@ typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_start_fn)(void *sel
 typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_request_stop_fn)(void *self);
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_is_quiescent_fn)(const void *self);
 typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
-typedef void (SALTS_PLUGIN_CALL *salts_plugin_function_entry)(void);
+typedef void (*salts_plugin_function_entry)(void);
 
 /*
  * One immutable semantic export row.
@@ -123,19 +123,32 @@ typedef struct salts_plugin_export {
 } salts_plugin_export;
 
 /*
- * Function publication is separate from the frozen V1 export array. The row
- * wraps canonical CMeta reflection/ABI metadata plus a borrowed function-pointer
- * carrier. Plugin validates and publishes this representation but never invokes
- * it generically. Generated exact-ABI consumers convert function_entry back to
- * the exact function type only after contract and CMeta admission.
+ * V2 publication envelope. The manifest stores pointers to these rows so the
+ * concrete row size can grow without changing table stride. Plugin owns only
+ * this publication/discovery envelope; service/channel semantics remain in the
+ * producing contract system (for example DataBind).
  */
-typedef struct salts_plugin_function_export {
-    uint32_t struct_size;
+typedef enum salts_plugin_publication_kind {
+    SALTS_PLUGIN_PUBLICATION_FUNCTION = 1
+} salts_plugin_publication_kind;
+
+typedef struct salts_plugin_publication {
+    uint32_t struct_size; /* full concrete row size */
     uint32_t abi_version;
+    salts_plugin_publication_kind kind;
     uint32_t contract_version;
     uint64_t capabilities;
     const char *export_id;
     const char *contract_id;
+} salts_plugin_publication;
+
+/*
+ * Function publication composes the generic envelope with canonical CMeta
+ * reflection/ABI metadata plus a borrowed function-pointer carrier. Plugin
+ * validates and publishes this representation but never invokes it generically.
+ */
+typedef struct salts_plugin_function_export {
+    salts_plugin_publication publication; /* first member; stable V2 envelope */
     const cmeta_function_desc *function;
     const cmeta_function_abi_desc *function_abi;
     salts_plugin_function_entry function_entry;
@@ -166,12 +179,13 @@ typedef struct salts_plugin_manifest {
     salts_plugin_is_quiescent_fn is_quiescent;
     salts_plugin_destroy_fn destroy;
 
-    /* Optional V2 tail. Function rows are referenced through a pointer array so
-     * each pointed-to row can remain independently size-versioned without ever
-     * changing array stride for old binaries. Read only when struct_size reaches
-     * SALTS_PLUGIN_MANIFEST_V2_SIZE. */
-    const salts_plugin_function_export *const *function_exports;
-    size_t function_export_count;
+    /* Optional V2 tail. Publications are referenced through a pointer array so
+     * each concrete row can remain independently size-versioned without ever
+     * changing array stride for old binaries. Current code implements FUNCTION;
+     * future kinds can reuse the envelope without adding another manifest table.
+     * Read only when struct_size reaches SALTS_PLUGIN_MANIFEST_V2_SIZE. */
+    const salts_plugin_publication *const *publications;
+    size_t publication_count;
 } salts_plugin_manifest;
 
 /*
@@ -185,12 +199,15 @@ typedef struct salts_plugin_manifest {
 #define SALTS_PLUGIN_MANIFEST_V1_SIZE \
     ((uint32_t)(offsetof(salts_plugin_manifest, destroy) + \
                 sizeof(((salts_plugin_manifest *)0)->destroy)))
+#define SALTS_PLUGIN_PUBLICATION_V1_SIZE \
+    ((uint32_t)(offsetof(salts_plugin_publication, contract_id) + \
+                sizeof(((salts_plugin_publication *)0)->contract_id)))
 #define SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE \
     ((uint32_t)(offsetof(salts_plugin_function_export, function_entry) + \
                 sizeof(((salts_plugin_function_export *)0)->function_entry)))
 #define SALTS_PLUGIN_MANIFEST_V2_SIZE \
-    ((uint32_t)(offsetof(salts_plugin_manifest, function_export_count) + \
-                sizeof(((salts_plugin_manifest *)0)->function_export_count)))
+    ((uint32_t)(offsetof(salts_plugin_manifest, publication_count) + \
+                sizeof(((salts_plugin_manifest *)0)->publication_count)))
 
 typedef const salts_plugin_manifest *(SALTS_PLUGIN_CALL *salts_plugin_query_fn)(
     uint32_t host_abi);
@@ -286,6 +303,11 @@ salts_plugin_status salts_plugin_manifest_find_export(
     const salts_plugin_manifest *manifest,
     const char *export_id,
     const salts_plugin_export **out_export);
+
+salts_plugin_status salts_plugin_manifest_find_publication(
+    const salts_plugin_manifest *manifest,
+    const char *export_id,
+    const salts_plugin_publication **out_publication);
 
 salts_plugin_status salts_plugin_manifest_find_function_export(
     const salts_plugin_manifest *manifest,
