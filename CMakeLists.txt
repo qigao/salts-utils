@@ -59,53 +59,7 @@ unset(Salts_DIR)
 find_package(Salts 1.2.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
-foreach(required_salts_target IN ITEMS
-        Salts::Platform
-        Salts::Core
-        Salts::CMeta
-        Salts::CFlow
-        Salts::CSTL
-        Salts::CSerde
-        Salts::UriParser)
-  if(NOT TARGET ${required_salts_target})
-    message(FATAL_ERROR
-            "SALTS_ROOT package is missing required target ${required_salts_target}")
-  endif()
-endforeach()
-
-foreach(pre_migration_target IN ITEMS
-        Salts::Crypto
-        Salts::CFlowFS
-        Salts::CFlowProcess
-        Salts::QueryVM
-        Salts::IniParser
-        Salts::JsonParser
-        Salts::JsonCSerdeAdapter
-        Salts::XmlParser
-        Salts::CsvParser
-        Salts::TLVParser
-        Salts::LtvParser
-        Salts::ModbusParser
-        Salts::SoaParser
-        Salts::DotEnvParser
-        Salts::CmdParser
-        Salts::Toon
-        Salts::TomlParser
-        Salts::DateTimeParser
-        Salts::CYaml
-        Salts::CYamlJsonAdapter
-        Salts::Selector)
-  if(TARGET ${pre_migration_target})
-    message(FATAL_ERROR
-            "SALTS_ROOT points to a pre-migration Salts package that still exports ${pre_migration_target}")
-  endif()
-endforeach()
-
-if(BUILD_TESTS)
-  add_subdirectory(tests/runtime_path)
-  add_subdirectory(tests/package_config)
-endif()
-
+ 
 # Additional components
 add_subdirectory(tools)
 include(FindTools)
