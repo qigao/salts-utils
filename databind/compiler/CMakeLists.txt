@@ -115,6 +115,8 @@ cmake_add_test(test_databind_plugin_projection
     PLUGIN_PROJECTION_NO_VERSION_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection_no_version.schema"
     PLUGIN_PROJECTION_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/test_plugin_projection.generated.c"
     PLUGIN_PROJECTION_INVALID_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/test_plugin_projection.invalid.c"
+    PLUGIN_NATIVE_HEADER_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/image.generated.h"
+    PLUGIN_NATIVE_SOURCE_OUTPUT_FILE="${CMAKE_CURRENT_BINARY_DIR}/image.generated.c"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/schema/src
