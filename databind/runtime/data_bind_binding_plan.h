@@ -208,7 +208,6 @@ typedef struct DataBindBindingProvider {
   { sizeof(DataBindBindingProvider), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     NULL, NULL, NULL, NULL, NULL, NULL }
 
-typedef struct DataBindBindingPlan DataBindBindingPlan;
 
 /**
  * Compile one Service operation into an immutable generic BindingPlan.
