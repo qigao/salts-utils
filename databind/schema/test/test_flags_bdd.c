@@ -1,5 +1,5 @@
 #include "data_bind_schema_error.h"
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +22,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, &err);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
         then("should parse successfully") { check_equal(rc, 0); }
 
@@ -54,7 +54,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, &err);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
         then("should parse successfully") { check_equal(rc, 0); }
 
@@ -86,7 +86,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, &err);
+        data_bind_schema_parse(schema, strlen(schema), root, &err);
         Node *enums = find_child(root, "enums");
         Node *status = enums->data.list.items[0];
         Node *items = find_child(status, "items");
@@ -110,7 +110,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, &err);
+        data_bind_schema_parse(schema, strlen(schema), root, &err);
         Node *enums = find_child(root, "enums");
         Node *mixed = enums->data.list.items[0];
         Node *items = find_child(mixed, "items");
@@ -138,7 +138,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, &err);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
         then("should parse both successfully") { check_equal(rc, 0); }
 
@@ -171,7 +171,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        int rc = parse_schema(schema, strlen(schema), root, &err);
+        int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
         then("should parse successfully") { check_equal(rc, 0); }
 
@@ -192,7 +192,7 @@ suite("Flags Feature") {
       DataBindSchemaError err;
 
       when("parsing the schema") {
-        parse_schema(schema, strlen(schema), root, &err);
+        data_bind_schema_parse(schema, strlen(schema), root, &err);
         Node *enums = find_child(root, "enums");
         Node *large = enums->data.list.items[0];
         Node *items = find_child(large, "items");
