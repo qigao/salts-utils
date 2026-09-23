@@ -21,13 +21,13 @@ static const char *enum_text(Node *map, const char *name) {
 static void enum_reject_unchanged(const char *schema) {
   const char *baseline = "message Unchanged { uint32 id; }";
   Node *root = create_node_map(NULL);
-  tbe_error_t error;
+  DataBindSchemaError error;
   check_not_null(root);
   if (!root) return;
   check_equal(parse_schema(baseline, strlen(baseline), root, &error), 0);
   Node *messages = enum_child(root, "messages");
   check_equal(parse_schema(schema, strlen(schema), root, &error), -1);
-  check_equal(error.code, TBE_ERR_SEMANTIC_ERROR);
+  check_equal(error.code, DATA_BIND_SCHEMA_ERR_SEMANTIC);
   check_contains(error.message, "enum");
   check(enum_child(root, "messages") == messages);
   Node *enums = enum_child(root, "enums");
@@ -45,7 +45,7 @@ spec("enum storage and transactional schema validation") {
         "enum Decimal <u16> { Eight=008; Nine; }";
     const char *expected[] = {"int32", "uint32", "int8", "uint64", "uint16"};
     Node *root = create_node_map(NULL);
-    tbe_error_t error;
+    DataBindSchemaError error;
     check_not_null(root);
     if (!root) return;
     check_equal(parse_schema(source, strlen(source), root, &error), 0);
@@ -154,7 +154,7 @@ static void enum_check_cmeta_bounds(const enum_cmeta_case_t *item,
   check(length > 0 && (size_t)length < sizeof(source));
   if (length <= 0 || (size_t)length >= sizeof(source)) return;
   Node *root = create_node_map(NULL);
-  tbe_error_t error;
+  DataBindSchemaError error;
   check_not_null(root);
   if (!root) return;
   int result = parse_schema(source, (size_t)length, root, &error);
@@ -232,7 +232,7 @@ spec("production enum normalization agrees with canonical CMeta integers") {
     const char *baseline = "enum Keep <i16> { Low=-2; High=5; } message Use { Keep value; }";
     const char *invalid = "enum Good <u8> { Value=1; } enum Bad <i8> { Value=128; }";
     Node *root = create_node_map(NULL);
-    tbe_error_t error;
+    DataBindSchemaError error;
     check_not_null(root);
     if (!root) return;
     int result = parse_schema(baseline, strlen(baseline), root, &error);
@@ -242,7 +242,7 @@ spec("production enum normalization agrees with canonical CMeta integers") {
       Node *messages = enum_child(root, "messages");
       size_t count = root->data.map.count;
       check_equal(parse_schema(invalid, strlen(invalid), root, &error), -1);
-      check_equal(error.code, TBE_ERR_SEMANTIC_ERROR);
+      check_equal(error.code, DATA_BIND_SCHEMA_ERR_SEMANTIC);
       check_contains(error.message, "Bad");
       check_equal(root->data.map.count, count);
       check(enum_child(root, "enums") == enums);
