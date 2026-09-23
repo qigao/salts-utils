@@ -668,6 +668,12 @@ salts_plugin_status salts_plugin_registry_unload(
     if (destroy_callback != NULL) {
         --slot->callbacks_inflight;
         slot->destroy_called = true;
+        /*
+         * destroy() is irreversible even if the subsequent native close fails.
+         * Keep the slot quiescent so retry may only close the DSO; never permit
+         * start/acquire against already-destroyed plugin state.
+         */
+        slot->state = SALTS_PLUGIN_LIFECYCLE_QUIESCENT;
     }
     salts_mutex_unlock(&impl->lock);
 
@@ -756,6 +762,7 @@ salts_plugin_status salts_plugin_registry_destroy(
         if (destroy_callback != NULL) {
             --slot->callbacks_inflight;
             slot->destroy_called = true;
+            slot->state = SALTS_PLUGIN_LIFECYCLE_QUIESCENT;
         }
         salts_mutex_unlock(&impl->lock);
 
