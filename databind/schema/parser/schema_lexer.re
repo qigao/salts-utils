@@ -1,7 +1,7 @@
 // re2c $INPUT -o $OUTPUT
 /**
  * @file schema_lexer.re
- * @brief Schema Lexer using re2c for tbe_compiler
+ * @brief Schema Lexer using re2c for databindc
  *
  * Tokenizes schema text into DataBind IDL declarations, attributes, and
  * punctuation used by data/service contracts.
