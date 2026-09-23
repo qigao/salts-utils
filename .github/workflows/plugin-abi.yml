@@ -123,12 +123,15 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          host_lemon="$GITHUB_WORKSPACE/build/plugin-abi/bin/lemon"
+          test -x "$host_lemon"
           cmake -S . -B build/binding-plan-sanitized -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
             -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON
