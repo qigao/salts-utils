@@ -29,6 +29,36 @@ typed_any(value, long, plugin_test_widen, (int value)) {
     return (long)value;
 }
 
+FunctionDecl(value, int, plugin_test_add,
+    (int, left, CMETA_PARAM_IN),
+    (int, right, CMETA_PARAM_IN));
+
+int plugin_test_add(int left, int right) {
+    return left + right;
+}
+
+FunctionDecl(value, int, plugin_test_add_other,
+    (int, left, CMETA_PARAM_IN),
+    (int, right, CMETA_PARAM_IN));
+
+int plugin_test_add_other(int left, int right) {
+    return left + right + 1;
+}
+
+static salts_plugin_function_export make_function_export(void) {
+    return (salts_plugin_function_export){
+        .struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE,
+        .abi_version = SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION,
+        .contract_version = 1u,
+        .capabilities = 4u,
+        .export_id = "add",
+        .contract_id = "test.math.Add",
+        .function = FunctionMeta(plugin_test_add),
+        .function_abi = FunctionAbi(plugin_test_add),
+        .function_entry = (salts_plugin_function_entry)plugin_test_add,
+    };
+}
+
 static salts_plugin_manifest make_manifest(
     salts_plugin_export exports[2],
     plugin_test_codec *codec) {
@@ -162,6 +192,135 @@ describe("manifest admission") {
     }
 }
 
+describe("FunctionDesc publication") {
+    it("validates and admits a manifest V2 Function pointer table") {
+        plugin_test_codec_state state = {0};
+        plugin_test_codec codec =
+            plugin_test_codec_impl_as_plugin_test_codec(&state);
+        salts_plugin_export exports[2];
+        salts_plugin_function_export function_export = make_function_export();
+        const salts_plugin_function_export *function_exports[] = {
+            &function_export
+        };
+        salts_plugin_manifest manifest = make_manifest(exports, &codec);
+        const salts_plugin_function_export *found = NULL;
+        const cmeta_function_desc *function = NULL;
+        const cmeta_function_abi_desc *abi = NULL;
+        salts_plugin_function_entry entry = NULL;
+        typedef int (*plugin_test_add_fn)(int, int);
+        plugin_test_add_fn exact;
+
+        manifest.struct_size = SALTS_PLUGIN_MANIFEST_V2_SIZE;
+        manifest.function_exports = function_exports;
+        manifest.function_export_count = 1u;
+
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_manifest_find_function_export(
+                        &manifest, "add", &found),
+                    SALTS_PLUGIN_OK);
+        check_true(found == &function_export);
+        check_equal(salts_plugin_function_export_require(
+                        found, "test.math.Add", 1u, 4u,
+                        &function, &abi, &entry),
+                    SALTS_PLUGIN_OK);
+        check_true(function == FunctionMeta(plugin_test_add));
+        check_true(abi == FunctionAbi(plugin_test_add));
+        check_not_null(entry);
+
+        exact = (plugin_test_add_fn)entry;
+        check_equal(exact(20, 22), 42);
+
+        check_equal(salts_plugin_function_export_require(
+                        found, "test.math.Add", 2u, 4u,
+                        &function, &abi, &entry),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        check_null(function);
+        check_null(abi);
+        check_null(entry);
+    }
+
+    it("does not read the Function table through a V1 manifest prefix") {
+        plugin_test_codec_state state = {0};
+        plugin_test_codec codec =
+            plugin_test_codec_impl_as_plugin_test_codec(&state);
+        salts_plugin_export exports[2];
+        salts_plugin_function_export function_export = make_function_export();
+        const salts_plugin_function_export *function_exports[] = {
+            &function_export
+        };
+        salts_plugin_manifest manifest = make_manifest(exports, &codec);
+        const salts_plugin_function_export *found =
+            (const salts_plugin_function_export *)(uintptr_t)1u;
+
+        manifest.function_exports = function_exports;
+        manifest.function_export_count = 1u;
+        check_equal(manifest.struct_size, SALTS_PLUGIN_MANIFEST_V1_SIZE);
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_manifest_find_function_export(
+                        &manifest, "add", &found),
+                    SALTS_PLUGIN_UNKNOWN_EXPORT);
+        check_null(found);
+    }
+
+    it("rejects malformed Function rows and duplicate flat export IDs") {
+        plugin_test_codec_state state = {0};
+        plugin_test_codec codec =
+            plugin_test_codec_impl_as_plugin_test_codec(&state);
+        salts_plugin_export exports[2];
+        salts_plugin_function_export function_export = make_function_export();
+        const salts_plugin_function_export *function_exports[] = {
+            &function_export
+        };
+        salts_plugin_manifest manifest = make_manifest(exports, &codec);
+        cmeta_function_abi_desc mismatched_abi = *FunctionAbi(plugin_test_add);
+
+        manifest.struct_size = SALTS_PLUGIN_MANIFEST_V2_SIZE;
+        manifest.function_exports = function_exports;
+        manifest.function_export_count = 1u;
+
+        function_export.struct_size = SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE - 1u;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        function_export = make_function_export();
+        function_export.abi_version =
+            SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION + 1u;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_UNSUPPORTED_ABI);
+
+        function_export = make_function_export();
+        function_export.function_entry = NULL;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        function_export = make_function_export();
+        mismatched_abi.function = FunctionMeta(plugin_test_add_other);
+        function_export.function_abi = &mismatched_abi;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+
+        function_export = make_function_export();
+        function_export.export_id = exports[0].export_id;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_DUPLICATE_EXPORT);
+
+        function_export = make_function_export();
+        function_exports[0] = NULL;
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_INVALID_MANIFEST);
+    }
+}
+
 describe("semantic identity") {
     it("compares independently compiled Interface representations by content") {
         const cmeta_interface_desc *left = plugin_test_interface_a();
@@ -251,11 +410,15 @@ describe("semantic identity") {
 }
 
 describe("ABI layout contract") {
-    it("pins V1 readable prefixes independently of future tail padding") {
-        check_true(SALTS_PLUGIN_EXPORT_V1_SIZE <=
-                   (uint32_t)sizeof(salts_plugin_export));
-        check_true(SALTS_PLUGIN_MANIFEST_V1_SIZE <=
+    it("pins the frozen V1 export stride and manifest-readable prefixes") {
+        check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
+                    (uint32_t)sizeof(salts_plugin_export));
+        check_true(SALTS_PLUGIN_MANIFEST_V1_SIZE <
                    (uint32_t)sizeof(salts_plugin_manifest));
+        check_true(SALTS_PLUGIN_MANIFEST_V2_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_manifest));
+        check_true(SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE <=
+                   (uint32_t)sizeof(salts_plugin_function_export));
         check_equal(SALTS_PLUGIN_EXPORT_V1_SIZE,
                     (uint32_t)(offsetof(salts_plugin_export, callable) +
                                sizeof(((salts_plugin_export *)0)->callable)));
