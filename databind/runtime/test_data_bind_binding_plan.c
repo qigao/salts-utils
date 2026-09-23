@@ -715,6 +715,30 @@ spec("DataBind canonical Service BindingPlan") {
       check(strstr(diagnostic.message, "Duplicate") != NULL);
     }
 
+    {
+      const DataBindNativePresenceBinding overlapping_presence[] = {
+          {sizeof(DataBindNativePresenceBinding), "scale",
+           offsetof(AddRequest, left), 0u}};
+      DataBindNativeTypeBinding bad_overlap = ADD_REQUEST_NATIVE;
+
+      bad_overlap.presence = overlapping_presence;
+      bad_overlap.presence_count = 1u;
+      diagnostic =
+          (DataBindBindingPlanDiagnostic)DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+      native = (DataBindServiceNativeBinding)
+          DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+              FunctionMeta(calc_add_root), &bad_overlap,
+              &ADD_RESPONSE_NATIVE);
+
+      check_equal(data_bind_binding_plan_compile_service(
+                      codec, "Calc", "Add", &http, &native,
+                      &plan, &diagnostic),
+                  DATA_BIND_ERR_SCHEMA);
+      check_null(plan);
+      check_equal(diagnostic.schema_field, "scale");
+      check(strstr(diagnostic.message, "overlaps") != NULL);
+    }
+
     data_bind_free(codec);
   }
 
