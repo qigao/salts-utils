@@ -154,7 +154,7 @@ suite("schema_cmeta_production_profiles") {
             char size_text[PROFILE_SIZE_TEXT_CAPACITY];
             Node *root = create_node_map("root");
             Node *messages, *record = NULL, *fields, *field = NULL;
-            tbe_error_t error;
+            DataBindSchemaError error;
             int parsed, matches = 0;
             int written = snprintf(schema, sizeof(schema), "message Scalar { %s value; }", item->alias);
             check_true(written > 0 && (size_t)written < sizeof(schema));
