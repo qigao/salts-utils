@@ -9,7 +9,7 @@ target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
 set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
   PROPERTIES FOLDER "databind/compiler")
 
-set(TBE_COMPILER_TEMPLATE_FILES
+set(DATABIND_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_lua_bind.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -24,13 +24,13 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c database_schema.c mustache_helpers.c ${DATABIND_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 set_property(TARGET databindc APPEND PROPERTY LINK_DEPENDS
-             ${TBE_COMPILER_TEMPLATE_FILES})
+             ${DATABIND_COMPILER_TEMPLATE_FILES})
 
 # =============================================================================
 # Copy templates next to executable for easy access
@@ -66,8 +66,8 @@ set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
 
 
-cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
+cmake_add_test(test_databind_compiler
+  SOURCES test_databind_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
@@ -78,26 +78,26 @@ cmake_add_test(test_tbe_compiler
     RUST_STRUCTS_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
     TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
     POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_postgresql_security_probe.schema"
-    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    DATABIND_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
-target_include_directories(test_tbe_compiler
+target_include_directories(test_databind_compiler
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 
-cmake_add_test(test_tbe_compiler_schema_boundary
+cmake_add_test(test_data_bind_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
-  DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  DEFS DATABIND_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
-cmake_add_test(test_tbe_compiler_cmeta_fields
+cmake_add_test(test_data_bind_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
-target_include_directories(test_tbe_compiler_cmeta_fields
+target_include_directories(test_data_bind_compiler_cmeta_fields
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
-target_include_directories(test_tbe_compiler_schema_boundary
+target_include_directories(test_data_bind_compiler_schema_boundary
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
-if(TARGET test_tbe_compiler_schema_boundary)
-  target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
+if(TARGET test_data_bind_compiler_schema_boundary)
+  target_sources(test_data_bind_compiler_schema_boundary PRIVATE test_scalar_projection.c)
   set_source_files_properties(test_scalar_projection.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
 endif()
