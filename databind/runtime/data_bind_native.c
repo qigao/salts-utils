@@ -1358,3 +1358,358 @@ DataBindStatus data_bind_native_decode_bounded(
   return native_decode_bounded(options, shape, reader, destination,
                                destination_bytes, max_buffer_bytes, diagnostic);
 }
+
+
+typedef struct NativeEncode {
+  const DataBindNativeOptions *options;
+  DataBindNativeDiagnostic *diagnostic;
+  cserde_writer *writer;
+  size_t items;
+  size_t owned_bytes;
+} NativeEncode;
+
+static DataBindStatus native_writer_failure(
+    NativeEncode *encode, cserde_status writer_status, const char *path) {
+  DataBindStatus status;
+  const char *message;
+
+  switch (writer_status) {
+    case CSERDE_VALUE_OUT_OF_RANGE:
+      status = DATA_BIND_ERR_TYPE_MISMATCH;
+      message = "Writer rejected a value outside its supported range";
+      break;
+    case CSERDE_LIMIT_EXCEEDED:
+      status = DATA_BIND_ERR_LIMIT;
+      message = "Writer sink limit was exceeded";
+      break;
+    case CSERDE_UNSUPPORTED:
+      status = DATA_BIND_ERR_SCHEMA;
+      message = "Writer does not support the emitted canonical value";
+      break;
+    case CSERDE_SINK_ERROR:
+    case CSERDE_SOURCE_ERROR:
+      status = DATA_BIND_ERR_IO;
+      message = "Writer sink reported an I/O failure";
+      break;
+    case CSERDE_INVALID_TOKEN:
+      status = DATA_BIND_ERR_RUNTIME;
+      message = "Encoder produced an invalid CSerde token";
+      break;
+    case CSERDE_DONE:
+    case CSERDE_UNEXPECTED_END:
+    case CSERDE_INVALID_ARGUMENT:
+    case CSERDE_INVALID_STATE:
+    case CSERDE_CALLBACK_ERROR:
+    default:
+      status = DATA_BIND_ERR_RUNTIME;
+      message = "Writer entered an invalid runtime state";
+      break;
+  }
+
+  return native_fail(encode->diagnostic, status, writer_status, path, message);
+}
+
+static DataBindStatus native_write(
+    NativeEncode *encode, const cserde_token *token, const char *path) {
+  const cserde_status status = cserde_writer_write(encode->writer, token);
+  if (status == CSERDE_OK) return DATA_BIND_OK;
+  return native_writer_failure(encode, status, path);
+}
+
+static int native_scalar_token(const cmeta_data_desc *data,
+                               const void *source,
+                               cserde_token *token) {
+  if (data == NULL || source == NULL || token == NULL) return 0;
+  memset(token, 0, sizeof(*token));
+
+  if (native_data_matches(data, &cmeta_data_bool)) {
+    token->kind = CSERDE_BOOL;
+    token->value.boolean = *(const bool *)source;
+  } else if (native_data_matches(data, &salts_bool8_cmeta_data)) {
+    token->kind = CSERDE_BOOL;
+    token->value.boolean = *(const uint8_t *)source != 0u;
+  } else if (native_data_matches(data, &cmeta_data_int)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = (int64_t)*(const int *)source;
+  } else if (native_data_matches(data, &cmeta_data_long)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = (int64_t)*(const long *)source;
+  } else if (native_data_matches(data, &cmeta_data_size)) {
+    token->kind = CSERDE_UINT;
+    token->value.uint = (uint64_t)*(const size_t *)source;
+  } else if (native_data_matches(data, &salts_int8_cmeta_data)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = (int64_t)*(const int8_t *)source;
+  } else if (native_data_matches(data, &salts_int16_cmeta_data)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = (int64_t)*(const int16_t *)source;
+  } else if (native_data_matches(data, &salts_int32_cmeta_data)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = (int64_t)*(const int32_t *)source;
+  } else if (native_data_matches(data, &salts_int64_cmeta_data)) {
+    token->kind = CSERDE_SINT;
+    token->value.sint = *(const int64_t *)source;
+  } else if (native_data_matches(data, &salts_uint8_cmeta_data)) {
+    token->kind = CSERDE_UINT;
+    token->value.uint = (uint64_t)*(const uint8_t *)source;
+  } else if (native_data_matches(data, &salts_uint16_cmeta_data)) {
+    token->kind = CSERDE_UINT;
+    token->value.uint = (uint64_t)*(const uint16_t *)source;
+  } else if (native_data_matches(data, &salts_uint32_cmeta_data)) {
+    token->kind = CSERDE_UINT;
+    token->value.uint = (uint64_t)*(const uint32_t *)source;
+  } else if (native_data_matches(data, &salts_uint64_cmeta_data)) {
+    token->kind = CSERDE_UINT;
+    token->value.uint = *(const uint64_t *)source;
+  } else if (native_data_matches(data, &cmeta_data_float)) {
+    token->kind = CSERDE_FLOAT;
+    token->value.floating = (double)*(const float *)source;
+  } else if (native_data_matches(data, &cmeta_data_double)) {
+    token->kind = CSERDE_FLOAT;
+    token->value.floating = *(const double *)source;
+  } else {
+    return 0;
+  }
+
+  return 1;
+}
+
+static DataBindStatus native_buffer_read_failure(
+    NativeEncode *encode, cmeta_status status, const char *path) {
+  switch (status) {
+    case CMETA_CAPACITY_EXCEEDED:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+                         path,
+                         "Native buffer exceeds configured owned-byte budget");
+    case CMETA_OUT_OF_MEMORY:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_OOM, CSERDE_OK,
+                         path, "Native buffer provider reported allocation failure");
+    case CMETA_TRAIT_MISSING:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                         path,
+                         "Native buffer provider has no canonical read capability");
+    case CMETA_TYPE_MISMATCH:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                         CSERDE_OK, path,
+                         "Native buffer storage does not match descriptor");
+    case CMETA_INVALID_ARGUMENT:
+    case CMETA_CALLBACK_ERROR:
+    default:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK,
+                         path, "Native buffer provider failed canonical read");
+  }
+}
+
+static DataBindStatus native_enum_read_failure(
+    NativeEncode *encode, cmeta_status status, const char *path) {
+  switch (status) {
+    case CMETA_TYPE_MISMATCH:
+    case CMETA_INVALID_ARGUMENT:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                         CSERDE_OK, path,
+                         "Native enum value violates canonical domain");
+    case CMETA_TRAIT_MISSING:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                         path,
+                         "Native enum provider has no canonical bits reader");
+    case CMETA_OUT_OF_MEMORY:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_OOM, CSERDE_OK,
+                         path, "Native enum provider reported allocation failure");
+    case CMETA_CAPACITY_EXCEEDED:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+                         path, "Native enum provider exceeded canonical bounds");
+    case CMETA_CALLBACK_ERROR:
+    default:
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK,
+                         path, "Native enum provider failed canonical read");
+  }
+}
+
+static DataBindStatus native_encode_value(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path);
+
+static DataBindStatus native_encode_struct(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+  size_t i;
+  DataBindStatus status = native_write(encode, &token, path);
+
+  if (status != DATA_BIND_OK) return status;
+
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *field = &shape->fields[i];
+    char child_path[sizeof(((DataBindError *)0)->path)];
+    const size_t name_size = strlen(field->name);
+
+    token = (cserde_token){
+        .kind = CSERDE_STRING,
+        .value.slice = {
+            (const unsigned char *)field->name, name_size, CSERDE_VIEW_STABLE}};
+    status = native_write(encode, &token, path);
+    if (status != DATA_BIND_OK) return status;
+
+    if (!native_path_join(child_path, sizeof(child_path), path, field->name))
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                         path, "Native field path exceeds diagnostic capacity");
+
+    status = native_encode_value(
+        encode, field->value,
+        (const unsigned char *)source + field->offset,
+        depth + 1u, child_path);
+    if (status != DATA_BIND_OK) return status;
+  }
+
+  token = (cserde_token){.kind = CSERDE_MAP_END};
+  return native_write(encode, &token, path);
+}
+
+static DataBindStatus native_encode_value(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path) {
+  cserde_token token;
+  DataBindStatus status;
+
+  if (depth == 0u || depth > encode->options->max_depth)
+    return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                       "Encoded value depth exceeds configured limit");
+  if (encode->items == encode->options->max_items)
+    return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                       "Encoded value item count exceeds configured limit");
+  ++encode->items;
+
+  if (data->kind == CMETA_DATA_STRUCT)
+    return native_encode_struct(encode, data, source, depth, path);
+
+  if (native_scalar_supported(data)) {
+    if (!native_scalar_token(data, source, &token))
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                         path, "Unsupported native scalar after preflight");
+    return native_write(encode, &token, path);
+  }
+
+  if (data->kind == CMETA_DATA_ENUM) {
+    uint64_t bits = 0u;
+    cmeta_status enum_status = cmeta_data_enum_read_bits(data, source, &bits);
+    if (enum_status != CMETA_OK)
+      return native_enum_read_failure(encode, enum_status, path);
+    token = (cserde_token){.kind = CSERDE_UINT, .value.uint = bits};
+    return native_write(encode, &token, path);
+  }
+
+  if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
+    const unsigned char *view = NULL;
+    size_t size = 0u;
+    size_t remaining;
+    cmeta_status buffer_status;
+
+    if (encode->owned_bytes > encode->options->max_owned_bytes)
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+                         path, "Owned payload accounting exceeded configured limit");
+    remaining = encode->options->max_owned_bytes - encode->owned_bytes;
+    buffer_status =
+        cmeta_data_buffer_read(data, source, remaining, &view, &size);
+    if (buffer_status != CMETA_OK)
+      return native_buffer_read_failure(encode, buffer_status, path);
+    if (size > remaining)
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+                         path, "Native buffer exceeds configured owned-byte budget");
+
+    token.kind =
+        data->kind == CMETA_DATA_STRING ? CSERDE_STRING : CSERDE_BYTES;
+    token.value.slice.data = view;
+    token.value.slice.size = size;
+    token.value.slice.lifetime = CSERDE_VIEW_TRANSIENT;
+    status = native_write(encode, &token, path);
+    if (status != DATA_BIND_OK) return status;
+    encode->owned_bytes += size;
+    return DATA_BIND_OK;
+  }
+
+  return native_fail(encode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                     "Unsupported native encoder descriptor after preflight");
+}
+
+DataBindStatus data_bind_native_encode(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    const void *source, size_t source_bytes, cserde_writer *writer,
+    DataBindNativeDiagnostic *diagnostic) {
+  DataBindNativeRequirements requirements = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  NativeEncode encode;
+  const char *root_path;
+  DataBindStatus status;
+
+  if (!native_diagnostic_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (options == NULL ||
+      options->size < offsetof(DataBindNativeOptions, abi_version) +
+                          sizeof(options->abi_version))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native options record is missing its ABI header");
+  if (options->size < sizeof(DataBindNativeOptions) ||
+      options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native options ABI is incompatible");
+  if (shape == NULL || source == NULL || writer == NULL ||
+      options->workspace == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native encode arguments must be non-null");
+  if (!cmeta_data_desc_valid(shape) || shape->storage_type == NULL ||
+      !cmeta_type_desc_valid(shape->storage_type))
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, NULL,
+                       "Invalid canonical CMeta root descriptor");
+
+  root_path = shape->display_name;
+  if (source_bytes < shape->storage_type->size ||
+      shape->storage_type->align == 0u ||
+      (uintptr_t)source % shape->storage_type->align != 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Source storage size or alignment is invalid");
+
+  if (!native_range_valid(options->workspace, options->workspace_bytes, NULL,
+                          NULL) ||
+      !native_range_valid(source, source_bytes, NULL, NULL))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native workspace or source range overflows address space");
+
+  if (native_ranges_overlap(options->workspace, options->workspace_bytes,
+                            source, source_bytes) ||
+      native_ranges_overlap(writer, sizeof(*writer), source, source_bytes) ||
+      native_ranges_overlap(writer, sizeof(*writer),
+                            options->workspace, options->workspace_bytes) ||
+      native_ranges_overlap(options, sizeof(*options), source, source_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native control records alias encoder source/workspace");
+
+  if (diagnostic != NULL &&
+      (native_ranges_overlap(diagnostic, sizeof(*diagnostic), source,
+                             source_bytes) ||
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             options->workspace, options->workspace_bytes) ||
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic), writer,
+                             sizeof(*writer))))
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  /*
+   * Reuse the existing native graph admission and budget validator. It performs
+   * no provider input/output and publishes no writer tokens.
+   */
+  status = data_bind_native_measure(options, shape, &requirements, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  native_reset_diagnostic(diagnostic);
+  memset(&encode, 0, sizeof(encode));
+  encode.options = options;
+  encode.diagnostic = diagnostic;
+  encode.writer = writer;
+
+  status = native_encode_value(&encode, shape, source, 1u, root_path);
+  if (status == DATA_BIND_OK) native_reset_diagnostic(diagnostic);
+  return status;
+}
