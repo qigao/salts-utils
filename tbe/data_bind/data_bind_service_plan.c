@@ -44,6 +44,14 @@ static size_t plan_out_size(size_t requested, size_t full_size) {
   return requested != 0u && requested < full_size ? requested : full_size;
 }
 
+static int plan_diag_header_valid(
+    const DataBindServicePlanDiagnostic *diagnostic) {
+  return diagnostic == NULL ||
+         diagnostic->size >=
+             offsetof(DataBindServicePlanDiagnostic, status) +
+                 sizeof(diagnostic->status);
+}
+
 static void plan_diag_clear(DataBindServicePlanDiagnostic *diagnostic) {
   size_t size;
   if (diagnostic == NULL) return;
@@ -881,6 +889,7 @@ DataBindStatus data_bind_service_plan_compile(
   DataBindStatus status;
 
   if (out_plan != NULL) *out_plan = NULL;
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
   plan_diag_clear(diagnostic);
   if (codec == NULL || service_name == NULL || operation_name == NULL ||
       native == NULL || out_plan == NULL ||
@@ -1199,10 +1208,15 @@ DataBindStatus data_bind_service_plan_bind_inputs(
   int request_initialized = 0;
   DataBindStatus status;
 
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
   plan_diag_clear(diagnostic);
-  if (!provider_valid_for_input(provider) || native_options == NULL)
+  if ((plan == NULL || plan->ingress_count != 0u) &&
+      !provider_valid_for_input(provider))
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
-                          "Invalid service input provider or native options");
+                          "Invalid service input provider");
+  if (native_options == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid native binding options");
 
   status = plan_frame_preflight(plan, frame, diagnostic);
   if (status != DATA_BIND_OK) return status;
@@ -1322,14 +1336,16 @@ DataBindStatus data_bind_service_plan_write_outputs(
   DataBindStatus status;
   size_t i;
 
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
   plan_diag_clear(diagnostic);
   if (plan == NULL || frame == NULL || frame->size < sizeof(*frame) ||
-      !provider_valid_for_output(provider))
+      (plan->egress_count != 0u && !provider_valid_for_output(provider)))
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
                           "Invalid service output plan/provider/frame");
 
   status = plan_frame_preflight(plan, frame, diagnostic);
   if (status != DATA_BIND_OK) return status;
+  if (plan->egress_count == 0u) return DATA_BIND_OK;
 
   status = provider->begin_output(provider->context, &error);
   if (status != DATA_BIND_OK)
