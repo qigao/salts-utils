@@ -1,5 +1,6 @@
 param(
-  [switch]$Capture
+  [switch]$Capture,
+  [string]$ManifestRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,12 +24,19 @@ if (-not (Test-Path -LiteralPath $vcpkg -PathType Leaf)) {
 }
 
 $installRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed"
+if ([string]::IsNullOrWhiteSpace($ManifestRoot)) {
+  $ManifestRoot = $env:GITHUB_WORKSPACE
+}
+$ManifestRoot = (Resolve-Path -LiteralPath $ManifestRoot).Path
+if (-not (Test-Path -LiteralPath (Join-Path $ManifestRoot "vcpkg.json") -PathType Leaf)) {
+  throw "vcpkg manifest root does not contain vcpkg.json: $ManifestRoot"
+}
 # Keep the cache-only restored install tree in place. CMake uses the same
 # VCPKG_INSTALLED_DIR, so configure/build performs no second dependency restore.
 
 $args = @(
   "install",
-  "--x-manifest-root=$env:GITHUB_WORKSPACE",
+  "--x-manifest-root=$ManifestRoot",
   "--x-install-root=$installRoot",
   "--triplet=x64-windows",
   "--only-binarycaching"
@@ -37,7 +45,8 @@ if ($Capture) {
   $args += "--x-feature=capture"
 }
 
-Write-Host "Verifying SaltsUtils Windows dependencies are fully restorable from qigao/vcpkg-cache"
+Write-Host "Verifying Windows dependencies are fully restorable from qigao/vcpkg-cache"
+Write-Host "Manifest root: $ManifestRoot"
 Write-Host "Capture feature: $($Capture.IsPresent)"
 
 & $vcpkg @args
