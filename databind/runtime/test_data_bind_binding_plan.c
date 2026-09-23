@@ -124,7 +124,7 @@ static DataBind *create_codec(void) {
       " optional [query] uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
-      "message CalcError { string message; }"
+      "message CalcError { string detail; }"
       "service Calc {"
       " [GET(\"/add\"), rpc]"
       " Add: AddRequest -> AddResponse throws CalcError;"
