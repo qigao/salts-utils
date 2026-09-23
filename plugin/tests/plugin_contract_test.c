@@ -244,6 +244,42 @@ describe("FunctionDesc publication") {
         check_null(entry);
     }
 
+    it("carries unknown future publication kinds without interpreting payload") {
+        plugin_test_codec_state state = {0};
+        plugin_test_codec codec =
+            plugin_test_codec_impl_as_plugin_test_codec(&state);
+        salts_plugin_export exports[2];
+        salts_plugin_publication future = {
+            .struct_size = SALTS_PLUGIN_PUBLICATION_V1_SIZE,
+            .abi_version = SALTS_PLUGIN_PUBLICATION_ABI_VERSION,
+            .kind = (salts_plugin_publication_kind)77,
+            .contract_version = 1u,
+            .capabilities = 8u,
+            .export_id = "future.channel",
+            .contract_id = "test.future.Channel",
+        };
+        const salts_plugin_publication *publications[] = { &future };
+        salts_plugin_manifest manifest = make_manifest(exports, &codec);
+        const salts_plugin_publication *found = NULL;
+        const salts_plugin_function_export *function = NULL;
+
+        manifest.struct_size = SALTS_PLUGIN_MANIFEST_V2_SIZE;
+        manifest.publications = publications;
+        manifest.publication_count = 1u;
+
+        check_equal(salts_plugin_manifest_validate(
+                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_manifest_find_publication(
+                        &manifest, "future.channel", &found),
+                    SALTS_PLUGIN_OK);
+        check_true(found == &future);
+        check_equal(salts_plugin_manifest_find_function_export(
+                        &manifest, "future.channel", &function),
+                    SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+        check_null(function);
+    }
+
     it("does not read the Function table through a V1 manifest prefix") {
         plugin_test_codec_state state = {0};
         plugin_test_codec codec =
