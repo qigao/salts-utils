@@ -8,7 +8,7 @@ on:
       - "CMakeUserPresets.json"
       - "cmake/**"
       - "presets/**"
-      - "tbe/**"
+      - "databind/**"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "tests/dependency_manifest_test.py"
@@ -43,7 +43,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e tbe/cmake
+          test ! -e databind/cmake
+          test ! -e tbe
           test ! -e cmake/ci/install-re2c.sh
           test ! -e docs/superpowers
           test ! -e tbe/docs
