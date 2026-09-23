@@ -19,6 +19,12 @@
 #ifndef PLUGIN_PROJECTION_INVALID_OUTPUT_FILE
 #error "PLUGIN_PROJECTION_INVALID_OUTPUT_FILE is required"
 #endif
+#ifndef PLUGIN_NATIVE_HEADER_OUTPUT_FILE
+#error "PLUGIN_NATIVE_HEADER_OUTPUT_FILE is required"
+#endif
+#ifndef PLUGIN_NATIVE_SOURCE_OUTPUT_FILE
+#error "PLUGIN_NATIVE_SOURCE_OUTPUT_FILE is required"
+#endif
 
 static int text_contains(const char *text, const char *needle) {
   return text != NULL && needle != NULL && strstr(text, needle) != NULL;
@@ -29,6 +35,17 @@ static int file_exists(const char *path) {
   if (file == NULL) return 0;
   fclose(file);
   return 1;
+}
+
+static int generate_native_header(void) {
+  tbe_compiler_options_t options = {
+      .schema_path = PLUGIN_PROJECTION_SCHEMA_FILE,
+      .output_path = PLUGIN_NATIVE_HEADER_OUTPUT_FILE,
+      .source_output_path = PLUGIN_NATIVE_SOURCE_OUTPUT_FILE,
+      .resource_dir = TBE_COMPILER_RESOURCE_DIR,
+      .lang_enum = TBE_COMPILER_LANG_C,
+  };
+  return tbe_compiler_run(&options);
 }
 
 static int generate_plugin(
@@ -57,6 +74,35 @@ static int generate_plugin(
 }
 
 spec("DataBind PLUGIN projection backend") {
+describe("canonical native Service API") {
+  it("publishes the same native symbol consumed by PLUGIN generation") {
+    char *header;
+
+    (void)remove(PLUGIN_NATIVE_HEADER_OUTPUT_FILE);
+    (void)remove(PLUGIN_NATIVE_SOURCE_OUTPUT_FILE);
+
+    check_equal(generate_native_header(), 0);
+
+    header = tbe_compiler_read_file(PLUGIN_NATIVE_HEADER_OUTPUT_FILE);
+    check_not_null(header);
+
+    check_true(text_contains(
+        header,
+        "int Image_Codec_Decode(\n"
+        "    const DecodeRequest_t *request,\n"
+        "    DecodeResponse_t *response);"));
+    check_true(text_contains(
+        header,
+        "int Image_Codec_Encode(\n"
+        "    const EncodeRequest_t *request,\n"
+        "    EncodeResponse_t *response);"));
+
+    free(header);
+    (void)remove(PLUGIN_NATIVE_HEADER_OUTPUT_FILE);
+    (void)remove(PLUGIN_NATIVE_SOURCE_OUTPUT_FILE);
+  }
+}
+
 describe("generated publication") {
   it("derives one passive Function export per Service operation") {
     char *generated;
