@@ -1216,19 +1216,55 @@ static void tbe_compiler_annotate_service_symbols(Node *root) {
       char *symbol;
 
       if (operation_name == NULL) continue;
+      char schema_length_text[32];
+      char service_length_text[32];
+      char operation_length_text[32];
+      int schema_length_chars;
+      int service_length_chars;
+      int operation_length_chars;
+
       schema_len = strlen(schema_name);
       service_len = strlen(service_name);
       operation_len = strlen(operation_name);
-      if (schema_len > SIZE_MAX - service_len - 1u ||
-          schema_len + service_len + 1u > SIZE_MAX - operation_len - 2u)
+
+      schema_length_chars = snprintf(
+          schema_length_text, sizeof(schema_length_text), "%zu", schema_len);
+      service_length_chars = snprintf(
+          service_length_text, sizeof(service_length_text), "%zu", service_len);
+      operation_length_chars = snprintf(
+          operation_length_text, sizeof(operation_length_text), "%zu",
+          operation_len);
+      if (schema_length_chars <= 0 || service_length_chars <= 0 ||
+          operation_length_chars <= 0)
         continue;
 
-      length = schema_len + service_len + operation_len + 3u;
+      /*
+       * Length-prefix each semantic identifier so the generated C symbol is
+       * injective even when Service/operation names themselves contain '_'.
+       *
+       * Example:
+       *   Image.Codec.Decode
+       *     -> databind_5_Image_5_Codec_6_Decode
+       */
+      if (schema_len > SIZE_MAX - service_len ||
+          schema_len + service_len > SIZE_MAX - operation_len ||
+          schema_len + service_len + operation_len > SIZE_MAX - 16u -
+              (size_t)schema_length_chars -
+              (size_t)service_length_chars -
+              (size_t)operation_length_chars)
+        continue;
+
+      length = schema_len + service_len + operation_len +
+               (size_t)schema_length_chars +
+               (size_t)service_length_chars +
+               (size_t)operation_length_chars + 16u;
       symbol = (char *)malloc(length);
       if (symbol == NULL) continue;
 
-      snprintf(symbol, length, "%s_%s_%s",
-               schema_name, service_name, operation_name);
+      snprintf(symbol, length, "databind_%s_%s_%s_%s_%s_%s",
+               schema_length_text, schema_name,
+               service_length_text, service_name,
+               operation_length_text, operation_name);
       (void)tbe_compiler_set_string(operation, "native_c_symbol", symbol);
       free(symbol);
     }
