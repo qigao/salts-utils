@@ -6,7 +6,7 @@
 #include "schema_lexer.h"
 #include "schema_types.h"
 #include "schema_grammar_gen.h"
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1181,7 +1181,7 @@ static int annotate_schema_metadata(Node *root) {
     return 0;
 }
 
-static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
+static Node *parse_schema_raw(const char *text, size_t len, DataBindSchemaError *err) {
     Node *temp_root;
     Node *schema_node;
     Node *messages_list;
@@ -1209,7 +1209,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         node_free(messages_list);
         node_free(temp_root);
         if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to allocate node structures");
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, -1, -1, "Failed to allocate node structures");
         }
         return NULL;
     }
@@ -1222,7 +1222,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         map_add(temp_root, services_list) != 0) {
         node_free(temp_root);
         if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to add child nodes");
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, -1, -1, "Failed to add child nodes");
         }
         return NULL;
     }
@@ -1253,7 +1253,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     if (!parser) {
         node_free(temp_root);
         if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to allocate parser");
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, -1, -1, "Failed to allocate parser");
         }
         return NULL;
     }
@@ -1269,7 +1269,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         if (err) {
             char msg[128];
             snprintf(msg, sizeof(msg), "Lexer error at line %d", lexer.line);
-            tbe_error_set(err, TBE_ERR_LEXER_ERROR, lexer.line, -1, msg);
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_LEXER, lexer.line, -1, msg);
         }
         ctx.error = 1;
     }
@@ -1284,10 +1284,10 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         node_free(temp_root);
         if (err) {
             if (ctx.error_msg[0] != '\0') {
-                tbe_error_set(err, TBE_ERR_SYNTAX_ERROR, ctx.error_line, ctx.error_column,
+                data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_SYNTAX, ctx.error_line, ctx.error_column,
                               ctx.error_msg);
-            } else if (err->code == TBE_OK) {
-                tbe_error_set(err, TBE_ERR_SYNTAX_ERROR, -1, -1, "Parse error");
+            } else if (err->code == DATA_BIND_SCHEMA_OK) {
+                data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_SYNTAX, -1, -1, "Parse error");
             }
         }
         return NULL;
@@ -1369,14 +1369,14 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
     return 0;
 }
 
-int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
+int parse_schema(const char *text, size_t len, Node *root, DataBindSchemaError *err) {
     if (err) {
-        tbe_error_init(err);
+        data_bind_schema_error_init(err);
     }
 
     if (!text || !root || root->type != NODE_MAP) {
         if (err) {
-            tbe_error_set(err, TBE_ERR_INVALID_ARGUMENT, -1, -1, "Invalid arguments to parse_schema");
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT, -1, -1, "Invalid arguments to parse_schema");
         }
         return -1;
     }
@@ -1384,7 +1384,7 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     // Check for unreasonably large input (prevent DoS)
     if (len > SCHEMA_MAX_TEXT_BYTES) {
         if (err) {
-            tbe_error_set(err, TBE_ERR_INVALID_ARGUMENT, -1, -1, "Schema text too large");
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT, -1, -1, "Schema text too large");
         }
         return -1;
     }
@@ -1402,7 +1402,7 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     if (annotate_schema_tree(parsed) != 0) {
         node_free(parsed);
         if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+            data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, -1, -1,
                           "Failed to annotate parsed schema");
         }
         return -1;
@@ -1416,8 +1416,8 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     int result = merge_schema_into_root(root, parsed);
     node_free(parsed);
 
-    if (result != 0 && err && err->code == TBE_OK) {
-        tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to merge schema into root");
+    if (result != 0 && err && err->code == DATA_BIND_SCHEMA_OK) {
+        data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, -1, -1, "Failed to merge schema into root");
     }
 
     return result;
