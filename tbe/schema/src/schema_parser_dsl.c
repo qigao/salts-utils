@@ -1350,6 +1350,13 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
         map_remove_named_children(root, generated_names[i]);
         if (generated_children[i]) {
+            if (strcmp(generated_names[i], "services") == 0 &&
+                generated_children[i]->type == NODE_LIST &&
+                generated_children[i]->data.list.count == 0u) {
+                node_free(generated_children[i]);
+                generated_children[i] = NULL;
+                continue;
+            }
             if (map_add(root, generated_children[i]) != 0) {
                 node_free(generated_children[i]);
                 for (size_t j = i + 1; j < sizeof(generated_children) / sizeof(generated_children[0]); ++j) {
