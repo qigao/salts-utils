@@ -1,0 +1,173 @@
+name: Unicode emoji property conformance
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-emoji.yml"
+  push:
+    branches: [master]
+    paths:
+      - "unicode/**"
+      - "cmake/**"
+      - "CMake*.txt"
+      - "CMake*Presets.json"
+      - ".github/workflows/unicode-emoji.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: salts-utils-unicode-emoji-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  emoji-properties:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact SaltsUtils head
+        uses: actions/checkout@v4
+
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Go for BoringSSL
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+
+      - name: Prepare versioned SDK toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm
+          sudo ln -sfn "$VCPKG_ROOT" /opt/vcpkg
+
+      - name: Restore Salts 1.2.0 and re2c 4.6.3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Expose versioned Salts SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f "$SALTS_ROOT/lib/cmake/Salts/SaltsConfig.cmake"
+          sudo mkdir -p /opt/salts
+          sudo ln -sfn "$SALTS_ROOT" /opt/salts/debug
+
+      - name: Build standalone host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-lemon --target lemon -j2
+
+      - name: Configure exact SaltsUtils head
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --preset linux-dev-user \
+            -DENABLE_SANITIZER_ADDRESS=OFF \
+            -DENABLE_SANITIZER_UNDEFINED=OFF \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="${GITHUB_WORKSPACE}/build/host-lemon/lemon"
+
+      - name: Verify deterministic Unicode 17 emoji table generation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 unicode/tools/generate_emoji_data.py \
+            --emoji-data unicode/data/17.0.0/emoji-data.txt \
+            --output "${RUNNER_TEMP}/unicode_emoji_data.h"
+          cmp "${RUNNER_TEMP}/unicode_emoji_data.h" unicode/src/unicode_emoji_data.h
+
+      - name: Build focused emoji property tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug \
+            --target test_salts_unicode_emoji test_salts_unicode_emoji_conformance -j2
+
+      - name: Run Unicode 17 emoji property tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/linux-gcc-debug \
+            -R '^test_salts_unicode_emoji(_conformance)?$' --output-on-failure
+
+      - name: Install exact SaltsUtils head
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/linux-gcc-debug --target install -j2
+
+      - name: Verify C and C++ install-tree emoji consumers
+        shell: bash
+        env:
+          SALTS_ROOT: /opt/salts/debug
+        run: |
+          set -euxo pipefail
+          consumer="${RUNNER_TEMP}/unicode-emoji-consumer"
+          mkdir -p "${consumer}"
+
+          cat > "${consumer}/CMakeLists.txt" <<'EOF'
+          cmake_minimum_required(VERSION 3.27)
+          project(SaltsUnicodeEmojiInstallConsumer LANGUAGES C CXX)
+          find_package(SaltsUtils CONFIG REQUIRED)
+          add_executable(unicode_emoji_consumer_c main.c)
+          add_executable(unicode_emoji_consumer_cpp main.cpp)
+          target_link_libraries(unicode_emoji_consumer_c PRIVATE Salts::Unicode)
+          target_link_libraries(unicode_emoji_consumer_cpp PRIVATE Salts::Unicode)
+          EOF
+
+          cat > "${consumer}/main.c" <<'EOF'
+          #include <salts_unicode.h>
+          int main(void) {
+            uint32_t props = 0u;
+            return salts_unicode_scalar_properties(0x1F600u, &props) == SALTS_UNICODE_OK &&
+                           (props & SALTS_UNICODE_PROPERTY_EMOJI_PRESENTATION) != 0u &&
+                           (props & SALTS_UNICODE_PROPERTY_EXTENDED_PICTOGRAPHIC) != 0u
+                       ? 0
+                       : 1;
+          }
+          EOF
+
+          cat > "${consumer}/main.cpp" <<'EOF'
+          #include <salts_unicode.h>
+          int main() {
+            uint32_t props = 0u;
+            return salts_unicode_scalar_properties(0x200Du, &props) == SALTS_UNICODE_OK &&
+                           (props & SALTS_UNICODE_PROPERTY_EMOJI_COMPONENT) != 0u
+                       ? 0
+                       : 1;
+          }
+          EOF
+
+          cmake -S "${consumer}" -B "${consumer}/build" -G Ninja \
+            -DCMAKE_PREFIX_PATH="/opt/salts-utils/debug;${GITHUB_WORKSPACE}/vcpkg_installed/x64-linux/debug"
+          cmake --build "${consumer}/build" -j2
+          "${consumer}/build/unicode_emoji_consumer_c"
+          "${consumer}/build/unicode_emoji_consumer_cpp"
+
+      - name: Verify exact head
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
