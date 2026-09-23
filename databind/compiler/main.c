@@ -23,9 +23,9 @@
 #include "compiler_core.h"
 #include "salts_fs.h"
 
-static const char *TBE_COMPILER_LANG_OPTION_LIST =
+static const char *DATABIND_COMPILER_LANG_OPTION_LIST =
     "c, cpp, cxx, go, rust, python, py, ts, typescript, sqlite, postgresql, postgres";
-static const char *TBE_COMPILER_LANG_OPTION_HELP =
+static const char *DATABIND_COMPILER_LANG_OPTION_HELP =
     "Target language (built-in template: c, cpp, cxx, go, rust, python, py, ts, "
     "typescript, sqlite, postgresql, postgres)";
 
@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
-    int64_t  lang_enum     = TBE_COMPILER_LANG_C;
+    int64_t  lang_enum     = DATABIND_COMPILER_LANG_C;
     char resource_dir[SALTS_FS_MAX_PATH];
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
         cmd_arger_desc_string_sh(&template_path, "template", "t",
                                  "Path to a custom Mustache template file"),
         cmd_arger_desc_string_sh(&lang_name, "lang", "l",
-                                 TBE_COMPILER_LANG_OPTION_HELP),
+                                 DATABIND_COMPILER_LANG_OPTION_HELP),
         cmd_arger_desc_string_sh(
             &output_path, "output", "o",
             "Output file path (required for sqlite/postgresql/postgres; "
@@ -116,13 +116,13 @@ int main(int argc, char **argv) {
                     argc, argv, "databindc 3.0", cmd_arger_true);
 
     if (lang_name != NULL &&
-        tbe_compiler_parse_language_name(lang_name, &lang_enum) != 0) {
+        data_bind_compiler_parse_language_name(lang_name, &lang_enum) != 0) {
         fprintf(stderr, "Unsupported --lang '%s'. Expected one of: %s\n",
-                lang_name, TBE_COMPILER_LANG_OPTION_LIST);
+                lang_name, DATABIND_COMPILER_LANG_OPTION_LIST);
         return 1;
     }
 
-    tbe_compiler_options_t options = {
+    data_bind_compiler_options_t options = {
         .schema_path = schema_path,
         .template_path = template_path,
         .output_path = output_path,
@@ -134,6 +134,6 @@ int main(int argc, char **argv) {
         .lang_enum = lang_enum,
     };
 
-    int res = tbe_compiler_run(&options);
+    int res = data_bind_compiler_run(&options);
     return res;
 }
