@@ -3,8 +3,8 @@
 `Salts::Plugin` is the CMeta-based plugin contract layer owned by SaltsUtils.
 It defines the portable manifest/export ABI, validates semantic contracts, and
 provides the bounded POSIX/Windows dynamic loader registry plus explicit
-lease-based lifecycle/quiescent unload. Optional CFlow adapters remain a
-separate follow-up layer.
+lease-based lifecycle/quiescent unload. Optional CFlow integration is exported
+separately as `Salts::PluginCFlow`.
 
 ## Boundary
 
@@ -18,9 +18,9 @@ Salts::CMeta
   semantic admission
   bounded loader / registry
 
-optional later:
+optional adapter:
 Salts::PluginCFlow
-  Publisher / Executor / Scheduler / Event integration
+  lease-owned Publisher / Executor / Scheduler bindings
 ```
 
 Plugin discovery, version policy and unload semantics stay out of CMeta/CFlow.
@@ -271,3 +271,39 @@ for an explicit retry and the already-called destroy callback is not repeated.
 
 There is no force unload, retry loop, hidden worker, or background quiescence
 polling.
+
+
+## PluginCFlow adapter
+
+`Salts::PluginCFlow` is intentionally separate from the base Plugin target:
+
+```text
+Salts::Plugin
+    -> Salts::CMeta
+
+Salts::PluginCFlow
+    -> Salts::Plugin
+    -> Salts::CFlow
+```
+
+The adapter recognizes three stable semantic contracts at version 1:
+`salts.cflow.publisher`, `salts.cflow.executor`, and
+`salts.cflow.scheduler`.
+
+A binding acquires one ordinary Plugin lease, verifies the export contract
+against the corresponding CMeta-generated CFlow interface descriptor, verifies
+that the export capability bits exactly match the provider vtable capabilities,
+and then exposes the plugin-owned typed interface pointer.
+
+The provider remains borrowed. The host must not invoke its owning `D0
+destroy()`, copy/move it into another owner, or retain it after binding release.
+The plugin lifecycle remains responsible for provider shutdown and destruction.
+This avoids double ownership while still making the Plugin lease the DSO-safety
+boundary.
+
+A live binding prevents unload. `request_stop()` may close new Plugin
+admission, but already acquired bindings remain valid so accepted CFlow work can
+drain according to the provider's own contract. After bindings are released,
+the plugin's `is_quiescent()` decides when unload is safe. PluginCFlow creates
+no proxy runtime, Subscription owner, Executor, Event type, thread, or Graph
+DSL.
