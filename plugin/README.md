@@ -55,7 +55,6 @@ The returned manifest must satisfy:
 manifest.abi_version == SALTS_PLUGIN_ABI_VERSION
 manifest.struct_size == SALTS_PLUGIN_MANIFEST_SIZE
 
-each export.abi_version == SALTS_PLUGIN_ABI_VERSION
 each export.struct_size == SALTS_PLUGIN_EXPORT_SIZE
 ```
 
