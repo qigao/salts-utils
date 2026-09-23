@@ -26,8 +26,11 @@
 #ifndef PLUGIN_LIFECYCLE_PATH
 #error "PLUGIN_LIFECYCLE_PATH is required"
 #endif
-#ifndef PLUGIN_SLOW_QUERY_PATH
-#error "PLUGIN_SLOW_QUERY_PATH is required"
+#ifndef PLUGIN_SLOW_QUERY_A_PATH
+#error "PLUGIN_SLOW_QUERY_A_PATH is required"
+#endif
+#ifndef PLUGIN_SLOW_QUERY_B_PATH
+#error "PLUGIN_SLOW_QUERY_B_PATH is required"
 #endif
 
 typedef struct plugin_slow_load_context {
@@ -199,7 +202,7 @@ describe("transactional admission") {
     it("runs plugin query without holding the registry lock") {
         salts_plugin_registry registry = make_registry(1u);
         plugin_slow_load_context load = {
-            &registry, PLUGIN_SLOW_QUERY_PATH,
+            &registry, PLUGIN_SLOW_QUERY_A_PATH,
             SALTS_PLUGIN_INVALID_STATE, {0}
         };
         plugin_destroy_context destroy = {
@@ -209,14 +212,14 @@ describe("transactional admission") {
         salts_thread_t destroy_thread = NULL;
         bool destroy_completed;
 
-        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
         (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
 
         check_equal(salts_thread_create(
                         &load_thread, plugin_slow_load_thread, &load),
                     0);
         check_true(wait_for_marker(
-            PLUGIN_SLOW_QUERY_ENTERED_MARKER, 5000u));
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_A, 5000u));
 
         check_equal(salts_thread_create(
                         &destroy_thread, plugin_destroy_thread, &destroy),
@@ -249,7 +252,73 @@ describe("transactional admission") {
                         SALTS_PLUGIN_OK);
 
         destroy_registry(&registry);
-        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+    }
+
+    it("publishes at most one concurrent duplicate plugin") {
+        salts_plugin_registry registry = make_registry(2u);
+        plugin_slow_load_context first = {
+            &registry, PLUGIN_SLOW_QUERY_A_PATH,
+            SALTS_PLUGIN_INVALID_STATE, {0}
+        };
+        plugin_slow_load_context second = {
+            &registry, PLUGIN_SLOW_QUERY_B_PATH,
+            SALTS_PLUGIN_INVALID_STATE, {0}
+        };
+        salts_thread_t first_thread = NULL;
+        salts_thread_t second_thread = NULL;
+        salts_plugin_ref published = {0};
+        unsigned ok_count = 0u;
+        unsigned duplicate_count = 0u;
+
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_B);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_create(
+                        &first_thread, plugin_slow_load_thread, &first),
+                    0);
+        check_equal(salts_thread_create(
+                        &second_thread, plugin_slow_load_thread, &second),
+                    0);
+
+        check_true(wait_for_marker(
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_A, 5000u));
+        check_true(wait_for_marker(
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_B, 5000u));
+
+        touch_marker(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_join(&first_thread), 0);
+        salts_thread_destroy(&first_thread);
+        check_equal(salts_thread_join(&second_thread), 0);
+        salts_thread_destroy(&second_thread);
+
+        if (first.status == SALTS_PLUGIN_OK) {
+            ++ok_count;
+            published = first.ref;
+        } else if (first.status == SALTS_PLUGIN_DUPLICATE_PLUGIN_ID) {
+            ++duplicate_count;
+        }
+
+        if (second.status == SALTS_PLUGIN_OK) {
+            ++ok_count;
+            published = second.ref;
+        } else if (second.status == SALTS_PLUGIN_DUPLICATE_PLUGIN_ID) {
+            ++duplicate_count;
+        }
+
+        check_equal(ok_count, 1u);
+        check_equal(duplicate_count, 1u);
+        check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
+        check_true(salts_plugin_ref_valid(published));
+        check_equal(salts_plugin_registry_unload(&registry, published),
+                    SALTS_PLUGIN_OK);
+
+        destroy_registry(&registry);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_B);
         (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
     }
 
