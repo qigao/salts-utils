@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -27,7 +27,7 @@ suite("optional_fields_and_defaults") {
         it("should parse required fields (default behavior)") {
             const char *schema = "message User { uint32 id; string name; }";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -52,7 +52,7 @@ suite("optional_fields_and_defaults") {
                                 "}";
             Node *root = create_node_map("root");
             DataBindSchemaError err;
-            int rc = parse_schema(schema, strlen(schema), root, &err);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
             check_equal(rc, 0);
 
@@ -82,7 +82,7 @@ suite("optional_fields_and_defaults") {
                                 "optional string phone; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -113,7 +113,7 @@ suite("optional_fields_and_defaults") {
                                 "}";
             Node *root = create_node_map("root");
             DataBindSchemaError err;
-            int rc = parse_schema(schema, strlen(schema), root, &err);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
             if (rc != 0) {
                 printf("Parse error: %s\n", err.message);
@@ -149,7 +149,7 @@ suite("optional_fields_and_defaults") {
             Node *root = create_node_map("root");
             Node *messages;
             Node *fields;
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
             if (rc != 0) {
@@ -190,7 +190,7 @@ suite("optional_fields_and_defaults") {
 
             for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
                 Node *root = create_node_map("root");
-                int rc = parse_schema(schemas[index], strlen(schemas[index]), root, NULL);
+                int rc = data_bind_schema_parse(schemas[index], strlen(schemas[index]), root, NULL);
 
                 info("schema=%s", schemas[index]);
                 check_not_equal(rc, 0);
@@ -216,7 +216,7 @@ suite("optional_fields_and_defaults") {
 
             for (size_t index = 0; index < sizeof(schemas) / sizeof(schemas[0]); ++index) {
                 Node *root = create_node_map("root");
-                int rc = parse_schema(schemas[index], strlen(schemas[index]), root, NULL);
+                int rc = data_bind_schema_parse(schemas[index], strlen(schemas[index]), root, NULL);
 
                 info("schema=%s", schemas[index]);
                 check_not_equal(rc, 0);
@@ -232,7 +232,7 @@ suite("optional_fields_and_defaults") {
                 "message Packet { bytes(16) digest; uint8[16] values; "
                 "int32 count default 1; uint32 bits default 0xFF; }";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
             node_free(root);
@@ -243,7 +243,7 @@ suite("optional_fields_and_defaults") {
                                 "string endpoint default \"localhost\"; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -264,7 +264,7 @@ suite("optional_fields_and_defaults") {
                                 "uint8 debug default false; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -285,7 +285,7 @@ suite("optional_fields_and_defaults") {
                                 "optional string role default \"user\"; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -318,7 +318,7 @@ suite("optional_fields_and_defaults") {
                                 "Error = 2; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -348,7 +348,7 @@ suite("optional_fields_and_defaults") {
         it("should parse schema version attributes") {
             const char *schema = "schema MySchema [id(1), version(100), byte_order(little)];";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
