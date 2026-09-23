@@ -131,8 +131,7 @@ describe("manifest admission") {
         int input = 5;
         int output = 0;
 
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_OK);
 
         check_equal(salts_plugin_manifest_find_export(
@@ -181,37 +180,28 @@ describe("manifest admission") {
         salts_plugin_export exports[2];
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
 
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION + 1u),
-                    SALTS_PLUGIN_UNSUPPORTED_ABI);
-
         manifest.abi_version = SALTS_PLUGIN_ABI_VERSION + 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_UNSUPPORTED_ABI);
 
         manifest = make_manifest(exports, &codec);
         manifest.struct_size = SALTS_PLUGIN_MANIFEST_SIZE - 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
         manifest.struct_size = SALTS_PLUGIN_MANIFEST_SIZE + 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
         exports[0].struct_size = SALTS_PLUGIN_EXPORT_SIZE - 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
         exports[0].struct_size = SALTS_PLUGIN_EXPORT_SIZE + 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
     }
 
@@ -224,22 +214,19 @@ describe("manifest admission") {
         cmeta_function_abi_desc incomplete = *FunctionAbi(plugin_test_increment);
 
         exports[1].function_abi = FunctionAbi(plugin_test_widen);
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
         incomplete.return_carrier = CMETA_ABI_UNSPECIFIED;
         exports[1].function_abi = &incomplete;
         check_true(cmeta_function_abi_desc_valid(&incomplete));
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
 
         manifest = make_manifest(exports, &codec);
         exports[1].function_adapter = NULL;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_INVALID_MANIFEST);
     }
 
@@ -251,14 +238,12 @@ describe("manifest admission") {
         salts_plugin_manifest manifest = make_manifest(exports, &codec);
 
         exports[1].export_id = exports[0].export_id;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_DUPLICATE_EXPORT);
 
         manifest = make_manifest(exports, &codec);
         manifest.export_count = SALTS_PLUGIN_MAX_EXPORTS + 1u;
-        check_equal(salts_plugin_manifest_validate(
-                        &manifest, SALTS_PLUGIN_ABI_VERSION),
+        check_equal(salts_plugin_manifest_validate(&manifest),
                     SALTS_PLUGIN_CAPACITY_EXCEEDED);
     }
 }
