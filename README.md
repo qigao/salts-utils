@@ -33,7 +33,7 @@ Salts
   └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind's implementation lives under `tbe/`, and its runtime and compiler are built and installed with SaltsUtils.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind is SaltsUtils' canonical transport-neutral IDL and binding compiler. Its implementation lives under `databind/`; TBE is a DataBind format/backend rather than the owner of the schema/compiler tree.
 
 ## Main capabilities
 
@@ -140,9 +140,9 @@ The SaltsUtils DataBind component provides schema definition and validation, com
 
 Detailed documentation:
 
-- [TBE compiler CLI options](tbe/tbe_compiler/CLI_OPTIONS.md)
-- [Database DDL generation design](docs/architecture/tbe-database-ddl-generation.md)
-- [DataBind ownership and adapter design](tbe/data_bind/README.md)
+- [DataBind compiler CLI options](databind/compiler/CLI_OPTIONS.md)
+- [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
+- [DataBind ownership and adapter design](databind/runtime/README.md)
 
 ## Build and test
 
@@ -155,7 +155,7 @@ ctest --preset linux-release-user
 cmake --build --preset install-linux-release-user
 ```
 
-Windows uses the corresponding `win-*` presets. The `tbe/` subtree is a component, not an alternative standalone configure/install entry point.
+Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
 ## Design rules
 
