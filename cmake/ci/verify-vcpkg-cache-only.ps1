@@ -22,10 +22,9 @@ if (-not (Test-Path -LiteralPath $vcpkg -PathType Leaf)) {
   throw "missing canonical vcpkg executable: $vcpkg"
 }
 
-$installRoot = Join-Path $env:RUNNER_TEMP "salts-utils-vcpkg-cache-preflight"
-if (Test-Path -LiteralPath $installRoot) {
-  Remove-Item -LiteralPath $installRoot -Recurse -Force
-}
+$installRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed"
+# Keep the cache-only restored install tree in place. CMake uses the same
+# VCPKG_INSTALLED_DIR, so configure/build performs no second dependency restore.
 
 $args = @(
   "install",
