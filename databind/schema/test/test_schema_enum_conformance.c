@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "schema_cmeta.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -24,9 +24,9 @@ static void enum_reject_unchanged(const char *schema) {
   DataBindSchemaError error;
   check_not_null(root);
   if (!root) return;
-  check_equal(parse_schema(baseline, strlen(baseline), root, &error), 0);
+  check_equal(data_bind_schema_parse(baseline, strlen(baseline), root, &error), 0);
   Node *messages = enum_child(root, "messages");
-  check_equal(parse_schema(schema, strlen(schema), root, &error), -1);
+  check_equal(data_bind_schema_parse(schema, strlen(schema), root, &error), -1);
   check_equal(error.code, DATA_BIND_SCHEMA_ERR_SEMANTIC);
   check_contains(error.message, "enum");
   check(enum_child(root, "messages") == messages);
@@ -48,7 +48,7 @@ spec("enum storage and transactional schema validation") {
     DataBindSchemaError error;
     check_not_null(root);
     if (!root) return;
-    check_equal(parse_schema(source, strlen(source), root, &error), 0);
+    check_equal(data_bind_schema_parse(source, strlen(source), root, &error), 0);
     Node *enums = enum_child(root, "enums");
     check_not_null(enums);
     if (enums && enums->data.list.count == 5u) {
@@ -157,7 +157,7 @@ static void enum_check_cmeta_bounds(const enum_cmeta_case_t *item,
   DataBindSchemaError error;
   check_not_null(root);
   if (!root) return;
-  int result = parse_schema(source, (size_t)length, root, &error);
+  int result = data_bind_schema_parse(source, (size_t)length, root, &error);
   check_equal(result, 0);
   if (result == 0) {
     Node *enums = enum_child(root, "enums");
@@ -235,13 +235,13 @@ spec("production enum normalization agrees with canonical CMeta integers") {
     DataBindSchemaError error;
     check_not_null(root);
     if (!root) return;
-    int result = parse_schema(baseline, strlen(baseline), root, &error);
+    int result = data_bind_schema_parse(baseline, strlen(baseline), root, &error);
     check_equal(result, 0);
     if (result == 0) {
       Node *enums = enum_child(root, "enums");
       Node *messages = enum_child(root, "messages");
       size_t count = root->data.map.count;
-      check_equal(parse_schema(invalid, strlen(invalid), root, &error), -1);
+      check_equal(data_bind_schema_parse(invalid, strlen(invalid), root, &error), -1);
       check_equal(error.code, DATA_BIND_SCHEMA_ERR_SEMANTIC);
       check_contains(error.message, "Bad");
       check_equal(root->data.map.count, count);
