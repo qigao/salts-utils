@@ -3,7 +3,7 @@
 `Salts::Plugin` is the SaltsUtils-owned dynamic-plugin publication and lifecycle
 runtime built on CMeta semantics.
 
-It intentionally has **one current ABI only**. There is no V1/V2 coexistence,
+It intentionally has **one current ABI only**. There are no parallel legacy/current ABI generations,
 ABI negotiation, readable-prefix compatibility, or fallback to an older
 manifest. Plugins built against an obsolete ABI must be rebuilt.
 
@@ -91,7 +91,7 @@ cmeta_function_desc
 +
 cmeta_function_abi_desc
 +
-salts_plugin_function_adapter
+{ context, typed exact invoke }
 ```
 
 `cmeta_function_desc` answers what the native function means.
@@ -106,7 +106,7 @@ as the reflected function:
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_function_invoke_fn)(
     void *context,
     void *return_storage,
-    void *const *params,
+    const void *const *params,
     size_t param_count);
 ```
 
@@ -210,7 +210,7 @@ Everything borrowed from the plugin DSO is valid only while a live
 
 That includes:
 
-- manifest/export rows;
+- manifest/export rows and tagged capability payloads;
 - FunctionMeta / FunctionAbi;
 - TypeDesc / DataDesc;
 - custom type-trait callbacks;
