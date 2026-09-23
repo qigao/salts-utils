@@ -401,7 +401,7 @@ cmake_add_test(test_tbe_typed_descriptor_boundary
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
 
-# This fixture executes tbe_compiler during the build. Do not run a target-
+# This fixture executes databindc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
 if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
