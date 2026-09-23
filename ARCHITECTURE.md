@@ -8,7 +8,7 @@ Salts 是基础能力的唯一事实源，安装并导出 Core、CSTL、CMeta、
 
 ```text
 application -> SaltsUtils parser/query/utility capability -> installed Salts foundation
-            \---------------------------------------------> SaltsUtils DataBind/TBE
+            \---------------------------------------------> SaltsUtils DataBind
 
 Salts::CNet -> Salts::UriParser
 Salts -/-> SaltsUtils
@@ -40,7 +40,7 @@ package 消费它。
 - `Salts::Selector`
 - `Salts::Cron`
 - `Salts::Mustache`
-- `Salts::TbeSchema`（以及 `Salts::SchemaBE` 兼容别名）
+- `Salts::DataBindSchema`
 - `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
 - `Salts::Serial`
 - `Salts::Playback`
@@ -125,7 +125,7 @@ CFlowUSB 由一个内部线程独占 libusb native events，使用固定 transfe
 queue，并只由 `cflow_usb_run_ready()` 交付用户 callback。borrowed transfer buffer、exactly-once
 terminal completion 与 quiescent destroy 是其公开生命周期契约。
 
-TBE schema 与 `tbe_compiler` 位于 SaltsUtils。编译器只在构建、CI 和代码生成阶段运行；数据库
+DataBind IDL/schema 与 `databindc` 位于 SaltsUtils；TBE 仅是 DataBind 的格式/backend。编译器只在构建、CI 和代码生成阶段运行；数据库
 DDL 生成不会成为部署后二进制的运行时依赖。
 
 ## 构建与发布

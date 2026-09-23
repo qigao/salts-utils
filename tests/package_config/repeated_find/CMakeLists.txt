@@ -13,7 +13,7 @@ find_package(SaltsUtils CONFIG REQUIRED
 find_package(SaltsUtils CONFIG REQUIRED)
 
 foreach(forbidden_target IN ITEMS
-    Salts::TbeSchema
+    Salts::DataBindSchema
     Salts::DataBindCore
     Salts::DataBind
     Salts::DataBindCMeta

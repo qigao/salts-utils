@@ -20,13 +20,13 @@ foreach(FORBIDDEN_EXPORT IN ITEMS
   endif()
 endforeach()
 
-if(EXISTS "${PARENT_SOURCE_ROOT}/tbe/cmake")
-  message(FATAL_ERROR "tbe/cmake must not exist; TBE/DataBind use SaltsUtils build helpers")
+if(EXISTS "${PARENT_SOURCE_ROOT}/databind/cmake")
+  message(FATAL_ERROR "databind/cmake must not exist; DataBind uses SaltsUtils build helpers")
 endif()
 
 foreach(COMPONENT_CMAKE IN ITEMS
-        "tbe/schema/CMakeLists.txt"
-        "tbe/data_bind/CMakeLists.txt")
+        "databind/schema/CMakeLists.txt"
+        "databind/runtime/CMakeLists.txt")
   file(READ "${PARENT_SOURCE_ROOT}/${COMPONENT_CMAKE}" COMPONENT_CONTENT)
   string(FIND "${COMPONENT_CONTENT}" "EXPORT SaltsUtilsTargets" EXPORT_POSITION)
   if(EXPORT_POSITION EQUAL -1)

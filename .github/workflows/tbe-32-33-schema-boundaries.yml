@@ -4,8 +4,8 @@ on:
   push:
     branches: [master, fix/tbe-32-33-schema-boundaries]
     paths:
-      - 'tbe/schema/**'
-      - 'tbe/tbe_compiler/**'
+      - 'databind/schema/**'
+      - 'databind/compiler/**'
       - 'tools/lemon/**'
       - 'cmake/**'
       - 'presets/**'
@@ -18,8 +18,8 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - 'tbe/schema/**'
-      - 'tbe/tbe_compiler/**'
+      - 'databind/schema/**'
+      - 'databind/compiler/**'
       - 'tools/lemon/**'
       - 'cmake/**'
       - 'presets/**'
@@ -154,7 +154,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+          ctest --test-dir build/linux-gcc-debug/databind/schema --no-tests=error \
             -R '^(test_schema_boundaries|test_tbe_parser)$' \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/focused.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/focused.log"
@@ -163,7 +163,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe/tbe_compiler --no-tests=error \
+          ctest --test-dir build/linux-gcc-debug/databind/compiler --no-tests=error \
             -R '^test_tbe_compiler_schema_boundary$' \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/compiler-boundary.log"
@@ -189,7 +189,7 @@ jobs:
             test_enum_enhanced_simple_functional \
             test_union_types_functional \
             -j2 2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema-build.log"
-          ctest --test-dir build/linux-gcc-debug/tbe/schema --no-tests=error \
+          ctest --test-dir build/linux-gcc-debug/databind/schema --no-tests=error \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe-schema-evidence/schema.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe-schema-evidence/schema.log"
 
@@ -212,5 +212,5 @@ jobs:
             ${{ runner.temp }}/tbe-schema-evidence/
             build/linux-gcc-debug/compile_commands.json
             build/linux-gcc-debug/CMakeCache.txt
-            build/linux-gcc-debug/tbe/schema/Testing/Temporary/
-            build/linux-gcc-debug/tbe/tbe_compiler/Testing/Temporary/
+            build/linux-gcc-debug/databind/schema/Testing/Temporary/
+            build/linux-gcc-debug/databind/compiler/Testing/Temporary/

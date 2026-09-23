@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, fix/tbe-30-descriptor-layout-validation, feat/databind-native-workspace-measure]
     paths:
-      - 'tbe/**'
+      - 'databind/**'
       - 'tests/databind_direct_parsers/**'
       - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
@@ -19,7 +19,7 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - 'tbe/**'
+      - 'databind/**'
       - 'tests/databind_direct_parsers/**'
       - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build build/linux-gcc-debug --target tbe/all -j2 \
+          cmake --build build/linux-gcc-debug --target databind/all -j2 \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe-build.log"
 
       - name: Verify the SaltsUtils installation owns DataBind
@@ -174,7 +174,7 @@ jobs:
           test ! -e "$salts_utils_root/lib/cmake/DataBind"
           test -f "$salts_utils_root/include/data_bind_native.h"
           test -f "$salts_utils_root/include/schema_parser_dsl.h"
-          test -x "$salts_utils_root/bin/tbe_compiler"
+          test -x "$salts_utils_root/bin/databindc"
           test -d "$salts_utils_root/bin/templates"
 
       - name: Run DataBind package ownership contracts
@@ -189,7 +189,7 @@ jobs:
           export SALTS_ROOT=/opt/salts/debug
           salts_utils_root="$RUNNER_TEMP/salts-utils-install"
           for consumer in databind_repeated_find databind_adapters; do
-            cmake --fresh -S "tbe/tests/package_config/$consumer" \
+            cmake --fresh -S "databind/tests/package_config/$consumer" \
               -B "$RUNNER_TEMP/salts-utils-$consumer" -G Ninja \
               -DSALTS_UTILS_PACKAGE_DIR="$salts_utils_root" \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
@@ -211,7 +211,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error \
+          ctest --test-dir build/linux-gcc-debug/databind --no-tests=error \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/tbe.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe.log"
 
@@ -249,5 +249,5 @@ jobs:
             build/linux-gcc-debug/compile_commands.json
             build/linux-gcc-debug/CMakeCache.txt
             build/linux-gcc-debug/Testing/Temporary/
-            build/linux-gcc-debug/tbe/Testing/Temporary/
+            build/linux-gcc-debug/databind/Testing/Temporary/
             build/linux-gcc-debug/jinja/Testing/Temporary/

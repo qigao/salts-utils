@@ -33,7 +33,7 @@ Salts
   └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind's implementation lives under `tbe/`, and its runtime and compiler are built and installed with SaltsUtils.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind is SaltsUtils' canonical transport-neutral IDL and binding compiler. Its implementation lives under `databind/`; TBE is a DataBind format/backend rather than the owner of the schema/compiler tree.
 
 ## Main capabilities
 
@@ -48,7 +48,7 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
-| DataBind | `Salts::Databind`; schema, native/dynamic binding, rollback, and compiler/code generation |
+| DataBind | `Salts::DataBind`; schema, native/dynamic binding, rollback, and compiler/code generation |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
@@ -100,12 +100,12 @@ The package is fail-fast by design. It does not silently search unrelated prefix
 
 ### DataBind consumption
 
-The exact public consumption target is **`Salts::Databind`**:
+The exact public consumption target is **`Salts::DataBind`**:
 
 ```cmake
 find_package(SaltsUtils CONFIG REQUIRED
   PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
-target_link_libraries(app PRIVATE Salts::Databind)
+target_link_libraries(app PRIVATE Salts::DataBind)
 ```
 
 SaltsUtils exports the actual runtime and owns its internal dependency closure. Consumers do not assemble internal Core/CMeta/CFlow/format-adapter targets, introduce alternate target spellings, or manufacture aliases to conceal a missing export. There is one SaltsUtils installation and release, with no independent DataBind package/root or fallback lookup.
@@ -140,9 +140,9 @@ The SaltsUtils DataBind component provides schema definition and validation, com
 
 Detailed documentation:
 
-- [TBE compiler CLI options](tbe/tbe_compiler/CLI_OPTIONS.md)
-- [Database DDL generation design](docs/architecture/tbe-database-ddl-generation.md)
-- [DataBind ownership and adapter design](tbe/data_bind/README.md)
+- [DataBind compiler CLI options](databind/compiler/CLI_OPTIONS.md)
+- [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
+- [DataBind ownership and adapter design](databind/runtime/README.md)
 
 ## Build and test
 
@@ -155,7 +155,7 @@ ctest --preset linux-release-user
 cmake --build --preset install-linux-release-user
 ```
 
-Windows uses the corresponding `win-*` presets. The `tbe/` subtree is a component, not an alternative standalone configure/install entry point.
+Windows uses the corresponding `win-*` presets. The `databind/` subtree is a component, not an alternative standalone configure/install entry point.
 
 ## Design rules
 

@@ -20,10 +20,10 @@ target_compile_options(xml_multi_library PRIVATE -Wall -Wextra -Wpedantic -Werro
   -g -fno-omit-frame-pointer -fsanitize=address,undefined)
 target_link_options(xml_multi_library PRIVATE -fsanitize=address,undefined)
 add_test(NAME xml_private_databind_first COMMAND xml_multi_library
-  $<TARGET_FILE:Salts::Databind> $<TARGET_FILE:Salts::Mustache>)
+  $<TARGET_FILE:Salts::DataBind> $<TARGET_FILE:Salts::Mustache>)
 add_test(NAME xml_private_mustache_first COMMAND xml_multi_library
-  $<TARGET_FILE:Salts::Mustache> $<TARGET_FILE:Salts::Databind>)
+  $<TARGET_FILE:Salts::Mustache> $<TARGET_FILE:Salts::DataBind>)
 add_test(NAME xml_private_export_table COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/verify_exports.py ${CMAKE_NM}
   $<TARGET_FILE:Salts::XmlParser>
-  $<TARGET_FILE:Salts::Databind> $<TARGET_FILE:Salts::Mustache>)
+  $<TARGET_FILE:Salts::DataBind> $<TARGET_FILE:Salts::Mustache>)
