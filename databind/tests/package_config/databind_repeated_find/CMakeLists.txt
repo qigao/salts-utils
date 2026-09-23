@@ -12,7 +12,7 @@ find_package(SaltsUtils CONFIG REQUIRED
 find_package(SaltsUtils CONFIG REQUIRED)
 
 foreach(required_target IN ITEMS
-    Salts::TbeSchema
+    Salts::DataBindSchema
     Salts::DataBindCore
     Salts::Databind
     Salts::DataBindCMeta
