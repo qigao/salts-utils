@@ -303,6 +303,49 @@ static int service_field_binding_valid(Node *field, const char *kind,
     return 1;
 }
 
+static int service_validate_request_bindings(Node *root, Node *operation,
+                                             tbe_error_t *err) {
+    static const char *const binding_names[] = {
+        "path", "query", "header", "cookie", "body"
+    };
+    const char *request_type = service_string(operation, "request_type");
+    Node *request = service_type_node(root, request_type);
+    Node *fields = request != NULL ? service_find_child(request, "fields") : NULL;
+    size_t body_count = 0u;
+    size_t i;
+
+    if (fields == NULL || fields->type != NODE_LIST)
+        return 1;
+
+    for (i = 0u; i < fields->data.list.count; ++i) {
+        Node *field = fields->data.list.items[i];
+        Node *attr = NULL;
+        const char *kind = service_field_binding_kind(field, &attr);
+        size_t total = 0u;
+        size_t k;
+
+        for (k = 0u; k < sizeof(binding_names) / sizeof(binding_names[0]); ++k)
+            total += service_named_attribute_count(field, binding_names[k]);
+
+        if (total > 1u)
+            return service_errorf(err,
+                                  "Field '%s' has conflicting transport bindings in '%s'",
+                                  service_string(field, "name"), request_type);
+        if (total == 1u && kind == NULL)
+            return service_errorf(err,
+                                  "Field '%s' has duplicate transport binding in '%s'",
+                                  service_string(field, "name"), request_type);
+        if (kind == NULL) continue;
+        if (!service_field_binding_valid(field, kind, attr, err)) return 0;
+        if (strcmp(kind, "body") == 0 && ++body_count > 1u)
+            return service_errorf(err,
+                                  "Request type '%s' has more than one body field for '%s'",
+                                  request_type, service_string(operation, "name"));
+    }
+
+    return 1;
+}
+
 static int service_validate_http_fields(Node *root, Node *operation,
                                         const char *path,
                                         tbe_error_t *err) {
@@ -446,6 +489,9 @@ static int service_validate_operation(Node *root, Node *service,
          !service_type_exists(root, response_type)))
         return service_errorf(err, "Service operation '%s' has unknown response type '%s'",
                               operation_name, response_type);
+
+    if (!service_validate_request_bindings(root, operation, err))
+        return 0;
 
     if (errors != NULL && errors->type == NODE_LIST) {
         for (i = 0u; i < errors->data.list.count; ++i) {
