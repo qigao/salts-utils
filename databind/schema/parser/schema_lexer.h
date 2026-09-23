@@ -1,6 +1,6 @@
 /**
  * @file schema_lexer.h
- * @brief Schema Lexer Definitions for tbe_compiler
+ * @brief Schema Lexer Definitions for databindc
  */
 
 #ifndef SCHEMA_LEXER_H
