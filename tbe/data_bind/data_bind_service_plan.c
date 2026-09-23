@@ -738,6 +738,9 @@ static DataBindStatus plan_compile_ingress(
         &field, native_field, param, param_index, indirect, wire_name,
         diagnostic);
     if (status != DATA_BIND_OK) return status;
+    if (target == DATA_BIND_SERVICE_TARGET_FUNCTION_PARAM &&
+        whole_param == SIZE_MAX)
+      plan->ingress[i].view.native_offset = 0u;
     if (whole_param != SIZE_MAX && field.is_optional) {
       const TbeTypedField *typed_field =
           plan_overlay_field(request, field.name);
@@ -936,6 +939,9 @@ static DataBindStatus plan_compile_egress(
         DATA_BIND_SERVICE_SOURCE_RESULT, target, &field, native_field,
         param, param_index, indirect, field.name, diagnostic);
     if (status != DATA_BIND_OK) return status;
+    if (target == DATA_BIND_SERVICE_TARGET_FUNCTION_PARAM &&
+        whole_param == SIZE_MAX)
+      plan->egress[i].view.native_offset = 0u;
     plan->egress_count = i + 1u;
   }
 
