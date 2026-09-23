@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -32,7 +32,7 @@ suite("enum_helpers") {
                                 "Admin = 3; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -67,7 +67,7 @@ suite("enum_helpers") {
                                 "Error = 20; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
