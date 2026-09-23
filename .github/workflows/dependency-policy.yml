@@ -47,7 +47,7 @@ jobs:
           test ! -e tbe
           test ! -e cmake/ci/install-re2c.sh
           test ! -e docs/superpowers
-          test ! -e tbe/docs
+          test ! -e tbe
           if git grep -n -E 'ENABLE_TESTS|BUILD_TESTING' -- ':(glob)**/CMakeLists.txt' CMakeOptions.cmake CMakeUserPresets.json 'presets/*.json'; then
             echo "BUILD_TESTS must be the only SaltsUtils test switch" >&2
             exit 1
