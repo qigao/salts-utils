@@ -73,6 +73,10 @@ typedef struct DataBindServicePlanEntry {
   const char *default_value;
   const char *format;
   const cmeta_data_desc *data;
+  /** Root-request optional presence metadata, appended to the v1 entry. */
+  int has_presence;
+  size_t presence_offset;
+  unsigned optional_bit;
 } DataBindServicePlanEntry;
 
 #define DATA_BIND_SERVICE_PLAN_ENTRY_INIT {sizeof(DataBindServicePlanEntry)}
