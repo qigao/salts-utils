@@ -1,6 +1,11 @@
 #include <salts/plugin.h>
+#include <salts/thread.h>
 #include <tinytest.h>
 
+#include "plugin_slow_query_fixture.h"
+
+#include <stdatomic.h>
+#include <stdio.h>
 #include <string.h>
 
 #ifndef PLUGIN_VALID_C_PATH
@@ -24,6 +29,78 @@
 #ifndef PLUGIN_LIFECYCLE_PATH
 #error "PLUGIN_LIFECYCLE_PATH is required"
 #endif
+#ifndef PLUGIN_SLOW_QUERY_A_PATH
+#error "PLUGIN_SLOW_QUERY_A_PATH is required"
+#endif
+#ifndef PLUGIN_SLOW_QUERY_B_PATH
+#error "PLUGIN_SLOW_QUERY_B_PATH is required"
+#endif
+
+typedef struct plugin_slow_load_context {
+    salts_plugin_registry *registry;
+    const char *path;
+    salts_plugin_status status;
+    salts_plugin_ref ref;
+} plugin_slow_load_context;
+
+typedef struct plugin_destroy_context {
+    salts_plugin_registry *registry;
+    salts_plugin_status status;
+    atomic_bool done;
+} plugin_destroy_context;
+
+static bool marker_exists(const char *path) {
+    FILE *file = fopen(path, "rb");
+    if (file == NULL)
+        return false;
+    fclose(file);
+    return true;
+}
+
+static void touch_marker(const char *path) {
+    FILE *file = fopen(path, "wb");
+    if (file == NULL)
+        return;
+    fputs("release\n", file);
+    fclose(file);
+}
+
+static bool wait_for_marker(const char *path, uint32_t timeout_ms) {
+    uint32_t elapsed = 0u;
+    while (elapsed < timeout_ms) {
+        if (marker_exists(path))
+            return true;
+        salts_sleep_ms(1u);
+        ++elapsed;
+    }
+    return marker_exists(path);
+}
+
+static bool wait_for_atomic_true(
+    atomic_bool *value, uint32_t timeout_ms) {
+    uint32_t elapsed = 0u;
+    while (elapsed < timeout_ms) {
+        if (atomic_load(value))
+            return true;
+        salts_sleep_ms(1u);
+        ++elapsed;
+    }
+    return atomic_load(value);
+}
+
+static void plugin_slow_load_thread(void *arg) {
+    plugin_slow_load_context *context =
+        (plugin_slow_load_context *)arg;
+    context->status = salts_plugin_registry_load(
+        context->registry, context->path, &context->ref);
+}
+
+static void plugin_destroy_thread(void *arg) {
+    plugin_destroy_context *context =
+        (plugin_destroy_context *)arg;
+    context->status = salts_plugin_registry_destroy(context->registry);
+    atomic_store(&context->done, true);
+}
 
 static salts_plugin_registry make_registry(size_t capacity) {
     salts_plugin_registry registry = {0};
@@ -176,6 +253,124 @@ describe("bounded registry") {
 }
 
 describe("transactional admission") {
+    it("runs plugin query without holding the registry lock") {
+        salts_plugin_registry registry = make_registry(1u);
+        plugin_slow_load_context load = {
+            &registry, PLUGIN_SLOW_QUERY_A_PATH,
+            SALTS_PLUGIN_INVALID_STATE, {0}
+        };
+        plugin_destroy_context destroy = {
+            &registry, SALTS_PLUGIN_INVALID_STATE
+        };
+        salts_thread_t load_thread = NULL;
+        salts_thread_t destroy_thread = NULL;
+        bool destroy_completed;
+
+        atomic_init(&destroy.done, false);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_create(
+                        &load_thread, plugin_slow_load_thread, &load),
+                    0);
+        check_true(wait_for_marker(
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_A, 5000u));
+
+        check_equal(salts_thread_create(
+                        &destroy_thread, plugin_destroy_thread, &destroy),
+                    0);
+
+        destroy_completed = wait_for_atomic_true(&destroy.done, 500u);
+        touch_marker(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_join(&destroy_thread), 0);
+        salts_thread_destroy(&destroy_thread);
+        check_equal(salts_thread_join(&load_thread), 0);
+        salts_thread_destroy(&load_thread);
+
+        check_true(destroy_completed);
+        check_equal(destroy.status, SALTS_PLUGIN_BUSY);
+        check_equal(load.status, SALTS_PLUGIN_OK);
+        check_true(salts_plugin_ref_valid(load.ref));
+        check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
+
+        if (destroy.status == SALTS_PLUGIN_BUSY &&
+            salts_plugin_ref_valid(load.ref))
+            check_equal(salts_plugin_registry_unload(
+                            &registry, load.ref),
+                        SALTS_PLUGIN_OK);
+
+        destroy_registry(&registry);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+    }
+
+    it("publishes at most one concurrent duplicate plugin") {
+        salts_plugin_registry registry = make_registry(2u);
+        plugin_slow_load_context first = {
+            &registry, PLUGIN_SLOW_QUERY_A_PATH,
+            SALTS_PLUGIN_INVALID_STATE, {0}
+        };
+        plugin_slow_load_context second = {
+            &registry, PLUGIN_SLOW_QUERY_B_PATH,
+            SALTS_PLUGIN_INVALID_STATE, {0}
+        };
+        salts_thread_t first_thread = NULL;
+        salts_thread_t second_thread = NULL;
+        salts_plugin_ref published = {0};
+        unsigned ok_count = 0u;
+        unsigned duplicate_count = 0u;
+
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_B);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_create(
+                        &first_thread, plugin_slow_load_thread, &first),
+                    0);
+        check_equal(salts_thread_create(
+                        &second_thread, plugin_slow_load_thread, &second),
+                    0);
+
+        check_true(wait_for_marker(
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_A, 5000u));
+        check_true(wait_for_marker(
+            PLUGIN_SLOW_QUERY_ENTERED_MARKER_B, 5000u));
+
+        touch_marker(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+
+        check_equal(salts_thread_join(&first_thread), 0);
+        salts_thread_destroy(&first_thread);
+        check_equal(salts_thread_join(&second_thread), 0);
+        salts_thread_destroy(&second_thread);
+
+        if (first.status == SALTS_PLUGIN_OK) {
+            ++ok_count;
+            published = first.ref;
+        } else if (first.status == SALTS_PLUGIN_DUPLICATE_PLUGIN_ID) {
+            ++duplicate_count;
+        }
+
+        if (second.status == SALTS_PLUGIN_OK) {
+            ++ok_count;
+            published = second.ref;
+        } else if (second.status == SALTS_PLUGIN_DUPLICATE_PLUGIN_ID) {
+            ++duplicate_count;
+        }
+
+        check_equal(ok_count, 1u);
+        check_equal(duplicate_count, 1u);
+        check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
+        check_true(salts_plugin_ref_valid(published));
+        check_equal(salts_plugin_registry_unload(&registry, published),
+                    SALTS_PLUGIN_OK);
+
+        destroy_registry(&registry);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_A);
+        (void)remove(PLUGIN_SLOW_QUERY_ENTERED_MARKER_B);
+        (void)remove(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
+    }
+
     it("rejects duplicate plugin IDs and preserves the published instance") {
         salts_plugin_registry registry = make_registry(2u);
         salts_plugin_ref first = {0};
