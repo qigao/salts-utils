@@ -189,7 +189,7 @@ add_custom_command(
   COMMAND databindc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
           --lang c --output ${BENCH_HEADER}
   DEPENDS databindc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
-  COMMENT "Generating benchmark headers with tbe_compiler"
+  COMMENT "Generating benchmark headers with databindc"
   VERBATIM)
 
 endif()
