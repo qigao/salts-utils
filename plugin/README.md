@@ -45,7 +45,7 @@ visibility/export with C linkage, so the symbol remains unmangled when a plugin
 implementation is compiled as C++.
 
 The query returns borrowed immutable metadata. The host must keep the DSO loaded
-while it reads the manifest, legacy export rows, Function export rows, CMeta
+while it reads the manifest, legacy export rows, V2 publication rows, CMeta
 metadata/interface values, function entries, or callables.
 
 ### Salts/CMeta ABI prerequisite
@@ -125,23 +125,28 @@ growing that array element would change host pointer-arithmetic stride even when
 each row carries `struct_size`.
 
 The V1 export array is therefore frozen. A manifest whose `struct_size` reaches
-`SALTS_PLUGIN_MANIFEST_V2_SIZE` may publish an additional pointer table:
+`SALTS_PLUGIN_MANIFEST_V2_SIZE` may publish one generic pointer table:
 
 ```text
-manifest.function_exports[i]
+manifest.publications[i]
         |
         v
-salts_plugin_function_export
+salts_plugin_publication
+  kind / contract_id / version / struct_size
         |
-        +-- contract_id + contract_version
-        +-- cmeta_function_desc
-        +-- cmeta_function_abi_desc
-        '-- function-pointer entry carrier
+        +-- FUNCTION -> salts_plugin_function_export
+        |                 +-- cmeta_function_desc
+        |                 +-- cmeta_function_abi_desc
+        |                 '-- function-pointer entry carrier
+        |
+        '-- future kinds without another manifest table
 ```
 
-The table is an array of pointers so each pointed-to Function row may remain
+The table is an array of pointers so each concrete publication row may remain
 independently size-versioned without changing table stride. The Plugin runtime
-validates and discovers these rows but never generically invokes the entry.
+owns only this publication envelope. Service/Channel grouping remains DataBind
+semantics. For FUNCTION rows, Plugin validates and discovers the CMeta metadata
+but never generically invokes the entry.
 Generated DataBind/native glue converts the function-pointer carrier back to the
 known exact function type only after Plugin and CMeta admission.
 
@@ -174,9 +179,9 @@ readable manifest tail:
 - `SALTS_PLUGIN_ABI_VERSION == 1` remains the single query/manifest handshake;
 - legacy `salts_plugin_export` V1 layout and array stride are frozen;
 - `SALTS_PLUGIN_MANIFEST_V1_SIZE` ends at `destroy`;
-- `SALTS_PLUGIN_MANIFEST_V2_SIZE` gates the optional Function pointer table;
-- Function rows carry their own `struct_size` and
-  `SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION`;
+- `SALTS_PLUGIN_MANIFEST_V2_SIZE` gates the optional publication pointer table;
+- publication rows carry `kind + struct_size + abi_version`;
+- the current FUNCTION row composes that envelope with FunctionDesc/FunctionAbi;
 - IDs are non-empty bounded strings;
 - export count is bounded by `SALTS_PLUGIN_MAX_EXPORTS`;
 - interface method metadata is bounded and validated;
