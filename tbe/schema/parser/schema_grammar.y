@@ -646,6 +646,155 @@ static Node *create_attribute_node(schema_parse_ctx_t *ctx, schema_token_t key_t
     return attr;
 }
 
+static Node *create_bare_attribute_node(schema_parse_ctx_t *ctx,
+                                        schema_token_t key_tok) {
+    char *key = tok_strdup(key_tok);
+    Node *attr = NULL;
+    Node *values = NULL;
+    Node *marker = NULL;
+
+    if (ctx->error || key == NULL) {
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    attr = create_node_map(key);
+    values = create_node_list("values");
+    marker = create_node_string(NULL, "1");
+    if (attr == NULL || values == NULL || marker == NULL) {
+        node_free(attr);
+        node_free(values);
+        node_free(marker);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    add_string(ctx, attr, "name", key);
+    add_string(ctx, attr, "value", "1");
+    add_true(ctx, attr, "bare");
+    if (ctx->error || list_add(values, marker) != 0 ||
+        map_add(attr, values) != 0) {
+        node_free(attr);
+        if (values != NULL && values->name != NULL)
+            node_free(values);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+
+    free(key);
+    return attr;
+}
+
+static void begin_service(schema_parse_ctx_t *ctx, const char *name) {
+    Node *service;
+    Node *operations;
+
+    ctx->cur_service = NULL;
+    ctx->cur_operations = NULL;
+    if (ctx->error || name == NULL) return;
+
+    service = create_node_map(NULL);
+    operations = create_node_list("operations");
+    if (service == NULL || operations == NULL) {
+        node_free(service);
+        node_free(operations);
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_name_nodes(ctx, service, "service_name", name);
+    if (ctx->error || map_add(service, operations) != 0 ||
+        list_add(ctx->services_list, service) != 0) {
+        node_free(service);
+        grammar_oom(ctx);
+        return;
+    }
+
+    ctx->cur_service = service;
+    ctx->cur_operations = operations;
+}
+
+static Node *create_error_type_list(schema_parse_ctx_t *ctx,
+                                    schema_token_t type_tok) {
+    char *type_name = tok_strdup(type_tok);
+    Node *errors = create_node_list("errors");
+    Node *item = NULL;
+
+    if (type_name != NULL)
+        item = create_node_string(NULL, type_name);
+    free(type_name);
+
+    if (errors == NULL || item == NULL || list_add(errors, item) != 0) {
+        node_free(errors);
+        node_free(item);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    return errors;
+}
+
+static void append_error_type(schema_parse_ctx_t *ctx, Node *errors,
+                              schema_token_t type_tok) {
+    char *type_name;
+    Node *item;
+
+    if (ctx->error || errors == NULL) return;
+    type_name = tok_strdup(type_tok);
+    item = type_name != NULL ? create_node_string(NULL, type_name) : NULL;
+    free(type_name);
+    if (item == NULL || list_add(errors, item) != 0) {
+        node_free(item);
+        grammar_oom(ctx);
+    }
+}
+
+static void add_service_operation(schema_parse_ctx_t *ctx,
+                                  const char *name,
+                                  const char *request_type,
+                                  const char *response_type,
+                                  Node *attrs,
+                                  Node *errors) {
+    Node *operation;
+
+    if (ctx->error || ctx->cur_service == NULL ||
+        ctx->cur_operations == NULL || name == NULL ||
+        request_type == NULL || response_type == NULL) {
+        node_free(attrs);
+        node_free(errors);
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+
+    operation = create_node_map(NULL);
+    if (operation == NULL) {
+        node_free(attrs);
+        node_free(errors);
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_string(ctx, operation, "name", name);
+    add_string(ctx, operation, "operation_name", name);
+    add_string(ctx, operation, "service_name",
+               map_get_string_value(ctx->cur_service, "name"));
+    add_string(ctx, operation, "request_type", request_type);
+    add_string(ctx, operation, "response_type", response_type);
+
+    if (errors == NULL)
+        errors = create_node_list("errors");
+    if (errors == NULL || ctx->error ||
+        (attrs != NULL && map_add(operation, attrs) != 0) ||
+        map_add(operation, errors) != 0 ||
+        list_add(ctx->cur_operations, operation) != 0) {
+        node_free(operation);
+        grammar_oom(ctx);
+        return;
+    }
+}
+
 static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *value) {
     Node *item;
     if (ctx->error) return;
@@ -669,14 +818,18 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %type attr_value {Node *}
 %type field_default {char *}
 %type field_qualifier {int}
+%type service_errors {Node *}
+%type error_types {Node *}
 %destructor attribute_list { (void)ctx; node_free($$); }
 %destructor attr_items { (void)ctx; node_free($$); }
 %destructor field_default { (void)ctx; free($$); }
 %destructor attr_item { (void)ctx; node_free($$); }
 %destructor attr_values { (void)ctx; node_free($$); }
-%destructor attr_value { (void)ctx; node_free($$); }
+%destructor attr_value { (void)ctx; node_free($); }
+%destructor service_errors { (void)ctx; node_free($); }
+%destructor error_types { (void)ctx; node_free($); }
 
-%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE THROWS COLON ARROW.
 
 start ::= schema.
 schema ::= decl_list.
@@ -691,6 +844,7 @@ decl ::= composite_decl.
 decl ::= group_decl.
 decl ::= schema_decl.
 decl ::= union_decl.
+decl ::= service_decl.
 
 attribute_list(A) ::= LBRACKET attr_items(B) RBRACKET. { A = B; }
 attribute_list(A) ::= . { A = NULL; }
@@ -714,6 +868,9 @@ attr_items(A) ::= attr_item(B). {
 
 attr_item(A) ::= IDENT(K) LPAREN attr_values(V) RPAREN. {
     A = create_attribute_node(ctx, K, V);
+}
+attr_item(A) ::= IDENT(K). {
+    A = create_bare_attribute_node(ctx, K);
 }
 
 attr_values(A) ::= attr_values(B) COMMA attr_value(C). {
@@ -766,6 +923,41 @@ schema_decl ::= SCHEMA IDENT(N) attribute_list(A) SEMI. {
         }
         free(schema_name);
     }
+}
+
+service_decl ::= service_header service_body RBRACE. {
+    ctx->cur_service = NULL;
+    ctx->cur_operations = NULL;
+}
+
+service_header ::= SERVICE IDENT(N) LBRACE. {
+    char *service_name = tok_strdup(N);
+    begin_service(ctx, service_name);
+    free(service_name);
+}
+
+service_body ::= service_body service_operation.
+service_body ::= .
+
+service_operation ::= attribute_list(A) IDENT(N) COLON IDENT(I) ARROW IDENT(O) service_errors(E) SEMI. {
+    char *operation_name = tok_strdup(N);
+    char *request_type = tok_strdup(I);
+    char *response_type = tok_strdup(O);
+    add_service_operation(ctx, operation_name, request_type, response_type, A, E);
+    free(operation_name);
+    free(request_type);
+    free(response_type);
+}
+
+service_errors(A) ::= THROWS error_types(B). { A = B; }
+service_errors(A) ::= . { A = NULL; }
+
+error_types(A) ::= error_types(B) COMMA IDENT(T). {
+    A = B;
+    append_error_type(ctx, A, T);
+}
+error_types(A) ::= IDENT(T). {
+    A = create_error_type_list(ctx, T);
 }
 
 enum_decl ::= attribute_list(A) enum_header enum_body RBRACE. {
