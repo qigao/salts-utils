@@ -146,8 +146,8 @@ suite("real generated and runtime CMeta acceptance") {
       const cmeta_data_enum_bits_ops *permission_ops;
       const cmeta_enum_domain *state;
       const cmeta_enum_domain *permission;
-      const TbeTypedDescriptor *sample_descriptor = Sample_typed_descriptor();
-      const TbeTypedDescriptor *flag_descriptor = FlagStorage_typed_descriptor();
+      const DataBindTypedDescriptor *sample_descriptor = Sample_typed_descriptor();
+      const DataBindTypedDescriptor *flag_descriptor = FlagStorage_typed_descriptor();
       State_t state_value = 0;
       Permission_t permission_value = 0;
       uint64_t bits = 0u;
@@ -163,8 +163,8 @@ suite("real generated and runtime CMeta acceptance") {
       }
       check(sample_descriptor->native_data == sample);
       check(flag_descriptor->native_data == flags);
-      check_equal(tbe_typed_descriptor_validate(sample_descriptor, &error), DATA_BIND_OK);
-      check_equal(tbe_typed_descriptor_validate(flag_descriptor, &error), DATA_BIND_OK);
+      check_equal(data_bind_typed_descriptor_validate(sample_descriptor, &error), DATA_BIND_OK);
+      check_equal(data_bind_typed_descriptor_validate(flag_descriptor, &error), DATA_BIND_OK);
       check_equal(shape->field_count, 3u);
       check_equal(flag_shape->field_count, 1u);
       check_not_null(shape->fields);
