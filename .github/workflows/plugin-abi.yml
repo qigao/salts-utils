@@ -54,7 +54,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@3c9c785a62697808728db05c62fcd8216b79e371
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@a07873acd5368291c45f26ce3dfbcaeca20fe694
         with:
           mode: read
 
@@ -176,7 +176,7 @@ jobs:
           }
 
       - name: Configure shared vcpkg binary cache
-        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@3c9c785a62697808728db05c62fcd8216b79e371
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@a07873acd5368291c45f26ce3dfbcaeca20fe694
         with:
           mode: read
 
