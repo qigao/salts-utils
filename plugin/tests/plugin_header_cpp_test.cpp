@@ -6,6 +6,12 @@ static_assert(std::is_standard_layout<salts_plugin_version>::value,
               "plugin version must be a C-compatible value");
 static_assert(std::is_standard_layout<salts_plugin_export>::value,
               "plugin export must be a C-compatible ABI row");
+static_assert(std::is_standard_layout<salts_plugin_function_export>::value,
+              "plugin Function export must be a C-compatible ABI row");
+static_assert(std::is_pointer<salts_plugin_function_entry>::value,
+              "Function entry carrier must remain a function pointer");
+static_assert(SALTS_PLUGIN_MANIFEST_V1_SIZE < SALTS_PLUGIN_MANIFEST_V2_SIZE,
+              "manifest V2 must extend rather than redefine the V1 prefix");
 static_assert(std::is_standard_layout<salts_plugin_manifest>::value,
               "plugin manifest must be a C-compatible ABI row");
 static_assert(std::is_same<
@@ -39,6 +45,7 @@ int main() {
     salts_plugin_lifecycle_info lifecycle{};
     salts_plugin_query_fn query = &salts_plugin_query;
     const salts_plugin_export *entry = nullptr;
+    const salts_plugin_function_export *function_entry = nullptr;
 
     (void)query;
     (void)registry;
@@ -46,8 +53,12 @@ int main() {
     (void)ref;
     (void)lease;
     (void)lifecycle;
+    (void)function_entry;
     return salts_plugin_manifest_find_export(
-               &manifest, "missing", &entry) == SALTS_PLUGIN_INVALID_MANIFEST
+               &manifest, "missing", &entry) == SALTS_PLUGIN_INVALID_MANIFEST &&
+           salts_plugin_manifest_find_function_export(
+               &manifest, "missing", &function_entry) ==
+               SALTS_PLUGIN_INVALID_MANIFEST
                ? 0
                : 1;
 }
