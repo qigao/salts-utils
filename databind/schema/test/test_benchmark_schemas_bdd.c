@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -101,7 +101,7 @@ suite("Benchmark Schema Verification") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(SCHEMA_SMALL, strlen(SCHEMA_SMALL), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_SMALL, strlen(SCHEMA_SMALL), root, NULL);
 
         then("it should parse successfully") {
           check_equal(rc, 0);
@@ -142,7 +142,7 @@ suite("Benchmark Schema Verification") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(SCHEMA_MEDIUM, strlen(SCHEMA_MEDIUM), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_MEDIUM, strlen(SCHEMA_MEDIUM), root, NULL);
         check_equal(rc, 0);
 
         then("it should have one composite and one message") {
@@ -184,7 +184,7 @@ suite("Benchmark Schema Verification") {
       Node *root = create_node_map("root");
 
       when("parsing the schema") {
-        int rc = parse_schema(SCHEMA_LARGE, strlen(SCHEMA_LARGE), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_LARGE, strlen(SCHEMA_LARGE), root, NULL);
         check_equal(rc, 0);
 
         then("it should have one group defined") {
@@ -223,7 +223,7 @@ suite("Benchmark Schema Verification") {
       Node *root = create_node_map("root");
 
       when("parsing Status enum") {
-        int rc = parse_schema(SCHEMA_ENUM, strlen(SCHEMA_ENUM), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_ENUM, strlen(SCHEMA_ENUM), root, NULL);
         check_equal(rc, 0);
         Node *enums = find_child(root, "enums");
         if (enums) {
@@ -249,7 +249,7 @@ suite("Benchmark Schema Verification") {
       when("parsing Permissions flags") {
         node_free(root);
         root = create_node_map("root");
-        int rc = parse_schema(SCHEMA_FLAGS, strlen(SCHEMA_FLAGS), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_FLAGS, strlen(SCHEMA_FLAGS), root, NULL);
         check_equal(rc, 0);
         Node *enums = find_child(root, "enums");
         if (enums) {
@@ -278,7 +278,7 @@ suite("Benchmark Schema Verification") {
       Node *root = create_node_map("root");
 
       when("parsing the complex schema") {
-        int rc = parse_schema(SCHEMA_COMPLEX, strlen(SCHEMA_COMPLEX), root, NULL);
+        int rc = data_bind_schema_parse(SCHEMA_COMPLEX, strlen(SCHEMA_COMPLEX), root, NULL);
 
         then("it should parse successfully") {
           check_equal(rc, 0);
