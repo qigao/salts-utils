@@ -28,6 +28,7 @@ find_dependency(Salts 1.2.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
 foreach(required_salts_target IN ITEMS
         Salts::Platform
         Salts::Core
+        Salts::CMeta
         Salts::CFlow
         Salts::CSTL
         Salts::CSerde
