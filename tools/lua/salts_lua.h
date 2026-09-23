@@ -54,7 +54,7 @@
 extern "C" {
 #endif
 
-#if defined(TBE_TYPED_H)
+#if defined(DATA_BIND_TYPED_H)
 #include <salts_cmeta_fixed_width.h>
 
 static inline int c11_lua_tbe_scalar_matches(
@@ -85,7 +85,7 @@ static inline int c11_lua_tbe_uint_readable(lua_Integer value,
 }
 
 static inline DataBindStatus c11_lua_tbe_push_value(
-    lua_State *L, const cmeta_data_desc *data, const TbeTypedType *overlay,
+    lua_State *L, const cmeta_data_desc *data, const DataBindTypedType *overlay,
     const void *object, size_t depth, size_t max_depth);
 
 static inline DataBindStatus c11_lua_tbe_push_scalar(
@@ -148,7 +148,7 @@ static inline DataBindStatus c11_lua_tbe_push_scalar(
 }
 
 static inline DataBindStatus c11_lua_tbe_push_value(
-    lua_State *L, const cmeta_data_desc *data, const TbeTypedType *overlay,
+    lua_State *L, const cmeta_data_desc *data, const DataBindTypedType *overlay,
     const void *object, size_t depth, size_t max_depth) {
     const cmeta_data_struct_shape *shape;
     int top;
@@ -165,8 +165,8 @@ static inline DataBindStatus c11_lua_tbe_push_value(
     lua_createtable(L, 0, (int)shape->field_count);
     for (i = 0u; i < shape->field_count; ++i) {
         const cmeta_data_field_desc *field = &shape->fields[i];
-        const TbeTypedField *wire = &overlay->fields[i];
-        const TbeTypedType *nested =
+        const DataBindTypedField *wire = &overlay->fields[i];
+        const DataBindTypedType *nested =
             field->value->kind == CMETA_DATA_STRUCT ? wire->nested_overlay : NULL;
         DataBindStatus status;
         if (wire->name == NULL || wire->name[0] == '\0') {
@@ -185,12 +185,12 @@ static inline DataBindStatus c11_lua_tbe_push_value(
     return DATA_BIND_OK;
 }
 
-static inline DataBindStatus c11_lua_push_tbe_typed_descriptor(
-    lua_State *L, const TbeTypedDescriptor *descriptor,
+static inline DataBindStatus c11_lua_push_data_bind_typed_descriptor(
+    lua_State *L, const DataBindTypedDescriptor *descriptor,
     const void *object, size_t max_depth) {
     if (L == NULL || descriptor == NULL || object == NULL)
         return DATA_BIND_ERR_INVALID_ARG;
-    if (tbe_typed_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
+    if (data_bind_typed_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
         return DATA_BIND_ERR_SCHEMA;
     return c11_lua_tbe_push_value(
         L, descriptor->native_data, descriptor->overlay, object, 0u, max_depth);
@@ -198,7 +198,7 @@ static inline DataBindStatus c11_lua_push_tbe_typed_descriptor(
 
 static inline DataBindStatus c11_lua_tbe_read_value(
     lua_State *L, int index, const cmeta_data_desc *data,
-    const TbeTypedType *overlay, void *object, size_t depth,
+    const DataBindTypedType *overlay, void *object, size_t depth,
     size_t max_depth);
 
 static inline DataBindStatus c11_lua_tbe_read_scalar(
@@ -281,7 +281,7 @@ static inline DataBindStatus c11_lua_tbe_read_scalar(
 
 static inline DataBindStatus c11_lua_tbe_read_value(
     lua_State *L, int index, const cmeta_data_desc *data,
-    const TbeTypedType *overlay, void *object, size_t depth,
+    const DataBindTypedType *overlay, void *object, size_t depth,
     size_t max_depth) {
     const cmeta_data_struct_shape *shape;
     int table_index;
@@ -298,8 +298,8 @@ static inline DataBindStatus c11_lua_tbe_read_value(
     table_index = lua_absindex(L, index);
     for (i = 0u; i < shape->field_count; ++i) {
         const cmeta_data_field_desc *field = &shape->fields[i];
-        const TbeTypedField *wire = &overlay->fields[i];
-        const TbeTypedType *nested =
+        const DataBindTypedField *wire = &overlay->fields[i];
+        const DataBindTypedType *nested =
             field->value->kind == CMETA_DATA_STRUCT ? wire->nested_overlay : NULL;
         DataBindStatus status;
         if (wire->name == NULL || wire->name[0] == '\0')
@@ -317,34 +317,34 @@ static inline DataBindStatus c11_lua_tbe_read_value(
     return DATA_BIND_OK;
 }
 
-static inline DataBindStatus c11_lua_read_tbe_typed_descriptor(
-    lua_State *L, int index, const TbeTypedDescriptor *descriptor,
+static inline DataBindStatus c11_lua_read_data_bind_typed_descriptor(
+    lua_State *L, int index, const DataBindTypedDescriptor *descriptor,
     void *object, size_t max_depth, size_t max_dynamic_items) {
     void *temporary;
     DataBindStatus status;
     (void)max_dynamic_items;
     if (L == NULL || descriptor == NULL || object == NULL)
         return DATA_BIND_ERR_INVALID_ARG;
-    if (tbe_typed_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
+    if (data_bind_typed_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
         return DATA_BIND_ERR_SCHEMA;
     temporary = malloc(descriptor->native_data->storage_type->size);
     if (temporary == NULL) return DATA_BIND_ERR_OOM;
-    status = tbe_typed_descriptor_init(descriptor, temporary, NULL);
+    status = data_bind_typed_descriptor_init(descriptor, temporary, NULL);
     if (status == DATA_BIND_OK)
         status = c11_lua_tbe_read_value(
             L, index, descriptor->native_data, descriptor->overlay,
             temporary, 0u, max_depth);
     if (status == DATA_BIND_OK)
-        status = tbe_typed_descriptor_clear(descriptor, object, NULL);
+        status = data_bind_typed_descriptor_clear(descriptor, object, NULL);
     if (status == DATA_BIND_OK) {
         memcpy(object, temporary, descriptor->native_data->storage_type->size);
         memset(temporary, 0, descriptor->native_data->storage_type->size);
     }
-    (void)tbe_typed_descriptor_clear(descriptor, temporary, NULL);
+    (void)data_bind_typed_descriptor_clear(descriptor, temporary, NULL);
     free(temporary);
     return status;
 }
-#endif /* TBE_TYPED_H */
+#endif /* DATA_BIND_TYPED_H */
 
 /* The legacy flat typed-function declaration can contain 20 tokens, beyond
  * CMeta's 16-item public iteration contract. Keep this compatibility-only
