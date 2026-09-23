@@ -133,15 +133,15 @@ suite("compiler_cmeta_scalar_projection") {
     }
 
     it("projects f32 exactly like canonical float without changing schema spelling") {
-        check_true(projection_float_is("float", "float", "float32", "f32", "TBE_TYPED_F32"));
+        check_true(projection_float_is("float", "float", "float32", "f32", "DATA_BIND_TYPED_F32"));
         check_true(projection_equal("f32", "float", "message Scalar { %s value; }"));
-        check_true(projection_float_is("f32", "float", "float32", "f32", "TBE_TYPED_F32"));
+        check_true(projection_float_is("f32", "float", "float32", "f32", "DATA_BIND_TYPED_F32"));
     }
 
     it("projects f64 exactly like canonical double without changing schema spelling") {
-        check_true(projection_float_is("double", "double", "float64", "f64", "TBE_TYPED_F64"));
+        check_true(projection_float_is("double", "double", "float64", "f64", "DATA_BIND_TYPED_F64"));
         check_true(projection_equal("f64", "double", "message Scalar { %s value; }"));
-        check_true(projection_float_is("f64", "double", "float64", "f64", "TBE_TYPED_F64"));
+        check_true(projection_float_is("f64", "double", "float64", "f64", "DATA_BIND_TYPED_F64"));
     }
 
     it("uses the same scalar projection for list elements") {
