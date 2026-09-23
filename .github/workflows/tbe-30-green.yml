@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, fix/tbe-30-descriptor-layout-validation, feat/databind-native-workspace-measure]
     paths:
-      - 'tbe/**'
+      - 'databind/**'
       - 'tests/databind_direct_parsers/**'
       - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
@@ -19,7 +19,7 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - 'tbe/**'
+      - 'databind/**'
       - 'tests/databind_direct_parsers/**'
       - 'tests/package_config/**'
       - 'tools/lemon/CMakeLists.txt'
@@ -174,7 +174,7 @@ jobs:
           test ! -e "$salts_utils_root/lib/cmake/DataBind"
           test -f "$salts_utils_root/include/data_bind_native.h"
           test -f "$salts_utils_root/include/schema_parser_dsl.h"
-          test -x "$salts_utils_root/bin/tbe_compiler"
+          test -x "$salts_utils_root/bin/databindc"
           test -d "$salts_utils_root/bin/templates"
 
       - name: Run DataBind package ownership contracts
@@ -189,7 +189,7 @@ jobs:
           export SALTS_ROOT=/opt/salts/debug
           salts_utils_root="$RUNNER_TEMP/salts-utils-install"
           for consumer in databind_repeated_find databind_adapters; do
-            cmake --fresh -S "tbe/tests/package_config/$consumer" \
+            cmake --fresh -S "databind/tests/package_config/$consumer" \
               -B "$RUNNER_TEMP/salts-utils-$consumer" -G Ninja \
               -DSALTS_UTILS_PACKAGE_DIR="$salts_utils_root" \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
