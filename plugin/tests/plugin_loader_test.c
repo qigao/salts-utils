@@ -65,19 +65,11 @@ describe("bounded registry") {
         salts_plugin_ref c_ref = {0};
         salts_plugin_ref cpp_ref = {0};
         salts_plugin_ref found = {0};
-        const salts_plugin_manifest *manifest = NULL;
-
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_VALID_C_PATH, &c_ref),
                     SALTS_PLUGIN_OK);
         check_true(salts_plugin_ref_valid(c_ref));
         check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
-
-        check_equal(salts_plugin_registry_manifest(
-                        &registry, c_ref, &manifest),
-                    SALTS_PLUGIN_OK);
-        check_not_null(manifest);
-        check_equal(strcmp(manifest->plugin_id, "test.loader.c"), 0);
 
         check_equal(salts_plugin_registry_find(
                         &registry, "test.loader.c", &found),
@@ -92,12 +84,11 @@ describe("bounded registry") {
         check_true(cpp_ref.slot != c_ref.slot);
         check_equal(salts_plugin_registry_count(&registry), (size_t)2u);
 
-        manifest = NULL;
-        check_equal(salts_plugin_registry_manifest(
-                        &registry, cpp_ref, &manifest),
+        check_equal(salts_plugin_registry_find(
+                        &registry, "test.loader.cpp", &found),
                     SALTS_PLUGIN_OK);
-        check_not_null(manifest);
-        check_equal(strcmp(manifest->plugin_id, "test.loader.cpp"), 0);
+        check_equal(found.slot, cpp_ref.slot);
+        check_equal(found.generation, cpp_ref.generation);
 
         destroy_registry(&registry);
     }
@@ -106,8 +97,7 @@ describe("bounded registry") {
         salts_plugin_registry registry = make_registry(1u);
         salts_plugin_ref ref = {0};
         salts_plugin_ref stale;
-        const salts_plugin_manifest *manifest =
-            (const salts_plugin_manifest *)(uintptr_t)1u;
+        salts_plugin_lifecycle_info info = {0};
 
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_VALID_C_PATH, &ref),
@@ -117,17 +107,15 @@ describe("bounded registry") {
         if (stale.generation == 0u)
             stale.generation = 1u;
 
-        check_equal(salts_plugin_registry_manifest(
-                        &registry, stale, &manifest),
+        check_equal(salts_plugin_registry_get_lifecycle(
+                        &registry, stale, &info),
                     SALTS_PLUGIN_STALE);
-        check_null(manifest);
 
         stale = ref;
         stale.slot = UINT32_MAX;
-        check_equal(salts_plugin_registry_manifest(
-                        &registry, stale, &manifest),
+        check_equal(salts_plugin_registry_get_lifecycle(
+                        &registry, stale, &info),
                     SALTS_PLUGIN_STALE);
-        check_null(manifest);
 
         destroy_registry(&registry);
     }
@@ -138,7 +126,7 @@ describe("transactional admission") {
         salts_plugin_registry registry = make_registry(2u);
         salts_plugin_ref first = {0};
         salts_plugin_ref duplicate = {9u, 9u};
-        const salts_plugin_manifest *manifest = NULL;
+        salts_plugin_ref found = {0};
 
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_VALID_C_PATH, &first),
@@ -148,10 +136,11 @@ describe("transactional admission") {
                     SALTS_PLUGIN_DUPLICATE_PLUGIN_ID);
         check_false(salts_plugin_ref_valid(duplicate));
         check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
-        check_equal(salts_plugin_registry_manifest(
-                        &registry, first, &manifest),
+        check_equal(salts_plugin_registry_find(
+                        &registry, "test.loader.c", &found),
                     SALTS_PLUGIN_OK);
-        check_equal(strcmp(manifest->plugin_id, "test.loader.c"), 0);
+        check_equal(found.slot, first.slot);
+        check_equal(found.generation, first.generation);
 
         destroy_registry(&registry);
     }
@@ -208,16 +197,26 @@ describe("transactional admission") {
         destroy_registry(&registry);
     }
 
-    it("rejects lifecycle-bearing plugins until lifecycle orchestration exists") {
+    it("admits a complete lifecycle callback group without invoking it") {
         salts_plugin_registry registry = make_registry(1u);
-        salts_plugin_ref ref = {5u, 5u};
+        salts_plugin_ref ref = {0};
+        salts_plugin_lifecycle_info info = {0};
 
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_LIFECYCLE_PATH, &ref),
-                    SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED);
-        check_false(salts_plugin_ref_valid(ref));
-        check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
+                    SALTS_PLUGIN_OK);
+        check_true(salts_plugin_ref_valid(ref));
+        check_equal(salts_plugin_registry_count(&registry), (size_t)1u);
+        check_equal(salts_plugin_registry_get_lifecycle(
+                        &registry, ref, &info),
+                    SALTS_PLUGIN_OK);
+        check_equal(info.state, SALTS_PLUGIN_LIFECYCLE_LOADED);
+        check_equal(info.active_leases, (size_t)0u);
+        check_equal(info.callbacks_inflight, (size_t)0u);
 
+        check_equal(salts_plugin_registry_unload(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
         destroy_registry(&registry);
     }
 
