@@ -333,88 +333,41 @@ static int plan_param_type_matches_data(
          cmeta_type_equal(value_type, data->storage_type);
 }
 
-static DataBindStatus plan_projection_validate(
-    const DataBindServiceOperation *operation, const char *projection_id,
+static DataBindStatus plan_project_address(
+    const DataBindBindingProjection *projection,
+    const DataBindServiceOperation *operation,
+    const DataBindSchemaField *field,
+    DataBindBindingDirection direction,
+    DataBindBindingAddress *out,
     DataBindBindingPlanDiagnostic *diagnostic) {
-  if (strcmp(projection_id, "http") == 0) {
-    if (!operation->has_http)
-      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
-                            "Service operation has no HTTP projection");
-    return DATA_BIND_OK;
-  }
-  if (strcmp(projection_id, "rpc") == 0) {
-    if (!operation->has_rpc)
-      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
-                            "Service operation has no RPC projection");
-    return DATA_BIND_OK;
-  }
-  return plan_diag_fail(
-      diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
-      "Projection '%s' is not admitted by this compiler slice",
-      projection_id);
-}
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
 
-static DataBindStatus plan_input_address(
-    const char *projection_id, const DataBindSchemaField *field,
-    DataBindBindingClass *binding_class, const char **space,
-    const char **name, DataBindBindingPlanDiagnostic *diagnostic) {
-  if (strcmp(projection_id, "rpc") == 0) {
-    *binding_class = DATA_BIND_BINDING_VALUE;
-    *space = "rpc.param";
-    *name = field->name;
-    return DATA_BIND_OK;
-  }
+  if (projection == NULL || projection->size < sizeof(*projection) ||
+      projection->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION ||
+      projection->id == NULL || projection->id[0] == '\0' ||
+      projection->project_field == NULL || field == NULL || out == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG,
+                          field != NULL ? field->name : NULL, NULL,
+                          "Invalid BindingPlan projection adapter");
 
-  if (strcmp(projection_id, "http") != 0)
-    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, field->name, NULL,
-                          "Unsupported input projection '%s'", projection_id);
-
-  if (field->binding_kind == NULL)
+  *out = (DataBindBindingAddress)DATA_BIND_BINDING_ADDRESS_INIT;
+  status = projection->project_field(
+      projection->context, operation, field, direction, out, &error);
+  if (status != DATA_BIND_OK)
     return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, field->name, NULL,
-        "HTTP request field '%s' has no explicit IDL binding",
-        field->name != NULL ? field->name : "");
+        diagnostic, status, field->name, NULL,
+        "%s", error.message[0] != '\0'
+                  ? error.message
+                  : "Projection adapter rejected logical field");
 
-  *name = field->binding_name != NULL ? field->binding_name : field->name;
+  if (out->size < sizeof(*out) ||
+      out->binding_class < DATA_BIND_BINDING_VALUE ||
+      out->binding_class > DATA_BIND_BINDING_ERROR)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                          field->name, NULL,
+                          "Projection adapter returned invalid BindingAddress");
 
-  if (strcmp(field->binding_kind, "path") == 0) {
-    *binding_class = DATA_BIND_BINDING_VALUE;
-    *space = "http.path";
-  } else if (strcmp(field->binding_kind, "query") == 0) {
-    *binding_class = DATA_BIND_BINDING_VALUE;
-    *space = "http.query";
-  } else if (strcmp(field->binding_kind, "header") == 0) {
-    *binding_class = DATA_BIND_BINDING_METADATA;
-    *space = "http.header";
-  } else if (strcmp(field->binding_kind, "cookie") == 0) {
-    *binding_class = DATA_BIND_BINDING_METADATA;
-    *space = "http.cookie";
-  } else if (strcmp(field->binding_kind, "body") == 0) {
-    *binding_class = DATA_BIND_BINDING_PAYLOAD;
-    *space = "http.body";
-  } else {
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, field->name, NULL,
-        "Unknown DataBind IDL binding kind '%s'", field->binding_kind);
-  }
-
-  return DATA_BIND_OK;
-}
-
-static DataBindStatus plan_output_address(
-    const char *projection_id, const char *field_name,
-    DataBindBindingClass *binding_class, const char **space,
-    const char **name, DataBindBindingPlanDiagnostic *diagnostic) {
-  *binding_class = DATA_BIND_BINDING_RESULT;
-  *name = field_name;
-
-  if (strcmp(projection_id, "http") == 0)
-    *space = "http.result";
-  else if (strcmp(projection_id, "rpc") == 0)
-    *space = "rpc.result";
-  else
-    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, field_name, NULL,
-                          "Unsupported output projection '%s'", projection_id);
   return DATA_BIND_OK;
 }
 
