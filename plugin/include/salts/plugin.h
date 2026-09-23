@@ -66,7 +66,6 @@ typedef enum salts_plugin_status {
     SALTS_PLUGIN_QUERY_REJECTED,
     SALTS_PLUGIN_UNKNOWN_PLUGIN,
     SALTS_PLUGIN_STALE,
-    SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED,
     SALTS_PLUGIN_UNLOAD_FAILED,
     SALTS_PLUGIN_ALREADY,
     SALTS_PLUGIN_BUSY,
@@ -101,13 +100,25 @@ typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_function_invoke_fn)(
     void *context,
     void *return_storage,
-    void *const *params,
+    const void *const *params,
     size_t param_count);
 
-typedef struct salts_plugin_function_adapter {
+typedef struct salts_plugin_interface_export {
+    const cmeta_interface_desc *desc;
+    void *value;
+} salts_plugin_interface_export;
+
+typedef struct salts_plugin_function_export {
+    const cmeta_function_desc *desc;
+    const cmeta_function_abi_desc *abi;
     void *context;
     salts_plugin_function_invoke_fn invoke;
-} salts_plugin_function_adapter;
+} salts_plugin_function_export;
+
+typedef union salts_plugin_export_value {
+    salts_plugin_interface_export interface;
+    salts_plugin_function_export function;
+} salts_plugin_export_value;
 
 /*
  * One immutable semantic export row.
@@ -117,13 +128,14 @@ typedef struct salts_plugin_function_adapter {
  * current representations:
  *
  * INTERFACE:
- *   cmeta_interface_desc + mutable borrowed {self,vtable} handle.
+ *   value.interface = { cmeta_interface_desc, mutable {self,vtable} handle }.
  *
  * FUNCTION:
- *   cmeta_function_desc + cmeta_function_abi_desc + generated exact adapter.
+ *   value.function = { FunctionMeta, FunctionAbi, context, exact invoke }.
  *
- * All pointed-to objects/code are borrowed from the loaded plugin DSO and may
- * only be used while the host holds a live plugin lease.
+ * The tagged union makes the two representations mutually exclusive by
+ * construction. All pointed-to objects/code are borrowed from the loaded
+ * plugin DSO and may only be used while the host holds a live plugin lease.
  */
 typedef struct salts_plugin_export {
     uint32_t struct_size;
@@ -132,13 +144,7 @@ typedef struct salts_plugin_export {
     uint64_t capabilities;
     const char *export_id;
     const char *contract_id;
-
-    const cmeta_interface_desc *interface_desc;
-    void *interface_value;
-
-    const cmeta_function_desc *function;
-    const cmeta_function_abi_desc *function_abi;
-    const salts_plugin_function_adapter *function_adapter;
+    salts_plugin_export_value value;
 } salts_plugin_export;
 
 /*
@@ -153,7 +159,6 @@ typedef struct salts_plugin_manifest {
     uint32_t abi_version;
     const char *plugin_id;
     salts_plugin_version version;
-    uint64_t capabilities;
     const salts_plugin_export *exports;
     size_t export_count;
 
