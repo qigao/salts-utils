@@ -410,6 +410,114 @@ static int plan_entry_set_strings(
   return 1;
 }
 
+
+static DataBindStatus plan_compile_default_token(
+    DataBindBindingPlanEntryOwned *owned,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const char *text;
+  char *end = NULL;
+  const cmeta_data_desc *data;
+
+  if (owned == NULL || !owned->view.has_default) return DATA_BIND_OK;
+  text = owned->view.default_value;
+  data = owned->view.data;
+  if (text == NULL || data == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                          owned != NULL ? owned->view.schema_field : NULL,
+                          owned != NULL ? owned->view.function_param : NULL,
+                          "Default metadata is incomplete");
+
+  errno = 0;
+  switch (data->kind) {
+  case CMETA_DATA_BOOL:
+    owned->default_token.kind = CSERDE_BOOL;
+    if (strcmp(text, "true") == 0 || strcmp(text, "1") == 0)
+      owned->default_token.value.boolean = true;
+    else if (strcmp(text, "false") == 0 || strcmp(text, "0") == 0)
+      owned->default_token.value.boolean = false;
+    else
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            owned->view.schema_field,
+                            owned->view.function_param,
+                            "Boolean default '%s' is invalid", text);
+    break;
+  case CMETA_DATA_SINT: {
+    long long value = strtoll(text, &end, 10);
+    if (errno != 0 || end == text || end == NULL || *end != '\0')
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            owned->view.schema_field,
+                            owned->view.function_param,
+                            "Signed default '%s' is invalid", text);
+    owned->default_token.kind = CSERDE_SINT;
+    owned->default_token.value.sint = (int64_t)value;
+    break;
+  }
+  case CMETA_DATA_UINT: {
+    unsigned long long value;
+    if (text[0] == '-')
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            owned->view.schema_field,
+                            owned->view.function_param,
+                            "Unsigned default '%s' is invalid", text);
+    value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || end == NULL || *end != '\0')
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            owned->view.schema_field,
+                            owned->view.function_param,
+                            "Unsigned default '%s' is invalid", text);
+    owned->default_token.kind = CSERDE_UINT;
+    owned->default_token.value.uint = (uint64_t)value;
+    break;
+  }
+  case CMETA_DATA_FLOAT: {
+    double value = strtod(text, &end);
+    if (errno != 0 || end == text || end == NULL || *end != '\0')
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            owned->view.schema_field,
+                            owned->view.function_param,
+                            "Floating default '%s' is invalid", text);
+    owned->default_token.kind = CSERDE_FLOAT;
+    owned->default_token.value.floating = value;
+    break;
+  }
+  case CMETA_DATA_STRING:
+  case CMETA_DATA_ENUM:
+    owned->default_token.kind = CSERDE_STRING;
+    owned->default_token.value.slice.data =
+        (const unsigned char *)owned->view.default_value;
+    owned->default_token.value.slice.size =
+        strlen(owned->view.default_value);
+    owned->default_token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+    break;
+  case CMETA_DATA_BYTES:
+    owned->default_token.kind = CSERDE_BYTES;
+    owned->default_token.value.slice.data =
+        (const unsigned char *)owned->view.default_value;
+    owned->default_token.value.slice.size =
+        strlen(owned->view.default_value);
+    owned->default_token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+    break;
+  default:
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, owned->view.schema_field,
+        owned->view.function_param,
+        "Default for field '%s' uses unsupported native semantics",
+        owned->view.schema_field != NULL ? owned->view.schema_field
+                                         : "<unnamed>");
+  }
+
+  owned->has_default_token = 1;
+  return DATA_BIND_OK;
+}
+
+static int plan_return_value_safe(const cmeta_data_desc *data) {
+  const cmeta_trait_flags required =
+      CMETA_TRAIT_TRIVIAL_COPY | CMETA_TRAIT_TRIVIAL_DESTROY;
+  if (!cmeta_data_desc_valid(data) || data->storage_type == NULL)
+    return 0;
+  return cmeta_type_require_traits(data->storage_type, required) == CMETA_OK;
+}
+
 static DataBindStatus plan_compile_ingress(
     DataBind *codec, const DataBindServiceOperation *operation,
     const char *projection_id, const DataBindServiceNativeBinding *native,
