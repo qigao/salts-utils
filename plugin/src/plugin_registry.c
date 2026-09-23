@@ -27,6 +27,7 @@ typedef struct salts_plugin_registry_impl {
     salts_plugin_registry_slot *slots;
     size_t capacity;
     size_t count;
+    size_t loads_inflight;
     salts_mutex_t lock;
     bool destroying;
 } salts_plugin_registry_impl;
@@ -86,6 +87,23 @@ static salts_plugin_status close_rejected_library(
     salts_plugin_status rejection) {
     salts_plugin_status close_status = salts_plugin_platform_close(library);
     return close_status == SALTS_PLUGIN_OK ? rejection : close_status;
+}
+
+static void release_load_reservation(
+    salts_plugin_registry_impl *impl) {
+    salts_mutex_lock(&impl->lock);
+    --impl->loads_inflight;
+    salts_mutex_unlock(&impl->lock);
+}
+
+static salts_plugin_status close_rejected_load(
+    salts_plugin_registry_impl *impl,
+    salts_plugin_library *library,
+    salts_plugin_status rejection) {
+    salts_plugin_status status =
+        close_rejected_library(library, rejection);
+    release_load_reservation(impl);
+    return status;
 }
 
 static salts_plugin_registry_impl *registry_impl(
@@ -215,15 +233,63 @@ salts_plugin_status salts_plugin_registry_load(
     if (impl == NULL || !bounded_utf8_path_valid(path))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
+    /*
+     * Reserve bounded admission capacity under the registry lock, then execute
+     * platform loader and plugin-owned query code without that lock held.
+     * destroy() observes loads_inflight and cannot free impl while the
+     * reservation exists.
+     */
     salts_mutex_lock(&impl->lock);
-
     if (impl->destroying) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
     }
-    if (impl->count >= impl->capacity) {
+    if (impl->count >= impl->capacity ||
+        impl->loads_inflight >= impl->capacity - impl->count) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_CAPACITY_EXCEEDED;
+    }
+    ++impl->loads_inflight;
+    salts_mutex_unlock(&impl->lock);
+
+    status = salts_plugin_platform_open(path, &library, &query);
+    if (status != SALTS_PLUGIN_OK) {
+        salts_mutex_lock(&impl->lock);
+        --impl->loads_inflight;
+        salts_mutex_unlock(&impl->lock);
+        return status;
+    }
+
+    manifest = query(SALTS_PLUGIN_ABI_VERSION);
+    if (manifest == NULL) {
+        return close_rejected_load(
+            impl, &library, SALTS_PLUGIN_QUERY_REJECTED);
+    }
+
+    status = salts_plugin_manifest_validate(manifest);
+    if (status != SALTS_PLUGIN_OK)
+        return close_rejected_load(impl, &library, status);
+
+    /*
+     * Publication is the only second locked phase. Re-check registry state and
+     * duplicate identity because another concurrent load may have published
+     * while this candidate was open/querying.
+     */
+    salts_mutex_lock(&impl->lock);
+
+    if (impl->destroying) {
+        status = SALTS_PLUGIN_BUSY;
+        goto reject_locked;
+    }
+
+    for (index = 0u; index < impl->capacity; ++index) {
+        const salts_plugin_registry_slot *existing = &impl->slots[index];
+        if (existing->occupied &&
+            plugin_id_equal(existing->manifest->plugin_id,
+                            manifest->plugin_id)) {
+            status = SALTS_PLUGIN_DUPLICATE_PLUGIN_ID;
+            goto reject_locked;
+        }
     }
 
     for (slot_index = 0u; slot_index < impl->capacity; ++slot_index) {
@@ -233,41 +299,8 @@ salts_plugin_status salts_plugin_registry_load(
         }
     }
     if (slot == NULL) {
-        salts_mutex_unlock(&impl->lock);
-        return SALTS_PLUGIN_CAPACITY_EXCEEDED;
-    }
-
-    status = salts_plugin_platform_open(path, &library, &query);
-    if (status != SALTS_PLUGIN_OK) {
-        salts_mutex_unlock(&impl->lock);
-        return status;
-    }
-
-    manifest = query(SALTS_PLUGIN_ABI_VERSION);
-    if (manifest == NULL) {
-        status = close_rejected_library(
-            &library, SALTS_PLUGIN_QUERY_REJECTED);
-        salts_mutex_unlock(&impl->lock);
-        return status;
-    }
-
-    status = salts_plugin_manifest_validate(manifest);
-    if (status != SALTS_PLUGIN_OK) {
-        status = close_rejected_library(&library, status);
-        salts_mutex_unlock(&impl->lock);
-        return status;
-    }
-
-    for (index = 0u; index < impl->capacity; ++index) {
-        const salts_plugin_registry_slot *existing = &impl->slots[index];
-        if (existing->occupied &&
-            plugin_id_equal(existing->manifest->plugin_id,
-                            manifest->plugin_id)) {
-            status = close_rejected_library(
-                &library, SALTS_PLUGIN_DUPLICATE_PLUGIN_ID);
-            salts_mutex_unlock(&impl->lock);
-            return status;
-        }
+        status = SALTS_PLUGIN_CAPACITY_EXCEEDED;
+        goto reject_locked;
     }
 
     slot->library = library;
@@ -281,11 +314,16 @@ salts_plugin_status salts_plugin_registry_load(
     slot->active_leases = 0u;
     slot->lease_active_mask = 0u;
     ++impl->count;
+    --impl->loads_inflight;
 
     out_ref->slot = (uint32_t)(slot_index + 1u);
     out_ref->generation = slot->generation;
     salts_mutex_unlock(&impl->lock);
     return SALTS_PLUGIN_OK;
+
+reject_locked:
+    salts_mutex_unlock(&impl->lock);
+    return close_rejected_load(impl, &library, status);
 }
 
 salts_plugin_status salts_plugin_registry_find(
@@ -713,7 +751,7 @@ salts_plugin_status salts_plugin_registry_destroy(
 
     impl = (salts_plugin_registry_impl *)registry->impl;
     salts_mutex_lock(&impl->lock);
-    if (impl->destroying) {
+    if (impl->destroying || impl->loads_inflight != 0u) {
         salts_mutex_unlock(&impl->lock);
         return SALTS_PLUGIN_BUSY;
     }
