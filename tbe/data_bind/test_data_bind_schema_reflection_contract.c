@@ -211,6 +211,10 @@ spec("DataBind schema reflection contract") {
         "message Req { [path, query] uint64 id; }"
         "message Res { uint64 id; }"
         "service Bad { [GET(\"/bad/{id}\")] Read: Req -> Res; }";
+    static const char rpc_conflicting_binding[] =
+        "message Req { [query, header] uint64 id; }"
+        "message Res { uint64 id; }"
+        "service Bad { [rpc] Read: Req -> Res; }";
     DataBind *stable = NULL;
     DataBind *invalid = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -264,6 +268,13 @@ spec("DataBind schema reflection contract") {
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(data_bind_create_from_text(conflicting_binding,
                                            strlen(conflicting_binding),
+                                           &invalid, &error),
+                DATA_BIND_ERR_PARSE);
+    check_null(invalid);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(data_bind_create_from_text(rpc_conflicting_binding,
+                                           strlen(rpc_conflicting_binding),
                                            &invalid, &error),
                 DATA_BIND_ERR_PARSE);
     check_null(invalid);
