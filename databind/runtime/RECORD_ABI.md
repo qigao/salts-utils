@@ -47,7 +47,7 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 - 使用 Windows DLL 时定义 `TBE_GENERATED_USE_SHARED`。
 - 构建或使用静态库时无需定义二者。
 
-生成库通过 SaltsUtils 包链接唯一公开目标 `Salts::Databind`；它不包含 C 编译器，也不在运行时编译
+生成库通过 SaltsUtils 包链接唯一公开目标 `Salts::DataBind`；它不包含 C 编译器，也不在运行时编译
 schema。
 
 ## RulesForge/TurboScript 集成
