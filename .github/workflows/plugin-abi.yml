@@ -7,7 +7,9 @@ on:
       - "plugin/**"
       - "databind/**"
       - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
       - "cmake/SaltsUtilsConfig.cmake.in"
+      - "cmake/ci/vcpkg/plugin-databind/**"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "cmake/ci/restore-versioned-native-sdk.sh"
       - "cmake/ci/restore-versioned-native-sdk.ps1"
@@ -18,7 +20,9 @@ on:
       - "plugin/**"
       - "databind/**"
       - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
       - "cmake/SaltsUtilsConfig.cmake.in"
+      - "cmake/ci/vcpkg/plugin-databind/**"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "cmake/ci/restore-versioned-native-sdk.sh"
       - "cmake/ci/restore-versioned-native-sdk.ps1"
@@ -95,10 +99,12 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON \
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
 
       - name: Build focused contracts
@@ -107,6 +113,7 @@ jobs:
           set -euxo pipefail
           cmake --build build/plugin-abi \
             --target salts_plugin_contract_test salts_plugin_header_cpp_test \
+                     salts_plugin_loader_test \
                      test_data_bind_binding_plan test_data_bind_native_writer \
                      test_data_bind_cmeta_public_cpp \
             --parallel 2
@@ -117,7 +124,7 @@ jobs:
           set -euxo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/plugin-abi \
-            -R '^(salts_plugin_(contract|header_cpp)_test|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp))$' \
+            -R '^(salts_plugin_(contract|header_cpp|loader)_test|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp))$' \
             --no-tests=error --output-on-failure
 
       - name: Configure sanitized BindingPlan build
@@ -130,11 +137,13 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON \
             -DENABLE_SANITIZER_ADDRESS=ON -DENABLE_SANITIZER_UNDEFINED=ON
 
       - name: Run sanitized BindingPlan contract
@@ -229,14 +238,14 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -ManifestRoot "%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind"
           if errorlevel 1 exit /b 1
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_DIR="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           if errorlevel 1 exit /b 1
-          cmake --build build\plugin-abi --target salts_plugin_contract_test salts_plugin_header_cpp_test test_data_bind_binding_plan test_data_bind_native_writer test_data_bind_cmeta_public_cpp --parallel 2
+          cmake --build build\plugin-abi --target salts_plugin_contract_test salts_plugin_header_cpp_test salts_plugin_loader_test test_data_bind_binding_plan test_data_bind_native_writer test_data_bind_cmeta_public_cpp --parallel 2
           if errorlevel 1 exit /b 1
-          ctest --test-dir build\plugin-abi -R "^(salts_plugin_(contract|header_cpp)_test|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp))$" --no-tests=error --output-on-failure
+          ctest --test-dir build\plugin-abi -R "^(salts_plugin_(contract|header_cpp|loader)_test|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp))$" --no-tests=error --output-on-failure
           if errorlevel 1 exit /b 1
 
       - name: Verify exact head and clean tracked source
