@@ -187,39 +187,115 @@ static DataBindStatus plan_validate_descriptor(
     DataBind *codec, const TbeTypedDescriptor *descriptor,
     const char *expected_name,
     DataBindServicePlanDiagnostic *diagnostic) {
-  DataBindError error = DATA_BIND_ERROR_INIT;
-  DataBindStatus status;
+  const size_t required_size =
+      offsetof(TbeTypedDescriptor, native_data) + sizeof(descriptor->native_data);
+  const TbeTypedType *overlay;
+  const cmeta_data_desc *data;
+  const cmeta_data_struct_shape *shape;
+  const cmeta_struct_desc *layout;
+  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  size_t i;
 
-  if (descriptor == NULL || descriptor->overlay == NULL ||
-      descriptor->native_data == NULL)
+  /*
+   * Service binding consumes TbeTypedDescriptor as a join between a logical
+   * schema overlay and canonical native CMeta storage. It deliberately does
+   * not call tbe_typed_descriptor_validate()/tbe_typed_validate_schema():
+   * those APIs qualify direct TBE binary layout and reject optional overlay
+   * fields or records without wire offsets. HTTP/RPC plans need neither.
+   */
+  if (descriptor == NULL || descriptor->struct_size < required_size ||
+      descriptor->abi_version != TBE_TYPED_DESCRIPTOR_ABI_VERSION ||
+      descriptor->overlay == NULL || descriptor->native_data == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-                          "Missing native descriptor for schema type '%s'",
-                          expected_name != NULL ? expected_name : "<unknown>");
+                          "Invalid logical service descriptor boundary");
 
-  status = tbe_typed_descriptor_validate(descriptor, &error);
-  if (status != DATA_BIND_OK)
-    return plan_diag_from_error(diagnostic, status, expected_name, NULL,
-                                &error, "Invalid native descriptor");
+  overlay = descriptor->overlay;
+  data = descriptor->native_data;
+  shape = plan_struct_shape(descriptor);
 
-  if (descriptor->overlay->name == NULL || expected_name == NULL ||
-      strcmp(descriptor->overlay->name, expected_name) != 0)
+  if (overlay->name == NULL || expected_name == NULL ||
+      strcmp(overlay->name, expected_name) != 0)
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, expected_name, NULL,
         "Native descriptor '%s' does not match service schema type '%s'",
-        descriptor->overlay->name != NULL ? descriptor->overlay->name
-                                         : "<unnamed>",
+        overlay->name != NULL ? overlay->name : "<unnamed>",
         expected_name != NULL ? expected_name : "<unknown>");
 
-  if (plan_struct_shape(descriptor) == NULL)
+  if (!cmeta_data_desc_valid(data) || data->kind != CMETA_DATA_STRUCT ||
+      data->storage_type == NULL || shape == NULL || shape->layout == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-                          "Service request/response descriptors must be CMeta Struct roots");
+                          "Service request/response descriptor has no valid CMeta Struct root");
 
-  status = tbe_typed_validate_schema(codec, expected_name, descriptor->overlay,
-                                     &error);
-  if (status != DATA_BIND_OK)
-    return plan_diag_from_error(
-        diagnostic, status, expected_name, NULL, &error,
-        "Typed wire overlay does not match the DataBind Service Schema");
+  layout = shape->layout;
+  if (overlay->size != data->storage_type->size ||
+      layout->size != data->storage_type->size ||
+      layout->align != data->storage_type->align ||
+      overlay->field_count != shape->field_count ||
+      (overlay->field_count != 0u && overlay->fields == NULL))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+        "Logical overlay and canonical CMeta Struct layout disagree");
+
+  if (!data_bind_schema_find_type(codec, expected_name, &schema_type))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND,
+                          expected_name, NULL,
+                          "Service schema type '%s' was not found", expected_name);
+  if ((schema_type.kind != DATA_BIND_SCHEMA_MESSAGE &&
+       schema_type.kind != DATA_BIND_SCHEMA_COMPOSITE &&
+       schema_type.kind != DATA_BIND_SCHEMA_GROUP) ||
+      schema_type.field_count != shape->field_count)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+        "Logical service descriptor does not match the schema record");
+
+  if (overlay->presence_size != 0u &&
+      (overlay->presence_offset > overlay->size ||
+       overlay->presence_size > overlay->size - overlay->presence_offset))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+                          "Optional presence storage lies outside native record");
+
+  for (i = 0u; i < shape->field_count; ++i) {
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    const TbeTypedField *wire = &overlay->fields[i];
+    const cmeta_data_field_desc *native = &shape->fields[i];
+    const cmeta_field_desc *layout_field;
+
+    if (!data_bind_schema_field_at(codec, expected_name, i, &schema_field) ||
+        schema_field.name == NULL || wire->name == NULL ||
+        native->name == NULL ||
+        strcmp(schema_field.name, wire->name) != 0 ||
+        strcmp(schema_field.name, native->name) != 0)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          schema_field.name != NULL ? schema_field.name : expected_name, NULL,
+          "Logical overlay field order/name disagrees with Service Schema");
+
+    layout_field = cmeta_struct_find_field(layout, native->name);
+    if (layout_field == NULL || native->value == NULL ||
+        native->value->storage_type == NULL ||
+        !cmeta_data_desc_valid(native->value) ||
+        layout_field->type == NULL ||
+        !cmeta_type_equal(layout_field->type, native->value->storage_type) ||
+        layout_field->offset != native->offset ||
+        wire->offset != native->offset)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
+          "Logical overlay field disagrees with canonical native storage");
+
+    if ((schema_field.is_optional != 0) !=
+        ((wire->flags & TBE_TYPED_FIELD_OPTIONAL) != 0u))
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
+          "Optional presence metadata disagrees with Service Schema");
+
+    if (schema_field.is_optional) {
+      if (overlay->presence_size == 0u ||
+          wire->optional_bit / 8u >= overlay->presence_size)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
+            "Optional field has no bounded native presence bit");
+    }
+  }
 
   return DATA_BIND_OK;
 }
