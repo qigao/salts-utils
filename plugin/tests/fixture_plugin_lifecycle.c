@@ -100,7 +100,6 @@ salts_plugin_query(uint32_t host_abi) {
                 &fixture_state);
         fixture_export = (salts_plugin_export){
             .struct_size = SALTS_PLUGIN_EXPORT_SIZE,
-            .abi_version = SALTS_PLUGIN_ABI_VERSION,
             .kind = SALTS_PLUGIN_EXPORT_INTERFACE,
             .contract_version = 1u,
             .capabilities = 1u,
