@@ -5,7 +5,7 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 
 ## 版本边界
 
-- library version: `3.0.0`
+- library version: `3.1.0`
 - C ABI: `9`
 - schema codec provider ABI: `tbe_schema_codec_v1_t`
 - public datetime/query diagnostic types are DataBind-owned and do not expose SaltsUtils parser/query headers
