@@ -12,9 +12,9 @@ DataBind 是 SaltsUtils 中的 schema 驱动纯 C 运行时。它解析 schema�
 并统一处理 TBE binary、JSON、YAML、XML 和 CSV。它不加载或生成运行时代码，
 运行时也不要求 C/C++ 编译器。
 
-`tbe_compiler` 与 DataBind 是两个不同层次：
+`databindc` 与 DataBind 是两个不同层次：
 
-- `tbe_compiler`：构建期工具，把 schema 渲染为 `.h/.c`。
+- `databindc`：构建期工具，把 schema 渲染为 `.h/.c`。
 - `DataBind`：运行时库，为动态对象、现有 C struct 映射和生成代码提供公共
   bind/serialization 引擎。
 
@@ -206,7 +206,7 @@ message Order {
 ## 路线一：生成 `.h/.c`
 
 ```powershell
-tbe_compiler order.schema --lang c `
+databindc order.schema --lang c `
   --output generated/order.h `
   --source-output generated/order.c
 ```
@@ -297,7 +297,7 @@ TBE_TYPED_BIND_CLEAR(ORDER_BINDING, &order);
 data_bind_free(codec);
 ```
 
-这条路线不运行 `tbe_compiler`，也不生成业务头文件。宏生成的 raw typed metadata 将
+这条路线不运行 `databindc`，也不生成业务头文件。宏生成的 raw typed metadata 将
 `offsetof()`、成员类型、可选位和 wire 属性固化进普通 C 常量。
 
 这些宏不会合成 ABI-v2 descriptor。若现有 struct 要进入 CMeta-authoritative
@@ -329,7 +329,7 @@ schema text/file
 
 ```text
 CI/构建阶段:
-schema -> tbe_compiler -> order.h/order.c -> static/shared schema library
+schema -> databindc -> order.h/order.c -> static/shared schema library
 
 运行阶段:
 RulesForge/TurboScript host -> 已编译 schema library -> DataBind runtime
