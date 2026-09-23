@@ -306,6 +306,9 @@ const char *salts_plugin_status_string(salts_plugin_status status) {
     case SALTS_PLUGIN_STALE: return "stale";
     case SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED: return "lifecycle_unsupported";
     case SALTS_PLUGIN_UNLOAD_FAILED: return "unload_failed";
+    case SALTS_PLUGIN_ALREADY: return "already";
+    case SALTS_PLUGIN_BUSY: return "busy";
+    case SALTS_PLUGIN_INVALID_STATE: return "invalid_state";
     default: return "unknown";
     }
 }
