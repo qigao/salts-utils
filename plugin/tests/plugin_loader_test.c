@@ -15,6 +15,9 @@
 #ifndef PLUGIN_REJECTED_PATH
 #error "PLUGIN_REJECTED_PATH is required"
 #endif
+#ifndef PLUGIN_OBSOLETE_PATH
+#error "PLUGIN_OBSOLETE_PATH is required"
+#endif
 #ifndef PLUGIN_INVALID_PATH
 #error "PLUGIN_INVALID_PATH is required"
 #endif
@@ -162,7 +165,7 @@ describe("transactional admission") {
         destroy_registry(&registry);
     }
 
-    it("keeps missing, rejected and incompatible query failures distinct") {
+    it("keeps missing, rejected, obsolete and incompatible failures distinct") {
         salts_plugin_registry registry = make_registry(2u);
         salts_plugin_ref ref = {3u, 3u};
         const char *missing_file = PLUGIN_VALID_C_PATH ".missing";
@@ -183,6 +186,13 @@ describe("transactional admission") {
         ref = (salts_plugin_ref){3u, 3u};
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_REJECTED_PATH, &ref),
+                    SALTS_PLUGIN_QUERY_REJECTED);
+        check_false(salts_plugin_ref_valid(ref));
+        check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
+
+        ref = (salts_plugin_ref){3u, 3u};
+        check_equal(salts_plugin_registry_load(
+                        &registry, PLUGIN_OBSOLETE_PATH, &ref),
                     SALTS_PLUGIN_QUERY_REJECTED);
         check_false(salts_plugin_ref_valid(ref));
         check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
