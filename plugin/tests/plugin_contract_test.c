@@ -150,7 +150,7 @@ describe("manifest admission") {
         check_true(found == &exports[1]);
         check_not_null(found->value.function.desc);
         check_not_null(found->value.function.abi);
-        check_not_null(found->value.function);
+        check_not_null(found->value.function.invoke);
         check_true(cmeta_function_desc_valid(found->value.function.desc));
         check_true(cmeta_function_abi_desc_valid(found->value.function.abi));
         check_true(found->value.function.abi->function == found->value.function.desc);
