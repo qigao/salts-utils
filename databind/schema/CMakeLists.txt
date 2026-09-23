@@ -94,8 +94,12 @@ endif()
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
-  LIBS Salts::DataBindSchema
+  LIBS Salts::DataBindSchema Salts::DataBindTbeFormat
   FOLDER databind/schema/tests)
+
+if(TARGET test_tbe_robustness)
+  target_link_libraries(test_tbe_robustness PRIVATE Salts::DataBindTbeFormat)
+endif()
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件
