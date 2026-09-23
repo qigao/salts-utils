@@ -155,25 +155,15 @@ static DataBindStatus http_project(
     return DATA_BIND_OK;
   }
 
-  if (field->binding_kind == NULL)
-    return DATA_BIND_ERR_SCHEMA;
-  if (strcmp(field->binding_kind, "path") == 0 ||
-      strcmp(field->binding_kind, "query") == 0) {
-    out->binding_class = DATA_BIND_BINDING_VALUE;
-    prefix = field->binding_kind;
-  } else if (strcmp(field->binding_kind, "header") == 0 ||
-             strcmp(field->binding_kind, "cookie") == 0) {
-    out->binding_class = DATA_BIND_BINDING_METADATA;
-    prefix = field->binding_kind;
-  } else if (strcmp(field->binding_kind, "body") == 0) {
-    out->binding_class = DATA_BIND_BINDING_PAYLOAD;
-    prefix = "body";
-  } else {
-    return DATA_BIND_ERR_SCHEMA;
-  }
-
+  /*
+   * HTTP-specific policy lives in this projection adapter, not in the
+   * canonical Service Contract or BindingPlan ABI. This fixture chooses query
+   * parameters for the three logical fields.
+   */
+  out->binding_class = DATA_BIND_BINDING_VALUE;
+  prefix = "query";
   snprintf(state->selector, sizeof(state->selector), "%s:%s", prefix,
-           field->binding_name != NULL ? field->binding_name : field->name);
+           field->name);
   out->selector = state->selector;
   return DATA_BIND_OK;
 }
@@ -390,13 +380,12 @@ static DataBindNativeOptions native_options(unsigned char *workspace,
 static DataBind *create_codec(void) {
   static const char schema[] =
       "message AddRequest {"
-      " [query] uint32 left;"
-      " [query] uint32 right;"
-      " optional [query] uint32 scale default 1;"
+      " uint32 left;"
+      " uint32 right;"
+      " optional uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
       "service Calc {"
-      " [GET(\"/add\"), rpc]"
       " Add: AddRequest -> AddResponse;"
       "}";
   DataBind *codec = NULL;
