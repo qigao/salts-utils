@@ -1184,8 +1184,60 @@ static void tbe_compiler_annotate_schema_types(Node *root) {
   tbe_compiler_set_string(schema, "go_package_name", package_name);
 }
 
+static void tbe_compiler_annotate_service_symbols(Node *root) {
+  Node *schema = tbe_compiler_find_child(root, "schema");
+  Node *services = tbe_compiler_find_child(root, "services");
+  const char *schema_name =
+      schema != NULL ? tbe_compiler_string_value(schema, "schema_name") : NULL;
+  size_t i;
+
+  if (schema_name == NULL || schema_name[0] == '\0' ||
+      services == NULL || services->type != NODE_LIST)
+    return;
+
+  for (i = 0u; i < services->data.list.count; ++i) {
+    Node *service = services->data.list.items[i];
+    Node *operations = tbe_compiler_find_child(service, "operations");
+    const char *service_name = tbe_compiler_string_value(service, "name");
+    size_t j;
+
+    if (service_name == NULL || operations == NULL ||
+        operations->type != NODE_LIST)
+      continue;
+
+    for (j = 0u; j < operations->data.list.count; ++j) {
+      Node *operation = operations->data.list.items[j];
+      const char *operation_name =
+          tbe_compiler_string_value(operation, "name");
+      size_t schema_len;
+      size_t service_len;
+      size_t operation_len;
+      size_t length;
+      char *symbol;
+
+      if (operation_name == NULL) continue;
+      schema_len = strlen(schema_name);
+      service_len = strlen(service_name);
+      operation_len = strlen(operation_name);
+      if (schema_len > SIZE_MAX - service_len - 1u ||
+          schema_len + service_len + 1u > SIZE_MAX - operation_len - 2u)
+        continue;
+
+      length = schema_len + service_len + operation_len + 3u;
+      symbol = (char *)malloc(length);
+      if (symbol == NULL) continue;
+
+      snprintf(symbol, length, "%s_%s_%s",
+               schema_name, service_name, operation_name);
+      (void)tbe_compiler_set_string(operation, "native_c_symbol", symbol);
+      free(symbol);
+    }
+  }
+}
+
 void tbe_compiler_annotate_language_types(Node *root) {
   tbe_compiler_annotate_schema_types(root);
+  tbe_compiler_annotate_service_symbols(root);
   tbe_compiler_annotate_enum_types(root);
   tbe_compiler_annotate_record_list_types(root, "composites");
   tbe_compiler_annotate_record_list_types(root, "groups");
