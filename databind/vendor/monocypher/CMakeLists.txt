@@ -5,4 +5,4 @@
 add_library(databind_monocypher STATIC monocypher.c monocypher.h)
 target_include_directories(
   databind_monocypher PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
-set_target_properties(databind_monocypher PROPERTIES FOLDER "tbe/vendor")
+set_target_properties(databind_monocypher PROPERTIES FOLDER "databind/vendor")
