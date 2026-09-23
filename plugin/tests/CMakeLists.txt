@@ -53,7 +53,11 @@ set(plugin_fixture_targets
   salts_plugin_fixture_missing_query
   salts_plugin_fixture_rejected
   salts_plugin_fixture_invalid
-  salts_plugin_fixture_lifecycle)
+  salts_plugin_fixture_lifecycle
+  salts_plugin_fixture_partial_lifecycle
+  salts_plugin_fixture_start_fail
+  salts_plugin_fixture_stop_fail
+  salts_plugin_fixture_slow_stop)
 
 add_library(salts_plugin_fixture_c SHARED fixture_plugin_c.c)
 add_library(salts_plugin_fixture_cpp SHARED fixture_plugin_cpp.cpp)
@@ -65,6 +69,14 @@ add_library(salts_plugin_fixture_invalid SHARED
   fixture_plugin_invalid.c)
 add_library(salts_plugin_fixture_lifecycle SHARED
   fixture_plugin_lifecycle.c)
+add_library(salts_plugin_fixture_partial_lifecycle SHARED
+  fixture_plugin_partial_lifecycle.c)
+add_library(salts_plugin_fixture_start_fail SHARED
+  fixture_plugin_start_fail.c)
+add_library(salts_plugin_fixture_stop_fail SHARED
+  fixture_plugin_stop_fail.c)
+add_library(salts_plugin_fixture_slow_stop SHARED
+  fixture_plugin_slow_stop.c)
 
 foreach(fixture_target IN LISTS plugin_fixture_targets)
   target_include_directories(${fixture_target} PRIVATE
@@ -80,6 +92,10 @@ set_target_properties(
   salts_plugin_fixture_rejected
   salts_plugin_fixture_invalid
   salts_plugin_fixture_lifecycle
+  salts_plugin_fixture_partial_lifecycle
+  salts_plugin_fixture_start_fail
+  salts_plugin_fixture_stop_fail
+  salts_plugin_fixture_slow_stop
   PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
@@ -89,6 +105,8 @@ set_target_properties(salts_plugin_fixture_cpp PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
   CXX_EXTENSIONS OFF)
+
+target_link_libraries(salts_plugin_fixture_slow_stop PRIVATE Salts::Platform)
 
 cmake_add_test(salts_plugin_loader_test
   SOURCES plugin_loader_test.c
@@ -105,6 +123,26 @@ cmake_add_test(salts_plugin_loader_test
 
 add_dependencies(salts_plugin_loader_test ${plugin_fixture_targets})
 set_target_properties(salts_plugin_loader_test PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+
+cmake_add_test(salts_plugin_lifecycle_test
+  SOURCES plugin_lifecycle_test.c
+  LIBS Salts::Plugin Salts::Platform Salts::TinyTest
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+  DEFS
+    "PLUGIN_LIFECYCLE_PATH=\"$<TARGET_FILE:salts_plugin_fixture_lifecycle>\""
+    "PLUGIN_PARTIAL_LIFECYCLE_PATH=\"$<TARGET_FILE:salts_plugin_fixture_partial_lifecycle>\""
+    "PLUGIN_START_FAIL_PATH=\"$<TARGET_FILE:salts_plugin_fixture_start_fail>\""
+    "PLUGIN_STOP_FAIL_PATH=\"$<TARGET_FILE:salts_plugin_fixture_stop_fail>\""
+    "PLUGIN_SLOW_STOP_PATH=\"$<TARGET_FILE:salts_plugin_fixture_slow_stop>\""
+  RUNTIME_TARGETS ${plugin_fixture_targets}
+  FOLDER "plugin/tests")
+
+add_dependencies(salts_plugin_lifecycle_test ${plugin_fixture_targets})
+set_target_properties(salts_plugin_lifecycle_test PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF)
