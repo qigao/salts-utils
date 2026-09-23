@@ -674,15 +674,30 @@ static Node *create_bare_attribute_node(schema_parse_ctx_t *ctx,
     add_string(ctx, attr, "name", key);
     add_string(ctx, attr, "value", "1");
     add_true(ctx, attr, "bare");
-    if (ctx->error || list_add(values, marker) != 0 ||
-        map_add(attr, values) != 0) {
+    if (ctx->error) {
         node_free(attr);
-        if (values != NULL && values->name != NULL)
-            node_free(values);
+        node_free(values);
+        node_free(marker);
+        free(key);
+        return NULL;
+    }
+    if (list_add(values, marker) != 0) {
+        node_free(marker);
+        node_free(values);
+        node_free(attr);
         free(key);
         grammar_oom(ctx);
         return NULL;
     }
+    marker = NULL;
+    if (map_add(attr, values) != 0) {
+        node_free(values);
+        node_free(attr);
+        free(key);
+        grammar_oom(ctx);
+        return NULL;
+    }
+    values = NULL;
 
     free(key);
     return attr;
@@ -691,6 +706,7 @@ static Node *create_bare_attribute_node(schema_parse_ctx_t *ctx,
 static void begin_service(schema_parse_ctx_t *ctx, const char *name) {
     Node *service;
     Node *operations;
+    Node *operations_view;
 
     ctx->cur_service = NULL;
     ctx->cur_operations = NULL;
@@ -706,15 +722,27 @@ static void begin_service(schema_parse_ctx_t *ctx, const char *name) {
     }
 
     add_name_nodes(ctx, service, "service_name", name);
-    if (ctx->error || map_add(service, operations) != 0 ||
-        list_add(ctx->services_list, service) != 0) {
+    if (ctx->error) {
+        node_free(operations);
+        node_free(service);
+        return;
+    }
+    operations_view = operations;
+    if (map_add(service, operations) != 0) {
+        node_free(operations);
+        node_free(service);
+        grammar_oom(ctx);
+        return;
+    }
+    operations = NULL;
+    if (list_add(ctx->services_list, service) != 0) {
         node_free(service);
         grammar_oom(ctx);
         return;
     }
 
     ctx->cur_service = service;
-    ctx->cur_operations = operations;
+    ctx->cur_operations = operations_view;
 }
 
 static Node *create_error_type_list(schema_parse_ctx_t *ctx,
@@ -785,10 +813,31 @@ static void add_service_operation(schema_parse_ctx_t *ctx,
 
     if (errors == NULL)
         errors = create_node_list("errors");
-    if (errors == NULL || ctx->error ||
-        (attrs != NULL && map_add(operation, attrs) != 0) ||
-        map_add(operation, errors) != 0 ||
-        list_add(ctx->cur_operations, operation) != 0) {
+    if (errors == NULL || ctx->error) {
+        node_free(operation);
+        node_free(attrs);
+        node_free(errors);
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+    if (attrs != NULL) {
+        if (map_add(operation, attrs) != 0) {
+            node_free(attrs);
+            node_free(errors);
+            node_free(operation);
+            grammar_oom(ctx);
+            return;
+        }
+        attrs = NULL;
+    }
+    if (map_add(operation, errors) != 0) {
+        node_free(errors);
+        node_free(operation);
+        grammar_oom(ctx);
+        return;
+    }
+    errors = NULL;
+    if (list_add(ctx->cur_operations, operation) != 0) {
         node_free(operation);
         grammar_oom(ctx);
         return;
