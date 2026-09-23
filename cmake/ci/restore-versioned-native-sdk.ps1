@@ -9,7 +9,7 @@ if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw "RUNNER_TEMP is requ
 if ([string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) { throw "GITHUB_ENV is required" }
 if ([string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) { throw "GITHUB_PATH is required" }
 
-$saltsVersion = if ($env:SALTS_SDK_VERSION) { $env:SALTS_SDK_VERSION } else { "1.2.0" }
+$saltsVersion = if ($env:SALTS_SDK_VERSION) { $env:SALTS_SDK_VERSION } else { "1.3.0" }
 $re2cVersion = if ($env:RE2C_BINARY_VERSION) { $env:RE2C_BINARY_VERSION } else { "4.6.3" }
 $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } else { Join-Path $env:RUNNER_TEMP "qigao-nuget" }
 $config = Join-Path $env:RUNNER_TEMP "qigao-nuget.config"
@@ -41,10 +41,11 @@ if ($LASTEXITCODE -ne 0) { throw "failed to restore versioned native SDKs" }
 $saltsRoot = Join-Path $packages "salts.native\$saltsVersion\sdk\$SaltsRid"
 $re2cRoot = Join-Path $packages "qigao.re2c.binary\$re2cVersion\tools\$Re2cRid"
 $saltsConfig = Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"
+$functionHeader = Join-Path $saltsRoot "include\cmeta\function.h"
 $re2cExe = Join-Path $re2cRoot "bin\re2c.exe"
 $unicodeCategories = Join-Path $re2cRoot "share\re2c\stdlib\unicode_categories.re"
 $unicodeProperties = Join-Path $re2cRoot "share\re2c\stdlib\unicode_properties.re"
-foreach ($path in @($saltsConfig, $re2cExe, $unicodeCategories, $unicodeProperties)) {
+foreach ($path in @($saltsConfig, $functionHeader, $re2cExe, $unicodeCategories, $unicodeProperties)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored SDK file: $path" }
 }
 $version = (& $re2cExe --version).Trim()

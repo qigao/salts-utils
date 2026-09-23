@@ -8,7 +8,7 @@ set -euo pipefail
 
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
-salts_version="${SALTS_SDK_VERSION:-1.2.0}"
+salts_version="${SALTS_SDK_VERSION:-1.3.0}"
 re2c_version="${RE2C_BINARY_VERSION:-4.6.3}"
 packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
 config="$RUNNER_TEMP/qigao-nuget.config"
@@ -45,6 +45,7 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 salts_root="$salts_package/sdk/$salts_rid"
 re2c_root="$re2c_package/tools/$re2c_rid"
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
+[ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"
 [ -f "$re2c_root/bin/re2c" ] || fail "missing re2c executable under $re2c_root"

@@ -5,20 +5,27 @@ on:
     branches: [master]
     paths:
       - "CMakeLists.txt"
+      - "databind/**"
       - "plugin/**"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
+      - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
   push:
     branches: [master]
+    tags: ["v*"]
     paths:
       - "CMakeLists.txt"
+      - "databind/**"
       - "plugin/**"
       - "vcpkg.json"
       - "vcpkg-configuration.json"
       - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-versioned-saltsutils-sdk.ps1"
+      - "cmake/ci/verify-vcpkg-cache-only.ps1"
       - "packaging/nuget/**"
       - ".github/workflows/native-sdk-release.yml"
   workflow_dispatch:
@@ -32,7 +39,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SALTS_SDK_VERSION: "1.2.0"
+  SALTS_SDK_VERSION: "1.3.0"
+  SALTS_UTILS_BASELINE_VERSION: "3.0.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -41,6 +49,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v4
       - id: version
@@ -49,8 +58,86 @@ jobs:
           set -euo pipefail
           version="$(awk '/^[[:space:]]*VERSION[[:space:]]+[0-9]/{print $2; exit}' CMakeLists.txt)"
           test -n "$version"
+          tag="v$version"
+          release=false
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            if [ "${GITHUB_REF_NAME:-}" != "$tag" ]; then
+              echo "release tag ${GITHUB_REF_NAME:-<unset>} does not match project version $tag" >&2
+              exit 1
+            fi
+            release=true
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  binding-plan:
+    name: DataBind BindingPlan contract
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Configure shared vcpkg binary cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare focused native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm
+          test -n "${VCPKG_ROOT:-}"
+          test -n "${VCPKG_BINARY_SOURCES:-}"
+          case "$VCPKG_BINARY_SOURCES" in
+            *nugetconfig*) ;;
+            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
+          esac
+          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
+
+      - name: Restore published Salts 1.3.0 and re2c 4.6.3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Configure focused BindingPlan test build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/binding-plan -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/binding-plan \
+            --target test_data_bind_binding_plan test_data_bind_cmeta_public_cpp \
+            --parallel 2
+
+      - name: Run canonical BindingPlan runtime contract
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ctest --test-dir build/binding-plan --no-tests=error \
+            -R '^(test_data_bind_binding_plan|test_data_bind_cmeta_public_cpp)$' \
+            --output-on-failure
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -z "$(git status --porcelain --untracked-files=no)"
 
   linux:
     name: Linux x64 SDK
@@ -101,11 +188,13 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/native-sdk --parallel 2
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/include/data_bind_binding_plan.h"
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -176,11 +265,13 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/native-sdk --parallel 2
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/include/data_bind_binding_plan.h"
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -200,60 +291,114 @@ jobs:
   windows:
     name: Windows x64 SDK
     needs: metadata
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
       - uses: actions/setup-go@v5
+        if: github.event_name != 'pull_request'
         with:
           go-version: "1.24.x"
           cache: false
+
       - name: Prepare native toolchain
-        id: env
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           choco install nasm ninja -y --no-progress
           $vcpkgRoot = $env:VCPKG_ROOT
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) { $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT }
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) { throw "VCPKG_ROOT is unavailable" }
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+            $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          }
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+            throw "VCPKG_ROOT is unavailable"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
+            throw "Windows shared vcpkg NuGet cache is unavailable"
+          }
+          if ($env:VCPKG_NUGET_REPOSITORY -ne "https://github.com/qigao/vcpkg-cache") {
+            throw "unexpected Windows vcpkg cache repository: $env:VCPKG_NUGET_REPOSITORY"
+          }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if ([string]::IsNullOrWhiteSpace($vsInstall)) { throw "Visual Studio x64 C++ toolchain not found" }
+          if ([string]::IsNullOrWhiteSpace($vsInstall)) {
+            throw "Visual Studio x64 C++ toolchain not found"
+          }
+          "QIGAO_VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
-          $cache = Join-Path $env:GITHUB_WORKSPACE "build\vcpkg-binary-cache"
-          New-Item -ItemType Directory -Force -Path $cache | Out-Null
 
-      - name: Restore versioned Salts and re2c SDKs
+      - name: Restore published Salts 1.3.0 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
-      - name: Configure, build and install SaltsUtils
+
+      - name: Restore published SaltsUtils baseline for PR overlay
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $prefix = Join-Path $env:GITHUB_WORKSPACE "stage\sdk\windows-x64"
+          ./cmake/ci/restore-versioned-saltsutils-sdk.ps1 -Version $env:SALTS_UTILS_BASELINE_VERSION -Rid windows-x64 -Destination $prefix
+
+      - name: Configure and overlay DataBind onto published SDK
+        if: github.event_name == 'pull_request'
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          if errorlevel 1 exit /b 1
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1"
+          if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          findstr /C:"SALTS_UTILS_ENABLE_CAPTURE:BOOL=OFF" build\native-sdk\CMakeCache.txt >nul
           if errorlevel 1 exit /b 1
-          cmake --build build\native-sdk --parallel 2
+          if exist build\native-sdk\capture exit /b 1
+          cmake --build build\native-sdk --target databind_schema data_bind_core data_bind_json_adapter data_bind_yaml_adapter data_bind_csv_adapter data_bind_xml_adapter data_bind_temporal_adapter data_bind data_bind_cmeta data_bind_cflow databindc --parallel
+          if errorlevel 1 exit /b 1
+          cmake --install build\native-sdk --component DataBind
+          if errorlevel 1 exit /b 1
+          cmake --install build\native-sdk --component Development
+          if errorlevel 1 exit /b 1
+
+      - name: Configure, build and install full SaltsUtils SDK
+        if: github.event_name != 'pull_request'
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          if errorlevel 1 exit /b 1
+          powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
+          if errorlevel 1 exit /b 1
+          set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          if errorlevel 1 exit /b 1
+          cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
+
       - name: Verify Windows SDK
         shell: pwsh
         run: |
           $prefix = Join-Path $env:GITHUB_WORKSPACE "stage\sdk\windows-x64"
           $config = Join-Path $prefix "lib\cmake\SaltsUtils\SaltsUtilsConfig.cmake"
+          $bindingPlanHeader = Join-Path $prefix "include\data_bind_binding_plan.h"
           if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { throw "missing $config" }
-          @(
+          if (-not (Test-Path -LiteralPath $bindingPlanHeader -PathType Leaf)) { throw "missing $bindingPlanHeader" }
+          $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
             "salts=$env:SALTS_SDK_VERSION"
@@ -261,7 +406,13 @@ jobs:
             "os=windows"
             "arch=x64"
             "profile=release"
-          ) | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
+          )
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $manifest += "baseline=$env:SALTS_UTILS_BASELINE_VERSION"
+            $manifest += "overlay=DataBind"
+          }
+          $manifest | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-windows-x64
@@ -326,6 +477,7 @@ jobs:
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_shared \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
@@ -334,6 +486,7 @@ jobs:
           cmake --build build/android-native-sdk --parallel 2
           cmake --install build/android-native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/include/data_bind_binding_plan.h"
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -367,8 +520,11 @@ jobs:
         run: |
           set -euo pipefail
           test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+          test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+          test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
           test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
+          test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
           test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 4
       - uses: actions/setup-dotnet@v4
         with:
@@ -395,7 +551,10 @@ jobs:
           grep -Fx "sdk/linux-x64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/bin/databindc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           if grep -Fxq "sdk/macos-arm64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
             :
           else
@@ -409,7 +568,7 @@ jobs:
 
   publish:
     name: Publish package and GitHub Release
-    if: github.event_name != 'pull_request'
+    if: needs.metadata.outputs.release == 'true'
     needs: [metadata, pack]
     runs-on: ubuntu-latest
     permissions:
@@ -431,7 +590,7 @@ jobs:
           set -euo pipefail
           dotnet nuget add source --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --name github https://nuget.pkg.github.com/qigao/index.json
           dotnet nuget push "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg" --api-key "$GITHUB_TOKEN" --source github --skip-duplicate
-      - name: Create tag and GitHub Release
+      - name: Create GitHub Release from version tag
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -439,8 +598,11 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "$TAG"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $TAG already exists"
             exit 0
           fi
-          gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "SaltsUtils $VERSION" --generate-notes
+          gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" --verify-tag --title "SaltsUtils $VERSION" --generate-notes
+
