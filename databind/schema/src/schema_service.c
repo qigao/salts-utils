@@ -143,13 +143,13 @@ static int service_add_string(Node *map, const char *name, const char *value) {
     return 1;
 }
 
-static int service_error(tbe_error_t *err, const char *message) {
+static int service_error(DataBindSchemaError *err, const char *message) {
     if (err != NULL)
-        tbe_error_set(err, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
+        data_bind_schema_error_set(err, DATA_BIND_SCHEMA_ERR_SEMANTIC, -1, -1, message);
     return 0;
 }
 
-static int service_errorf(tbe_error_t *err, const char *fmt,
+static int service_errorf(DataBindSchemaError *err, const char *fmt,
                           const char *a, const char *b) {
     char message[256];
     snprintf(message, sizeof(message), fmt,
@@ -268,7 +268,7 @@ static const char *service_field_binding_name(Node *field, Node *attr) {
 }
 
 static int service_field_binding_valid(Node *field, const char *kind,
-                                       Node *attr, tbe_error_t *err) {
+                                       Node *attr, DataBindSchemaError *err) {
     size_t values;
     if (field == NULL || kind == NULL || attr == NULL) return 0;
     values = service_attribute_value_count(attr);
@@ -304,7 +304,7 @@ static int service_field_binding_valid(Node *field, const char *kind,
 }
 
 static int service_validate_request_bindings(Node *root, Node *operation,
-                                             tbe_error_t *err) {
+                                             DataBindSchemaError *err) {
     static const char *const binding_names[] = {
         "path", "query", "header", "cookie", "body"
     };
@@ -348,7 +348,7 @@ static int service_validate_request_bindings(Node *root, Node *operation,
 
 static int service_validate_http_fields(Node *root, Node *operation,
                                         const char *path,
-                                        tbe_error_t *err) {
+                                        DataBindSchemaError *err) {
     const char *request_type = service_string(operation, "request_type");
     Node *request = service_type_node(root, request_type);
     Node *fields = request != NULL ? service_find_child(request, "fields") : NULL;
@@ -467,7 +467,7 @@ static int service_set_rpc_name(Node *operation, const char *service_name,
 }
 
 static int service_validate_operation(Node *root, Node *service,
-                                      Node *operation, tbe_error_t *err) {
+                                      Node *operation, DataBindSchemaError *err) {
     Node *attrs = service_attributes(operation);
     Node *rpc_attr = NULL;
     const char *service_name = service_string(service, "name");
@@ -587,7 +587,7 @@ static int service_name_duplicate(Node *services, size_t index) {
     return 0;
 }
 
-static int service_validate_global_duplicates(Node *services, tbe_error_t *err) {
+static int service_validate_global_duplicates(Node *services, DataBindSchemaError *err) {
     size_t si;
     size_t sj;
     for (si = 0u; si < services->data.list.count; ++si) {
@@ -632,7 +632,7 @@ static int service_validate_global_duplicates(Node *services, tbe_error_t *err) 
     return 1;
 }
 
-int schema_validate_services(Node *root, tbe_error_t *err) {
+int schema_validate_services(Node *root, DataBindSchemaError *err) {
     Node *services = service_find_child(root, "services");
     size_t i;
 
