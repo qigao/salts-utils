@@ -97,8 +97,6 @@ static bool function_adapter_valid(
 static salts_plugin_status validate_export(const salts_plugin_export *entry) {
     if (entry == NULL || entry->struct_size != SALTS_PLUGIN_EXPORT_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
-    if (entry->abi_version != SALTS_PLUGIN_ABI_VERSION)
-        return SALTS_PLUGIN_UNSUPPORTED_ABI;
     if (!bounded_string_valid(entry->export_id, SALTS_PLUGIN_EXPORT_ID_MAX) ||
         !bounded_string_valid(entry->contract_id,
                               SALTS_PLUGIN_CONTRACT_ID_MAX) ||
