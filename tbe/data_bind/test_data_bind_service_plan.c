@@ -1,0 +1,546 @@
+#include "data_bind_service_plan.h"
+#include "tinytest.h"
+
+#include <salts_cmeta_fixed_width.h>
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+typedef struct AddRequest {
+  uint32_t left;
+  uint32_t right;
+  uint32_t scale;
+} AddRequest;
+
+typedef struct AddResponse {
+  uint32_t sum;
+} AddResponse;
+
+static const cmeta_type_identity ADD_REQUEST_IDENTITY =
+    CMETA_TYPE_ID_ATOM_INIT("test.service.AddRequest");
+static const cmeta_type_desc ADD_REQUEST_TYPE = {
+    "AddRequest", sizeof(AddRequest), _Alignof(AddRequest), CMETA_T_OBJECT,
+    NULL, NULL, &ADD_REQUEST_IDENTITY};
+static const cmeta_field_desc ADD_REQUEST_LAYOUT_FIELDS[] = {
+    {"left", "uint32_t", offsetof(AddRequest, left), sizeof(uint32_t),
+     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"right", "uint32_t", offsetof(AddRequest, right), sizeof(uint32_t),
+     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"scale", "uint32_t", offsetof(AddRequest, scale), sizeof(uint32_t),
+     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc ADD_REQUEST_LAYOUT = {
+    "AddRequest", sizeof(AddRequest), _Alignof(AddRequest),
+    ADD_REQUEST_LAYOUT_FIELDS, 3u};
+static const cmeta_data_field_desc ADD_REQUEST_DATA_FIELDS[] = {
+    {"test.service.AddRequest.left", "left", offsetof(AddRequest, left),
+     &salts_uint32_cmeta_data},
+    {"test.service.AddRequest.right", "right", offsetof(AddRequest, right),
+     &salts_uint32_cmeta_data},
+    {"test.service.AddRequest.scale", "scale", offsetof(AddRequest, scale),
+     &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape ADD_REQUEST_SHAPE = {
+    &ADD_REQUEST_LAYOUT, ADD_REQUEST_DATA_FIELDS, 3u};
+static const cmeta_data_desc ADD_REQUEST_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.service.AddRequest.data",
+    .display_name = "AddRequest",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &ADD_REQUEST_TYPE,
+    .shape = &ADD_REQUEST_SHAPE};
+
+static const TbeTypedField ADD_REQUEST_OVERLAY_FIELDS[] = {
+    TBE_TYPED_FIELD(AddRequest, left, "left", TBE_TYPED_U32,
+                    TBE_TYPED_REQUIRED),
+    TBE_TYPED_FIELD(AddRequest, right, "right", TBE_TYPED_U32,
+                    TBE_TYPED_REQUIRED),
+    TBE_TYPED_FIELD(AddRequest, scale, "scale", TBE_TYPED_U32,
+                    TBE_TYPED_OPTIONAL(0u))};
+static const TbeTypedType ADD_REQUEST_OVERLAY = {
+    .name = "AddRequest",
+    .size = sizeof(AddRequest),
+    .fields = ADD_REQUEST_OVERLAY_FIELDS,
+    .field_count = 3u};
+static const TbeTypedDescriptor ADD_REQUEST_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&ADD_REQUEST_OVERLAY, &ADD_REQUEST_DATA);
+
+static const cmeta_type_identity ADD_RESPONSE_IDENTITY =
+    CMETA_TYPE_ID_ATOM_INIT("test.service.AddResponse");
+static const cmeta_type_desc ADD_RESPONSE_TYPE = {
+    "AddResponse", sizeof(AddResponse), _Alignof(AddResponse), CMETA_T_OBJECT,
+    NULL, NULL, &ADD_RESPONSE_IDENTITY};
+static const cmeta_field_desc ADD_RESPONSE_LAYOUT_FIELDS[] = {
+    {"sum", "uint32_t", offsetof(AddResponse, sum), sizeof(uint32_t),
+     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc ADD_RESPONSE_LAYOUT = {
+    "AddResponse", sizeof(AddResponse), _Alignof(AddResponse),
+    ADD_RESPONSE_LAYOUT_FIELDS, 1u};
+static const cmeta_data_field_desc ADD_RESPONSE_DATA_FIELDS[] = {
+    {"test.service.AddResponse.sum", "sum", offsetof(AddResponse, sum),
+     &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape ADD_RESPONSE_SHAPE = {
+    &ADD_RESPONSE_LAYOUT, ADD_RESPONSE_DATA_FIELDS, 1u};
+static const cmeta_data_desc ADD_RESPONSE_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.service.AddResponse.data",
+    .display_name = "AddResponse",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &ADD_RESPONSE_TYPE,
+    .shape = &ADD_RESPONSE_SHAPE};
+
+static const TbeTypedField ADD_RESPONSE_OVERLAY_FIELDS[] = {
+    TBE_TYPED_FIELD(AddResponse, sum, "sum", TBE_TYPED_U32,
+                    TBE_TYPED_REQUIRED)};
+static const TbeTypedType ADD_RESPONSE_OVERLAY = {
+    .name = "AddResponse",
+    .size = sizeof(AddResponse),
+    .fields = ADD_RESPONSE_OVERLAY_FIELDS,
+    .field_count = 1u};
+static const TbeTypedDescriptor ADD_RESPONSE_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&ADD_RESPONSE_OVERLAY, &ADD_RESPONSE_DATA);
+
+static const cmeta_type_desc UINT32_POINTER_TYPE = {
+    "uint32_t *", sizeof(uint32_t *), _Alignof(uint32_t *), CMETA_T_POINTER,
+    &salts_uint32_cmeta_type, NULL, NULL};
+
+FunctionDeclAs(
+    value, void, &cmeta_type_void, service_add_fields,
+    (uint32_t, left, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, right, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, scale, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t *, sum, CMETA_PARAM_OUT, &UINT32_POINTER_TYPE));
+
+FunctionDeclAs(
+    value, AddResponse, &ADD_RESPONSE_TYPE, service_add_root,
+    (AddRequest, request, CMETA_PARAM_IN, &ADD_REQUEST_TYPE));
+
+FunctionDeclAs(
+    value, void, &cmeta_type_void, service_add_bad_type,
+    (int32_t, left, CMETA_PARAM_IN, &salts_int32_cmeta_type),
+    (uint32_t, right, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, scale, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t *, sum, CMETA_PARAM_OUT, &UINT32_POINTER_TYPE));
+
+FunctionDeclAs(
+    value, void, &cmeta_type_void, service_add_bad_direction,
+    (uint32_t, left, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, right, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, scale, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t *, sum, CMETA_PARAM_IN, &UINT32_POINTER_TYPE));
+
+typedef struct OneTokenReader {
+  cserde_token token;
+  int emitted;
+} OneTokenReader;
+
+static cserde_status one_token_next(void *context, cserde_token *out) {
+  OneTokenReader *reader = (OneTokenReader *)context;
+  if (reader->emitted) return CSERDE_DONE;
+  *out = reader->token;
+  reader->emitted = 1;
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops ONE_TOKEN_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION, one_token_next};
+
+typedef struct TestProvider {
+  OneTokenReader reader;
+  int fail_write;
+  size_t begin_calls;
+  size_t write_calls;
+  size_t commit_calls;
+  size_t abort_calls;
+  uint32_t staged_sum;
+  uint32_t published_sum;
+} TestProvider;
+
+static DataBindStatus test_open_input(
+    void *context, const DataBindServicePlanEntry *entry,
+    cserde_reader *reader, int *present, DataBindError *error) {
+  TestProvider *provider = (TestProvider *)context;
+  uint64_t value;
+  (void)error;
+
+  *present = 1;
+  if (strcmp(entry->wire_name, "left") == 0)
+    value = 3u;
+  else if (strcmp(entry->wire_name, "right") == 0)
+    value = 4u;
+  else if (strcmp(entry->wire_name, "scale") == 0) {
+    *present = 0;
+    return DATA_BIND_OK;
+  } else {
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+  }
+
+  provider->reader.token =
+      (cserde_token){.kind = CSERDE_UINT, .value.uint = value};
+  provider->reader.emitted = 0;
+  return cserde_reader_init(reader, &ONE_TOKEN_OPS, &provider->reader) ==
+                 CSERDE_OK
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
+}
+
+static DataBindStatus test_begin_output(void *context, DataBindError *error) {
+  TestProvider *provider = (TestProvider *)context;
+  (void)error;
+  ++provider->begin_calls;
+  provider->staged_sum = 0u;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus test_write_output(
+    void *context, const DataBindServicePlanEntry *entry,
+    const void *value, size_t value_bytes, DataBindError *error) {
+  TestProvider *provider = (TestProvider *)context;
+  (void)error;
+  ++provider->write_calls;
+  if (provider->fail_write) return DATA_BIND_ERR_RUNTIME;
+  if (entry->schema_field == NULL ||
+      strcmp(entry->schema_field, "sum") != 0 ||
+      value == NULL || value_bytes != sizeof(uint32_t))
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  provider->staged_sum = *(const uint32_t *)value;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus test_commit_output(void *context, DataBindError *error) {
+  TestProvider *provider = (TestProvider *)context;
+  (void)error;
+  ++provider->commit_calls;
+  provider->published_sum = provider->staged_sum;
+  return DATA_BIND_OK;
+}
+
+static void test_abort_output(void *context) {
+  TestProvider *provider = (TestProvider *)context;
+  ++provider->abort_calls;
+  provider->staged_sum = 0u;
+}
+
+static DataBindServiceProvider provider_for(TestProvider *state) {
+  DataBindServiceProvider provider = DATA_BIND_SERVICE_PROVIDER_INIT;
+  provider.context = state;
+  provider.open_input = test_open_input;
+  provider.begin_output = test_begin_output;
+  provider.write_output = test_write_output;
+  provider.commit_output = test_commit_output;
+  provider.abort_output = test_abort_output;
+  return provider;
+}
+
+static DataBindNativeOptions native_options(unsigned char *workspace,
+                                             size_t workspace_bytes) {
+  DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+  options.workspace = workspace;
+  options.workspace_bytes = workspace_bytes;
+  options.max_depth = 16u;
+  options.max_items = 64u;
+  options.max_owned_bytes = 1024u;
+  return options;
+}
+
+static DataBind *create_codec(void) {
+  static const char schema[] =
+      "message AddRequest {"
+      " [query] uint32 left;"
+      " [query] uint32 right;"
+      " optional [query] uint32 scale default 1;"
+      "}"
+      "message AddResponse { uint32 sum; }"
+      "service Calc {"
+      " [GET(\"/add\"), rpc]"
+      " Add: AddRequest -> AddResponse;"
+      "}";
+  DataBind *codec = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  check_equal(data_bind_create_from_text(schema, sizeof(schema) - 1u,
+                                         &codec, &error),
+              DATA_BIND_OK);
+  return codec;
+}
+
+spec("DataBind compiled service binding plan") {
+  it("compiles HTTP and RPC field plans without re-reading transport annotations") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_fields),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *http = NULL;
+    DataBindServicePlan *rpc = NULL;
+    DataBindServicePlanEntry entry = DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &http, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(http);
+    check_equal(data_bind_service_plan_ingress_count(http), 3u);
+    check_equal(data_bind_service_plan_egress_count(http), 1u);
+
+    check(data_bind_service_plan_ingress_at(http, 0u, &entry) == 1);
+    check_equal(entry.schema_field, "left");
+    check_true(entry.source == DATA_BIND_SERVICE_SOURCE_QUERY);
+    check_equal(entry.function_param, "left");
+    check_equal(entry.function_param_index, 0u);
+
+    entry = (DataBindServicePlanEntry)DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
+    check(data_bind_service_plan_ingress_at(http, 2u, &entry) == 1);
+    check_equal(entry.schema_field, "scale");
+    check_true(entry.has_default);
+    check_equal(entry.default_value, "1");
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_RPC,
+                    &native, &rpc, &diagnostic),
+                DATA_BIND_OK);
+    entry = (DataBindServicePlanEntry)DATA_BIND_SERVICE_PLAN_ENTRY_INIT;
+    check(data_bind_service_plan_ingress_at(rpc, 0u, &entry) == 1);
+    check_true(entry.source == DATA_BIND_SERVICE_SOURCE_RPC_PARAM);
+    check_equal(entry.wire_name, "left");
+
+    data_bind_service_plan_free(rpc);
+    data_bind_service_plan_free(http);
+    data_bind_free(codec);
+  }
+
+  it("binds multi-parameter inputs, applies defaults, and publishes OUT transactionally") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_fields),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+    TestProvider state = {0};
+    DataBindServiceProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    uint32_t left = 0u, right = 0u, scale = 0u, sum = 0u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindServiceCallFrame frame = DATA_BIND_SERVICE_CALL_FRAME_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_OK);
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_service_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(left, 3u);
+    check_equal(right, 4u);
+    check_equal(scale, 1u);
+    check_equal(sum, 0u);
+
+    sum = left + right * scale;
+    check_equal(data_bind_service_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.begin_calls, 1u);
+    check_equal(state.write_calls, 1u);
+    check_equal(state.commit_calls, 1u);
+    check_equal(state.abort_calls, 0u);
+    check_equal(state.published_sum, 7u);
+
+    check_equal(data_bind_native_clear(
+                    &options, &salts_uint32_cmeta_data,
+                    &left, sizeof(left), &native_diagnostic),
+                DATA_BIND_OK);
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    check_equal(data_bind_native_clear(
+                    &options, &salts_uint32_cmeta_data,
+                    &right, sizeof(right), &native_diagnostic),
+                DATA_BIND_OK);
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    check_equal(data_bind_native_clear(
+                    &options, &salts_uint32_cmeta_data,
+                    &scale, sizeof(scale), &native_diagnostic),
+                DATA_BIND_OK);
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    check_equal(data_bind_native_clear(
+                    &options, &salts_uint32_cmeta_data,
+                    &sum, sizeof(sum), &native_diagnostic),
+                DATA_BIND_OK);
+
+    data_bind_service_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("aborts output publication when a provider write fails") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_fields),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+    TestProvider state = {.fail_write = 1, .published_sum = 99u};
+    DataBindServiceProvider provider = provider_for(&state);
+    uint32_t left = 0u, right = 0u, scale = 0u, sum = 7u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindServiceCallFrame frame = DATA_BIND_SERVICE_CALL_FRAME_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_OK);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_service_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_ERR_RUNTIME);
+    check_equal(state.begin_calls, 1u);
+    check_equal(state.write_calls, 1u);
+    check_equal(state.commit_calls, 0u);
+    check_equal(state.abort_calls, 1u);
+    check_equal(state.published_sum, 99u);
+
+    data_bind_service_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("supports complete request and response structs as the stable service boundary") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_root),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+    TestProvider state = {0};
+    DataBindServiceProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest request = {0};
+    AddResponse response = {0};
+    DataBindServiceCallFrame frame = DATA_BIND_SERVICE_CALL_FRAME_INIT;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_OK);
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.return_value = &response;
+    frame.return_bytes = sizeof(response);
+    frame.param_count = 1u;
+
+    check_equal(data_bind_service_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(request.left, 3u);
+    check_equal(request.right, 4u);
+    check_equal(request.scale, 1u);
+
+    response.sum = request.left + request.right * request.scale;
+    check_equal(data_bind_service_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.published_sum, 7u);
+
+    check_equal(tbe_typed_descriptor_clear(
+                    &ADD_REQUEST_DESCRIPTOR, &request, NULL),
+                DATA_BIND_OK);
+    data_bind_service_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects native type and parameter-direction mismatches before execution") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding bad_type =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_bad_type),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServiceNativeBinding bad_direction =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_bad_direction),
+            &ADD_REQUEST_DESCRIPTOR, &ADD_RESPONSE_DESCRIPTOR);
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &bad_type, &plan, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(plan);
+    check_equal(diagnostic.schema_field, "left");
+    check_equal(diagnostic.function_param, "left");
+
+    diagnostic =
+        (DataBindServicePlanDiagnostic)DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &bad_direction, &plan, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(plan);
+    check_equal(diagnostic.function_param, "sum");
+
+    data_bind_free(codec);
+  }
+
+  it("rejects a typed overlay that does not match the service schema") {
+    DataBind *codec = create_codec();
+    TbeTypedType wrong_overlay = ADD_REQUEST_OVERLAY;
+    TbeTypedField wrong_fields[3];
+    TbeTypedDescriptor wrong_request = ADD_REQUEST_DESCRIPTOR;
+    DataBindServiceNativeBinding native;
+    DataBindServicePlanDiagnostic diagnostic =
+        DATA_BIND_SERVICE_PLAN_DIAGNOSTIC_INIT;
+    DataBindServicePlan *plan = NULL;
+
+    memcpy(wrong_fields, ADD_REQUEST_OVERLAY_FIELDS, sizeof(wrong_fields));
+    wrong_fields[0].name = "wrong";
+    wrong_overlay.fields = wrong_fields;
+    wrong_request.overlay = &wrong_overlay;
+    native = (DataBindServiceNativeBinding)
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+            FunctionMeta(service_add_fields),
+            &wrong_request, &ADD_RESPONSE_DESCRIPTOR);
+
+    check_equal(data_bind_service_plan_compile(
+                    codec, "Calc", "Add",
+                    DATA_BIND_SERVICE_PROJECTION_HTTP,
+                    &native, &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+
+    data_bind_free(codec);
+  }
+}
