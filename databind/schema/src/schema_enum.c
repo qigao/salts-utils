@@ -49,11 +49,11 @@ static int enum_set_string(Node *map, const char *name, const char *value) {
     return 0;
 }
 
-static int enum_fail(tbe_error_t *error, tbe_error_code_t code,
+static int enum_fail(DataBindSchemaError *error, DataBindSchemaErrorCode code,
                      const char *name, const char *reason) {
-    char message[sizeof(((tbe_error_t *)0)->message)];
+    char message[sizeof(((DataBindSchemaError *)0)->message)];
     fmt(message, sizeof(message), "enum/flags '{}': {}", name ? name : "<unnamed>", reason);
-    tbe_error_set(error, code, -1, -1, message);
+    data_bind_schema_error_set(error, code, -1, -1, message);
     return -1;
 }
 
@@ -151,7 +151,7 @@ static int enum_normalize_item(Node *item, enum_number_t number) {
            enum_set_string(item, "c_literal", literal) != 0 ? -1 : 0;
 }
 
-static int enum_validate_one(Node *owner, tbe_error_t *error) {
+static int enum_validate_one(Node *owner, DataBindSchemaError *error) {
     const char *name = enum_string(owner, "enum_name");
     const int is_flags = enum_child(owner, "is_flags") != NULL;
     const char *declared = enum_string(owner, "underlying_type");
@@ -165,11 +165,11 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     char canonical[ENUM_DECIMAL_CAPACITY];
     if (!cmeta_data_desc_valid(type) ||
         (type->kind != CMETA_DATA_SINT && type->kind != CMETA_DATA_UINT)) {
-        return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name,
+        return enum_fail(error, DATA_BIND_SCHEMA_ERR_SEMANTIC, name,
                          "underlying type must be an 8/16/32/64-bit integer");
     }
     if (!name || !items || items->type != NODE_LIST || items->data.list.count == 0) {
-        return enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name, "at least one named value is required");
+        return enum_fail(error, DATA_BIND_SCHEMA_ERR_SEMANTIC, name, "at least one named value is required");
     }
     size_t count = items->data.list.count;
     if (count > SIZE_MAX / sizeof(*entries) || !(entries = malloc(count * sizeof(*entries))))
@@ -187,7 +187,7 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
             (*text ? !enum_parse_number(text, &value)
                    : (i != 0 && !enum_next_number(previous, is_flags, &value))) ||
             !enum_number_fits(value, type)) {
-            enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name,
+            enum_fail(error, DATA_BIND_SCHEMA_ERR_SEMANTIC, name,
                       "integer literal or implicit value is outside its declared storage range");
             goto cleanup;
         }
@@ -201,7 +201,7 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     qsort(entries, count, sizeof(*entries), enum_compare_value);
     for (size_t i = 1; i < count; ++i) {
         if (enum_compare_value(&entries[i - 1], &entries[i]) == 0) {
-            enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name, "duplicate numeric aliases are not allowed");
+            enum_fail(error, DATA_BIND_SCHEMA_ERR_SEMANTIC, name, "duplicate numeric aliases are not allowed");
             goto cleanup;
         }
     }
@@ -210,7 +210,7 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     qsort(entries, count, sizeof(*entries), enum_compare_name);
     for (size_t i = 1; i < count; ++i) {
         if (enum_compare_name(&entries[i - 1], &entries[i]) == 0) {
-            enum_fail(error, TBE_ERR_SEMANTIC_ERROR, name, "duplicate member names are not allowed");
+            enum_fail(error, DATA_BIND_SCHEMA_ERR_SEMANTIC, name, "duplicate member names are not allowed");
             goto cleanup;
         }
     }
@@ -218,13 +218,13 @@ static int enum_validate_one(Node *owner, tbe_error_t *error) {
     status = 0;
     goto cleanup;
 oom:
-    enum_fail(error, TBE_ERR_OUT_OF_MEMORY, name, "cannot allocate canonical enum metadata");
+    enum_fail(error, DATA_BIND_SCHEMA_ERR_OUT_OF_MEMORY, name, "cannot allocate canonical enum metadata");
 cleanup:
     free(entries);
     return status;
 }
 
-int schema_validate_enums(Node *root, tbe_error_t *error) {
+int schema_validate_enums(Node *root, DataBindSchemaError *error) {
     Node *enums = enum_child(root, "enums");
     if (!enums || enums->type != NODE_LIST) return 0;
     for (size_t i = 0; i < enums->data.list.count; ++i)
