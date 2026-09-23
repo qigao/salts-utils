@@ -1,4 +1,4 @@
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "schema_parser_dsl.h"
 #include "tinytest.h"
 #include <stdint.h>
