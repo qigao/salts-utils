@@ -2,6 +2,7 @@
 #define SALTS_PLUGIN_H
 
 #include <cmeta/cmeta.h>
+#include <cmeta/function.h>
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,6 +14,7 @@ extern "C" {
 
 #define SALTS_PLUGIN_ABI_VERSION 1u
 #define SALTS_PLUGIN_EXPORT_ABI_VERSION 1u
+#define SALTS_PLUGIN_FUNCTION_EXPORT_ABI_VERSION 1u
 #define SALTS_PLUGIN_QUERY_SYMBOL "salts_plugin_query"
 
 #define SALTS_PLUGIN_MAX_EXPORTS 256u
@@ -83,6 +85,7 @@ typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_start_fn)(void *sel
 typedef salts_plugin_status (SALTS_PLUGIN_CALL *salts_plugin_request_stop_fn)(void *self);
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_is_quiescent_fn)(const void *self);
 typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
+typedef void (SALTS_PLUGIN_CALL *salts_plugin_function_entry)(void);
 
 /*
  * One immutable semantic export row.
@@ -120,6 +123,25 @@ typedef struct salts_plugin_export {
 } salts_plugin_export;
 
 /*
+ * Function publication is separate from the frozen V1 export array. The row
+ * wraps canonical CMeta reflection/ABI metadata plus a borrowed function-pointer
+ * carrier. Plugin validates and publishes this representation but never invokes
+ * it generically. Generated exact-ABI consumers convert function_entry back to
+ * the exact function type only after contract and CMeta admission.
+ */
+typedef struct salts_plugin_function_export {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    uint32_t contract_version;
+    uint64_t capabilities;
+    const char *export_id;
+    const char *contract_id;
+    const cmeta_function_desc *function;
+    const cmeta_function_abi_desc *function_abi;
+    salts_plugin_function_entry function_entry;
+} salts_plugin_function_export;
+
+/*
  * Immutable plugin manifest returned by SALTS_PLUGIN_QUERY_SYMBOL.
  *
  * Manifest strings, export rows, interface values, descriptors and callables
@@ -143,6 +165,13 @@ typedef struct salts_plugin_manifest {
     salts_plugin_request_stop_fn request_stop;
     salts_plugin_is_quiescent_fn is_quiescent;
     salts_plugin_destroy_fn destroy;
+
+    /* Optional V2 tail. Function rows are referenced through a pointer array so
+     * each pointed-to row can remain independently size-versioned without ever
+     * changing array stride for old binaries. Read only when struct_size reaches
+     * SALTS_PLUGIN_MANIFEST_V2_SIZE. */
+    const salts_plugin_function_export *const *function_exports;
+    size_t function_export_count;
 } salts_plugin_manifest;
 
 /*
@@ -156,6 +185,12 @@ typedef struct salts_plugin_manifest {
 #define SALTS_PLUGIN_MANIFEST_V1_SIZE \
     ((uint32_t)(offsetof(salts_plugin_manifest, destroy) + \
                 sizeof(((salts_plugin_manifest *)0)->destroy)))
+#define SALTS_PLUGIN_FUNCTION_EXPORT_V1_SIZE \
+    ((uint32_t)(offsetof(salts_plugin_function_export, function_entry) + \
+                sizeof(((salts_plugin_function_export *)0)->function_entry)))
+#define SALTS_PLUGIN_MANIFEST_V2_SIZE \
+    ((uint32_t)(offsetof(salts_plugin_manifest, function_export_count) + \
+                sizeof(((salts_plugin_manifest *)0)->function_export_count)))
 
 typedef const salts_plugin_manifest *(SALTS_PLUGIN_CALL *salts_plugin_query_fn)(
     uint32_t host_abi);
@@ -234,6 +269,15 @@ salts_plugin_status salts_plugin_export_require_callable(
     uint64_t required_capabilities,
     const cmeta_callable *expected_callable);
 
+salts_plugin_status salts_plugin_function_export_require(
+    const salts_plugin_function_export *entry,
+    const char *contract_id,
+    uint32_t contract_version,
+    uint64_t required_capabilities,
+    const cmeta_function_desc **out_function,
+    const cmeta_function_abi_desc **out_abi,
+    salts_plugin_function_entry *out_entry);
+
 salts_plugin_status salts_plugin_manifest_validate(
     const salts_plugin_manifest *manifest,
     uint32_t host_abi);
@@ -242,6 +286,11 @@ salts_plugin_status salts_plugin_manifest_find_export(
     const salts_plugin_manifest *manifest,
     const char *export_id,
     const salts_plugin_export **out_export);
+
+salts_plugin_status salts_plugin_manifest_find_function_export(
+    const salts_plugin_manifest *manifest,
+    const char *export_id,
+    const salts_plugin_function_export **out_export);
 
 /*
  * Bounded dynamic-plugin registry and lifecycle.
@@ -252,8 +301,8 @@ salts_plugin_status salts_plugin_manifest_find_export(
  *
  * load() publishes state LOADED. start() transitions to STARTED. Managed
  * start() failure is failure-atomic and transitions directly to QUIESCENT so
- * cleanup remains possible. Plugin-owned Interface/Callable/manifest pointers
- * may be used only while holding an explicit lease acquired from a STARTED
+ * cleanup remains possible. Plugin-owned Interface/Callable/Function/manifest
+ * pointers may be used only while holding an explicit lease acquired from a STARTED
  * plugin. request_stop() atomically closes new lease admission before invoking
  * the plugin stop callback. A stop callback failure is recorded as the first
  * lifecycle failure but the state remains STOPPING so quiescence can still be
