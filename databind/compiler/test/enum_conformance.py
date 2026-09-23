@@ -129,7 +129,7 @@ class EnumConformance(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         consumer = self.path / 'consumer.c'
         consumer.write_text('#include "types.h"\n'
-                            f'const TbeTypedDescriptor *descriptors[{len(records)}];\n'
+                            f'const DataBindTypedDescriptor *descriptors[{len(records)}];\n'
                             'void load_descriptors(void) {\n' +
                             '\n'.join(f'descriptors[{i}] = {name}_typed_descriptor();'
                                       for i, name in enumerate(records)) + '\n}\n')
