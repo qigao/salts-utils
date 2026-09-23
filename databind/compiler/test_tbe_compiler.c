@@ -1665,9 +1665,9 @@ spec("tbe_compiler") {
       const char *go_types[] = {"int8", "uint8", "int16", "uint16",
                                 "int32", "uint32", "int64", "uint64"};
       const char *rust_types[] = {"i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"};
-      const char *typed_kinds[] = {"TBE_TYPED_I8",  "TBE_TYPED_U8",  "TBE_TYPED_I16",
-                                   "TBE_TYPED_U16", "TBE_TYPED_I32", "TBE_TYPED_U32",
-                                   "TBE_TYPED_I64", "TBE_TYPED_U64"};
+      const char *typed_kinds[] = {"DATA_BIND_TYPED_I8",  "DATA_BIND_TYPED_U8",  "DATA_BIND_TYPED_I16",
+                                   "DATA_BIND_TYPED_U16", "DATA_BIND_TYPED_I32", "DATA_BIND_TYPED_U32",
+                                   "DATA_BIND_TYPED_I64", "DATA_BIND_TYPED_U64"};
       Node *root = create_node_map(NULL);
       int rc = parse_schema(schema, strlen(schema), root, NULL);
 
@@ -2800,13 +2800,13 @@ spec("tbe_compiler") {
       check_not_null(source);
       if (header != NULL) {
         check_contains(header,
-                       "const TbeTypedDescriptor *Sample_typed_descriptor(void)");
+                       "const DataBindTypedDescriptor *Sample_typed_descriptor(void)");
         check_contains(header,
-                       "const TbeTypedDescriptor *FlagStorage_typed_descriptor(void)");
+                       "const DataBindTypedDescriptor *FlagStorage_typed_descriptor(void)");
         check_contains(header,
-                       "const TbeTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
+                       "const DataBindTypedDescriptor *WideEnumStorage_typed_descriptor(void)");
         check(strstr(header,
-                     "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
+                     "const DataBindTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
       }
 
       free(header);
@@ -2900,8 +2900,8 @@ spec("tbe_compiler") {
       }
       if (lua_source != NULL) {
         check_contains(lua_source, "TBE_LUA_DEFINE_DESCRIPTOR_RECORD(Sample)");
-        check_contains(lua_source, "c11_lua_push_tbe_typed_descriptor");
-        check_contains(lua_source, "c11_lua_read_tbe_typed_descriptor");
+        check_contains(lua_source, "c11_lua_push_data_bind_typed_descriptor");
+        check_contains(lua_source, "c11_lua_read_data_bind_typed_descriptor");
         check_contains(lua_source, "name##_typed_descriptor()");
       }
 
@@ -3183,7 +3183,7 @@ spec("tbe_compiler") {
           check_contains(header, "Orders_lua_fetch_order_future_cancel");
         }
         if (lua_source != NULL) {
-          check_contains(lua_source, "tbe_typed_serialize_binary");
+          check_contains(lua_source, "data_bind_typed_serialize_binary");
           check_contains(lua_source, "salts_lua_executor_try_post");
           check_contains(lua_source, "Orders_lua_fetch_order_dispatch");
         }
