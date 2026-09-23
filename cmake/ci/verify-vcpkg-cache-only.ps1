@@ -45,6 +45,5 @@ if ($LASTEXITCODE -ne 0) {
   throw "shared vcpkg cache miss: Windows dependency restore is not binary-cache complete"
 }
 
-if (Test-Path -LiteralPath $installRoot) {
-  Remove-Item -LiteralPath $installRoot -Recurse -Force
-}
+# Deliberately retain $installRoot. The following CMake configure uses the same
+# VCPKG_INSTALLED_DIR and therefore reuses this cache-only restored tree.
