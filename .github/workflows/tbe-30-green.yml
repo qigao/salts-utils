@@ -211,7 +211,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ctest --test-dir build/linux-gcc-debug/tbe --no-tests=error \
+          ctest --test-dir build/linux-gcc-debug/databind --no-tests=error \
             --output-on-failure --output-junit "$RUNNER_TEMP/tbe30-evidence/tbe.xml" \
             2>&1 | tee "$RUNNER_TEMP/tbe30-evidence/tbe.log"
 
