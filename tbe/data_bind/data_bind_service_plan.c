@@ -1287,9 +1287,16 @@ static void plan_cleanup_inputs(
       plan_native_clear_best_effort(options, plan->param_data[i],
                                     frame->params[i]);
   }
-  if (request_initialized)
+  if (request_initialized) {
     plan_native_clear_best_effort(options, plan->request->native_data,
                                   frame->request);
+    if (plan->request->overlay != NULL &&
+        plan->request->overlay->presence_size != 0u &&
+        frame->request != NULL)
+      memset((unsigned char *)frame->request +
+                 plan->request->overlay->presence_offset,
+             0, plan->request->overlay->presence_size);
+  }
 }
 
 DataBindStatus data_bind_service_plan_bind_inputs(
