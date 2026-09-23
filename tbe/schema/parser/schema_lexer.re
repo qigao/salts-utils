@@ -3,9 +3,8 @@
  * @file schema_lexer.re
  * @brief Schema Lexer using re2c for tbe_compiler
  *
- * Tokenizes schema text into: SCHEMA, MESSAGE, COMPOSITE, GROUP,
- * IDENT, LBRACE, RBRACE, SEMI,
- * LPAREN, RPAREN, LBRACKET, RBRACKET, LT, GT, COMMA
+ * Tokenizes schema text into DataBind IDL declarations, attributes, and
+ * punctuation used by data/service contracts.
  *
  * Build: re2c -o schema_lexer_gen.c schema_lexer.re
  */
@@ -74,6 +73,22 @@ lex_start:
         }
 
         // Keywords
+        "service" {
+            token->type = SCHEMA_TOKEN_SERVICE;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
+        "throws" {
+            token->type = SCHEMA_TOKEN_THROWS;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         "message" {
             token->type = SCHEMA_TOKEN_MESSAGE;
             token->value = token_start;
@@ -206,6 +221,22 @@ lex_start:
         }
 
         // Punctuation
+        "->" {
+            token->type = SCHEMA_TOKEN_ARROW;
+            token->value = token_start;
+            token->length = 2;
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
+        ":" {
+            token->type = SCHEMA_TOKEN_COLON;
+            token->value = token_start;
+            token->length = 1;
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         "=" {
             token->type = SCHEMA_TOKEN_EQUALS;
             token->value = token_start;
