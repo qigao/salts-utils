@@ -10,7 +10,7 @@ int fixture_plugin_double(int value) {
 static bool SALTS_PLUGIN_CALL fixture_plugin_double_invoke(
     void *context,
     void *return_storage,
-    const void *const *params,
+    void *const *params,
     size_t param_count) {
     int input;
     int result;
