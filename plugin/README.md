@@ -2,8 +2,9 @@
 
 `Salts::Plugin` is the CMeta-based plugin contract layer owned by SaltsUtils.
 It defines the portable manifest/export ABI, validates semantic contracts, and
-provides the bounded POSIX/Windows dynamic loader registry. Lifecycle execution
-and optional CFlow adapters remain separate follow-up layers.
+provides the bounded POSIX/Windows dynamic loader registry plus explicit
+lease-based lifecycle/quiescent unload. Optional CFlow adapters remain a
+separate follow-up layer.
 
 ## Boundary
 
@@ -205,15 +206,68 @@ library and leave registry count/refs unchanged. Missing files, missing query
 symbols, query rejection, unsupported ABI, duplicate plugin IDs, capacity
 exhaustion, and invalid arguments stay distinguishable.
 
-### Temporary #129 lifecycle boundary
+## Lifecycle and quiescent unload
 
-Until the lifecycle/quiescence work in #130 lands, the loader admits **passive
-manifests only**. A manifest containing `start`, `request_stop`,
-`is_quiescent`, or `destroy` is rejected with
-`SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED`.
+Plugin manifests use one of two exact lifecycle forms:
 
-This is deliberate: #129 must not guess callback ordering or call
-`dlclose`/`FreeLibrary` while lifecycle-owned work may still exist. #130 will
-replace this temporary admission restriction with the explicit
-`LOADED → STARTED → STOPPING → QUIESCENT → UNLOADED` contract without changing
-the already-reserved `salts_plugin_ref { slot, generation }` ABI.
+```text
+passive:
+  self = NULL
+  start/request_stop/is_quiescent/destroy = NULL
+
+managed:
+  self != NULL
+  all four callbacks are present
+```
+
+Partial lifecycle groups are rejected during manifest admission.
+
+The host-visible state machine is:
+
+```text
+LOADED
+  ↓ start
+STARTING
+  ↓
+STARTED
+  ↓ request_stop (closes new lease admission first)
+STOPPING
+  ↓ plugin quiescent + host leases == 0
+QUIESCENT
+  ↓ unload
+STALE ref
+```
+
+A failed `start` is required to be failure-atomic. The registry records the
+first failure and moves directly to `QUIESCENT`, so destroy/unload remains
+possible. A failed `request_stop` never reopens admission: the state remains
+`STOPPING`, the first failure remains observable in
+`salts_plugin_lifecycle_info.failure`, and the host may continue polling until
+the plugin becomes quiescent.
+
+### Lease rule
+
+Plugin-owned manifest/export/interface/callable pointers may be dereferenced
+only while holding a live `salts_plugin_lease` returned by
+`salts_plugin_registry_acquire()`. The lease must remain live across every
+callback into plugin code and is returned with
+`salts_plugin_registry_release()`.
+
+`request_stop()` makes future acquire attempts fail before it invokes the
+plugin callback. Existing leases may drain normally. `unload()` returns
+`SALTS_PLUGIN_BUSY` while any lease or lifecycle callback is in flight.
+
+Each plugin slot has a bounded lease table. Both plugin refs and leases carry
+generations. Successful unload increments the slot generation; reusing the same
+slot therefore cannot make an old ref or lease target a newly loaded DSO.
+
+### Destroy and unload ordering
+
+A managed plugin is unloadable only if it was never started (`LOADED`) or has
+reached `QUIESCENT`. The registry invokes `destroy` at most once, outside the
+registry mutex, while the DSO is still loaded; only after that does it call
+`dlclose`/`FreeLibrary`. If the native close fails, the slot remains present
+for an explicit retry and the already-called destroy callback is not repeated.
+
+There is no force unload, retry loop, hidden worker, or background quiescence
+polling.
