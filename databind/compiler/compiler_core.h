@@ -2,6 +2,7 @@
 #define TBE_COMPILER_CORE_H
 
 #include "node_tree.h"
+#include "projection.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -20,6 +21,18 @@ typedef struct tbe_compiler_options_s {
   const char *dsl_output_path;
   const char *resource_dir;
   int64_t lang_enum;
+
+  /*
+   * Compiler-private artifact projection selection.
+   *
+   * Source-language rendering remains orthogonal. The current CLI leaves these
+   * fields empty; #142/#144 backends populate them through the unified
+   * projection frontend rather than adding backend-specific option fields.
+   */
+  const databind_compiler_projection_request *projection_requests;
+  size_t projection_count;
+  const databind_compiler_projection_backend *projection_backends;
+  size_t projection_backend_count;
 } tbe_compiler_options_t;
 
 enum {
