@@ -325,13 +325,13 @@ accept the same `[name(...)]` and `[alias(...)]` annotations as record fields.
 
 DataBind has two typed routes: generate owning `.h/.c` from schema, or map the same schema
 to an existing C struct. Code generation is optional for the second route. Include
-`tbe_typed.h`, declare fields with `TBE_TYPED_FIELD` and related collection/object macros,
-then create static raw typed metadata with `TBE_TYPED_DEFINE_STRUCT` or
-`TBE_TYPED_DEFINE_STRUCT_WITH_PRESENCE`. `TBE_TYPED_BIND_PARSE` and
-`TBE_TYPED_BIND_SERIALIZE` use that metadata and apply schema names automatically.
+`data_bind_typed.h`, declare fields with `DATA_BIND_TYPED_FIELD` and related collection/object macros,
+then create static raw typed metadata with `DATA_BIND_TYPED_DEFINE_STRUCT` or
+`DATA_BIND_TYPED_DEFINE_STRUCT_WITH_PRESENCE`. `DATA_BIND_TYPED_BIND_PARSE` and
+`DATA_BIND_TYPED_BIND_SERIALIZE` use that metadata and apply schema names automatically.
 These macros do not create an ABI-v2 descriptor. A descriptor-routed existing struct must
 provide an explicit canonical CMeta graph and initialize
-`TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
+`DATA_BIND_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
 they never fall back to the raw route. Raw convenience metadata does not infer a binary wire
 layout; use the explicit `_EX` macros or generated code when direct TBE binary encoding is
 required. #47 remains open while deferred native families still require this raw route.
@@ -413,7 +413,7 @@ clang --target=wasm32-unknown-unknown -DTBE_WASM_GUEST=1 -O2 -nostdlib \
 ```
 
 Initialize an object before its first use, clear it when finished, and release serialized
-buffers with `tbe_typed_serialized_free`:
+buffers with `data_bind_typed_serialized_free`:
 
 ```c
 #include "order.h"
@@ -435,7 +435,7 @@ if (Orders_codec_create(&codec, &error) == DATA_BIND_OK &&
     Order_to_json(codec, &order, &json, &json_len, &error) == DATA_BIND_OK) {
     result = 0;
 }
-tbe_typed_serialized_free(json);
+data_bind_typed_serialized_free(json);
 Order_clear(&order);
 data_bind_free(codec);
 return result;
@@ -530,4 +530,4 @@ target_link_libraries(order_schema PUBLIC Salts::DataBind)
   RulesForge/TurboScript process loads only DataBind and any prebuilt schema
   libraries; it does not need an external C compiler.
 - Dynamic schema hosts may skip code generation and use `DataBindObject`. Existing
-  C structs use `TBE_TYPED_*` macro descriptors and also do not invoke the compiler.
+  C structs use `DATA_BIND_TYPED_*` macro descriptors and also do not invoke the compiler.
