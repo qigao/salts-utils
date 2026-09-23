@@ -7,7 +7,7 @@
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
-#include "tbe_error.h"
+#include "data_bind_schema_error.h"
 #include "salts_fs.h"
 #include "salts_uuid.h"
 
@@ -1650,7 +1650,7 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
 
 int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
                                    char **out_schema_data) {
-  tbe_error_t parse_err;
+  DataBindSchemaError parse_err;
   Node *root = NULL;
   char *schema_data = tbe_compiler_read_file(schema_path);
   if (!schema_data) {
