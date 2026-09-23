@@ -288,7 +288,7 @@ static int plugin_write_operation_support(
   }
 
   return fprintf(out,
-      ", value, &cmeta_type_int, CMETA_ABI_SCALAR,\n"
+      ", unknown, &cmeta_type_int, CMETA_ABI_SCALAR,\n"
       "    (const %s_t *, request, CMETA_PARAM_IN | CMETA_PARAM_BORROWED, "
       "&%s_ptr_type, CMETA_ABI_POINTER),\n"
       "    (%s_t *, response, CMETA_PARAM_OUT | CMETA_PARAM_BORROWED, "
