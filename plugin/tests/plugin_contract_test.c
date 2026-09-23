@@ -252,9 +252,9 @@ describe("semantic identity") {
         check_not_null(left);
         check_not_null(right);
         check_true(left != right);
-        check_true(salts_plugin_interface_desc_valid(left));
-        check_true(salts_plugin_interface_desc_valid(right));
-        check_true(salts_plugin_interface_desc_equal(left, right));
+        check_true(cmeta_interface_desc_valid(left));
+        check_true(cmeta_interface_desc_valid(right));
+        check_true(cmeta_interface_desc_equal(left, right));
     }
 
     it("uses contract identity independently from Function/adapter addresses") {
