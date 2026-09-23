@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build pkg-config nasm
+          sudo apt-get install -y ninja-build pkg-config nasm
           test -n "${VCPKG_ROOT:-}"
           test -n "${VCPKG_BINARY_SOURCES:-}"
           case "$VCPKG_BINARY_SOURCES" in
@@ -121,9 +121,6 @@ jobs:
 
       - name: Configure sanitized BindingPlan build
         shell: bash
-        env:
-          CC: clang
-          CXX: clang++
         run: |
           set -euxo pipefail
           cmake -S . -B build/binding-plan-sanitized -G Ninja \
