@@ -129,7 +129,7 @@ add_subdirectory(mustache)
 add_subdirectory(unicode)
 add_subdirectory(jinja)
 
-add_subdirectory(tbe)
+add_subdirectory(databind)
 
 # Package Configuration
 include(CMakePackageConfigHelpers)
