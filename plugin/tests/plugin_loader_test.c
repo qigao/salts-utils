@@ -102,7 +102,7 @@ describe("bounded registry") {
         salts_plugin_lease lease = {0};
         const salts_plugin_manifest *manifest = NULL;
         const salts_plugin_export *entry = NULL;
-        const void *params[1];
+        void *params[1];
         int input = 9;
         int output = 0;
         bool quiescent = false;
