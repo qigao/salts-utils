@@ -251,8 +251,7 @@ salts_plugin_status salts_plugin_registry_load(
         return status;
     }
 
-    status = salts_plugin_manifest_validate(
-        manifest, SALTS_PLUGIN_ABI_VERSION);
+    status = salts_plugin_manifest_validate(manifest);
     if (status != SALTS_PLUGIN_OK) {
         status = close_rejected_library(&library, status);
         salts_mutex_unlock(&impl->lock);
