@@ -100,7 +100,7 @@ typedef void (SALTS_PLUGIN_CALL *salts_plugin_destroy_fn)(void *self);
 typedef bool (SALTS_PLUGIN_CALL *salts_plugin_function_invoke_fn)(
     void *context,
     void *return_storage,
-    const void *const *params,
+    void *const *params,
     size_t param_count);
 
 typedef struct salts_plugin_interface_export {
