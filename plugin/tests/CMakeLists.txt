@@ -57,7 +57,9 @@ set(plugin_fixture_targets
   salts_plugin_fixture_partial_lifecycle
   salts_plugin_fixture_start_fail
   salts_plugin_fixture_stop_fail
-  salts_plugin_fixture_slow_stop)
+  salts_plugin_fixture_slow_stop
+  salts_plugin_fixture_slow_query_a
+  salts_plugin_fixture_slow_query_b)
 
 add_library(salts_plugin_fixture_c SHARED fixture_plugin_c.c)
 add_library(salts_plugin_fixture_cpp SHARED fixture_plugin_cpp.cpp)
@@ -77,6 +79,15 @@ add_library(salts_plugin_fixture_stop_fail SHARED
   fixture_plugin_stop_fail.c)
 add_library(salts_plugin_fixture_slow_stop SHARED
   fixture_plugin_slow_stop.c)
+add_library(salts_plugin_fixture_slow_query_a SHARED
+  fixture_plugin_slow_query.c)
+add_library(salts_plugin_fixture_slow_query_b SHARED
+  fixture_plugin_slow_query.c)
+
+target_compile_definitions(salts_plugin_fixture_slow_query_a PRIVATE
+  PLUGIN_SLOW_QUERY_ENTERED_MARKER=PLUGIN_SLOW_QUERY_ENTERED_MARKER_A)
+target_compile_definitions(salts_plugin_fixture_slow_query_b PRIVATE
+  PLUGIN_SLOW_QUERY_ENTERED_MARKER=PLUGIN_SLOW_QUERY_ENTERED_MARKER_B)
 
 foreach(fixture_target IN LISTS plugin_fixture_targets)
   target_include_directories(${fixture_target} PRIVATE
@@ -96,6 +107,8 @@ set_target_properties(
   salts_plugin_fixture_start_fail
   salts_plugin_fixture_stop_fail
   salts_plugin_fixture_slow_stop
+  salts_plugin_fixture_slow_query_a
+  salts_plugin_fixture_slow_query_b
   PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
@@ -107,10 +120,12 @@ set_target_properties(salts_plugin_fixture_cpp PROPERTIES
   CXX_EXTENSIONS OFF)
 
 target_link_libraries(salts_plugin_fixture_slow_stop PRIVATE Salts::Platform)
+target_link_libraries(salts_plugin_fixture_slow_query_a PRIVATE Salts::Platform)
+target_link_libraries(salts_plugin_fixture_slow_query_b PRIVATE Salts::Platform)
 
 cmake_add_test(salts_plugin_loader_test
   SOURCES plugin_loader_test.c
-  LIBS Salts::Plugin Salts::TinyTest
+  LIBS Salts::Plugin Salts::Platform Salts::TinyTest
   DEFS
     "PLUGIN_VALID_C_PATH=\"$<TARGET_FILE:salts_plugin_fixture_c>\""
     "PLUGIN_VALID_CPP_PATH=\"$<TARGET_FILE:salts_plugin_fixture_cpp>\""
@@ -118,6 +133,8 @@ cmake_add_test(salts_plugin_loader_test
     "PLUGIN_REJECTED_PATH=\"$<TARGET_FILE:salts_plugin_fixture_rejected>\""
     "PLUGIN_INVALID_PATH=\"$<TARGET_FILE:salts_plugin_fixture_invalid>\""
     "PLUGIN_LIFECYCLE_PATH=\"$<TARGET_FILE:salts_plugin_fixture_lifecycle>\""
+    "PLUGIN_SLOW_QUERY_A_PATH=\"$<TARGET_FILE:salts_plugin_fixture_slow_query_a>\""
+    "PLUGIN_SLOW_QUERY_B_PATH=\"$<TARGET_FILE:salts_plugin_fixture_slow_query_b>\""
   RUNTIME_TARGETS ${plugin_fixture_targets}
   FOLDER "plugin/tests")
 
