@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "data_bind_schema_parser.h"
 #include "data_bind_schema_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -27,7 +27,7 @@ suite("tbe_parser") {
     it("should parse simple composites") {
       const char *schema = "composite Point { int32 x; int32 y; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -50,7 +50,7 @@ suite("tbe_parser") {
     it("should parse enums with underlying types") {
       const char *schema = "enum Color <uint8> { Red = 1; Green = 2; Blue = 3; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -83,7 +83,7 @@ suite("tbe_parser") {
     it("should parse top-level attributes [id(x)]") {
       const char *schema = "[id(100)] message Message { int32 code; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -120,7 +120,7 @@ suite("tbe_parser") {
           "[db_index(lookup, tenant, email)] message User { int64 tenant; string email; }";
       const char *expected[] = {"lookup", "tenant", "email"};
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
       Node *messages;
       Node *attributes;
       Node *attribute;
@@ -154,7 +154,7 @@ suite("tbe_parser") {
     it("should preserve the legacy value for a single-parameter attribute") {
       const char *schema = "[id(100)] message Message { int32 code; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
       Node *messages;
       Node *attributes;
       Node *attribute;
@@ -187,7 +187,7 @@ suite("tbe_parser") {
     it("should extract rich metadata") {
       const char *schema = "composite Data { uint32 u32; int64 i64; float f32; double d64; byte b; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
@@ -219,7 +219,7 @@ suite("tbe_parser") {
           "composite Point { int32 x; int32 y; } "
           "message Collections { Point[10] points; bytes(16) digest; bytes payload; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       Node *messages = find_child(root, "messages");
@@ -252,7 +252,7 @@ suite("tbe_parser") {
           "composite Point { int32 x; int32 y; } "
           "message Payloads { uint32[4] values; Side[2] sides; Point[2] points; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -290,7 +290,7 @@ suite("tbe_parser") {
       const char *wire_readers[] = {"i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"};
       const char *sizes[] = {"1", "1", "2", "2", "4", "4", "8", "8"};
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       if (rc == 0) {
@@ -327,7 +327,7 @@ suite("tbe_parser") {
                            "message Message { Meta meta; State state; string body; }";
 
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
@@ -353,7 +353,7 @@ suite("tbe_parser") {
       const char *schema = "enum Side <uint8> { Buy = 1; Sell = 2; } "
                            "message Quote { Side side; uint32 qty; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -378,7 +378,7 @@ suite("tbe_parser") {
       const char *schema = "[id(1), version(100)] enum MessageType <uint8> { LoginRequest = 1; } "
                            "message LoginMessage { bytes(16) pass_hash; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -410,7 +410,7 @@ suite("tbe_parser") {
       const char *schema =
           "composite Point { int32 x; int32 y; } composite Poly { Point[4] vertices; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       Node *composites = find_child(root, "composites");
@@ -430,7 +430,7 @@ suite("tbe_parser") {
                            "[id(1)] Header header; "
                            "string username; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       Node *messages = find_child(root, "messages");
@@ -447,7 +447,7 @@ suite("tbe_parser") {
     it("should assign values to enum items without explicit values") {
       const char *schema = "enum Color { Red; Green = 5; Blue; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -466,7 +466,7 @@ suite("tbe_parser") {
     it("should treat bare bytes fields as variable size") {
       const char *schema = "message Blob { bytes payload; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -489,7 +489,7 @@ suite("tbe_parser") {
     it("should parse dynamic list set and map container metadata") {
       const char *schema = "message Containers { list<uint32> values; set<string> tags; map<string,int32> attrs; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -523,7 +523,7 @@ suite("tbe_parser") {
       const char *schema = "message Bad { int32 missing_semi }";
       Node *root = create_node_map("root");
       map_add(root, create_node_string("marker", "keep"));
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, -1);
       check_equal(root->data.map.count, 1);
@@ -538,10 +538,10 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       map_add(root, create_node_string("marker", "keep"));
 
-      check_equal(parse_schema("composite First { int32 x; }",
+      check_equal(data_bind_schema_parse("composite First { int32 x; }",
                                 strlen("composite First { int32 x; }"), root, NULL),
                    0);
-      check_equal(parse_schema("enum State { Idle = 1; } message Second { int32 y; }",
+      check_equal(data_bind_schema_parse("enum State { Idle = 1; } message Second { int32 y; }",
                                 strlen("enum State { Idle = 1; } message Second { int32 y; }"),
                                 root, NULL),
                    0);
@@ -573,7 +573,7 @@ suite("tbe_parser") {
 
     it("should reject legacy struct declarations") {
       Node *root = create_node_map("root");
-      int rc = parse_schema("struct Point { int32 x; int32 y; }",
+      int rc = data_bind_schema_parse("struct Point { int32 x; int32 y; }",
                             strlen("struct Point { int32 x; int32 y; }"), root, NULL);
 
       check_equal(rc, -1);
@@ -592,7 +592,7 @@ suite("tbe_parser") {
                            "string symbol; "
                            "bytes source; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
 
@@ -685,7 +685,7 @@ suite("tbe_parser") {
     it("should reject variable-sized fields inside composites") {
       const char *schema = "composite Header { string symbol; }";
       Node *root = create_node_map("root");
-      int rc = parse_schema(schema, strlen(schema), root, NULL);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, -1);
       node_free(root);
@@ -696,7 +696,7 @@ suite("tbe_parser") {
                            "message Broken { string symbol; group<Level> bids; }";
       Node *root = create_node_map("root");
       DataBindSchemaError err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "order"));
@@ -710,7 +710,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
@@ -735,7 +735,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
@@ -758,7 +758,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
@@ -779,7 +779,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       Node *enums = find_child(root, "enums");
@@ -801,7 +801,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_equal(err.code, DATA_BIND_SCHEMA_OK);
@@ -811,7 +811,7 @@ suite("tbe_parser") {
 
     it("should report error for invalid arguments") {
       DataBindSchemaError err;
-      int rc = parse_schema(NULL, 0, NULL, &err);
+      int rc = data_bind_schema_parse(NULL, 0, NULL, &err);
 
       check_equal(rc, -1);
       check_equal(err.code, DATA_BIND_SCHEMA_ERR_INVALID_ARGUMENT);
@@ -823,7 +823,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, 0, root, &err);
+      int rc = data_bind_schema_parse(schema, 0, root, &err);
 
       check_equal(rc, 0);
       node_free(root);
@@ -834,7 +834,7 @@ suite("tbe_parser") {
       Node *root = create_node_map("root");
       DataBindSchemaError err;
 
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = data_bind_schema_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       node_free(root);
