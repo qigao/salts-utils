@@ -41,10 +41,10 @@ DataBind 2.5 使用纯 C schema parser、动态值树和 typed descriptor。运�
 
 ## 生成动态库
 
-生成头定义 `TBE_GENERATED_API`：
+生成头定义 `DATABIND_GENERATED_API`：
 
-- 构建 Windows DLL 或 ELF shared object 时定义 `TBE_GENERATED_BUILD_SHARED`。
-- 使用 Windows DLL 时定义 `TBE_GENERATED_USE_SHARED`。
+- 构建 Windows DLL 或 ELF shared object 时定义 `DATABIND_GENERATED_BUILD_SHARED`。
+- 使用 Windows DLL 时定义 `DATABIND_GENERATED_USE_SHARED`。
 - 构建或使用静态库时无需定义二者。
 
 生成库通过 SaltsUtils 包链接唯一公开目标 `Salts::DataBind`；它不包含 C 编译器，也不在运行时编译
