@@ -455,12 +455,42 @@ typedef struct DataBindServiceOperation {
   const char *rpc_name;
 } DataBindServiceOperation;
 
+/**
+ * Canonical Component capability kind.
+ *
+ * Component composition is semantic and independent from artifact/runtime
+ * backends. Future Channel support extends this enum without changing the
+ * Component/capability record shape.
+ */
+typedef enum DataBindComponentCapabilityKind {
+  DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN = 0,
+  DATA_BIND_COMPONENT_CAPABILITY_SERVICE = 1
+} DataBindComponentCapabilityKind;
+
+/** Immutable reflected Component declaration owned by one DataBind codec. */
+typedef struct DataBindComponent {
+  size_t size;
+  const char *name;
+  const char *qualified_name;
+  size_t capability_count;
+} DataBindComponent;
+
+/** Immutable reflected reference to one canonical Component capability. */
+typedef struct DataBindComponentCapability {
+  size_t size;
+  DataBindComponentCapabilityKind kind;
+  const char *name;
+  const char *qualified_name;
+} DataBindComponentCapability;
+
 #define DATA_BIND_SCHEMA_TYPE_INIT {sizeof(DataBindSchemaType)}
 #define DATA_BIND_SCHEMA_FIELD_INIT {sizeof(DataBindSchemaField)}
 #define DATA_BIND_SCHEMA_ENUM_ITEM_INIT {sizeof(DataBindSchemaEnumItem)}
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
 #define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
 #define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
+#define DATA_BIND_COMPONENT_INIT {sizeof(DataBindComponent)}
+#define DATA_BIND_COMPONENT_CAPABILITY_INIT {sizeof(DataBindComponentCapability)}
 #define DATA_BIND_ERROR_INIT {sizeof(DataBindError), DATA_BIND_OK, -1, -1, {0}, {0}}
 
 /**
@@ -1366,6 +1396,48 @@ DATA_BIND_API int data_bind_service_operation_find(
 DATA_BIND_API const char *data_bind_service_operation_error_at(
     DataBind *codec, const char *service_name, const char *operation_name,
     size_t index);
+
+/**
+ * @brief Return the number of canonical Component declarations.
+ */
+DATA_BIND_API size_t data_bind_component_count(DataBind *codec);
+
+/**
+ * @brief Read immutable Component reflection by index.
+ * @return 1 when out was filled, 0 when arguments or index are invalid.
+ */
+DATA_BIND_API int data_bind_component_at(
+    DataBind *codec, size_t index, DataBindComponent *out);
+
+/**
+ * @brief Find immutable Component reflection by unqualified Component name.
+ * @return 1 when out was filled, 0 when not found or arguments are invalid.
+ */
+DATA_BIND_API int data_bind_component_find(
+    DataBind *codec, const char *name, DataBindComponent *out);
+
+/** Return the number of capability references in one Component. */
+DATA_BIND_API size_t data_bind_component_capability_count(
+    DataBind *codec, const char *component_name);
+
+/**
+ * @brief Read one Component capability reference by index.
+ */
+DATA_BIND_API int data_bind_component_capability_at(
+    DataBind *codec, const char *component_name, size_t index,
+    DataBindComponentCapability *out);
+
+/**
+ * @brief Find one Component capability by canonical kind and unqualified name.
+ */
+DATA_BIND_API int data_bind_component_capability_find(
+    DataBind *codec, const char *component_name,
+    DataBindComponentCapabilityKind kind, const char *name,
+    DataBindComponentCapability *out);
+
+/** Return a stable lowercase name for a Component capability kind. */
+DATA_BIND_API const char *data_bind_component_capability_kind_name(
+    DataBindComponentCapabilityKind kind);
 
 /**
  * @brief Return a stable string name for a schema kind.
