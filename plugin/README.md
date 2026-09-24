@@ -331,6 +331,8 @@ ordinary `--output` header:
 out/image_native.h
 out/image_processor.plugin.h
 out/image_processor.plugin.c
+out/image_processor.plugin_client.h
+out/image_processor.plugin_client.c
 ```
 
 `--component` takes the canonical qualified Component identity and becomes
@@ -363,8 +365,10 @@ image
     logical umbrella target
 
 image_plugin
-    generated shared-library Plugin artifact
-    OUTPUT_NAME = image
+    generated shared-library Plugin provider
+
+image_plugin_client
+    generated host-side typed client library
 ```
 
 The generated source/header path lives under the target build directory and the
@@ -389,6 +393,20 @@ matching host Salts SDK explicitly:
 
 The generated target therefore never relies on an Android/target `SALTS_ROOT`
 to launch a host compiler.
+
+## Generated typed Plugin client
+
+The PLUGIN projection generates a separate host client in addition to the
+provider DSO. Opening the client acquires one Plugin lease, verifies the
+Component/plugin identity, Service/export identities, and CMeta
+FunctionDesc/FunctionAbi equality, then caches the admitted exports.
+
+Repeated typed calls reuse that lease and cache. They return Plugin bridge
+status separately from the native business integer status. Closing the client
+releases the lease; unload remains busy while the client is open.
+
+Provider and client code are separate targets, so host loader/registry runtime
+does not leak back into the provider DSO.
 
 ## DataBind and CFlow boundaries
 
