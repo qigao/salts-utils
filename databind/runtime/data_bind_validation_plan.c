@@ -316,10 +316,87 @@ static DataBindStatus compile_pattern_rule(
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_validation_plan_compile(
+enum { DATA_BIND_VALIDATION_MAX_DEPTH = 32u };
+
+typedef struct DataBindValidationCompileContext {
+  const char *stack[DATA_BIND_VALIDATION_MAX_DEPTH];
+  size_t depth;
+} DataBindValidationCompileContext;
+
+typedef struct DataBindValidationChildSpec {
+  DataBindValidationChildKind kind;
+  const char *type_name;
+} DataBindValidationChildSpec;
+
+static int validation_record_kind(DataBindSchemaKind kind) {
+  return kind == DATA_BIND_SCHEMA_MESSAGE ||
+         kind == DATA_BIND_SCHEMA_COMPOSITE ||
+         kind == DATA_BIND_SCHEMA_GROUP;
+}
+
+static int validation_child_spec(
+    DataBind *codec, const DataBindSchemaField *field,
+    DataBindValidationChildSpec *out) {
+  DataBindSchemaType child_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  const char *candidate = NULL;
+  DataBindValidationChildKind kind = 0;
+
+  if (codec == NULL || field == NULL || out == NULL) return 0;
+  memset(out, 0, sizeof(*out));
+
+  if (field->is_group && field->group_type != NULL) {
+    candidate = field->group_type;
+    kind = DATA_BIND_VALIDATION_CHILD_SEQUENCE;
+  } else if (field->is_map && field->value_type != NULL) {
+    candidate = field->value_type;
+    kind = DATA_BIND_VALIDATION_CHILD_MAP_VALUES;
+  } else if (field->is_collection && field->inner_type != NULL) {
+    candidate = field->inner_type;
+    kind = field->collection_kind != NULL &&
+                   strcmp(field->collection_kind, "set") == 0
+               ? DATA_BIND_VALIDATION_CHILD_SET
+               : DATA_BIND_VALIDATION_CHILD_SEQUENCE;
+  } else if (field->has_cmeta_kind &&
+             field->cmeta_kind == CMETA_DATA_STRUCT &&
+             field->type != NULL) {
+    candidate = field->type;
+    kind = DATA_BIND_VALIDATION_CHILD_OBJECT;
+  }
+
+  if (candidate == NULL ||
+      !data_bind_schema_find_type(codec, candidate, &child_type) ||
+      !validation_record_kind(child_type.kind))
+    return 0;
+
+  out->kind = kind;
+  out->type_name = candidate;
+  return 1;
+}
+
+static int validation_compile_stack_contains(
+    const DataBindValidationCompileContext *context,
+    const char *type_name) {
+  size_t i;
+  if (context == NULL || type_name == NULL) return 0;
+  for (i = 0u; i < context->depth; ++i)
+    if (context->stack[i] != NULL &&
+        strcmp(context->stack[i], type_name) == 0)
+      return 1;
+  return 0;
+}
+
+static int validation_plan_empty(const DataBindValidationPlan *plan) {
+  return plan == NULL ||
+         (plan->rule_count == 0u && plan->child_count == 0u);
+}
+
+static DataBindStatus validation_plan_compile_internal(
     DataBind *codec, const char *type_name,
-    DataBindValidationPlan **out_plan, DataBindError *error) {
+    DataBindValidationPlan **out_plan, DataBindError *error,
+    const DataBindValidationCompileContext *parent_context,
+    size_t *remaining_rules) {
   DataBindSchemaType reflected_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  DataBindValidationCompileContext context = {0};
   DataBindValidationPlan *plan = NULL;
   size_t field_count;
   size_t rule_count = 0u;
@@ -328,18 +405,27 @@ DataBindStatus data_bind_validation_plan_compile(
 
   if (out_plan != NULL) *out_plan = NULL;
   if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
-      out_plan == NULL)
+      out_plan == NULL || remaining_rules == NULL)
     return validation_error(
         error, DATA_BIND_ERR_INVALID_ARG, NULL,
         "Invalid ValidationPlan compile arguments");
+
+  if (parent_context != NULL) context = *parent_context;
+  if (context.depth >= DATA_BIND_VALIDATION_MAX_DEPTH)
+    return validation_error(
+        error, DATA_BIND_ERR_LIMIT, type_name,
+        "ValidationPlan nesting depth exceeds the bounded limit");
+  if (validation_compile_stack_contains(&context, type_name))
+    return validation_error(
+        error, DATA_BIND_ERR_SCHEMA, type_name,
+        "Recursive ValidationPlan type cycle is not supported");
+  context.stack[context.depth++] = type_name;
 
   if (!data_bind_schema_find_type(codec, type_name, &reflected_type))
     return validation_error(
         error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name,
         "ValidationPlan type was not found");
-  if (reflected_type.kind != DATA_BIND_SCHEMA_MESSAGE &&
-      reflected_type.kind != DATA_BIND_SCHEMA_COMPOSITE &&
-      reflected_type.kind != DATA_BIND_SCHEMA_GROUP)
+  if (!validation_record_kind(reflected_type.kind))
     return validation_error(
         error, DATA_BIND_ERR_SCHEMA, type_name,
         "ValidationPlan requires a record type");
@@ -349,12 +435,13 @@ DataBindStatus data_bind_validation_plan_compile(
     size_t count =
         data_bind_schema_field_constraint_count(
             codec, type_name, field_index);
-    if (count > DATA_BIND_VALIDATION_MAX_RULES - rule_count)
+    if (count > *remaining_rules - rule_count)
       return validation_error(
           error, DATA_BIND_ERR_LIMIT, type_name,
           "ValidationPlan rule count exceeds the bounded limit");
     rule_count += count;
   }
+  *remaining_rules -= rule_count;
 
   plan = (DataBindValidationPlan *)calloc(1u, sizeof(*plan));
   if (plan == NULL)
@@ -378,12 +465,23 @@ DataBindStatus data_bind_validation_plan_compile(
           "Unable to allocate ValidationPlan rules");
     }
   }
+  if (field_count != 0u) {
+    plan->children = (DataBindValidationChild *)calloc(
+        field_count, sizeof(*plan->children));
+    if (plan->children == NULL) {
+      data_bind_validation_plan_free(plan);
+      return validation_error(
+          error, DATA_BIND_ERR_OOM, type_name,
+          "Unable to allocate nested ValidationPlan bindings");
+    }
+  }
   plan->rule_count = rule_count;
 
   for (field_index = 0u; field_index < field_count; ++field_index) {
     DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
     size_t constraint_count;
     size_t constraint_index;
+    DataBindValidationChildSpec child_spec;
 
     if (!data_bind_schema_field_at(
             codec, type_name, field_index, &field) ||
@@ -450,12 +548,52 @@ DataBindStatus data_bind_validation_plan_compile(
       }
       ++next_rule;
     }
+
+    if (validation_child_spec(codec, &field, &child_spec)) {
+      DataBindValidationPlan *child_plan = NULL;
+      DataBindStatus status = validation_plan_compile_internal(
+          codec, child_spec.type_name, &child_plan, error,
+          &context, remaining_rules);
+      if (status != DATA_BIND_OK) {
+        data_bind_validation_plan_free(plan);
+        return status;
+      }
+      if (validation_plan_empty(child_plan)) {
+        data_bind_validation_plan_free(child_plan);
+      } else {
+        DataBindValidationChild *child =
+            &plan->children[plan->child_count];
+        child->field_name = validation_strdup(field.name);
+        child->kind = child_spec.kind;
+        child->plan = child_plan;
+        if (child->field_name == NULL) {
+          data_bind_validation_plan_free(plan);
+          return validation_error(
+              error, DATA_BIND_ERR_OOM, type_name,
+              "Unable to copy nested validation field name");
+        }
+        ++plan->child_count;
+      }
+    }
   }
 
   plan->rule_count = next_rule;
   *out_plan = plan;
-  validation_error_clear(error);
   return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_validation_plan_compile(
+    DataBind *codec, const char *type_name,
+    DataBindValidationPlan **out_plan, DataBindError *error) {
+  DataBindValidationCompileContext context = {0};
+  size_t remaining_rules = DATA_BIND_VALIDATION_MAX_RULES;
+  DataBindStatus status;
+
+  if (out_plan != NULL) *out_plan = NULL;
+  status = validation_plan_compile_internal(
+      codec, type_name, out_plan, error, &context, &remaining_rules);
+  if (status == DATA_BIND_OK) validation_error_clear(error);
+  return status;
 }
 
 static DataBindStatus validation_numeric_value(
