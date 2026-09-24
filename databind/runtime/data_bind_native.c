@@ -1,4 +1,5 @@
 #include "data_bind_native.h"
+#include "data_bind_native_internal.h"
 
 #include <salts_cmeta_data.h>
 
@@ -1472,6 +1473,54 @@ static int native_scalar_token(const cmeta_data_desc *data,
   }
 
   return 1;
+}
+
+DataBindStatus data_bind_native_leaf_token(
+    const cmeta_data_desc *data, const void *source, cserde_token *out) {
+  const unsigned char *view = NULL;
+  size_t size = 0u;
+  cmeta_status buffer_status;
+
+  if (data == NULL || source == NULL || out == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (!cmeta_data_desc_valid(data) || data->storage_type == NULL ||
+      !cmeta_type_desc_valid(data->storage_type))
+    return DATA_BIND_ERR_SCHEMA;
+
+  if (native_scalar_supported(data))
+    return native_scalar_token(data, source, out)
+               ? DATA_BIND_OK
+               : DATA_BIND_ERR_SCHEMA;
+
+  if (data->kind != CMETA_DATA_STRING && data->kind != CMETA_DATA_BYTES)
+    return DATA_BIND_ERR_SCHEMA;
+
+  buffer_status =
+      cmeta_data_buffer_read(data, source, SIZE_MAX, &view, &size);
+  if (buffer_status == CMETA_OK) {
+    memset(out, 0, sizeof(*out));
+    out->kind =
+        data->kind == CMETA_DATA_STRING ? CSERDE_STRING : CSERDE_BYTES;
+    out->value.slice.data = view;
+    out->value.slice.size = size;
+    out->value.slice.lifetime = CSERDE_VIEW_TRANSIENT;
+    return DATA_BIND_OK;
+  }
+
+  switch (buffer_status) {
+  case CMETA_TYPE_MISMATCH:
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  case CMETA_CAPACITY_EXCEEDED:
+    return DATA_BIND_ERR_LIMIT;
+  case CMETA_OUT_OF_MEMORY:
+    return DATA_BIND_ERR_OOM;
+  case CMETA_TRAIT_MISSING:
+    return DATA_BIND_ERR_SCHEMA;
+  case CMETA_INVALID_ARGUMENT:
+  case CMETA_CALLBACK_ERROR:
+  default:
+    return DATA_BIND_ERR_RUNTIME;
+  }
 }
 
 static DataBindStatus native_buffer_read_failure(
