@@ -1,4 +1,5 @@
 #include "data_bind_binding_plan.h"
+#include "data_bind_method_plan.h"
 #include "tinytest.h"
 
 #include <salts_cmeta_fixed_width.h>
@@ -127,17 +128,51 @@ FunctionDeclAs(
     (const AddRequest *, request,
      CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE));
 
+static int calc_add_root_impl(
+    const AddRequest *request, AddResponse *response) {
+  if (request == NULL || response == NULL) return -1;
+  response->sum = request->left + request->right * request->scale;
+  return 0;
+}
+
+static DataBindStatus calc_add_root_exact_invoke(
+    void *context, DataBindBindingCallFrame *frame, DataBindError *error) {
+  const AddRequest *request;
+  AddResponse *response;
+  (void)context;
+  if (error != NULL) *error = (DataBindError)DATA_BIND_ERROR_INIT;
+  if (frame == NULL || frame->size < sizeof(*frame) ||
+      frame->request == NULL || frame->params == NULL ||
+      frame->param_count < 2u || frame->params[1] == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  request = (const AddRequest *)frame->request;
+  response = (AddResponse *)frame->params[1];
+  return calc_add_root_impl(request, response) == 0
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
+}
+
+static const DataBindServiceExecutionAdapter CALC_ADD_ROOT_EXECUTION =
+    DATA_BIND_SERVICE_EXECUTION_ADAPTER_INIT(
+        &calc_add_root__function_meta, NULL, calc_add_root_exact_invoke);
+
+static DataBindServiceNativeBinding method_native_binding(void) {
+  return (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+          FunctionMeta(calc_add_root), &ADD_REQUEST_NATIVE,
+          &ADD_RESPONSE_NATIVE, &CALC_ADD_ROOT_EXECUTION);
+}
+
 static DataBind *create_codec(void) {
   static const char schema[] =
       "message AddRequest {"
-      " [query] uint32 left;"
-      " [header(\"X-Right\")] uint32 right;"
-      " optional [query] uint32 scale default 1;"
+      " uint32 left;"
+      " uint32 right;"
+      " optional uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
       "message CalcError { string detail; }"
       "service Calc {"
-      " [GET(\"/add\"), rpc]"
       " Add: AddRequest -> AddResponse throws CalcError;"
       "}";
   DataBind *codec = NULL;
@@ -153,7 +188,7 @@ static DataBindServiceNativeBinding native_binding(
     const cmeta_function_desc *function) {
   return (DataBindServiceNativeBinding)
       DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
-          function, &ADD_REQUEST_NATIVE, &ADD_RESPONSE_NATIVE);
+          function, &ADD_REQUEST_NATIVE, &ADD_RESPONSE_NATIVE, NULL);
 }
 
 typedef struct ProjectionScratch {
@@ -175,22 +210,14 @@ static DataBindStatus http_project(
     out->binding_class = DATA_BIND_BINDING_RESULT;
     snprintf(scratch->space, sizeof(scratch->space), "http.result");
     snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
-  } else if (field->binding_kind != NULL &&
-             strcmp(field->binding_kind, "header") == 0) {
+  } else if (strcmp(field->name, "right") == 0) {
     out->binding_class = DATA_BIND_BINDING_METADATA;
     snprintf(scratch->space, sizeof(scratch->space), "http.header");
-    snprintf(scratch->name, sizeof(scratch->name), "%s",
-             field->binding_name != NULL ? field->binding_name : field->name);
-  } else if (field->binding_kind != NULL &&
-             strcmp(field->binding_kind, "body") == 0) {
-    out->binding_class = DATA_BIND_BINDING_PAYLOAD;
-    snprintf(scratch->space, sizeof(scratch->space), "http.body");
-    snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
+    snprintf(scratch->name, sizeof(scratch->name), "X-Right");
   } else {
     out->binding_class = DATA_BIND_BINDING_VALUE;
     snprintf(scratch->space, sizeof(scratch->space), "http.query");
-    snprintf(scratch->name, sizeof(scratch->name), "%s",
-             field->binding_name != NULL ? field->binding_name : field->name);
+    snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
   }
   out->space = scratch->space;
   out->name = scratch->name;
@@ -828,7 +855,7 @@ spec("DataBind canonical Service BindingPlan") {
     bad_required.presence_count = 1u;
     native = (DataBindServiceNativeBinding)
         DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
-            FunctionMeta(calc_add_root), &bad_required, &ADD_RESPONSE_NATIVE);
+            FunctionMeta(calc_add_root), &bad_required, &ADD_RESPONSE_NATIVE, NULL);
 
     check_equal(data_bind_binding_plan_compile_service(
                     codec, "Calc", "Add", &http, &native,
@@ -852,7 +879,7 @@ spec("DataBind canonical Service BindingPlan") {
       native = (DataBindServiceNativeBinding)
           DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
               FunctionMeta(calc_add_root), &bad_duplicate,
-              &ADD_RESPONSE_NATIVE);
+              &ADD_RESPONSE_NATIVE, NULL);
 
       check_equal(data_bind_binding_plan_compile_service(
                       codec, "Calc", "Add", &http, &native,
@@ -876,7 +903,7 @@ spec("DataBind canonical Service BindingPlan") {
       native = (DataBindServiceNativeBinding)
           DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
               FunctionMeta(calc_add_root), &bad_overlap,
-              &ADD_RESPONSE_NATIVE);
+              &ADD_RESPONSE_NATIVE, NULL);
 
       check_equal(data_bind_binding_plan_compile_service(
                       codec, "Calc", "Add", &http, &native,
@@ -910,4 +937,233 @@ spec("DataBind canonical Service BindingPlan") {
 
     data_bind_free(codec);
   }
+
+  it("compiles and executes an explicit HTTP MethodPlan without schema transport annotations") {
+    DataBind *codec = create_codec();
+    const DataBindHttpFieldProjection fields[] = {
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_INGRESS,
+         "left", DATA_BIND_HTTP_PATH, "left", SIZE_MAX},
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_INGRESS,
+         "right", DATA_BIND_HTTP_HEADER, "X-Right", SIZE_MAX},
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_INGRESS,
+         "scale", DATA_BIND_HTTP_QUERY, "scale", SIZE_MAX},
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_EGRESS,
+         "sum", DATA_BIND_HTTP_RESPONSE_BODY, "sum", SIZE_MAX}};
+    const DataBindHttpErrorMapping errors[] = {
+        {sizeof(DataBindHttpErrorMapping), "CalcError", 422}};
+    DataBindHttpProjectionConfig config =
+        DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    DataBindServiceNativeBinding native = method_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *plan = NULL;
+    const DataBindBindingPlan *binding;
+    const DataBindServiceExecutionAdapter *execution;
+    DataBindHttpErrorMapping error_mapping =
+        DATA_BIND_HTTP_ERROR_MAPPING_INIT;
+    DataBindBindingPlanEntry entry = DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    TestProvider state = {0};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest request = {0};
+    AddResponse response = {0};
+    void *params[] = {NULL, &response};
+    const size_t param_bytes[] = {0u, sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindError invoke_error = DATA_BIND_ERROR_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+
+    config.method = "GET";
+    config.route = "/add/{left}";
+    config.success_status = 201;
+    config.context_flags =
+        DATA_BIND_HTTP_CONTEXT_REQUEST_ID |
+        DATA_BIND_HTTP_CONTEXT_PRINCIPAL;
+    config.fields = fields;
+    config.field_count = sizeof(fields) / sizeof(fields[0]);
+    config.errors = errors;
+    config.error_count = sizeof(errors) / sizeof(errors[0]);
+
+    check_equal(data_bind_http_method_plan_compile_service(
+                    codec, "Calc", "Add", &config, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    check_equal(data_bind_http_method_plan_method(plan), "GET");
+    check_equal(data_bind_http_method_plan_route(plan), "/add/{left}");
+    check_equal(data_bind_http_method_plan_success_status(plan), 201);
+    check_equal(data_bind_http_method_plan_context_flags(plan),
+                (uint64_t)(DATA_BIND_HTTP_CONTEXT_REQUEST_ID |
+                           DATA_BIND_HTTP_CONTEXT_PRINCIPAL));
+    check_equal(data_bind_http_method_plan_error_count(plan), (size_t)1);
+    check(data_bind_http_method_plan_error_at(plan, 0u, &error_mapping));
+    check_equal(error_mapping.error_type, "CalcError");
+    check_equal(error_mapping.status, 422);
+
+    binding = data_bind_http_method_plan_binding(plan);
+    execution = data_bind_http_method_plan_execution(plan);
+    check_not_null(binding);
+    check_not_null(execution);
+    check_true(cmeta_function_desc_equal(
+        data_bind_binding_plan_function(binding),
+        FunctionMeta(calc_add_root)));
+    check_true(cmeta_function_desc_equal(
+        execution->function, FunctionMeta(calc_add_root)));
+
+    check(data_bind_binding_plan_ingress_at(binding, 0u, &entry));
+    check_equal(entry.schema_field, "left");
+    check_equal(entry.address.space, "http.path");
+    check_equal(entry.address.name, "left");
+
+    entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    check(data_bind_binding_plan_ingress_at(binding, 1u, &entry));
+    check_equal(entry.schema_field, "right");
+    check_equal(entry.address.space, "http.header");
+    check_equal(entry.address.name, "X-Right");
+
+    data_bind_free(codec);
+    codec = NULL;
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    binding, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(request.left, 3u);
+    check_equal(request.right, 4u);
+    check_equal(request.scale, 1u);
+
+    check_equal(execution->invoke(
+                    execution->context, &frame, &invoke_error),
+                DATA_BIND_OK);
+    check_equal(response.sum, 7u);
+
+    check_equal(data_bind_binding_plan_write_outputs(
+                    binding, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.published_sum, 7u);
+
+    check_equal(data_bind_native_clear(
+                    &options, &ADD_REQUEST_DATA, &request,
+                    sizeof(request), &native_diagnostic),
+                DATA_BIND_OK);
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    check_equal(data_bind_native_clear(
+                    &options, &ADD_RESPONSE_DATA, &response,
+                    sizeof(response), &native_diagnostic),
+                DATA_BIND_OK);
+
+    data_bind_http_method_plan_free(plan);
+  }
+
+  it("compiles convention HTTP and RPC plans from the same transport-neutral Service") {
+    DataBind *codec = create_codec();
+    DataBindServiceNativeBinding native = method_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *http_plan = NULL;
+    DataBindRpcMethodPlan *rpc_plan = NULL;
+    DataBindHttpErrorMapping http_error =
+        DATA_BIND_HTTP_ERROR_MAPPING_INIT;
+    DataBindRpcErrorMapping rpc_error =
+        DATA_BIND_RPC_ERROR_MAPPING_INIT;
+    DataBindBindingPlanEntry entry = DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+
+    check_equal(data_bind_http_method_plan_compile_service(
+                    codec, "Calc", "Add", NULL, &native,
+                    &http_plan, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(data_bind_http_method_plan_method(http_plan), "POST");
+    check_equal(data_bind_http_method_plan_route(http_plan), "/Calc/Add");
+    check_equal(data_bind_http_method_plan_success_status(http_plan), 200);
+    check(data_bind_http_method_plan_error_at(
+        http_plan, 0u, &http_error));
+    check_equal(http_error.error_type, "CalcError");
+    check_equal(http_error.status, 500);
+    check(data_bind_binding_plan_ingress_at(
+        data_bind_http_method_plan_binding(http_plan), 0u, &entry));
+    check_equal(entry.address.space, "http.body");
+
+    diagnostic =
+        (DataBindBindingPlanDiagnostic)DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    check_equal(data_bind_rpc_method_plan_compile_service(
+                    codec, "Calc", "Add", NULL, &native,
+                    &rpc_plan, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(data_bind_rpc_method_plan_wire_method(rpc_plan), "Calc.Add");
+    check(data_bind_rpc_method_plan_error_at(rpc_plan, 0u, &rpc_error));
+    check_equal(rpc_error.error_type, "CalcError");
+    check_equal(rpc_error.code, -32000);
+    entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    check(data_bind_binding_plan_ingress_at(
+        data_bind_rpc_method_plan_binding(rpc_plan), 0u, &entry));
+    check_equal(entry.address.space, "rpc.params");
+
+    data_bind_rpc_method_plan_free(rpc_plan);
+    data_bind_http_method_plan_free(http_plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects MethodPlans with invalid external projection or no exact adapter") {
+    DataBind *codec = create_codec();
+    const DataBindHttpFieldProjection unknown_fields[] = {
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_INGRESS,
+         "missing", DATA_BIND_HTTP_QUERY, "missing", SIZE_MAX}};
+    const DataBindHttpFieldProjection path_fields[] = {
+        {sizeof(DataBindHttpFieldProjection), DATA_BIND_BINDING_INGRESS,
+         "left", DATA_BIND_HTTP_PATH, "id", SIZE_MAX}};
+    DataBindHttpProjectionConfig config =
+        DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    DataBindServiceNativeBinding native = method_native_binding();
+    DataBindServiceNativeBinding no_execution =
+        native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *plan = NULL;
+
+    config.method = "GET";
+    config.route = "/add";
+    config.fields = path_fields;
+    config.field_count = 1u;
+    check_equal(data_bind_http_method_plan_compile_service(
+                    codec, "Calc", "Add", &config, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+
+    config = (DataBindHttpProjectionConfig)
+        DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    config.fields = unknown_fields;
+    config.field_count = 1u;
+    diagnostic =
+        (DataBindBindingPlanDiagnostic)DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    check_equal(data_bind_http_method_plan_compile_service(
+                    codec, "Calc", "Add", &config, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check(strstr(diagnostic.message, "field") != NULL);
+
+    config = (DataBindHttpProjectionConfig)
+        DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    diagnostic =
+        (DataBindBindingPlanDiagnostic)DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    check_equal(data_bind_http_method_plan_compile_service(
+                    codec, "Calc", "Add", &config, &no_execution,
+                    &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check(strstr(diagnostic.message, "execution adapter") != NULL);
+
+    data_bind_free(codec);
+  }
+
 }
