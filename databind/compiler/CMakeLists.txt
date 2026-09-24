@@ -236,19 +236,49 @@ databind_target(
   PROJECTIONS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
-get_target_property(
-  _databind_plugin_generated_fixture_links
-  databind_plugin_generated_fixture_plugin
-  LINK_LIBRARIES)
-if("Salts::DataBindSchema" IN_LIST _databind_plugin_generated_fixture_links)
-  message(FATAL_ERROR
-          "generated Plugin must not link Salts::DataBindSchema")
-endif()
-if(NOT "Salts::DataBindGeneratedABI"
-       IN_LIST _databind_plugin_generated_fixture_links)
-  message(FATAL_ERROR
-          "generated Plugin must link Salts::DataBindGeneratedABI")
-endif()
+add_library(databind_plugin_bad_contract_fixture SHARED
+  test_plugin_bad_contract_fixture.c)
+set_target_properties(databind_plugin_bad_contract_fixture PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "databind_plugin_bad_contract_fixture"
+  FOLDER "databind/compiler/tests")
+target_compile_features(databind_plugin_bad_contract_fixture PRIVATE c_std_11)
+target_link_libraries(databind_plugin_bad_contract_fixture
+  PRIVATE Salts::PluginABI Salts::Platform)
+
+add_library(databind_plugin_bad_contract_id_fixture SHARED
+  test_plugin_bad_contract_fixture.c)
+set_target_properties(databind_plugin_bad_contract_id_fixture PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "databind_plugin_bad_contract_id_fixture"
+  FOLDER "databind/compiler/tests")
+target_compile_features(databind_plugin_bad_contract_id_fixture PRIVATE c_std_11)
+target_compile_definitions(databind_plugin_bad_contract_id_fixture PRIVATE
+  BAD_CONTRACT_ID="Image.Other")
+target_link_libraries(databind_plugin_bad_contract_id_fixture
+  PRIVATE Salts::PluginABI Salts::Platform)
+
+add_library(databind_plugin_missing_export_fixture SHARED
+  test_plugin_empty_client_fixture.c)
+set_target_properties(databind_plugin_missing_export_fixture PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "databind_plugin_missing_export_fixture"
+  FOLDER "databind/compiler/tests")
+target_compile_features(databind_plugin_missing_export_fixture PRIVATE c_std_11)
+target_link_libraries(databind_plugin_missing_export_fixture
+  PRIVATE Salts::PluginABI)
+
+add_library(databind_plugin_bad_identity_fixture SHARED
+  test_plugin_empty_client_fixture.c)
+set_target_properties(databind_plugin_bad_identity_fixture PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "databind_plugin_bad_identity_fixture"
+  FOLDER "databind/compiler/tests")
+target_compile_features(databind_plugin_bad_identity_fixture PRIVATE c_std_11)
+target_compile_definitions(databind_plugin_bad_identity_fixture PRIVATE
+  EMPTY_PLUGIN_ID="Image.OtherProcessor")
+target_link_libraries(databind_plugin_bad_identity_fixture
+  PRIVATE Salts::PluginABI)
 
 add_custom_command(
   OUTPUT
@@ -274,14 +304,48 @@ cmake_add_test(test_databind_plugin_generated_dso
   SOURCES
     test_plugin_generated_dso.c
     "${DATABIND_PLUGIN_TEST_BINDING_C}"
-  LIBS Salts::Plugin Salts::DataBind Salts::TinyTest
+  LIBS
+    databind_plugin_generated_fixture_plugin_client
+    Salts::Plugin Salts::DataBind Salts::TinyTest
   DEFS
     GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
   INCLUDES
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_plugin_generated_dso
-  databind_plugin_generated_fixture_plugin)
+  databind_plugin_generated_fixture_plugin
+  databind_plugin_generated_fixture_plugin_client)
+
+cmake_add_test(test_databind_plugin_generated_client_admission
+  SOURCES test_plugin_generated_client_admission.c
+  LIBS
+    databind_plugin_generated_fixture_plugin_client
+    Salts::Plugin
+    Salts::TinyTest
+  DEFS
+    BAD_CONTRACT_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_bad_contract_fixture>"
+    BAD_CONTRACT_ID_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_bad_contract_id_fixture>"
+    MISSING_EXPORT_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_missing_export_fixture>"
+    BAD_IDENTITY_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_bad_identity_fixture>"
+  INCLUDES
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_plugin_generated_client_admission
+  databind_plugin_generated_fixture_plugin_client
+  databind_plugin_bad_contract_fixture
+  databind_plugin_bad_contract_id_fixture
+  databind_plugin_missing_export_fixture
+  databind_plugin_bad_identity_fixture)
+
+cmake_add_test(test_databind_plugin_generated_client_public_cpp
+  SOURCES test_plugin_generated_client_public_cpp.cpp
+  LIBS databind_plugin_generated_fixture_plugin_client
+  INCLUDES "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_plugin_generated_client_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+add_dependencies(test_databind_plugin_generated_client_public_cpp
+  databind_plugin_generated_fixture_plugin_client)
 
 cmake_add_test(test_databind_plugin_projection_rejection
   SOURCES
