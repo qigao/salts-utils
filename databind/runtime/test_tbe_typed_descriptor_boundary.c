@@ -444,23 +444,17 @@ spec("typed descriptor boundary") {
     check_contains(error.message, "overlap");
   }
 
-  it("accepts nullable metadata but rejects value conversion until format lowering") {
+  it("keeps non-JSON nullable formats fail-fast after ABI admission") {
     StateBoundary object = {0};
     DataBindError error = DATA_BIND_ERROR_INIT;
-    const uint8_t json[] = {'{', '}'};
+    const uint8_t text[] = {'{', '}'};
     char *out = NULL;
     size_t out_len = 0u;
 
-    check_null(tbe_typed_to_json(
-        &STATE_BOUNDARY_OVERLAY, &object, &error));
-    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
-    check_contains(error.message, "nullable");
-
-    error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
         tbe_typed_descriptor_parse(
             NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR,
-            DATA_BIND_FORMAT_JSON, json, sizeof(json), 0u, &object, &error),
+            DATA_BIND_FORMAT_YAML, text, sizeof(text), 0u, &object, &error),
         DATA_BIND_ERR_SCHEMA);
     check_contains(error.message, "nullable");
 
@@ -468,7 +462,7 @@ spec("typed descriptor boundary") {
     check_equal(
         tbe_typed_descriptor_serialize(
             NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR, &object,
-            DATA_BIND_FORMAT_JSON, &out, &out_len, &error),
+            DATA_BIND_FORMAT_XML, &out, &out_len, &error),
         DATA_BIND_ERR_SCHEMA);
     check_null(out);
     check_equal(out_len, 0u);
