@@ -9,8 +9,8 @@
  *
  * Uses a re2c-generated lexer and a lemon-generated parser to process
  * the schema definition. The parser replaces @p root's generated
- * "schema", "messages", "composites", "groups", and "enums"
- * children (if any) with fresh parse results while leaving unrelated keys
+ * "schema", "messages", "composites", "groups", "enums", "unions",
+ * "services", and "components" children (if any) with fresh parse results while leaving unrelated keys
  * intact.
  *
  * @param text   The NUL-terminated schema text.
