@@ -145,7 +145,8 @@ function(databind_target)
       IDL
       COMPONENT
       VERSION
-      ARTIFACT_NAME)
+      ARTIFACT_NAME
+      PROJECTION_CONFIG)
   set(multi_value_args
       PROJECTIONS
       SOURCES
@@ -269,6 +270,22 @@ function(databind_target)
     endif()
   endif()
 
+  set(_projection_config)
+  if(DB_PROJECTION_CONFIG)
+    if(NOT _has_http AND NOT _has_rpc)
+      message(FATAL_ERROR
+              "databind_target PROJECTION_CONFIG requires HTTP and/or RPC")
+    endif()
+    get_filename_component(_projection_config
+      "${DB_PROJECTION_CONFIG}" ABSOLUTE
+      BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(NOT EXISTS "${_projection_config}")
+      message(FATAL_ERROR
+              "databind_target PROJECTION_CONFIG does not exist: "
+              "${_projection_config}")
+    endif()
+  endif()
+
   list(JOIN _normalized_projections "," _projection_csv)
   string(TOLOWER "${_projection_csv}" _projection_csv)
 
@@ -333,10 +350,17 @@ function(databind_target)
       --component "${DB_COMPONENT}"
       --artifact-version "${DB_VERSION}")
   endif()
+  if(_projection_config)
+    list(APPEND _compiler_args
+      --projection-config "${_projection_config}")
+  endif()
 
   set(_generate_dependencies "${_idl}")
   if(_databindc_dependency)
     list(APPEND _generate_dependencies "${_databindc_dependency}")
+  endif()
+  if(_projection_config)
+    list(APPEND _generate_dependencies "${_projection_config}")
   endif()
 
   add_custom_command(
@@ -399,6 +423,10 @@ function(databind_target)
     DATABIND_GENERATED_DIR "${_generated_dir}")
   set_property(TARGET "${DB_TARGET}" PROPERTY
     DATABIND_PROJECTIONS "${_normalized_projections}")
+  if(_projection_config)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_PROJECTION_CONFIG "${_projection_config}")
+  endif()
 
   if(_has_plugin)
     set_property(TARGET "${DB_TARGET}" PROPERTY
