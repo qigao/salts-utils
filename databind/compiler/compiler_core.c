@@ -791,7 +791,14 @@ static void tbe_compiler_annotate_native_requirement(
   if (!root || !field || !semantic) return;
   type = tbe_compiler_string_value(field, "type");
 
-  if (cmeta_data_kind_is_container(semantic->kind)) {
+  if (tbe_compiler_has_child(field, "is_nullable")) {
+    /*
+     * #191 has not frozen a native NULL representation yet. Do not label a
+     * nullable field as an ordinary fixed/owned value and let a downstream
+     * consumer mistake structural CMeta reflection for completed lowering.
+     */
+    return;
+  } else if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
   } else if (tbe_compiler_has_child(field, "is_optional")) {
     requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
@@ -999,6 +1006,7 @@ static int tbe_compiler_cmeta_classify_record(
 
     if (!type || !kind ||
         tbe_compiler_has_child(field, "is_optional") ||
+        tbe_compiler_has_child(field, "is_nullable") ||
         tbe_compiler_has_child(field, "is_collection") ||
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
