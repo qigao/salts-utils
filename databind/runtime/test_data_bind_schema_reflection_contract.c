@@ -58,6 +58,126 @@ spec("DataBind schema reflection contract") {
     data_bind_free(codec);
   }
 
+  it("reflects normalized validation constraints without executing them") {
+    static const char schema[] =
+        "message User {"
+        " @Min(-5) @Max(150) int32 age;"
+        " @Size(min = 1, max = 100) string name;"
+        " optional @Pattern(\"^[^@]+@[^@]+$\") string email;"
+        " uint32 unconstrained;"
+        "}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindSchemaConstraint reflected = DATA_BIND_SCHEMA_CONSTRAINT_INIT;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check_equal(data_bind_schema_field_constraint_count(codec, "User", 0u),
+                (size_t)2u);
+    check_equal(data_bind_schema_field_constraint_count(codec, "User", 1u),
+                (size_t)1u);
+    check_equal(data_bind_schema_field_constraint_count(codec, "User", 2u),
+                (size_t)1u);
+    check_equal(data_bind_schema_field_constraint_count(codec, "User", 3u),
+                (size_t)0u);
+
+    check(data_bind_schema_field_constraint_at(codec, "User", 0u, 0u,
+                                               &reflected) == 1);
+    check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_MIN);
+    check_equal(reflected.kind_name, "min");
+    check_equal(reflected.value, "-5");
+    check_false(reflected.has_min);
+    check_false(reflected.has_max);
+    check_null(reflected.pattern);
+    check_equal(data_bind_schema_constraint_kind_name(reflected.kind), "min");
+
+    reflected = (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
+    check(data_bind_schema_field_constraint_at(codec, "User", 0u, 1u,
+                                               &reflected) == 1);
+    check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_MAX);
+    check_equal(reflected.kind_name, "max");
+    check_equal(reflected.value, "150");
+
+    reflected = (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
+    check(data_bind_schema_field_constraint_at(codec, "User", 1u, 0u,
+                                               &reflected) == 1);
+    check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_SIZE);
+    check_equal(reflected.kind_name, "size");
+    check_true(reflected.has_min);
+    check_equal(reflected.min_size, (size_t)1u);
+    check_true(reflected.has_max);
+    check_equal(reflected.max_size, (size_t)100u);
+    check_null(reflected.value);
+    check_null(reflected.pattern);
+
+    reflected = (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
+    check(data_bind_schema_field_constraint_at(codec, "User", 2u, 0u,
+                                               &reflected) == 1);
+    check_equal(reflected.kind, DATA_BIND_SCHEMA_CONSTRAINT_PATTERN);
+    check_equal(reflected.kind_name, "pattern");
+    check_equal(reflected.pattern, "^[^@]+@[^@]+$");
+    check_null(reflected.value);
+
+    check_equal(
+        data_bind_schema_constraint_kind_name(DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN),
+        "unknown");
+    check_equal(
+        data_bind_schema_constraint_kind_name((DataBindSchemaConstraintKind)999),
+        "unknown");
+
+    data_bind_free(codec);
+  }
+
+  it("keeps constraint reflection size-prefixed and clears invalid queries") {
+    static const char schema[] =
+        "message User { @Size(max = 32) string name; }";
+    struct {
+      DataBindSchemaConstraint value;
+      unsigned char guard[16];
+    } compact;
+    static const unsigned char expected_guard[16] = {
+        0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5,
+        0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5};
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t prefix = offsetof(DataBindSchemaConstraint, pattern);
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    memset(&compact, 0xa5, sizeof(compact));
+    compact.value.size = prefix;
+    check(data_bind_schema_field_constraint_at(codec, "User", 0u, 0u,
+                                               &compact.value) == 1);
+    check_equal(compact.value.size, prefix);
+    check_equal(compact.value.kind, DATA_BIND_SCHEMA_CONSTRAINT_SIZE);
+    check_true(compact.value.has_max);
+    check_equal(compact.value.max_size, (size_t)32u);
+    check_equal(compact.guard, expected_guard, sizeof(expected_guard));
+
+    compact.value =
+        (DataBindSchemaConstraint)DATA_BIND_SCHEMA_CONSTRAINT_INIT;
+    compact.value.kind = DATA_BIND_SCHEMA_CONSTRAINT_PATTERN;
+    compact.value.pattern = "stale";
+    check(data_bind_schema_field_constraint_at(codec, "User", 0u, 9u,
+                                               &compact.value) == 0);
+    check_equal(compact.value.size, sizeof(DataBindSchemaConstraint));
+    check_equal(compact.value.kind, DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN);
+    check_null(compact.value.pattern);
+
+    check_equal(data_bind_schema_field_constraint_count(codec, "Missing", 0u),
+                (size_t)0u);
+    check_equal(data_bind_schema_field_constraint_count(codec, "User", 9u),
+                (size_t)0u);
+
+    data_bind_free(codec);
+  }
+
   it("reflects nullable independently and preserves JSON absent-null-value states") {
     static const char schema[] =
         "message User {"
