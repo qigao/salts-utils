@@ -1,5 +1,13 @@
 schema Image [version(1)];
 
+component ImageProcessor {
+    service Codec;
+}
+
+component AdminProcessor {
+    service Admin;
+}
+
 message DecodeRequest {
     uint32 width;
 }
@@ -16,7 +24,23 @@ message EncodeResponse {
     uint32 bytes;
 }
 
+message AdminRequest {
+    optional uint32 secret;
+}
+
+message AdminResponse {
+    uint32 value;
+}
+
+message AdminError {
+    uint32 code;
+}
+
 service Codec {
     Decode: DecodeRequest -> DecodeResponse;
     Encode: EncodeRequest -> EncodeResponse;
+}
+
+service Admin {
+    Inspect: AdminRequest -> AdminResponse throws AdminError;
 }
