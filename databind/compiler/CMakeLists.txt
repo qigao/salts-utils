@@ -398,10 +398,15 @@ if("Salts::DataBindSchema" IN_LIST _databind_plugin_generated_fixture_links)
   message(FATAL_ERROR
           "generated Plugin must not link Salts::DataBindSchema")
 endif()
-if(NOT "Salts::DataBindGeneratedABI"
+if(NOT "Salts::DataBind"
        IN_LIST _databind_plugin_generated_fixture_links)
   message(FATAL_ERROR
-          "generated Plugin must link Salts::DataBindGeneratedABI")
+          "generated Plugin must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI"
+   IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must not link removed Salts::DataBindGeneratedABI")
 endif()
 
 get_target_property(
@@ -418,10 +423,15 @@ if(NOT "Salts::Plugin"
   message(FATAL_ERROR
           "generated Plugin client must link Salts::Plugin")
 endif()
-if(NOT "Salts::DataBindGeneratedABI"
+if(NOT "Salts::DataBind"
        IN_LIST _databind_plugin_generated_client_links)
   message(FATAL_ERROR
-          "generated Plugin client must link Salts::DataBindGeneratedABI")
+          "generated Plugin client must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI"
+   IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must not link removed Salts::DataBindGeneratedABI")
 endif()
 
 add_custom_command(
