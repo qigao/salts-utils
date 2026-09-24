@@ -14,6 +14,11 @@ extern "C" {
  * Canonical compiler-private lowering of one DataBind Service operation to the
  * ordinary native C function shape shared by PLUGIN/WASM/native backends.
  */
+typedef struct databind_compiler_service_native_presence {
+  char *field_name;
+  unsigned bit;
+} databind_compiler_service_native_presence;
+
 typedef struct databind_compiler_service_native_operation {
   char *schema_name;
   char *service_name;
@@ -27,6 +32,11 @@ typedef struct databind_compiler_service_native_operation {
   char *response_type;
   char *request_type_identity;
   char *response_type_identity;
+
+  databind_compiler_service_native_presence *request_presence;
+  size_t request_presence_count;
+  databind_compiler_service_native_presence *response_presence;
+  size_t response_presence_count;
 } databind_compiler_service_native_operation;
 
 typedef struct databind_compiler_service_native_ir {
@@ -56,6 +66,15 @@ int databind_compiler_service_native_emit_prototype(
  * and are suitable for direct address-taking by publication backends.
  */
 int databind_compiler_service_native_emit_reflection(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation);
+
+/*
+ * Emit the generated host-side DataBind native-binding initializer. The caller
+ * owns request/response/service structs for at least as long as any compiled
+ * BindingPlan retains them.
+ */
+int databind_compiler_service_native_emit_binding(
     FILE *file,
     const databind_compiler_service_native_operation *operation);
 
