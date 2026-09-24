@@ -210,11 +210,11 @@ set_target_properties(test_databind_service_native_public_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 
 # Generated PLUGIN backend qualification through the canonical public
-# databindc projection frontend.
-set(DATABIND_PLUGIN_TEST_GENERATED_DIR
-    "${CMAKE_CURRENT_BINARY_DIR}/generated-plugin")
-file(MAKE_DIRECTORY "${DATABIND_PLUGIN_TEST_GENERATED_DIR}")
+# databind_target() -> databindc projection frontend.
+include("${CMAKE_SOURCE_DIR}/cmake/DataBind.cmake")
 
+set(DATABIND_PLUGIN_TEST_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/databind_plugin_generated_fixture.databind")
 set(DATABIND_PLUGIN_TEST_NATIVE_H
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_native.h")
 set(DATABIND_PLUGIN_TEST_BINDING_H
@@ -226,22 +226,19 @@ set(DATABIND_PLUGIN_TEST_SERVICE_H
 set(DATABIND_PLUGIN_TEST_SOURCE
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.c")
 
+databind_target(
+  TARGET databind_plugin_generated_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+  COMPONENT "Image.ImageProcessor"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "image"
+  PROJECTIONS PLUGIN
+  SOURCES test_plugin_business_fixture.c)
+
 add_custom_command(
   OUTPUT
-    "${DATABIND_PLUGIN_TEST_NATIVE_H}"
     "${DATABIND_PLUGIN_TEST_BINDING_H}"
     "${DATABIND_PLUGIN_TEST_BINDING_C}"
-    "${DATABIND_PLUGIN_TEST_SERVICE_H}"
-    "${DATABIND_PLUGIN_TEST_SOURCE}"
-  COMMAND
-    $<TARGET_FILE:databindc>
-      "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
-      --lang c
-      --output "${DATABIND_PLUGIN_TEST_NATIVE_H}"
-      --projections plugin
-      --component "Image.ImageProcessor"
-      --artifact-name "image"
-      --artifact-version "1.0.0"
   COMMAND
     $<TARGET_FILE:databindc>
       "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
@@ -252,35 +249,11 @@ add_custom_command(
     databindc
     "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
   VERBATIM
-  COMMENT "Generating DataBind Service Plugin fixture")
-
-add_custom_target(databind_plugin_generated_fixture_sources
-  DEPENDS
-    "${DATABIND_PLUGIN_TEST_NATIVE_H}"
-    "${DATABIND_PLUGIN_TEST_BINDING_H}"
-    "${DATABIND_PLUGIN_TEST_BINDING_C}"
-    "${DATABIND_PLUGIN_TEST_SERVICE_H}"
-    "${DATABIND_PLUGIN_TEST_SOURCE}")
+  COMMENT "Generating host-side DataBind binding fixture")
 
 set_source_files_properties(
   "${DATABIND_PLUGIN_TEST_BINDING_C}"
-  "${DATABIND_PLUGIN_TEST_SOURCE}"
   PROPERTIES GENERATED TRUE)
-
-add_library(databind_plugin_generated_fixture SHARED
-  "${DATABIND_PLUGIN_TEST_SOURCE}"
-  test_plugin_business_fixture.c)
-add_dependencies(databind_plugin_generated_fixture
-  databind_plugin_generated_fixture_sources)
-target_compile_features(databind_plugin_generated_fixture PRIVATE c_std_11)
-target_include_directories(databind_plugin_generated_fixture PRIVATE
-  "${DATABIND_PLUGIN_TEST_GENERATED_DIR}")
-target_link_libraries(databind_plugin_generated_fixture PRIVATE
-  Salts::PluginABI
-  Salts::DataBindSchema)
-set_target_properties(databind_plugin_generated_fixture PROPERTIES
-  PREFIX ""
-  FOLDER "databind/compiler")
 
 cmake_add_test(test_databind_plugin_generated_dso
   SOURCES
@@ -288,12 +261,12 @@ cmake_add_test(test_databind_plugin_generated_dso
     "${DATABIND_PLUGIN_TEST_BINDING_C}"
   LIBS Salts::Plugin Salts::DataBind Salts::TinyTest
   DEFS
-    GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture>"
+    GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
   INCLUDES
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_plugin_generated_dso
-  databind_plugin_generated_fixture)
+  databind_plugin_generated_fixture_plugin)
 
 cmake_add_test(test_databind_plugin_projection_rejection
   SOURCES
