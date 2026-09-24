@@ -391,7 +391,8 @@ int databind_compiler_service_native_emit_prototype(
 
 int databind_compiler_service_native_emit_reflection(
     FILE *file,
-    const databind_compiler_service_native_operation *operation) {
+    const databind_compiler_service_native_operation *operation,
+    int emit_accessors) {
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
       operation->qualified_operation == NULL ||
@@ -429,12 +430,7 @@ int databind_compiler_service_native_emit_reflection(
           "    (%s_t *, response,\n"
           "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
           "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n"
-          "const cmeta_function_desc *%s__databind_function(void) {\n"
-          "  return &%s__function_meta;\n"
-          "}\n"
-          "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
-          "  return &%s__function_abi_meta;\n"
-          "}\n",
+          "%s",
           operation->symbol, operation->request_type_identity,
           operation->symbol, operation->request_type,
           operation->request_type, operation->request_type,
@@ -452,6 +448,18 @@ int databind_compiler_service_native_emit_reflection(
           operation->symbol, operation->qualified_operation,
           operation->request_type, operation->symbol,
           operation->response_type, operation->symbol,
+          "") < 0)
+    return -1;
+
+  if (emit_accessors &&
+      fprintf(
+          file,
+          "const cmeta_function_desc *%s__databind_function(void) {\n"
+          "  return &%s__function_meta;\n"
+          "}\n"
+          "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+          "  return &%s__function_abi_meta;\n"
+          "}\n",
           operation->symbol, operation->symbol,
           operation->symbol, operation->symbol) < 0)
     return -1;
