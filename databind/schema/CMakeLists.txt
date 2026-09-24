@@ -90,6 +90,7 @@ foreach(test_name
         test_benchmark_schemas_bdd
         test_tbe_robustness
         test_optional_and_defaults
+        test_validation_constraints
         test_enum_helpers
         test_component_contract
         test_channel_contract)
