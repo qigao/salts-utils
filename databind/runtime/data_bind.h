@@ -90,7 +90,9 @@ typedef enum DataBindStatus {
   /** The caller-provided output buffer is too small; required length is returned. */
   DATA_BIND_ERR_BUFFER_TOO_SMALL,
   /** The operation was explicitly canceled by the caller or record callback. */
-  DATA_BIND_ERR_CANCELED
+  DATA_BIND_ERR_CANCELED,
+  /** A logical value violated a compiled DataBind validation constraint. */
+  DATA_BIND_ERR_VALIDATION
 } DataBindStatus;
 
 typedef struct DataBindError {
@@ -440,6 +442,28 @@ typedef struct DataBindSchemaAttribute {
   const char *value;
 } DataBindSchemaAttribute;
 
+typedef enum DataBindConstraintKind {
+  DATA_BIND_CONSTRAINT_MIN = 1,
+  DATA_BIND_CONSTRAINT_MAX,
+  DATA_BIND_CONSTRAINT_SIZE,
+  DATA_BIND_CONSTRAINT_PATTERN
+} DataBindConstraintKind;
+
+typedef struct DataBindSchemaConstraint {
+  size_t size;
+  DataBindConstraintKind kind;
+  const char *field_name;
+  const char *numeric_value;
+  int has_size_min;
+  size_t size_min;
+  int has_size_max;
+  size_t size_max;
+  const char *pattern;
+} DataBindSchemaConstraint;
+
+typedef struct DataBindValidationPlan DataBindValidationPlan;
+
+
 /** Immutable reflected service declaration owned by one DataBind codec. */
 typedef struct DataBindService {
   size_t size;
@@ -504,6 +528,7 @@ typedef struct DataBindComponentCapability {
 #define DATA_BIND_SCHEMA_FIELD_INIT {sizeof(DataBindSchemaField)}
 #define DATA_BIND_SCHEMA_ENUM_ITEM_INIT {sizeof(DataBindSchemaEnumItem)}
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
+#define DATA_BIND_SCHEMA_CONSTRAINT_INIT {sizeof(DataBindSchemaConstraint)}
 #define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
 #define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
 #define DATA_BIND_CHANNEL_INIT {sizeof(DataBindChannel)}
@@ -1514,6 +1539,22 @@ DATA_BIND_API size_t data_bind_schema_field_count(DataBind *codec, const char *t
  */
 DATA_BIND_API int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
                                             DataBindSchemaField *out);
+
+DATA_BIND_API size_t data_bind_schema_field_constraint_count(
+    DataBind *codec, const char *type_name, size_t field_index);
+DATA_BIND_API int data_bind_schema_field_constraint_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t constraint_index, DataBindSchemaConstraint *out);
+
+DATA_BIND_API DataBindStatus data_bind_validation_plan_compile(
+    DataBind *codec, const char *type_name, DataBindValidationPlan **out_plan,
+    DataBindError *error);
+DATA_BIND_API size_t data_bind_validation_plan_rule_count(
+    const DataBindValidationPlan *plan);
+DATA_BIND_API DataBindStatus data_bind_validation_plan_validate(
+    const DataBindValidationPlan *plan, const DataBindValue *value,
+    DataBindError *error);
+DATA_BIND_API void data_bind_validation_plan_free(DataBindValidationPlan *plan);
 
 /** Query canonical storage for a field value type, not DataBindValue/generated
  * field layout. Use field_at for kind-only information. Optional presence stays
