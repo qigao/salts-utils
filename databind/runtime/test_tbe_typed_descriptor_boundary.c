@@ -2,6 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
+#include <salts_cmeta_fixed_width.h>
 
 #include <stddef.h>
 #include <stdint.h>
