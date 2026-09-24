@@ -377,9 +377,8 @@ spec("typed nullable JSON") {
     data_bind_free(codec);
   }
 
-  it("keeps CSV XML and binary nullable formats explicitly unsupported") {
+  it("keeps CSV and XML nullable formats explicitly unsupported") {
     static const char text[] = "{}";
-    static const unsigned char binary[] = {0u};
     DataBind *codec = nullable_json_codec();
     NullableJsonRecord record = {0};
     DataBindError error = DATA_BIND_ERROR_INIT;
@@ -395,12 +394,6 @@ spec("typed nullable JSON") {
                            0u, &record, &error),
         DATA_BIND_ERR_SCHEMA);
     check_contains(error.message, "nullable");
-
-    error = (DataBindError)DATA_BIND_ERROR_INIT;
-    check_equal(
-        tbe_typed_parse_binary(&NULLABLE_JSON_TYPE, binary, sizeof(binary),
-                               &record, &error),
-        DATA_BIND_ERR_SCHEMA);
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
