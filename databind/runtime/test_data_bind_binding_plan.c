@@ -134,9 +134,9 @@ FunctionDeclAs(
 static DataBind *create_codec(void) {
   static const char schema[] =
       "message AddRequest {"
-      " [query] uint32 left;"
-      " [header(\"X-Right\")] uint32 right;"
-      " optional [query] uint32 scale default 1;"
+      " @Min(1) @Max(5) [query] uint32 left;"
+      " @Min(1) @Max(10) [header(\"X-Right\")] uint32 right;"
+      " optional @Min(1) @Max(3) [query] uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
       "service Calc {"
@@ -448,6 +448,7 @@ typedef struct TestProvider {
   OneTokenReader reader;
   int provide_scale;
   int fail_right_type;
+  int fail_right_validation;
   int fail_write;
   size_t begin_calls;
   size_t write_calls;
@@ -647,7 +648,7 @@ static DataBindStatus provider_open(
                  ? DATA_BIND_OK
                  : DATA_BIND_ERR_RUNTIME;
     }
-    value = 4u;
+    value = provider->fail_right_validation ? 99u : 4u;
   } else if (strcmp(name, "scale") == 0) {
     if (!provider->provide_scale) {
       *state = DATA_BIND_VALUE_STATE_ABSENT;
@@ -1045,6 +1046,106 @@ spec("DataBind canonical Service BindingPlan") {
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
+  }
+
+  it("validates root-request native staging and rolls back on semantic failure") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http =
+        projection("http-validation", &scratch, http_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {
+        .provide_scale = 1,
+        .fail_right_validation = 1};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest request = {
+        .left = 91u, .right = 92u, .scale = 93u, .presence = 0xffu};
+    AddResponse response = {.sum = 94u};
+    void *params[] = {NULL, &response};
+    const size_t param_bytes[] = {0u, sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &http, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_free(codec);
+    codec = NULL;
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "right");
+    check(strstr(diagnostic.message, "@Max") != NULL);
+    check_equal(request.left, 0u);
+    check_equal(request.right, 0u);
+    check_equal(request.scale, 0u);
+    check_equal(request.presence, 0u);
+    check_equal(response.sum, 0u);
+
+    data_bind_binding_plan_free(plan);
+  }
+
+  it("validates direct native parameters without runtime schema lookup") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-validation", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_fields));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {
+        .provide_scale = 1,
+        .fail_right_validation = 1};
+    DataBindBindingProvider provider = provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    uint32_t left = 0u, right = 0u, scale = 0u, sum = 0u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_free(codec);
+    codec = NULL;
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "right");
+    check(strstr(diagnostic.message, "@Max") != NULL);
+    check_equal(left, 0u);
+    check_equal(right, 0u);
+    check_equal(scale, 0u);
+    check_equal(sum, 0u);
+
+    data_bind_binding_plan_free(plan);
   }
 
   it("publishes BindingPlan egress through the format-neutral native encoder") {
