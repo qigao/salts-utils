@@ -43,10 +43,12 @@ typedef struct databind_compiler_plugin_config {
 } databind_compiler_plugin_config;
 
 /*
- * Generate one passive Plugin publication source plus one Service declaration
- * header from the selected canonical Component's Service capabilities.
+ * Generate one passive Plugin provider source/header plus one typed host-side
+ * client source/header from the selected canonical Component's Services.
  *
- * request->output is the generated Plugin .c path.
+ * Provider and client are separate artifacts:
+ * - request->output / service_header_output: Plugin DSO publication side;
+ * - client_source_output / client_header_output: host lease/admission side.
  */
 int databind_compiler_plugin_generate(
     const Node *canonical_ir,
