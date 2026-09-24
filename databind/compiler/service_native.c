@@ -175,64 +175,67 @@ static int native_unsigned(const char *text, unsigned *out) {
   return 1;
 }
 
-static void native_presence_clear(
-    databind_compiler_service_native_presence *presence,
+static void native_state_clear(
+    databind_compiler_service_native_state *state,
     size_t count) {
   size_t i;
-  if (presence == NULL) return;
-  for (i = 0u; i < count; ++i) free(presence[i].field_name);
-  free(presence);
+  if (state == NULL) return;
+  for (i = 0u; i < count; ++i) free(state[i].field_name);
+  free(state);
 }
 
-static int native_presence_build(
+static int native_state_build(
     const Node *message,
-    databind_compiler_service_native_presence **out_presence,
+    const char *semantic_flag,
+    const char *bit_field,
+    databind_compiler_service_native_state **out_state,
     size_t *out_count) {
   const Node *fields;
-  databind_compiler_service_native_presence *presence = NULL;
+  databind_compiler_service_native_state *state = NULL;
   size_t count = 0u;
   size_t i;
   size_t index = 0u;
 
-  if (out_presence == NULL || out_count == NULL || message == NULL)
+  if (out_state == NULL || out_count == NULL || message == NULL ||
+      semantic_flag == NULL || bit_field == NULL)
     return 0;
-  *out_presence = NULL;
+  *out_state = NULL;
   *out_count = 0u;
 
   fields = native_list(message, "fields");
   if (fields == NULL) return 1;
 
   for (i = 0u; i < fields->data.list.count; ++i)
-    if (native_child(fields->data.list.items[i], "is_optional") != NULL)
+    if (native_child(fields->data.list.items[i], semantic_flag) != NULL)
       ++count;
 
   if (count == 0u) return 1;
-  presence = (databind_compiler_service_native_presence *)calloc(
-      count, sizeof(*presence));
-  if (presence == NULL) return 0;
+  state = (databind_compiler_service_native_state *)calloc(
+      count, sizeof(*state));
+  if (state == NULL) return 0;
 
   for (i = 0u; i < fields->data.list.count; ++i) {
     const Node *field = fields->data.list.items[i];
     const char *field_name;
     const char *bit_text;
     unsigned bit;
-    if (native_child(field, "is_optional") == NULL) continue;
+    if (native_child(field, semantic_flag) == NULL) continue;
     field_name = native_string(field, "name");
-    bit_text = native_string(field, "optional_bit_index");
+    bit_text = native_string(field, bit_field);
     if (field_name == NULL || !native_unsigned(bit_text, &bit)) {
-      native_presence_clear(presence, count);
+      native_state_clear(state, count);
       return 0;
     }
-    presence[index].field_name = native_strdup(field_name);
-    presence[index].bit = bit;
-    if (presence[index].field_name == NULL) {
-      native_presence_clear(presence, count);
+    state[index].field_name = native_strdup(field_name);
+    state[index].bit = bit;
+    if (state[index].field_name == NULL) {
+      native_state_clear(state, count);
       return 0;
     }
     ++index;
   }
 
-  *out_presence = presence;
+  *out_state = state;
   *out_count = count;
   return 1;
 }
@@ -363,10 +366,14 @@ static void native_operation_clear(
   free(operation->response_type);
   free(operation->request_type_identity);
   free(operation->response_type_identity);
-  native_presence_clear(
+  native_state_clear(
       operation->request_presence, operation->request_presence_count);
-  native_presence_clear(
+  native_state_clear(
+      operation->request_nulls, operation->request_null_count);
+  native_state_clear(
       operation->response_presence, operation->response_presence_count);
+  native_state_clear(
+      operation->response_nulls, operation->response_null_count);
   native_errors_clear(operation->errors, operation->error_count);
   memset(operation, 0, sizeof(*operation));
 }
@@ -419,14 +426,18 @@ static int native_operation_fill(
   out->response_type_identity =
       native_type_identity(schema_name, response_type);
 
-  if (!native_presence_build(
-          request_message,
-          &out->request_presence,
-          &out->request_presence_count) ||
-      !native_presence_build(
-          response_message,
-          &out->response_presence,
-          &out->response_presence_count) ||
+  if (!native_state_build(
+          request_message, "is_optional", "optional_bit_index",
+          &out->request_presence, &out->request_presence_count) ||
+      !native_state_build(
+          request_message, "is_nullable", "nullable_bit_index",
+          &out->request_nulls, &out->request_null_count) ||
+      !native_state_build(
+          response_message, "is_optional", "optional_bit_index",
+          &out->response_presence, &out->response_presence_count) ||
+      !native_state_build(
+          response_message, "is_nullable", "nullable_bit_index",
+          &out->response_nulls, &out->response_null_count) ||
       !native_errors_build(
           root, schema_name, operation_node,
           &out->errors, &out->error_count))
@@ -704,7 +715,7 @@ int databind_compiler_service_native_emit_reflection(
     if (fprintf(
             file,
             "CMETA_FUNCTION_METADATA_AS_ABI(\n"
-            "    %s, \"%s\", fallible, &cmeta_type_int, "
+            "    %s, \"%s\", unknown, &cmeta_type_int, "
             "CMETA_ABI_SCALAR,\n"
             "    (const %s_t *, request,\n"
             "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
@@ -760,7 +771,7 @@ int databind_compiler_service_native_emit_reflection(
           "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
           "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n"
           "CMETA_FUNCTION_METADATA_AS_ABI(\n"
-          "    %s, \"%s\", unknown, &cmeta_type_int, "
+          "    %s, \"%s\", fallible, &cmeta_type_int, "
           "CMETA_ABI_SCALAR,\n"
           "    (const %s_t *, request,\n"
           "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
@@ -805,33 +816,34 @@ int databind_compiler_service_native_emit_reflection(
   return 0;
 }
 
-static int native_emit_presence_array(
+static int native_emit_state_array(
     FILE *file,
     const char *symbol,
     const char *type_name,
     const char *suffix,
-    const databind_compiler_service_native_presence *presence,
+    const char *member_name,
+    const databind_compiler_service_native_state *state,
     size_t count) {
   size_t i;
   if (count == 0u) return 0;
   if (file == NULL || symbol == NULL || type_name == NULL ||
-      suffix == NULL || presence == NULL)
+      suffix == NULL || member_name == NULL || state == NULL)
     return -1;
 
   if (fprintf(
           file,
           "static const DataBindNativeStateBinding "
-          "%s__%s_presence[] = {\n",
+          "%s__%s[] = {\n",
           symbol, suffix) < 0)
     return -1;
 
   for (i = 0u; i < count; ++i) {
-    if (presence[i].field_name == NULL ||
+    if (state[i].field_name == NULL ||
         fprintf(
             file,
             "  {sizeof(DataBindNativeStateBinding), \"%s\", "
-            "offsetof(%s_t, _presence), %uu},\n",
-            presence[i].field_name, type_name, presence[i].bit) < 0)
+            "offsetof(%s_t, %s), %uu},\n",
+            state[i].field_name, type_name, member_name, state[i].bit) < 0)
       return -1;
   }
 
@@ -842,9 +854,13 @@ int databind_compiler_service_native_emit_binding(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
   const char *request_presence_expr;
+  const char *request_null_expr;
   const char *response_presence_expr;
+  const char *response_null_expr;
   char request_presence[640];
+  char request_nulls[640];
   char response_presence[640];
+  char response_nulls[640];
 
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
@@ -853,34 +869,62 @@ int databind_compiler_service_native_emit_binding(
     return -1;
   if (operation->error_count != 0u) return -1;
 
-  if (native_emit_presence_array(
-          file, operation->symbol, operation->request_type, "request",
+  if (native_emit_state_array(
+          file, operation->symbol, operation->request_type,
+          "request_presence", "_presence",
           operation->request_presence,
           operation->request_presence_count) != 0 ||
-      native_emit_presence_array(
-          file, operation->symbol, operation->response_type, "response",
+      native_emit_state_array(
+          file, operation->symbol, operation->request_type,
+          "request_nulls", "_nulls",
+          operation->request_nulls,
+          operation->request_null_count) != 0 ||
+      native_emit_state_array(
+          file, operation->symbol, operation->response_type,
+          "response_presence", "_presence",
           operation->response_presence,
-          operation->response_presence_count) != 0)
+          operation->response_presence_count) != 0 ||
+      native_emit_state_array(
+          file, operation->symbol, operation->response_type,
+          "response_nulls", "_nulls",
+          operation->response_nulls,
+          operation->response_null_count) != 0)
     return -1;
 
   if (operation->request_presence_count != 0u) {
-    if (snprintf(
-            request_presence, sizeof(request_presence),
-            "%s__request_presence", operation->symbol) <= 0)
+    if (snprintf(request_presence, sizeof(request_presence),
+                 "%s__request_presence", operation->symbol) <= 0)
       return -1;
     request_presence_expr = request_presence;
   } else {
     request_presence_expr = "NULL";
   }
 
+  if (operation->request_null_count != 0u) {
+    if (snprintf(request_nulls, sizeof(request_nulls),
+                 "%s__request_nulls", operation->symbol) <= 0)
+      return -1;
+    request_null_expr = request_nulls;
+  } else {
+    request_null_expr = "NULL";
+  }
+
   if (operation->response_presence_count != 0u) {
-    if (snprintf(
-            response_presence, sizeof(response_presence),
-            "%s__response_presence", operation->symbol) <= 0)
+    if (snprintf(response_presence, sizeof(response_presence),
+                 "%s__response_presence", operation->symbol) <= 0)
       return -1;
     response_presence_expr = response_presence;
   } else {
     response_presence_expr = "NULL";
+  }
+
+  if (operation->response_null_count != 0u) {
+    if (snprintf(response_nulls, sizeof(response_nulls),
+                 "%s__response_nulls", operation->symbol) <= 0)
+      return -1;
+    response_null_expr = response_nulls;
+  } else {
+    response_null_expr = "NULL";
   }
 
   return fprintf(
@@ -903,11 +947,11 @@ int databind_compiler_service_native_emit_binding(
              "  *request_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", request_data, %s, %zuu, NULL, 0u};\n"
+             "      \"%s\", request_data, %s, %zuu, %s, %zuu};\n"
              "  *response_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", response_data, %s, %zuu, NULL, 0u};\n"
+             "      \"%s\", response_data, %s, %zuu, %s, %zuu};\n"
              "  *service_out = (DataBindServiceNativeBinding){\n"
              "      sizeof(DataBindServiceNativeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
@@ -920,9 +964,13 @@ int databind_compiler_service_native_emit_binding(
              operation->request_type,
              request_presence_expr,
              operation->request_presence_count,
+             request_null_expr,
+             operation->request_null_count,
              operation->response_type,
              response_presence_expr,
              operation->response_presence_count,
+             response_null_expr,
+             operation->response_null_count,
              operation->symbol) < 0
              ? -1
              : 0;
