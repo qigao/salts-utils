@@ -11956,6 +11956,43 @@ static Node *data_bind_service_operation_node(DataBind *codec,
   return NULL;
 }
 
+static Node *data_bind_channel_node(
+    DataBind *codec, const char *channel_name) {
+  if (codec == NULL || codec->schema_root == NULL ||
+      channel_name == NULL)
+    return NULL;
+  return find_named_record(
+      codec->schema_root, "channels", channel_name);
+}
+
+static int fill_data_bind_channel(
+    Node *channel, DataBindChannel *out) {
+  size_t out_size;
+  const char *name;
+  const char *qualified_name;
+  const char *message_type;
+
+  if (channel == NULL || out == NULL) return 0;
+
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  name = get_string_val(find_child(channel, "name"));
+  qualified_name =
+      get_string_val(find_child(channel, "qualified_name"));
+  message_type =
+      get_string_val(find_child(channel, "message_type"));
+
+  DB_REFLECT_SET(DataBindChannel, out, out_size, size, out_size);
+  DB_REFLECT_SET(DataBindChannel, out, out_size, name, name);
+  DB_REFLECT_SET(DataBindChannel, out, out_size,
+                 qualified_name, qualified_name);
+  DB_REFLECT_SET(DataBindChannel, out, out_size,
+                 message_type, message_type);
+
+  return name != NULL && qualified_name != NULL &&
+         message_type != NULL;
+}
+
 static Node *data_bind_component_node(
     DataBind *codec, const char *component_name) {
   if (codec == NULL || codec->schema_root == NULL ||
@@ -11977,6 +12014,8 @@ data_bind_component_capability_kind_from_node(Node *capability) {
   const char *kind = get_string_val(find_child(capability, "kind"));
   if (kind != NULL && strcmp(kind, "service") == 0)
     return DATA_BIND_COMPONENT_CAPABILITY_SERVICE;
+  if (kind != NULL && strcmp(kind, "channel") == 0)
+    return DATA_BIND_COMPONENT_CAPABILITY_CHANNEL;
   return DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN;
 }
 
@@ -12207,6 +12246,46 @@ const char *data_bind_service_operation_error_at(
              : NULL;
 }
 
+size_t data_bind_channel_count(DataBind *codec) {
+  Node *channels;
+  if (codec == NULL || codec->schema_root == NULL) return 0u;
+  channels = find_child(codec->schema_root, "channels");
+  return channels != NULL && channels->type == NODE_LIST
+             ? channels->data.list.count
+             : 0u;
+}
+
+int data_bind_channel_at(
+    DataBind *codec, size_t index, DataBindChannel *out) {
+  Node *channels;
+  if (codec == NULL || codec->schema_root == NULL || out == NULL)
+    return 0;
+
+  channels = find_child(codec->schema_root, "channels");
+  if (channels == NULL || channels->type != NODE_LIST ||
+      index >= channels->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+
+  return fill_data_bind_channel(
+      channels->data.list.items[index], out);
+}
+
+int data_bind_channel_find(
+    DataBind *codec, const char *name, DataBindChannel *out) {
+  Node *channel;
+  if (codec == NULL || name == NULL || out == NULL) return 0;
+
+  channel = data_bind_channel_node(codec, name);
+  if (channel == NULL) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+
+  return fill_data_bind_channel(channel, out);
+}
+
 size_t data_bind_component_count(DataBind *codec) {
   Node *components;
   if (codec == NULL || codec->schema_root == NULL) return 0u;
@@ -12295,6 +12374,8 @@ const char *data_bind_component_capability_kind_name(
   switch (kind) {
   case DATA_BIND_COMPONENT_CAPABILITY_SERVICE:
     return "service";
+  case DATA_BIND_COMPONENT_CAPABILITY_CHANNEL:
+    return "channel";
   case DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN:
   default:
     return "unknown";
