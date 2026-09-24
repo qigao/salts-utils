@@ -1,0 +1,17 @@
+schema MultiServicePlugin [version(1)];
+
+message Request {
+    uint32 id;
+}
+
+message Response {
+    uint32 value;
+}
+
+service First {
+    Read: Request -> Response;
+}
+
+service Second {
+    Write: Request -> Response;
+}

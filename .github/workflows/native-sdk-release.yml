@@ -193,6 +193,16 @@ jobs:
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
+
+          cmake -S plugin/tests/package_config/plugin_abi \
+            -B build/plugin-abi-installed -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DCMAKE_PREFIX_PATH="$prefix"
+          cmake --build build/plugin-abi-installed --parallel 2
+          ./build/plugin-abi-installed/plugin_abi_installed_consumer
+
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -387,6 +397,19 @@ jobs:
           cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
           cmake --install build\native-sdk
+          if errorlevel 1 exit /b 1
+
+      - name: Verify installed PluginABI consumer
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          if errorlevel 1 exit /b 1
+          cmake -S plugin\tests\package_config\plugin_abi -B build\plugin-abi-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          if errorlevel 1 exit /b 1
+          cmake --build build\plugin-abi-installed --parallel 2
+          if errorlevel 1 exit /b 1
+          build\plugin-abi-installed\plugin_abi_installed_consumer.exe
           if errorlevel 1 exit /b 1
 
       - name: Report and verify compiler cache statistics
