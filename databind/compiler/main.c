@@ -11,6 +11,9 @@
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
+ *              [--projections plugin]
+ *              [--component <Schema.Component>]
+ *              [--artifact-name <name>] [--artifact-version M.m.p]
  * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
  * and DSL outputs remain part of the built-in C generation path only.
  */
@@ -21,6 +24,7 @@
 #include <string.h>
 #include "cmd_arger.h"
 #include "compiler_core.h"
+#include "projection_frontend.h"
 #include "salts_fs.h"
 
 static const char *TBE_COMPILER_LANG_OPTION_LIST =
@@ -78,8 +82,14 @@ int main(int argc, char **argv) {
     char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
+    char    *projection_names = NULL;
+    char    *component_id = NULL;
+    char    *artifact_name = NULL;
+    char    *artifact_version = NULL;
     int64_t  lang_enum     = TBE_COMPILER_LANG_C;
     char resource_dir[SALTS_FS_MAX_PATH];
+    char projection_error[256];
+    databind_compiler_projection_frontend_plan projection_plan = {0};
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
         fprintf(stderr, "Failed to locate databindc resource directory\n");
@@ -107,6 +117,18 @@ int main(int argc, char **argv) {
                                  "Generate the C Wasm guest adapter source"),
         cmd_arger_desc_string_sh(&dsl_output_path, "dsl-output", "d",
                                  "Generate DSL type declarations (.rfl file)"),
+        cmd_arger_desc_string(
+            &projection_names, "projections",
+            "Comma-separated artifact projections (currently: plugin)"),
+        cmd_arger_desc_string(
+            &component_id, "component",
+            "Canonical qualified Component identity (Schema.Component)"),
+        cmd_arger_desc_string(
+            &artifact_name, "artifact-name",
+            "Stable artifact basename used for projection outputs"),
+        cmd_arger_desc_string(
+            &artifact_version, "artifact-version",
+            "Artifact version as MAJOR.MINOR.PATCH"),
     };
 
     cmd_arger_parse(optional_args,
@@ -122,6 +144,46 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (projection_names == NULL &&
+        (component_id != NULL || artifact_name != NULL ||
+         artifact_version != NULL)) {
+        fprintf(stderr,
+                "--component/--artifact-name/--artifact-version require "
+                "--projections\n");
+        return 1;
+    }
+
+    if (projection_names != NULL) {
+        databind_compiler_projection_frontend_input projection_input = {
+            .projections = projection_names,
+            .component_id = component_id,
+            .artifact_name = artifact_name,
+            .artifact_version = artifact_version,
+            .output_path = output_path,
+            .source_output_path = source_output_path,
+            .lua_output_path = lua_output_path,
+            .guest_output_path = guest_output_path,
+            .dsl_output_path = dsl_output_path,
+        };
+
+        if (lang_enum != TBE_COMPILER_LANG_C || template_path != NULL) {
+            fprintf(stderr,
+                    "Artifact projections currently require the built-in C "
+                    "renderer\n");
+            return 1;
+        }
+
+        if (databind_compiler_projection_frontend_build(
+                &projection_input, &projection_plan,
+                projection_error, sizeof(projection_error)) != 0) {
+            fprintf(stderr, "Invalid projection selection: %s\n",
+                    projection_error[0] != '\0'
+                        ? projection_error
+                        : "unknown projection error");
+            return 1;
+        }
+    }
+
     tbe_compiler_options_t options = {
         .schema_path = schema_path,
         .template_path = template_path,
@@ -132,6 +194,10 @@ int main(int argc, char **argv) {
         .dsl_output_path = dsl_output_path,
         .resource_dir = resource_dir,
         .lang_enum = lang_enum,
+        .projection_requests = projection_plan.requests,
+        .projection_count = projection_plan.request_count,
+        .projection_backends = projection_plan.backends,
+        .projection_backend_count = projection_plan.backend_count,
     };
 
     int res = tbe_compiler_run(&options);
