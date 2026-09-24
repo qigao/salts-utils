@@ -182,6 +182,9 @@ cmake_add_test(test_databind_projection_frontend
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
+  DEFS
+    DATABIND_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json"
+    DATABIND_PROJECTION_CONFIG_INVALID_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_invalid.json"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/schema/src
     ${CMAKE_CURRENT_SOURCE_DIR}
