@@ -152,6 +152,32 @@ static int projection_output_in_use(
   return 0;
 }
 
+static int method_plan_symbol_prefix(
+    const char *artifact_name, char *out, size_t out_size) {
+  static const char prefix[] = "databind_";
+  size_t used = sizeof(prefix) - 1u;
+  size_t i;
+  if (artifact_name == NULL || out == NULL ||
+      out_size <= used + 1u)
+    return 0;
+  memcpy(out, prefix, used);
+  for (i = 0u; artifact_name[i] != '\0'; ++i) {
+    unsigned char ch = (unsigned char)artifact_name[i];
+    if (used + 1u >= out_size) return 0;
+    if ((ch >= 'A' && ch <= 'Z') ||
+        (ch >= 'a' && ch <= 'z') ||
+        (ch >= '0' && ch <= '9') || ch == '_')
+      out[used++] = (char)ch;
+    else if (ch == '-' || ch == '.')
+      out[used++] = '_';
+    else
+      return 0;
+  }
+  if (used == sizeof(prefix) - 1u) return 0;
+  out[used] = '\0';
+  return 1;
+}
+
 static int add_method_plan(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
@@ -164,6 +190,14 @@ static int add_method_plan(
 
   if (ensure_artifact_context(input, out, error, error_size) != 0)
     return -1;
+  if (out->method_plan_symbol_prefix[0] == '\0' &&
+      !method_plan_symbol_prefix(
+          input->artifact_name,
+          out->method_plan_symbol_prefix,
+          sizeof(out->method_plan_symbol_prefix)))
+    return frontend_error(
+        error, error_size,
+        "Artifact name cannot form a MethodPlan C symbol prefix");
 
   if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
     path = out->http_projection_header;
@@ -191,12 +225,27 @@ static int add_method_plan(
         error, error_size,
         "Derived projection outputs collide with another compiler output");
 
-  out->requests[out->request_count++] =
-      (databind_compiler_projection_request){
-          .kind = kind,
-          .output = path,
-          .config = NULL,
-      };
+  if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
+    out->http = (databind_compiler_http_projection_config){
+        .symbol_prefix = out->method_plan_symbol_prefix,
+    };
+    out->requests[out->request_count++] =
+        (databind_compiler_projection_request){
+            .kind = kind,
+            .output = path,
+            .config = &out->http,
+        };
+  } else {
+    out->rpc = (databind_compiler_rpc_projection_config){
+        .symbol_prefix = out->method_plan_symbol_prefix,
+    };
+    out->requests[out->request_count++] =
+        (databind_compiler_projection_request){
+            .kind = kind,
+            .output = path,
+            .config = &out->rpc,
+        };
+  }
   out->backends[out->backend_count++] = backend;
   return 0;
 }
