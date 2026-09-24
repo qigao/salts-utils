@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int write_header(
     const char *path,
@@ -79,6 +80,15 @@ int main(int argc, char **argv) {
   if (tbe_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0)
     goto cleanup;
   if (databind_compiler_service_native_build(root, &ir) != 0)
+    goto cleanup;
+  if (ir.operation_count != 3u ||
+      strcmp(ir.operations[0].symbol,
+             "databind_13_ServiceNative_4_Calc_3_Add") != 0 ||
+      strcmp(ir.operations[1].symbol,
+             "databind_13_ServiceNative_3_A_B_1_C") != 0 ||
+      strcmp(ir.operations[2].symbol,
+             "databind_13_ServiceNative_1_A_3_B_C") != 0 ||
+      strcmp(ir.operations[1].symbol, ir.operations[2].symbol) == 0)
     goto cleanup;
   if (!write_header(argv[2], argv[4], &ir) ||
       !write_source(argv[3], argv[2], &ir))
