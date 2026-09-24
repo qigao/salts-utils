@@ -749,6 +749,7 @@ static int typed_field_schema_matches(DataBind *codec, const TbeTypedField *fiel
   int descriptor_optional = (field->flags & TBE_TYPED_FIELD_OPTIONAL) != 0;
   int descriptor_offset = (field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0;
   if (field->name == NULL || schema->name == NULL || strcmp(field->name, schema->name) != 0 ||
+      schema->is_nullable != 0 ||
       descriptor_optional != (schema->is_optional != 0) ||
       descriptor_offset != (schema->has_offset != 0) ||
       (descriptor_offset && field->wire_offset != schema->offset))
@@ -2467,7 +2468,7 @@ static int typed_native_schema_field_matches(DataBind *codec, const cmeta_data_d
   int has_wire_offset;
   if (native == NULL || wire == NULL || schema == NULL || !typed_nonempty(wire->name) ||
       !typed_nonempty(schema->name) || strcmp(wire->name, schema->name) != 0 ||
-      schema->is_optional ||
+      schema->is_optional || schema->is_nullable ||
       (wire->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u)
     return 0;
   has_wire_offset = (wire->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0;
