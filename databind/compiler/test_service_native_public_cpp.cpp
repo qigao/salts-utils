@@ -7,7 +7,7 @@ using add_fn = int (*)(
     AddResponse_t *response);
 
 static_assert(
-    std::is_same_v<decltype(&service_native_calc_add), add_fn>,
+    std::is_same_v<decltype(&databind_13_ServiceNative_4_Calc_3_Add), add_fn>,
     "generated Service declaration must preserve the canonical native C ABI");
 
 int main() {
