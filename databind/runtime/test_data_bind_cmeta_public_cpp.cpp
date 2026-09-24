@@ -5,6 +5,7 @@
 
 static_assert(std::is_standard_layout_v<DataBindBindingAddress>);
 static_assert(std::is_standard_layout_v<DataBindNativeTypeBinding>);
+static_assert(std::is_standard_layout_v<DataBindServiceExecutionAdapter>);
 static_assert(std::is_standard_layout_v<DataBindServiceNativeBinding>);
 static_assert(std::is_standard_layout_v<DataBindBindingPlanEntry>);
 static_assert(std::is_standard_layout_v<DataBindBindingPlanDiagnostic>);
