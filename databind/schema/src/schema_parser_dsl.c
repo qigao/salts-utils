@@ -721,11 +721,15 @@ static int annotate_optional_fields(Node *root) {
                 }
 
                 if (nullable_count > 0) {
+                    char offset_str[32];
                     if (annotate_add_true(record, "has_nullable_fields") != 0) return -1;
                     snprintf(count_str, sizeof(count_str), "%zu", nullable_count);
                     if (annotate_add_string(record, "nullable_field_count", count_str) != 0) return -1;
                     snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", null_bitmap_bytes);
                     if (annotate_add_string(record, "null_bitmap_bytes", bitmap_size_str) != 0)
+                        return -1;
+                    snprintf(offset_str, sizeof(offset_str), "%zu", presence_bitmap_bytes);
+                    if (annotate_add_string(record, "null_bitmap_offset", offset_str) != 0)
                         return -1;
                 }
 
