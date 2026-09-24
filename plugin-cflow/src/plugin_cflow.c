@@ -124,6 +124,14 @@ salts_plugin_status salts_plugin_cflow_publisher_release(
     }
 
     status = salts_plugin_registry_release(registry, &lease);
-    plugin_cflow_zero_handle(handle);
+    if (status == SALTS_PLUGIN_OK)
+        plugin_cflow_zero_handle(handle);
+    else {
+        /*
+         * Publisher ownership has already been discharged, but retain the
+         * registry/lease token so the caller can retry lease release.
+         */
+        handle->publisher = (cflow_publisher){0};
+    }
     return status;
 }
