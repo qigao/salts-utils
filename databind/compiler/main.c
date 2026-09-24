@@ -12,6 +12,7 @@
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
  *              [--projections plugin,http,rpc]
+ *              [--projection-config <file.json>]
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
  * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
@@ -83,6 +84,7 @@ int main(int argc, char **argv) {
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
     char    *projection_names = NULL;
+    char    *projection_config_path = NULL;
     char    *component_id = NULL;
     char    *artifact_name = NULL;
     char    *artifact_version = NULL;
@@ -121,6 +123,9 @@ int main(int argc, char **argv) {
             &projection_names, "projections",
             "Comma-separated artifact projections (plugin,http,rpc)"),
         cmd_arger_desc_string(
+            &projection_config_path, "projection-config",
+            "External JSON transport projection config"),
+        cmd_arger_desc_string(
             &component_id, "component",
             "Canonical qualified Component identity (Schema.Component)"),
         cmd_arger_desc_string(
@@ -146,10 +151,10 @@ int main(int argc, char **argv) {
 
     if (projection_names == NULL &&
         (component_id != NULL || artifact_name != NULL ||
-         artifact_version != NULL)) {
+         artifact_version != NULL || projection_config_path != NULL)) {
         fprintf(stderr,
-                "--component/--artifact-name/--artifact-version require "
-                "--projections\n");
+                "--component/--artifact-name/--artifact-version/"
+                "--projection-config require --projections\n");
         return 1;
     }
 
@@ -159,6 +164,7 @@ int main(int argc, char **argv) {
             .component_id = component_id,
             .artifact_name = artifact_name,
             .artifact_version = artifact_version,
+            .projection_config_path = projection_config_path,
             .output_path = output_path,
             .source_output_path = source_output_path,
             .lua_output_path = lua_output_path,
@@ -180,6 +186,7 @@ int main(int argc, char **argv) {
                     projection_error[0] != '\0'
                         ? projection_error
                         : "unknown projection error");
+            databind_compiler_projection_frontend_dispose(&projection_plan);
             return 1;
         }
     }
@@ -201,5 +208,6 @@ int main(int argc, char **argv) {
     };
 
     int res = tbe_compiler_run(&options);
+    databind_compiler_projection_frontend_dispose(&projection_plan);
     return res;
 }
