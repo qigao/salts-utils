@@ -224,7 +224,8 @@ static DataBindStatus typed_nullable_format_supported(
     const TbeTypedType *type, DataBindFormat format, DataBindError *error) {
   if (!typed_type_has_nullable(type) ||
       format == DATA_BIND_FORMAT_JSON ||
-      format == DATA_BIND_FORMAT_YAML)
+      format == DATA_BIND_FORMAT_YAML ||
+      format == DATA_BIND_FORMAT_BINARY)
     return DATA_BIND_OK;
   return typed_error(
       error, DATA_BIND_ERR_SCHEMA, type != NULL ? type->name : NULL,
@@ -2806,15 +2807,28 @@ static DataBindStatus typed_read_fixed(const TbeTypedType *type, const uint8_t *
                        "Binary input is shorter than the fixed block");
   if (type->presence_size != 0)
     memcpy((uint8_t *)object + type->presence_offset, data, type->presence_size);
+  if (type->null_size != 0)
+    memcpy((uint8_t *)object + type->null_offset,
+           data + type->presence_size, type->null_size);
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     uint8_t *output = (uint8_t *)object + field->offset;
     const uint8_t *source;
     size_t j;
     size_t element_wire_size;
+    int present;
+    int is_null;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
     source = data + field->wire_offset;
-    if (!typed_optional_present(type, object, field)) continue;
+    present = typed_optional_present(type, object, field);
+    is_null = typed_nullable_is_null(type, object, field);
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       DataBindStatus status =
           typed_read_fixed(field->object_type, source, len - field->wire_offset, output, error);
@@ -2858,6 +2872,10 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
     const TbeTypedField *field = &type->fields[i];
     uint8_t *output = (uint8_t *)object + field->offset;
     int present = typed_optional_present(type, object, field);
+    int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed null state is set while optional field is absent");
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       vec_t *vec = (vec_t *)output;
       uint16_t block_length;
@@ -2876,7 +2894,10 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
           !typed_size_fits(cursor, payload_size, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary group payload is invalid");
-      if (present) {
+      if (is_null && count != 0u)
+        return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
+                           "Binary NULL group payload must be empty");
+      if (present && !is_null) {
         if (!typed_multiply_fits(count, field->element_size, &host_payload_size))
           return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                              "Typed group size exceeds the host address space");
@@ -2904,12 +2925,15 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
       if (!typed_size_fits(cursor, value_size, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary variable-data payload is truncated");
-      if (present && field->kind == TBE_TYPED_STRING) {
+      if (is_null && value_size != 0u)
+        return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
+                           "Binary NULL variable-data payload must be empty");
+      if (present && !is_null && field->kind == TBE_TYPED_STRING) {
         *(tstr *)output = tstr_dup_len((const char *)data + cursor, value_size);
         if (*(tstr *)output == NULL)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                              "Out of memory copying typed string");
-      } else if (present) {
+      } else if (present && !is_null) {
         vec_t *vec = (vec_t *)output;
         if (vec_resize(vec, value_size) != STL_OK)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
