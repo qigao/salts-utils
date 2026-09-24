@@ -3,6 +3,7 @@
 #include "schema_size.h"
 #include "schema_enum.h"
 #include "schema_service.h"
+#include "schema_channel.h"
 #include "schema_component.h"
 #include "schema_lexer.h"
 #include "schema_types.h"
@@ -1190,6 +1191,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     Node *groups_list;
     Node *enums_list;
     Node *services_list;
+    Node *channels_list;
     Node *components_list;
     Node *unions_list;
 
@@ -1201,10 +1203,13 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     enums_list = create_node_list("enums");
     unions_list = create_node_list("unions");
     services_list = create_node_list("services");
+    channels_list = create_node_list("channels");
     components_list = create_node_list("components");
     if (!temp_root || !messages_list || !composites_list || !groups_list ||
-        !enums_list || !unions_list || !services_list || !components_list) {
+        !enums_list || !unions_list || !services_list || !channels_list ||
+        !components_list) {
         node_free(components_list);
+        node_free(channels_list);
         node_free(services_list);
         node_free(unions_list);
         node_free(enums_list);
@@ -1221,7 +1226,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     {
         Node *root_lists[] = {
             messages_list, composites_list, groups_list, enums_list,
-            unions_list, services_list, components_list
+            unions_list, services_list, channels_list, components_list
         };
         size_t list_count = sizeof(root_lists) / sizeof(root_lists[0]);
         size_t i;
@@ -1250,6 +1255,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     ctx.enums_list   = enums_list;
     ctx.unions_list  = unions_list;
     ctx.services_list = services_list;
+    ctx.channels_list = channels_list;
     ctx.components_list = components_list;
     ctx.cur_service = NULL;
     ctx.cur_operations = NULL;
@@ -1349,10 +1355,10 @@ static int annotate_schema_tree(Node *root) {
 }
 
 static int merge_schema_into_root(Node *root, Node *parsed) {
-    Node *generated_children[8];
+    Node *generated_children[9];
     const char *generated_names[] = {
         "schema", "messages", "composites", "groups",
-        "enums", "unions", "services", "components"
+        "enums", "unions", "services", "channels", "components"
     };
 
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
@@ -1369,6 +1375,7 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
         map_remove_named_children(root, generated_names[i]);
         if (generated_children[i]) {
             if ((strcmp(generated_names[i], "services") == 0 ||
+                 strcmp(generated_names[i], "channels") == 0 ||
                  strcmp(generated_names[i], "components") == 0) &&
                 generated_children[i]->type == NODE_LIST &&
                 generated_children[i]->data.list.count == 0u) {
@@ -1428,6 +1435,11 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     }
 
     if (!schema_validate_services(parsed, err)) {
+        node_free(parsed);
+        return -1;
+    }
+
+    if (!schema_validate_channels(parsed, err)) {
         node_free(parsed);
         return -1;
     }
