@@ -258,6 +258,98 @@ static char *native_type_identity(
   return out;
 }
 
+static void native_errors_clear(
+    databind_compiler_service_native_error *errors,
+    size_t count) {
+  size_t i;
+  if (errors == NULL) return;
+  for (i = 0u; i < count; ++i) {
+    free(errors[i].type_name);
+    free(errors[i].type_identity);
+  }
+  free(errors);
+}
+
+static int native_error_message_trivially_owned(
+    const Node *root, const char *type_name) {
+  const Node *message = native_message(root, type_name);
+  const Node *fields;
+  size_t i;
+
+  if (message == NULL ||
+      native_child(message, "cmeta_graph_supported") == NULL)
+    return 0;
+
+  fields = native_list(message, "fields");
+  if (fields == NULL) return 0;
+
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const char *requirement =
+        native_string(fields->data.list.items[i],
+                      "cmeta_native_requirement");
+    if (requirement == NULL ||
+        (strcmp(requirement, "fixed_value") != 0 &&
+         strcmp(requirement, "enum_domain") != 0))
+      return 0;
+  }
+  return 1;
+}
+
+static int native_errors_build(
+    const Node *root,
+    const char *schema_name,
+    const Node *operation_node,
+    databind_compiler_service_native_error **out_errors,
+    size_t *out_count) {
+  const Node *errors;
+  databind_compiler_service_native_error *result = NULL;
+  size_t i;
+
+  if (out_errors == NULL || out_count == NULL ||
+      root == NULL || schema_name == NULL || operation_node == NULL)
+    return 0;
+
+  *out_errors = NULL;
+  *out_count = 0u;
+  errors = native_list(operation_node, "errors");
+  if (errors == NULL || errors->data.list.count == 0u)
+    return 1;
+
+  result = (databind_compiler_service_native_error *)calloc(
+      errors->data.list.count, sizeof(*result));
+  if (result == NULL) return 0;
+
+  for (i = 0u; i < errors->data.list.count; ++i) {
+    const Node *item = errors->data.list.items[i];
+    const char *type_name =
+        item != NULL && item->type == NODE_STRING
+            ? item->data.string_val
+            : NULL;
+
+    if (type_name == NULL ||
+        !native_error_message_trivially_owned(root, type_name)) {
+      native_errors_clear(result, errors->data.list.count);
+      return 0;
+    }
+
+    result[i].type_name = native_strdup(type_name);
+    result[i].type_identity =
+        native_type_identity(schema_name, type_name);
+    result[i].kind_value = (unsigned)(i + 1u);
+
+    if (result[i].type_name == NULL ||
+        result[i].type_identity == NULL) {
+      native_errors_clear(result, errors->data.list.count);
+      return 0;
+    }
+  }
+
+  *out_errors = result;
+  *out_count = errors->data.list.count;
+  return 1;
+}
+
+
 static void native_operation_clear(
     databind_compiler_service_native_operation *operation) {
   if (operation == NULL) return;
@@ -275,6 +367,7 @@ static void native_operation_clear(
       operation->request_presence, operation->request_presence_count);
   native_presence_clear(
       operation->response_presence, operation->response_presence_count);
+  native_errors_clear(operation->errors, operation->error_count);
   memset(operation, 0, sizeof(*operation));
 }
 
@@ -333,7 +426,10 @@ static int native_operation_fill(
       !native_presence_build(
           response_message,
           &out->response_presence,
-          &out->response_presence_count))
+          &out->response_presence_count) ||
+      !native_errors_build(
+          root, schema_name, operation_node,
+          &out->errors, &out->error_count))
     return 0;
 
   return out->schema_name != NULL &&
@@ -437,18 +533,75 @@ int databind_compiler_service_native_build(
 int databind_compiler_service_native_emit_prototype(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
+  size_t i;
+
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
       operation->request_type == NULL ||
       operation->response_type == NULL)
     return -1;
 
+  if (operation->error_count == 0u) {
+    return fprintf(
+               file,
+               "int %s(const %s_t *request, %s_t *response);\n",
+               operation->symbol,
+               operation->request_type,
+               operation->response_type) < 0
+               ? -1
+               : 0;
+  }
+
+  if (operation->errors == NULL) return -1;
+
+  if (fprintf(
+          file,
+          "typedef uint32_t %s__error_kind;\n"
+          "enum {\n"
+          "  %s__ERROR_NONE = 0",
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i) {
+    if (operation->errors[i].type_name == NULL ||
+        operation->errors[i].kind_value != (unsigned)(i + 1u) ||
+        fprintf(
+            file,
+            ",\n  %s__ERROR_%zu = %uu",
+            operation->symbol, i + 1u,
+            operation->errors[i].kind_value) < 0)
+      return -1;
+  }
+
+  if (fprintf(
+          file,
+          "\n};\n"
+          "#define %s__ERROR_INIT {0}\n"
+          "typedef struct %s__error {\n"
+          "  %s__error_kind kind;\n"
+          "  union {\n",
+          operation->symbol,
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "    %s_t error_%zu;\n",
+            operation->errors[i].type_name, i + 1u) < 0)
+      return -1;
+
   return fprintf(
              file,
-             "int %s(const %s_t *request, %s_t *response);\n",
+             "  } payload;\n"
+             "} %s__error;\n"
+             "int %s(const %s_t *request, %s_t *response, "
+             "%s__error *error);\n",
+             operation->symbol,
              operation->symbol,
              operation->request_type,
-             operation->response_type) < 0
+             operation->response_type,
+             operation->symbol) < 0
              ? -1
              : 0;
 }
@@ -465,6 +618,127 @@ int databind_compiler_service_native_emit_reflection(
       operation->request_type_identity == NULL ||
       operation->response_type_identity == NULL)
     return -1;
+
+  if (operation->error_count != 0u) {
+    size_t i;
+    if (operation->errors == NULL) return -1;
+    for (i = 0u; i < operation->error_count; ++i)
+      if (operation->errors[i].type_name == NULL ||
+          operation->errors[i].type_identity == NULL)
+        return -1;
+
+    if (fprintf(
+            file,
+            "static const cmeta_type_identity %s__request_id =\n"
+            "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+            "static const cmeta_type_desc %s__request_type = {\n"
+            "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+            "    CMETA_T_OBJECT, NULL, NULL, &%s__request_id};\n"
+            "static const cmeta_type_desc %s__request_ptr_type = {\n"
+            "    \"const %s_t *\", sizeof(const %s_t *), "
+            "_Alignof(const %s_t *),\n"
+            "    CMETA_T_POINTER, &%s__request_type, NULL, NULL};\n",
+            operation->symbol,
+            operation->request_type_identity,
+            operation->symbol,
+            operation->request_type,
+            operation->request_type,
+            operation->request_type,
+            operation->symbol,
+            operation->symbol,
+            operation->request_type,
+            operation->request_type,
+            operation->request_type,
+            operation->symbol) < 0)
+      return -1;
+
+    if (fprintf(
+            file,
+            "static const cmeta_type_identity %s__response_id =\n"
+            "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+            "static const cmeta_type_desc %s__response_type = {\n"
+            "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+            "    CMETA_T_OBJECT, NULL, NULL, &%s__response_id};\n"
+            "static const cmeta_type_desc %s__response_ptr_type = {\n"
+            "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
+            "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n",
+            operation->symbol,
+            operation->response_type_identity,
+            operation->symbol,
+            operation->response_type,
+            operation->response_type,
+            operation->response_type,
+            operation->symbol,
+            operation->symbol,
+            operation->response_type,
+            operation->response_type,
+            operation->response_type,
+            operation->symbol) < 0)
+      return -1;
+
+    if (fprintf(
+            file,
+            "static const cmeta_type_identity %s__error_id =\n"
+            "    CMETA_TYPE_ID_ATOM_INIT(\"tbe.native.%s.error_t\");\n"
+            "static const cmeta_type_desc %s__error_type = {\n"
+            "    \"%s__error\", sizeof(%s__error), _Alignof(%s__error),\n"
+            "    CMETA_T_OBJECT, NULL, NULL, &%s__error_id};\n"
+            "static const cmeta_type_desc %s__error_ptr_type = {\n"
+            "    \"%s__error *\", sizeof(%s__error *), "
+            "_Alignof(%s__error *),\n"
+            "    CMETA_T_POINTER, &%s__error_type, NULL, NULL};\n",
+            operation->symbol,
+            operation->qualified_operation,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol) < 0)
+      return -1;
+
+    if (fprintf(
+            file,
+            "CMETA_FUNCTION_METADATA_AS_ABI(\n"
+            "    %s, \"%s\", fallible, &cmeta_type_int, "
+            "CMETA_ABI_SCALAR,\n"
+            "    (const %s_t *, request,\n"
+            "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
+            "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+            "    (%s_t *, response,\n"
+            "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+            "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+            "    (%s__error *, error,\n"
+            "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+            "     &%s__error_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
+            operation->symbol,
+            operation->qualified_operation,
+            operation->request_type,
+            operation->symbol,
+            operation->response_type,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol) < 0)
+      return -1;
+
+    if (emit_accessors &&
+        fprintf(
+            file,
+            "const cmeta_function_desc *%s__databind_function(void) {\n"
+            "  return &%s__function_meta;\n"
+            "}\n"
+            "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+            "  return &%s__function_abi_meta;\n"
+            "}\n",
+            operation->symbol, operation->symbol,
+            operation->symbol, operation->symbol) < 0)
+      return -1;
+    return 0;
+  }
 
   if (fprintf(
           file,
@@ -577,6 +851,7 @@ int databind_compiler_service_native_emit_binding(
       operation->request_type == NULL ||
       operation->response_type == NULL)
     return -1;
+  if (operation->error_count != 0u) return -1;
 
   if (native_emit_presence_array(
           file, operation->symbol, operation->request_type, "request",
