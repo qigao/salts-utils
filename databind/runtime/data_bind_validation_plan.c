@@ -109,26 +109,48 @@ static DataBindStatus validation_schema_error(
   return validation_error(error, DATA_BIND_ERR_SCHEMA, path, message);
 }
 
-static DataBindStatus validation_type_error(
-    const DataBindValidationPlan *plan,
-    const DataBindValidationRule *rule,
+static int validation_path_field(
+    char out[260], const char *prefix, const char *field_name) {
+  int written = snprintf(
+      out, 260u, "%s.%s",
+      prefix != NULL ? prefix : "",
+      field_name != NULL ? field_name : "");
+  return written >= 0 && (size_t)written < 260u;
+}
+
+static int validation_path_index(
+    char out[260], const char *field_path, size_t index) {
+  int written = snprintf(
+      out, 260u, "%s[%zu]",
+      field_path != NULL ? field_path : "", index);
+  return written >= 0 && (size_t)written < 260u;
+}
+
+static DataBindStatus validation_path_overflow(
+    DataBindError *error, const char *prefix) {
+  return validation_error(
+      error, DATA_BIND_ERR_LIMIT, prefix, 
+      "Validation diagnostic path exceeds the bounded capacity");
+}
+
+static DataBindStatus validation_type_error_at(
+    const char *prefix, const DataBindValidationRule *rule,
     DataBindError *error, const char *message) {
   char path[260];
-  validation_path(path,
-                  plan != NULL ? plan->type_name : NULL,
-                  rule != NULL ? rule->field_name : NULL);
+  if (!validation_path_field(
+          path, prefix, rule != NULL ? rule->field_name : NULL))
+    return validation_path_overflow(error, prefix);
   return validation_error(
       error, DATA_BIND_ERR_TYPE_MISMATCH, path, message);
 }
 
-static DataBindStatus validation_rule_error(
-    const DataBindValidationPlan *plan,
-    const DataBindValidationRule *rule,
+static DataBindStatus validation_rule_error_at(
+    const char *prefix, const DataBindValidationRule *rule,
     DataBindError *error, const char *message) {
   char path[260];
-  validation_path(path,
-                  plan != NULL ? plan->type_name : NULL,
-                  rule != NULL ? rule->field_name : NULL);
+  if (!validation_path_field(
+          path, prefix, rule != NULL ? rule->field_name : NULL))
+    return validation_path_overflow(error, prefix);
   return validation_error(
       error, DATA_BIND_ERR_VALIDATION, path, message);
 }
@@ -672,12 +694,13 @@ static DataBindStatus validation_value_size(
   return DATA_BIND_ERR_TYPE_MISMATCH;
 }
 
-static DataBindStatus validation_pattern_status(
+static DataBindStatus validation_pattern_status_at(
     re_status_t status, DataBindError *error,
-    const DataBindValidationPlan *plan,
-    const DataBindValidationRule *rule) {
+    const char *prefix, const DataBindValidationRule *rule) {
   char path[260];
-  validation_path(path, plan->type_name, rule->field_name);
+  if (!validation_path_field(
+          path, prefix, rule != NULL ? rule->field_name : NULL))
+    return validation_path_overflow(error, prefix);
   if (status == RE_STATUS_NO_MATCH)
     return validation_error(
         error, DATA_BIND_ERR_VALIDATION, path,
@@ -694,19 +717,22 @@ static DataBindStatus validation_pattern_status(
       "Pattern evaluation failed");
 }
 
-DataBindStatus data_bind_validation_plan_validate(
-    const DataBindValidationPlan *plan,
-    const DataBindValue *value, DataBindError *error) {
+static DataBindStatus validation_plan_validate_at(
+    const DataBindValidationPlan *plan, const DataBindValue *value,
+    const char *prefix, unsigned depth, DataBindError *error) {
   size_t i;
 
-  if (plan == NULL || value == NULL)
+  if (plan == NULL || value == NULL || prefix == NULL)
     return validation_error(
-        error, DATA_BIND_ERR_INVALID_ARG, NULL,
-        "Invalid ValidationPlan execution arguments");
+        error, DATA_BIND_ERR_INVALID_ARG, prefix,
+        "Invalid nested ValidationPlan execution arguments");
+  if (depth > DATA_BIND_VALIDATION_MAX_DEPTH)
+    return validation_error(
+        error, DATA_BIND_ERR_LIMIT, prefix,
+        "ValidationPlan execution depth exceeds the bounded limit");
   if (data_bind_value_kind(value) != DATA_BIND_VALUE_OBJECT)
     return validation_error(
-        error, DATA_BIND_ERR_TYPE_MISMATCH,
-        plan->type_name,
+        error, DATA_BIND_ERR_TYPE_MISMATCH, prefix,
         "ValidationPlan requires an object value");
 
   for (i = 0u; i < plan->rule_count; ++i) {
@@ -726,15 +752,15 @@ DataBindStatus data_bind_validation_plan_validate(
       DataBindStatus status =
           validation_numeric_value(rule, field, &comparison);
       if (status != DATA_BIND_OK)
-        return validation_type_error(
-            plan, rule, error,
+        return validation_type_error_at(
+            prefix, rule, error,
             "Numeric constraint value has the wrong runtime type");
       if ((rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
            comparison < 0) ||
           (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX &&
            comparison > 0))
-        return validation_rule_error(
-            plan, rule, error,
+        return validation_rule_error_at(
+            prefix, rule, error,
             rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN
                 ? "Value is below @Min"
                 : "Value exceeds @Max");
@@ -746,13 +772,13 @@ DataBindStatus data_bind_validation_plan_validate(
       DataBindStatus status =
           validation_value_size(field, &actual);
       if (status != DATA_BIND_OK)
-        return validation_type_error(
-            plan, rule, error,
+        return validation_type_error_at(
+            prefix, rule, error,
             "@Size value has the wrong runtime type");
       if ((rule->has_min && actual < rule->min_size) ||
           (rule->has_max && actual > rule->max_size))
-        return validation_rule_error(
-            plan, rule, error,
+        return validation_rule_error_at(
+            prefix, rule, error,
             "Value size violates @Size");
       continue;
     }
@@ -765,29 +791,139 @@ DataBindStatus data_bind_validation_plan_validate(
 
       if (data_bind_value_get_string(
               field, &text, &length) != DATA_BIND_OK)
-        return validation_type_error(
-            plan, rule, error,
+        return validation_type_error_at(
+            prefix, rule, error,
             "@Pattern value has the wrong runtime type");
 
       status = re_matchn(
           rule->pattern, text, length, NULL, &match);
       if (status != RE_STATUS_OK)
-        return validation_pattern_status(
-            status, error, plan, rule);
+        return validation_pattern_status_at(
+            status, error, prefix, rule);
 
-      /* Java-style Pattern semantics: the entire logical string must match. */
       if (match.index != 0u || match.length != length)
-        return validation_rule_error(
-            plan, rule, error,
+        return validation_rule_error_at(
+            prefix, rule, error,
             "String does not fully satisfy @Pattern");
       continue;
     }
 
     return validation_error(
-        error, DATA_BIND_ERR_RUNTIME, plan->type_name,
+        error, DATA_BIND_ERR_RUNTIME, prefix,
         "ValidationPlan contains an unknown rule");
   }
 
-  validation_error_clear(error);
+  for (i = 0u; i < plan->child_count; ++i) {
+    const DataBindValidationChild *child = &plan->children[i];
+    const DataBindValue *field =
+        data_bind_value_get(value, child->field_name);
+    char field_path[260];
+
+    if (field == NULL ||
+        data_bind_value_kind(field) == DATA_BIND_VALUE_NULL)
+      continue;
+    if (!validation_path_field(
+            field_path, prefix, child->field_name))
+      return validation_path_overflow(error, prefix);
+
+    if (child->kind == DATA_BIND_VALIDATION_CHILD_OBJECT) {
+      DataBindStatus status;
+      if (data_bind_value_kind(field) != DATA_BIND_VALUE_OBJECT)
+        return validation_error(
+            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+            "Nested ValidationPlan expected an object value");
+      status = validation_plan_validate_at(
+          child->plan, field, field_path, depth + 1u, error);
+      if (status != DATA_BIND_OK) return status;
+      continue;
+    }
+
+    if (child->kind == DATA_BIND_VALIDATION_CHILD_SEQUENCE ||
+        child->kind == DATA_BIND_VALIDATION_CHILD_SET) {
+      DataBindValueKind expected_kind =
+          child->kind == DATA_BIND_VALIDATION_CHILD_SET
+              ? DATA_BIND_VALUE_SET
+              : DATA_BIND_VALUE_LIST;
+      size_t count;
+      size_t item_index;
+
+      if (data_bind_value_kind(field) != expected_kind)
+        return validation_error(
+            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+            child->kind == DATA_BIND_VALIDATION_CHILD_SET
+                ? "Nested ValidationPlan expected a set value"
+                : "Nested ValidationPlan expected a list value");
+
+      count = data_bind_value_count(field);
+      for (item_index = 0u; item_index < count; ++item_index) {
+        const DataBindValue *item =
+            data_bind_value_at(field, item_index);
+        char item_path[260];
+        DataBindStatus status;
+
+        if (!validation_path_index(
+                item_path, field_path, item_index))
+          return validation_path_overflow(error, field_path);
+        if (item == NULL ||
+            data_bind_value_kind(item) != DATA_BIND_VALUE_OBJECT)
+          return validation_error(
+              error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
+              "Nested ValidationPlan expected an object element");
+        status = validation_plan_validate_at(
+            child->plan, item, item_path, depth + 1u, error);
+        if (status != DATA_BIND_OK) return status;
+      }
+      continue;
+    }
+
+    if (child->kind == DATA_BIND_VALIDATION_CHILD_MAP_VALUES) {
+      size_t count;
+      size_t item_index;
+
+      if (data_bind_value_kind(field) != DATA_BIND_VALUE_MAP)
+        return validation_error(
+            error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+            "Nested ValidationPlan expected a map value");
+      count = data_bind_value_count(field);
+      for (item_index = 0u; item_index < count; ++item_index) {
+        DataBindMapEntry entry =
+            data_bind_value_map_entry_at(field, item_index);
+        char item_path[260];
+        DataBindStatus status;
+
+        if (!validation_path_index(
+                item_path, field_path, item_index))
+          return validation_path_overflow(error, field_path);
+        if (entry.value == NULL ||
+            data_bind_value_kind(entry.value) != DATA_BIND_VALUE_OBJECT)
+          return validation_error(
+              error, DATA_BIND_ERR_TYPE_MISMATCH, item_path,
+              "Nested ValidationPlan expected an object map value");
+        status = validation_plan_validate_at(
+            child->plan, entry.value, item_path, depth + 1u, error);
+        if (status != DATA_BIND_OK) return status;
+      }
+      continue;
+    }
+
+    return validation_error(
+        error, DATA_BIND_ERR_RUNTIME, field_path,
+        "ValidationPlan contains an unknown nested binding");
+  }
+
   return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_validation_plan_validate(
+    const DataBindValidationPlan *plan,
+    const DataBindValue *value, DataBindError *error) {
+  DataBindStatus status;
+  if (plan == NULL || value == NULL)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid ValidationPlan execution arguments");
+  status = validation_plan_validate_at(
+      plan, value, plan->type_name, 0u, error);
+  if (status == DATA_BIND_OK) validation_error_clear(error);
+  return status;
 }
