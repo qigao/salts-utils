@@ -90,7 +90,7 @@ static DataBindStatus plugin_provider_open_input(
           .kind = CSERDE_UINT,
           .value.uint = provider->input_width};
   provider->reader.emitted = 0;
-  *state = DATA_BIND_STATE_VALUE;
+  *state = DATA_BIND_VALUE_STATE_VALUE;
 
   return cserde_reader_init(
              reader,
@@ -123,7 +123,7 @@ static DataBindStatus plugin_provider_write_output(
   (void)error;
 
   if (provider == NULL || entry == NULL ||
-      state != DATA_BIND_STATE_VALUE || value == NULL)
+      state != DATA_BIND_VALUE_STATE_VALUE || value == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (entry->address.binding_class != DATA_BIND_BINDING_RESULT ||
       entry->schema_field == NULL ||
