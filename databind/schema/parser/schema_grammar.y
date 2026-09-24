@@ -745,6 +745,76 @@ static void begin_service(schema_parse_ctx_t *ctx, const char *name) {
     ctx->cur_operations = operations_view;
 }
 
+static void begin_component(schema_parse_ctx_t *ctx, const char *name) {
+    Node *component;
+    Node *capabilities;
+    Node *capabilities_view;
+
+    ctx->cur_component = NULL;
+    ctx->cur_component_capabilities = NULL;
+    if (ctx->error || name == NULL) return;
+
+    component = create_node_map(NULL);
+    capabilities = create_node_list("capabilities");
+    if (component == NULL || capabilities == NULL) {
+        node_free(component);
+        node_free(capabilities);
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_name_nodes(ctx, component, "component_name", name);
+    if (ctx->error) {
+        node_free(capabilities);
+        node_free(component);
+        return;
+    }
+
+    capabilities_view = capabilities;
+    if (map_add(component, capabilities) != 0) {
+        node_free(capabilities);
+        node_free(component);
+        grammar_oom(ctx);
+        return;
+    }
+    capabilities = NULL;
+
+    if (list_add(ctx->components_list, component) != 0) {
+        node_free(component);
+        grammar_oom(ctx);
+        return;
+    }
+
+    ctx->cur_component = component;
+    ctx->cur_component_capabilities = capabilities_view;
+}
+
+static void add_component_service_ref(
+    schema_parse_ctx_t *ctx, const char *service_name) {
+    Node *capability;
+
+    if (ctx->error || ctx->cur_component == NULL ||
+        ctx->cur_component_capabilities == NULL ||
+        service_name == NULL) {
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+
+    capability = create_node_map(NULL);
+    if (capability == NULL) {
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_string(ctx, capability, "kind", "service");
+    add_string(ctx, capability, "name", service_name);
+    if (ctx->error ||
+        list_add(ctx->cur_component_capabilities, capability) != 0) {
+        node_free(capability);
+        if (!ctx->error) grammar_oom(ctx);
+    }
+}
+
 static Node *create_error_type_list(schema_parse_ctx_t *ctx,
                                     schema_token_t type_tok) {
     char *type_name = tok_strdup(type_tok);
@@ -879,13 +949,14 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor service_errors { (void)ctx; node_free($$); }
 %destructor error_types { (void)ctx; node_free($$); }
 
-%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE THROWS COLON ARROW.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE COMPONENT THROWS COLON ARROW.
 
 start ::= schema.
 schema ::= decl_list.
 
 idl_ident(A) ::= IDENT(B). { A = B; }
 idl_ident(A) ::= SERVICE(B). { A = B; }
+idl_ident(A) ::= COMPONENT(B). { A = B; }
 idl_ident(A) ::= THROWS(B). { A = B; }
 
 decl_list ::= decl_list decl.
@@ -899,6 +970,7 @@ decl ::= group_decl.
 decl ::= schema_decl.
 decl ::= union_decl.
 decl ::= service_decl.
+decl ::= component_decl.
 
 attribute_list(A) ::= LBRACKET attr_items(B) RBRACKET. { A = B; }
 attribute_list(A) ::= . { A = NULL; }
@@ -1005,6 +1077,27 @@ service_operation ::= attribute_list(A) idl_ident(N) COLON idl_ident(I) ARROW id
 
 service_errors(A) ::= THROWS error_types(B). { A = B; }
 service_errors(A) ::= . { A = NULL; }
+
+component_decl ::= component_header component_body RBRACE. {
+    ctx->cur_component = NULL;
+    ctx->cur_component_capabilities = NULL;
+}
+
+component_header ::= COMPONENT idl_ident(N) LBRACE. {
+    char *component_name = tok_strdup(N);
+    begin_component(ctx, component_name);
+    free(component_name);
+}
+
+component_body ::= component_body component_capability.
+component_body ::= .
+
+component_capability ::= SERVICE idl_ident(N) SEMI. {
+    char *service_name = tok_strdup(N);
+    add_component_service_ref(ctx, service_name);
+    free(service_name);
+}
+
 
 error_types(A) ::= error_types(B) COMMA idl_ident(T). {
     A = B;
