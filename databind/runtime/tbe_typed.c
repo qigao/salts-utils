@@ -3066,10 +3066,13 @@ static DataBindStatus typed_native_validate_wire(const cmeta_data_desc *data,
                                                  const TbeTypedType *overlay, const char *path,
                                                  DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+  DataBindStatus layout_status;
   size_t i;
-  if (overlay->presence_size != 0u || overlay->fixed_block_size == 0u)
+  if (overlay == NULL || overlay->fixed_block_size == 0u)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Supported descriptor has no complete fixed wire layout");
+  layout_status = typed_validate_layout_at(overlay, 0u, error);
+  if (layout_status != DATA_BIND_OK) return layout_status;
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
@@ -3201,13 +3204,28 @@ static DataBindStatus typed_native_read_fixed(const cmeta_data_desc *data,
                                               DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
   size_t i;
+  if (overlay->presence_size != 0u)
+    memcpy((uint8_t *)storage + overlay->presence_offset,
+           source, overlay->presence_size);
+  if (overlay->null_size != 0u)
+    memcpy((uint8_t *)storage + overlay->null_offset,
+           source + overlay->presence_size, overlay->null_size);
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
     char field_path[sizeof(((DataBindError *)0)->path)];
     DataBindStatus status =
         typed_native_path(field_path, sizeof(field_path), path, native_field->name, error);
+    const int present = typed_optional_present(overlay, storage, wire_field);
+    const int is_null = typed_nullable_is_null(overlay, storage, wire_field);
     if (status != DATA_BIND_OK) return status;
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Canonical null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (native_field->value->kind == CMETA_DATA_STRUCT)
       status = typed_native_read_fixed(
           native_field->value, wire_field->nested_overlay, source + wire_field->wire_offset,
@@ -3365,13 +3383,29 @@ static DataBindStatus typed_native_write_fixed(const cmeta_data_desc *data,
                                                DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
   size_t i;
+  if (overlay->presence_size != 0u)
+    memcpy(destination, (const uint8_t *)storage + overlay->presence_offset,
+           overlay->presence_size);
+  if (overlay->null_size != 0u)
+    memcpy(destination + overlay->presence_size,
+           (const uint8_t *)storage + overlay->null_offset,
+           overlay->null_size);
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
     char field_path[sizeof(((DataBindError *)0)->path)];
     DataBindStatus status =
         typed_native_path(field_path, sizeof(field_path), path, native_field->name, error);
+    const int present = typed_optional_present(overlay, storage, wire_field);
+    const int is_null = typed_nullable_is_null(overlay, storage, wire_field);
     if (status != DATA_BIND_OK) return status;
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Canonical null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (native_field->value->kind == CMETA_DATA_STRUCT)
       status = typed_native_write_fixed(native_field->value, wire_field->nested_overlay,
                                         (const uint8_t *)storage + native_field->offset,
