@@ -203,6 +203,15 @@ jobs:
           cmake --build build/plugin-abi-installed --parallel 2
           ./build/plugin-abi-installed/plugin_abi_installed_consumer
 
+          cmake -S plugin-cflow/tests/package_config \
+            -B build/plugin-cflow-installed -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DCMAKE_PREFIX_PATH="$prefix"
+          cmake --build build/plugin-cflow-installed --parallel 2
+          ./build/plugin-cflow-installed/plugin_cflow_installed_consumer
+
           cmake -S databind/compiler/package_config/databind_target \
             -B build/databind-target-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
@@ -429,6 +438,13 @@ jobs:
           cmake --build build\plugin-abi-installed --parallel 2
           if errorlevel 1 exit /b 1
           build\plugin-abi-installed\plugin_abi_installed_consumer.exe
+          if errorlevel 1 exit /b 1
+
+          cmake -S plugin-cflow\tests\package_config -B build\plugin-cflow-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          if errorlevel 1 exit /b 1
+          cmake --build build\plugin-cflow-installed --parallel 2
+          if errorlevel 1 exit /b 1
+          build\plugin-cflow-installed\plugin_cflow_installed_consumer.exe
           if errorlevel 1 exit /b 1
 
           cmake -S databind\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
