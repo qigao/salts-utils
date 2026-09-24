@@ -154,28 +154,33 @@ static void typed_optional_set(const TbeTypedType *type, void *object, const Tbe
   presence[field->optional_bit / 8u] |= (uint8_t)(1u << (field->optional_bit % 8u));
 }
 
-static int typed_type_has_nullable(const TbeTypedType *type) {
+static int typed_type_has_nullable_at(
+    const TbeTypedType *type, unsigned depth) {
   size_t i;
-  if (type == NULL) return 0;
+  if (type == NULL || depth > 32u) return 0;
   for (i = 0u; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     if ((field->flags & TBE_TYPED_FIELD_NULLABLE) != 0u) return 1;
     if (field->kind == TBE_TYPED_OBJECT && field->object_type != NULL &&
-        typed_type_has_nullable(field->object_type))
+        typed_type_has_nullable_at(field->object_type, depth + 1u))
       return 1;
     if ((field->kind == TBE_TYPED_FIXED_ARRAY ||
          field->kind == TBE_TYPED_LIST || field->kind == TBE_TYPED_SET) &&
         field->element_kind == TBE_TYPED_OBJECT &&
         field->object_type != NULL &&
-        typed_type_has_nullable(field->object_type))
+        typed_type_has_nullable_at(field->object_type, depth + 1u))
       return 1;
     if (field->kind == TBE_TYPED_MAP &&
         field->map_value_kind == TBE_TYPED_OBJECT &&
         field->map_value_type != NULL &&
-        typed_type_has_nullable(field->map_value_type))
+        typed_type_has_nullable_at(field->map_value_type, depth + 1u))
       return 1;
   }
   return 0;
+}
+
+static int typed_type_has_nullable(const TbeTypedType *type) {
+  return typed_type_has_nullable_at(type, 0u);
 }
 
 static DataBindStatus typed_reject_nullable_runtime(
