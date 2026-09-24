@@ -3,6 +3,7 @@
 
 #include "plugin_projection.h"
 #include "method_plan_projection.h"
+#include "projection_config.h"
 #include "projection.h"
 
 #include "salts_fs.h"
@@ -21,6 +22,7 @@ typedef struct databind_compiler_projection_frontend_input {
   const char *component_id;
   const char *artifact_name;
   const char *artifact_version;
+  const char *projection_config_path;
 
   /* Native/source-language output selected by the ordinary --output option. */
   const char *output_path;
@@ -41,6 +43,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   size_t backend_count;
 
   databind_compiler_plugin_config plugin;
+  databind_compiler_projection_config external_config;
   databind_compiler_http_projection_config http;
   databind_compiler_rpc_projection_config rpc;
 
@@ -69,6 +72,9 @@ int databind_compiler_projection_frontend_build(
     databind_compiler_projection_frontend_plan *out,
     char *error,
     size_t error_size);
+
+void databind_compiler_projection_frontend_dispose(
+    databind_compiler_projection_frontend_plan *plan);
 
 #ifdef __cplusplus
 }

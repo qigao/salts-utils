@@ -89,6 +89,75 @@ spec("DataBind public projection frontend") {
     check_equal(path_base(plan.requests[1].output, base), "calc.rpc.h");
   }
 
+  it("loads one external HTTP/RPC config into the selected MethodPlans") {
+    databind_compiler_projection_frontend_input input = {
+        .projections = "http,rpc",
+        .artifact_name = "calc",
+        .projection_config_path = DATABIND_PROJECTION_CONFIG_FILE,
+        .output_path = "generated/calc_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_true(plan.external_config.has_http);
+    check_true(plan.external_config.has_rpc);
+    check_equal(plan.http.operation_count, (size_t)1u);
+    check_equal(plan.http.operations[0].service_name, "Calc");
+    check_equal(plan.http.operations[0].operation_name, "Add");
+    check_equal(plan.http.operations[0].method, "GET");
+    check_equal(plan.http.operations[0].route, "/add/{left}");
+    check_equal(plan.http.operations[0].success_status, 201);
+    check_equal(plan.http.operations[0].context_flags, UINT64_C(4));
+    check_equal(plan.http.field_count, (size_t)3u);
+    check_equal(plan.http.errors[0].error_type, "CalcError");
+    check_equal(plan.http.errors[0].status, 422);
+
+    check_equal(plan.rpc.operation_count, (size_t)1u);
+    check_equal(plan.rpc.operations[0].wire_method, "calc.add");
+    check_equal(plan.rpc.field_count, (size_t)3u);
+    check_equal(plan.rpc.fields[0].wire_name, "lhs");
+    check_equal(plan.rpc.fields[0].ordinal, (size_t)0u);
+    check_equal(plan.rpc.errors[0].error_type, "CalcError");
+    check_equal(plan.rpc.errors[0].code, -32042);
+
+    databind_compiler_projection_frontend_dispose(&plan);
+  }
+
+  it("rejects config sections for an unselected transport") {
+    databind_compiler_projection_frontend_input input = {
+        .projections = "http",
+        .artifact_name = "calc",
+        .projection_config_path = DATABIND_PROJECTION_CONFIG_FILE,
+        .output_path = "generated/calc_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "rpc"));
+  }
+
+  it("rejects unknown JSON projection config keys") {
+    databind_compiler_projection_frontend_input input = {
+        .projections = "http",
+        .artifact_name = "calc",
+        .projection_config_path = DATABIND_PROJECTION_CONFIG_INVALID_FILE,
+        .output_path = "generated/calc_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "Unknown projection config key"));
+  }
+
   it("composes Plugin and MethodPlan projections in one frontend invocation") {
     databind_compiler_projection_frontend_input input = {
         .projections = "plugin,http,rpc",

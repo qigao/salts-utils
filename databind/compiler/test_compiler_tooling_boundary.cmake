@@ -22,22 +22,31 @@ if(TOOLING_LINK_POS EQUAL -1)
   message(FATAL_ERROR "Compiler tooling boundary has no explicit link contract")
 endif()
 
-foreach(REQUIRED IN ITEMS "Salts::CmdParser" "Salts::Mustache")
+foreach(REQUIRED IN ITEMS
+        "Salts::CmdParser"
+        "Salts::Mustache"
+        "Salts::JsonParser")
   string(FIND "${COMPILER_CMAKE}" "${REQUIRED}" REQUIRED_POS)
   if(REQUIRED_POS EQUAL -1)
     message(FATAL_ERROR "Compiler tooling boundary lost required helper: ${REQUIRED}")
   endif()
 endforeach()
 
-string(FIND "${COMPILER_CMAKE}"
-  "LIBS Salts::DataBindSchema Salts::CmdParser Salts::Mustache Salts::Core" DIRECT_LINK_POS)
-if(NOT DIRECT_LINK_POS EQUAL -1)
-  message(FATAL_ERROR
-    "databindc still directly owns SaltsUtils CmdParser/Mustache dependencies")
-endif()
+foreach(DIRECT IN ITEMS
+        "Salts::CmdParser"
+        "Salts::Mustache"
+        "Salts::JsonParser")
+  string(FIND "${COMPILER_CMAKE}"
+    "LIBS Salts::DataBindSchema ${DIRECT}" DIRECT_LINK_POS)
+  if(NOT DIRECT_LINK_POS EQUAL -1)
+    message(FATAL_ERROR
+      "databindc directly owns compiler helper instead of tooling boundary: ${DIRECT}")
+  endif()
+endforeach()
 
 string(FIND "${COMPILER_CMAKE}"
-  "LIBS Salts::DataBindSchema \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core" BOUNDARY_USE_POS)
+  "Salts::PluginABI \${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core"
+  BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
     "databindc does not consume the explicit compiler tooling boundary")

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "http": {
+    "operations": [
+      {
+        "service": "Calc",
+        "operation": "Add",
+        "fields": [
+          {
+            "direction": "ingress",
+            "field": "does_not_exist",
+            "location": "query"
+          }
+        ]
+      }
+    ]
+  }
+}
