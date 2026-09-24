@@ -81,6 +81,14 @@ lex_start:
             return 1;
         }
 
+        "channel" {
+            token->type = SCHEMA_TOKEN_CHANNEL;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         "service" {
             token->type = SCHEMA_TOKEN_SERVICE;
             token->value = token_start;

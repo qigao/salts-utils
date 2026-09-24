@@ -789,13 +789,13 @@ static void begin_component(schema_parse_ctx_t *ctx, const char *name) {
     ctx->cur_component_capabilities = capabilities_view;
 }
 
-static void add_component_service_ref(
-    schema_parse_ctx_t *ctx, const char *service_name) {
+static void add_component_capability_ref(
+    schema_parse_ctx_t *ctx, const char *kind, const char *name) {
     Node *capability;
 
     if (ctx->error || ctx->cur_component == NULL ||
         ctx->cur_component_capabilities == NULL ||
-        service_name == NULL) {
+        kind == NULL || name == NULL) {
         if (!ctx->error) grammar_oom(ctx);
         return;
     }
@@ -806,11 +806,37 @@ static void add_component_service_ref(
         return;
     }
 
-    add_string(ctx, capability, "kind", "service");
-    add_string(ctx, capability, "name", service_name);
+    add_string(ctx, capability, "kind", kind);
+    add_string(ctx, capability, "name", name);
     if (ctx->error ||
         list_add(ctx->cur_component_capabilities, capability) != 0) {
         node_free(capability);
+        if (!ctx->error) grammar_oom(ctx);
+    }
+}
+
+static void add_channel_contract(
+    schema_parse_ctx_t *ctx,
+    const char *name,
+    const char *message_type) {
+    Node *channel;
+
+    if (ctx->error || ctx->channels_list == NULL ||
+        name == NULL || message_type == NULL) {
+        if (!ctx->error) grammar_oom(ctx);
+        return;
+    }
+
+    channel = create_node_map(NULL);
+    if (channel == NULL) {
+        grammar_oom(ctx);
+        return;
+    }
+
+    add_name_nodes(ctx, channel, "channel_name", name);
+    add_string(ctx, channel, "message_type", message_type);
+    if (ctx->error || list_add(ctx->channels_list, channel) != 0) {
+        node_free(channel);
         if (!ctx->error) grammar_oom(ctx);
     }
 }
@@ -949,7 +975,7 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor service_errors { (void)ctx; node_free($$); }
 %destructor error_types { (void)ctx; node_free($$); }
 
-%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE COMPONENT THROWS COLON ARROW.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE COMPONENT CHANNEL THROWS COLON ARROW.
 
 start ::= schema.
 schema ::= decl_list.
@@ -957,6 +983,7 @@ schema ::= decl_list.
 idl_ident(A) ::= IDENT(B). { A = B; }
 idl_ident(A) ::= SERVICE(B). { A = B; }
 idl_ident(A) ::= COMPONENT(B). { A = B; }
+idl_ident(A) ::= CHANNEL(B). { A = B; }
 idl_ident(A) ::= THROWS(B). { A = B; }
 
 decl_list ::= decl_list decl.
@@ -970,6 +997,7 @@ decl ::= group_decl.
 decl ::= schema_decl.
 decl ::= union_decl.
 decl ::= service_decl.
+decl ::= channel_decl.
 decl ::= component_decl.
 
 attribute_list(A) ::= LBRACKET attr_items(B) RBRACKET. { A = B; }
@@ -1078,6 +1106,15 @@ service_operation ::= attribute_list(A) idl_ident(N) COLON idl_ident(I) ARROW id
 service_errors(A) ::= THROWS error_types(B). { A = B; }
 service_errors(A) ::= . { A = NULL; }
 
+channel_decl ::= CHANNEL idl_ident(N) COLON idl_ident(T) SEMI. {
+    char *channel_name = tok_strdup(N);
+    char *message_type = tok_strdup(T);
+    add_channel_contract(ctx, channel_name, message_type);
+    free(channel_name);
+    free(message_type);
+}
+
+
 component_decl ::= component_header component_body RBRACE. {
     ctx->cur_component = NULL;
     ctx->cur_component_capabilities = NULL;
@@ -1094,8 +1131,13 @@ component_body ::= .
 
 component_capability ::= SERVICE idl_ident(N) SEMI. {
     char *service_name = tok_strdup(N);
-    add_component_service_ref(ctx, service_name);
+    add_component_capability_ref(ctx, "service", service_name);
     free(service_name);
+}
+component_capability ::= CHANNEL idl_ident(N) SEMI. {
+    char *channel_name = tok_strdup(N);
+    add_component_capability_ref(ctx, "channel", channel_name);
+    free(channel_name);
 }
 
 
