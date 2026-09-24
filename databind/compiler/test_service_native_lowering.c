@@ -280,6 +280,13 @@ spec("DataBind canonical Service native lowering") {
     frame.param_bytes = param_bytes;
     frame.param_count = 3u;
 
+    check_equal(
+        data_bind_binding_plan_write_outputs(
+            plan, &provider, &frame, &diagnostic),
+        DATA_BIND_ERR_INVALID_ARG);
+    check_equal(state.begin_calls, (size_t)0u);
+    check(strstr(diagnostic.message, "write_outcome") != NULL);
+
     request.left = 7u;
     request.scale = 3u;
     native_status = databind_13_ServiceNative_4_Calc_4_Find(
