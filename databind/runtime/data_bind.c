@@ -12822,6 +12822,8 @@ const char *data_bind_status_name(DataBindStatus status) {
     return "buffer_too_small";
   case DATA_BIND_ERR_CANCELED:
     return "canceled";
+  case DATA_BIND_ERR_VALIDATION:
+    return "validation";
   default:
     return "unknown";
   }
