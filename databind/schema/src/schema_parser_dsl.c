@@ -3,6 +3,7 @@
 #include "schema_size.h"
 #include "schema_enum.h"
 #include "schema_service.h"
+#include "schema_component.h"
 #include "schema_lexer.h"
 #include "schema_types.h"
 #include "schema_grammar_gen.h"
@@ -1189,6 +1190,7 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     Node *groups_list;
     Node *enums_list;
     Node *services_list;
+    Node *components_list;
     Node *unions_list;
 
     temp_root = create_node_map(NULL);
@@ -1199,8 +1201,10 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     enums_list = create_node_list("enums");
     unions_list = create_node_list("unions");
     services_list = create_node_list("services");
+    components_list = create_node_list("components");
     if (!temp_root || !messages_list || !composites_list || !groups_list ||
-        !enums_list || !unions_list || !services_list) {
+        !enums_list || !unions_list || !services_list || !components_list) {
+        node_free(components_list);
         node_free(services_list);
         node_free(unions_list);
         node_free(enums_list);
@@ -1214,17 +1218,27 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         return NULL;
     }
 
-    if (map_add(temp_root, messages_list) != 0 ||
-        map_add(temp_root, composites_list) != 0 ||
-        map_add(temp_root, groups_list) != 0 ||
-        map_add(temp_root, enums_list) != 0 ||
-        map_add(temp_root, unions_list) != 0 ||
-        map_add(temp_root, services_list) != 0) {
-        node_free(temp_root);
-        if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to add child nodes");
+    {
+        Node *root_lists[] = {
+            messages_list, composites_list, groups_list, enums_list,
+            unions_list, services_list, components_list
+        };
+        size_t list_count = sizeof(root_lists) / sizeof(root_lists[0]);
+        size_t i;
+
+        for (i = 0u; i < list_count; ++i) {
+            if (map_add(temp_root, root_lists[i]) != 0) {
+                size_t j;
+                for (j = i; j < list_count; ++j) node_free(root_lists[j]);
+                node_free(temp_root);
+                if (err) {
+                    tbe_error_set(
+                        err, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                        "Failed to add child nodes");
+                }
+                return NULL;
+            }
         }
-        return NULL;
     }
 
     schema_parse_ctx_t ctx = {0};
@@ -1236,8 +1250,11 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     ctx.enums_list   = enums_list;
     ctx.unions_list  = unions_list;
     ctx.services_list = services_list;
+    ctx.components_list = components_list;
     ctx.cur_service = NULL;
     ctx.cur_operations = NULL;
+    ctx.cur_component = NULL;
+    ctx.cur_component_capabilities = NULL;
     ctx.cur_record   = NULL;
     ctx.cur_fields   = NULL;
     ctx.cur_enum     = NULL;
@@ -1332,9 +1349,10 @@ static int annotate_schema_tree(Node *root) {
 }
 
 static int merge_schema_into_root(Node *root, Node *parsed) {
-    Node *generated_children[7];
+    Node *generated_children[8];
     const char *generated_names[] = {
-        "schema", "messages", "composites", "groups", "enums", "unions", "services"
+        "schema", "messages", "composites", "groups",
+        "enums", "unions", "services", "components"
     };
 
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
@@ -1350,7 +1368,8 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
     for (size_t i = 0; i < sizeof(generated_children) / sizeof(generated_children[0]); ++i) {
         map_remove_named_children(root, generated_names[i]);
         if (generated_children[i]) {
-            if (strcmp(generated_names[i], "services") == 0 &&
+            if ((strcmp(generated_names[i], "services") == 0 ||
+                 strcmp(generated_names[i], "components") == 0) &&
                 generated_children[i]->type == NODE_LIST &&
                 generated_children[i]->data.list.count == 0u) {
                 node_free(generated_children[i]);
@@ -1409,6 +1428,11 @@ int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
     }
 
     if (!schema_validate_services(parsed, err)) {
+        node_free(parsed);
+        return -1;
+    }
+
+    if (!schema_validate_components(parsed, err)) {
         node_free(parsed);
         return -1;
     }

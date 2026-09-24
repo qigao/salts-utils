@@ -73,6 +73,14 @@ lex_start:
         }
 
         // Keywords
+        "component" {
+            token->type = SCHEMA_TOKEN_COMPONENT;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         "service" {
             token->type = SCHEMA_TOKEN_SERVICE;
             token->value = token_start;

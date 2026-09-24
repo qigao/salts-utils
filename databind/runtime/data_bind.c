@@ -11956,6 +11956,110 @@ static Node *data_bind_service_operation_node(DataBind *codec,
   return NULL;
 }
 
+static Node *data_bind_component_node(
+    DataBind *codec, const char *component_name) {
+  if (codec == NULL || codec->schema_root == NULL ||
+      component_name == NULL)
+    return NULL;
+  return find_named_record(
+      codec->schema_root, "components", component_name);
+}
+
+static Node *data_bind_component_capabilities(Node *component) {
+  Node *capabilities = find_child(component, "capabilities");
+  return capabilities != NULL && capabilities->type == NODE_LIST
+             ? capabilities
+             : NULL;
+}
+
+static DataBindComponentCapabilityKind
+data_bind_component_capability_kind_from_node(Node *capability) {
+  const char *kind = get_string_val(find_child(capability, "kind"));
+  if (kind != NULL && strcmp(kind, "service") == 0)
+    return DATA_BIND_COMPONENT_CAPABILITY_SERVICE;
+  return DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN;
+}
+
+static Node *data_bind_component_capability_node(
+    DataBind *codec, const char *component_name,
+    DataBindComponentCapabilityKind kind, const char *name) {
+  Node *component = data_bind_component_node(codec, component_name);
+  Node *capabilities = data_bind_component_capabilities(component);
+  size_t i;
+
+  if (capabilities == NULL ||
+      kind == DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN ||
+      name == NULL)
+    return NULL;
+
+  for (i = 0u; i < capabilities->data.list.count; ++i) {
+    Node *capability = capabilities->data.list.items[i];
+    const char *candidate = get_string_val(find_child(capability, "name"));
+    if (candidate != NULL &&
+        data_bind_component_capability_kind_from_node(capability) == kind &&
+        strcmp(candidate, name) == 0)
+      return capability;
+  }
+  return NULL;
+}
+
+static int fill_data_bind_component(
+    Node *component, DataBindComponent *out) {
+  Node *capabilities;
+  size_t out_size;
+  const char *name;
+  const char *qualified_name;
+
+  if (component == NULL || out == NULL) return 0;
+
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  name = get_string_val(find_child(component, "name"));
+  qualified_name =
+      get_string_val(find_child(component, "qualified_name"));
+  capabilities = data_bind_component_capabilities(component);
+
+  DB_REFLECT_SET(DataBindComponent, out, out_size, size, out_size);
+  DB_REFLECT_SET(DataBindComponent, out, out_size, name, name);
+  DB_REFLECT_SET(DataBindComponent, out, out_size,
+                 qualified_name, qualified_name);
+  DB_REFLECT_SET(DataBindComponent, out, out_size, capability_count,
+                 capabilities != NULL
+                     ? capabilities->data.list.count
+                     : 0u);
+  return name != NULL && qualified_name != NULL;
+}
+
+static int fill_data_bind_component_capability(
+    Node *capability, DataBindComponentCapability *out) {
+  size_t out_size;
+  const char *name;
+  const char *qualified_name;
+  DataBindComponentCapabilityKind kind;
+
+  if (capability == NULL || out == NULL) return 0;
+
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  name = get_string_val(find_child(capability, "name"));
+  qualified_name =
+      get_string_val(find_child(capability, "qualified_name"));
+  kind = data_bind_component_capability_kind_from_node(capability);
+
+  DB_REFLECT_SET(
+      DataBindComponentCapability, out, out_size, size, out_size);
+  DB_REFLECT_SET(
+      DataBindComponentCapability, out, out_size, kind, kind);
+  DB_REFLECT_SET(
+      DataBindComponentCapability, out, out_size, name, name);
+  DB_REFLECT_SET(
+      DataBindComponentCapability, out, out_size,
+      qualified_name, qualified_name);
+
+  return kind != DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN &&
+         name != NULL && qualified_name != NULL;
+}
+
 static int fill_data_bind_service(Node *service, DataBindService *out) {
   Node *operations;
   size_t out_size;
@@ -12101,6 +12205,100 @@ const char *data_bind_service_operation_error_at(
   return item != NULL && item->type == NODE_STRING
              ? item->data.string_val
              : NULL;
+}
+
+size_t data_bind_component_count(DataBind *codec) {
+  Node *components;
+  if (codec == NULL || codec->schema_root == NULL) return 0u;
+  components = find_child(codec->schema_root, "components");
+  return components != NULL && components->type == NODE_LIST
+             ? components->data.list.count
+             : 0u;
+}
+
+int data_bind_component_at(
+    DataBind *codec, size_t index, DataBindComponent *out) {
+  Node *components;
+  if (codec == NULL || codec->schema_root == NULL || out == NULL)
+    return 0;
+
+  components = find_child(codec->schema_root, "components");
+  if (components == NULL || components->type != NODE_LIST ||
+      index >= components->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_component(
+      components->data.list.items[index], out);
+}
+
+int data_bind_component_find(
+    DataBind *codec, const char *name, DataBindComponent *out) {
+  Node *component;
+  if (codec == NULL || name == NULL || out == NULL) return 0;
+
+  component = data_bind_component_node(codec, name);
+  if (component == NULL) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_data_bind_component(component, out);
+}
+
+size_t data_bind_component_capability_count(
+    DataBind *codec, const char *component_name) {
+  Node *capabilities = data_bind_component_capabilities(
+      data_bind_component_node(codec, component_name));
+  return capabilities != NULL ? capabilities->data.list.count : 0u;
+}
+
+int data_bind_component_capability_at(
+    DataBind *codec, const char *component_name, size_t index,
+    DataBindComponentCapability *out) {
+  Node *capabilities;
+  if (codec == NULL || component_name == NULL || out == NULL)
+    return 0;
+
+  capabilities = data_bind_component_capabilities(
+      data_bind_component_node(codec, component_name));
+  if (capabilities == NULL || index >= capabilities->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+
+  return fill_data_bind_component_capability(
+      capabilities->data.list.items[index], out);
+}
+
+int data_bind_component_capability_find(
+    DataBind *codec, const char *component_name,
+    DataBindComponentCapabilityKind kind, const char *name,
+    DataBindComponentCapability *out) {
+  Node *capability;
+  if (codec == NULL || component_name == NULL ||
+      kind == DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN ||
+      name == NULL || out == NULL)
+    return 0;
+
+  capability = data_bind_component_capability_node(
+      codec, component_name, kind, name);
+  if (capability == NULL) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+
+  return fill_data_bind_component_capability(capability, out);
+}
+
+const char *data_bind_component_capability_kind_name(
+    DataBindComponentCapabilityKind kind) {
+  switch (kind) {
+  case DATA_BIND_COMPONENT_CAPABILITY_SERVICE:
+    return "service";
+  case DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN:
+  default:
+    return "unknown";
+  }
 }
 
 const char *data_bind_schema_kind_name(DataBindSchemaKind kind) {
