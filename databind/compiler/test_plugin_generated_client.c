@@ -6,6 +6,15 @@
 #ifndef GENERATED_DATABIND_PLUGIN_PATH
 #error "GENERATED_DATABIND_PLUGIN_PATH is required"
 #endif
+#ifndef GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH
+#error "GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH is required"
+#endif
+#ifndef GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH
+#error "GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH is required"
+#endif
+#ifndef GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH
+#error "GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH is required"
+#endif
 
 typedef databind_plugin_client_5_Image_14_ImageProcessor
     ImageProcessorPluginClient;
@@ -16,6 +25,42 @@ static salts_plugin_registry make_registry(void) {
   check_equal(salts_plugin_registry_init(&registry, &config),
               SALTS_PLUGIN_OK);
   return registry;
+}
+
+static void expect_client_open_rejected(const char *path) {
+  salts_plugin_registry registry = make_registry();
+  salts_plugin_ref ref = {0};
+  ImageProcessorPluginClient client = {0};
+  salts_plugin_lifecycle_info info = {0};
+  bool quiescent = false;
+
+  check_equal(salts_plugin_registry_load(&registry, path, &ref),
+              SALTS_PLUGIN_OK);
+  check_equal(salts_plugin_registry_start(&registry, ref),
+              SALTS_PLUGIN_OK);
+
+  check_equal(
+      databind_plugin_client_5_Image_14_ImageProcessor_open(
+          &registry, ref, &client),
+      SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+  check_false(
+      databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
+
+  check_equal(salts_plugin_registry_get_lifecycle(
+                  &registry, ref, &info),
+              SALTS_PLUGIN_OK);
+  check_equal(info.active_leases, (size_t)0u);
+
+  check_equal(salts_plugin_registry_request_stop(&registry, ref),
+              SALTS_PLUGIN_OK);
+  check_equal(salts_plugin_registry_poll_quiescent(
+                  &registry, ref, &quiescent),
+              SALTS_PLUGIN_OK);
+  check_true(quiescent);
+  check_equal(salts_plugin_registry_unload(&registry, ref),
+              SALTS_PLUGIN_OK);
+  check_equal(salts_plugin_registry_destroy(&registry),
+              SALTS_PLUGIN_OK);
 }
 
 spec("generated DataBind Plugin client") {
@@ -109,6 +154,15 @@ spec("generated DataBind Plugin client") {
 
     check_equal(salts_plugin_registry_destroy(&registry),
                 SALTS_PLUGIN_OK);
+  }
+
+  it("rejects plugin, contract and Function ABI mismatches without leaking leases") {
+    expect_client_open_rejected(
+        GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH);
+    expect_client_open_rejected(
+        GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH);
+    expect_client_open_rejected(
+        GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH);
   }
 
   it("rejects invalid direct-call arguments without touching business status") {
