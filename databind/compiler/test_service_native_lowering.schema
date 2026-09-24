@@ -9,8 +9,17 @@ message AddResponse {
     uint32 sum;
 }
 
+message NotFound {
+    uint32 id;
+}
+
+message PermissionDenied {
+    uint32 code;
+}
+
 service Calc {
     Add: AddRequest -> AddResponse;
+    Find: AddRequest -> AddResponse throws NotFound, PermissionDenied;
 }
 
 service A_B {

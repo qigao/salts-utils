@@ -19,6 +19,13 @@ typedef struct databind_compiler_service_native_presence {
   unsigned bit;
 } databind_compiler_service_native_presence;
 
+typedef struct databind_compiler_service_native_error {
+  char *type_name;
+  char *type_identity;
+  unsigned kind_value;
+} databind_compiler_service_native_error;
+
+
 typedef struct databind_compiler_service_native_operation {
   char *schema_name;
   char *service_name;
@@ -37,6 +44,10 @@ typedef struct databind_compiler_service_native_operation {
   size_t request_presence_count;
   databind_compiler_service_native_presence *response_presence;
   size_t response_presence_count;
+
+  /* Ordered typed errors from the DataBind throws list. */
+  databind_compiler_service_native_error *errors;
+  size_t error_count;
 } databind_compiler_service_native_operation;
 
 typedef struct databind_compiler_service_native_ir {
