@@ -823,6 +823,7 @@ static int annotate_optional_fields(Node *root) {
                             if (annotate_add_true(optional_field, "last") != 0) {
                                 node_free(optional_field);
                                 node_free(optional_fields_list);
+                                node_free(nullable_fields_list);
                                 node_free(default_fields_list);
                                 return -1;
                             }
@@ -960,6 +961,7 @@ static int annotate_optional_fields(Node *root) {
                                                                 enum_name) != 0) {
                                             node_free(default_field);
                                             node_free(optional_fields_list);
+                                            node_free(nullable_fields_list);
                                             node_free(default_fields_list);
                                             return -1;
                                         }
