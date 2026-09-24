@@ -443,7 +443,7 @@ cmake_add_test(test_tbe_typed_nullable_json
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_tbe_typed_nullable_json PROPERTIES
-  LABELS "databind;typed;nullable;json")
+  LABELS "databind;typed;nullable;json;yaml")
 
 
 # This fixture executes databindc during the build. Do not run a target-
