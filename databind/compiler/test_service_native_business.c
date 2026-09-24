@@ -1,6 +1,6 @@
 #include "service_native_generated.h"
 
-int service_native_calc_add(
+int databind_13_ServiceNative_4_Calc_3_Add(
     const AddRequest_t *request,
     AddResponse_t *response) {
   if (request == NULL || response == NULL) return -1;
