@@ -52,7 +52,7 @@ static int write_source(
     goto fail;
   for (i = 0u; i < ir->operation_count; ++i) {
     if (databind_compiler_service_native_emit_reflection(
-            file, &ir->operations[i]) != 0 ||
+            file, &ir->operations[i], 1) != 0 ||
         databind_compiler_service_native_emit_binding(
             file, &ir->operations[i]) != 0)
       goto fail;
