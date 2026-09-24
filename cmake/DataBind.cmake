@@ -312,7 +312,7 @@ function(databind_target)
     "${_generated_dir}")
   target_link_libraries("${DB_TARGET}_plugin" PRIVATE
     Salts::PluginABI
-    Salts::DataBindSchema
+    Salts::DataBindGeneratedABI
     ${DB_LIBRARIES})
   set_target_properties("${DB_TARGET}_plugin" PROPERTIES
     PREFIX ""

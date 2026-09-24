@@ -236,6 +236,20 @@ databind_target(
   PROJECTIONS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
+get_target_property(
+  _databind_plugin_generated_fixture_links
+  databind_plugin_generated_fixture_plugin
+  LINK_LIBRARIES)
+if("Salts::DataBindSchema" IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must not link Salts::DataBindSchema")
+endif()
+if(NOT "Salts::DataBindGeneratedABI"
+       IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must link Salts::DataBindGeneratedABI")
+endif()
+
 add_custom_command(
   OUTPUT
     "${DATABIND_PLUGIN_TEST_BINDING_H}"

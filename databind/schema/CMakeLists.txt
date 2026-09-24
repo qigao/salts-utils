@@ -9,6 +9,28 @@ cmake_add_grammar(SCHEMA
 # Library
 # =============================================================================
 
+# Header-only usage contract for generated record/wire ABI code.
+#
+# Generated artifacts need the installed DataBind wire headers plus the Salts
+# include root (uuid/CMeta headers). They do not need the schema parser/runtime.
+add_library(databind_generated_abi INTERFACE)
+cmake_config_target(
+  databind_generated_abi
+  ALIAS Salts::DataBindGeneratedABI
+  FOLDER "databind/schema"
+  EXPORT_NAME DataBindGeneratedABI)
+target_compile_features(databind_generated_abi INTERFACE c_std_11)
+target_include_directories(
+  databind_generated_abi
+  INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(databind_generated_abi INTERFACE Salts::CMeta)
+
+cmake_add_source(SOURCE_FILES RECURSE
+  DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
+  PATTERNS "*.c*" "*.h*")
+
 cmake_add_source(SOURCE_FILES RECURSE
   DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
   PATTERNS "*.c*" "*.h*")
@@ -32,6 +54,10 @@ cmake_config_target(
   ALIAS Salts::DataBindSchema
   FOLDER databind/schema
   EXPORT_NAME DataBindSchema)
+
+install(
+  TARGETS databind_generated_abi
+  EXPORT SaltsUtilsTargets)
 
 install(
   TARGETS ${TARGET_NAME}
