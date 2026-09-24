@@ -20,90 +20,24 @@ static bool bounded_string_equal(const char *left, const char *right,
     return false;
 }
 
-static bool interface_method_valid(const cmeta_interface_method_desc *method) {
-    return method != NULL &&
-           bounded_string_valid(method->name, SALTS_PLUGIN_INTERFACE_TOKEN_MAX) &&
-           bounded_string_valid(method->return_type,
-                                SALTS_PLUGIN_INTERFACE_TOKEN_MAX) &&
-           method->arity <= 4u;
-}
-
-bool salts_plugin_interface_desc_valid(const cmeta_interface_desc *desc) {
-    size_t index;
-    size_t other;
-
-    if (desc == NULL ||
-        !bounded_string_valid(desc->name, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        desc->method_count > SALTS_PLUGIN_MAX_INTERFACE_METHODS ||
-        (desc->method_count != 0u && desc->methods == NULL))
-        return false;
-
-    for (index = 0u; index < desc->method_count; ++index) {
-        if (!interface_method_valid(&desc->methods[index])) return false;
-        for (other = 0u; other < index; ++other) {
-            if (bounded_string_equal(desc->methods[index].name,
-                                     desc->methods[other].name,
-                                     SALTS_PLUGIN_INTERFACE_TOKEN_MAX))
-                return false;
-        }
-    }
-    return true;
-}
-
-bool salts_plugin_interface_desc_equal(const cmeta_interface_desc *left,
-                                       const cmeta_interface_desc *right) {
+static bool function_abi_complete(const cmeta_function_abi_desc *abi) {
     size_t index;
 
-    if (!salts_plugin_interface_desc_valid(left) ||
-        !salts_plugin_interface_desc_valid(right) ||
-        left->method_count != right->method_count ||
-        !bounded_string_equal(left->name, right->name,
-                              SALTS_PLUGIN_CONTRACT_ID_MAX))
+    if (!cmeta_function_abi_desc_valid(abi) ||
+        abi->return_carrier == CMETA_ABI_UNSPECIFIED)
         return false;
 
-    for (index = 0u; index < left->method_count; ++index) {
-        const cmeta_interface_method_desc *a = &left->methods[index];
-        const cmeta_interface_method_desc *b = &right->methods[index];
-        if (a->arity != b->arity ||
-            !bounded_string_equal(a->name, b->name,
-                                  SALTS_PLUGIN_INTERFACE_TOKEN_MAX) ||
-            !bounded_string_equal(a->return_type, b->return_type,
-                                  SALTS_PLUGIN_INTERFACE_TOKEN_MAX))
+    for (index = 0u; index < abi->param_count; ++index) {
+        if (abi->param_carriers[index] == CMETA_ABI_UNSPECIFIED)
             return false;
     }
+
     return true;
-}
-
-bool salts_plugin_callable_contract_equal(const cmeta_callable *left,
-                                          const cmeta_callable *right) {
-    cmeta_callable bound_left;
-    cmeta_callable bound_right;
-
-    if (left == NULL || right == NULL ||
-        !cmeta_callable_bind(*left, &bound_left) ||
-        !cmeta_callable_bind(*right, &bound_right) ||
-        !cmeta_callable_contract_valid(bound_left) ||
-        !cmeta_callable_contract_valid(bound_right))
-        return false;
-
-    /*
-     * Dispatch mode, target address and capture storage are implementation
-     * representation. Plugin semantic compatibility is the CMeta signature
-     * plus declared effects/properties under contract_id/version.
-     */
-    return bound_left.meta.sig == bound_right.meta.sig &&
-           bound_left.meta.effects == bound_right.meta.effects &&
-           bound_left.meta.properties == bound_right.meta.properties;
 }
 
 static salts_plugin_status validate_export(const salts_plugin_export *entry) {
-    cmeta_callable bound;
-
-    if (entry == NULL ||
-        entry->struct_size < SALTS_PLUGIN_EXPORT_V1_SIZE)
+    if (entry == NULL || entry->struct_size != SALTS_PLUGIN_EXPORT_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
-    if (entry->abi_version != SALTS_PLUGIN_EXPORT_ABI_VERSION)
-        return SALTS_PLUGIN_UNSUPPORTED_ABI;
     if (!bounded_string_valid(entry->export_id, SALTS_PLUGIN_EXPORT_ID_MAX) ||
         !bounded_string_valid(entry->contract_id,
                               SALTS_PLUGIN_CONTRACT_ID_MAX) ||
@@ -112,40 +46,24 @@ static salts_plugin_status validate_export(const salts_plugin_export *entry) {
 
     switch (entry->kind) {
     case SALTS_PLUGIN_EXPORT_INTERFACE:
-        if (entry->interface_value == NULL || entry->callable != NULL ||
-            !salts_plugin_interface_desc_valid(entry->interface_desc))
+        if (entry->value.interface.value == NULL ||
+            !cmeta_interface_desc_valid(entry->value.interface.desc))
             return SALTS_PLUGIN_INVALID_MANIFEST;
         break;
-    case SALTS_PLUGIN_EXPORT_CALLABLE:
-        if (entry->interface_desc != NULL || entry->interface_value != NULL ||
-            entry->callable == NULL ||
-            !cmeta_callable_bind(*entry->callable, &bound) ||
-            !cmeta_callable_contract_valid(bound))
+
+    case SALTS_PLUGIN_EXPORT_FUNCTION:
+        if (!cmeta_function_desc_valid(entry->value.function.desc) ||
+            !function_abi_complete(entry->value.function.abi) ||
+            entry->value.function.abi->function != entry->value.function.desc ||
+            entry->value.function.invoke == NULL)
             return SALTS_PLUGIN_INVALID_MANIFEST;
         break;
+
     default:
         return SALTS_PLUGIN_INVALID_MANIFEST;
     }
 
     return SALTS_PLUGIN_OK;
-}
-
-bool salts_plugin_export_contract_equal(const salts_plugin_export *left,
-                                        const salts_plugin_export *right) {
-    if (validate_export(left) != SALTS_PLUGIN_OK ||
-        validate_export(right) != SALTS_PLUGIN_OK ||
-        left->kind != right->kind ||
-        left->contract_version != right->contract_version ||
-        !bounded_string_equal(left->contract_id, right->contract_id,
-                              SALTS_PLUGIN_CONTRACT_ID_MAX))
-        return false;
-
-    if (left->kind == SALTS_PLUGIN_EXPORT_INTERFACE)
-        return salts_plugin_interface_desc_equal(left->interface_desc,
-                                                 right->interface_desc);
-
-    return salts_plugin_callable_contract_equal(left->callable,
-                                                right->callable);
 }
 
 bool salts_plugin_export_has_capabilities(const salts_plugin_export *entry,
@@ -174,60 +92,50 @@ salts_plugin_status salts_plugin_export_require_interface(
     if (status != SALTS_PLUGIN_OK) return status;
     if (contract_version == 0u ||
         !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        !salts_plugin_interface_desc_valid(expected_interface))
+        !cmeta_interface_desc_valid(expected_interface))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
     if (entry->kind != SALTS_PLUGIN_EXPORT_INTERFACE ||
         !contract_key_equal(entry, contract_id, contract_version) ||
         !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
-        !salts_plugin_interface_desc_equal(entry->interface_desc,
+        !cmeta_interface_desc_equal(entry->value.interface.desc,
                                            expected_interface))
         return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
 
     return SALTS_PLUGIN_OK;
 }
 
-salts_plugin_status salts_plugin_export_require_callable(
+salts_plugin_status salts_plugin_export_require_function(
     const salts_plugin_export *entry,
     const char *contract_id,
     uint32_t contract_version,
-    uint64_t required_capabilities,
-    const cmeta_callable *expected_callable) {
-    cmeta_callable bound;
+    uint64_t required_capabilities) {
     salts_plugin_status status = validate_export(entry);
 
     if (status != SALTS_PLUGIN_OK) return status;
     if (contract_version == 0u ||
-        !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX) ||
-        expected_callable == NULL ||
-        !cmeta_callable_bind(*expected_callable, &bound) ||
-        !cmeta_callable_contract_valid(bound))
+        !bounded_string_valid(contract_id, SALTS_PLUGIN_CONTRACT_ID_MAX))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
-    if (entry->kind != SALTS_PLUGIN_EXPORT_CALLABLE ||
+    if (entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||
         !contract_key_equal(entry, contract_id, contract_version) ||
-        !salts_plugin_export_has_capabilities(entry, required_capabilities) ||
-        !salts_plugin_callable_contract_equal(entry->callable,
-                                              expected_callable))
+        !salts_plugin_export_has_capabilities(entry, required_capabilities))
         return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;
 
     return SALTS_PLUGIN_OK;
 }
 
 salts_plugin_status salts_plugin_manifest_validate(
-    const salts_plugin_manifest *manifest,
-    uint32_t host_abi) {
+    const salts_plugin_manifest *manifest) {
     size_t index;
     size_t other;
     bool has_lifecycle;
 
-    if (manifest == NULL || host_abi == 0u)
+    if (manifest == NULL)
         return SALTS_PLUGIN_INVALID_ARGUMENT;
-    if (host_abi != SALTS_PLUGIN_ABI_VERSION)
-        return SALTS_PLUGIN_UNSUPPORTED_ABI;
-    if (manifest->struct_size < SALTS_PLUGIN_MANIFEST_V1_SIZE)
+    if (manifest->struct_size != SALTS_PLUGIN_MANIFEST_SIZE)
         return SALTS_PLUGIN_INVALID_MANIFEST;
-    if (manifest->abi_version != host_abi)
+    if (manifest->abi_version != SALTS_PLUGIN_ABI_VERSION)
         return SALTS_PLUGIN_UNSUPPORTED_ABI;
     if (!bounded_string_valid(manifest->plugin_id, SALTS_PLUGIN_ID_MAX))
         return SALTS_PLUGIN_INVALID_MANIFEST;
@@ -280,8 +188,7 @@ salts_plugin_status salts_plugin_manifest_find_export(
     if (!bounded_string_valid(export_id, SALTS_PLUGIN_EXPORT_ID_MAX))
         return SALTS_PLUGIN_INVALID_ARGUMENT;
 
-    status = salts_plugin_manifest_validate(manifest,
-                                            SALTS_PLUGIN_ABI_VERSION);
+    status = salts_plugin_manifest_validate(manifest);
     if (status != SALTS_PLUGIN_OK) return status;
 
     for (index = 0u; index < manifest->export_count; ++index) {
@@ -312,7 +219,6 @@ const char *salts_plugin_status_string(salts_plugin_status status) {
     case SALTS_PLUGIN_QUERY_REJECTED: return "query_rejected";
     case SALTS_PLUGIN_UNKNOWN_PLUGIN: return "unknown_plugin";
     case SALTS_PLUGIN_STALE: return "stale";
-    case SALTS_PLUGIN_LIFECYCLE_UNSUPPORTED: return "lifecycle_unsupported";
     case SALTS_PLUGIN_UNLOAD_FAILED: return "unload_failed";
     case SALTS_PLUGIN_ALREADY: return "already";
     case SALTS_PLUGIN_BUSY: return "busy";

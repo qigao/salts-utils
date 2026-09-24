@@ -8,7 +8,7 @@ endif()
 
 project(
   SaltsUtils
-  VERSION 3.1.0
+  VERSION 4.0.0
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
@@ -56,14 +56,15 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts 1.3.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts 1.5.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
  
 # Additional components
 #
-# Internal CI may select only the Plugin/DataBind dependency closure. Product
-# builds keep the full component graph below.
+# The focused qualification profile is deliberately internal to CI. It proves
+# Plugin/DataBind contracts without configuring unrelated product components
+# whose third-party dependencies do not participate in those contracts.
 if(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND)
   add_subdirectory(tools/lemon)
   include(FindTools)

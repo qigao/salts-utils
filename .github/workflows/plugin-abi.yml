@@ -39,7 +39,7 @@ concurrency:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_SDK_VERSION: "1.3.0"
+  SALTS_SDK_VERSION: "1.5.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -85,11 +85,21 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore published Salts 1.3.0 and re2c 4.6.3
+      - name: Restore published Salts 1.5.0 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Restore focused Plugin/DataBind vcpkg closure
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
+            --triplet=x64-linux \
+            --only-binarycaching
 
       - name: Configure focused ABI and BindingPlan build
         shell: bash
@@ -99,9 +109,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
             -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON \
@@ -138,9 +147,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
@@ -227,7 +235,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.3.0 and re2c 4.6.3
+      - name: Restore published Salts 1.5.0 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,8 +249,10 @@ jobs:
           if errorlevel 1 exit /b 1
           powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -ManifestRoot "%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind"
           if errorlevel 1 exit /b 1
+          "%QIGAO_VCPKG_ROOT%\vcpkg.exe" install --x-manifest-root="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind" --x-install-root="%GITHUB_WORKSPACE%\vcpkg_installed" --triplet=x64-windows --only-binarycaching
+          if errorlevel 1 exit /b 1
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_DIR="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_INSTALL=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           if errorlevel 1 exit /b 1
           cmake --build build\plugin-abi --target salts_plugin_contract_test salts_plugin_header_cpp_test salts_plugin_loader_test test_databind_projection_registry test_data_bind_binding_plan test_data_bind_native_writer test_data_bind_cmeta_public_cpp --parallel 2
           if errorlevel 1 exit /b 1

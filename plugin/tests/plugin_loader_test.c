@@ -20,6 +20,9 @@
 #ifndef PLUGIN_REJECTED_PATH
 #error "PLUGIN_REJECTED_PATH is required"
 #endif
+#ifndef PLUGIN_OBSOLETE_PATH
+#error "PLUGIN_OBSOLETE_PATH is required"
+#endif
 #ifndef PLUGIN_INVALID_PATH
 #error "PLUGIN_INVALID_PATH is required"
 #endif
@@ -170,6 +173,57 @@ describe("bounded registry") {
         destroy_registry(&registry);
     }
 
+    it("executes a reflected Function export through a real DSO lease") {
+        salts_plugin_registry registry = make_registry(1u);
+        salts_plugin_ref ref = {0};
+        salts_plugin_lease lease = {0};
+        const salts_plugin_manifest *manifest = NULL;
+        const salts_plugin_export *entry = NULL;
+        void *params[1];
+        int input = 9;
+        int output = 0;
+        bool quiescent = false;
+
+        check_equal(salts_plugin_registry_load(
+                        &registry, PLUGIN_VALID_C_PATH, &ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_start(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_acquire(
+                        &registry, ref, &lease, &manifest),
+                    SALTS_PLUGIN_OK);
+        check_true(salts_plugin_lease_valid(lease));
+        check_not_null(manifest);
+
+        check_equal(salts_plugin_manifest_find_export(
+                        manifest, "test.loader.math.double", &entry),
+                    SALTS_PLUGIN_OK);
+        check_not_null(entry);
+        check_equal(salts_plugin_export_require_function(
+                        entry, "test.loader.math", 1u, 1u),
+                    SALTS_PLUGIN_OK);
+        check_true(cmeta_function_desc_valid(entry->value.function.desc));
+        check_true(cmeta_function_abi_desc_valid(entry->value.function.abi));
+        check_true(entry->value.function.abi->function == entry->value.function.desc);
+
+        params[0] = &input;
+        check_true(entry->value.function.invoke(
+            entry->value.function.context, &output, params, 1u));
+        check_equal(output, 18);
+
+        check_equal(salts_plugin_registry_release(&registry, &lease),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        check_equal(salts_plugin_registry_poll_quiescent(
+                        &registry, ref, &quiescent),
+                    SALTS_PLUGIN_OK);
+        check_true(quiescent);
+        check_equal(salts_plugin_registry_unload(&registry, ref),
+                    SALTS_PLUGIN_OK);
+        destroy_registry(&registry);
+    }
+
     it("reports stale generation without exposing slot storage") {
         salts_plugin_registry registry = make_registry(1u);
         salts_plugin_ref ref = {0};
@@ -226,12 +280,6 @@ describe("transactional admission") {
                         &destroy_thread, plugin_destroy_thread, &destroy),
                     0);
 
-        /*
-         * A load reservation is visible to destroy(), but query itself does
-         * not own the registry mutex. destroy() must therefore complete BUSY
-         * before the blocked query is released. The old implementation blocks
-         * here until the release marker appears.
-         */
         destroy_completed = wait_for_atomic_true(&destroy.done, 500u);
         touch_marker(PLUGIN_SLOW_QUERY_RELEASE_MARKER);
 
@@ -363,7 +411,7 @@ describe("transactional admission") {
         destroy_registry(&registry);
     }
 
-    it("keeps missing, rejected and incompatible query failures distinct") {
+    it("keeps missing, rejected, obsolete and incompatible failures distinct") {
         salts_plugin_registry registry = make_registry(2u);
         salts_plugin_ref ref = {3u, 3u};
         const char *missing_file = PLUGIN_VALID_C_PATH ".missing";
@@ -384,6 +432,13 @@ describe("transactional admission") {
         ref = (salts_plugin_ref){3u, 3u};
         check_equal(salts_plugin_registry_load(
                         &registry, PLUGIN_REJECTED_PATH, &ref),
+                    SALTS_PLUGIN_QUERY_REJECTED);
+        check_false(salts_plugin_ref_valid(ref));
+        check_equal(salts_plugin_registry_count(&registry), (size_t)0u);
+
+        ref = (salts_plugin_ref){3u, 3u};
+        check_equal(salts_plugin_registry_load(
+                        &registry, PLUGIN_OBSOLETE_PATH, &ref),
                     SALTS_PLUGIN_QUERY_REJECTED);
         check_false(salts_plugin_ref_valid(ref));
         check_equal(salts_plugin_registry_count(&registry), (size_t)0u);

@@ -266,8 +266,7 @@ salts_plugin_status salts_plugin_registry_load(
             impl, &library, SALTS_PLUGIN_QUERY_REJECTED);
     }
 
-    status = salts_plugin_manifest_validate(
-        manifest, SALTS_PLUGIN_ABI_VERSION);
+    status = salts_plugin_manifest_validate(manifest);
     if (status != SALTS_PLUGIN_OK)
         return close_rejected_load(impl, &library, status);
 
