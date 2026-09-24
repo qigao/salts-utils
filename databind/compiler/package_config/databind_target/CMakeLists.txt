@@ -21,6 +21,24 @@ databind_target(
   PROJECTIONS PLUGIN
   SOURCES business.c)
 
+if(NOT TARGET installed_image_plugin_client)
+  message(FATAL_ERROR "missing generated installed_image_plugin_client target")
+endif()
+get_target_property(
+  _installed_client_links installed_image_plugin_client LINK_LIBRARIES)
+if("Salts::DataBindSchema" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must not link Salts::DataBindSchema")
+endif()
+if(NOT "Salts::DataBindGeneratedABI" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must link Salts::DataBindGeneratedABI")
+endif()
+if(NOT "Salts::Plugin" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must link Salts::Plugin")
+endif()
+
 get_target_property(
   _installed_plugin_links installed_image_plugin LINK_LIBRARIES)
 if("Salts::DataBindSchema" IN_LIST _installed_plugin_links)
