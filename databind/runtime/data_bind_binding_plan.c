@@ -20,12 +20,22 @@ typedef struct DataBindBindingPlanEntryOwned {
   int has_default_token;
 } DataBindBindingPlanEntryOwned;
 
+typedef struct DataBindBindingPlanErrorVariant {
+  char *type_name;
+  uint32_t kind_value;
+  size_t payload_offset;
+  const DataBindNativeTypeBinding *native;
+  DataBindBindingPlanEntryOwned *egress;
+  size_t egress_count;
+} DataBindBindingPlanErrorVariant;
+
 struct DataBindBindingPlan {
   char *operation_id;
   char *projection_id;
   const cmeta_function_desc *function;
   const DataBindNativeTypeBinding *request;
   const DataBindNativeTypeBinding *response;
+  const DataBindServiceNativeErrorBinding *typed_error;
 
   DataBindBindingPlanEntryOwned *ingress;
   size_t ingress_count;
@@ -34,6 +44,8 @@ struct DataBindBindingPlan {
 
   char **errors;
   size_t error_count;
+  DataBindBindingPlanErrorVariant *error_variants;
+  size_t error_variant_count;
 
   const cmeta_data_desc **param_data;
   unsigned char *param_ingress;
@@ -45,6 +57,9 @@ struct DataBindBindingPlan {
   size_t response_root_param;
   int has_response_root_param;
   int response_uses_return;
+
+  size_t error_root_param;
+  int has_error_root_param;
 };
 
 static size_t plan_out_size(size_t requested, size_t full_size) {
