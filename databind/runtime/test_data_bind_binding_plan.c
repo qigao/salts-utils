@@ -479,6 +479,7 @@ typedef struct StateProvider {
   size_t write_calls;
   size_t value_calls;
   size_t null_calls;
+  size_t absent_calls;
   size_t commit_calls;
   size_t abort_calls;
   DataBindBindingValueState nullable_result_state;
@@ -537,6 +538,7 @@ static DataBindStatus state_provider_begin(
   provider->write_calls = 0u;
   provider->value_calls = 0u;
   provider->null_calls = 0u;
+  provider->absent_calls = 0u;
   provider->nullable_result_state = DATA_BIND_VALUE_STATE_ABSENT;
   provider->tri_result_state = DATA_BIND_VALUE_STATE_ABSENT;
   provider->nullable_result_value = 0u;
@@ -554,10 +556,15 @@ static DataBindStatus state_provider_write(
   (void)error;
 
   if (provider == NULL || entry == NULL) return DATA_BIND_ERR_INVALID_ARG;
-  if (state != DATA_BIND_VALUE_STATE_VALUE && state != DATA_BIND_VALUE_STATE_NULL)
+  if (state < DATA_BIND_VALUE_STATE_ABSENT ||
+      state > DATA_BIND_VALUE_STATE_NULL)
     return DATA_BIND_ERR_SCHEMA;
 
-  if (state == DATA_BIND_VALUE_STATE_NULL) {
+  if (state == DATA_BIND_VALUE_STATE_ABSENT) {
+    if (value != NULL || value_bytes != 0u)
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    ++provider->absent_calls;
+  } else if (state == DATA_BIND_VALUE_STATE_NULL) {
     if (value != NULL || value_bytes != 0u)
       return DATA_BIND_ERR_TYPE_MISMATCH;
     ++provider->null_calls;
@@ -1266,8 +1273,9 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(data_bind_binding_plan_write_outputs(
                     plan, &provider, &frame, &diagnostic),
                 DATA_BIND_OK);
-    check_equal(state.write_calls, 1u);
+    check_equal(state.write_calls, 2u);
     check_equal(state.null_calls, 1u);
+    check_equal(state.absent_calls, 1u);
     check_equal(state.value_calls, 0u);
     check_equal(state.nullable_result_state, DATA_BIND_VALUE_STATE_NULL);
     check_equal(state.tri_result_state, DATA_BIND_VALUE_STATE_ABSENT);
@@ -1284,6 +1292,7 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(state.write_calls, 2u);
     check_equal(state.value_calls, 1u);
     check_equal(state.null_calls, 1u);
+    check_equal(state.absent_calls, 0u);
     check_equal(state.nullable_result_state, DATA_BIND_VALUE_STATE_VALUE);
     check_equal(state.nullable_result_value, 13u);
     check_equal(state.tri_result_state, DATA_BIND_VALUE_STATE_NULL);
