@@ -68,13 +68,15 @@ spec("DataBind public projection frontend") {
 
     check_equal(plan.requests[0].kind,
                 DATABIND_COMPILER_PROJECTION_HTTP);
-    check_null(plan.requests[0].config);
+    check_true(plan.requests[0].config == &plan.http);
+    check_equal(plan.http.symbol_prefix, "databind_calc");
     check_equal(plan.backends[0].name, "http");
     check_equal(path_base(plan.requests[0].output, base), "calc.http.h");
 
     check_equal(plan.requests[1].kind,
                 DATABIND_COMPILER_PROJECTION_RPC);
-    check_null(plan.requests[1].config);
+    check_true(plan.requests[1].config == &plan.rpc);
+    check_equal(plan.rpc.symbol_prefix, "databind_calc");
     check_equal(plan.backends[1].name, "rpc");
     check_equal(path_base(plan.requests[1].output, base), "calc.rpc.h");
   }
