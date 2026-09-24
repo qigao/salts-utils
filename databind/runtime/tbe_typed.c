@@ -154,38 +154,6 @@ static void typed_optional_set(const TbeTypedType *type, void *object, const Tbe
   presence[field->optional_bit / 8u] |= (uint8_t)(1u << (field->optional_bit % 8u));
 }
 
-static int typed_nullable_null(const TbeTypedType *type, const void *object,
-                               const TbeTypedField *field) {
-  const uint8_t *nulls;
-  if ((field->flags & TBE_TYPED_FIELD_NULLABLE) == 0) return 0;
-  if (type->null_size == 0u) return 0;
-  nulls = (const uint8_t *)object + type->null_offset;
-  return (nulls[field->nullable_bit / 8u] &
-          (uint8_t)(1u << (field->nullable_bit % 8u))) != 0u;
-}
-
-static void typed_nullable_set(const TbeTypedType *type, void *object,
-                               const TbeTypedField *field) {
-  uint8_t *nulls;
-  if ((field->flags & TBE_TYPED_FIELD_NULLABLE) == 0 ||
-      type->null_size == 0u)
-    return;
-  nulls = (uint8_t *)object + type->null_offset;
-  nulls[field->nullable_bit / 8u] |=
-      (uint8_t)(1u << (field->nullable_bit % 8u));
-}
-
-static void typed_nullable_clear(const TbeTypedType *type, void *object,
-                                 const TbeTypedField *field) {
-  uint8_t *nulls;
-  if ((field->flags & TBE_TYPED_FIELD_NULLABLE) == 0 ||
-      type->null_size == 0u)
-    return;
-  nulls = (uint8_t *)object + type->null_offset;
-  nulls[field->nullable_bit / 8u] &=
-      (uint8_t)~(1u << (field->nullable_bit % 8u));
-}
-
 static int typed_type_has_nullable(const TbeTypedType *type) {
   size_t i;
   if (type == NULL) return 0;
@@ -559,6 +527,8 @@ DataBindStatus tbe_typed_from_value(const TbeTypedType *type, const DataBindValu
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed value");
   status = typed_validate_descriptor_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
     return typed_error(error, DATA_BIND_ERR_OOM, type->name,
@@ -673,6 +643,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     return NULL;
   }
   if (typed_validate_descriptor_at(type, 0u, error) != DATA_BIND_OK) return NULL;
+  if (typed_reject_nullable_runtime(type, error) != DATA_BIND_OK) return NULL;
   root = json_create_object();
   if (root == NULL) {
     typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating JSON object");
@@ -2862,6 +2833,8 @@ DataBindStatus tbe_typed_parse_binary(const TbeTypedType *type, const void *data
                        "Invalid typed binary parse arguments");
   status = typed_validate_layout_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
     return typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating typed object");
@@ -2893,6 +2866,10 @@ DataBindStatus tbe_typed_parse_ex(DataBind *codec, const char *type_name, const 
   DataBindStatus status;
   if (codec == NULL || type_name == NULL || type == NULL || data == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed parse arguments");
+  status = typed_validate_descriptor_at(type, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   if (format == DATA_BIND_FORMAT_BINARY) {
     status = tbe_typed_validate_schema(codec, type_name, type, error);
     if (status != DATA_BIND_OK) return status;
@@ -3294,6 +3271,8 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
   void *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (codec == NULL || !typed_nonempty(type_name) || data == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
                        "Invalid canonical descriptor parse arguments");
@@ -3350,6 +3329,10 @@ DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
   if (out_len != NULL) *out_len = 0;
   if (codec == NULL || type_name == NULL || type == NULL || object == NULL || out == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed serialize arguments");
+  status = typed_validate_descriptor_at(type, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   if (format != DATA_BIND_FORMAT_JSON && format != DATA_BIND_FORMAT_YAML &&
       format != DATA_BIND_FORMAT_CSV && format != DATA_BIND_FORMAT_XML)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Unknown typed output format");
@@ -3392,6 +3375,8 @@ DataBindStatus tbe_typed_descriptor_serialize(DataBind *codec, const char *type_
   json_value_t *json;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
   if (codec == NULL || !typed_nonempty(type_name) || object == NULL || out == NULL)
@@ -3424,6 +3409,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary(const TbeTypedDescriptor *d
   uint8_t *data;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
   if (object == NULL || out == NULL || out_len == NULL)
@@ -3452,6 +3439,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(const TbeTypedDescript
   TypedNativeRecord native;
   uint8_t *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
   if (status != DATA_BIND_OK) return status;
   if (out_len != NULL) *out_len = 0u;
   if (object == NULL || out_len == NULL || (output == NULL && capacity != 0u))
