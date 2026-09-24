@@ -106,39 +106,45 @@ static size_t native_decimal_digits(size_t value) {
  *   A   / B_C
  * that ordinary underscore concatenation cannot distinguish.
  */
-static char *native_symbol(
-    const char *schema, const char *service, const char *operation) {
+char *databind_compiler_native_symbol(
+    const char *const *parts, size_t part_count) {
   static const char prefix[] = "databind";
-  const char *parts[] = {schema, service, operation};
-  size_t lengths[3];
+  size_t *lengths = NULL;
   size_t total = sizeof(prefix) - 1u;
   size_t i;
   size_t used;
-  char *out;
+  char *out = NULL;
 
-  for (i = 0u; i < 3u; ++i) {
-    if (!native_identifier_valid(parts[i])) return NULL;
+  if (parts == NULL || part_count == 0u) return NULL;
+  if (part_count > SIZE_MAX / sizeof(*lengths)) return NULL;
+
+  lengths = (size_t *)calloc(part_count, sizeof(*lengths));
+  if (lengths == NULL) return NULL;
+
+  for (i = 0u; i < part_count; ++i) {
+    if (!native_identifier_valid(parts[i])) goto cleanup;
     lengths[i] = strlen(parts[i]);
     if (total > SIZE_MAX - 2u -
                     native_decimal_digits(lengths[i]) -
                     lengths[i])
-      return NULL;
+      goto cleanup;
     total += 2u + native_decimal_digits(lengths[i]) + lengths[i];
   }
 
   out = (char *)malloc(total + 1u);
-  if (out == NULL) return NULL;
+  if (out == NULL) goto cleanup;
 
   memcpy(out, prefix, sizeof(prefix) - 1u);
   used = sizeof(prefix) - 1u;
-  for (i = 0u; i < 3u; ++i) {
+  for (i = 0u; i < part_count; ++i) {
     int written;
     out[used++] = '_';
     written = snprintf(
         out + used, total + 1u - used, "%zu", lengths[i]);
     if (written <= 0 || (size_t)written >= total + 1u - used) {
       free(out);
-      return NULL;
+      out = NULL;
+      goto cleanup;
     }
     used += (size_t)written;
     out[used++] = '_';
@@ -146,6 +152,9 @@ static char *native_symbol(
     used += lengths[i];
   }
   out[used] = '\0';
+
+cleanup:
+  free(lengths);
   return out;
 }
 
@@ -318,7 +327,13 @@ static int native_operation_fill(
       native_join2(schema_name, service_name, '.');
   out->qualified_operation =
       native_join3(schema_name, service_name, operation_name, '.');
-  out->symbol = native_symbol(schema_name, service_name, operation_name);
+  {
+    const char *symbol_parts[] = {
+        schema_name, service_name, operation_name
+    };
+    out->symbol = databind_compiler_native_symbol(
+        symbol_parts, sizeof(symbol_parts) / sizeof(symbol_parts[0]));
+  }
   out->request_type = native_strdup(request_type);
   out->response_type = native_strdup(response_type);
   out->request_type_identity =
