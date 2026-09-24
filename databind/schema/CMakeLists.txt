@@ -65,7 +65,8 @@ foreach(test_name
         test_tbe_robustness
         test_optional_and_defaults
         test_enum_helpers
-        test_component_contract)
+        test_component_contract
+        test_channel_contract)
   cmake_add_test(${test_name}
     SOURCES test/${test_name}.c
     LIBS ${DATABIND_SCHEMA_TEST_LIBS}
