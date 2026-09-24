@@ -342,6 +342,7 @@ cmake_add_test(test_databind_method_plan_public_frontend
   LIBS Salts::DataBind Salts::TinyTest
   INCLUDES
     "${databind_method_plan_public_fixture_GENERATED_DIR}"
+    "${databind_method_plan_configured_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_method_plan_public_frontend
   databind_method_plan_public_fixture_databind_codegen
