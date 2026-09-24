@@ -12743,6 +12743,10 @@ DataBindStatus data_bind_validation_plan_compile(
                           "Unable to allocate ValidationPlan rules");
     }
   }
+  /* Publish the allocated span before population so every compile error path
+   * can release partially initialized owned rules. Untouched entries are
+   * zero-initialized and safe to clear. */
+  plan->rule_count = rule_count;
 
   for (field_index = 0u; field_index < fields->data.list.count; ++field_index) {
     Node *field = fields->data.list.items[field_index];

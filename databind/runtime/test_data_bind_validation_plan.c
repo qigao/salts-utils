@@ -94,7 +94,12 @@ spec("DataBind immutable ValidationPlan") {
                 DATA_BIND_ERR_VALIDATION);
     check_equal(data_bind_status_name(error.code), "validation");
     check_equal(error.path, "Profile.age");
-    check_equal(data_bind_value_as_int(data_bind_value_get(value, "age")), 121);
+    {
+      uint64_t age = 0u;
+      check_equal(data_bind_value_get_uint64(data_bind_value_get(value, "age"), &age),
+                  DATA_BIND_OK);
+      check_equal(age, UINT64_C(121));
+    }
     data_bind_value_free(value);
     value = NULL;
 
