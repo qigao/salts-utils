@@ -1,6 +1,7 @@
 #include "schema_service.h"
 
 #include "schema_builtin_type.h"
+#include "schema_type_ref.h"
 
 #include <ctype.h>
 #include <stdint.h>
@@ -30,46 +31,6 @@ static const char *service_string(Node *parent, const char *name) {
 static int service_flag(Node *node, const char *name) {
     const char *value = service_string(node, name);
     return value != NULL && strcmp(value, "1") == 0;
-}
-
-static Node *service_named_record(Node *root, const char *list_name,
-                                  const char *name) {
-    Node *list = service_find_child(root, list_name);
-    size_t i;
-    if (list == NULL || list->type != NODE_LIST || name == NULL) return NULL;
-    for (i = 0u; i < list->data.list.count; ++i) {
-        Node *record = list->data.list.items[i];
-        const char *record_name = service_string(record, "name");
-        if (record_name != NULL && strcmp(record_name, name) == 0)
-            return record;
-    }
-    return NULL;
-}
-
-static Node *service_type_node(Node *root, const char *name) {
-    static const char *const lists[] = {
-        "messages", "composites", "groups", "unions", "enums"
-    };
-    size_t i;
-    if (root == NULL || name == NULL) return NULL;
-    for (i = 0u; i < sizeof(lists) / sizeof(lists[0]); ++i) {
-        Node *record = service_named_record(root, lists[i], name);
-        if (record != NULL) return record;
-    }
-    return NULL;
-}
-
-static int service_type_exists(Node *root, const char *name) {
-    static const char *const extended_scalars[] = {
-        "string", "bytes", "uuid", "datetime", "date", "time",
-        "duration", "decimal", "bigint", "money"
-    };
-    size_t i;
-    if (name == NULL || name[0] == '\0') return 0;
-    if (schema_builtin_type_find(name) != NULL) return 1;
-    for (i = 0u; i < sizeof(extended_scalars) / sizeof(extended_scalars[0]); ++i)
-        if (strcmp(name, extended_scalars[i]) == 0) return 1;
-    return service_type_node(root, name) != NULL;
 }
 
 static Node *service_attributes(Node *node) {
@@ -309,7 +270,7 @@ static int service_validate_request_bindings(Node *root, Node *operation,
         "path", "query", "header", "cookie", "body"
     };
     const char *request_type = service_string(operation, "request_type");
-    Node *request = service_type_node(root, request_type);
+    Node *request = schema_type_ref_node(root, request_type);
     Node *fields = request != NULL ? service_find_child(request, "fields") : NULL;
     size_t body_count = 0u;
     size_t i;
@@ -350,7 +311,7 @@ static int service_validate_http_fields(Node *root, Node *operation,
                                         const char *path,
                                         tbe_error_t *err) {
     const char *request_type = service_string(operation, "request_type");
-    Node *request = service_type_node(root, request_type);
+    Node *request = schema_type_ref_node(root, request_type);
     Node *fields = request != NULL ? service_find_child(request, "fields") : NULL;
     size_t i;
     size_t body_count = 0u;
@@ -481,12 +442,12 @@ static int service_validate_operation(Node *root, Node *service,
     size_t rpc_count = 0u;
     size_t i;
 
-    if (!service_type_exists(root, request_type))
+    if (!schema_type_ref_exists(root, request_type))
         return service_errorf(err, "Service operation '%s' has unknown request type '%s'",
                               operation_name, request_type);
     if (response_type == NULL ||
         (strcmp(response_type, "void") != 0 &&
-         !service_type_exists(root, response_type)))
+         !schema_type_ref_exists(root, response_type)))
         return service_errorf(err, "Service operation '%s' has unknown response type '%s'",
                               operation_name, response_type);
 
@@ -501,7 +462,7 @@ static int service_validate_operation(Node *root, Node *service,
                     ? item->data.string_val
                     : NULL;
             size_t j;
-            if (!service_type_exists(root, error_type))
+            if (!schema_type_ref_exists(root, error_type))
                 return service_errorf(err,
                                       "Service operation '%s' has unknown error type '%s'",
                                       operation_name, error_type);
