@@ -348,8 +348,10 @@ static int native_operation_fill(
          out->response_type_identity != NULL;
 }
 
-int databind_compiler_service_native_build(
+int databind_compiler_service_native_build_selected(
     const Node *canonical_ir,
+    databind_compiler_service_native_select_fn select_service,
+    void *select_context,
     databind_compiler_service_native_ir *out) {
   const Node *schema;
   const Node *services;
@@ -370,8 +372,16 @@ int databind_compiler_service_native_build(
   if (services == NULL) return -1;
 
   for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *operations =
-        native_list(services->data.list.items[i], "operations");
+    const Node *service = services->data.list.items[i];
+    const char *service_name = native_string(service, "name");
+    const Node *operations;
+
+    if (service_name == NULL || service_name[0] == '\0') return -1;
+    if (select_service != NULL &&
+        !select_service(select_context, service_name))
+      continue;
+
+    operations = native_list(service, "operations");
     if (operations == NULL) return -1;
     if (total > SIZE_MAX - operations->data.list.count) return -1;
     total += operations->data.list.count;
@@ -385,9 +395,16 @@ int databind_compiler_service_native_build(
 
   for (i = 0u; i < services->data.list.count; ++i) {
     const Node *service = services->data.list.items[i];
-    const Node *operations = native_list(service, "operations");
     const char *service_name = native_string(service, "name");
+    const Node *operations;
+
     if (service_name == NULL || service_name[0] == '\0') goto fail;
+    if (select_service != NULL &&
+        !select_service(select_context, service_name))
+      continue;
+
+    operations = native_list(service, "operations");
+    if (operations == NULL) goto fail;
 
     for (j = 0u; j < operations->data.list.count; ++j, ++index) {
       size_t prior;
@@ -402,11 +419,19 @@ int databind_compiler_service_native_build(
     }
   }
 
+  if (index != total) goto fail;
   return 0;
 
 fail:
   databind_compiler_service_native_destroy(out);
   return -1;
+}
+
+int databind_compiler_service_native_build(
+    const Node *canonical_ir,
+    databind_compiler_service_native_ir *out) {
+  return databind_compiler_service_native_build_selected(
+      canonical_ir, NULL, NULL, out);
 }
 
 int databind_compiler_service_native_emit_prototype(
