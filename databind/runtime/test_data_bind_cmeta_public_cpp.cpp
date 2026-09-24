@@ -4,6 +4,7 @@
 #include "data_bind_method_plan.h"
 #include "test_data_bind_cmeta_public.c"
 
+static_assert(std::is_standard_layout_v<DataBindSchemaConstraint>);
 static_assert(std::is_standard_layout_v<DataBindBindingAddress>);
 static_assert(std::is_standard_layout_v<DataBindNativeTypeBinding>);
 static_assert(std::is_standard_layout_v<DataBindNativeErrorBinding>);
