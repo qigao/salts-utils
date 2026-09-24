@@ -443,6 +443,14 @@ typedef struct DataBindServiceOperation {
   size_t error_count;
 } DataBindServiceOperation;
 
+/** Immutable reflected one-way Channel contract owned by one DataBind codec. */
+typedef struct DataBindChannel {
+  size_t size;
+  const char *name;
+  const char *qualified_name;
+  const char *message_type;
+} DataBindChannel;
+
 /**
  * Canonical Component capability kind.
  *
@@ -452,7 +460,8 @@ typedef struct DataBindServiceOperation {
  */
 typedef enum DataBindComponentCapabilityKind {
   DATA_BIND_COMPONENT_CAPABILITY_UNKNOWN = 0,
-  DATA_BIND_COMPONENT_CAPABILITY_SERVICE = 1
+  DATA_BIND_COMPONENT_CAPABILITY_SERVICE = 1,
+  DATA_BIND_COMPONENT_CAPABILITY_CHANNEL = 2
 } DataBindComponentCapabilityKind;
 
 /** Immutable reflected Component declaration owned by one DataBind codec. */
@@ -477,6 +486,7 @@ typedef struct DataBindComponentCapability {
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
 #define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
 #define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
+#define DATA_BIND_CHANNEL_INIT {sizeof(DataBindChannel)}
 #define DATA_BIND_COMPONENT_INIT {sizeof(DataBindComponent)}
 #define DATA_BIND_COMPONENT_CAPABILITY_INIT {sizeof(DataBindComponentCapability)}
 #define DATA_BIND_ERROR_INIT {sizeof(DataBindError), DATA_BIND_OK, -1, -1, {0}, {0}}
@@ -1384,6 +1394,25 @@ DATA_BIND_API int data_bind_service_operation_find(
 DATA_BIND_API const char *data_bind_service_operation_error_at(
     DataBind *codec, const char *service_name, const char *operation_name,
     size_t index);
+
+/**
+ * @brief Return the number of canonical Channel declarations.
+ */
+DATA_BIND_API size_t data_bind_channel_count(DataBind *codec);
+
+/**
+ * @brief Read immutable Channel reflection by index.
+ * @return 1 when out was filled, 0 when arguments or index are invalid.
+ */
+DATA_BIND_API int data_bind_channel_at(
+    DataBind *codec, size_t index, DataBindChannel *out);
+
+/**
+ * @brief Find immutable Channel reflection by unqualified Channel name.
+ * @return 1 when out was filled, 0 when not found or arguments are invalid.
+ */
+DATA_BIND_API int data_bind_channel_find(
+    DataBind *codec, const char *name, DataBindChannel *out);
 
 /**
  * @brief Return the number of canonical Component declarations.
