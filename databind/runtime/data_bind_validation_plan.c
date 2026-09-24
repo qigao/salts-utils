@@ -34,10 +34,25 @@ typedef struct DataBindValidationRule {
   re_t pattern;
 } DataBindValidationRule;
 
+typedef enum DataBindValidationChildKind {
+  DATA_BIND_VALIDATION_CHILD_OBJECT = 1,
+  DATA_BIND_VALIDATION_CHILD_SEQUENCE,
+  DATA_BIND_VALIDATION_CHILD_SET,
+  DATA_BIND_VALIDATION_CHILD_MAP_VALUES
+} DataBindValidationChildKind;
+
+typedef struct DataBindValidationChild {
+  char *field_name;
+  DataBindValidationChildKind kind;
+  struct DataBindValidationPlan *plan;
+} DataBindValidationChild;
+
 struct DataBindValidationPlan {
   char *type_name;
   size_t rule_count;
   DataBindValidationRule *rules;
+  size_t child_count;
+  DataBindValidationChild *children;
 };
 
 static DataBindStatus validation_error(
@@ -186,6 +201,11 @@ void data_bind_validation_plan_free(DataBindValidationPlan *plan) {
   if (plan == NULL) return;
   for (i = 0u; i < plan->rule_count; ++i)
     validation_rule_clear(&plan->rules[i]);
+  for (i = 0u; i < plan->child_count; ++i) {
+    free(plan->children[i].field_name);
+    data_bind_validation_plan_free(plan->children[i].plan);
+  }
+  free(plan->children);
   free(plan->rules);
   free(plan->type_name);
   free(plan);
