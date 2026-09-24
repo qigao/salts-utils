@@ -139,10 +139,9 @@ static DataBind *create_codec(void) {
       " optional [query] uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
-      "message CalcError { string detail; }"
       "service Calc {"
       " [GET(\"/add\"), rpc]"
-      " Add: AddRequest -> AddResponse throws CalcError;"
+      " Add: AddRequest -> AddResponse;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -867,7 +866,8 @@ spec("DataBind canonical Service BindingPlan") {
 
     check_equal(data_bind_binding_plan_operation_id(http_plan), "Calc.Add");
     check_equal(data_bind_binding_plan_projection_id(http_plan), "http-v1");
-    check_equal(data_bind_binding_plan_error_at(http_plan, 0u), "CalcError");
+    check_equal(data_bind_binding_plan_error_count(http_plan), (size_t)0u);
+    check_null(data_bind_binding_plan_error_at(http_plan, 0u));
 
     check(data_bind_binding_plan_ingress_at(http_plan, 1u, &entry) == 1);
     check_true(entry.address.binding_class == DATA_BIND_BINDING_METADATA);

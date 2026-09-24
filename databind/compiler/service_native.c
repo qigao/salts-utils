@@ -850,6 +850,37 @@ static int native_emit_state_array(
   return fputs("};\n", file) == EOF ? -1 : 0;
 }
 
+static int native_emit_error_array(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation) {
+  size_t i;
+  if (operation == NULL) return -1;
+  if (operation->error_count == 0u) return 0;
+  if (file == NULL || operation->symbol == NULL || operation->errors == NULL)
+    return -1;
+
+  if (fprintf(
+          file,
+          "static const DataBindNativeErrorBinding %s__error_bindings[] = {\n",
+          operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i) {
+    const databind_compiler_service_native_error *error =
+        &operation->errors[i];
+    if (error->type_name == NULL || error->kind_value != (unsigned)(i + 1u) ||
+        fprintf(
+            file,
+            "  {sizeof(DataBindNativeErrorBinding), \"%s\", %uu, "
+            "%s_cmeta_data, offsetof(%s__error, payload.error_%zu)},\n",
+            error->type_name, error->kind_value, error->type_name,
+            operation->symbol, i + 1u) < 0)
+      return -1;
+  }
+
+  return fputs("};\n", file) == EOF ? -1 : 0;
+}
+
 int databind_compiler_service_native_emit_binding(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
@@ -857,18 +888,20 @@ int databind_compiler_service_native_emit_binding(
   const char *request_null_expr;
   const char *response_presence_expr;
   const char *response_null_expr;
+  const char *error_bindings_expr;
   char request_presence[640];
   char request_nulls[640];
   char response_presence[640];
   char response_nulls[640];
+  char error_bindings[640];
+  char error_envelope_size[720];
+  char error_kind_offset[720];
 
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
       operation->request_type == NULL ||
       operation->response_type == NULL)
     return -1;
-  if (operation->error_count != 0u) return -1;
-
   if (native_emit_state_array(
           file, operation->symbol, operation->request_type,
           "request_presence", "_presence",
@@ -888,7 +921,8 @@ int databind_compiler_service_native_emit_binding(
           file, operation->symbol, operation->response_type,
           "response_nulls", "_nulls",
           operation->response_nulls,
-          operation->response_null_count) != 0)
+          operation->response_null_count) != 0 ||
+      native_emit_error_array(file, operation) != 0)
     return -1;
 
   if (operation->request_presence_count != 0u) {
@@ -927,6 +961,21 @@ int databind_compiler_service_native_emit_binding(
     response_null_expr = "NULL";
   }
 
+  if (operation->error_count != 0u) {
+    if (snprintf(error_bindings, sizeof(error_bindings),
+                 "%s__error_bindings", operation->symbol) <= 0 ||
+        snprintf(error_envelope_size, sizeof(error_envelope_size),
+                 "sizeof(%s__error)", operation->symbol) <= 0 ||
+        snprintf(error_kind_offset, sizeof(error_kind_offset),
+                 "offsetof(%s__error, kind)", operation->symbol) <= 0)
+      return -1;
+    error_bindings_expr = error_bindings;
+  } else {
+    error_bindings_expr = "NULL";
+    snprintf(error_envelope_size, sizeof(error_envelope_size), "0u");
+    snprintf(error_kind_offset, sizeof(error_kind_offset), "0u");
+  }
+
   return fprintf(
              file,
              "DataBindStatus %s__databind_native_binding(\n"
@@ -955,7 +1004,8 @@ int databind_compiler_service_native_emit_binding(
              "  *service_out = (DataBindServiceNativeBinding){\n"
              "      sizeof(DataBindServiceNativeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      &%s__function_meta, request_out, response_out};\n"
+             "      &%s__function_meta, request_out, response_out,\n"
+             "      %s, %zuu, %s, %s, %s, %s};\n"
              "  return DATA_BIND_OK;\n"
              "}\n",
              operation->symbol,
@@ -971,7 +1021,13 @@ int databind_compiler_service_native_emit_binding(
              operation->response_presence_count,
              response_null_expr,
              operation->response_null_count,
-             operation->symbol) < 0
+             operation->symbol,
+             error_bindings_expr,
+             operation->error_count,
+             operation->error_count != 0u ? "2u" : "SIZE_MAX",
+             error_envelope_size,
+             error_kind_offset,
+             operation->error_count != 0u ? "sizeof(uint32_t)" : "0u") < 0
              ? -1
              : 0;
 }
