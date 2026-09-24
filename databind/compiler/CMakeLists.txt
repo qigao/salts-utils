@@ -65,6 +65,15 @@ add_test(NAME test_databind_compiler_tooling_boundary
 set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
 
+add_test(NAME test_databind_nullable_codegen_rejected
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDATABINDC=$<TARGET_FILE:databindc>"
+    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_rejection.schema"
+    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/nullable-rejected.h"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen_rejection.cmake")
+set_tests_properties(test_databind_nullable_codegen_rejected
+  PROPERTIES LABELS "databind;compiler;nullable")
+
 
 cmake_add_test(test_databind_projection_registry
   SOURCES

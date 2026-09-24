@@ -177,6 +177,14 @@ lex_start:
             return 1;
         }
 
+        "nullable" {
+            token->type = SCHEMA_TOKEN_NULLABLE;
+            token->value = token_start;
+            token->length = (size_t)(YYCURSOR - token_start);
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         "default" {
             token->type = SCHEMA_TOKEN_DEFAULT;
             token->value = token_start;

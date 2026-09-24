@@ -6640,6 +6640,38 @@ static Node *parse_schema_text_to_root(const char *schema_text, size_t len, cons
   return root;
 }
 
+static Node *data_bind_first_nullable_field(Node *schema_root) {
+  static const char *const record_lists[] = {
+      "composites", "groups", "messages", "unions"};
+  size_t list_index;
+
+  if (schema_root == NULL) return NULL;
+
+  for (list_index = 0u;
+       list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+       ++list_index) {
+    Node *records = find_child(schema_root, record_lists[list_index]);
+    size_t record_index;
+
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index) {
+      Node *record = records->data.list.items[record_index];
+      Node *fields = find_child(record, "fields");
+      size_t field_index;
+
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+      for (field_index = 0u; field_index < fields->data.list.count;
+           ++field_index) {
+        Node *field = fields->data.list.items[field_index];
+        if (find_child(field, "is_nullable") != NULL) return field;
+      }
+    }
+  }
+
+  return NULL;
+}
+
 static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **out_codec,
                                                  DataBindError *error) {
   DataBind *codec;
@@ -6649,6 +6681,20 @@ static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **o
     node_free(schema_root);
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
                         "Invalid codec create arguments");
+  }
+  {
+    Node *nullable_field = data_bind_first_nullable_field(schema_root);
+    if (nullable_field != NULL) {
+      const char *owner = get_string_val(find_child(nullable_field, "owner_name"));
+      const char *name = get_string_val(find_child(nullable_field, "name"));
+      char path[260];
+      snprintf(path, sizeof(path), "%s.%s",
+               owner != NULL ? owner : "<anonymous>",
+               name != NULL ? name : "<unnamed>");
+      node_free(schema_root);
+      return db_error_set(error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
+                          "DataBind nullable runtime lowering is not implemented");
+    }
   }
   codec = (DataBind *)calloc(1, sizeof(*codec));
   if (codec == NULL) {

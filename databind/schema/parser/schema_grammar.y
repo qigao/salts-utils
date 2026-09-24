@@ -549,7 +549,8 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
 static void add_field(schema_parse_ctx_t *ctx,
                       const char *type_str, const char *name_str,
                       int is_collection, const char *inner, const char *len_field,
-                      Node *attrs, int is_group_field, int is_optional, const char *default_value) {
+                      Node *attrs, int is_group_field, int is_optional, int is_nullable,
+                      const char *default_value) {
     Node *field_map;
 
     if (ctx->error) {
@@ -574,6 +575,10 @@ static void add_field(schema_parse_ctx_t *ctx,
     
     if (is_optional) {
         add_true(ctx, field_map, "is_optional");
+    }
+
+    if (is_nullable) {
+        add_true(ctx, field_map, "is_nullable");
     }
     
     if (default_value && default_value[0] != '\0') {
@@ -962,7 +967,8 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %type attr_values {Node *}
 %type attr_value {Node *}
 %type field_default {char *}
-%type field_qualifier {int}
+%type field_presence {int}
+%type field_nullability {int}
 %type service_errors {Node *}
 %type error_types {Node *}
 %type idl_ident {schema_token_t}
@@ -975,7 +981,7 @@ static void add_enum_item(schema_parse_ctx_t *ctx, const char *key, const char *
 %destructor service_errors { (void)ctx; node_free($$); }
 %destructor error_types { (void)ctx; node_free($$); }
 
-%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL DEFAULT STRING TRUE FALSE UNION SERVICE COMPONENT CHANNEL THROWS COLON ARROW.
+%token ENUM FLAGS NUMBER DEFAULT_NUMBER EQUALS IDENT LBRACE RBRACE SEMI LPAREN RPAREN LBRACKET RBRACKET LT GT COMMA MESSAGE COMPOSITE GROUP SCHEMA REQUIRED OPTIONAL NULLABLE DEFAULT STRING TRUE FALSE UNION SERVICE COMPONENT CHANNEL THROWS COLON ARROW.
 
 start ::= schema.
 schema ::= decl_list.
@@ -1272,7 +1278,7 @@ union_body ::= .
 union_variant ::= attribute_list(A) idl_ident(T) idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
-    add_field(ctx, type_name, field_name, 0, "", "", A, 0, 0, NULL);
+    add_field(ctx, type_name, field_name, 0, "", "", A, 0, 0, 0, NULL);
     free(type_name);
     free(field_name);
 }
@@ -1322,11 +1328,12 @@ message_header ::= MESSAGE idl_ident(N) LBRACE. {
 field_list ::= field_list field_decl.
 field_list ::= .
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) idl_ident(N) field_default(D) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) idl_ident(N) field_default(D) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, type_name, field_name, 0, "", "", A, 0, is_optional, D);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, type_name, field_name, 0, "", "", A, 0, is_optional, is_nullable, D);
     free(type_name);
     free(field_name);
     if (D) free(D);
@@ -1340,77 +1347,84 @@ field_default(D) ::= DEFAULT FALSE(V). { D = tok_strdup(V); }
 field_default(D) ::= DEFAULT idl_ident(V). { D = tok_strdup(V); }
 field_default(D) ::= . { D = NULL; }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LPAREN idl_ident(L) RPAREN idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LPAREN idl_ident(L) RPAREN idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, type_name, field_name, 0, "", length_field, A, 0, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, type_name, field_name, 0, "", length_field, A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(length_field);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LPAREN NUMBER(L) RPAREN idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LPAREN NUMBER(L) RPAREN idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, type_name, field_name, 0, "", length_field, A, 0, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, type_name, field_name, 0, "", length_field, A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(length_field);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) GROUP LT idl_ident(I) GT idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) GROUP LT idl_ident(I) GT idl_ident(N) SEMI. {
     char *group_type = tok_strdup(I);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, "group", field_name, 0, group_type, "", A, 1, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, "group", field_name, 0, group_type, "", A, 1, is_optional, is_nullable, NULL);
     free(group_type);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LBRACKET idl_ident(L) RBRACKET idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LBRACKET idl_ident(L) RBRACKET idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, "array", field_name, 1, type_name, length_field, A, 0, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, "array", field_name, 1, type_name, length_field, A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(length_field);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LBRACKET NUMBER(L) RBRACKET idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LBRACKET NUMBER(L) RBRACKET idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *length_field = tok_strdup(L);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, "array", field_name, 1, type_name, length_field, A, 0, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, "array", field_name, 1, type_name, length_field, A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(length_field);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(I) GT idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LT idl_ident(I) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *inner_type = tok_strdup(I);
     char *field_name = tok_strdup(N);
-    int is_optional = (Q == 1);
-    add_field(ctx, type_name, field_name, 1, inner_type, "", A, 0, is_optional, NULL);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
+    add_field(ctx, type_name, field_name, 1, inner_type, "", A, 0, is_optional, is_nullable, NULL);
     free(type_name);
     free(inner_type);
     free(field_name);
 }
 
-field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(K) COMMA idl_ident(V) GT idl_ident(N) SEMI. {
+field_decl ::= field_presence(P) field_nullability(Z) attribute_list(A) idl_ident(T) LT idl_ident(K) COMMA idl_ident(V) GT idl_ident(N) SEMI. {
     char *type_name = tok_strdup(T);
     char *field_name = tok_strdup(N);
     char *key_type = tok_strdup(K);
     char *value_type = tok_strdup(V);
     char *map_inner = NULL;
-    int is_optional = (Q == 1);
+    int is_optional = P != 0;
+    int is_nullable = Z != 0;
 
     if (key_type == NULL || value_type == NULL) {
         grammar_oom(ctx);
@@ -1421,7 +1435,7 @@ field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(K)
     } else {
         map_inner = join_map_inner_types(ctx, key_type, value_type);
         if (map_inner != NULL) {
-            add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, NULL);
+            add_field(ctx, type_name, field_name, 1, map_inner, "", A, 0, is_optional, is_nullable, NULL);
         } else {
             node_free(A);
         }
@@ -1433,9 +1447,22 @@ field_decl ::= field_qualifier(Q) attribute_list(A) idl_ident(T) LT idl_ident(K)
     free(value_type);
 }
 
-field_qualifier(Q) ::= REQUIRED. { Q = 0; }  // 0 = required
-field_qualifier(Q) ::= OPTIONAL. { Q = 1; }  // 1 = optional 
-field_qualifier(Q) ::= .         { Q = 0; }  // default = required
+/*
+ * Presence and nullability are orthogonal DataBind semantics with one
+ * unambiguous surface order:
+ *
+ *   [required|optional] [nullable] <type> <name>
+ *
+ * Both dimensions default independently: required + non-null.
+ * NULLABLE is intentionally a reserved keyword rather than an idl_ident so
+ * Lemon never has to guess whether it starts a modifier or names a type.
+ */
+field_presence(P) ::= REQUIRED. { P = 0; }
+field_presence(P) ::= OPTIONAL. { P = 1; }
+field_presence(P) ::= .         { P = 0; }
+
+field_nullability(Z) ::= NULLABLE. { Z = 1; }
+field_nullability(Z) ::= .         { Z = 0; }
 
 %syntax_error {
     // TOKEN is the current token that caused the error
