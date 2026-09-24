@@ -1,0 +1,17 @@
+schema Image [version(1)];
+
+component ImageProcessor {
+    service Codec;
+}
+
+message DecodeRequest {
+    uint32 width;
+}
+
+message DecodeResponse {
+    uint32 pixels;
+}
+
+service Codec {
+    Decode: DecodeRequest -> DecodeResponse;
+}
