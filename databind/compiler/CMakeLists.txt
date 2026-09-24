@@ -248,6 +248,7 @@ add_custom_command(
       "${DATABIND_PLUGIN_TEST_SOURCE}"
       "${DATABIND_PLUGIN_TEST_SERVICE_H}"
       "image_native.h"
+      "ImageProcessor"
   DEPENDS
     databindc
     databind_plugin_codegen_fixture_tool
