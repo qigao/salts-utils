@@ -142,6 +142,8 @@ add_library(
   data_bind_binding_plan.h
   data_bind_method_plan.c
   data_bind_method_plan.h
+  data_bind_validation_plan.c
+  data_bind_validation_plan.h
   data_bind_stream_format_state.c
   data_bind_stream_format_state_internal.h
   tbe_typed.c
@@ -235,6 +237,7 @@ install(
     data_bind_native.h
     data_bind_binding_plan.h
     data_bind_method_plan.h
+    data_bind_validation_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
     data_bind_csv_provider.h
@@ -342,6 +345,12 @@ cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
+cmake_add_test(test_data_bind_validation_plan
+  SOURCES test_data_bind_validation_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_validation_plan PROPERTIES
+  LABELS "databind;validation;plan")
 cmake_add_test(test_data_bind_component
   SOURCES test_data_bind_component.c
   LIBS ${DATA_BIND_TEST_LIBS}
