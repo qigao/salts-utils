@@ -47,8 +47,8 @@ static const salts_plugin_export mismatch_export = {
     .export_id = "Image.Codec.Decode",
     .contract_id = TEST_CONTRACT_ID,
     .value.function = {
-        .desc = FunctionMeta(plugin_client_mismatch_function),
-        .abi = FunctionAbi(plugin_client_mismatch_function),
+        .desc = &plugin_client_mismatch_function__function_meta,
+        .abi = &plugin_client_mismatch_function__function_abi_meta,
         .context = NULL,
         .invoke = plugin_client_mismatch_invoke,
     },
