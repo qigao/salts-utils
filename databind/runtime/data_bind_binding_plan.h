@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_BINDING_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_BINDING_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindBindingDirection {
   DATA_BIND_BINDING_INGRESS = 1,
@@ -100,18 +100,6 @@ typedef struct DataBindNativeTypeBinding {
   { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     (TYPE_NAME), (DATA), NULL, 0u }
 
-typedef struct DataBindServiceNativeBinding {
-  size_t size;
-  uint32_t abi_version;
-  const cmeta_function_desc *function;
-  const DataBindNativeTypeBinding *request;
-  const DataBindNativeTypeBinding *response;
-} DataBindServiceNativeBinding;
-
-#define DATA_BIND_SERVICE_NATIVE_BINDING_INIT(FUNCTION, REQUEST, RESPONSE) \
-  { sizeof(DataBindServiceNativeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
-    (FUNCTION), (REQUEST), (RESPONSE) }
-
 typedef struct DataBindBindingPlanEntry {
   size_t size;
   DataBindBindingDirection direction;
@@ -175,6 +163,41 @@ typedef struct DataBindBindingCallFrame {
 #define DATA_BIND_BINDING_CALL_FRAME_INIT \
   { sizeof(DataBindBindingCallFrame), NULL, 0u, NULL, 0u, NULL, NULL, 0u }
 
+/**
+ * Generated/admitted exact-ABI invocation adapter.
+ *
+ * The callback is compiled for one concrete C function signature. DataBind
+ * never dynamically interprets cmeta_function_desc to perform a call.
+ */
+typedef DataBindStatus (*DataBindServiceInvokeFn)(
+    void *context, DataBindBindingCallFrame *frame, DataBindError *error);
+
+typedef struct DataBindServiceExecutionAdapter {
+  size_t size;
+  uint32_t abi_version;
+  const cmeta_function_desc *function;
+  void *context;
+  DataBindServiceInvokeFn invoke;
+} DataBindServiceExecutionAdapter;
+
+#define DATA_BIND_SERVICE_EXECUTION_ADAPTER_INIT(FUNCTION, CONTEXT, INVOKE) \
+  { sizeof(DataBindServiceExecutionAdapter), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
+    (FUNCTION), (CONTEXT), (INVOKE) }
+
+typedef struct DataBindServiceNativeBinding {
+  size_t size;
+  uint32_t abi_version;
+  const cmeta_function_desc *function;
+  const DataBindNativeTypeBinding *request;
+  const DataBindNativeTypeBinding *response;
+  const DataBindServiceExecutionAdapter *execution;
+} DataBindServiceNativeBinding;
+
+#define DATA_BIND_SERVICE_NATIVE_BINDING_INIT( \
+    FUNCTION, REQUEST, RESPONSE, EXECUTION) \
+  { sizeof(DataBindServiceNativeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
+    (FUNCTION), (REQUEST), (RESPONSE), (EXECUTION) }
+
 typedef struct DataBindBindingPlan DataBindBindingPlan;
 
 /**
@@ -233,6 +256,13 @@ DATA_BIND_API const char *
 data_bind_binding_plan_projection_id(const DataBindBindingPlan *plan);
 DATA_BIND_API const cmeta_function_desc *
 data_bind_binding_plan_function(const DataBindBindingPlan *plan);
+
+DATA_BIND_API const DataBindNativeTypeBinding *
+data_bind_binding_plan_request(const DataBindBindingPlan *plan);
+DATA_BIND_API const DataBindNativeTypeBinding *
+data_bind_binding_plan_response(const DataBindBindingPlan *plan);
+DATA_BIND_API const DataBindServiceExecutionAdapter *
+data_bind_binding_plan_execution(const DataBindBindingPlan *plan);
 
 DATA_BIND_API size_t
 data_bind_binding_plan_ingress_count(const DataBindBindingPlan *plan);
