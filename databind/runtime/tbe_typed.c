@@ -224,7 +224,8 @@ static DataBindStatus typed_nullable_format_supported(
     const TbeTypedType *type, DataBindFormat format, DataBindError *error) {
   if (!typed_type_has_nullable(type) ||
       format == DATA_BIND_FORMAT_JSON ||
-      format == DATA_BIND_FORMAT_YAML)
+      format == DATA_BIND_FORMAT_YAML ||
+      format == DATA_BIND_FORMAT_BINARY)
     return DATA_BIND_OK;
   return typed_error(
       error, DATA_BIND_ERR_SCHEMA, type != NULL ? type->name : NULL,
@@ -2806,15 +2807,28 @@ static DataBindStatus typed_read_fixed(const TbeTypedType *type, const uint8_t *
                        "Binary input is shorter than the fixed block");
   if (type->presence_size != 0)
     memcpy((uint8_t *)object + type->presence_offset, data, type->presence_size);
+  if (type->null_size != 0)
+    memcpy((uint8_t *)object + type->null_offset,
+           data + type->presence_size, type->null_size);
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     uint8_t *output = (uint8_t *)object + field->offset;
     const uint8_t *source;
     size_t j;
     size_t element_wire_size;
+    int present;
+    int is_null;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
     source = data + field->wire_offset;
-    if (!typed_optional_present(type, object, field)) continue;
+    present = typed_optional_present(type, object, field);
+    is_null = typed_nullable_is_null(type, object, field);
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       DataBindStatus status =
           typed_read_fixed(field->object_type, source, len - field->wire_offset, output, error);
@@ -2858,6 +2872,10 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
     const TbeTypedField *field = &type->fields[i];
     uint8_t *output = (uint8_t *)object + field->offset;
     int present = typed_optional_present(type, object, field);
+    int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed null state is set while optional field is absent");
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       vec_t *vec = (vec_t *)output;
       uint16_t block_length;
@@ -2876,7 +2894,10 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
           !typed_size_fits(cursor, payload_size, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary group payload is invalid");
-      if (present) {
+      if (is_null && count != 0u)
+        return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
+                           "Binary NULL group payload must be empty");
+      if (present && !is_null) {
         if (!typed_multiply_fits(count, field->element_size, &host_payload_size))
           return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                              "Typed group size exceeds the host address space");
@@ -2904,12 +2925,15 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
       if (!typed_size_fits(cursor, value_size, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary variable-data payload is truncated");
-      if (present && field->kind == TBE_TYPED_STRING) {
+      if (is_null && value_size != 0u)
+        return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
+                           "Binary NULL variable-data payload must be empty");
+      if (present && !is_null && field->kind == TBE_TYPED_STRING) {
         *(tstr *)output = tstr_dup_len((const char *)data + cursor, value_size);
         if (*(tstr *)output == NULL)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
                              "Out of memory copying typed string");
-      } else if (present) {
+      } else if (present && !is_null) {
         vec_t *vec = (vec_t *)output;
         if (vec_resize(vec, value_size) != STL_OK)
           return typed_error(error, DATA_BIND_ERR_OOM, field->name,
@@ -3042,10 +3066,13 @@ static DataBindStatus typed_native_validate_wire(const cmeta_data_desc *data,
                                                  const TbeTypedType *overlay, const char *path,
                                                  DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+  DataBindStatus layout_status;
   size_t i;
-  if (overlay->presence_size != 0u || overlay->fixed_block_size == 0u)
+  if (overlay == NULL || overlay->fixed_block_size == 0u)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Supported descriptor has no complete fixed wire layout");
+  layout_status = typed_validate_layout_at(overlay, 0u, error);
+  if (layout_status != DATA_BIND_OK) return layout_status;
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
@@ -3177,13 +3204,28 @@ static DataBindStatus typed_native_read_fixed(const cmeta_data_desc *data,
                                               DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
   size_t i;
+  if (overlay->presence_size != 0u)
+    memcpy((uint8_t *)storage + overlay->presence_offset,
+           source, overlay->presence_size);
+  if (overlay->null_size != 0u)
+    memcpy((uint8_t *)storage + overlay->null_offset,
+           source + overlay->presence_size, overlay->null_size);
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
     char field_path[sizeof(((DataBindError *)0)->path)];
     DataBindStatus status =
         typed_native_path(field_path, sizeof(field_path), path, native_field->name, error);
+    const int present = typed_optional_present(overlay, storage, wire_field);
+    const int is_null = typed_nullable_is_null(overlay, storage, wire_field);
     if (status != DATA_BIND_OK) return status;
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Canonical null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (native_field->value->kind == CMETA_DATA_STRUCT)
       status = typed_native_read_fixed(
           native_field->value, wire_field->nested_overlay, source + wire_field->wire_offset,
@@ -3341,13 +3383,29 @@ static DataBindStatus typed_native_write_fixed(const cmeta_data_desc *data,
                                                DataBindError *error) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
   size_t i;
+  if (overlay->presence_size != 0u)
+    memcpy(destination, (const uint8_t *)storage + overlay->presence_offset,
+           overlay->presence_size);
+  if (overlay->null_size != 0u)
+    memcpy(destination + overlay->presence_size,
+           (const uint8_t *)storage + overlay->null_offset,
+           overlay->null_size);
   for (i = 0u; i < shape->field_count; ++i) {
     const cmeta_data_field_desc *native_field = &shape->fields[i];
     const TbeTypedField *wire_field = &overlay->fields[i];
     char field_path[sizeof(((DataBindError *)0)->path)];
     DataBindStatus status =
         typed_native_path(field_path, sizeof(field_path), path, native_field->name, error);
+    const int present = typed_optional_present(overlay, storage, wire_field);
+    const int is_null = typed_nullable_is_null(overlay, storage, wire_field);
     if (status != DATA_BIND_OK) return status;
+    if (!present) {
+      if (is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Canonical null state is set while optional field is absent");
+      continue;
+    }
+    if (is_null) continue;
     if (native_field->value->kind == CMETA_DATA_STRUCT)
       status = typed_native_write_fixed(native_field->value, wire_field->nested_overlay,
                                         (const uint8_t *)storage + native_field->offset,
@@ -3574,9 +3632,15 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     const void *ptr = (const uint8_t *)object + field->offset;
+    const int present = typed_optional_present(type, object, field);
+    const int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null) {
+      *supported = 0;
+      return 0;
+    }
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
-      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
+      size_t count = present && !is_null ? vec->size : 0u;
       size_t payload_size;
       size_t field_size;
       if (field->object_type == NULL || field->object_type->fixed_block_size > UINT16_MAX ||
@@ -3593,7 +3657,7 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       size_t len = 0u;
       size_t field_size;
-      if (typed_optional_present(type, object, field)) {
+      if (present && !is_null) {
         len = field->kind == TBE_TYPED_STRING
                   ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
                   : ((const vec_t *)ptr)->size;
@@ -3666,12 +3730,18 @@ static int typed_write_fixed(const TbeTypedType *type, const void *object, uint8
   if (size < type->fixed_block_size) return 0;
   if (type->presence_size != 0)
     memcpy(dst, (const uint8_t *)object + type->presence_offset, type->presence_size);
+  if (type->null_size != 0)
+    memcpy(dst + type->presence_size,
+           (const uint8_t *)object + type->null_offset, type->null_size);
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     const uint8_t *src = (const uint8_t *)object + field->offset;
     size_t j;
+    const int present = typed_optional_present(type, object, field);
+    const int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null) return 0;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
-    if (!typed_optional_present(type, object, field)) continue;
+    if (!present || is_null) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       if (!typed_write_fixed(field->object_type, src, dst + field->wire_offset,
                              size - field->wire_offset))
@@ -3739,8 +3809,14 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
-      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
+      const int present = typed_optional_present(type, object, field);
+      const int is_null = typed_nullable_is_null(type, object, field);
+      size_t count;
       size_t j;
+      if (!present && is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      count = present && !is_null ? vec->size : 0u;
       tbe_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
       tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
@@ -3757,7 +3833,12 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       const void *bytes;
       size_t len;
-      if (!typed_optional_present(type, object, field)) {
+      const int present = typed_optional_present(type, object, field);
+      const int is_null = typed_nullable_is_null(type, object, field);
+      if (!present && is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      if (!present || is_null) {
         bytes = NULL;
         len = 0u;
       } else if (field->kind == TBE_TYPED_STRING) {
