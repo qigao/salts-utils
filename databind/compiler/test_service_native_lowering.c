@@ -559,6 +559,29 @@ spec("DataBind canonical Service native lowering") {
         rpc, &outcome, &rpc_code));
     check_equal(rpc_code, -32003);
 
+    {
+      DataBindBindingOutcome mismatched =
+          (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+      int sentinel_http = 298;
+      int sentinel_rpc = 18;
+      mismatched.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+      mismatched.typed_error_index = 0u;
+      mismatched.typed_error = "PermissionDenied";
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_equal(sentinel_http, 298);
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+      check_equal(sentinel_rpc, 18);
+
+      mismatched.typed_error_index = 99u;
+      mismatched.typed_error = NULL;
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+    }
+
     request.left = UINT32_MAX;
     typed_error =
         (databind_13_ServiceNative_4_Calc_4_Find__error)
