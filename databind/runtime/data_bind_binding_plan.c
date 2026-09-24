@@ -1515,8 +1515,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
     DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     void *destination;
     size_t destination_bytes = 0u;
-    DataBindBindingValueState input_state = DATA_BIND_STATE_ABSENT;
-    int normalized_value = 0;
+    DataBindBindingValueState input_state = DATA_BIND_VALUE_STATE_ABSENT;
 
     destination =
         plan_ingress_destination(plan, entry, frame, &destination_bytes);
@@ -1535,8 +1534,8 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
           diagnostic, status, entry, &error, "Input provider failed");
       goto fail;
     }
-    if (input_state < DATA_BIND_STATE_ABSENT ||
-        input_state > DATA_BIND_STATE_NULL) {
+    if (input_state < DATA_BIND_VALUE_STATE_ABSENT ||
+        input_state > DATA_BIND_VALUE_STATE_NULL) {
       status = plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA,
           entry->schema_field, entry->function_param,
@@ -1544,7 +1543,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
       goto fail;
     }
 
-    if (input_state == DATA_BIND_STATE_ABSENT) {
+    if (input_state == DATA_BIND_VALUE_STATE_ABSENT) {
       if (owned->has_default_token) {
         default_context.token = &owned->default_token;
         if (cserde_reader_init(
@@ -1556,8 +1555,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
               "Could not initialize compiled default reader");
           goto fail;
         }
-        input_state = DATA_BIND_STATE_VALUE;
-        normalized_value = 1;
+        input_state = DATA_BIND_VALUE_STATE_VALUE;
       } else if (!entry->required) {
         continue;
       } else {
@@ -1569,7 +1567,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
       }
     }
 
-    if (input_state == DATA_BIND_STATE_NULL) {
+    if (input_state == DATA_BIND_VALUE_STATE_NULL) {
       if (!entry->nullable || !entry->has_null) {
         status = plan_diag_fail(
             diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
@@ -1604,7 +1602,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
     }
 
     if (entry->has_presence &&
-        (input_state == DATA_BIND_STATE_VALUE || normalized_value)) {
+        input_state == DATA_BIND_VALUE_STATE_VALUE) {
       unsigned char *presence =
           (unsigned char *)frame->request + entry->presence_offset;
       *presence |= (unsigned char)(1u << entry->presence_bit);
@@ -1662,7 +1660,7 @@ DataBindStatus data_bind_binding_plan_write_outputs(
     size_t source_bytes = 0u;
     int present = 1;
     int is_null = 0;
-    DataBindBindingValueState output_state = DATA_BIND_STATE_VALUE;
+    DataBindBindingValueState output_state = DATA_BIND_VALUE_STATE_VALUE;
 
     if (entry->has_presence || entry->has_null) {
       if (entry->target_is_return) {
@@ -1696,10 +1694,8 @@ DataBindStatus data_bind_binding_plan_write_outputs(
             entry->schema_field, entry->function_param,
             "Native output state has NULL set while presence is ABSENT");
       }
-      continue;
-    }
-
-    if (is_null) {
+      output_state = DATA_BIND_VALUE_STATE_ABSENT;
+    } else if (is_null) {
       if (!entry->nullable) {
         provider->abort_output(provider->context);
         return plan_diag_fail(
@@ -1707,8 +1703,9 @@ DataBindStatus data_bind_binding_plan_write_outputs(
             entry->schema_field, entry->function_param,
             "Native output state is NULL for a non-null DataBind field");
       }
-      output_state = DATA_BIND_STATE_NULL;
+      output_state = DATA_BIND_VALUE_STATE_NULL;
     } else {
+      output_state = DATA_BIND_VALUE_STATE_VALUE;
       source = plan_egress_source(plan, entry, frame, &source_bytes);
       if (source == NULL) {
         provider->abort_output(provider->context);
