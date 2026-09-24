@@ -58,18 +58,128 @@ spec("DataBind schema reflection contract") {
     data_bind_free(codec);
   }
 
-  it("rejects nullable runtime schemas until exact lowering is implemented") {
+  it("reflects nullable independently and preserves JSON absent-null-value states") {
     static const char schema[] =
-        "message Nullable { nullable string name; }";
-    DataBind *codec = (DataBind *)(uintptr_t)1;
+        "message User {"
+        " string required_value;"
+        " optional string optional_value;"
+        " nullable string nullable_value;"
+        " optional nullable string tri_state_value;"
+        " optional nullable string locale default \"en\";"
+        "}";
+    static const char explicit_null[] =
+        "{\"required_value\":\"r\",\"nullable_value\":null,"
+        "\"tri_state_value\":null,\"locale\":null}";
+    static const char absent_with_default[] =
+        "{\"required_value\":\"r\",\"nullable_value\":\"n\"}";
+    static const char illegal_null[] =
+        "{\"required_value\":null,\"nullable_value\":\"n\"}";
+    DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
+    DataBindValue *value = NULL;
+    const DataBindValue *field_value;
+    const char *text = NULL;
+    size_t text_len = 0u;
 
     check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
-                DATA_BIND_ERR_SCHEMA);
-    check_null(codec);
-    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
-    check_equal(error.path, "Nullable.name");
-    check_not_null(strstr(error.message, "nullable"));
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check(data_bind_schema_field_at(codec, "User", 0u, &field) == 1);
+    check_equal(field.is_optional, 0);
+    check_equal(field.is_nullable, 0);
+
+    field = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
+    check(data_bind_schema_field_at(codec, "User", 1u, &field) == 1);
+    check_equal(field.is_optional, 1);
+    check_equal(field.is_nullable, 0);
+
+    field = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
+    check(data_bind_schema_field_at(codec, "User", 2u, &field) == 1);
+    check_equal(field.is_optional, 0);
+    check_equal(field.is_nullable, 1);
+
+    field = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
+    check(data_bind_schema_field_at(codec, "User", 3u, &field) == 1);
+    check_equal(field.is_optional, 1);
+    check_equal(field.is_nullable, 1);
+
+    check_equal(data_bind_parse_json(codec, "User", explicit_null,
+                                     sizeof(explicit_null) - 1u, &value, &error),
+                DATA_BIND_OK);
+    check_not_null(value);
+    if (value != NULL) {
+      check_null(data_bind_value_get(value, "optional_value"));
+      field_value = data_bind_value_get(value, "nullable_value");
+      check_not_null(field_value);
+      if (field_value != NULL)
+        check_equal(data_bind_value_kind(field_value), DATA_BIND_VALUE_NULL);
+      field_value = data_bind_value_get(value, "tri_state_value");
+      check_not_null(field_value);
+      if (field_value != NULL)
+        check_equal(data_bind_value_kind(field_value), DATA_BIND_VALUE_NULL);
+      field_value = data_bind_value_get(value, "locale");
+      check_not_null(field_value);
+      if (field_value != NULL)
+        check_equal(data_bind_value_kind(field_value), DATA_BIND_VALUE_NULL);
+      data_bind_value_free(value);
+      value = NULL;
+    }
+
+    check_equal(data_bind_parse_json(codec, "User", absent_with_default,
+                                     sizeof(absent_with_default) - 1u,
+                                     &value, &error),
+                DATA_BIND_OK);
+    check_not_null(value);
+    if (value != NULL) {
+      check_null(data_bind_value_get(value, "optional_value"));
+      check_null(data_bind_value_get(value, "tri_state_value"));
+      field_value = data_bind_value_get(value, "locale");
+      check_not_null(field_value);
+      if (field_value != NULL) {
+        check_equal(data_bind_value_kind(field_value), DATA_BIND_VALUE_STRING);
+        check_equal(data_bind_value_get_string(field_value, &text, &text_len),
+                    DATA_BIND_OK);
+        check_equal(text_len, 2u);
+        check(memcmp(text, "en", 2u) == 0);
+      }
+      data_bind_value_free(value);
+      value = NULL;
+    }
+
+    check_equal(data_bind_parse_json(codec, "User", illegal_null,
+                                     sizeof(illegal_null) - 1u, &value, &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_null(value);
+
+    data_bind_free(codec);
+  }
+
+  it("keeps appended nullable reflection outside older size-prefixed callers") {
+    static const char schema[] =
+        "message User { nullable string name; }";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindSchemaField compact;
+    unsigned char before[sizeof(int)];
+    size_t prefix = offsetof(DataBindSchemaField, is_nullable);
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    memset(&compact, 0xa5, sizeof(compact));
+    compact.size = prefix;
+    memcpy(before, (const unsigned char *)&compact + prefix, sizeof(before));
+    check(data_bind_schema_field_at(codec, "User", 0u, &compact) == 1);
+    check_equal(compact.size, prefix);
+    check(memcmp(before, (const unsigned char *)&compact + prefix,
+                 sizeof(before)) == 0);
+
+    data_bind_free(codec);
   }
 
   it("reflects minimal service contracts and transport projections") {
