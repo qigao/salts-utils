@@ -154,6 +154,7 @@ target_include_directories(
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
     $<INSTALL_INTERFACE:include>
   PRIVATE $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>)
 target_link_libraries(
