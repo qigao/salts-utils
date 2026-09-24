@@ -86,6 +86,7 @@ static int path_reserved(
       input->lua_output_path,
       input->guest_output_path,
       input->dsl_output_path,
+      input->projection_config_path,
   };
   size_t i;
   for (i = 0u; i < sizeof(reserved) / sizeof(reserved[0]); ++i)
@@ -221,16 +222,20 @@ static int add_method_plan(
         "Derived projection outputs collide with another compiler output");
 
   if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
-    out->http = (databind_compiler_http_projection_config){
-        .symbol_prefix = out->method_plan_symbol_prefix,
-    };
+    if (out->external_config.has_http)
+      out->http = out->external_config.http;
+    else
+      out->http = (databind_compiler_http_projection_config){0};
+    out->http.symbol_prefix = out->method_plan_symbol_prefix;
     out->requests[out->request_count++] =
         (databind_compiler_projection_request){
             .kind = kind, .output = path, .config = &out->http};
   } else {
-    out->rpc = (databind_compiler_rpc_projection_config){
-        .symbol_prefix = out->method_plan_symbol_prefix,
-    };
+    if (out->external_config.has_rpc)
+      out->rpc = out->external_config.rpc;
+    else
+      out->rpc = (databind_compiler_rpc_projection_config){0};
+    out->rpc.symbol_prefix = out->method_plan_symbol_prefix;
     out->requests[out->request_count++] =
         (databind_compiler_projection_request){
             .kind = kind, .output = path, .config = &out->rpc};
@@ -343,7 +348,13 @@ int databind_compiler_projection_frontend_build(
     databind_compiler_projection_frontend_plan *out,
     char *error,
     size_t error_size) {
+  databind_compiler_projection_kind
+      kinds[DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS];
+  size_t kind_count = 0u;
   const char *cursor;
+  size_t i;
+  int selected_http = 0;
+  int selected_rpc = 0;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
   if (input == NULL || out == NULL)
@@ -351,19 +362,24 @@ int databind_compiler_projection_frontend_build(
 
   memset(out, 0, sizeof(*out));
 
-  if (input->projections == NULL || input->projections[0] == '\0')
+  if (input->projections == NULL || input->projections[0] == '\0') {
+    if (input->projection_config_path != NULL &&
+        input->projection_config_path[0] != '\0')
+      return frontend_error(
+          error, error_size,
+          "--projection-config requires --projections http and/or rpc");
     return 0;
+  }
 
   cursor = input->projections;
   while (*cursor != '\0') {
     const char *end = strchr(cursor, ',');
     char name[64];
     databind_compiler_projection_kind kind;
-    size_t i;
+    size_t j;
 
     if (end == NULL) end = cursor + strlen(cursor);
-    if (!token_copy_trimmed(
-            cursor, end, name, sizeof(name)))
+    if (!token_copy_trimmed(cursor, end, name, sizeof(name)))
       return frontend_error(
           error, error_size,
           "Projection list contains an empty/invalid name");
@@ -373,34 +389,20 @@ int databind_compiler_projection_frontend_build(
           error, error_size,
           "Unknown projection '%s'", name);
 
-    for (i = 0u; i < out->request_count; ++i)
-      if (out->requests[i].kind == kind)
+    for (j = 0u; j < kind_count; ++j)
+      if (kinds[j] == kind)
         return frontend_errorf(
             error, error_size,
             "Projection '%s' was selected more than once", name);
 
-    if (out->request_count >=
-        DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS)
+    if (kind_count >= DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS)
       return frontend_error(
           error, error_size,
           "Too many projections selected");
 
-    switch (kind) {
-    case DATABIND_COMPILER_PROJECTION_PLUGIN:
-      if (add_plugin(input, out, error, error_size) != 0)
-        return -1;
-      break;
-    case DATABIND_COMPILER_PROJECTION_HTTP:
-    case DATABIND_COMPILER_PROJECTION_RPC:
-      if (add_method_plan(input, out, kind, error, error_size) != 0)
-        return -1;
-      break;
-    default:
-      return frontend_errorf(
-          error, error_size,
-          "Projection '%s' is known but not available from the public frontend yet",
-          name);
-    }
+    kinds[kind_count++] = kind;
+    if (kind == DATABIND_COMPILER_PROJECTION_HTTP) selected_http = 1;
+    if (kind == DATABIND_COMPILER_PROJECTION_RPC) selected_rpc = 1;
 
     if (*end == ',' && end[1] == '\0')
       return frontend_error(
@@ -410,10 +412,65 @@ int databind_compiler_projection_frontend_build(
     cursor = *end == ',' ? end + 1 : end;
   }
 
-  return databind_compiler_projection_requests_valid(
-             out->requests, out->request_count)
-             ? 0
-             : frontend_error(
-                   error, error_size,
-                   "Invalid projection selection");
+  if (input->projection_config_path != NULL &&
+      input->projection_config_path[0] != '\0') {
+    if (!selected_http && !selected_rpc)
+      return frontend_error(
+          error, error_size,
+          "--projection-config is consumed only by HTTP/RPC projections");
+    if (databind_compiler_projection_config_load(
+            input->projection_config_path, &out->external_config,
+            error, error_size) != 0)
+      return -1;
+    if (out->external_config.has_http && !selected_http) {
+      frontend_error(
+          error, error_size,
+          "Projection config contains http but HTTP is not selected");
+      goto fail;
+    }
+    if (out->external_config.has_rpc && !selected_rpc) {
+      frontend_error(
+          error, error_size,
+          "Projection config contains rpc but RPC is not selected");
+      goto fail;
+    }
+  }
+
+  for (i = 0u; i < kind_count; ++i) {
+    switch (kinds[i]) {
+    case DATABIND_COMPILER_PROJECTION_PLUGIN:
+      if (add_plugin(input, out, error, error_size) != 0)
+        goto fail;
+      break;
+    case DATABIND_COMPILER_PROJECTION_HTTP:
+    case DATABIND_COMPILER_PROJECTION_RPC:
+      if (add_method_plan(input, out, kinds[i], error, error_size) != 0)
+        goto fail;
+      break;
+    default:
+      frontend_errorf(
+          error, error_size,
+          "Projection '%s' is known but not available from the public frontend yet",
+          databind_compiler_projection_name(kinds[i]));
+      goto fail;
+    }
+  }
+
+  if (!databind_compiler_projection_requests_valid(
+          out->requests, out->request_count)) {
+    frontend_error(error, error_size, "Invalid projection selection");
+    goto fail;
+  }
+  return 0;
+
+fail:
+  databind_compiler_projection_frontend_dispose(out);
+  return -1;
 }
+
+void databind_compiler_projection_frontend_dispose(
+    databind_compiler_projection_frontend_plan *plan) {
+  if (plan == NULL) return;
+  databind_compiler_projection_config_dispose(&plan->external_config);
+}
+
