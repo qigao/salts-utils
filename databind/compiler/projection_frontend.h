@@ -45,6 +45,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   char native_header[SALTS_FS_MAX_PATH];
   char plugin_source[SALTS_FS_MAX_PATH];
   char plugin_service_header[SALTS_FS_MAX_PATH];
+  char plugin_client_source[SALTS_FS_MAX_PATH];
 } databind_compiler_projection_frontend_plan;
 
 /*
