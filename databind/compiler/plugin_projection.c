@@ -67,16 +67,19 @@ static int plugin_bounded_text_valid(const char *text, size_t max_length) {
 }
 
 static const Node *plugin_component(
-    const Node *root, const char *component_name) {
+    const Node *root, const char *component_id) {
   const Node *components = plugin_list(root, "components");
   size_t i;
 
-  if (components == NULL || component_name == NULL) return NULL;
+  if (components == NULL || component_id == NULL) return NULL;
   for (i = 0u; i < components->data.list.count; ++i) {
-    const Node *component = components->data.list.items[i];
-    const char *name = plugin_string(component, "name");
-    if (name != NULL && strcmp(name, component_name) == 0)
-      return component;
+    const Node *qualified_name =
+        plugin_child(components->data.list.items[i], "qualified_name");
+    if (qualified_name != NULL &&
+        qualified_name->type == NODE_STRING &&
+        qualified_name->data.string_val != NULL &&
+        strcmp(qualified_name->data.string_val, component_id) == 0)
+      return components->data.list.items[i];
   }
   return NULL;
 }
@@ -642,7 +645,7 @@ int databind_compiler_plugin_generate(
       request->kind != DATABIND_COMPILER_PROJECTION_PLUGIN ||
       config == NULL ||
       !plugin_text_valid(request->output) ||
-      !plugin_text_valid(config->component_name) ||
+      !plugin_text_valid(config->component_id) ||
       !plugin_text_valid(config->native_header) ||
       !plugin_text_valid(config->service_header_output) ||
       strcmp(request->output, config->service_header_output) == 0 ||
@@ -651,7 +654,7 @@ int databind_compiler_plugin_generate(
     return -1;
 
   component = plugin_component(
-      canonical_ir, config->component_name);
+      canonical_ir, config->component_id);
   if (component == NULL)
     return -1;
 
