@@ -127,10 +127,14 @@ function(databind_target)
   endif()
   string(REPLACE "." ";" _version_parts "${DB_VERSION}")
   foreach(_version_part IN LISTS _version_parts)
-    string(LENGTH "${_version_part}" _version_part_length)
+    string(REGEX REPLACE "^0+" "" _version_part_normalized "${_version_part}")
+    if(_version_part_normalized STREQUAL "")
+      set(_version_part_normalized "0")
+    endif()
+    string(LENGTH "${_version_part_normalized}" _version_part_length)
     if(_version_part_length GREATER 10 OR
        (_version_part_length EQUAL 10 AND
-        _version_part STRGREATER "4294967295"))
+        _version_part_normalized STRGREATER "4294967295"))
       message(FATAL_ERROR
               "databind_target VERSION components must fit uint32: "
               "${DB_VERSION}")
