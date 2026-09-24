@@ -1,4 +1,6 @@
 #include "data_bind_validation_plan.h"
+#include "data_bind_validation_plan_internal.h"
+#include "data_bind_native_internal.h"
 
 #include "re.h"
 
@@ -241,6 +243,23 @@ const char *data_bind_validation_plan_type_name(
 size_t data_bind_validation_plan_rule_count(
     const DataBindValidationPlan *plan) {
   return plan != NULL ? plan->rule_count : 0u;
+}
+
+size_t data_bind_validation_plan_internal_child_count(
+    const DataBindValidationPlan *plan) {
+  return plan != NULL ? plan->child_count : 0u;
+}
+
+int data_bind_validation_plan_internal_rule_info(
+    const DataBindValidationPlan *plan, size_t rule_index,
+    DataBindValidationRuleInfo *out) {
+  const DataBindValidationRule *rule;
+  if (plan == NULL || out == NULL || rule_index >= plan->rule_count) return 0;
+  rule = &plan->rules[rule_index];
+  out->field_name = rule->field_name;
+  out->kind = rule->kind;
+  out->field_kind = rule->field_kind;
+  return rule->field_name != NULL;
 }
 
 static DataBindStatus compile_numeric_rule(
@@ -694,6 +713,153 @@ static DataBindStatus validation_value_size(
     return DATA_BIND_OK;
   }
   return DATA_BIND_ERR_TYPE_MISMATCH;
+}
+
+static DataBindStatus validation_native_leaf_failure(
+    const DataBindValidationPlan *plan,
+    const DataBindValidationRule *rule,
+    DataBindStatus status, DataBindError *error) {
+  char path[260];
+  if (plan == NULL || rule == NULL ||
+      !validation_path_field(path, plan->type_name, rule->field_name))
+    return validation_path_overflow(
+        error, plan != NULL ? plan->type_name : NULL);
+  return validation_error(
+      error, status, path,
+      status == DATA_BIND_ERR_SCHEMA
+          ? "Native validation leaf is not admitted by the compiled contract"
+          : "Native validation leaf could not be read");
+}
+
+static DataBindStatus validation_native_numeric(
+    const DataBindValidationRule *rule, const cserde_token *token,
+    int *comparison) {
+  if (rule == NULL || token == NULL || comparison == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  if (rule->numeric_domain == DATA_BIND_VALIDATION_NUMERIC_SIGNED) {
+    int64_t actual;
+    if (token->kind != CSERDE_SINT) return DATA_BIND_ERR_TYPE_MISMATCH;
+    actual = token->value.sint;
+    *comparison =
+        actual < rule->numeric.signed_value
+            ? -1
+            : (actual > rule->numeric.signed_value ? 1 : 0);
+    return DATA_BIND_OK;
+  }
+
+  if (rule->numeric_domain == DATA_BIND_VALIDATION_NUMERIC_UNSIGNED) {
+    uint64_t actual;
+    if (token->kind != CSERDE_UINT) return DATA_BIND_ERR_TYPE_MISMATCH;
+    actual = token->value.uint;
+    *comparison =
+        actual < rule->numeric.unsigned_value
+            ? -1
+            : (actual > rule->numeric.unsigned_value ? 1 : 0);
+    return DATA_BIND_OK;
+  }
+
+  if (rule->numeric_domain == DATA_BIND_VALIDATION_NUMERIC_FLOAT) {
+    double actual;
+    if (token->kind != CSERDE_FLOAT ||
+        !isfinite(token->value.floating))
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    actual = token->value.floating;
+    *comparison =
+        actual < rule->numeric.float_value
+            ? -1
+            : (actual > rule->numeric.float_value ? 1 : 0);
+    return DATA_BIND_OK;
+  }
+
+  return DATA_BIND_ERR_TYPE_MISMATCH;
+}
+
+DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
+    const DataBindValidationPlan *plan, size_t rule_index,
+    const cmeta_data_desc *data, const void *source, DataBindError *error) {
+  const DataBindValidationRule *rule;
+  cserde_token token = {0};
+  DataBindStatus status;
+
+  if (plan == NULL || data == NULL || source == NULL ||
+      rule_index >= plan->rule_count)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid native ValidationPlan arguments");
+
+  rule = &plan->rules[rule_index];
+  if (data->kind != rule->field_kind)
+    return validation_type_error_at(
+        plan->type_name, rule, error,
+        "Native value kind does not match compiled validation semantics");
+
+  status = data_bind_native_leaf_token(data, source, &token);
+  if (status != DATA_BIND_OK)
+    return validation_native_leaf_failure(
+        plan, rule, status, error);
+
+  if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN ||
+      rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
+    int comparison = 0;
+    status = validation_native_numeric(rule, &token, &comparison);
+    if (status != DATA_BIND_OK)
+      return validation_type_error_at(
+          plan->type_name, rule, error,
+          "Native numeric value has the wrong runtime type");
+    if ((rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
+         comparison < 0) ||
+        (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX &&
+         comparison > 0))
+      return validation_rule_error_at(
+          plan->type_name, rule, error,
+          rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN
+              ? "Value is below @Min"
+              : "Value exceeds @Max");
+    validation_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
+  if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
+    size_t actual;
+    if (token.kind != CSERDE_STRING && token.kind != CSERDE_BYTES)
+      return validation_type_error_at(
+          plan->type_name, rule, error,
+          "Native @Size requires a canonical string/bytes leaf");
+    actual = token.value.slice.size;
+    if ((rule->has_min && actual < rule->min_size) ||
+        (rule->has_max && actual > rule->max_size))
+      return validation_rule_error_at(
+          plan->type_name, rule, error,
+          "Value size violates @Size");
+    validation_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
+  if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
+    re_match_result_t match = {0u, 0u};
+    re_status_t regex_status;
+    if (token.kind != CSERDE_STRING)
+      return validation_type_error_at(
+          plan->type_name, rule, error,
+          "Native @Pattern requires a canonical string leaf");
+    regex_status = re_matchn(
+        rule->pattern, (const char *)token.value.slice.data,
+        token.value.slice.size, NULL, &match);
+    if (regex_status != RE_STATUS_OK)
+      return validation_pattern_status_at(
+          regex_status, error, plan->type_name, rule);
+    if (match.index != 0u || match.length != token.value.slice.size)
+      return validation_rule_error_at(
+          plan->type_name, rule, error,
+          "String does not fully satisfy @Pattern");
+    validation_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
+  return validation_error(
+      error, DATA_BIND_ERR_RUNTIME, plan->type_name,
+      "ValidationPlan contains an unknown native rule");
 }
 
 static DataBindStatus validation_pattern_status_at(
