@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_BINDING_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_BINDING_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindBindingDirection {
   DATA_BIND_BINDING_INGRESS = 1,
@@ -70,35 +70,38 @@ typedef struct DataBindBindingProjection {
   { sizeof(DataBindBindingProjection), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     NULL, NULL, NULL }
 
-/** Optional-presence layout generated for one native DataBind value type. */
-typedef struct DataBindNativePresenceBinding {
+/** One generated DataBind state bit outside the canonical CMeta value graph. */
+typedef struct DataBindNativeStateBinding {
   size_t size;
   const char *field_name;
   size_t byte_offset;
   unsigned bit;
-} DataBindNativePresenceBinding;
+} DataBindNativeStateBinding;
 
-#define DATA_BIND_NATIVE_PRESENCE_BINDING_INIT \
-  { sizeof(DataBindNativePresenceBinding), NULL, 0u, 0u }
+#define DATA_BIND_NATIVE_STATE_BINDING_INIT \
+  { sizeof(DataBindNativeStateBinding), NULL, 0u, 0u }
 
 /**
  * Format-neutral native representation of one DataBind IDL type.
  *
- * data is the canonical CMeta native data descriptor. presence only describes
- * DataBind optional-presence storage that is not a CMeta type semantic.
+ * data is the canonical CMeta native value descriptor.
+ * presence and nulls are DataBind-owned state overlays and are intentionally
+ * outside the CMeta field graph.
  */
 typedef struct DataBindNativeTypeBinding {
   size_t size;
   uint32_t abi_version;
   const char *idl_type_name;
   const cmeta_data_desc *data;
-  const DataBindNativePresenceBinding *presence;
+  const DataBindNativeStateBinding *presence;
   size_t presence_count;
+  const DataBindNativeStateBinding *nulls;
+  size_t null_count;
 } DataBindNativeTypeBinding;
 
 #define DATA_BIND_NATIVE_TYPE_BINDING_INIT(TYPE_NAME, DATA) \
   { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
-    (TYPE_NAME), (DATA), NULL, 0u }
+    (TYPE_NAME), (DATA), NULL, 0u, NULL, 0u }
 
 typedef struct DataBindServiceNativeBinding {
   size_t size;
@@ -131,14 +134,19 @@ typedef struct DataBindBindingPlanEntry {
   const char *default_value;
   const char *format;
 
+  int nullable;
   int has_presence;
   size_t presence_offset;
   unsigned presence_bit;
+  int has_null;
+  size_t null_offset;
+  unsigned null_bit;
 } DataBindBindingPlanEntry;
 
 #define DATA_BIND_BINDING_PLAN_ENTRY_INIT \
   { sizeof(DataBindBindingPlanEntry), 0, DATA_BIND_BINDING_ADDRESS_INIT, \
-    NULL, NULL, SIZE_MAX, NULL, 0u, 0, 0, 0, 0, NULL, NULL, 0, 0u, 0u }
+    NULL, NULL, SIZE_MAX, NULL, 0u, 0, 0, 0, 0, NULL, NULL, \
+    0, 0, 0u, 0u, 0, 0u, 0u }
 
 typedef struct DataBindBindingPlanDiagnostic {
   size_t size;
@@ -181,14 +189,22 @@ typedef struct DataBindBindingPlan DataBindBindingPlan;
  * Runtime logical provider. It receives only precompiled generic addresses.
  * It never walks DataBind schema AST or owns transport/session state.
  */
+typedef enum DataBindBindingValueState {
+  DATA_BIND_STATE_ABSENT = 0,
+  DATA_BIND_STATE_VALUE = 1,
+  DATA_BIND_STATE_NULL = 2
+} DataBindBindingValueState;
+
 typedef DataBindStatus (*DataBindBindingOpenInputFn)(
     void *context, const DataBindBindingPlanEntry *entry,
-    cserde_reader *reader, int *present, DataBindError *error);
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error);
 typedef DataBindStatus (*DataBindBindingBeginOutputFn)(
     void *context, DataBindError *error);
 typedef DataBindStatus (*DataBindBindingWriteOutputFn)(
     void *context, const DataBindBindingPlanEntry *entry,
-    const void *value, size_t value_bytes, DataBindError *error);
+    DataBindBindingValueState state, const void *value, size_t value_bytes,
+    DataBindError *error);
 typedef DataBindStatus (*DataBindBindingCommitOutputFn)(
     void *context, DataBindError *error);
 typedef void (*DataBindBindingAbortOutputFn)(void *context);
