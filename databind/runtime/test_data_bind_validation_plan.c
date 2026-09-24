@@ -337,4 +337,137 @@ spec("DataBind immutable ValidationPlan") {
       data_bind_free(codec);
     }
   }
+
+  it("recursively validates composites and group items with stable nested paths") {
+    static const char schema[] =
+        "composite Header { @Min(1) uint32 seq; }"
+        "group Fill { @Min(1) uint32 qty; @Pattern(\"[A-Z]+\") string desk; }"
+        "message Order { Header header; group<Fill> fills; }";
+    static const char bad_header[] =
+        "{\"header\":{\"seq\":0},\"fills\":[{\"qty\":1,\"desk\":\"A\"}]}";
+    static const char bad_fill[] =
+        "{\"header\":{\"seq\":1},"
+        "\"fills\":[{\"qty\":1,\"desk\":\"A\"},{\"qty\":0,\"desk\":\"B\"}]}";
+    DataBind *codec = NULL;
+    DataBindValidationPlan *plan = NULL;
+    DataBindValue *value = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(
+        compile_plan(schema, "Order", &codec, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (codec == NULL || plan == NULL) {
+      data_bind_validation_plan_free(plan);
+      data_bind_free(codec);
+      return;
+    }
+
+    /* Direct-rule count remains a per-record view; child rules stay opaque. */
+    check_equal(data_bind_validation_plan_rule_count(plan), (size_t)0u);
+
+    check_equal(
+        data_bind_parse_json(
+            codec, "Order", bad_header, sizeof(bad_header) - 1u,
+            &value, &error),
+        DATA_BIND_OK);
+    check_not_null(value);
+
+    /* Nested plan execution must no longer need its schema/reflection owner. */
+    data_bind_free(codec);
+    codec = NULL;
+
+    if (value != NULL) {
+      check_equal(
+          data_bind_validation_plan_validate(plan, value, &error),
+          DATA_BIND_ERR_VALIDATION);
+      check_equal(error.path, "Order.header.seq");
+    }
+    data_bind_value_free(value);
+    value = NULL;
+
+    /* Recreate only the codec needed to decode the second fixture. */
+    check_equal(
+        data_bind_create_from_text(
+            schema, strlen(schema), &codec, &error),
+        DATA_BIND_OK);
+    check_equal(
+        data_bind_parse_json(
+            codec, "Order", bad_fill, sizeof(bad_fill) - 1u,
+            &value, &error),
+        DATA_BIND_OK);
+    data_bind_free(codec);
+    codec = NULL;
+
+    if (value != NULL) {
+      check_equal(
+          data_bind_validation_plan_validate(plan, value, &error),
+          DATA_BIND_ERR_VALIDATION);
+      check_equal(error.path, "Order.fills[1].qty");
+    }
+
+    data_bind_value_free(value);
+    data_bind_validation_plan_free(plan);
+  }
+
+  it("validates nested Pattern after passing parent and sibling rules") {
+    static const char schema[] =
+        "composite Header { @Min(1) uint32 seq; }"
+        "group Fill { @Min(1) uint32 qty; @Pattern(\"[A-Z]+\") string desk; }"
+        "message Order { Header header; group<Fill> fills; }";
+    static const char json[] =
+        "{\"header\":{\"seq\":1},"
+        "\"fills\":[{\"qty\":1,\"desk\":\"A\"},{\"qty\":2,\"desk\":\"bad1\"}]}";
+    DataBind *codec = NULL;
+    DataBindValidationPlan *plan = NULL;
+    DataBindValue *value = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(
+        compile_plan(schema, "Order", &codec, &plan, &error),
+        DATA_BIND_OK);
+    check_equal(
+        data_bind_parse_json(
+            codec, "Order", json, sizeof(json) - 1u,
+            &value, &error),
+        DATA_BIND_OK);
+
+    if (plan != NULL && value != NULL) {
+      check_equal(
+          data_bind_validation_plan_validate(plan, value, &error),
+          DATA_BIND_ERR_VALIDATION);
+      check_equal(error.path, "Order.fills[1].desk");
+      check_not_null(strstr(error.message, "@Pattern"));
+    }
+
+    data_bind_value_free(value);
+    data_bind_validation_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects recursive validation type cycles during plan compilation") {
+    static const char schema[] =
+        "message Node { list<Node> children; }";
+    DataBind *codec = NULL;
+    DataBindValidationPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(
+        data_bind_create_from_text(
+            schema, strlen(schema), &codec, &error),
+        DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check_equal(
+        data_bind_validation_plan_compile(
+            codec, "Node", &plan, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_equal(error.path, "Node");
+    check_not_null(strstr(error.message, "cycle"));
+
+    data_bind_free(codec);
+  }
+
 }
