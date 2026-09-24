@@ -173,6 +173,19 @@ cmake_add_test(test_databind_service_native_lowering
 add_dependencies(test_databind_service_native_lowering
   databind_service_native_generated_sources)
 
+cmake_add_test(test_databind_service_native_public_cpp
+  SOURCES test_service_native_public_cpp.cpp
+  LIBS Salts::DataBind
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_service_native_public_cpp
+  databind_service_native_generated_sources)
+set_target_properties(test_databind_service_native_public_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  CXX_EXTENSIONS NO)
+
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
