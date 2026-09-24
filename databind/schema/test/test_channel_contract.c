@@ -103,6 +103,19 @@ spec("DataBind Channel canonical IR") {
     node_free(root);
   }
 
+  it("does not materialize an empty Channel list in legacy schemas") {
+    static const char schema[] =
+        "message Request { uint32 value; }"
+        "message Response { uint32 value; }"
+        "service S { Op: Request -> Response; }";
+    tbe_error_t error;
+    Node *root = channel_test_parse(schema, &error);
+
+    check_not_null(root);
+    check_null(channel_test_child(root, "channels"));
+    node_free(root);
+  }
+
   it("accepts forward Channel payload type references") {
     static const char schema[] =
         "channel Later: LaterEvent;"
