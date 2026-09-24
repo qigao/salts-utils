@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef PLUGIN_TYPED_ERROR_SCHEMA
-#error "PLUGIN_TYPED_ERROR_SCHEMA is required"
+#ifndef PLUGIN_OWNED_TYPED_ERROR_SCHEMA
+#error "PLUGIN_OWNED_TYPED_ERROR_SCHEMA is required"
 #endif
 #ifndef PLUGIN_MULTI_SERVICE_SCHEMA
 #error "PLUGIN_MULTI_SERVICE_SCHEMA is required"
@@ -57,23 +57,23 @@ static int plugin_test_set_schema_version(Node *root, const char *value) {
 }
 
 spec("DataBind Plugin projection semantic rejection") {
-  it("rejects typed Service errors before creating outputs") {
+  it("rejects dynamic-owned typed Service errors before creating outputs") {
     static const char source_output[] =
-        "databind_plugin_typed_error_should_not_exist.c";
+        "databind_plugin_owned_typed_error_should_not_exist.c";
     static const char header_output[] =
-        "databind_plugin_typed_error_should_not_exist.h";
+        "databind_plugin_owned_typed_error_should_not_exist.h";
     static const char client_header_output[] =
-        "databind_plugin_typed_error_client_should_not_exist.h";
+        "databind_plugin_owned_typed_error_client_should_not_exist.h";
     static const char client_source_output[] =
-        "databind_plugin_typed_error_client_should_not_exist.c";
+        "databind_plugin_owned_typed_error_client_should_not_exist.c";
     Node *root = NULL;
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
-        .component_id = "ErrorPlugin.StorePlugin",
-        .native_header = "error_native.h",
+        .component_id = "OwnedErrorPlugin.StorePlugin",
+        .native_header = "owned_error_native.h",
         .service_header_output = header_output,
         .client_header_output = client_header_output,
         .client_source_output = client_source_output,
@@ -92,7 +92,8 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_source_output);
 
     check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_TYPED_ERROR_SCHEMA, &root, &schema_data),
+                    PLUGIN_OWNED_TYPED_ERROR_SCHEMA,
+                    &root, &schema_data),
                 0);
     check_not_null(root);
     check_not_null(schema_data);
@@ -109,6 +110,7 @@ spec("DataBind Plugin projection semantic rejection") {
     node_free(root);
     free(schema_data);
   }
+
   it("rejects invalid schema contract versions without outputs") {
     static const char source_output[] =
         "databind_plugin_bad_version_should_not_exist.c";
