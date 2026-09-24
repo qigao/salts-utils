@@ -90,7 +90,9 @@ typedef enum DataBindStatus {
   /** The caller-provided output buffer is too small; required length is returned. */
   DATA_BIND_ERR_BUFFER_TOO_SMALL,
   /** The operation was explicitly canceled by the caller or record callback. */
-  DATA_BIND_ERR_CANCELED
+  DATA_BIND_ERR_CANCELED,
+  /** A normalized logical value violated an immutable DataBind ValidationPlan. */
+  DATA_BIND_ERR_VALIDATION
 } DataBindStatus;
 
 typedef struct DataBindError {
