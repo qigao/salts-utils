@@ -163,6 +163,12 @@ static int plugin_operation_selected(
              component, operation->service_name);
 }
 
+static int plugin_select_component_service(
+    void *context, const char *service_name) {
+  return plugin_component_has_service(
+      (const Node *)context, service_name);
+}
+
 static int plugin_native_ir_valid(
     const Node *root,
     const Node *component,
@@ -454,13 +460,16 @@ cleanup:
 static int plugin_write_header(
     FILE *file,
     const Node *root,
+    const Node *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
   char guard[320];
   size_t i;
 
   if (!plugin_header_guard(
-          plugin_schema_name(root), guard, sizeof(guard)))
+          plugin_schema_name(root),
+          plugin_string(component, "name"),
+          guard, sizeof(guard)))
     return 0;
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
@@ -514,13 +523,14 @@ static int plugin_write_adapter(
 
 static int plugin_write_source(
     FILE *file,
-    const Node *root,
+    const Node *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir,
     uint32_t contract_version) {
   const char *service_header =
       plugin_basename(config->service_header_output);
-  const char *schema_name = plugin_schema_name(root);
+  const char *plugin_id =
+      plugin_string(component, "qualified_name");
   size_t i;
 
   if (fputs("#include ", file) == EOF ||
@@ -585,7 +595,7 @@ static int plugin_write_source(
           "  .abi_version = SALTS_PLUGIN_ABI_VERSION,\n"
           "  .plugin_id = ",
           file) == EOF ||
-      !plugin_write_c_string(file, schema_name) ||
+      !plugin_write_c_string(file, plugin_id) ||
       fprintf(
           file,
           ",\n"
@@ -618,6 +628,8 @@ int databind_compiler_plugin_generate(
           ? (const databind_compiler_plugin_config *)request->config
           : NULL;
   databind_compiler_service_native_ir native_ir = {0};
+  const Node *component = NULL;
+  size_t selected_count = 0u;
   uint32_t contract_version = 0u;
   char *header_staging = NULL;
   char *source_staging = NULL;
@@ -630,6 +642,7 @@ int databind_compiler_plugin_generate(
       request->kind != DATABIND_COMPILER_PROJECTION_PLUGIN ||
       config == NULL ||
       !plugin_text_valid(request->output) ||
+      !plugin_text_valid(config->component_name) ||
       !plugin_text_valid(config->native_header) ||
       !plugin_text_valid(config->service_header_output) ||
       strcmp(request->output, config->service_header_output) == 0 ||
@@ -637,11 +650,22 @@ int databind_compiler_plugin_generate(
           canonical_ir, &contract_version))
     return -1;
 
-  if (databind_compiler_service_native_build(
-          canonical_ir, &native_ir) != 0)
+  component = plugin_component(
+      canonical_ir, config->component_name);
+  if (component == NULL)
+    return -1;
+
+  if (databind_compiler_service_native_build_selected(
+          canonical_ir,
+          plugin_select_component_service,
+          (void *)component,
+          &native_ir) != 0)
     goto cleanup;
 
-  if (!plugin_native_ir_valid(canonical_ir, &native_ir))
+  if (!plugin_native_ir_valid(
+          canonical_ir, component, &native_ir,
+          &selected_count) ||
+      selected_count != native_ir.operation_count)
     goto cleanup;
 
   header_file = plugin_open_staging(
@@ -653,9 +677,10 @@ int databind_compiler_plugin_generate(
   if (source_file == NULL) goto cleanup;
 
   if (!plugin_write_header(
-          header_file, canonical_ir, config, &native_ir) ||
+          header_file, canonical_ir, component,
+          config, &native_ir) ||
       !plugin_write_source(
-          source_file, canonical_ir, config, &native_ir,
+          source_file, component, config, &native_ir,
           contract_version))
     goto cleanup;
 
