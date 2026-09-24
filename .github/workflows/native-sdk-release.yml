@@ -299,14 +299,14 @@ jobs:
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
 
-          cmake -S databind/compiler/package_config/generated_abi \
-            -B build/generated-abi-installed -G Ninja \
+          cmake -S databind/compiler/package_config/databind_public \
+            -B build/databind-public-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix"
-          cmake --build build/generated-abi-installed \
-            --target databind_generated_abi_consumer --parallel 2
+          cmake --build build/databind-public-installed \
+            --target databind_public_consumer --parallel 2
 
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
@@ -561,8 +561,8 @@ jobs:
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
 
-          cmake -S databind/compiler/package_config/generated_abi \
-            -B build/generated-abi-android -G Ninja \
+          cmake -S databind/compiler/package_config/databind_public \
+            -B build/databind-public-android -G Ninja \
             -DCMAKE_SYSTEM_NAME=Android \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
@@ -573,8 +573,8 @@ jobs:
             -DANDROID_STL=c++_shared \
             -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
-          cmake --build build/generated-abi-android \
-            --target databind_generated_abi_consumer --parallel 2
+          cmake --build build/databind-public-android \
+            --target databind_public_consumer --parallel 2
 
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
