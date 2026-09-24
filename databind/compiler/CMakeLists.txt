@@ -209,8 +209,8 @@ set_target_properties(test_databind_service_native_public_cpp PROPERTIES
   CXX_STANDARD_REQUIRED YES
   CXX_EXTENSIONS NO)
 
-# Generated PLUGIN backend qualification. This is deliberately an internal
-# codegen driver rather than a second public databindc frontend.
+# Generated PLUGIN backend qualification through the canonical public
+# databindc projection frontend.
 set(DATABIND_PLUGIN_TEST_GENERATED_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/generated-plugin")
 file(MAKE_DIRECTORY "${DATABIND_PLUGIN_TEST_GENERATED_DIR}")
