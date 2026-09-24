@@ -13,7 +13,7 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
               "${SaltsUtils_DATABINDC_EXECUTABLE}")
     endif()
     set(${out_command} "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
-    set(${out_dependency} "" PARENT_SCOPE)
+    set(${out_dependency} "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
     return()
   endif()
 
@@ -55,7 +55,7 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
   endif()
 
   set(${out_command} "${_databindc_program}" PARENT_SCOPE)
-  set(${out_dependency} "" PARENT_SCOPE)
+  set(${out_dependency} "${_databindc_program}" PARENT_SCOPE)
 endfunction()
 
 function(databind_target)
