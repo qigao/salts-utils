@@ -113,16 +113,92 @@ static char *native_symbol(
   return native_strdup(buffer);
 }
 
-static int native_message_exists(const Node *root, const char *name) {
+static const Node *native_message(
+    const Node *root, const char *name) {
   const Node *messages = native_list(root, "messages");
   size_t i;
-  if (messages == NULL || name == NULL) return 0;
+  if (messages == NULL || name == NULL) return NULL;
   for (i = 0u; i < messages->data.list.count; ++i) {
-    const char *candidate =
-        native_string(messages->data.list.items[i], "name");
-    if (candidate != NULL && strcmp(candidate, name) == 0) return 1;
+    const Node *message = messages->data.list.items[i];
+    const char *candidate = native_string(message, "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return message;
   }
-  return 0;
+  return NULL;
+}
+
+static int native_unsigned(const char *text, unsigned *out) {
+  uint64_t value = 0u;
+  const unsigned char *p;
+  if (text == NULL || text[0] == '\0' || out == NULL) return 0;
+  for (p = (const unsigned char *)text; *p != '\0'; ++p) {
+    if (*p < '0' || *p > '9') return 0;
+    value = value * 10u + (uint64_t)(*p - '0');
+    if (value > UINT32_MAX) return 0;
+  }
+  *out = (unsigned)value;
+  return 1;
+}
+
+static void native_presence_clear(
+    databind_compiler_service_native_presence *presence,
+    size_t count) {
+  size_t i;
+  if (presence == NULL) return;
+  for (i = 0u; i < count; ++i) free(presence[i].field_name);
+  free(presence);
+}
+
+static int native_presence_build(
+    const Node *message,
+    databind_compiler_service_native_presence **out_presence,
+    size_t *out_count) {
+  const Node *fields;
+  databind_compiler_service_native_presence *presence = NULL;
+  size_t count = 0u;
+  size_t i;
+  size_t index = 0u;
+
+  if (out_presence == NULL || out_count == NULL || message == NULL)
+    return 0;
+  *out_presence = NULL;
+  *out_count = 0u;
+
+  fields = native_list(message, "fields");
+  if (fields == NULL) return 1;
+
+  for (i = 0u; i < fields->data.list.count; ++i)
+    if (native_child(fields->data.list.items[i], "is_optional") != NULL)
+      ++count;
+
+  if (count == 0u) return 1;
+  presence = (databind_compiler_service_native_presence *)calloc(
+      count, sizeof(*presence));
+  if (presence == NULL) return 0;
+
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *field_name;
+    const char *bit_text;
+    unsigned bit;
+    if (native_child(field, "is_optional") == NULL) continue;
+    field_name = native_string(field, "name");
+    bit_text = native_string(field, "optional_bit_index");
+    if (field_name == NULL || !native_unsigned(bit_text, &bit)) {
+      native_presence_clear(presence, count);
+      return 0;
+    }
+    presence[index].field_name = native_strdup(field_name);
+    presence[index].bit = bit;
+    if (presence[index].field_name == NULL) {
+      native_presence_clear(presence, count);
+      return 0;
+    }
+    ++index;
+  }
+
+  *out_presence = presence;
+  *out_count = count;
+  return 1;
 }
 
 static char *native_type_identity(
@@ -159,6 +235,10 @@ static void native_operation_clear(
   free(operation->response_type);
   free(operation->request_type_identity);
   free(operation->response_type_identity);
+  native_presence_clear(
+      operation->request_presence, operation->request_presence_count);
+  native_presence_clear(
+      operation->response_presence, operation->response_presence_count);
   memset(operation, 0, sizeof(*operation));
 }
 
@@ -181,12 +261,16 @@ static int native_operation_fill(
   const char *operation_name = native_string(operation_node, "name");
   const char *request_type = native_string(operation_node, "request_type");
   const char *response_type = native_string(operation_node, "response_type");
+  const Node *request_message;
+  const Node *response_message;
 
   if (out == NULL || operation_name == NULL ||
-      request_type == NULL || response_type == NULL ||
-      !native_message_exists(root, request_type) ||
-      !native_message_exists(root, response_type))
+      request_type == NULL || response_type == NULL)
     return 0;
+
+  request_message = native_message(root, request_type);
+  response_message = native_message(root, response_type);
+  if (request_message == NULL || response_message == NULL) return 0;
 
   out->schema_name = native_strdup(schema_name);
   out->service_name = native_strdup(service_name);
@@ -202,6 +286,16 @@ static int native_operation_fill(
       native_type_identity(schema_name, request_type);
   out->response_type_identity =
       native_type_identity(schema_name, response_type);
+
+  if (!native_presence_build(
+          request_message,
+          &out->request_presence,
+          &out->request_presence_count) ||
+      !native_presence_build(
+          response_message,
+          &out->response_presence,
+          &out->response_presence_count))
+    return 0;
 
   return out->schema_name != NULL &&
          out->service_name != NULL &&
