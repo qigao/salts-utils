@@ -571,6 +571,50 @@ static void check_database_language_empty_conflicting_output_fails_fast(
 }
 
 spec("tbe_compiler") {
+  describe("nullable state generator IR") {
+    it("renders independent presence and null overlays") {
+      const char *schema =
+          "schema State [version(1)];"
+          "message User {"
+          "  optional uint32 optional_value;"
+          "  nullable uint32 nullable_value;"
+          "  optional nullable uint32 tri_value;"
+          "}";
+      char *output = render_c_template(schema);
+      const char *presence;
+      const char *nulls;
+      const char *value;
+
+      check_not_null(output);
+      if (!output) return;
+
+      check_contains(output, "#define User_OPTIONAL_FIELD_COUNT 2");
+      check_contains(output, "#define User_PRESENCE_BITMAP_SIZE 1");
+      check_contains(output, "#define User_NULLABLE_FIELD_COUNT 2");
+      check_contains(output, "#define User_NULL_BITMAP_OFFSET 1");
+      check_contains(output, "#define User_NULL_BITMAP_SIZE 1");
+      check_contains(output, "User_OPTIONAL_optional_value = 0");
+      check_contains(output, "User_OPTIONAL_tri_value = 1");
+      check_contains(output, "User_NULLABLE_nullable_value = 0");
+      check_contains(output, "User_NULLABLE_tri_value = 1");
+      check_contains(output, "uint8_t _presence[1];");
+      check_contains(output, "uint8_t _nulls[1];");
+
+      presence = strstr(output, "uint8_t _presence[1];");
+      nulls = strstr(output, "uint8_t _nulls[1];");
+      value = strstr(output, "uint32_t optional_value;");
+      check_not_null(presence);
+      check_not_null(nulls);
+      check_not_null(value);
+      if (presence && nulls && value) {
+        check(presence < nulls);
+        check(nulls < value);
+      }
+
+      free(output);
+    }
+  }
+
   describe("database schema IR") {
     it("normalizes annotated tables into owned SQLite IR") {
       const char *schema =
