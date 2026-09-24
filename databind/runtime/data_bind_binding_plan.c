@@ -32,8 +32,13 @@ struct DataBindBindingPlan {
   DataBindBindingPlanEntryOwned *egress;
   size_t egress_count;
 
-  char **errors;
+  DataBindBindingPlanEntryOwned *errors;
   size_t error_count;
+  size_t error_param_index;
+  size_t error_envelope_bytes;
+  size_t error_kind_offset;
+  size_t error_kind_bytes;
+  int has_error_param;
 
   const cmeta_data_desc **param_data;
   unsigned char *param_ingress;
@@ -992,27 +997,136 @@ static DataBindStatus plan_compile_egress(
   return DATA_BIND_OK;
 }
 
-static DataBindStatus plan_copy_errors(
+static DataBindStatus plan_compile_errors(
     DataBind *codec, const char *service_name, const char *operation_name,
-    const DataBindServiceOperation *operation, DataBindBindingPlan *plan,
+    const DataBindServiceOperation *operation,
+    const DataBindServiceNativeBinding *native,
+    DataBindBindingPlan *plan, unsigned char *param_used,
     DataBindBindingPlanDiagnostic *diagnostic) {
+  const cmeta_param_desc *param;
   size_t i;
-  plan->error_count = operation->error_count;
-  if (plan->error_count == 0u) return DATA_BIND_OK;
 
-  plan->errors = (char **)calloc(plan->error_count, sizeof(*plan->errors));
+  if (operation == NULL || native == NULL || plan == NULL ||
+      param_used == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid typed-error BindingPlan arguments");
+
+  if (operation->error_count == 0u) {
+    if (native->size >= sizeof(*native) &&
+        (native->errors != NULL || native->error_count != 0u ||
+         native->error_envelope_bytes != 0u ||
+         native->error_kind_bytes != 0u))
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
+          "Non-throws Service published typed-error native metadata");
+    return DATA_BIND_OK;
+  }
+
+  if (native->size < sizeof(*native) || native->errors == NULL ||
+      native->error_count != operation->error_count ||
+      native->error_param_index >= native->function->param_count ||
+      native->error_envelope_bytes == 0u ||
+      native->error_kind_bytes != sizeof(uint32_t) ||
+      native->error_kind_offset > native->error_envelope_bytes ||
+      native->error_envelope_bytes - native->error_kind_offset <
+          native->error_kind_bytes)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, NULL, NULL,
+        "Typed-error Service native envelope metadata is incomplete");
+
+  param = &native->function->params[native->error_param_index];
+  if ((param->flags & CMETA_PARAM_DIRECTION_MASK) != CMETA_PARAM_OUT ||
+      (param->flags & CMETA_PARAM_BORROWED) == 0 ||
+      param->type == NULL || param->type->kind != CMETA_T_POINTER ||
+      param->type->pointee == NULL ||
+      param->type->pointee->size != native->error_envelope_bytes)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+        param->name,
+        "Typed-error function parameter does not match generated envelope ABI");
+
+  if (param_used[native->error_param_index])
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, NULL, param->name,
+        "Typed-error function parameter is already owned by another binding");
+
+  plan->errors = (DataBindBindingPlanEntryOwned *)calloc(
+      operation->error_count, sizeof(*plan->errors));
   if (plan->errors == NULL)
-    return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
-                          "Could not allocate typed-error list");
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, param->name,
+                          "Could not allocate typed-error BindingPlan entries");
+  plan->error_count = operation->error_count;
 
-  for (i = 0u; i < plan->error_count; ++i) {
+  for (i = 0u; i < operation->error_count; ++i) {
+    const DataBindNativeErrorBinding *binding = &native->errors[i];
+    DataBindBindingPlanEntryOwned *owned = &plan->errors[i];
+    DataBindBindingPlanEntry *entry = &owned->view;
+    DataBindNativeTypeBinding payload_binding;
+    const cmeta_data_desc *data = NULL;
     const char *name = data_bind_service_operation_error_at(
         codec, service_name, operation_name, i);
-    plan->errors[i] = plan_strdup(name);
-    if (name == NULL || plan->errors[i] == NULL)
-      return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
-                            "Could not copy typed-error metadata");
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStatus status;
+
+    if (name == NULL || binding->size < sizeof(*binding) ||
+        binding->idl_type_name == NULL ||
+        strcmp(binding->idl_type_name, name) != 0 ||
+        binding->kind_value != (uint32_t)(i + 1u) ||
+        binding->data_resolver == NULL ||
+        binding->payload_offset > native->error_envelope_bytes)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, name, param->name,
+          "Typed-error native variant %zu does not match the throws contract",
+          i);
+
+    status = binding->data_resolver(&data, &error);
+    if (status != DATA_BIND_OK || !cmeta_data_desc_valid(data) ||
+        data->storage_type == NULL)
+      return plan_diag_fail(
+          diagnostic,
+          status != DATA_BIND_OK ? status : DATA_BIND_ERR_SCHEMA,
+          name, param->name, "%s",
+          error.message[0] != '\0'
+              ? error.message
+              : "Typed-error payload CMeta descriptor is unavailable");
+
+    payload_binding = (DataBindNativeTypeBinding)
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(name, data);
+    status = plan_validate_native_type(
+        codec, &payload_binding, name, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+
+    if (binding->payload_offset > native->error_envelope_bytes ||
+        data->storage_type->size >
+            native->error_envelope_bytes - binding->payload_offset)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, name, param->name,
+          "Typed-error payload lies outside the generated error envelope");
+
+    *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    entry->direction = DATA_BIND_BINDING_EGRESS;
+    entry->address.binding_class = DATA_BIND_BINDING_ERROR;
+    entry->address.ordinal = i;
+    entry->function_param_index = native->error_param_index;
+    entry->data = data;
+    entry->native_offset = binding->payload_offset;
+    entry->parameter_indirect = 1;
+    entry->required = 1;
+
+    if (!plan_entry_set_strings(
+            owned, "service.error", name, name, param->name, NULL, NULL))
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_OOM, name, param->name,
+          "Could not copy typed-error BindingPlan metadata");
   }
+
+  plan->error_param_index = native->error_param_index;
+  plan->error_envelope_bytes = native->error_envelope_bytes;
+  plan->error_kind_offset = native->error_kind_offset;
+  plan->error_kind_bytes = native->error_kind_bytes;
+  plan->has_error_param = 1;
+  param_used[native->error_param_index] = 1u;
+  plan->param_egress[native->error_param_index] = 1u;
   return DATA_BIND_OK;
 }
 
@@ -1024,7 +1138,7 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
   for (i = 0u; i < plan->egress_count; ++i)
     plan_entry_owned_clear(&plan->egress[i]);
   for (i = 0u; i < plan->error_count; ++i)
-    free(plan->errors[i]);
+    plan_entry_owned_clear(&plan->errors[i]);
   free(plan->errors);
   free(plan->param_data);
   free(plan->param_ingress);
@@ -1142,6 +1256,11 @@ DataBindStatus data_bind_binding_plan_compile_service(
                                plan, param_used, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
+  status = plan_compile_errors(
+      codec, service_name, operation_name, &operation, native,
+      plan, param_used, diagnostic);
+  if (status != DATA_BIND_OK) goto fail;
+
   for (i = 0u; i < native->function->param_count; ++i) {
     if (!param_used[i]) {
       status = plan_diag_fail(
@@ -1153,10 +1272,6 @@ DataBindStatus data_bind_binding_plan_compile_service(
       goto fail;
     }
   }
-
-  status = plan_copy_errors(codec, service_name, operation_name, &operation,
-                            plan, diagnostic);
-  if (status != DATA_BIND_OK) goto fail;
 
   free(param_used);
   plan_diag_clear(diagnostic);
@@ -1227,7 +1342,7 @@ size_t data_bind_binding_plan_error_count(
 const char *data_bind_binding_plan_error_at(
     const DataBindBindingPlan *plan, size_t index) {
   if (plan == NULL || index >= plan->error_count) return NULL;
-  return plan->errors[index];
+  return plan->errors[index].view.schema_field;
 }
 
 
@@ -1324,6 +1439,17 @@ static DataBindStatus plan_frame_preflight(
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
                             "Return-value staging storage is missing or too small");
   }
+
+  if (plan->has_error_param &&
+      (plan->error_param_index >= frame->param_count ||
+       frame->params == NULL || frame->param_bytes == NULL ||
+       frame->params[plan->error_param_index] == NULL ||
+       frame->param_bytes[plan->error_param_index] <
+           plan->error_envelope_bytes))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error envelope staging storage is missing or too small");
 
   return DATA_BIND_OK;
 }
@@ -1623,7 +1749,7 @@ fail:
   return status;
 }
 
-DataBindStatus data_bind_binding_plan_write_outputs(
+static DataBindStatus plan_write_response_outputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
     const DataBindBindingCallFrame *frame,
@@ -1735,6 +1861,184 @@ DataBindStatus data_bind_binding_plan_write_outputs(
         "Output transaction commit failed");
   }
 
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_binding_plan_write_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+  if (plan != NULL && plan->has_error_param)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function != NULL && plan->error_param_index < plan->function->param_count
+            ? plan->function->params[plan->error_param_index].name
+            : NULL,
+        "Throws Service outcomes must use data_bind_binding_plan_write_outcome");
+  return plan_write_response_outputs(plan, provider, frame, diagnostic);
+}
+
+
+static int plan_outcome_header_valid(const DataBindBindingOutcome *outcome) {
+  return outcome == NULL ||
+         outcome->size >=
+             offsetof(DataBindBindingOutcome, kind) + sizeof(outcome->kind);
+}
+
+static void plan_outcome_set(
+    DataBindBindingOutcome *outcome, DataBindBindingOutcomeKind kind,
+    int native_status, size_t typed_error_index, const char *typed_error) {
+  DataBindBindingOutcome value = DATA_BIND_BINDING_OUTCOME_INIT;
+  size_t size;
+  if (outcome == NULL) return;
+  size = plan_out_size(outcome->size, sizeof(*outcome));
+  value.size = size;
+  value.kind = kind;
+  value.native_status = native_status;
+  value.typed_error_index = typed_error_index;
+  value.typed_error = typed_error;
+  memcpy(outcome, &value, size);
+}
+
+static DataBindStatus plan_read_typed_error_kind(
+    const DataBindBindingPlan *plan, const DataBindBindingCallFrame *frame,
+    uint32_t *out_kind, DataBindBindingPlanDiagnostic *diagnostic) {
+  const unsigned char *base;
+  uint32_t kind = 0u;
+
+  if (out_kind == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Typed-error kind output is required");
+  *out_kind = 0u;
+  if (!plan->has_error_param) return DATA_BIND_OK;
+
+  if (plan->error_kind_bytes != sizeof(kind) ||
+      plan->error_param_index >= frame->param_count ||
+      frame->params == NULL || frame->param_bytes == NULL ||
+      frame->params[plan->error_param_index] == NULL ||
+      frame->param_bytes[plan->error_param_index] <
+          plan->error_envelope_bytes)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error envelope staging storage is unavailable");
+
+  base = (const unsigned char *)frame->params[plan->error_param_index];
+  memcpy(&kind, base + plan->error_kind_offset, sizeof(kind));
+  if (kind > plan->error_count)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error kind %u is outside the compiled throws contract",
+        (unsigned)kind);
+
+  *out_kind = kind;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_binding_plan_write_outcome(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    int native_status,
+    DataBindBindingOutcome *outcome,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  uint32_t error_kind = 0u;
+  const DataBindBindingPlanEntry *entry;
+  const void *source;
+  size_t source_bytes = 0u;
+  size_t error_index;
+
+  if (!plan_diag_header_valid(diagnostic) ||
+      !plan_outcome_header_valid(outcome))
+    return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+  plan_outcome_set(
+      outcome, DATA_BIND_BINDING_OUTCOME_NONE, 0, SIZE_MAX, NULL);
+
+  if (plan == NULL || frame == NULL)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid BindingPlan outcome arguments");
+
+  status = plan_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  status = plan_read_typed_error_kind(
+      plan, frame, &error_kind, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  if (native_status != 0) {
+    if (error_kind != 0u)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, NULL,
+          plan->has_error_param
+              ? plan->function->params[plan->error_param_index].name
+              : NULL,
+          "Native/business status and typed Service error are both set");
+    plan_outcome_set(
+        outcome, DATA_BIND_BINDING_OUTCOME_NATIVE_STATUS,
+        native_status, SIZE_MAX, NULL);
+    plan_diag_clear(diagnostic);
+    return DATA_BIND_OK;
+  }
+
+  if (error_kind == 0u) {
+    status = plan_write_response_outputs(
+        plan, provider, frame, diagnostic);
+    if (status == DATA_BIND_OK)
+      plan_outcome_set(
+          outcome, DATA_BIND_BINDING_OUTCOME_SUCCESS, 0, SIZE_MAX, NULL);
+    return status;
+  }
+
+  if (!plan_provider_valid_for_output(provider))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid typed-error output provider");
+
+  error_index = (size_t)error_kind - 1u;
+  entry = &plan->errors[error_index].view;
+  source = plan_egress_source(plan, entry, frame, &source_bytes);
+  if (source == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        entry->schema_field, entry->function_param,
+        "Compiled typed-error entry has no native source");
+
+  status = provider->begin_output(provider->context, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error output transaction could not begin");
+
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = provider->write_output(
+      provider->context, entry, DATA_BIND_VALUE_STATE_VALUE,
+      source, source_bytes, &error);
+  if (status != DATA_BIND_OK) {
+    provider->abort_output(provider->context);
+    return plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error output provider write failed");
+  }
+
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = provider->commit_output(provider->context, &error);
+  if (status != DATA_BIND_OK) {
+    provider->abort_output(provider->context);
+    return plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error output transaction commit failed");
+  }
+
+  plan_outcome_set(
+      outcome, DATA_BIND_BINDING_OUTCOME_TYPED_ERROR, 0,
+      error_index, entry->schema_field);
   plan_diag_clear(diagnostic);
   return DATA_BIND_OK;
 }

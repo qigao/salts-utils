@@ -179,10 +179,11 @@ jobs:
         run: |
           set -euxo pipefail
           cmake --build build/binding-plan-sanitized \
-            --target test_data_bind_binding_plan test_data_bind_native_writer --parallel 2
+            --target test_data_bind_binding_plan test_data_bind_native_writer \
+                     test_databind_service_native_lowering --parallel 2
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/binding-plan-sanitized \
-            -R '^test_data_bind_(binding_plan|native_writer)$' \
+            -R '^(test_data_bind_(binding_plan|native_writer)|test_databind_service_native_lowering)$' \
             --no-tests=error --output-on-failure
 
       - name: Verify exact head and clean tracked source

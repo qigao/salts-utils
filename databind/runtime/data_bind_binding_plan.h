@@ -103,17 +103,46 @@ typedef struct DataBindNativeTypeBinding {
   { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     (TYPE_NAME), (DATA), NULL, 0u, NULL, 0u }
 
+typedef DataBindStatus (*DataBindNativeDataResolverFn)(
+    const cmeta_data_desc **out, DataBindError *error);
+
+/**
+ * Exact generated native layout for one Service typed-error variant.
+ *
+ * data_resolver resolves the canonical CMeta payload descriptor during
+ * BindingPlan compilation. payload_offset is relative to the generated
+ * operation error envelope.
+ */
+typedef struct DataBindNativeErrorBinding {
+  size_t size;
+  const char *idl_type_name;
+  uint32_t kind_value;
+  DataBindNativeDataResolverFn data_resolver;
+  size_t payload_offset;
+} DataBindNativeErrorBinding;
+
+#define DATA_BIND_NATIVE_ERROR_BINDING_INIT \
+  { sizeof(DataBindNativeErrorBinding), NULL, 0u, NULL, 0u }
+
 typedef struct DataBindServiceNativeBinding {
   size_t size;
   uint32_t abi_version;
   const cmeta_function_desc *function;
   const DataBindNativeTypeBinding *request;
   const DataBindNativeTypeBinding *response;
+
+  /** Generated typed-error envelope metadata; empty for non-throws Services. */
+  const DataBindNativeErrorBinding *errors;
+  size_t error_count;
+  size_t error_param_index;
+  size_t error_envelope_bytes;
+  size_t error_kind_offset;
+  size_t error_kind_bytes;
 } DataBindServiceNativeBinding;
 
 #define DATA_BIND_SERVICE_NATIVE_BINDING_INIT(FUNCTION, REQUEST, RESPONSE) \
   { sizeof(DataBindServiceNativeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
-    (FUNCTION), (REQUEST), (RESPONSE) }
+    (FUNCTION), (REQUEST), (RESPONSE), NULL, 0u, SIZE_MAX, 0u, 0u, 0u }
 
 typedef struct DataBindBindingPlanEntry {
   size_t size;
@@ -184,6 +213,29 @@ typedef struct DataBindBindingCallFrame {
   { sizeof(DataBindBindingCallFrame), NULL, 0u, NULL, 0u, NULL, NULL, 0u }
 
 typedef struct DataBindBindingPlan DataBindBindingPlan;
+
+typedef enum DataBindBindingOutcomeKind {
+  DATA_BIND_BINDING_OUTCOME_NONE = 0,
+  DATA_BIND_BINDING_OUTCOME_SUCCESS = 1,
+  DATA_BIND_BINDING_OUTCOME_NATIVE_STATUS = 2,
+  DATA_BIND_BINDING_OUTCOME_TYPED_ERROR = 3
+} DataBindBindingOutcomeKind;
+
+/**
+ * Semantic result of one exact Service invocation after bridge/admission
+ * succeeded. typed_error is borrowed from the immutable BindingPlan.
+ */
+typedef struct DataBindBindingOutcome {
+  size_t size;
+  DataBindBindingOutcomeKind kind;
+  int native_status;
+  size_t typed_error_index;
+  const char *typed_error;
+} DataBindBindingOutcome;
+
+#define DATA_BIND_BINDING_OUTCOME_INIT \
+  { sizeof(DataBindBindingOutcome), DATA_BIND_BINDING_OUTCOME_NONE, 0, \
+    SIZE_MAX, NULL }
 
 /**
  * Runtime logical provider. It receives only precompiled generic addresses.
@@ -288,6 +340,26 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_write_outputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
     const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
+ * Publish exactly one completed Service outcome.
+ *
+ * bridge/admission failure is deliberately outside this API. After an exact
+ * invocation succeeds:
+ * - native_status != 0 publishes no response/error payload;
+ * - native_status == 0 and typed-error kind == NONE publishes success response;
+ * - native_status == 0 and a valid typed-error kind transactionally publishes
+ *   exactly one DATA_BIND_BINDING_ERROR payload.
+ *
+ * Ambiguous native-status + typed-error combinations are rejected.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_write_outcome(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    int native_status,
+    DataBindBindingOutcome *outcome,
     DataBindBindingPlanDiagnostic *diagnostic);
 
 #ifdef __cplusplus
