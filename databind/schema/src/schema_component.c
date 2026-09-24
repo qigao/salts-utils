@@ -91,18 +91,29 @@ static int component_set_string(Node *map, const char *key,
     return 1;
 }
 
-static Node *component_find_service(Node *root, const char *name) {
-    Node *services = component_list(root, "services");
+static Node *component_find_named(
+    Node *root, const char *list_name, const char *name) {
+    Node *list = component_list(root, list_name);
     size_t i;
 
-    if (services == NULL || name == NULL) return NULL;
-    for (i = 0u; i < services->data.list.count; ++i) {
-        Node *service = services->data.list.items[i];
-        const char *candidate = component_string(service, "name");
+    if (list == NULL || name == NULL) return NULL;
+    for (i = 0u; i < list->data.list.count; ++i) {
+        Node *record = list->data.list.items[i];
+        const char *candidate = component_string(record, "name");
         if (candidate != NULL && strcmp(candidate, name) == 0)
-            return service;
+            return record;
     }
     return NULL;
+}
+
+static int component_capability_exists(
+    Node *root, const char *kind, const char *name) {
+    if (kind == NULL || name == NULL) return 0;
+    if (strcmp(kind, "service") == 0)
+        return component_find_named(root, "services", name) != NULL;
+    if (strcmp(kind, "channel") == 0)
+        return component_find_named(root, "channels", name) != NULL;
+    return 0;
 }
 
 static int component_name_duplicate(Node *components, size_t index) {
@@ -206,7 +217,8 @@ int schema_validate_components(Node *root, tbe_error_t *err) {
                     err, "Component '%s' has incomplete capability reference",
                     component_name, NULL);
 
-            if (strcmp(kind, "service") != 0)
+            if (strcmp(kind, "service") != 0 &&
+                strcmp(kind, "channel") != 0)
                 return component_errorf(
                     err, "Component '%s' has unsupported capability kind '%s'",
                     component_name, kind);
@@ -216,9 +228,9 @@ int schema_validate_components(Node *root, tbe_error_t *err) {
                     err, "Component '%s' repeats capability '%s'",
                     component_name, name);
 
-            if (component_find_service(root, name) == NULL)
+            if (!component_capability_exists(root, kind, name))
                 return component_errorf(
-                    err, "Component '%s' references unknown Service '%s'",
+                    err, "Component '%s' references unknown capability '%s'",
                     component_name, name);
 
             qualified_capability =
