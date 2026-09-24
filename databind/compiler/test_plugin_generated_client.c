@@ -95,6 +95,17 @@ spec("generated DataBind Plugin client") {
     check_equal(info.active_leases, (size_t)1u);
 
     check_equal(
+        databind_plugin_client_5_Image_14_ImageProcessor_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_ALREADY);
+    check_true(
+        databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &info),
+                SALTS_PLUGIN_OK);
+    check_equal(info.active_leases, (size_t)1u);
+
+    check_equal(
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &decode_request, &decode_response, &native_status),
         SALTS_PLUGIN_OK);
@@ -181,7 +192,7 @@ spec("generated DataBind Plugin client") {
         databind_5_Image_5_Codec_6_Decode_plugin_client_call(
             &client, &request, &response, &native_status),
         SALTS_PLUGIN_INVALID_STATE);
-    check_equal(native_status, 0);
+    check_equal(native_status, 77);
 
     check_equal(
         databind_plugin_client_5_Image_14_ImageProcessor_close(&client),
