@@ -190,9 +190,9 @@ typedef struct DataBindBindingPlan DataBindBindingPlan;
  * It never walks DataBind schema AST or owns transport/session state.
  */
 typedef enum DataBindBindingValueState {
-  DATA_BIND_STATE_ABSENT = 0,
-  DATA_BIND_STATE_VALUE = 1,
-  DATA_BIND_STATE_NULL = 2
+  DATA_BIND_VALUE_STATE_ABSENT = 0,
+  DATA_BIND_VALUE_STATE_VALUE = 1,
+  DATA_BIND_VALUE_STATE_NULL = 2
 } DataBindBindingValueState;
 
 typedef DataBindStatus (*DataBindBindingOpenInputFn)(
