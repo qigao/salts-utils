@@ -41,7 +41,10 @@ typedef struct databind_compiler_projection_frontend_plan {
   size_t backend_count;
 
   databind_compiler_plugin_config plugin;
+  databind_compiler_http_projection_config http;
+  databind_compiler_rpc_projection_config rpc;
 
+  char method_plan_symbol_prefix[256];
   char artifact_dir[SALTS_FS_MAX_PATH];
   char native_header[SALTS_FS_MAX_PATH];
   char plugin_source[SALTS_FS_MAX_PATH];
