@@ -222,7 +222,9 @@ static int typed_type_has_nullable(const TbeTypedType *type) {
 
 static DataBindStatus typed_nullable_format_supported(
     const TbeTypedType *type, DataBindFormat format, DataBindError *error) {
-  if (!typed_type_has_nullable(type) || format == DATA_BIND_FORMAT_JSON)
+  if (!typed_type_has_nullable(type) ||
+      format == DATA_BIND_FORMAT_JSON ||
+      format == DATA_BIND_FORMAT_YAML)
     return DATA_BIND_OK;
   return typed_error(
       error, DATA_BIND_ERR_SCHEMA, type != NULL ? type->name : NULL,
