@@ -2,6 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
+#include <salts_cmeta_fixed_width.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,6 +43,59 @@ static const cmeta_data_desc BOUNDARY_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "test.BoundaryStorage.data", "BoundaryStorage", CMETA_DATA_STRUCT,
     &BOUNDARY_CMETA_TYPE, &BOUNDARY_SHAPE, NULL, NULL, NULL};
+
+typedef struct StateBoundary {
+  uint32_t value;
+  uint8_t presence;
+  uint8_t nulls;
+} StateBoundary;
+
+static const cmeta_type_identity STATE_BOUNDARY_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.StateBoundary");
+static const cmeta_type_desc STATE_BOUNDARY_TYPE = {
+    "StateBoundary", sizeof(StateBoundary), _Alignof(StateBoundary),
+    CMETA_T_OBJECT, NULL, NULL, &STATE_BOUNDARY_ID};
+static const cmeta_field_desc STATE_BOUNDARY_LAYOUT_FIELDS[] = {
+    {"value", "uint32_t", offsetof(StateBoundary, value), sizeof(uint32_t),
+     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc STATE_BOUNDARY_LAYOUT = {
+    "StateBoundary", sizeof(StateBoundary), _Alignof(StateBoundary),
+    STATE_BOUNDARY_LAYOUT_FIELDS, 1u};
+static const cmeta_data_field_desc STATE_BOUNDARY_FIELDS[] = {
+    {"test.StateBoundary.value", "value", offsetof(StateBoundary, value),
+     &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape STATE_BOUNDARY_SHAPE = {
+    &STATE_BOUNDARY_LAYOUT, STATE_BOUNDARY_FIELDS, 1u};
+static const cmeta_data_desc STATE_BOUNDARY_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.StateBoundary.data",
+    .display_name = "StateBoundary",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &STATE_BOUNDARY_TYPE,
+    .shape = &STATE_BOUNDARY_SHAPE};
+
+static const TbeTypedField STATE_BOUNDARY_TYPED_FIELDS[] = {
+    {.name = "value",
+     .kind = TBE_TYPED_U32,
+     .wire_kind = TBE_TYPED_U32,
+     .offset = offsetof(StateBoundary, value),
+     .optional_bit = 0u,
+     .flags = TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_NULLABLE,
+     .nullable_bit = 0u}};
+static const TbeTypedType STATE_BOUNDARY_OVERLAY = {
+    .name = "StateBoundary",
+    .size = sizeof(StateBoundary),
+    .fields = STATE_BOUNDARY_TYPED_FIELDS,
+    .field_count = 1u,
+    .fixed_block_size = 0u,
+    .presence_offset = offsetof(StateBoundary, presence),
+    .presence_size = 1u,
+    .wire_big_endian = 0,
+    .null_offset = offsetof(StateBoundary, nulls),
+    .null_size = 1u};
+static const TbeTypedDescriptor STATE_BOUNDARY_DESCRIPTOR =
+    TBE_TYPED_DESCRIPTOR_INIT(&STATE_BOUNDARY_OVERLAY, &STATE_BOUNDARY_DATA);
 
 static TbeTypedType boundary_type(const TbeTypedField *fields, size_t count) {
   TbeTypedType type = {
@@ -303,7 +357,7 @@ spec("typed descriptor boundary") {
     tbe_typed_clear(&type, &object);
   }
 
-  it("requires an ABI-v2 descriptor with one canonical Struct graph") {
+  it("requires an ABI-v3 descriptor with one canonical Struct graph") {
     const TbeTypedField overlay_field = {
         .name = "value", .kind = TBE_TYPED_U8, .wire_kind = TBE_TYPED_U8};
     TbeTypedType overlay = boundary_type(NULL, 0u);
@@ -327,6 +381,10 @@ spec("typed descriptor boundary") {
     expect_descriptor_rejection(&rejected);
 
     rejected = descriptor;
+    rejected.abi_version = 2u;
+    expect_descriptor_rejection(&rejected);
+
+    rejected = descriptor;
     rejected.native_data = NULL;
     expect_descriptor_rejection(&rejected);
 
@@ -346,4 +404,75 @@ spec("typed descriptor boundary") {
     rejected.overlay = &mismatched_overlay;
     expect_descriptor_rejection(&rejected);
   }
+
+  it("validates and clears independent presence and null overlays") {
+    StateBoundary object = {
+        .value = 99u,
+        .presence = 0xffu,
+        .nulls = 0xffu};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(
+        tbe_typed_descriptor_validate(&STATE_BOUNDARY_DESCRIPTOR, &error),
+        DATA_BIND_OK);
+
+    check_equal(
+        tbe_typed_descriptor_init(&STATE_BOUNDARY_DESCRIPTOR, &object, &error),
+        DATA_BIND_OK);
+    check_equal(object.value, 0u);
+    check_equal(object.presence, 0u);
+    check_equal(object.nulls, 0u);
+
+    object.value = 42u;
+    object.presence = 1u;
+    object.nulls = 1u;
+    check_equal(
+        tbe_typed_descriptor_clear(&STATE_BOUNDARY_DESCRIPTOR, &object, &error),
+        DATA_BIND_OK);
+    check_equal(object.value, 0u);
+    check_equal(object.presence, 0u);
+    check_equal(object.nulls, 0u);
+  }
+
+  it("rejects overlapping presence and null host state") {
+    TbeTypedType overlap = STATE_BOUNDARY_OVERLAY;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    overlap.null_offset = overlap.presence_offset;
+    check_equal(tbe_typed_validate_descriptor(&overlap, &error),
+                DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "overlap");
+  }
+
+  it("accepts nullable metadata but rejects value conversion until format lowering") {
+    StateBoundary object = {0};
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const uint8_t json[] = {'{', '}'};
+    char *out = NULL;
+    size_t out_len = 0u;
+
+    check_null(tbe_typed_to_json(
+        &STATE_BOUNDARY_OVERLAY, &object, &error));
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "nullable");
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        tbe_typed_descriptor_parse(
+            NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR,
+            DATA_BIND_FORMAT_JSON, json, sizeof(json), 0u, &object, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "nullable");
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        tbe_typed_descriptor_serialize(
+            NULL, "StateBoundary", &STATE_BOUNDARY_DESCRIPTOR, &object,
+            DATA_BIND_FORMAT_JSON, &out, &out_len, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(out);
+    check_equal(out_len, 0u);
+    check_contains(error.message, "nullable");
+  }
+
 }

@@ -46,7 +46,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
         .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
         .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
         .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-        .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}}
+        .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
+        .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}}
     }{{^last}},{{/last}}
 {{/fields}}
 };
@@ -59,7 +60,9 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
     .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}}
+    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
+    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
+    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
 {{/composites}}
 
@@ -83,7 +86,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
       .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
       .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}} }{{^last}},{{/last}}
+      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
+      .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}} }{{^last}},{{/last}}
 {{/fields}}
 };
 static TbeTypedType {{name}}_TYPED_TYPE = {
@@ -92,7 +96,9 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
     .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}}
+    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
+    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
+    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
 {{/groups}}
 
@@ -116,7 +122,8 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .wire_offset = {{#has_offset}}{{offset}}{{/has_offset}}{{^has_offset}}0{{/has_offset}},
       .wire_size = {{#field_size_bytes}}{{field_size_bytes}}{{/field_size_bytes}}{{^field_size_bytes}}{{#size_bytes}}{{size_bytes}}{{/size_bytes}}{{^size_bytes}}0{{/size_bytes}}{{/field_size_bytes}},
       .optional_bit = {{#is_optional}}{{optional_bit_index}}{{/is_optional}}{{^is_optional}}0{{/is_optional}},
-      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}} }{{^last}},{{/last}}
+      .flags = 0{{#is_optional}} | TBE_TYPED_FIELD_OPTIONAL{{/is_optional}}{{#is_nullable}} | TBE_TYPED_FIELD_NULLABLE{{/is_nullable}}{{#has_offset}} | TBE_TYPED_FIELD_WIRE_OFFSET{{/has_offset}}{{#typed_is_var_data}} | TBE_TYPED_FIELD_VAR_DATA{{/typed_is_var_data}}{{#typed_is_group}} | TBE_TYPED_FIELD_GROUP{{/typed_is_group}},
+      .nullable_bit = {{#is_nullable}}{{nullable_bit_index}}{{/is_nullable}}{{^is_nullable}}0{{/is_nullable}} }{{^last}},{{/last}}
 {{/fields}}
 };
 static TbeTypedType {{name}}_TYPED_TYPE = {
@@ -125,11 +132,13 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
     .fixed_block_size = {{#fixed_block_size}}{{fixed_block_size}}{{/fixed_block_size}}{{^fixed_block_size}}0{{/fixed_block_size}},
     .presence_offset = {{#has_optional_fields}}offsetof({{name}}_t, _presence){{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
     .presence_size = {{#has_optional_fields}}{{presence_bitmap_bytes}}{{/has_optional_fields}}{{^has_optional_fields}}0{{/has_optional_fields}},
-    .wire_big_endian = {{schema.schema_wire_big_endian_value}}
+    .wire_big_endian = {{schema.schema_wire_big_endian_value}},
+    .null_offset = {{#has_nullable_fields}}offsetof({{name}}_t, _nulls){{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}},
+    .null_size = {{#has_nullable_fields}}{{null_bitmap_bytes}}{{/has_nullable_fields}}{{^has_nullable_fields}}0{{/has_nullable_fields}}
 };
 {{/messages}}
 
-/* #45: native graph metadata is immutable and borrowed. ABI-v2 descriptors
+/* #45: native graph metadata is immutable and borrowed. ABI-v3 descriptors
  * join this structural graph to the separate generated schema overlay. */
 #include <salts_cmeta_fixed_width.h>
 #include <salts_cmeta_data.h>

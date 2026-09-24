@@ -154,6 +154,43 @@ static void typed_optional_set(const TbeTypedType *type, void *object, const Tbe
   presence[field->optional_bit / 8u] |= (uint8_t)(1u << (field->optional_bit % 8u));
 }
 
+static int typed_type_has_nullable_at(
+    const TbeTypedType *type, unsigned depth) {
+  size_t i;
+  if (type == NULL || depth > 32u) return 0;
+  for (i = 0u; i < type->field_count; ++i) {
+    const TbeTypedField *field = &type->fields[i];
+    if ((field->flags & TBE_TYPED_FIELD_NULLABLE) != 0u) return 1;
+    if (field->kind == TBE_TYPED_OBJECT && field->object_type != NULL &&
+        typed_type_has_nullable_at(field->object_type, depth + 1u))
+      return 1;
+    if ((field->kind == TBE_TYPED_FIXED_ARRAY ||
+         field->kind == TBE_TYPED_LIST || field->kind == TBE_TYPED_SET) &&
+        field->element_kind == TBE_TYPED_OBJECT &&
+        field->object_type != NULL &&
+        typed_type_has_nullable_at(field->object_type, depth + 1u))
+      return 1;
+    if (field->kind == TBE_TYPED_MAP &&
+        field->map_value_kind == TBE_TYPED_OBJECT &&
+        field->map_value_type != NULL &&
+        typed_type_has_nullable_at(field->map_value_type, depth + 1u))
+      return 1;
+  }
+  return 0;
+}
+
+static int typed_type_has_nullable(const TbeTypedType *type) {
+  return typed_type_has_nullable_at(type, 0u);
+}
+
+static DataBindStatus typed_reject_nullable_runtime(
+    const TbeTypedType *type, DataBindError *error) {
+  if (!typed_type_has_nullable(type)) return DATA_BIND_OK;
+  return typed_error(
+      error, DATA_BIND_ERR_SCHEMA, type != NULL ? type->name : NULL,
+      "Typed nullable parse/serialize lowering is not implemented");
+}
+
 static DataBindStatus typed_init_value(TbeTypedKind kind, const TbeTypedType *object_type,
                                        void *ptr, size_t count, DataBindError *error) {
   size_t i;
@@ -495,6 +532,8 @@ DataBindStatus tbe_typed_from_value(const TbeTypedType *type, const DataBindValu
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed value");
   status = typed_validate_descriptor_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
     return typed_error(error, DATA_BIND_ERR_OOM, type->name,
@@ -609,6 +648,7 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     return NULL;
   }
   if (typed_validate_descriptor_at(type, 0u, error) != DATA_BIND_OK) return NULL;
+  if (typed_reject_nullable_runtime(type, error) != DATA_BIND_OK) return NULL;
   root = json_create_object();
   if (root == NULL) {
     typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating JSON object");
@@ -747,10 +787,11 @@ static int typed_named_kind_matches(DataBind *codec, const char *name, TbeTypedK
 static int typed_field_schema_matches(DataBind *codec, const TbeTypedField *field,
                                       const DataBindSchemaField *schema) {
   int descriptor_optional = (field->flags & TBE_TYPED_FIELD_OPTIONAL) != 0;
+  int descriptor_nullable = (field->flags & TBE_TYPED_FIELD_NULLABLE) != 0;
   int descriptor_offset = (field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0;
   if (field->name == NULL || schema->name == NULL || strcmp(field->name, schema->name) != 0 ||
-      schema->is_nullable != 0 ||
       descriptor_optional != (schema->is_optional != 0) ||
+      descriptor_nullable != (schema->is_nullable != 0) ||
       descriptor_offset != (schema->has_offset != 0) ||
       (descriptor_offset && field->wire_offset != schema->offset))
     return 0;
@@ -880,6 +921,13 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
   if (!typed_size_fits(type->presence_offset, type->presence_size, type->size))
     return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
                        "Typed presence bitmap exceeds the host object");
+  if (!typed_size_fits(type->null_offset, type->null_size, type->size))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
+                       "Typed null bitmap exceeds the host object");
+  if (typed_ranges_overlap(type->presence_offset, type->presence_size,
+                           type->null_offset, type->null_size))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
+                       "Typed presence and null bitmaps overlap");
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t host_extent;
@@ -893,11 +941,20 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
         (type->presence_size == 0 || field->optional_bit / 8u >= type->presence_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                          "Typed optional bit exceeds the presence bitmap");
+    if ((field->flags & TBE_TYPED_FIELD_NULLABLE) != 0 &&
+        (type->null_size == 0 || field->nullable_bit / 8u >= type->null_size))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed nullable bit exceeds the null bitmap");
     if (typed_field_owns_storage(field) && type->presence_size != 0 &&
         typed_ranges_overlap(field->offset, host_extent, type->presence_offset,
                              type->presence_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                          "Typed owning field overlaps the presence bitmap");
+    if (typed_field_owns_storage(field) && type->null_size != 0 &&
+        typed_ranges_overlap(field->offset, host_extent, type->null_offset,
+                             type->null_size))
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                         "Typed owning field overlaps the null bitmap");
     for (j = 0; j < i; ++j) {
       const TbeTypedField *previous = &type->fields[j];
       size_t previous_extent;
@@ -1023,6 +1080,11 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
       data->abi_version != CMETA_DATA_DESC_ABI_VERSION || data->kind != CMETA_DATA_STRUCT)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Canonical native CMeta record is unavailable");
+  {
+    DataBindStatus overlay_status =
+        typed_validate_descriptor_at(overlay, depth, error);
+    if (overlay_status != DATA_BIND_OK) return overlay_status;
+  }
   if (depth > TBE_TYPED_NATIVE_MAX_DEPTH)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Canonical native CMeta record depth exceeds 32");
@@ -1046,8 +1108,7 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
                        "Canonical native CMeta record layout is invalid");
   if (shape->field_count != layout->field_count || shape->field_count != overlay->field_count ||
       (shape->field_count != 0u &&
-       (shape->fields == NULL || layout->fields == NULL || overlay->fields == NULL)) ||
-      overlay->presence_size != 0u)
+       (shape->fields == NULL || layout->fields == NULL || overlay->fields == NULL)))
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "CMeta native fields disagree with the schema overlay");
 
@@ -1070,7 +1131,7 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
         layout_field->offset != native_field->offset ||
         !typed_size_fits(native_field->offset, layout_field->size, data->storage_type->size) ||
         layout_field->align == 0u || native_field->offset % layout_field->align != 0u ||
-        (wire_field->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u)
+        (wire_field->flags & TBE_TYPED_FIELD_GROUP) != 0u)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
                          "Field has no exact canonical native CMeta storage");
 
@@ -2291,6 +2352,14 @@ DataBindStatus tbe_typed_descriptor_init(const TbeTypedDescriptor *descriptor, v
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
                        "Invalid typed object");
   status = typed_native_init_value(native.data, object, native.overlay->name, error);
+  if (status == DATA_BIND_OK) {
+    if (native.overlay->presence_size != 0u)
+      memset((uint8_t *)object + native.overlay->presence_offset, 0,
+             native.overlay->presence_size);
+    if (native.overlay->null_size != 0u)
+      memset((uint8_t *)object + native.overlay->null_offset, 0,
+             native.overlay->null_size);
+  }
   return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL) : status;
 }
 
@@ -2303,6 +2372,14 @@ DataBindStatus tbe_typed_descriptor_clear(const TbeTypedDescriptor *descriptor, 
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, native.overlay->name,
                        "Invalid typed object");
   status = typed_native_clear_value(native.data, object, native.overlay->name, error);
+  if (status == DATA_BIND_OK) {
+    if (native.overlay->presence_size != 0u)
+      memset((uint8_t *)object + native.overlay->presence_offset, 0,
+             native.overlay->presence_size);
+    if (native.overlay->null_size != 0u)
+      memset((uint8_t *)object + native.overlay->null_offset, 0,
+             native.overlay->null_size);
+  }
   return status == DATA_BIND_OK ? typed_error(error, DATA_BIND_OK, NULL, NULL) : status;
 }
 
@@ -2311,9 +2388,10 @@ static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigne
   size_t i;
   DataBindStatus status = typed_validate_descriptor_at(type, depth, error);
   if (status != DATA_BIND_OK) return status;
-  if (type->presence_size > type->fixed_block_size)
+  if (type->presence_size > type->fixed_block_size ||
+      type->null_size > type->fixed_block_size - type->presence_size)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, type->name,
-                       "Typed presence bitmap exceeds the fixed wire block");
+                       "Typed state bitmaps exceed the fixed wire block");
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     size_t wire_extent;
@@ -2326,9 +2404,10 @@ static DataBindStatus typed_validate_layout_at(const TbeTypedType *type, unsigne
       if (field->wire_size != wire_extent)
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                            "Typed declared wire size does not match the field layout");
-      if (typed_ranges_overlap(field->wire_offset, wire_extent, 0u, type->presence_size))
+      if (typed_ranges_overlap(field->wire_offset, wire_extent, 0u,
+                               type->presence_size + type->null_size))
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
-                           "Typed field overlaps the wire presence bitmap");
+                           "Typed field overlaps the wire state bitmaps");
       for (j = 0; j < i; ++j) {
         const TbeTypedField *previous = &type->fields[j];
         size_t previous_extent;
@@ -2466,10 +2545,16 @@ static int typed_native_schema_field_matches(DataBind *codec, const cmeta_data_d
                                              const TbeTypedField *wire,
                                              const DataBindSchemaField *schema) {
   int has_wire_offset;
+  int descriptor_optional;
+  int descriptor_nullable;
   if (native == NULL || wire == NULL || schema == NULL || !typed_nonempty(wire->name) ||
       !typed_nonempty(schema->name) || strcmp(wire->name, schema->name) != 0 ||
-      schema->is_optional || schema->is_nullable ||
-      (wire->flags & (TBE_TYPED_FIELD_OPTIONAL | TBE_TYPED_FIELD_GROUP)) != 0u)
+      (wire->flags & TBE_TYPED_FIELD_GROUP) != 0u)
+    return 0;
+  descriptor_optional = (wire->flags & TBE_TYPED_FIELD_OPTIONAL) != 0u;
+  descriptor_nullable = (wire->flags & TBE_TYPED_FIELD_NULLABLE) != 0u;
+  if (descriptor_optional != (schema->is_optional != 0) ||
+      descriptor_nullable != (schema->is_nullable != 0))
     return 0;
   has_wire_offset = (wire->flags & TBE_TYPED_FIELD_WIRE_OFFSET) != 0;
   if (has_wire_offset != (schema->has_offset != 0) ||
@@ -2753,6 +2838,8 @@ DataBindStatus tbe_typed_parse_binary(const TbeTypedType *type, const void *data
                        "Invalid typed binary parse arguments");
   status = typed_validate_layout_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
     return typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating typed object");
@@ -2784,6 +2871,10 @@ DataBindStatus tbe_typed_parse_ex(DataBind *codec, const char *type_name, const 
   DataBindStatus status;
   if (codec == NULL || type_name == NULL || type == NULL || data == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed parse arguments");
+  status = typed_validate_descriptor_at(type, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   if (format == DATA_BIND_FORMAT_BINARY) {
     status = tbe_typed_validate_schema(codec, type_name, type, error);
     if (status != DATA_BIND_OK) return status;
@@ -3185,6 +3276,8 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
   void *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (codec == NULL || !typed_nonempty(type_name) || data == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
                        "Invalid canonical descriptor parse arguments");
@@ -3241,6 +3334,10 @@ DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
   if (out_len != NULL) *out_len = 0;
   if (codec == NULL || type_name == NULL || type == NULL || object == NULL || out == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed serialize arguments");
+  status = typed_validate_descriptor_at(type, 0u, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(type, error);
+  if (status != DATA_BIND_OK) return status;
   if (format != DATA_BIND_FORMAT_JSON && format != DATA_BIND_FORMAT_YAML &&
       format != DATA_BIND_FORMAT_CSV && format != DATA_BIND_FORMAT_XML)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Unknown typed output format");
@@ -3283,6 +3380,8 @@ DataBindStatus tbe_typed_descriptor_serialize(DataBind *codec, const char *type_
   json_value_t *json;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
   if (codec == NULL || !typed_nonempty(type_name) || object == NULL || out == NULL)
@@ -3315,6 +3414,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary(const TbeTypedDescriptor *d
   uint8_t *data;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
+  if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
   if (object == NULL || out == NULL || out_len == NULL)
@@ -3343,6 +3444,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(const TbeTypedDescript
   TypedNativeRecord native;
   uint8_t *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
+  if (status != DATA_BIND_OK) return status;
+  status = typed_reject_nullable_runtime(native.overlay, error);
   if (status != DATA_BIND_OK) return status;
   if (out_len != NULL) *out_len = 0u;
   if (object == NULL || out_len == NULL || (output == NULL && capacity != 0u))
