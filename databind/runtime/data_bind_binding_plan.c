@@ -151,18 +151,31 @@ static const cmeta_data_field_desc *plan_native_field(
   return NULL;
 }
 
-static const DataBindNativePresenceBinding *plan_presence(
-    const DataBindNativeTypeBinding *binding, const char *name) {
+static const DataBindNativeStateBinding *plan_state_binding(
+    const DataBindNativeStateBinding *bindings, size_t count,
+    const char *name) {
   size_t i;
-  if (binding == NULL || name == NULL || binding->presence == NULL)
-    return NULL;
-  for (i = 0u; i < binding->presence_count; ++i) {
-    const DataBindNativePresenceBinding *presence = &binding->presence[i];
-    if (presence->field_name != NULL &&
-        strcmp(presence->field_name, name) == 0)
-      return presence;
+  if (bindings == NULL || name == NULL) return NULL;
+  for (i = 0u; i < count; ++i) {
+    const DataBindNativeStateBinding *state = &bindings[i];
+    if (state->field_name != NULL && strcmp(state->field_name, name) == 0)
+      return state;
   }
   return NULL;
+}
+
+static const DataBindNativeStateBinding *plan_presence(
+    const DataBindNativeTypeBinding *binding, const char *name) {
+  return binding != NULL
+             ? plan_state_binding(binding->presence, binding->presence_count, name)
+             : NULL;
+}
+
+static const DataBindNativeStateBinding *plan_null(
+    const DataBindNativeTypeBinding *binding, const char *name) {
+  return binding != NULL
+             ? plan_state_binding(binding->nulls, binding->null_count, name)
+             : NULL;
 }
 
 static int plan_data_semantically_equal(const cmeta_data_desc *left,
@@ -187,8 +200,8 @@ static DataBindStatus plan_validate_native_type(
 
   if (binding == NULL ||
       binding->size <
-          offsetof(DataBindNativeTypeBinding, presence_count) +
-              sizeof(binding->presence_count) ||
+          offsetof(DataBindNativeTypeBinding, null_count) +
+              sizeof(binding->null_count) ||
       binding->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION ||
       binding->idl_type_name == NULL ||
       strcmp(binding->idl_type_name, expected_name) != 0 ||
@@ -214,64 +227,93 @@ static DataBindStatus plan_validate_native_type(
         "Native field count does not match DataBind IDL type '%s'",
         expected_name);
 
-  if (binding->presence_count != 0u && binding->presence == NULL)
+  if ((binding->presence_count != 0u && binding->presence == NULL) ||
+      (binding->null_count != 0u && binding->nulls == NULL))
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-        "Native presence_count is nonzero without presence metadata");
+        "Native state metadata count is nonzero without its binding array");
 
-  for (i = 0u; i < binding->presence_count; ++i) {
-    const DataBindNativePresenceBinding *left = &binding->presence[i];
-    DataBindSchemaField reflected = DATA_BIND_SCHEMA_FIELD_INIT;
-    int found_optional = 0;
-    size_t j;
+  {
+    const DataBindNativeStateBinding *sets[2] = {
+        binding->presence, binding->nulls};
+    const size_t counts[2] = {
+        binding->presence_count, binding->null_count};
+    const char *const labels[2] = {"presence", "null"};
+    size_t set_index;
 
-    if (left->size < sizeof(*left) || left->field_name == NULL ||
-        left->field_name[0] == '\0' || left->bit > 7u ||
-        left->byte_offset >= binding->data->storage_type->size)
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-          "Invalid native optional-presence metadata");
+    for (set_index = 0u; set_index < 2u; ++set_index) {
+      size_t state_index;
+      for (state_index = 0u; state_index < counts[set_index]; ++state_index) {
+        const DataBindNativeStateBinding *left =
+            &sets[set_index][state_index];
+        DataBindSchemaField reflected = DATA_BIND_SCHEMA_FIELD_INIT;
+        int found = 0;
+        size_t j;
 
-    for (j = 0u; j < shape->field_count; ++j) {
-      const cmeta_data_field_desc *native_field = &shape->fields[j];
-      size_t field_size;
-      if (native_field->value == NULL ||
-          native_field->value->storage_type == NULL)
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-            "Native field metadata is incomplete while validating presence");
-      field_size = native_field->value->storage_type->size;
-      if (left->byte_offset >= native_field->offset &&
-          left->byte_offset - native_field->offset < field_size)
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-            "Optional presence storage overlaps native field '%s'",
-            native_field->name != NULL ? native_field->name : "<unnamed>");
-    }
+        if (left->size < sizeof(*left) || left->field_name == NULL ||
+            left->field_name[0] == '\0' || left->bit > 7u ||
+            left->byte_offset >= binding->data->storage_type->size)
+          return plan_diag_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+              "Invalid native %s-state metadata", labels[set_index]);
 
-    for (j = 0u; j < schema_type.field_count; ++j) {
-      reflected = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
-      if (data_bind_schema_field_at(codec, expected_name, j, &reflected) &&
-          reflected.name != NULL &&
-          strcmp(reflected.name, left->field_name) == 0) {
-        found_optional = reflected.is_optional != 0;
-        break;
+        for (j = 0u; j < shape->field_count; ++j) {
+          const cmeta_data_field_desc *native_field = &shape->fields[j];
+          size_t field_size;
+          if (native_field->value == NULL ||
+              native_field->value->storage_type == NULL)
+            return plan_diag_fail(
+                diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
+                "Native field metadata is incomplete while validating %s state",
+                labels[set_index]);
+          field_size = native_field->value->storage_type->size;
+          if (left->byte_offset >= native_field->offset &&
+              left->byte_offset - native_field->offset < field_size)
+            return plan_diag_fail(
+                diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+                "Native %s state storage overlaps field '%s'",
+                labels[set_index],
+                native_field->name != NULL ? native_field->name : "<unnamed>");
+        }
+
+        for (j = 0u; j < schema_type.field_count; ++j) {
+          reflected = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
+          if (data_bind_schema_field_at(codec, expected_name, j, &reflected) &&
+              reflected.name != NULL &&
+              strcmp(reflected.name, left->field_name) == 0) {
+            found = set_index == 0u ? reflected.is_optional != 0
+                                    : reflected.is_nullable != 0;
+            break;
+          }
+        }
+        if (!found)
+          return plan_diag_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+              "%s metadata references a non-%s IDL field",
+              labels[set_index],
+              set_index == 0u ? "optional" : "nullable");
+
+        for (j = 0u; j < state_index; ++j) {
+          const DataBindNativeStateBinding *right = &sets[set_index][j];
+          if (strcmp(left->field_name, right->field_name) == 0 ||
+              (left->byte_offset == right->byte_offset &&
+               left->bit == right->bit))
+            return plan_diag_fail(
+                diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+                "Duplicate native %s-state metadata", labels[set_index]);
+        }
+
+        if (set_index == 1u) {
+          for (j = 0u; j < binding->presence_count; ++j) {
+            const DataBindNativeStateBinding *right = &binding->presence[j];
+            if (left->byte_offset == right->byte_offset &&
+                left->bit == right->bit)
+              return plan_diag_fail(
+                  diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
+                  "Native presence and null state must not share one bit");
+          }
+        }
       }
-    }
-
-    if (!found_optional)
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-          "Presence metadata must reference an optional IDL field");
-
-    for (j = 0u; j < i; ++j) {
-      const DataBindNativePresenceBinding *right = &binding->presence[j];
-      if (strcmp(left->field_name, right->field_name) == 0 ||
-          (left->byte_offset == right->byte_offset &&
-           left->bit == right->bit))
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-            "Duplicate native optional-presence metadata");
     }
   }
 
@@ -311,17 +353,22 @@ static DataBindStatus plan_validate_native_type(
           schema_field.name != NULL ? schema_field.name : "");
 
     if (schema_field.is_optional) {
-      const DataBindNativePresenceBinding *presence =
+      const DataBindNativeStateBinding *presence =
           plan_presence(binding, schema_field.name);
-      if (presence != NULL) {
-        if (presence->size < sizeof(*presence) ||
-            presence->bit > 7u ||
-            presence->byte_offset >= binding->data->storage_type->size)
-          return plan_diag_fail(
-              diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-              "Invalid optional-presence layout for '%s.%s'", expected_name,
-              schema_field.name);
-      }
+      if (presence == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
+            "Optional field '%s.%s' lacks native presence state",
+            expected_name, schema_field.name);
+    }
+    if (schema_field.is_nullable) {
+      const DataBindNativeStateBinding *null_state =
+          plan_null(binding, schema_field.name);
+      if (null_state == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
+            "Nullable field '%s.%s' lacks native null state",
+            expected_name, schema_field.name);
     }
   }
 
@@ -614,7 +661,8 @@ static DataBindStatus plan_compile_ingress(
     DataBindBindingPlanEntry *entry = &owned->view;
     DataBindBindingAddress address = DATA_BIND_BINDING_ADDRESS_INIT;
     const cmeta_data_field_desc *native_field;
-    const DataBindNativePresenceBinding *presence;
+    const DataBindNativeStateBinding *presence;
+    const DataBindNativeStateBinding *null_state;
     const cmeta_param_desc *param;
     size_t param_index;
     int indirect = 0;
@@ -641,6 +689,7 @@ static DataBindStatus plan_compile_ingress(
     address.ordinal = i;
 
     presence = plan_presence(native->request, field.name);
+    null_state = plan_null(native->request, field.name);
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
@@ -653,6 +702,11 @@ static DataBindStatus plan_compile_ingress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Optional root request field '%s' lacks native presence metadata",
+            field.name);
+      if (field.is_nullable && null_state == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Nullable root request field '%s' lacks native null metadata",
             field.name);
     } else {
       param_index = plan_find_param_by_name(native->function, field.name);
@@ -676,10 +730,16 @@ static DataBindStatus plan_compile_ingress(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Direct optional parameter '%s' has no native presence/default "
             "representation", param->name);
+      if (field.is_nullable)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Direct nullable parameter '%s' has no native null-state "
+            "representation", param->name);
       param_used[param_index] = 1u;
       plan->param_ingress[param_index] = 1u;
       plan->param_data[param_index] = native_field->value;
       presence = NULL;
+      null_state = NULL;
     }
 
     *entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
@@ -692,11 +752,17 @@ static DataBindStatus plan_compile_ingress(
     entry->parameter_indirect = indirect;
     entry->required = !field.is_optional && !field.has_default;
     entry->has_default = field.has_default;
+    entry->nullable = field.is_nullable;
 
     if (presence != NULL) {
       entry->has_presence = 1;
       entry->presence_offset = presence->byte_offset;
       entry->presence_bit = presence->bit;
+    }
+    if (null_state != NULL) {
+      entry->has_null = 1;
+      entry->null_offset = null_state->byte_offset;
+      entry->null_bit = null_state->bit;
     }
 
     if (!plan_entry_set_strings(
@@ -799,7 +865,8 @@ static DataBindStatus plan_compile_egress(
     DataBindBindingPlanEntry *entry = &owned->view;
     DataBindBindingAddress address = DATA_BIND_BINDING_ADDRESS_INIT;
     const cmeta_data_field_desc *native_field;
-    const DataBindNativePresenceBinding *presence;
+    const DataBindNativeStateBinding *presence;
+    const DataBindNativeStateBinding *null_state;
     const cmeta_param_desc *param = NULL;
     size_t param_index = SIZE_MAX;
     int indirect = 0;
@@ -826,6 +893,7 @@ static DataBindStatus plan_compile_egress(
     address.ordinal = i;
 
     presence = plan_presence(native->response, field.name);
+    null_state = plan_null(native->response, field.name);
 
     if (root_param != SIZE_MAX) {
       param_index = root_param;
@@ -839,6 +907,11 @@ static DataBindStatus plan_compile_egress(
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Optional root response field '%s' lacks native presence metadata",
+            field.name);
+      if (field.is_nullable && null_state == NULL)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Nullable root response field '%s' lacks native null metadata",
             field.name);
     } else if (!use_return) {
       param_index = plan_find_param_by_name(native->function, field.name);
@@ -862,14 +935,25 @@ static DataBindStatus plan_compile_egress(
             diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
             "Direct optional OUT parameter '%s' has no native presence "
             "representation", param->name);
+      if (field.is_nullable)
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, field.name, param->name,
+            "Direct nullable OUT parameter '%s' has no native null-state "
+            "representation", param->name);
       param_used[param_index] = 1u;
       plan->param_egress[param_index] = 1u;
       plan->param_data[param_index] = native_field->value;
       presence = NULL;
+      null_state = NULL;
     } else if (field.is_optional && presence == NULL) {
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, field.name, NULL,
           "Optional returned response field '%s' lacks native presence metadata",
+          field.name);
+    } else if (field.is_nullable && null_state == NULL) {
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field.name, NULL,
+          "Nullable returned response field '%s' lacks native null metadata",
           field.name);
     }
 
@@ -883,11 +967,17 @@ static DataBindStatus plan_compile_egress(
     entry->parameter_indirect = indirect;
     entry->target_is_return = use_return;
     entry->required = 1;
+    entry->nullable = field.is_nullable;
 
     if (presence != NULL) {
       entry->has_presence = 1;
       entry->presence_offset = presence->byte_offset;
       entry->presence_bit = presence->bit;
+    }
+    if (null_state != NULL) {
+      entry->has_null = 1;
+      entry->null_offset = null_state->byte_offset;
+      entry->null_bit = null_state->bit;
     }
 
     if (!plan_entry_set_strings(
@@ -1321,7 +1411,7 @@ static const void *plan_egress_source(
   return base + entry->native_offset;
 }
 
-static void plan_reset_request_presence(
+static void plan_reset_request_state(
     const DataBindBindingPlan *plan, DataBindBindingCallFrame *frame) {
   size_t i;
   if (!plan->has_request_root_param || frame->request == NULL) return;
@@ -1332,6 +1422,11 @@ static void plan_reset_request_presence(
           (unsigned char *)frame->request + entry->presence_offset;
       *presence &=
           (unsigned char)~(1u << entry->presence_bit);
+    }
+    if (entry->has_null) {
+      unsigned char *nulls =
+          (unsigned char *)frame->request + entry->null_offset;
+      *nulls &= (unsigned char)~(1u << entry->null_bit);
     }
   }
 }
@@ -1356,7 +1451,7 @@ static void plan_cleanup_inputs(
   if (request_initialized) {
     plan_native_clear_noexcept(
         options, plan->request->data, frame->request, frame->request_bytes);
-    plan_reset_request_presence(plan, frame);
+    plan_reset_request_state(plan, frame);
   }
 }
 
@@ -1392,7 +1487,7 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
         plan->function->params[plan->request_root_param].name);
     if (status != DATA_BIND_OK) return status;
     request_initialized = 1;
-    plan_reset_request_presence(plan, frame);
+    plan_reset_request_state(plan, frame);
   }
 
   for (i = 0u; i < plan->param_count; ++i) {
@@ -1420,8 +1515,8 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
     DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     void *destination;
     size_t destination_bytes = 0u;
-    int present = 0;
-    int provider_present = 0;
+    DataBindBindingValueState input_state = DATA_BIND_STATE_ABSENT;
+    int normalized_value = 0;
 
     destination =
         plan_ingress_destination(plan, entry, frame, &destination_bytes);
@@ -1434,15 +1529,22 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
     }
 
     status = provider->open_input(
-        provider->context, entry, &reader, &present, &error);
+        provider->context, entry, &reader, &input_state, &error);
     if (status != DATA_BIND_OK) {
       status = plan_runtime_fail_error(
           diagnostic, status, entry, &error, "Input provider failed");
       goto fail;
     }
-    provider_present = present;
+    if (input_state < DATA_BIND_STATE_ABSENT ||
+        input_state > DATA_BIND_STATE_NULL) {
+      status = plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Input provider returned an invalid logical value state");
+      goto fail;
+    }
 
-    if (!present) {
+    if (input_state == DATA_BIND_STATE_ABSENT) {
       if (owned->has_default_token) {
         default_context.token = &owned->default_token;
         if (cserde_reader_init(
@@ -1454,6 +1556,8 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
               "Could not initialize compiled default reader");
           goto fail;
         }
+        input_state = DATA_BIND_STATE_VALUE;
+        normalized_value = 1;
       } else if (!entry->required) {
         continue;
       } else {
@@ -1463,6 +1567,27 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
             "Required logical input is absent");
         goto fail;
       }
+    }
+
+    if (input_state == DATA_BIND_STATE_NULL) {
+      if (!entry->nullable || !entry->has_null) {
+        status = plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+            entry->schema_field, entry->function_param,
+            "Explicit NULL is not admitted by the DataBind contract");
+        goto fail;
+      }
+      if (entry->has_presence) {
+        unsigned char *presence =
+            (unsigned char *)frame->request + entry->presence_offset;
+        *presence |= (unsigned char)(1u << entry->presence_bit);
+      }
+      {
+        unsigned char *nulls =
+            (unsigned char *)frame->request + entry->null_offset;
+        *nulls |= (unsigned char)(1u << entry->null_bit);
+      }
+      continue;
     }
 
     status = data_bind_native_decode(
@@ -1478,10 +1603,16 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
       goto fail;
     }
 
-    if (entry->has_presence && provider_present) {
+    if (entry->has_presence &&
+        (input_state == DATA_BIND_STATE_VALUE || normalized_value)) {
       unsigned char *presence =
           (unsigned char *)frame->request + entry->presence_offset;
       *presence |= (unsigned char)(1u << entry->presence_bit);
+    }
+    if (entry->has_null) {
+      unsigned char *nulls =
+          (unsigned char *)frame->request + entry->null_offset;
+      *nulls &= (unsigned char)~(1u << entry->null_bit);
     }
   }
 
@@ -1526,42 +1657,71 @@ DataBindStatus data_bind_binding_plan_write_outputs(
 
   for (i = 0u; i < plan->egress_count; ++i) {
     const DataBindBindingPlanEntry *entry = &plan->egress[i].view;
-    const void *source;
+    const unsigned char *state_base = NULL;
+    const void *source = NULL;
     size_t source_bytes = 0u;
+    int present = 1;
+    int is_null = 0;
+    DataBindBindingValueState output_state = DATA_BIND_STATE_VALUE;
 
-    if (entry->has_presence) {
-      const unsigned char *base = NULL;
+    if (entry->has_presence || entry->has_null) {
       if (entry->target_is_return) {
-        base = (const unsigned char *)frame->return_value;
+        state_base = (const unsigned char *)frame->return_value;
       } else if (entry->function_param_index < frame->param_count &&
                  frame->params != NULL) {
-        base = (const unsigned char *)
+        state_base = (const unsigned char *)
             frame->params[entry->function_param_index];
       }
-      if (base == NULL) {
+      if (state_base == NULL) {
         provider->abort_output(provider->context);
         return plan_diag_fail(
             diagnostic, DATA_BIND_ERR_INVALID_ARG,
             entry->schema_field, entry->function_param,
-            "Optional output presence storage is unavailable");
+            "Output DataBind state storage is unavailable");
       }
-      if ((base[entry->presence_offset] &
-           (unsigned char)(1u << entry->presence_bit)) == 0u)
-        continue;
     }
 
-    source = plan_egress_source(plan, entry, frame, &source_bytes);
-    if (source == NULL) {
-      provider->abort_output(provider->context);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_INVALID_ARG,
-          entry->schema_field, entry->function_param,
-          "Compiled egress entry has no native source");
+    if (entry->has_presence)
+      present = (state_base[entry->presence_offset] &
+                 (unsigned char)(1u << entry->presence_bit)) != 0u;
+    if (entry->has_null)
+      is_null = (state_base[entry->null_offset] &
+                 (unsigned char)(1u << entry->null_bit)) != 0u;
+
+    if (!present) {
+      if (is_null) {
+        provider->abort_output(provider->context);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA,
+            entry->schema_field, entry->function_param,
+            "Native output state has NULL set while presence is ABSENT");
+      }
+      continue;
+    }
+
+    if (is_null) {
+      if (!entry->nullable) {
+        provider->abort_output(provider->context);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA,
+            entry->schema_field, entry->function_param,
+            "Native output state is NULL for a non-null DataBind field");
+      }
+      output_state = DATA_BIND_STATE_NULL;
+    } else {
+      source = plan_egress_source(plan, entry, frame, &source_bytes);
+      if (source == NULL) {
+        provider->abort_output(provider->context);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_INVALID_ARG,
+            entry->schema_field, entry->function_param,
+            "Compiled egress entry has no native source");
+      }
     }
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     status = provider->write_output(
-        provider->context, entry, source, source_bytes, &error);
+        provider->context, entry, output_state, source, source_bytes, &error);
     if (status != DATA_BIND_OK) {
       provider->abort_output(provider->context);
       return plan_runtime_fail_error(
