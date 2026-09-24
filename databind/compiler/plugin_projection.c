@@ -66,19 +66,87 @@ static int plugin_bounded_text_valid(const char *text, size_t max_length) {
   return plugin_text_valid(text) && strlen(text) <= max_length;
 }
 
-static int plugin_typed_errors_absent(const Node *root) {
+static const Node *plugin_component(
+    const Node *root, const char *component_name) {
+  const Node *components = plugin_list(root, "components");
+  size_t i;
+
+  if (components == NULL || component_name == NULL) return NULL;
+  for (i = 0u; i < components->data.list.count; ++i) {
+    const Node *component = components->data.list.items[i];
+    const char *name = plugin_string(component, "name");
+    if (name != NULL && strcmp(name, component_name) == 0)
+      return component;
+  }
+  return NULL;
+}
+
+static const Node *plugin_component_capabilities(
+    const Node *component) {
+  return plugin_list(component, "capabilities");
+}
+
+static int plugin_component_has_service(
+    const Node *component, const char *service_name) {
+  const Node *capabilities =
+      plugin_component_capabilities(component);
+  size_t i;
+
+  if (capabilities == NULL || service_name == NULL) return 0;
+  for (i = 0u; i < capabilities->data.list.count; ++i) {
+    const Node *capability = capabilities->data.list.items[i];
+    const char *kind = plugin_string(capability, "kind");
+    const char *name = plugin_string(capability, "name");
+    if (kind != NULL && name != NULL &&
+        strcmp(kind, "service") == 0 &&
+        strcmp(name, service_name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+static const Node *plugin_service(
+    const Node *root, const char *service_name) {
   const Node *services = plugin_list(root, "services");
   size_t i;
 
-  if (services == NULL || services->data.list.count == 0u) return 0;
-
+  if (services == NULL || service_name == NULL) return NULL;
   for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *operations = plugin_list(services->data.list.items[i], "operations");
+    const Node *service = services->data.list.items[i];
+    const char *name = plugin_string(service, "name");
+    if (name != NULL && strcmp(name, service_name) == 0)
+      return service;
+  }
+  return NULL;
+}
+
+static int plugin_selected_typed_errors_absent(
+    const Node *root, const Node *component) {
+  const Node *capabilities =
+      plugin_component_capabilities(component);
+  size_t i;
+
+  if (capabilities == NULL) return 0;
+
+  for (i = 0u; i < capabilities->data.list.count; ++i) {
+    const Node *capability = capabilities->data.list.items[i];
+    const char *kind = plugin_string(capability, "kind");
+    const char *service_name = plugin_string(capability, "name");
+    const Node *service;
+    const Node *operations;
     size_t j;
-    if (operations == NULL || operations->data.list.count == 0u) return 0;
+
+    if (kind == NULL || strcmp(kind, "service") != 0)
+      continue;
+
+    service = plugin_service(root, service_name);
+    operations = plugin_list(service, "operations");
+    if (operations == NULL || operations->data.list.count == 0u)
+      return 0;
 
     for (j = 0u; j < operations->data.list.count; ++j) {
-      const Node *errors = plugin_list(operations->data.list.items[j], "errors");
+      const Node *errors =
+          plugin_list(operations->data.list.items[j], "errors");
       if (errors != NULL && errors->data.list.count != 0u)
         return 0;
     }
@@ -87,22 +155,38 @@ static int plugin_typed_errors_absent(const Node *root) {
   return 1;
 }
 
+static int plugin_operation_selected(
+    const Node *component,
+    const databind_compiler_service_native_operation *operation) {
+  return operation != NULL &&
+         plugin_component_has_service(
+             component, operation->service_name);
+}
+
 static int plugin_native_ir_valid(
     const Node *root,
-    const databind_compiler_service_native_ir *ir) {
-  const char *schema_name = plugin_schema_name(root);
+    const Node *component,
+    const databind_compiler_service_native_ir *ir,
+    size_t *out_selected_count) {
+  const char *plugin_id =
+      plugin_string(component, "qualified_name");
+  size_t selected_count = 0u;
   size_t i;
 
-  if (!plugin_bounded_text_valid(schema_name, SALTS_PLUGIN_ID_MAX) ||
+  if (out_selected_count != NULL) *out_selected_count = 0u;
+
+  if (!plugin_bounded_text_valid(plugin_id, SALTS_PLUGIN_ID_MAX) ||
       ir == NULL || ir->operations == NULL ||
-      ir->operation_count == 0u ||
-      ir->operation_count > SALTS_PLUGIN_MAX_EXPORTS ||
-      !plugin_typed_errors_absent(root))
+      !plugin_selected_typed_errors_absent(root, component))
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
+
+    if (!plugin_operation_selected(component, operation))
+      continue;
+
     if (!plugin_bounded_text_valid(
             operation->qualified_service,
             SALTS_PLUGIN_CONTRACT_ID_MAX) ||
@@ -113,30 +197,51 @@ static int plugin_native_ir_valid(
         !plugin_text_valid(operation->request_type) ||
         !plugin_text_valid(operation->response_type))
       return 0;
+
+    ++selected_count;
+    if (selected_count > SALTS_PLUGIN_MAX_EXPORTS)
+      return 0;
   }
 
+  if (selected_count == 0u) return 0;
+  if (out_selected_count != NULL)
+    *out_selected_count = selected_count;
   return 1;
 }
 
 static int plugin_header_guard(
-    const char *schema_name, char *out, size_t out_size) {
+    const char *schema_name, const char *component_name,
+    char *out, size_t out_size) {
   static const char suffix[] = "_PLUGIN_SERVICE_H";
+  const char *parts[] = {schema_name, component_name};
   size_t used = 0u;
-  size_t i;
+  size_t part;
 
-  if (!plugin_text_valid(schema_name) || out == NULL || out_size == 0u)
+  if (!plugin_text_valid(schema_name) ||
+      !plugin_text_valid(component_name) ||
+      out == NULL || out_size == 0u)
     return 0;
 
-  for (i = 0u; schema_name[i] != '\0'; ++i) {
-    unsigned char ch = (unsigned char)schema_name[i];
-    if (!((ch >= 'A' && ch <= 'Z') ||
-          (ch >= 'a' && ch <= 'z') ||
-          (ch >= '0' && ch <= '9') ||
-          ch == '_'))
-      return 0;
-    if (used + 1u >= out_size) return 0;
-    out[used++] =
-        ch >= 'a' && ch <= 'z' ? (char)(ch - 'a' + 'A') : (char)ch;
+  for (part = 0u; part < 2u; ++part) {
+    const char *text = parts[part];
+    size_t i;
+    if (part != 0u) {
+      if (used + 1u >= out_size) return 0;
+      out[used++] = '_';
+    }
+    for (i = 0u; text[i] != '\0'; ++i) {
+      unsigned char ch = (unsigned char)text[i];
+      if (!((ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '_'))
+        return 0;
+      if (used + 1u >= out_size) return 0;
+      out[used++] =
+          ch >= 'a' && ch <= 'z'
+              ? (char)(ch - 'a' + 'A')
+              : (char)ch;
+    }
   }
 
   if (used > SIZE_MAX - sizeof(suffix) ||
