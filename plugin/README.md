@@ -331,6 +331,7 @@ ordinary `--output` header:
 out/image_native.h
 out/image_processor.plugin.h
 out/image_processor.plugin.c
+out/image_processor.plugin_client.c
 ```
 
 `--component` takes the canonical qualified Component identity and becomes
@@ -365,6 +366,10 @@ image
 image_plugin
     generated shared-library Plugin artifact
     OUTPUT_NAME = image
+
+image_plugin_client
+    generated static typed host client
+    owns one Plugin lease per open client handle
 ```
 
 The generated source/header path lives under the target build directory and the
@@ -373,6 +378,37 @@ not contain a second parser or Plugin generator.
 
 `ARTIFACT_NAME` may override the artifact basename without changing the CMake
 logical target name.
+
+### Generated typed Plugin client
+
+The PLUGIN projection also generates a host-side typed client. The client opens
+one registry lease, validates and caches all selected Service operation exports,
+then reuses those pointers for repeated calls.
+
+Conceptually:
+
+```c
+Client client = {0};
+
+salts_plugin_status st =
+    component_plugin_client_open(registry, plugin_ref, &client);
+
+int native_status = 0;
+bool bridge_ok =
+    component_codec_decode_plugin_call(
+        &client, &request, &response, &native_status);
+
+component_plugin_client_close(&client);
+```
+
+Admission checks the canonical Component/plugin identity, Service contract,
+operation export identity, FunctionMeta equality and FunctionAbi equality.
+
+The boolean call result reports exact-adapter bridge success. The native
+business status remains a separate integer output.
+
+A client handle owns one lease across many calls. It does not perform a registry
+lookup or acquire/release a lease per request.
 
 For native host builds the helper prefers the `databindc` installed beside
 the same SaltsUtils package and launches it with the package-local SaltsUtils
