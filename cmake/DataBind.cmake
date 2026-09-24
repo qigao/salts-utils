@@ -391,7 +391,7 @@ function(databind_target)
       "${_generated_dir}")
     target_link_libraries("${DB_TARGET}_plugin" PRIVATE
       Salts::PluginABI
-      Salts::DataBindGeneratedABI
+      Salts::DataBind
       ${DB_LIBRARIES})
     set_target_properties("${DB_TARGET}_plugin" PROPERTIES
       PREFIX ""
@@ -408,7 +408,7 @@ function(databind_target)
       "${_generated_dir}")
     target_link_libraries("${DB_TARGET}_plugin_client" PUBLIC
       Salts::Plugin
-      Salts::DataBindGeneratedABI)
+      Salts::DataBind)
   endif()
 
   add_custom_target("${DB_TARGET}")
