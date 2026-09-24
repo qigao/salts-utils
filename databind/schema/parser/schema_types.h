@@ -34,6 +34,7 @@ typedef struct {
     Node *enums_list;     /**< the "enums" list hanging off root               */
     Node *unions_list;    /**< the "unions" list hanging off root              */
     Node *services_list;   /**< the "services" list hanging off root            */
+    Node *channels_list;    /**< the "channels" list hanging off root            */
     Node *components_list; /**< the "components" list hanging off root          */
     Node *cur_service;     /**< current service map being built                 */
     Node *cur_operations;  /**< current service operation list                  */
