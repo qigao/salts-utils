@@ -143,9 +143,11 @@ int data_bind_schema_field_constraint_at(
   constraints = constraint_list(codec, type_name, field_index);
   if (field == NULL || constraints == NULL ||
       constraint_index >= constraints->data.list.count) {
-    memset(out, 0, out->size < sizeof(*out) ? out->size : sizeof(*out));
-    if (out->size >= sizeof(size_t))
-      out->size = out->size < sizeof(*out) ? out->size : sizeof(*out);
+    size_t requested = out->size;
+    size_t clear_size =
+        requested != 0u && requested < sizeof(*out) ? requested : sizeof(*out);
+    memset(out, 0, clear_size);
+    if (clear_size >= sizeof(size_t)) out->size = clear_size;
     return 0;
   }
 
