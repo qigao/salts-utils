@@ -2,11 +2,11 @@ schema ServiceNative [version(7)];
 
 message AddRequest {
     uint32 left;
-    optional uint32 scale default 1;
+    uint32 scale;
 }
 
 message AddResponse {
-    optional uint32 sum;
+    uint32 sum;
 }
 
 service Calc {
