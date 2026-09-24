@@ -24,7 +24,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c service_native.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -89,6 +89,89 @@ set_target_properties(test_databind_projection_registry PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF)
+
+# Canonical Service -> native FunctionMeta/FunctionAbi lowering qualification.
+set(DATABIND_SERVICE_NATIVE_TEST_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated-service-native")
+file(MAKE_DIRECTORY "${DATABIND_SERVICE_NATIVE_TEST_DIR}")
+
+set(DATABIND_SERVICE_NATIVE_RECORD_H
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_records.h")
+set(DATABIND_SERVICE_NATIVE_RECORD_C
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_records.c")
+set(DATABIND_SERVICE_NATIVE_HEADER
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_generated.h")
+set(DATABIND_SERVICE_NATIVE_SOURCE
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_generated.c")
+
+cmake_add_executable(databind_service_native_codegen_fixture_tool
+  SOURCES
+    test_service_native_codegen_tool.c
+    compiler_core.c
+    projection.c
+    service_native.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_HEADER}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  COMMAND
+    $<TARGET_FILE:databindc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+      --lang c
+      --output "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+      --source-output "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+  COMMAND
+    $<TARGET_FILE:databind_service_native_codegen_fixture_tool>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+      "${DATABIND_SERVICE_NATIVE_HEADER}"
+      "${DATABIND_SERVICE_NATIVE_SOURCE}"
+      "service_native_records.h"
+  DEPENDS
+    databindc
+    databind_service_native_codegen_fixture_tool
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+  VERBATIM
+  COMMENT "Generating canonical DataBind Service native metadata")
+
+add_custom_target(databind_service_native_generated_sources
+  DEPENDS
+    "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_HEADER}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}")
+
+set_source_files_properties(
+  "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+  "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_service_native_lowering
+  SOURCES
+    test_service_native_lowering.c
+    test_service_native_business.c
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_service_native_lowering
+  databind_service_native_generated_sources)
 
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
