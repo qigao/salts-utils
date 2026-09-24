@@ -12483,6 +12483,17 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
   return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
 }
 
+Node *data_bind_internal_schema_field_node(
+    DataBind *codec, const char *type_name, size_t field_index) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL) return NULL;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return NULL;
+  return fields->data.list.items[field_index];
+}
+
 json_value_t *data_bind_internal_json_field_value(
     DataBind *codec, const char *type_name, size_t field_index,
     const json_value_t *object) {
@@ -12708,6 +12719,8 @@ const char *data_bind_status_name(DataBindStatus status) {
     return "buffer_too_small";
   case DATA_BIND_ERR_CANCELED:
     return "canceled";
+  case DATA_BIND_ERR_VALIDATION:
+    return "validation";
   default:
     return "unknown";
   }
