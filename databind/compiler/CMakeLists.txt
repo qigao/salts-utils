@@ -164,6 +164,7 @@ cmake_add_test(test_databind_projection_frontend
     projection.c
     service_native.c
     plugin_projection.c
+    method_plan_projection.c
   LIBS
     Salts::DataBindSchema
     Salts::PluginABI
