@@ -36,6 +36,10 @@ typedef struct databind_compiler_plugin_config {
 
   /* Generated business-facing Service declaration header. */
   const char *service_header_output;
+
+  /* Generated host-side typed Plugin client artifacts. */
+  const char *client_header_output;
+  const char *client_source_output;
 } databind_compiler_plugin_config;
 
 /*
