@@ -666,7 +666,7 @@ static int annotate_var_data_accessors(Node *root) {
     return 0;
 }
 
-static int annotate_optional_fields(Node *root) {
+static int annotate_field_states(Node *root) {
     static const char *record_lists[] = { "messages", "composites", "groups" };
     
     for (size_t list_idx = 0; list_idx < sizeof(record_lists) / sizeof(record_lists[0]); ++list_idx) {
@@ -683,8 +683,9 @@ static int annotate_optional_fields(Node *root) {
                 continue;
             }
 
-            // 统计可选字段
+            // 统计 DataBind state overlay fields.
             size_t optional_count = 0;
+            size_t nullable_count = 0;
             size_t default_count = 0;
             
             for (size_t j = 0; j < fields->data.list.count; ++j) {
@@ -692,35 +693,54 @@ static int annotate_optional_fields(Node *root) {
                 if (map_find_named_child(field, "is_optional")) {
                     optional_count++;
                 }
+                if (map_find_named_child(field, "is_nullable")) {
+                    nullable_count++;
+                }
                 if (map_find_named_child(field, "has_default")) {
                     default_count++;
                 }
             }
 
-            if (optional_count > 0) {
-                // 添加has_optional_fields标记
-                if (annotate_add_true(record, "has_optional_fields") != 0) return -1;
-                
-                // 添加可选字段数量
+            if (optional_count > 0 || nullable_count > 0) {
+                size_t presence_bitmap_bytes = (optional_count + 7u) / 8u;
+                size_t null_bitmap_bytes = (nullable_count + 7u) / 8u;
+                size_t state_bytes;
                 char count_str[32];
-                snprintf(count_str, sizeof(count_str), "%zu", optional_count);
-                if (annotate_add_string(record, "optional_field_count", count_str) != 0) return -1;
-                
-                // 计算位图大小（按字节）
-                size_t bitmap_bytes = (optional_count + 7) / 8;
                 char bitmap_size_str[32];
-                snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", bitmap_bytes);
-                if (annotate_add_string(record, "presence_bitmap_bytes", bitmap_size_str) != 0)
-                    return -1;
 
-                // 调整固定块大小以包含位图
+                if (presence_bitmap_bytes > SIZE_MAX - null_bitmap_bytes) return -1;
+                state_bytes = presence_bitmap_bytes + null_bitmap_bytes;
+
+                if (optional_count > 0) {
+                    if (annotate_add_true(record, "has_optional_fields") != 0) return -1;
+                    snprintf(count_str, sizeof(count_str), "%zu", optional_count);
+                    if (annotate_add_string(record, "optional_field_count", count_str) != 0) return -1;
+                    snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", presence_bitmap_bytes);
+                    if (annotate_add_string(record, "presence_bitmap_bytes", bitmap_size_str) != 0)
+                        return -1;
+                }
+
+                if (nullable_count > 0) {
+                    char offset_str[32];
+                    if (annotate_add_true(record, "has_nullable_fields") != 0) return -1;
+                    snprintf(count_str, sizeof(count_str), "%zu", nullable_count);
+                    if (annotate_add_string(record, "nullable_field_count", count_str) != 0) return -1;
+                    snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", null_bitmap_bytes);
+                    if (annotate_add_string(record, "null_bitmap_bytes", bitmap_size_str) != 0)
+                        return -1;
+                    snprintf(offset_str, sizeof(offset_str), "%zu", presence_bitmap_bytes);
+                    if (annotate_add_string(record, "null_bitmap_offset", offset_str) != 0)
+                        return -1;
+                }
+
+                // State overlays precede all logical CMeta fields.
                 const char *original_block_size_str = map_find_string_value(record, "fixed_block_size");
                 if (original_block_size_str) {
                     size_t original_size;
                     size_t new_size;
                     if (!parse_size_text(original_block_size_str, &original_size)) return -1;
-                    if (bitmap_bytes > SIZE_MAX - original_size) return -1;
-                    new_size = original_size + bitmap_bytes;
+                    if (state_bytes > SIZE_MAX - original_size) return -1;
+                    new_size = original_size + state_bytes;
                     char new_size_str[32];
                     snprintf(new_size_str, sizeof(new_size_str), "%zu", new_size);
                     
@@ -737,8 +757,8 @@ static int annotate_optional_fields(Node *root) {
                             size_t original_offset;
                             size_t new_offset;
                             if (!parse_size_text(offset_str, &original_offset)) return -1;
-                            if (bitmap_bytes > SIZE_MAX - original_offset) return -1;
-                            new_offset = original_offset + bitmap_bytes;
+                            if (state_bytes > SIZE_MAX - original_offset) return -1;
+                            new_offset = original_offset + state_bytes;
                             char new_offset_str[32];
                             snprintf(new_offset_str, sizeof(new_offset_str), "%zu", new_offset);
                             
@@ -750,16 +770,19 @@ static int annotate_optional_fields(Node *root) {
                     }
                 }
 
-                // 创建可选字段列表
                 Node *optional_fields_list = create_node_list("optional_fields");
+                Node *nullable_fields_list = create_node_list("nullable_fields");
                 Node *default_fields_list = create_node_list("default_value_fields");
-                if (optional_fields_list == NULL || default_fields_list == NULL) {
+                if (optional_fields_list == NULL || nullable_fields_list == NULL ||
+                    default_fields_list == NULL) {
                     node_free(optional_fields_list);
+                    node_free(nullable_fields_list);
                     node_free(default_fields_list);
                     return -1;
                 }
                 
                 size_t optional_index = 0;
+                size_t nullable_index = 0;
                 for (size_t j = 0; j < fields->data.list.count; ++j) {
                     Node *field = fields->data.list.items[j];
                     
@@ -770,6 +793,7 @@ static int annotate_optional_fields(Node *root) {
                         const char *owner_name = map_find_string_value(field, "owner_name");
                         if (optional_field == NULL) {
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
@@ -780,6 +804,7 @@ static int annotate_optional_fields(Node *root) {
                                                 owner_name ? owner_name : "") != 0) {
                             node_free(optional_field);
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
@@ -792,6 +817,7 @@ static int annotate_optional_fields(Node *root) {
                                                 bit_index_str) != 0) {
                             node_free(optional_field);
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
@@ -801,6 +827,7 @@ static int annotate_optional_fields(Node *root) {
                             if (annotate_add_true(optional_field, "last") != 0) {
                                 node_free(optional_field);
                                 node_free(optional_fields_list);
+                                node_free(nullable_fields_list);
                                 node_free(default_fields_list);
                                 return -1;
                             }
@@ -809,10 +836,60 @@ static int annotate_optional_fields(Node *root) {
                         if (list_add(optional_fields_list, optional_field) != 0) {
                             node_free(optional_field);
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
                         optional_index++;
+                    }
+
+                    if (map_find_named_child(field, "is_nullable")) {
+                        Node *nullable_field = create_node_map(NULL);
+                        const char *field_name = map_find_string_value(field, "name");
+                        const char *owner_name = map_find_string_value(field, "owner_name");
+                        char bit_index_str[32];
+
+                        if (nullable_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        snprintf(bit_index_str, sizeof(bit_index_str), "%zu", nullable_index);
+                        map_remove_named_children(field, "nullable_bit_index");
+                        if (annotate_add_string(nullable_field, "name",
+                                                field_name ? field_name : "") != 0 ||
+                            annotate_add_string(nullable_field, "owner_name",
+                                                owner_name ? owner_name : "") != 0 ||
+                            annotate_add_string(field, "nullable_bit_index",
+                                                bit_index_str) != 0 ||
+                            annotate_add_string(nullable_field, "nullable_bit_index",
+                                                bit_index_str) != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        if (nullable_index == nullable_count - 1u &&
+                            annotate_add_true(nullable_field, "last") != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        if (list_add(nullable_fields_list, nullable_field) != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        nullable_index++;
                     }
                     
                     if (map_find_named_child(field, "has_default")) {
@@ -820,6 +897,7 @@ static int annotate_optional_fields(Node *root) {
                         Node *default_field = create_node_map(NULL);
                         if (default_field == NULL) {
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
@@ -832,6 +910,7 @@ static int annotate_optional_fields(Node *root) {
                                 if (annotate_add_string(default_field, attr->name, value) != 0) {
                                     node_free(default_field);
                                     node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
                                     node_free(default_fields_list);
                                     return -1;
                                 }
@@ -849,6 +928,7 @@ static int annotate_optional_fields(Node *root) {
                                 if (annotate_add_true(default_field, "is_string") != 0) {
                                     node_free(default_field);
                                     node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
                                     node_free(default_fields_list);
                                     return -1;
                                 }
@@ -859,6 +939,7 @@ static int annotate_optional_fields(Node *root) {
                                 if (annotate_add_true(default_field, "is_numeric") != 0) {
                                     node_free(default_field);
                                     node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
                                     node_free(default_fields_list);
                                     return -1;
                                 }
@@ -866,6 +947,7 @@ static int annotate_optional_fields(Node *root) {
                                 if (annotate_add_true(default_field, "is_boolean") != 0) {
                                     node_free(default_field);
                                     node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
                                     node_free(default_fields_list);
                                     return -1;
                                 }
@@ -883,6 +965,7 @@ static int annotate_optional_fields(Node *root) {
                                                                 enum_name) != 0) {
                                             node_free(default_field);
                                             node_free(optional_fields_list);
+                                            node_free(nullable_fields_list);
                                             node_free(default_fields_list);
                                             return -1;
                                         }
@@ -895,6 +978,7 @@ static int annotate_optional_fields(Node *root) {
                         if (list_add(default_fields_list, default_field) != 0) {
                             node_free(default_field);
                             node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
                             node_free(default_fields_list);
                             return -1;
                         }
@@ -903,11 +987,18 @@ static int annotate_optional_fields(Node *root) {
                 
                 if (map_add(record, optional_fields_list) != 0) {
                     node_free(optional_fields_list);
+                    node_free(nullable_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
+                if (map_add(record, nullable_fields_list) != 0) {
+                    /* optional_fields_list is already owned by record */
+                    node_free(nullable_fields_list);
                     node_free(default_fields_list);
                     return -1;
                 }
                 if (map_add(record, default_fields_list) != 0) {
-                    /* optional_fields_list is already owned by record */
+                    /* optional/nullable field lists are already owned by record */
                     node_free(default_fields_list);
                     return -1;
                 }
@@ -1348,7 +1439,7 @@ static int annotate_schema_tree(Node *root) {
     if (annotate_type_references(root) != 0) return -1;
     if (annotate_group_cursors(root) != 0) return -1;
     if (annotate_var_data_accessors(root) != 0) return -1;
-    if (annotate_optional_fields(root) != 0) return -1;
+    if (annotate_field_states(root) != 0) return -1;
     if (annotate_enum_helpers(root) != 0) return -1;
     if (annotate_unions(root) != 0) return -1;
     return 0;

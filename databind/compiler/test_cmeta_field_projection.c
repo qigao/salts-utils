@@ -10,6 +10,8 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_BOUNDED_ADAPTER,
     EXPECT_LIFECYCLE,
     EXPECT_OVERLAY_PRESENCE,
+    EXPECT_OVERLAY_NULL,
+    EXPECT_OVERLAY_PRESENCE_NULL,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -27,6 +29,9 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
     { "string", "tstr", CMETA_DATA_STRING, EXPECT_LIFECYCLE },
     { "bytes", "tbe_bytes_t", CMETA_DATA_BYTES, EXPECT_LIFECYCLE },
     { "optional int32", "presence + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_PRESENCE },
+    { "nullable int32", "null + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_NULL },
+    { "optional nullable int32", "presence + null + int32_t", CMETA_DATA_SINT,
+      EXPECT_OVERLAY_PRESENCE_NULL },
     { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
 };
 
@@ -39,6 +44,10 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "owned_lifecycle";
         case EXPECT_OVERLAY_PRESENCE:
             return "overlay_presence";
+        case EXPECT_OVERLAY_NULL:
+            return "overlay_null";
+        case EXPECT_OVERLAY_PRESENCE_NULL:
+            return "overlay_presence_null";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -175,9 +184,11 @@ suite("compiler_cmeta_field_projection") {
     it("publishes installed fixed providers and keeps remaining capabilities deferred") {
         static const char *const names[] = {
             "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
-            "BytesStorage", "OptionalStorage", "ListStorage"};
+            "BytesStorage", "OptionalStorage", "NullableStorage",
+            "TriStateStorage", "ListStorage"};
         static const char *const types[] = {
-            "bool", "uuid", "bytes", "string", "bytes", "int32", "list"};
+            "bool", "uuid", "bytes", "string", "bytes", "int32", "int32",
+            "int32", "list"};
         Node *root = create_node_map("root");
         size_t i;
 
@@ -193,6 +204,11 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(map_add(field, create_node_string("size_bytes", "16")), 0);
             } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE) {
                 check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_NULL) {
+                check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
+                check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+                check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
             } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);

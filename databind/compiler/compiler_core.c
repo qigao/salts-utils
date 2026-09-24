@@ -287,6 +287,8 @@ typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
+  TBE_COMPILER_NATIVE_OVERLAY_NULL,
+  TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL,
   TBE_COMPILER_NATIVE_DEFERRED_CONTAINER
 } tbe_compiler_native_requirement_t;
 
@@ -301,6 +303,10 @@ static const char *tbe_compiler_native_requirement_name(
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
       return "overlay_presence";
+    case TBE_COMPILER_NATIVE_OVERLAY_NULL:
+      return "overlay_null";
+    case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL:
+      return "overlay_presence_null";
     case TBE_COMPILER_NATIVE_DEFERRED_CONTAINER:
       return "deferred_container";
   }
@@ -791,15 +797,13 @@ static void tbe_compiler_annotate_native_requirement(
   if (!root || !field || !semantic) return;
   type = tbe_compiler_string_value(field, "type");
 
-  if (tbe_compiler_has_child(field, "is_nullable")) {
-    /*
-     * #191 has not frozen a native NULL representation yet. Do not label a
-     * nullable field as an ordinary fixed/owned value and let a downstream
-     * consumer mistake structural CMeta reflection for completed lowering.
-     */
-    return;
-  } else if (cmeta_data_kind_is_container(semantic->kind)) {
+  if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
+  } else if (tbe_compiler_has_child(field, "is_optional") &&
+             tbe_compiler_has_child(field, "is_nullable")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL;
+  } else if (tbe_compiler_has_child(field, "is_nullable")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_NULL;
   } else if (tbe_compiler_has_child(field, "is_optional")) {
     requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
   } else if (semantic->kind == CMETA_DATA_STRING ||
@@ -1005,8 +1009,9 @@ static int tbe_compiler_cmeta_classify_record(
     size_t target_index;
 
     if (!type || !kind ||
-        tbe_compiler_has_child(field, "is_optional") ||
-        tbe_compiler_has_child(field, "is_nullable") ||
+        (context->runtime &&
+         (tbe_compiler_has_child(field, "is_optional") ||
+          tbe_compiler_has_child(field, "is_nullable"))) ||
         tbe_compiler_has_child(field, "is_collection") ||
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
@@ -1309,10 +1314,25 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
           return 0;
         }
       }
-      if (c_name && strcmp(c_name, "_presence") == 0) {
-        fprintf(stderr, "Typed C field %s.%s uses reserved member name _presence\n",
+      if (tbe_compiler_has_child(field, "is_nullable")) {
+        const char *bit_text = tbe_compiler_string_value(field, "nullable_bit_index");
+        const char *bitmap_text = tbe_compiler_string_value(record, "null_bitmap_bytes");
+        size_t bit;
+        size_t bitmap_size;
+        if (!tbe_compiler_parse_size(bit_text, &bit) ||
+            !tbe_compiler_parse_size(bitmap_text, &bitmap_size) || bitmap_size == 0u ||
+            bit / 8u >= bitmap_size) {
+          fprintf(stderr, "Typed C nullable field %s.%s has invalid null metadata\n",
+                  tbe_compiler_string_value(field, "owner_name"),
+                  tbe_compiler_string_value(field, "name"));
+          return 0;
+        }
+      }
+      if (c_name &&
+          (strcmp(c_name, "_presence") == 0 || strcmp(c_name, "_nulls") == 0)) {
+        fprintf(stderr, "Typed C field %s.%s uses reserved state member name %s\n",
                 tbe_compiler_string_value(field, "owner_name"),
-                tbe_compiler_string_value(field, "name"));
+                tbe_compiler_string_value(field, "name"), c_name);
         return 0;
       }
       for (k = j + 1; k < fields->data.list.count; ++k) {

@@ -359,6 +359,9 @@ typedef struct {{name}}_s {
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];
 {{/has_optional_fields}}
+{{#has_nullable_fields}}
+    uint8_t _nulls[{{null_bitmap_bytes}}];
+{{/has_nullable_fields}}
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
@@ -715,6 +718,9 @@ typedef struct {{name}}_s {
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];
 {{/has_optional_fields}}
+{{#has_nullable_fields}}
+    uint8_t _nulls[{{null_bitmap_bytes}}];
+{{/has_nullable_fields}}
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
@@ -1308,12 +1314,27 @@ typedef enum {
 } {{name}}_optional_field_t;
 
 {{/has_optional_fields}}
+{{#has_nullable_fields}}
+#define {{name}}_NULLABLE_FIELD_COUNT {{nullable_field_count}}
+#define {{name}}_NULL_BITMAP_OFFSET {{null_bitmap_offset}}
+#define {{name}}_NULL_BITMAP_SIZE {{null_bitmap_bytes}}
+
+typedef enum {
+{{#nullable_fields}}
+    {{owner_name}}_NULLABLE_{{name}} = {{nullable_bit_index}}{{^last}},{{/last}}
+{{/nullable_fields}}
+} {{name}}_nullable_field_t;
+
+{{/has_nullable_fields}}
 {{^guest_adapter_only}}
 typedef struct {{name}}_s {
 {{#typed_source_enabled}}
 {{#has_optional_fields}}
     uint8_t _presence[{{presence_bitmap_bytes}}];
 {{/has_optional_fields}}
+{{#has_nullable_fields}}
+    uint8_t _nulls[{{null_bitmap_bytes}}];
+{{/has_nullable_fields}}
 {{/typed_source_enabled}}
 {{#fields}}
     /* size: {{field_size_bytes}}{{^field_size_bytes}}{{size_bytes}}{{/field_size_bytes}} {{#is_unsigned}}unsigned{{/is_unsigned}}{{#is_float}}float{{/is_float}} */
@@ -1465,6 +1486,57 @@ static inline void {{name}}_clear_optional_field({{name}}_builder_t *builder,
 }
 
 {{/has_optional_fields}}
+
+{{#has_nullable_fields}}
+/* DataBind explicit-null state is distinct from optional presence. */
+static inline bool {{name}}_is_null_field(const {{name}}_view_t *view,
+                                          {{name}}_nullable_field_t field) {
+    size_t byte_index;
+    uint8_t bit_mask;
+
+    if (!view || !view->data ||
+        view->size < {{name}}_NULL_BITMAP_OFFSET + {{name}}_NULL_BITMAP_SIZE ||
+        field < 0 || field >= {{name}}_NULLABLE_FIELD_COUNT) {
+        return false;
+    }
+
+    byte_index = {{name}}_NULL_BITMAP_OFFSET + (size_t)field / 8u;
+    bit_mask = (uint8_t)(1u << ((unsigned int)field % 8u));
+    return (view->data[byte_index] & bit_mask) != 0;
+}
+
+static inline void {{name}}_set_null_field({{name}}_builder_t *builder,
+                                           {{name}}_nullable_field_t field) {
+    size_t byte_index;
+    uint8_t bit_mask;
+
+    if (!builder || !builder->data ||
+        builder->size < {{name}}_NULL_BITMAP_OFFSET + {{name}}_NULL_BITMAP_SIZE ||
+        field < 0 || field >= {{name}}_NULLABLE_FIELD_COUNT) {
+        return;
+    }
+
+    byte_index = {{name}}_NULL_BITMAP_OFFSET + (size_t)field / 8u;
+    bit_mask = (uint8_t)(1u << ((unsigned int)field % 8u));
+    builder->data[byte_index] |= bit_mask;
+}
+
+static inline void {{name}}_clear_null_field({{name}}_builder_t *builder,
+                                             {{name}}_nullable_field_t field) {
+    size_t byte_index;
+    uint8_t bit_mask;
+
+    if (!builder || !builder->data ||
+        builder->size < {{name}}_NULL_BITMAP_OFFSET + {{name}}_NULL_BITMAP_SIZE ||
+        field < 0 || field >= {{name}}_NULLABLE_FIELD_COUNT) {
+        return;
+    }
+
+    byte_index = {{name}}_NULL_BITMAP_OFFSET + (size_t)field / 8u;
+    bit_mask = (uint8_t)(1u << ((unsigned int)field % 8u));
+    builder->data[byte_index] &= (uint8_t)~bit_mask;
+}
+{{/has_nullable_fields}}
 
 {{#has_fixed_block_size}}
 {{#has_optional_fields}}

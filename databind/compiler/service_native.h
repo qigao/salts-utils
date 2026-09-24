@@ -14,10 +14,10 @@ extern "C" {
  * Canonical compiler-private lowering of one DataBind Service operation to the
  * ordinary native C function shape shared by PLUGIN/WASM/native backends.
  */
-typedef struct databind_compiler_service_native_presence {
+typedef struct databind_compiler_service_native_state {
   char *field_name;
   unsigned bit;
-} databind_compiler_service_native_presence;
+} databind_compiler_service_native_state;
 
 typedef struct databind_compiler_service_native_error {
   char *type_name;
@@ -40,10 +40,14 @@ typedef struct databind_compiler_service_native_operation {
   char *request_type_identity;
   char *response_type_identity;
 
-  databind_compiler_service_native_presence *request_presence;
+  databind_compiler_service_native_state *request_presence;
   size_t request_presence_count;
-  databind_compiler_service_native_presence *response_presence;
+  databind_compiler_service_native_state *request_nulls;
+  size_t request_null_count;
+  databind_compiler_service_native_state *response_presence;
   size_t response_presence_count;
+  databind_compiler_service_native_state *response_nulls;
+  size_t response_null_count;
 
   /* Ordered typed errors from the DataBind throws list. */
   databind_compiler_service_native_error *errors;
