@@ -70,9 +70,9 @@ int main(int argc, char **argv) {
   databind_compiler_service_native_ir ir = {0};
   int status = 1;
 
-  if (argc != 5) {
+  if (argc != 6) {
     fprintf(stderr,
-            "usage: %s <schema> <service.h> <service.c> <native-header>\n",
+            "usage: %s <schema> <service.h> <service.c> <native-header> <reject-schema>\n",
             argc > 0 ? argv[0] : "service-native-codegen");
     return 2;
   }
@@ -93,6 +93,29 @@ int main(int argc, char **argv) {
   if (!write_header(argv[2], argv[4], &ir) ||
       !write_source(argv[3], argv[2], &ir))
     goto cleanup;
+
+  {
+    Node *reject_root = NULL;
+    char *reject_schema_data = NULL;
+    databind_compiler_service_native_ir reject_ir = {0};
+
+    if (tbe_compiler_parse_schema_file(
+            argv[5], &reject_root, &reject_schema_data) != 0) {
+      node_free(reject_root);
+      free(reject_schema_data);
+      goto cleanup;
+    }
+    if (databind_compiler_service_native_build(
+            reject_root, &reject_ir) == 0) {
+      databind_compiler_service_native_destroy(&reject_ir);
+      node_free(reject_root);
+      free(reject_schema_data);
+      goto cleanup;
+    }
+    databind_compiler_service_native_destroy(&reject_ir);
+    node_free(reject_root);
+    free(reject_schema_data);
+  }
 
   status = 0;
 
