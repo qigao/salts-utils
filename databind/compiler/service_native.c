@@ -854,9 +854,13 @@ int databind_compiler_service_native_emit_binding(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
   const char *request_presence_expr;
+  const char *request_null_expr;
   const char *response_presence_expr;
+  const char *response_null_expr;
   char request_presence[640];
+  char request_nulls[640];
   char response_presence[640];
+  char response_nulls[640];
 
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
@@ -865,34 +869,62 @@ int databind_compiler_service_native_emit_binding(
     return -1;
   if (operation->error_count != 0u) return -1;
 
-  if (native_emit_presence_array(
-          file, operation->symbol, operation->request_type, "request",
+  if (native_emit_state_array(
+          file, operation->symbol, operation->request_type,
+          "request_presence", "_presence",
           operation->request_presence,
           operation->request_presence_count) != 0 ||
-      native_emit_presence_array(
-          file, operation->symbol, operation->response_type, "response",
+      native_emit_state_array(
+          file, operation->symbol, operation->request_type,
+          "request_nulls", "_nulls",
+          operation->request_nulls,
+          operation->request_null_count) != 0 ||
+      native_emit_state_array(
+          file, operation->symbol, operation->response_type,
+          "response_presence", "_presence",
           operation->response_presence,
-          operation->response_presence_count) != 0)
+          operation->response_presence_count) != 0 ||
+      native_emit_state_array(
+          file, operation->symbol, operation->response_type,
+          "response_nulls", "_nulls",
+          operation->response_nulls,
+          operation->response_null_count) != 0)
     return -1;
 
   if (operation->request_presence_count != 0u) {
-    if (snprintf(
-            request_presence, sizeof(request_presence),
-            "%s__request_presence", operation->symbol) <= 0)
+    if (snprintf(request_presence, sizeof(request_presence),
+                 "%s__request_presence", operation->symbol) <= 0)
       return -1;
     request_presence_expr = request_presence;
   } else {
     request_presence_expr = "NULL";
   }
 
+  if (operation->request_null_count != 0u) {
+    if (snprintf(request_nulls, sizeof(request_nulls),
+                 "%s__request_nulls", operation->symbol) <= 0)
+      return -1;
+    request_null_expr = request_nulls;
+  } else {
+    request_null_expr = "NULL";
+  }
+
   if (operation->response_presence_count != 0u) {
-    if (snprintf(
-            response_presence, sizeof(response_presence),
-            "%s__response_presence", operation->symbol) <= 0)
+    if (snprintf(response_presence, sizeof(response_presence),
+                 "%s__response_presence", operation->symbol) <= 0)
       return -1;
     response_presence_expr = response_presence;
   } else {
     response_presence_expr = "NULL";
+  }
+
+  if (operation->response_null_count != 0u) {
+    if (snprintf(response_nulls, sizeof(response_nulls),
+                 "%s__response_nulls", operation->symbol) <= 0)
+      return -1;
+    response_null_expr = response_nulls;
+  } else {
+    response_null_expr = "NULL";
   }
 
   return fprintf(
@@ -915,11 +947,11 @@ int databind_compiler_service_native_emit_binding(
              "  *request_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", request_data, %s, %zuu, NULL, 0u};\n"
+             "      \"%s\", request_data, %s, %zuu, %s, %zuu};\n"
              "  *response_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", response_data, %s, %zuu, NULL, 0u};\n"
+             "      \"%s\", response_data, %s, %zuu, %s, %zuu};\n"
              "  *service_out = (DataBindServiceNativeBinding){\n"
              "      sizeof(DataBindServiceNativeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
@@ -932,9 +964,13 @@ int databind_compiler_service_native_emit_binding(
              operation->request_type,
              request_presence_expr,
              operation->request_presence_count,
+             request_null_expr,
+             operation->request_null_count,
              operation->response_type,
              response_presence_expr,
              operation->response_presence_count,
+             response_null_expr,
+             operation->response_null_count,
              operation->symbol) < 0
              ? -1
              : 0;
