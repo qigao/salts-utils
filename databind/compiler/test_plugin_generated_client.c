@@ -34,7 +34,7 @@ static void expect_client_open_rejected(
     const char *path, salts_plugin_status expected) {
   salts_plugin_registry registry = make_registry();
   salts_plugin_ref ref = {0};
-  ImageProcessorPluginClient client = {0};
+  ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
   salts_plugin_lifecycle_info info = {0};
   bool quiescent = false;
 
@@ -71,7 +71,7 @@ spec("generated DataBind Plugin client") {
   it("holds one lease across repeated typed calls") {
     salts_plugin_registry registry = make_registry();
     salts_plugin_ref ref = {0};
-    ImageProcessorPluginClient client = {0};
+    ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
     salts_plugin_lifecycle_info info = {0};
     DecodeRequest_t decode_request = {.width = 12u};
     DecodeResponse_t decode_response = {0};
@@ -187,7 +187,7 @@ spec("generated DataBind Plugin client") {
   }
 
   it("rejects invalid direct-call arguments without touching business status") {
-    ImageProcessorPluginClient client = {0};
+    ImageProcessorPluginClient client = IMAGE_IMAGEPROCESSOR_PLUGIN_CLIENT_INIT;
     DecodeRequest_t request = {.width = 1u};
     DecodeResponse_t response = {0};
     int native_status = 77;
