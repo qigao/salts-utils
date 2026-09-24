@@ -440,6 +440,35 @@ typedef struct DataBindSchemaAttribute {
   const char *value;
 } DataBindSchemaAttribute;
 
+/** Canonical normalized DataBind field constraint kind. */
+typedef enum DataBindSchemaConstraintKind {
+  DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN = 0,
+  DATA_BIND_SCHEMA_CONSTRAINT_MIN,
+  DATA_BIND_SCHEMA_CONSTRAINT_MAX,
+  DATA_BIND_SCHEMA_CONSTRAINT_SIZE,
+  DATA_BIND_SCHEMA_CONSTRAINT_PATTERN
+} DataBindSchemaConstraintKind;
+
+/**
+ * Borrowed immutable normalized field constraint.
+ *
+ * Min/Max keep their canonical numeric operand text in value; type-specific
+ * signed/unsigned/float lowering belongs to ValidationPlan compilation.
+ * Size bounds are already normalized to size_t. Pattern borrows the schema
+ * regex text and is not compiled/executed by reflection.
+ */
+typedef struct DataBindSchemaConstraint {
+  size_t size;
+  DataBindSchemaConstraintKind kind;
+  const char *kind_name;
+  const char *value;
+  int has_min;
+  size_t min_size;
+  int has_max;
+  size_t max_size;
+  const char *pattern;
+} DataBindSchemaConstraint;
+
 /** Immutable reflected service declaration owned by one DataBind codec. */
 typedef struct DataBindService {
   size_t size;
@@ -504,6 +533,7 @@ typedef struct DataBindComponentCapability {
 #define DATA_BIND_SCHEMA_FIELD_INIT {sizeof(DataBindSchemaField)}
 #define DATA_BIND_SCHEMA_ENUM_ITEM_INIT {sizeof(DataBindSchemaEnumItem)}
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
+#define DATA_BIND_SCHEMA_CONSTRAINT_INIT {sizeof(DataBindSchemaConstraint)}
 #define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
 #define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
 #define DATA_BIND_CHANNEL_INIT {sizeof(DataBindChannel)}
@@ -1514,6 +1544,28 @@ DATA_BIND_API size_t data_bind_schema_field_count(DataBind *codec, const char *t
  */
 DATA_BIND_API int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
                                             DataBindSchemaField *out);
+
+
+/** Return the number of normalized validation constraints on one field. */
+DATA_BIND_API size_t data_bind_schema_field_constraint_count(
+    DataBind *codec, const char *type_name, size_t field_index);
+
+/**
+ * Read one normalized validation constraint for a field.
+ *
+ * Returned strings borrow immutable codec-owned schema metadata and remain
+ * valid until data_bind_free(). Reflection allocates nothing and performs no
+ * validation execution.
+ *
+ * @return 1 when out was filled, 0 when arguments or indexes are invalid.
+ */
+DATA_BIND_API int data_bind_schema_field_constraint_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t constraint_index, DataBindSchemaConstraint *out);
+
+/** Return the stable lowercase canonical name for a constraint kind. */
+DATA_BIND_API const char *data_bind_schema_constraint_kind_name(
+    DataBindSchemaConstraintKind kind);
 
 /** Query canonical storage for a field value type, not DataBindValue/generated
  * field layout. Use field_at for kind-only information. Optional presence stays
