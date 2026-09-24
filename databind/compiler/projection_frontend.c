@@ -111,6 +111,96 @@ static int derive_artifact_path(
              out, out_size, dir, filename) == 0;
 }
 
+static int ensure_artifact_context(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (!artifact_name_valid(input->artifact_name))
+    return frontend_error(
+        error, error_size,
+        "Artifact projections require a safe --artifact-name");
+  if (input->output_path == NULL || input->output_path[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "Artifact projections require --output to anchor generated artifacts");
+  if (out->artifact_dir[0] != '\0') return 0;
+
+  if (salts_fs_path_dirname(
+          input->output_path,
+          out->artifact_dir,
+          sizeof(out->artifact_dir)) != 0 ||
+      salts_fs_path_basename(
+          input->output_path,
+          out->native_header,
+          sizeof(out->native_header)) != 0)
+    return frontend_error(
+        error, error_size,
+        "Unable to derive artifact paths from --output");
+  return 0;
+}
+
+static int projection_output_in_use(
+    const databind_compiler_projection_frontend_plan *out,
+    const char *path) {
+  size_t i;
+  if (out == NULL || path == NULL) return 0;
+  for (i = 0u; i < out->request_count; ++i)
+    if (out->requests[i].output != NULL &&
+        strcmp(out->requests[i].output, path) == 0)
+      return 1;
+  return 0;
+}
+
+static int add_method_plan(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    databind_compiler_projection_kind kind,
+    char *error,
+    size_t error_size) {
+  char *path;
+  const char *suffix;
+  databind_compiler_projection_backend backend;
+
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+
+  if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
+    path = out->http_projection_header;
+    suffix = ".http.h";
+    backend = databind_compiler_http_method_plan_backend();
+  } else if (kind == DATABIND_COMPILER_PROJECTION_RPC) {
+    path = out->rpc_projection_header;
+    suffix = ".rpc.h";
+    backend = databind_compiler_rpc_method_plan_backend();
+  } else {
+    return frontend_error(error, error_size,
+                          "Invalid MethodPlan projection kind");
+  }
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          suffix, path, SALTS_FS_MAX_PATH))
+    return frontend_error(
+        error, error_size,
+        "Derived MethodPlan projection output path is too long");
+
+  if (path_reserved(input, path) ||
+      projection_output_in_use(out, path))
+    return frontend_error(
+        error, error_size,
+        "Derived projection outputs collide with another compiler output");
+
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .kind = kind,
+          .output = path,
+          .config = NULL,
+      };
+  out->backends[out->backend_count++] = backend;
+  return 0;
+}
+
 static int token_copy_trimmed(
     const char *begin, const char *end,
     char *out, size_t out_size) {
@@ -135,36 +225,17 @@ static int add_plugin(
   uint32_t minor;
   uint32_t patch;
 
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
   if (input->component_id == NULL || input->component_id[0] == '\0')
     return frontend_error(
         error, error_size,
         "--projections plugin requires --component <Schema.Component>");
-  if (!artifact_name_valid(input->artifact_name))
-    return frontend_error(
-        error, error_size,
-        "--projections plugin requires a safe --artifact-name");
   if (!parse_version(
           input->artifact_version, &major, &minor, &patch))
     return frontend_error(
         error, error_size,
         "--projections plugin requires --artifact-version MAJOR.MINOR.PATCH");
-  if (input->output_path == NULL || input->output_path[0] == '\0')
-    return frontend_error(
-        error, error_size,
-        "--projections plugin requires --output for the generated C header");
-
-  if (salts_fs_path_dirname(
-          input->output_path,
-          out->artifact_dir,
-          sizeof(out->artifact_dir)) != 0 ||
-      salts_fs_path_basename(
-          input->output_path,
-          out->native_header,
-          sizeof(out->native_header)) != 0)
-    return frontend_error(
-        error, error_size,
-        "Unable to derive artifact paths from --output");
-
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
           ".plugin.c",
@@ -181,7 +252,9 @@ static int add_plugin(
 
   if (strcmp(out->plugin_source, out->plugin_service_header) == 0 ||
       path_reserved(input, out->plugin_source) ||
-      path_reserved(input, out->plugin_service_header))
+      path_reserved(input, out->plugin_service_header) ||
+      projection_output_in_use(out, out->plugin_source) ||
+      projection_output_in_use(out, out->plugin_service_header))
     return frontend_error(
         error, error_size,
         "Derived projection outputs collide with another compiler output");
@@ -256,6 +329,11 @@ int databind_compiler_projection_frontend_build(
     switch (kind) {
     case DATABIND_COMPILER_PROJECTION_PLUGIN:
       if (add_plugin(input, out, error, error_size) != 0)
+        return -1;
+      break;
+    case DATABIND_COMPILER_PROJECTION_HTTP:
+    case DATABIND_COMPILER_PROJECTION_RPC:
+      if (add_method_plan(input, out, kind, error, error_size) != 0)
         return -1;
       break;
     default:
