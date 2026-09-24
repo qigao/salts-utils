@@ -154,6 +154,43 @@ static void typed_optional_set(const TbeTypedType *type, void *object, const Tbe
   presence[field->optional_bit / 8u] |= (uint8_t)(1u << (field->optional_bit % 8u));
 }
 
+static int typed_nullable_is_null(const TbeTypedType *type,
+                                  const void *object,
+                                  const TbeTypedField *field) {
+  const uint8_t *nulls;
+  if (type == NULL || object == NULL || field == NULL ||
+      (field->flags & TBE_TYPED_FIELD_NULLABLE) == 0u ||
+      type->null_size == 0u)
+    return 0;
+  nulls = (const uint8_t *)object + type->null_offset;
+  return (nulls[field->nullable_bit / 8u] &
+          (uint8_t)(1u << (field->nullable_bit % 8u))) != 0u;
+}
+
+static void typed_nullable_set(const TbeTypedType *type, void *object,
+                               const TbeTypedField *field) {
+  uint8_t *nulls;
+  if (type == NULL || object == NULL || field == NULL ||
+      (field->flags & TBE_TYPED_FIELD_NULLABLE) == 0u ||
+      type->null_size == 0u)
+    return;
+  nulls = (uint8_t *)object + type->null_offset;
+  nulls[field->nullable_bit / 8u] |=
+      (uint8_t)(1u << (field->nullable_bit % 8u));
+}
+
+static void typed_nullable_clear(const TbeTypedType *type, void *object,
+                                 const TbeTypedField *field) {
+  uint8_t *nulls;
+  if (type == NULL || object == NULL || field == NULL ||
+      (field->flags & TBE_TYPED_FIELD_NULLABLE) == 0u ||
+      type->null_size == 0u)
+    return;
+  nulls = (uint8_t *)object + type->null_offset;
+  nulls[field->nullable_bit / 8u] &=
+      (uint8_t)~(1u << (field->nullable_bit % 8u));
+}
+
 static int typed_type_has_nullable_at(
     const TbeTypedType *type, unsigned depth) {
   size_t i;
@@ -183,12 +220,13 @@ static int typed_type_has_nullable(const TbeTypedType *type) {
   return typed_type_has_nullable_at(type, 0u);
 }
 
-static DataBindStatus typed_reject_nullable_runtime(
-    const TbeTypedType *type, DataBindError *error) {
-  if (!typed_type_has_nullable(type)) return DATA_BIND_OK;
+static DataBindStatus typed_nullable_format_supported(
+    const TbeTypedType *type, DataBindFormat format, DataBindError *error) {
+  if (!typed_type_has_nullable(type) || format == DATA_BIND_FORMAT_JSON)
+    return DATA_BIND_OK;
   return typed_error(
       error, DATA_BIND_ERR_SCHEMA, type != NULL ? type->name : NULL,
-      "Typed nullable parse/serialize lowering is not implemented");
+      "Typed nullable format lowering is not implemented");
 }
 
 static DataBindStatus typed_init_value(TbeTypedKind kind, const TbeTypedType *object_type,
@@ -446,6 +484,14 @@ static DataBindStatus typed_from_value_at(const TbeTypedType *type, const DataBi
                          "Required field is missing");
     }
     typed_optional_set(type, object, field);
+    if (data_bind_value_kind(child) == DATA_BIND_VALUE_NULL) {
+      if ((field->flags & TBE_TYPED_FIELD_NULLABLE) == 0)
+        return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+                           "Explicit null is not allowed");
+      typed_nullable_set(type, object, field);
+      continue;
+    }
+    typed_nullable_clear(type, object, field);
     if (field->kind == TBE_TYPED_BYTES || field->kind == TBE_TYPED_FIXED_BYTES) {
       const uint8_t *bytes;
       size_t len;
@@ -531,8 +577,6 @@ DataBindStatus tbe_typed_from_value(const TbeTypedType *type, const DataBindValu
   if (value == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed value");
   status = typed_validate_descriptor_at(type, 0u, error);
-  if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(type, error);
   if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
@@ -648,7 +692,6 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     return NULL;
   }
   if (typed_validate_descriptor_at(type, 0u, error) != DATA_BIND_OK) return NULL;
-  if (typed_reject_nullable_runtime(type, error) != DATA_BIND_OK) return NULL;
   root = json_create_object();
   if (root == NULL) {
     typed_error(error, DATA_BIND_ERR_OOM, type->name, "Out of memory creating JSON object");
@@ -659,8 +702,22 @@ json_value_t *tbe_typed_to_json(const TbeTypedType *type, const void *object,
     const void *ptr = (const uint8_t *)object + field->offset;
     json_value_t *child = NULL;
     size_t j;
-    if (!typed_optional_present(type, object, field)) continue;
-    if (field->kind == TBE_TYPED_BYTES || field->kind == TBE_TYPED_FIXED_BYTES) {
+    const int present = typed_optional_present(type, object, field);
+    const int is_null = typed_nullable_is_null(type, object, field);
+
+    if (!present) {
+      if (is_null) {
+        json_free(root);
+        typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                    "Typed null state is set while optional field is absent");
+        return NULL;
+      }
+      continue;
+    }
+    if (is_null) {
+      child = typed_json_created(json_create_null(), field->name, error);
+    } else if (field->kind == TBE_TYPED_BYTES ||
+               field->kind == TBE_TYPED_FIXED_BYTES) {
       const uint8_t *data;
       size_t len;
       if (field->kind == TBE_TYPED_BYTES) {
@@ -945,16 +1002,16 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
         (type->null_size == 0 || field->nullable_bit / 8u >= type->null_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                          "Typed nullable bit exceeds the null bitmap");
-    if (typed_field_owns_storage(field) && type->presence_size != 0 &&
+    if (type->presence_size != 0 &&
         typed_ranges_overlap(field->offset, host_extent, type->presence_offset,
                              type->presence_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
-                         "Typed owning field overlaps the presence bitmap");
-    if (typed_field_owns_storage(field) && type->null_size != 0 &&
+                         "Typed field overlaps the presence bitmap");
+    if (type->null_size != 0 &&
         typed_ranges_overlap(field->offset, host_extent, type->null_offset,
                              type->null_size))
       return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
-                         "Typed owning field overlaps the null bitmap");
+                         "Typed field overlaps the null bitmap");
     for (j = 0; j < i; ++j) {
       const TbeTypedField *previous = &type->fields[j];
       size_t previous_extent;
@@ -1590,12 +1647,16 @@ static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_d
     json_value_t *child = data_bind_internal_json_field_value(codec, overlay->name, i, value);
     json_value_t *default_value = NULL;
     int child_from_input = child != NULL;
-    int has_default = data_bind_schema_field_at(codec, overlay->name, i, &schema_field) &&
-                      schema_field.has_default && schema_field.default_value != NULL;
+    int reflected = data_bind_schema_field_at(codec, overlay->name, i, &schema_field);
+    int has_default = reflected && schema_field.has_default &&
+                      schema_field.default_value != NULL;
     char field_path[sizeof(((DataBindError *)0)->path)];
     DataBindStatus status =
         typed_native_path(field_path, sizeof(field_path), path, native_field->name, error);
     if (status != DATA_BIND_OK) return status;
+    if (!reflected)
+      return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                         "Canonical schema field metadata is unavailable");
     if (child == NULL && has_default) {
       default_value = typed_native_default_json(native_field->value, schema_field.default_value);
       if (default_value == NULL)
@@ -1603,9 +1664,25 @@ static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_d
                            "Out of memory copying native field default");
       child = default_value;
     }
-    if (child == NULL)
+    if (child == NULL) {
+      if (schema_field.is_optional) continue;
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
                          "Required field is missing");
+    }
+
+    typed_optional_set(overlay, storage, wire_field);
+    if (json_type(child) == JSON_NULL) {
+      if (!schema_field.is_nullable) {
+        json_free(default_value);
+        return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+                           "Explicit null is not allowed");
+      }
+      typed_nullable_set(overlay, storage, wire_field);
+      json_free(default_value);
+      continue;
+    }
+    typed_nullable_clear(overlay, storage, wire_field);
+
     status = typed_native_from_json(
         codec, native_field->value,
         native_field->value->kind == CMETA_DATA_STRUCT ? wire_field->nested_overlay : NULL, child,
@@ -1648,6 +1725,8 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
       const char *output_name = data_bind_internal_json_field_output_name(codec, overlay->name, i);
       char field_path[sizeof(((DataBindError *)0)->path)];
       json_value_t *child;
+      const int present = typed_optional_present(overlay, storage, wire_field);
+      const int is_null = typed_nullable_is_null(overlay, storage, wire_field);
       if (output_name == NULL) {
         json_free(root);
         typed_error(error, DATA_BIND_ERR_SCHEMA, path,
@@ -1659,10 +1738,24 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
         json_free(root);
         return NULL;
       }
-      child = typed_native_to_json(
-          codec, native_field->value,
-          native_field->value->kind == CMETA_DATA_STRUCT ? wire_field->nested_overlay : NULL,
-          (const uint8_t *)storage + native_field->offset, field_path, error);
+      if (!present) {
+        if (is_null) {
+          json_free(root);
+          typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                      "Canonical null state is set while optional field is absent");
+          return NULL;
+        }
+        continue;
+      }
+
+      if (is_null) {
+        child = typed_json_created(json_create_null(), field_path, error);
+      } else {
+        child = typed_native_to_json(
+            codec, native_field->value,
+            native_field->value->kind == CMETA_DATA_STRUCT ? wire_field->nested_overlay : NULL,
+            (const uint8_t *)storage + native_field->offset, field_path, error);
+      }
       if (child == NULL) {
         json_free(root);
         return NULL;
@@ -2838,7 +2931,7 @@ DataBindStatus tbe_typed_parse_binary(const TbeTypedType *type, const void *data
                        "Invalid typed binary parse arguments");
   status = typed_validate_layout_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(type, error);
+  status = typed_nullable_format_supported(type, DATA_BIND_FORMAT_BINARY, error);
   if (status != DATA_BIND_OK) return status;
   temporary = calloc(1, type->size);
   if (temporary == NULL)
@@ -2873,7 +2966,7 @@ DataBindStatus tbe_typed_parse_ex(DataBind *codec, const char *type_name, const 
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed parse arguments");
   status = typed_validate_descriptor_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(type, error);
+  status = typed_nullable_format_supported(type, format, error);
   if (status != DATA_BIND_OK) return status;
   if (format == DATA_BIND_FORMAT_BINARY) {
     status = tbe_typed_validate_schema(codec, type_name, type, error);
@@ -3276,7 +3369,7 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
   void *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(native.overlay, error);
+  status = typed_nullable_format_supported(native.overlay, format, error);
   if (status != DATA_BIND_OK) return status;
   if (codec == NULL || !typed_nonempty(type_name) || data == NULL || object == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, type_name,
@@ -3336,7 +3429,7 @@ DataBindStatus tbe_typed_serialize_ex(DataBind *codec, const char *type_name,
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, NULL, "Invalid typed serialize arguments");
   status = typed_validate_descriptor_at(type, 0u, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(type, error);
+  status = typed_nullable_format_supported(type, format, error);
   if (status != DATA_BIND_OK) return status;
   if (format != DATA_BIND_FORMAT_JSON && format != DATA_BIND_FORMAT_YAML &&
       format != DATA_BIND_FORMAT_CSV && format != DATA_BIND_FORMAT_XML)
@@ -3380,7 +3473,7 @@ DataBindStatus tbe_typed_descriptor_serialize(DataBind *codec, const char *type_
   json_value_t *json;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(native.overlay, error);
+  status = typed_nullable_format_supported(native.overlay, format, error);
   if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
@@ -3414,7 +3507,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary(const TbeTypedDescriptor *d
   uint8_t *data;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(native.overlay, error);
+  status = typed_nullable_format_supported(
+      native.overlay, DATA_BIND_FORMAT_BINARY, error);
   if (status != DATA_BIND_OK) return status;
   if (out != NULL) *out = NULL;
   if (out_len != NULL) *out_len = 0u;
@@ -3445,7 +3539,8 @@ DataBindStatus tbe_typed_descriptor_serialize_binary_into(const TbeTypedDescript
   uint8_t *temporary;
   DataBindStatus status = typed_descriptor_native_record(descriptor, &native, error);
   if (status != DATA_BIND_OK) return status;
-  status = typed_reject_nullable_runtime(native.overlay, error);
+  status = typed_nullable_format_supported(
+      native.overlay, DATA_BIND_FORMAT_BINARY, error);
   if (status != DATA_BIND_OK) return status;
   if (out_len != NULL) *out_len = 0u;
   if (object == NULL || out_len == NULL || (output == NULL && capacity != 0u))
