@@ -67,7 +67,8 @@ int databind_compiler_service_native_emit_prototype(
  */
 int databind_compiler_service_native_emit_reflection(
     FILE *file,
-    const databind_compiler_service_native_operation *operation);
+    const databind_compiler_service_native_operation *operation,
+    int emit_accessors);
 
 /*
  * Emit the generated host-side DataBind native-binding initializer. The caller
