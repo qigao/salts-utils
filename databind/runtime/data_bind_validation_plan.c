@@ -589,6 +589,8 @@ static DataBindStatus validation_plan_compile_internal(
         child->kind = child_spec.kind;
         child->plan = child_plan;
         if (child->field_name == NULL) {
+          data_bind_validation_plan_free(child_plan);
+          child->plan = NULL;
           data_bind_validation_plan_free(plan);
           return validation_error(
               error, DATA_BIND_ERR_OOM, type_name,
