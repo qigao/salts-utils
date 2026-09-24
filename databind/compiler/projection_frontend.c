@@ -265,6 +265,11 @@ int databind_compiler_projection_frontend_build(
           name);
     }
 
+    if (*end == ',' && end[1] == '\0')
+      return frontend_error(
+          error, error_size,
+          "Projection list must not end with a comma");
+
     cursor = *end == ',' ? end + 1 : end;
   }
 
