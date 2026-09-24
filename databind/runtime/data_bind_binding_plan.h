@@ -333,8 +333,10 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_inputs(
     DataBindBindingPlanDiagnostic *diagnostic);
 
 /**
- * Publish response values transactionally. begin/write/commit failures do not
- * report success and any write/commit failure calls abort_output.
+ * Publish response values transactionally for a non-throws Service.
+ * begin/write/commit failures do not report success and any write/commit
+ * failure calls abort_output. Throws Services must use
+ * data_bind_binding_plan_write_outcome() so typed errors cannot be bypassed.
  */
 DATA_BIND_API DataBindStatus data_bind_binding_plan_write_outputs(
     const DataBindBindingPlan *plan,
