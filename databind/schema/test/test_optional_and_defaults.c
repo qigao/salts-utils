@@ -105,6 +105,94 @@ suite("optional_fields_and_defaults") {
         }
     }
 
+    describe("Nullable Fields") {
+        it("should keep presence and nullability independent") {
+            const char *schema = "message User { "
+                                 "string required_value; "
+                                 "optional string optional_value; "
+                                 "nullable string nullable_value; "
+                                 "optional nullable string tri_state_value; "
+                                 "required nullable string explicit_nullable_value; "
+                                 "}";
+            Node *root = create_node_map("root");
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            Node *messages;
+            Node *fields;
+
+            check_equal(rc, 0);
+            if (rc != 0) {
+                node_free(root);
+                return;
+            }
+
+            messages = find_child(root, "messages");
+            fields = messages ? find_child(messages->data.list.items[0], "fields") : NULL;
+            check_not_null(fields);
+            if (!fields || fields->type != NODE_LIST || fields->data.list.count != 5u) {
+                node_free(root);
+                return;
+            }
+
+            check_null(find_child(fields->data.list.items[0], "is_optional"));
+            check_null(find_child(fields->data.list.items[0], "is_nullable"));
+
+            check_not_null(find_child(fields->data.list.items[1], "is_optional"));
+            check_null(find_child(fields->data.list.items[1], "is_nullable"));
+
+            check_null(find_child(fields->data.list.items[2], "is_optional"));
+            check_not_null(find_child(fields->data.list.items[2], "is_nullable"));
+
+            check_not_null(find_child(fields->data.list.items[3], "is_optional"));
+            check_not_null(find_child(fields->data.list.items[3], "is_nullable"));
+
+            check_null(find_child(fields->data.list.items[4], "is_optional"));
+            check_not_null(find_child(fields->data.list.items[4], "is_nullable"));
+
+            node_free(root);
+        }
+
+        it("should preserve default metadata independently from nullable") {
+            const char *schema =
+                "message Settings { optional nullable string locale default \"en\"; }";
+            Node *root = create_node_map("root");
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+            Node *messages;
+            Node *fields;
+            Node *locale;
+
+            check_equal(rc, 0);
+            if (rc != 0) {
+                node_free(root);
+                return;
+            }
+
+            messages = find_child(root, "messages");
+            fields = messages ? find_child(messages->data.list.items[0], "fields") : NULL;
+            locale = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
+                         ? fields->data.list.items[0]
+                         : NULL;
+
+            check_not_null(locale);
+            if (locale) {
+                check_not_null(find_child(locale, "is_optional"));
+                check_not_null(find_child(locale, "is_nullable"));
+                check_not_null(find_child(locale, "has_default"));
+                check_equal(find_child(locale, "default_value")->data.string_val, "en");
+            }
+
+            node_free(root);
+        }
+
+        it("should reject nullable before the presence modifier") {
+            const char *schema = "message Invalid { nullable optional string name; }";
+            Node *root = create_node_map("root");
+            int rc = parse_schema(schema, strlen(schema), root, NULL);
+
+            check_not_equal(rc, 0);
+            node_free(root);
+        }
+    }
+
     describe("Default Values") {
         it("should parse numeric default values") {
             const char *schema = "message Config { "
