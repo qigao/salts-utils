@@ -1309,10 +1309,25 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
           return 0;
         }
       }
-      if (c_name && strcmp(c_name, "_presence") == 0) {
-        fprintf(stderr, "Typed C field %s.%s uses reserved member name _presence\n",
+      if (tbe_compiler_has_child(field, "is_nullable")) {
+        const char *bit_text = tbe_compiler_string_value(field, "nullable_bit_index");
+        const char *bitmap_text = tbe_compiler_string_value(record, "null_bitmap_bytes");
+        size_t bit;
+        size_t bitmap_size;
+        if (!tbe_compiler_parse_size(bit_text, &bit) ||
+            !tbe_compiler_parse_size(bitmap_text, &bitmap_size) || bitmap_size == 0u ||
+            bit / 8u >= bitmap_size) {
+          fprintf(stderr, "Typed C nullable field %s.%s has invalid null metadata\n",
+                  tbe_compiler_string_value(field, "owner_name"),
+                  tbe_compiler_string_value(field, "name"));
+          return 0;
+        }
+      }
+      if (c_name &&
+          (strcmp(c_name, "_presence") == 0 || strcmp(c_name, "_nulls") == 0)) {
+        fprintf(stderr, "Typed C field %s.%s uses reserved state member name %s\n",
                 tbe_compiler_string_value(field, "owner_name"),
-                tbe_compiler_string_value(field, "name"));
+                tbe_compiler_string_value(field, "name"), c_name);
         return 0;
       }
       for (k = j + 1; k < fields->data.list.count; ++k) {
