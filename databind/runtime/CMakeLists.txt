@@ -435,6 +435,13 @@ cmake_add_test(test_tbe_typed_descriptor_boundary
   SOURCES test_tbe_typed_descriptor_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
+cmake_add_test(test_tbe_typed_nullable_json
+  SOURCES test_tbe_typed_nullable_json.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_tbe_typed_nullable_json PROPERTIES
+  LABELS "databind;typed;nullable;json")
+
 
 # This fixture executes databindc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
