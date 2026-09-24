@@ -1,6 +1,5 @@
 #include "schema_service.h"
 
-#include "schema_builtin_type.h"
 #include "schema_type_ref.h"
 
 #include <ctype.h>
