@@ -673,20 +673,8 @@ static int plugin_write_client_source(
           "      out_client->lease.plugin.slot != 0u ||\n"
           "      out_client->lease.plugin.generation != 0u ||\n"
           "      out_client->lease.slot != 0u ||\n"
-          "      out_client->lease.generation != 0u"
-          "  status = salts_plugin_registry_acquire(\n"
-          "      registry, ref, &lease, &manifest);\n"
-          "  if (status != SALTS_PLUGIN_OK) return status;\n\n"
-          "  if (manifest == NULL || manifest->plugin_id == NULL ||\n"
-          "      strcmp(manifest->plugin_id, ",
-          client_symbol, client_symbol) < 0 ||
-      !plugin_write_c_string(file, plugin_id) ||
-      fputs(
-          ") != 0) {\n"
-          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
-          "    goto fail;\n"
-          "  }\n\n",
-          file) == EOF)
+          "      out_client->lease.generation != 0u",
+          client_symbol, client_symbol) < 0)
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i)
@@ -701,7 +689,19 @@ static int plugin_write_client_source(
           "    return SALTS_PLUGIN_ALREADY;\n"
           "  memset(out_client, 0, sizeof(*out_client));\n"
           "  if (registry == NULL || !salts_plugin_ref_valid(ref))\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n",
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n"
+          "  status = salts_plugin_registry_acquire(\n"
+          "      registry, ref, &lease, &manifest);\n"
+          "  if (status != SALTS_PLUGIN_OK) return status;\n\n"
+          "  if (manifest == NULL || manifest->plugin_id == NULL ||\n"
+          "      strcmp(manifest->plugin_id, ",
+          file) == EOF ||
+      !plugin_write_c_string(file, plugin_id) ||
+      fputs(
+          ") != 0) {\n"
+          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+          "    goto fail;\n"
+          "  }\n\n",
           file) == EOF)
     return 0;
 
