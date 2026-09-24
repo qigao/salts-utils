@@ -669,9 +669,11 @@ static int plugin_write_client_source(
           "  const salts_plugin_export *entry = NULL;\n\n"
           "  if (out_client == NULL)\n"
           "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
-          "  memset(out_client, 0, sizeof(*out_client));\n"
-          "  if (registry == NULL || !salts_plugin_ref_valid(ref))\n"
-          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n"
+          "  if (out_client->registry != NULL ||\n"
+          "      out_client->lease.plugin.slot != 0u ||\n"
+          "      out_client->lease.plugin.generation != 0u ||\n"
+          "      out_client->lease.slot != 0u ||\n"
+          "      out_client->lease.generation != 0u"
           "  status = salts_plugin_registry_acquire(\n"
           "      registry, ref, &lease, &manifest);\n"
           "  if (status != SALTS_PLUGIN_OK) return status;\n\n"
@@ -684,6 +686,22 @@ static int plugin_write_client_source(
           "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
           "    goto fail;\n"
           "  }\n\n",
+          file) == EOF)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(
+            file,
+            " ||\n      out_client->%s_export != NULL",
+            ir->operations[i].symbol) < 0)
+      return 0;
+
+  if (fputs(
+          ")\n"
+          "    return SALTS_PLUGIN_ALREADY;\n"
+          "  memset(out_client, 0, sizeof(*out_client));\n"
+          "  if (registry == NULL || !salts_plugin_ref_valid(ref))\n"
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n",
           file) == EOF)
     return 0;
 
@@ -769,10 +787,10 @@ static int plugin_write_client_source(
             "    int *native_status) {\n"
             "  const salts_plugin_export *entry;\n"
             "  void *params[2];\n"
+            "  int result;\n"
             "  if (client == NULL || request == NULL || response == NULL ||\n"
             "      native_status == NULL)\n"
             "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
-            "  *native_status = 0;\n"
             "  if (client->registry == NULL ||\n"
             "      !salts_plugin_lease_valid(client->lease))\n"
             "    return SALTS_PLUGIN_INVALID_STATE;\n"
@@ -782,11 +800,12 @@ static int plugin_write_client_source(
             "    return SALTS_PLUGIN_INVALID_STATE;\n"
             "  params[0] = (void *)request;\n"
             "  params[1] = response;\n"
-            "  return entry->value.function.invoke(\n"
-            "             entry->value.function.context, native_status,\n"
-            "             params, 2u)\n"
-            "             ? SALTS_PLUGIN_OK\n"
-            "             : SALTS_PLUGIN_INVALID_STATE;\n"
+            "  if (!entry->value.function.invoke(\n"
+            "          entry->value.function.context, &result,\n"
+            "          params, 2u))\n"
+            "    return SALTS_PLUGIN_INVALID_STATE;\n"
+            "  *native_status = result;\n"
+            "  return SALTS_PLUGIN_OK;\n"
             "}\n\n",
             operation->symbol,
             client_symbol,
