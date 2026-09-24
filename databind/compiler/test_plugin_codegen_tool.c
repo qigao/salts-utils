@@ -13,9 +13,9 @@ int main(int argc, char **argv) {
       DATABIND_COMPILER_PLUGIN_BACKEND;
   int status;
 
-  if (argc != 5) {
+  if (argc != 6) {
     fprintf(stderr,
-            "usage: %s <schema> <plugin.c> <service.h> <native.h>\n",
+            "usage: %s <schema> <plugin.c> <service.h> <native.h> <component>\n",
             argc > 0 ? argv[0] : "plugin-codegen");
     return 2;
   }
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
       .plugin_version_major = 1u,
       .plugin_version_minor = 0u,
       .plugin_version_patch = 0u,
-      .component_name = "ImageProcessor",
+      .component_name = argv[5],
       .native_header = argv[4],
       .service_header_output = argv[3],
   };
