@@ -57,6 +57,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
+        .component_name = "StorePlugin",
         .native_header = "error_native.h",
         .service_header_output = header_output,
     };
@@ -101,6 +102,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
+        .component_name = "Bundle",
         .native_header = "bad_version_native.h",
         .service_header_output = header_output,
     };
@@ -139,6 +141,54 @@ spec("DataBind Plugin projection semantic rejection") {
     free(schema_data);
   }
 
+  it("requires an explicit existing Component and never falls back to schema-wide publication") {
+    static const char source_output[] =
+        "databind_plugin_component_required_should_not_exist.c";
+    static const char header_output[] =
+        "databind_plugin_component_required_should_not_exist.h";
+    Node *root = NULL;
+    char *schema_data = NULL;
+    databind_compiler_plugin_config config = {
+        .plugin_version_major = 1u,
+        .plugin_version_minor = 0u,
+        .plugin_version_patch = 0u,
+        .component_name = NULL,
+        .native_header = "component_required_native.h",
+        .service_header_output = header_output,
+    };
+    databind_compiler_projection_request request = {
+        .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
+        .output = source_output,
+        .config = &config,
+    };
+    databind_compiler_projection_backend backend =
+        DATABIND_COMPILER_PLUGIN_BACKEND;
+
+    check_equal(tbe_compiler_parse_schema_file(
+                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
+                0);
+    check_not_null(root);
+    check_not_null(schema_data);
+
+    (void)salts_fs_unlink(source_output);
+    (void)salts_fs_unlink(header_output);
+    check_equal(databind_compiler_projection_run(
+                    root, &request, 1u, &backend, 1u),
+                -1);
+    check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+
+    config.component_name = "Missing";
+    check_equal(databind_compiler_projection_run(
+                    root, &request, 1u, &backend, 1u),
+                -1);
+    check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+
+    node_free(root);
+    free(schema_data);
+  }
+
   it("publishes multiple Services as independent contracts") {
     static const char source_output[] =
         "databind_plugin_multi_service.c";
@@ -151,6 +201,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
+        .component_name = "Bundle",
         .native_header = "multi_native.h",
         .service_header_output = header_output,
     };
@@ -185,6 +236,8 @@ spec("DataBind Plugin projection semantic rejection") {
         generated.base, "\"MultiServicePlugin.First\""));
     check_not_null(strstr(
         generated.base, "\"MultiServicePlugin.Second\""));
+    check_not_null(strstr(
+        generated.base, ".plugin_id = \"MultiServicePlugin.Bundle\""));
     check_not_null(strstr(
         generated.base, ".export_count = 2u"));
     salts_fs_buf_free(&generated);
