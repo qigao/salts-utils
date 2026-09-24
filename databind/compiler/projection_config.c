@@ -2,6 +2,7 @@
 
 #include <json_parser.h>
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -570,7 +571,7 @@ static int parse_rpc(
         return -1;
       dst->error_type = required_string(entry, "type", error, error_size);
       if (dst->error_type == NULL ||
-          optional_int(entry, "code", INT32_MIN, INT32_MAX, 0,
+          optional_int(entry, "code", INT_MIN, INT_MAX, 0,
                        &code, error, error_size) != 0)
         return -1;
       if (json_object_get(entry, "code") == NULL || code == 0)
