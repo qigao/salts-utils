@@ -25,6 +25,19 @@ static const char *component_test_string(Node *parent, const char *name) {
              : NULL;
 }
 
+static Node *component_test_named_list_item(
+    Node *root, const char *list_name, const char *name) {
+  Node *list = component_test_child(root, list_name);
+  size_t i;
+  if (list == NULL || list->type != NODE_LIST || name == NULL) return NULL;
+  for (i = 0u; i < list->data.list.count; ++i) {
+    Node *item = list->data.list.items[i];
+    const char *item_name = component_test_string(item, "name");
+    if (item_name != NULL && strcmp(item_name, name) == 0) return item;
+  }
+  return NULL;
+}
+
 static Node *component_test_parse(const char *schema, tbe_error_t *error) {
   Node *root = create_node_map(NULL);
   if (root == NULL) return NULL;
@@ -88,7 +101,8 @@ spec("DataBind Component canonical IR") {
     check_null(component_test_child(metadata, "operations"));
 
     /* The keyword remains usable as an identifier outside declaration position. */
-    check_not_null(component_test_child(root, "messages"));
+    check_not_null(component_test_named_list_item(
+        root, "messages", "component"));
 
     node_free(root);
   }
