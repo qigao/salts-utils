@@ -29,12 +29,19 @@ static bool SALTS_PLUGIN_CALL plugin_client_mismatch_invoke(
 #if defined(PLUGIN_CLIENT_MISMATCH_PLUGIN_ID)
 #define TEST_PLUGIN_ID "Image.OtherProcessor"
 #define TEST_CONTRACT_ID "Image.Codec"
+#define TEST_EXPORT_ID "Image.Codec.Decode"
 #elif defined(PLUGIN_CLIENT_MISMATCH_CONTRACT_ID)
 #define TEST_PLUGIN_ID "Image.ImageProcessor"
 #define TEST_CONTRACT_ID "Image.OtherCodec"
+#define TEST_EXPORT_ID "Image.Codec.Decode"
+#elif defined(PLUGIN_CLIENT_MISMATCH_EXPORT_ID)
+#define TEST_PLUGIN_ID "Image.ImageProcessor"
+#define TEST_CONTRACT_ID "Image.Codec"
+#define TEST_EXPORT_ID "Image.Codec.Other"
 #elif defined(PLUGIN_CLIENT_MISMATCH_FUNCTION)
 #define TEST_PLUGIN_ID "Image.ImageProcessor"
 #define TEST_CONTRACT_ID "Image.Codec"
+#define TEST_EXPORT_ID "Image.Codec.Decode"
 #else
 #error "one PLUGIN_CLIENT_MISMATCH_* mode is required"
 #endif
@@ -44,7 +51,7 @@ static const salts_plugin_export mismatch_export = {
     .kind = SALTS_PLUGIN_EXPORT_FUNCTION,
     .contract_version = 1u,
     .capabilities = 0u,
-    .export_id = "Image.Codec.Decode",
+    .export_id = TEST_EXPORT_ID,
     .contract_id = TEST_CONTRACT_ID,
     .value.function = {
         .desc = &plugin_client_mismatch_function__function_meta,
