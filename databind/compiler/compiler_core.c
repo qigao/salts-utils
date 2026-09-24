@@ -1334,6 +1334,52 @@ static int tbe_compiler_typed_schema_supported(Node *root) {
          tbe_compiler_typed_list_supported(root, "messages");
 }
 
+static int tbe_compiler_nullable_lowering_supported(Node *root) {
+  static const char *const record_lists[] = {
+      "composites", "groups", "messages", "unions"};
+  size_t list_index;
+
+  if (!root) return 0;
+
+  for (list_index = 0u;
+       list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+       ++list_index) {
+    Node *records = tbe_compiler_find_child(root, record_lists[list_index]);
+    size_t record_index;
+
+    if (!records || records->type != NODE_LIST) continue;
+
+    for (record_index = 0u; record_index < records->data.list.count;
+         ++record_index) {
+      Node *record = records->data.list.items[record_index];
+      Node *fields = tbe_compiler_find_child(record, "fields");
+      size_t field_index;
+
+      if (!fields || fields->type != NODE_LIST) continue;
+
+      for (field_index = 0u; field_index < fields->data.list.count;
+           ++field_index) {
+        Node *field = fields->data.list.items[field_index];
+
+        if (!tbe_compiler_has_child(field, "is_nullable")) continue;
+
+        fprintf(stderr,
+                "DataBind nullable field %s.%s has no native/projection lowering yet; "
+                "refusing generation\n",
+                tbe_compiler_string_value(field, "owner_name")
+                    ? tbe_compiler_string_value(field, "owner_name")
+                    : "<anonymous>",
+                tbe_compiler_string_value(field, "name")
+                    ? tbe_compiler_string_value(field, "name")
+                    : "<unnamed>");
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
 static Node *tbe_compiler_find_typed_record(Node *root, const char *name) {
   Node *record = tbe_compiler_find_record(root, "composites", name);
   if (!record) record = tbe_compiler_find_record(root, "groups", name);
@@ -1864,6 +1910,10 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
                                               &schema_data);
   if (status != 0) return status;
+  if (!tbe_compiler_nullable_lowering_supported(root)) {
+    status = 1;
+    goto cleanup;
+  }
 
   /*
    * Preserve one immutable canonical IR for artifact backends. Ordinary source
