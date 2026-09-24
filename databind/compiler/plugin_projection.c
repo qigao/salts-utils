@@ -1058,7 +1058,7 @@ int databind_compiler_plugin_generate(
     goto cleanup;
 
   if (!plugin_native_ir_valid(
-          canonical_ir, component, &native_ir,
+          component, &native_ir,
           &selected_count) ||
       selected_count != native_ir.operation_count)
     goto cleanup;
