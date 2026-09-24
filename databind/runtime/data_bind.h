@@ -402,10 +402,12 @@ typedef struct DataBindSchemaField {
   size_t field_size_bytes;
   int has_field_size_bytes;
   const char *format;
-  /** Canonical semantic view, appended to the original size-prefixed layout.
-   * cmeta_data borrows immutable provider-owned static metadata. Kind-only
-   * containers have no storage or element shape. Optional/default metadata
-   * never constructs Option; UUID's CUSTOM domain uses a STRING text adapter.
+  /** Canonical semantic view of the field VALUE TYPE, appended to the original
+   * size-prefixed layout. cmeta_data borrows immutable provider-owned static
+   * metadata. It does not describe field presence/null storage: optional,
+   * default and nullable remain DataBind overlay semantics and never implicitly
+   * construct Option or infer pointer storage. Kind-only containers have no
+   * storage or element shape. UUID's CUSTOM domain uses a STRING text adapter.
    */
   int has_cmeta_kind;
   cmeta_data_kind cmeta_kind;
