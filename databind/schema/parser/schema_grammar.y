@@ -795,6 +795,8 @@ static void add_field(schema_parse_ctx_t *ctx,
 
     field_map = create_node_map(NULL);
     if (field_map == NULL) {
+        node_free(constraints);
+        node_free(attrs);
         grammar_oom(ctx);
         return;
     }
