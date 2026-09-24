@@ -118,19 +118,20 @@ function(_saltsutils_databind_host_command
          out_command executable runtime_root salts_root)
   if(WIN32)
     set(_runtime_path
-        "${runtime_root}/bin;${salts_root}/bin;$ENV{PATH}")
+        "${runtime_root}/bin;${runtime_root}/lib;${salts_root}/bin;$ENV{PATH}")
+    string(REPLACE ";" "\\;" _runtime_path "${_runtime_path}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
   elseif(APPLE)
     set(_runtime_path
-        "${runtime_root}/lib:${salts_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${salts_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;DYLD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
   else()
     set(_runtime_path
-        "${runtime_root}/lib:${salts_root}/lib:$ENV{LD_LIBRARY_PATH}")
+        "${runtime_root}/bin:${runtime_root}/lib:${salts_root}/lib:$ENV{LD_LIBRARY_PATH}")
     set(${out_command}
         "${CMAKE_COMMAND};-E;env;LD_LIBRARY_PATH=${_runtime_path};${executable}"
         PARENT_SCOPE)
