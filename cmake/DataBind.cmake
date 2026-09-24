@@ -35,7 +35,8 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
     list(APPEND _databind_hints "${SaltsUtils_DATABINDC_HINT}")
   endif()
 
-  set(_databindc_program "")
+  unset(_databindc_program)
+  unset(_databindc_program CACHE)
   if(_databind_hints)
     find_program(_databindc_program
       NAMES databindc
