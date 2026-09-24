@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "http": {
+    "operations": [
+      {
+        "service": "Calc",
+        "operation": "Add",
+        "method": "GET",
+        "route": "/add/{left}",
+        "success_status": 201,
+        "context": ["request_id"],
+        "fields": [
+          {
+            "direction": "ingress",
+            "field": "left",
+            "location": "path",
+            "name": "left"
+          },
+          {
+            "direction": "ingress",
+            "field": "right",
+            "location": "header",
+            "name": "X-Right"
+          },
+          {
+            "direction": "egress",
+            "field": "sum",
+            "location": "response_body",
+            "name": "sum"
+          }
+        ],
+        "errors": [
+          {
+            "type": "CalcError",
+            "status": 422
+          }
+        ]
+      }
+    ]
+  },
+  "rpc": {
+    "operations": [
+      {
+        "service": "Calc",
+        "operation": "Add",
+        "wire_method": "calc.add",
+        "fields": [
+          {
+            "direction": "ingress",
+            "field": "left",
+            "name": "lhs",
+            "ordinal": 0
+          },
+          {
+            "direction": "ingress",
+            "field": "right",
+            "name": "rhs",
+            "ordinal": 1
+          },
+          {
+            "direction": "egress",
+            "field": "sum",
+            "name": "result",
+            "ordinal": 0
+          }
+        ],
+        "errors": [
+          {
+            "type": "CalcError",
+            "code": -32042
+          }
+        ]
+      }
+    ]
+  }
+}
