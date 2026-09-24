@@ -174,14 +174,31 @@ static int add_plugin(
           out->artifact_dir, input->artifact_name,
           ".plugin.h",
           out->plugin_service_header,
-          sizeof(out->plugin_service_header)))
+          sizeof(out->plugin_service_header)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".plugin_client.h",
+          out->plugin_client_header,
+          sizeof(out->plugin_client_header)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".plugin_client.c",
+          out->plugin_client_source,
+          sizeof(out->plugin_client_source)))
     return frontend_error(
         error, error_size,
         "Derived projection output path is too long");
 
   if (strcmp(out->plugin_source, out->plugin_service_header) == 0 ||
+      strcmp(out->plugin_source, out->plugin_client_header) == 0 ||
+      strcmp(out->plugin_source, out->plugin_client_source) == 0 ||
+      strcmp(out->plugin_service_header, out->plugin_client_header) == 0 ||
+      strcmp(out->plugin_service_header, out->plugin_client_source) == 0 ||
+      strcmp(out->plugin_client_header, out->plugin_client_source) == 0 ||
       path_reserved(input, out->plugin_source) ||
-      path_reserved(input, out->plugin_service_header))
+      path_reserved(input, out->plugin_service_header) ||
+      path_reserved(input, out->plugin_client_header) ||
+      path_reserved(input, out->plugin_client_source))
     return frontend_error(
         error, error_size,
         "Derived projection outputs collide with another compiler output");
@@ -193,6 +210,8 @@ static int add_plugin(
       .component_id = input->component_id,
       .native_header = out->native_header,
       .service_header_output = out->plugin_service_header,
+      .client_header_output = out->plugin_client_header,
+      .client_source_output = out->plugin_client_source,
   };
 
   out->requests[out->request_count++] =
