@@ -65,13 +65,45 @@ add_test(NAME test_databind_compiler_tooling_boundary
 set_tests_properties(test_databind_compiler_tooling_boundary
   PROPERTIES LABELS "databind;package;compiler")
 
-add_test(NAME test_databind_nullable_codegen_rejected
-  COMMAND "${CMAKE_COMMAND}"
-    "-DDATABINDC=$<TARGET_FILE:databindc>"
-    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_rejection.schema"
-    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/nullable-rejected.h"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen_rejection.cmake")
-set_tests_properties(test_databind_nullable_codegen_rejected
+set(DATABIND_NULLABLE_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/nullable_generated")
+file(MAKE_DIRECTORY "${DATABIND_NULLABLE_GENERATED_DIR}")
+set(DATABIND_NULLABLE_GENERATED_H
+    "${DATABIND_NULLABLE_GENERATED_DIR}/nullable_generated.h")
+set(DATABIND_NULLABLE_GENERATED_C
+    "${DATABIND_NULLABLE_GENERATED_DIR}/nullable_generated.c")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_NULLABLE_GENERATED_H}"
+    "${DATABIND_NULLABLE_GENERATED_C}"
+  COMMAND
+    $<TARGET_FILE:databindc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
+      --lang c
+      --output "${DATABIND_NULLABLE_GENERATED_H}"
+      --source-output "${DATABIND_NULLABLE_GENERATED_C}"
+  DEPENDS
+    databindc
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
+  VERBATIM
+  COMMENT "Generating nullable DataBind artifact")
+
+set_source_files_properties(
+  "${DATABIND_NULLABLE_GENERATED_C}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_nullable_codegen
+  SOURCES
+    test_nullable_codegen.c
+    "${DATABIND_NULLABLE_GENERATED_C}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_NULLABLE_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+set_tests_properties(test_databind_nullable_codegen
   PROPERTIES LABELS "databind;compiler;nullable")
 
 add_test(NAME test_databind_projection_config_stale_rejected
