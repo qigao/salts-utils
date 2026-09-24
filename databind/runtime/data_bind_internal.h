@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 #include "data_bind_value_internal.h"
+#include "node_tree.h"
 #include "fmt.h"
 #include <csv_parser.h>
 #include <json_parser.h>
@@ -22,6 +23,8 @@ json_value_t *data_bind_internal_json_field_value(
     DataBind *codec, const char *type_name, size_t field_index,
     const json_value_t *object);
 const char *data_bind_internal_json_field_output_name(
+    DataBind *codec, const char *type_name, size_t field_index);
+Node *data_bind_internal_schema_field_node(
     DataBind *codec, const char *type_name, size_t field_index);
 size_t data_bind_internal_field_input_name_count(
     DataBind *codec, const char *type_name, size_t field_index);
