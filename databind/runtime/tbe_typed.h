@@ -119,9 +119,10 @@ typedef struct TbeTypedType TbeTypedType;
  *
  * Owning host fields (strings, vectors, maps, objects, and owning fixed arrays)
  * must not overlap any other field storage, and must not overlap the host
- * presence bitmap. Map key/value storage must be disjoint. For binary fields,
- * the wire presence bitmap occupies [0, presence_size), fixed wire ranges must
- * be pairwise disjoint from it and from each other, and wire_size must exactly
+ * presence/null state bitmaps. Map key/value storage must be disjoint. For
+ * binary fields, wire state occupies
+ * [0, presence_size + null_size), fixed wire ranges must be pairwise disjoint
+ * from it and from each other, and wire_size must exactly
  * match the extent derived from the field kind. Invalid layouts are rejected
  * as DATA_BIND_ERR_SCHEMA before direct binary access.
  */
