@@ -5,7 +5,7 @@
 set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)
 add_library(${DATABIND_COMPILER_TOOLING_TARGET} INTERFACE)
 target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
-  INTERFACE Salts::CmdParser Salts::Mustache)
+  INTERFACE Salts::CmdParser Salts::Mustache Salts::JsonParser)
 set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
   PROPERTIES FOLDER "databind/compiler")
 
@@ -24,7 +24,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c service_native.c plugin_projection.c method_plan_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -171,6 +171,7 @@ cmake_add_test(test_databind_projection_frontend
   SOURCES
     test_projection_frontend.c
     projection_frontend.c
+    projection_config.c
     projection.c
     service_native.c
     plugin_projection.c
@@ -179,6 +180,7 @@ cmake_add_test(test_databind_projection_frontend
     Salts::DataBindSchema
     Salts::PluginABI
     Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/schema/src
@@ -323,6 +325,15 @@ databind_target(
   ARTIFACT_NAME "public_calc"
   PROJECTIONS HTTP RPC)
 
+
+databind_target(
+  TARGET databind_method_plan_configured_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  ARTIFACT_NAME "configured_calc"
+  PROJECTIONS HTTP RPC
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
+
 cmake_add_test(test_databind_method_plan_public_frontend
   SOURCES test_public_method_plan_frontend.c
   LIBS Salts::DataBind Salts::TinyTest
@@ -330,7 +341,8 @@ cmake_add_test(test_databind_method_plan_public_frontend
     "${databind_method_plan_public_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_method_plan_public_frontend
-  databind_method_plan_public_fixture_databind_codegen)
+  databind_method_plan_public_fixture_databind_codegen
+  databind_method_plan_configured_fixture_databind_codegen)
 
 get_target_property(
   _databind_plugin_generated_fixture_links
