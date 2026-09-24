@@ -8,6 +8,7 @@ endif()
 set(DATABIND_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_subdirectory(vendor/monocypher)
+add_subdirectory(formats/tbe)
 add_subdirectory(schema)
 add_subdirectory(runtime)
 add_subdirectory(compiler)
