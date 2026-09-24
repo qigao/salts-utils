@@ -304,6 +304,21 @@ databind_target(
   PROJECTIONS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
+databind_target(
+  TARGET databind_method_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  ARTIFACT_NAME "public_calc"
+  PROJECTIONS HTTP RPC)
+
+cmake_add_test(test_databind_method_plan_public_frontend
+  SOURCES test_public_method_plan_frontend.c
+  LIBS Salts::DataBind Salts::TinyTest
+  INCLUDES
+    "${databind_method_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_method_plan_public_frontend
+  databind_method_plan_public_fixture_databind_codegen)
+
 add_custom_command(
   OUTPUT
     "${DATABIND_PLUGIN_TEST_BINDING_H}"
