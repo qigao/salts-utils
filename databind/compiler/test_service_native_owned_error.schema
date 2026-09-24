@@ -1,0 +1,17 @@
+schema OwnedErrorService [version(1)];
+
+message Request {
+    uint32 id;
+}
+
+message Response {
+    uint32 value;
+}
+
+message DynamicError {
+    string detail;
+}
+
+service Store {
+    Read: Request -> Response throws DynamicError;
+}
