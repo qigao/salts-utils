@@ -1014,7 +1014,6 @@ static DataBindStatus plan_compile_errors(
   if (operation->error_count == 0u) {
     if (native->size >= sizeof(*native) &&
         (native->errors != NULL || native->error_count != 0u ||
-         native->error_param_index != SIZE_MAX ||
          native->error_envelope_bytes != 0u ||
          native->error_kind_bytes != 0u))
       return plan_diag_fail(
