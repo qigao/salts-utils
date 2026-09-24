@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_PROJECTION_FRONTEND_H
 
 #include "plugin_projection.h"
+#include "method_plan_projection.h"
 #include "projection.h"
 
 #include "salts_fs.h"
@@ -45,6 +46,8 @@ typedef struct databind_compiler_projection_frontend_plan {
   char native_header[SALTS_FS_MAX_PATH];
   char plugin_source[SALTS_FS_MAX_PATH];
   char plugin_service_header[SALTS_FS_MAX_PATH];
+  char http_projection_header[SALTS_FS_MAX_PATH];
+  char rpc_projection_header[SALTS_FS_MAX_PATH];
 } databind_compiler_projection_frontend_plan;
 
 /*
@@ -52,8 +55,9 @@ typedef struct databind_compiler_projection_frontend_plan {
  * registry.
  *
  * projections is a comma-separated canonical projection-name list.
- * Phase 1 exposes PLUGIN; names of known but not-yet-public backends fail
- * explicitly rather than silently falling back.
+ * Public backends currently include PLUGIN plus convention-based HTTP/RPC
+ * MethodPlan projections. Known but not-yet-public backends fail explicitly
+ * rather than silently falling back.
  */
 int databind_compiler_projection_frontend_build(
     const databind_compiler_projection_frontend_input *input,
