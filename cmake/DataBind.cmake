@@ -35,10 +35,19 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
     list(APPEND _databind_hints "${SaltsUtils_DATABINDC_HINT}")
   endif()
 
-  find_program(_databindc_program
-    NAMES databindc
-    HINTS ${_databind_hints}
-    NO_CACHE)
+  set(_databindc_program "")
+  if(_databind_hints)
+    find_program(_databindc_program
+      NAMES databindc
+      HINTS ${_databind_hints}
+      NO_DEFAULT_PATH
+      NO_CACHE)
+  endif()
+  if(NOT _databindc_program)
+    find_program(_databindc_program
+      NAMES databindc
+      NO_CACHE)
+  endif()
   if(NOT _databindc_program)
     message(FATAL_ERROR
             "databind_target() could not find host databindc. "
@@ -76,9 +85,21 @@ function(databind_target)
             "databind_target() requires at least one PROJECTIONS entry")
   endif()
 
-  if(TARGET "${DB_TARGET}")
+  foreach(reserved_target IN ITEMS
+          "${DB_TARGET}"
+          "${DB_TARGET}_plugin"
+          "${DB_TARGET}_databind_codegen")
+    if(TARGET "${reserved_target}")
+      message(FATAL_ERROR
+              "databind_target generated target already exists: "
+              "${reserved_target}")
+    endif()
+  endforeach()
+
+  if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
     message(FATAL_ERROR
-            "databind_target TARGET already exists: ${DB_TARGET}")
+            "databind_target PLUGIN requires business implementation through "
+            "SOURCES and/or LIBRARIES")
   endif()
 
   if(NOT DB_ARTIFACT_NAME)
