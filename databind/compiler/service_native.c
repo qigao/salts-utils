@@ -1,0 +1,357 @@
+#include "service_native.h"
+
+#include <ctype.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+static const Node *native_child(const Node *parent, const char *name) {
+  size_t i;
+  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
+  for (i = 0u; i < parent->data.map.count; ++i) {
+    const Node *child = parent->data.map.items[i];
+    if (child != NULL && child->name != NULL &&
+        strcmp(child->name, name) == 0)
+      return child;
+  }
+  return NULL;
+}
+
+static const Node *native_list(const Node *parent, const char *name) {
+  const Node *child = native_child(parent, name);
+  return child != NULL && child->type == NODE_LIST ? child : NULL;
+}
+
+static const char *native_string(const Node *parent, const char *name) {
+  const Node *child = native_child(parent, name);
+  return child != NULL && child->type == NODE_STRING
+             ? child->data.string_val
+             : NULL;
+}
+
+static char *native_strdup(const char *text) {
+  size_t length;
+  char *copy;
+  if (text == NULL) return NULL;
+  length = strlen(text);
+  if (length == SIZE_MAX) return NULL;
+  copy = (char *)malloc(length + 1u);
+  if (copy == NULL) return NULL;
+  memcpy(copy, text, length + 1u);
+  return copy;
+}
+
+static char *native_join2(
+    const char *left, const char *right, char separator) {
+  size_t a, b;
+  char *out;
+  if (left == NULL || right == NULL) return NULL;
+  a = strlen(left);
+  b = strlen(right);
+  if (a > SIZE_MAX - b - 2u) return NULL;
+  out = (char *)malloc(a + b + 2u);
+  if (out == NULL) return NULL;
+  memcpy(out, left, a);
+  out[a] = separator;
+  memcpy(out + a + 1u, right, b + 1u);
+  return out;
+}
+
+static char *native_join3(
+    const char *a, const char *b, const char *c, char separator) {
+  char *prefix = native_join2(a, b, separator);
+  char *out;
+  if (prefix == NULL) return NULL;
+  out = native_join2(prefix, c, separator);
+  free(prefix);
+  return out;
+}
+
+static int native_identifier_append(
+    const char *text, char *out, size_t out_size, size_t *used) {
+  size_t i;
+  if (text == NULL || text[0] == '\0' || out == NULL || used == NULL)
+    return 0;
+  for (i = 0u; text[i] != '\0'; ++i) {
+    unsigned char ch = (unsigned char)text[i];
+    int upper = ch >= 'A' && ch <= 'Z';
+    int lower = ch >= 'a' && ch <= 'z';
+    int digit = ch >= '0' && ch <= '9';
+    if (!upper && !lower && !digit && ch != '_') return 0;
+    if (upper) {
+      if (i != 0u && *used != 0u && out[*used - 1u] != '_' &&
+          ((text[i - 1u] >= 'a' && text[i - 1u] <= 'z') ||
+           (text[i - 1u] >= '0' && text[i - 1u] <= '9'))) {
+        if (*used + 1u >= out_size) return 0;
+        out[(*used)++] = '_';
+      }
+      ch = (unsigned char)(ch - 'A' + 'a');
+    }
+    if (*used + 1u >= out_size) return 0;
+    out[(*used)++] = (char)ch;
+  }
+  return 1;
+}
+
+static char *native_symbol(
+    const char *schema, const char *service, const char *operation) {
+  const char *parts[] = {schema, service, operation};
+  char buffer[512];
+  size_t used = 0u;
+  size_t i;
+  for (i = 0u; i < 3u; ++i) {
+    if (i != 0u) {
+      if (used + 1u >= sizeof(buffer)) return NULL;
+      buffer[used++] = '_';
+    }
+    if (!native_identifier_append(
+            parts[i], buffer, sizeof(buffer), &used))
+      return NULL;
+  }
+  if (used == 0u || (buffer[0] >= '0' && buffer[0] <= '9')) return NULL;
+  buffer[used] = '\0';
+  return native_strdup(buffer);
+}
+
+static int native_message_exists(const Node *root, const char *name) {
+  const Node *messages = native_list(root, "messages");
+  size_t i;
+  if (messages == NULL || name == NULL) return 0;
+  for (i = 0u; i < messages->data.list.count; ++i) {
+    const char *candidate =
+        native_string(messages->data.list.items[i], "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return 1;
+  }
+  return 0;
+}
+
+static char *native_type_identity(
+    const char *schema, const char *type_name) {
+  static const char prefix[] = "tbe.native.";
+  static const char suffix[] = "_t";
+  size_t a, b, total;
+  char *out;
+  if (schema == NULL || type_name == NULL) return NULL;
+  a = strlen(schema);
+  b = strlen(type_name);
+  if (a > SIZE_MAX - b - sizeof(prefix) - sizeof(suffix) - 1u) return NULL;
+  total = sizeof(prefix) - 1u + a + 1u + b + sizeof(suffix) - 1u;
+  out = (char *)malloc(total + 1u);
+  if (out == NULL) return NULL;
+  memcpy(out, prefix, sizeof(prefix) - 1u);
+  memcpy(out + sizeof(prefix) - 1u, schema, a);
+  out[sizeof(prefix) - 1u + a] = '.';
+  memcpy(out + sizeof(prefix) + a, type_name, b);
+  memcpy(out + sizeof(prefix) + a + b, suffix, sizeof(suffix));
+  return out;
+}
+
+static void native_operation_clear(
+    databind_compiler_service_native_operation *operation) {
+  if (operation == NULL) return;
+  free(operation->schema_name);
+  free(operation->service_name);
+  free(operation->operation_name);
+  free(operation->qualified_service);
+  free(operation->qualified_operation);
+  free(operation->symbol);
+  free(operation->request_type);
+  free(operation->response_type);
+  free(operation->request_type_identity);
+  free(operation->response_type_identity);
+  memset(operation, 0, sizeof(*operation));
+}
+
+void databind_compiler_service_native_destroy(
+    databind_compiler_service_native_ir *ir) {
+  size_t i;
+  if (ir == NULL) return;
+  for (i = 0u; i < ir->operation_count; ++i)
+    native_operation_clear(&ir->operations[i]);
+  free(ir->operations);
+  memset(ir, 0, sizeof(*ir));
+}
+
+static int native_operation_fill(
+    const Node *root,
+    const char *schema_name,
+    const char *service_name,
+    const Node *operation_node,
+    databind_compiler_service_native_operation *out) {
+  const char *operation_name = native_string(operation_node, "name");
+  const char *request_type = native_string(operation_node, "request_type");
+  const char *response_type = native_string(operation_node, "response_type");
+
+  if (out == NULL || operation_name == NULL ||
+      request_type == NULL || response_type == NULL ||
+      !native_message_exists(root, request_type) ||
+      !native_message_exists(root, response_type))
+    return 0;
+
+  out->schema_name = native_strdup(schema_name);
+  out->service_name = native_strdup(service_name);
+  out->operation_name = native_strdup(operation_name);
+  out->qualified_service =
+      native_join2(schema_name, service_name, '.');
+  out->qualified_operation =
+      native_join3(schema_name, service_name, operation_name, '.');
+  out->symbol = native_symbol(schema_name, service_name, operation_name);
+  out->request_type = native_strdup(request_type);
+  out->response_type = native_strdup(response_type);
+  out->request_type_identity =
+      native_type_identity(schema_name, request_type);
+  out->response_type_identity =
+      native_type_identity(schema_name, response_type);
+
+  return out->schema_name != NULL &&
+         out->service_name != NULL &&
+         out->operation_name != NULL &&
+         out->qualified_service != NULL &&
+         out->qualified_operation != NULL &&
+         out->symbol != NULL &&
+         out->request_type != NULL &&
+         out->response_type != NULL &&
+         out->request_type_identity != NULL &&
+         out->response_type_identity != NULL;
+}
+
+int databind_compiler_service_native_build(
+    const Node *canonical_ir,
+    databind_compiler_service_native_ir *out) {
+  const Node *schema;
+  const Node *services;
+  const char *schema_name;
+  size_t total = 0u;
+  size_t i, j, index = 0u;
+
+  if (out == NULL) return -1;
+  memset(out, 0, sizeof(*out));
+  if (canonical_ir == NULL) return -1;
+
+  schema = native_child(canonical_ir, "schema");
+  schema_name = native_string(schema, "schema_name");
+  if (schema_name == NULL || schema_name[0] == '\0')
+    schema_name = "GeneratedSchema";
+
+  services = native_list(canonical_ir, "services");
+  if (services == NULL) return -1;
+
+  for (i = 0u; i < services->data.list.count; ++i) {
+    const Node *operations =
+        native_list(services->data.list.items[i], "operations");
+    if (operations == NULL) return -1;
+    if (total > SIZE_MAX - operations->data.list.count) return -1;
+    total += operations->data.list.count;
+  }
+  if (total == 0u) return -1;
+
+  out->operations = (databind_compiler_service_native_operation *)calloc(
+      total, sizeof(*out->operations));
+  if (out->operations == NULL) return -1;
+  out->operation_count = total;
+
+  for (i = 0u; i < services->data.list.count; ++i) {
+    const Node *service = services->data.list.items[i];
+    const Node *operations = native_list(service, "operations");
+    const char *service_name = native_string(service, "name");
+    if (service_name == NULL || service_name[0] == '\0') goto fail;
+
+    for (j = 0u; j < operations->data.list.count; ++j, ++index) {
+      size_t prior;
+      if (!native_operation_fill(
+              canonical_ir, schema_name, service_name,
+              operations->data.list.items[j], &out->operations[index]))
+        goto fail;
+      for (prior = 0u; prior < index; ++prior)
+        if (strcmp(out->operations[prior].symbol,
+                   out->operations[index].symbol) == 0)
+          goto fail;
+    }
+  }
+
+  return 0;
+
+fail:
+  databind_compiler_service_native_destroy(out);
+  return -1;
+}
+
+int databind_compiler_service_native_emit_prototype(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation) {
+  if (file == NULL || operation == NULL ||
+      operation->symbol == NULL ||
+      operation->request_type == NULL ||
+      operation->response_type == NULL)
+    return -1;
+
+  return fprintf(
+             file,
+             "int %s(const %s_t *request, %s_t *response);\n",
+             operation->symbol,
+             operation->request_type,
+             operation->response_type) < 0
+             ? -1
+             : 0;
+}
+
+int databind_compiler_service_native_emit_reflection(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation) {
+  if (file == NULL || operation == NULL ||
+      operation->symbol == NULL ||
+      operation->qualified_operation == NULL ||
+      operation->request_type == NULL ||
+      operation->response_type == NULL ||
+      operation->request_type_identity == NULL ||
+      operation->response_type_identity == NULL)
+    return -1;
+
+  return fprintf(
+             file,
+             "static const cmeta_type_identity %s__request_id =\n"
+             "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+             "static const cmeta_type_desc %s__request_type = {\n"
+             "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+             "    CMETA_T_OBJECT, NULL, NULL, &%s__request_id};\n"
+             "static const cmeta_type_desc %s__request_ptr_type = {\n"
+             "    \"const %s_t *\", sizeof(const %s_t *), "
+             "_Alignof(const %s_t *),\n"
+             "    CMETA_T_POINTER, &%s__request_type, NULL, NULL};\n"
+             "static const cmeta_type_identity %s__response_id =\n"
+             "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+             "static const cmeta_type_desc %s__response_type = {\n"
+             "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+             "    CMETA_T_OBJECT, NULL, NULL, &%s__response_id};\n"
+             "static const cmeta_type_desc %s__response_ptr_type = {\n"
+             "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
+             "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n"
+             "CMETA_FUNCTION_METADATA_AS_ABI(\n"
+             "    %s, \"%s\", fallible, &cmeta_type_int, "
+             "CMETA_ABI_SCALAR,\n"
+             "    (const %s_t *, request,\n"
+             "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
+             "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+             "    (%s_t *, response,\n"
+             "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+             "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
+             operation->symbol, operation->request_type_identity,
+             operation->symbol, operation->request_type,
+             operation->request_type, operation->request_type,
+             operation->symbol,
+             operation->symbol, operation->request_type,
+             operation->request_type, operation->request_type,
+             operation->symbol,
+             operation->symbol, operation->response_type_identity,
+             operation->symbol, operation->response_type,
+             operation->response_type, operation->response_type,
+             operation->symbol,
+             operation->symbol, operation->response_type,
+             operation->response_type, operation->response_type,
+             operation->symbol,
+             operation->symbol, operation->qualified_operation,
+             operation->request_type, operation->symbol,
+             operation->response_type, operation->symbol) < 0
+             ? -1
+             : 0;
+}
