@@ -34,8 +34,11 @@ typedef struct databind_compiler_plugin_config {
   /* Existing generated native record header included by the Service header. */
   const char *native_header;
 
-  /* Generated business-facing Service declaration header. */
+  /* Generated business-facing Service + typed client declaration header. */
   const char *service_header_output;
+
+  /* Generated host-side typed Plugin client implementation source. */
+  const char *client_source_output;
 } databind_compiler_plugin_config;
 
 /*
