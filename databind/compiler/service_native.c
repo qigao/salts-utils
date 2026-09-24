@@ -67,50 +67,86 @@ static char *native_join3(
   return out;
 }
 
-static int native_identifier_append(
-    const char *text, char *out, size_t out_size, size_t *used) {
+static int native_identifier_valid(const char *text) {
   size_t i;
-  if (text == NULL || text[0] == '\0' || out == NULL || used == NULL)
+  if (text == NULL || text[0] == '\0') return 0;
+  if (!((text[0] >= 'A' && text[0] <= 'Z') ||
+        (text[0] >= 'a' && text[0] <= 'z') ||
+        text[0] == '_'))
     return 0;
-  for (i = 0u; text[i] != '\0'; ++i) {
+  for (i = 1u; text[i] != '\0'; ++i) {
     unsigned char ch = (unsigned char)text[i];
-    int upper = ch >= 'A' && ch <= 'Z';
-    int lower = ch >= 'a' && ch <= 'z';
-    int digit = ch >= '0' && ch <= '9';
-    if (!upper && !lower && !digit && ch != '_') return 0;
-    if (upper) {
-      if (i != 0u && *used != 0u && out[*used - 1u] != '_' &&
-          ((text[i - 1u] >= 'a' && text[i - 1u] <= 'z') ||
-           (text[i - 1u] >= '0' && text[i - 1u] <= '9'))) {
-        if (*used + 1u >= out_size) return 0;
-        out[(*used)++] = '_';
-      }
-      ch = (unsigned char)(ch - 'A' + 'a');
-    }
-    if (*used + 1u >= out_size) return 0;
-    out[(*used)++] = (char)ch;
+    if (!((ch >= 'A' && ch <= 'Z') ||
+          (ch >= 'a' && ch <= 'z') ||
+          (ch >= '0' && ch <= '9') ||
+          ch == '_'))
+      return 0;
   }
   return 1;
 }
 
+static size_t native_decimal_digits(size_t value) {
+  size_t digits = 1u;
+  while (value >= 10u) {
+    value /= 10u;
+    ++digits;
+  }
+  return digits;
+}
+
+/*
+ * Length-prefix every semantic identifier so C symbol lowering is injective.
+ *
+ * Example:
+ *   Image / Codec / Decode
+ *     -> databind_5_Image_5_Codec_6_Decode
+ *
+ * This avoids collisions such as:
+ *   A_B / C
+ *   A   / B_C
+ * that ordinary underscore concatenation cannot distinguish.
+ */
 static char *native_symbol(
     const char *schema, const char *service, const char *operation) {
+  static const char prefix[] = "databind";
   const char *parts[] = {schema, service, operation};
-  char buffer[512];
-  size_t used = 0u;
+  size_t lengths[3];
+  size_t total = sizeof(prefix) - 1u;
   size_t i;
+  size_t used;
+  char *out;
+
   for (i = 0u; i < 3u; ++i) {
-    if (i != 0u) {
-      if (used + 1u >= sizeof(buffer)) return NULL;
-      buffer[used++] = '_';
-    }
-    if (!native_identifier_append(
-            parts[i], buffer, sizeof(buffer), &used))
+    if (!native_identifier_valid(parts[i])) return NULL;
+    lengths[i] = strlen(parts[i]);
+    if (total > SIZE_MAX - 2u -
+                    native_decimal_digits(lengths[i]) -
+                    lengths[i])
       return NULL;
+    total += 2u + native_decimal_digits(lengths[i]) + lengths[i];
   }
-  if (used == 0u || (buffer[0] >= '0' && buffer[0] <= '9')) return NULL;
-  buffer[used] = '\0';
-  return native_strdup(buffer);
+
+  out = (char *)malloc(total + 1u);
+  if (out == NULL) return NULL;
+
+  memcpy(out, prefix, sizeof(prefix) - 1u);
+  used = sizeof(prefix) - 1u;
+  for (i = 0u; i < 3u; ++i) {
+    int written;
+    out[used++] = '_';
+    written = snprintf(
+        out + used, total + 1u - used, "%zu", lengths[i]);
+    if (written <= 0 || (size_t)written >= total + 1u - used) {
+      free(out);
+      return NULL;
+    }
+    used += (size_t)written;
+    out[used++] = '_';
+    memcpy(out + used, parts[i], lengths[i]);
+    used += lengths[i];
+  }
+  out[used] = '\0';
+  return out;
 }
 
 static const Node *native_message(
