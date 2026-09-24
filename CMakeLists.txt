@@ -115,6 +115,7 @@ write_basic_package_version_file(
 # Install the config files
 install(FILES "${CMAKE_BINARY_DIR}/SaltsUtilsConfig.cmake"
               "${CMAKE_BINARY_DIR}/SaltsUtilsConfigVersion.cmake"
+              "${CMAKE_SOURCE_DIR}/cmake/DataBind.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SaltsUtils"
         COMPONENT Development)
 
