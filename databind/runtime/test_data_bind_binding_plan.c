@@ -89,8 +89,8 @@ static const cmeta_data_desc ADD_RESPONSE_DATA = {
     .storage_type = &ADD_RESPONSE_TYPE,
     .shape = &ADD_RESPONSE_SHAPE};
 
-static const DataBindNativePresenceBinding ADD_REQUEST_PRESENCE[] = {
-    {sizeof(DataBindNativePresenceBinding), "scale",
+static const DataBindNativeStateBinding ADD_REQUEST_PRESENCE[] = {
+    {sizeof(DataBindNativeStateBinding), "scale",
      offsetof(AddRequest, presence), 0u}};
 
 static const DataBindNativeTypeBinding ADD_REQUEST_NATIVE = {
@@ -99,13 +99,17 @@ static const DataBindNativeTypeBinding ADD_REQUEST_NATIVE = {
     "AddRequest",
     &ADD_REQUEST_DATA,
     ADD_REQUEST_PRESENCE,
-    1u};
+    1u,
+    NULL,
+    0u};
 
 static const DataBindNativeTypeBinding ADD_RESPONSE_NATIVE = {
     sizeof(DataBindNativeTypeBinding),
     DATA_BIND_BINDING_PLAN_ABI_VERSION,
     "AddResponse",
     &ADD_RESPONSE_DATA,
+    NULL,
+    0u,
     NULL,
     0u};
 
@@ -154,6 +158,170 @@ static DataBindServiceNativeBinding native_binding(
   return (DataBindServiceNativeBinding)
       DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
           function, &ADD_REQUEST_NATIVE, &ADD_RESPONSE_NATIVE);
+}
+
+
+typedef struct StateRequest {
+  uint32_t required_value;
+  uint32_t optional_value;
+  uint32_t nullable_value;
+  uint32_t defaulted_value;
+  uint8_t presence;
+  uint8_t nulls;
+} StateRequest;
+
+typedef struct StateResponse {
+  uint32_t nullable_result;
+  uint32_t tri_result;
+  uint8_t presence;
+  uint8_t nulls;
+} StateResponse;
+
+static const cmeta_type_identity STATE_REQUEST_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.state.StateRequest");
+static const cmeta_type_identity STATE_RESPONSE_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.state.StateResponse");
+
+static const cmeta_type_desc STATE_REQUEST_TYPE = {
+    "StateRequest", sizeof(StateRequest), _Alignof(StateRequest),
+    CMETA_T_OBJECT, NULL, NULL, &STATE_REQUEST_ID};
+static const cmeta_type_desc STATE_RESPONSE_TYPE = {
+    "StateResponse", sizeof(StateResponse), _Alignof(StateResponse),
+    CMETA_T_OBJECT, NULL, NULL, &STATE_RESPONSE_ID};
+static const cmeta_type_desc STATE_REQUEST_PTR_TYPE = {
+    "const StateRequest *", sizeof(StateRequest *), _Alignof(StateRequest *),
+    CMETA_T_POINTER, &STATE_REQUEST_TYPE, NULL, NULL};
+static const cmeta_type_desc STATE_RESPONSE_PTR_TYPE = {
+    "StateResponse *", sizeof(StateResponse *), _Alignof(StateResponse *),
+    CMETA_T_POINTER, &STATE_RESPONSE_TYPE, NULL, NULL};
+
+static const cmeta_field_desc STATE_REQUEST_LAYOUT_FIELDS[] = {
+    {"required_value", "uint32_t", offsetof(StateRequest, required_value),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"optional_value", "uint32_t", offsetof(StateRequest, optional_value),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"nullable_value", "uint32_t", offsetof(StateRequest, nullable_value),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"defaulted_value", "uint32_t", offsetof(StateRequest, defaulted_value),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc STATE_REQUEST_LAYOUT = {
+    "StateRequest", sizeof(StateRequest), _Alignof(StateRequest),
+    STATE_REQUEST_LAYOUT_FIELDS, 4u};
+static const cmeta_data_field_desc STATE_REQUEST_FIELDS[] = {
+    {"test.state.StateRequest.required_value", "required_value",
+     offsetof(StateRequest, required_value), &salts_uint32_cmeta_data},
+    {"test.state.StateRequest.optional_value", "optional_value",
+     offsetof(StateRequest, optional_value), &salts_uint32_cmeta_data},
+    {"test.state.StateRequest.nullable_value", "nullable_value",
+     offsetof(StateRequest, nullable_value), &salts_uint32_cmeta_data},
+    {"test.state.StateRequest.defaulted_value", "defaulted_value",
+     offsetof(StateRequest, defaulted_value), &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape STATE_REQUEST_SHAPE = {
+    &STATE_REQUEST_LAYOUT, STATE_REQUEST_FIELDS, 4u};
+static const cmeta_data_desc STATE_REQUEST_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.state.StateRequest.data",
+    .display_name = "StateRequest",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &STATE_REQUEST_TYPE,
+    .shape = &STATE_REQUEST_SHAPE};
+
+static const cmeta_field_desc STATE_RESPONSE_LAYOUT_FIELDS[] = {
+    {"nullable_result", "uint32_t", offsetof(StateResponse, nullable_result),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+    {"tri_result", "uint32_t", offsetof(StateResponse, tri_result),
+     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+static const cmeta_struct_desc STATE_RESPONSE_LAYOUT = {
+    "StateResponse", sizeof(StateResponse), _Alignof(StateResponse),
+    STATE_RESPONSE_LAYOUT_FIELDS, 2u};
+static const cmeta_data_field_desc STATE_RESPONSE_FIELDS[] = {
+    {"test.state.StateResponse.nullable_result", "nullable_result",
+     offsetof(StateResponse, nullable_result), &salts_uint32_cmeta_data},
+    {"test.state.StateResponse.tri_result", "tri_result",
+     offsetof(StateResponse, tri_result), &salts_uint32_cmeta_data}};
+static const cmeta_data_struct_shape STATE_RESPONSE_SHAPE = {
+    &STATE_RESPONSE_LAYOUT, STATE_RESPONSE_FIELDS, 2u};
+static const cmeta_data_desc STATE_RESPONSE_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.state.StateResponse.data",
+    .display_name = "StateResponse",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &STATE_RESPONSE_TYPE,
+    .shape = &STATE_RESPONSE_SHAPE};
+
+static const DataBindNativeStateBinding STATE_REQUEST_PRESENCE[] = {
+    {sizeof(DataBindNativeStateBinding), "optional_value",
+     offsetof(StateRequest, presence), 0u},
+    {sizeof(DataBindNativeStateBinding), "defaulted_value",
+     offsetof(StateRequest, presence), 1u}};
+static const DataBindNativeStateBinding STATE_REQUEST_NULLS[] = {
+    {sizeof(DataBindNativeStateBinding), "nullable_value",
+     offsetof(StateRequest, nulls), 0u},
+    {sizeof(DataBindNativeStateBinding), "defaulted_value",
+     offsetof(StateRequest, nulls), 1u}};
+static const DataBindNativeStateBinding STATE_RESPONSE_PRESENCE[] = {
+    {sizeof(DataBindNativeStateBinding), "tri_result",
+     offsetof(StateResponse, presence), 0u}};
+static const DataBindNativeStateBinding STATE_RESPONSE_NULLS[] = {
+    {sizeof(DataBindNativeStateBinding), "nullable_result",
+     offsetof(StateResponse, nulls), 0u},
+    {sizeof(DataBindNativeStateBinding), "tri_result",
+     offsetof(StateResponse, nulls), 1u}};
+
+static const DataBindNativeTypeBinding STATE_REQUEST_NATIVE = {
+    sizeof(DataBindNativeTypeBinding),
+    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    "StateRequest",
+    &STATE_REQUEST_DATA,
+    STATE_REQUEST_PRESENCE,
+    2u,
+    STATE_REQUEST_NULLS,
+    2u};
+static const DataBindNativeTypeBinding STATE_RESPONSE_NATIVE = {
+    sizeof(DataBindNativeTypeBinding),
+    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    "StateResponse",
+    &STATE_RESPONSE_DATA,
+    STATE_RESPONSE_PRESENCE,
+    1u,
+    STATE_RESPONSE_NULLS,
+    2u};
+
+FunctionDeclAs(
+    value, int, &cmeta_type_int, state_run_root,
+    (const StateRequest *, request,
+     CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &STATE_REQUEST_PTR_TYPE),
+    (StateResponse *, response,
+     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED, &STATE_RESPONSE_PTR_TYPE));
+
+static DataBind *create_state_codec(void) {
+  static const char schema[] =
+      "message StateRequest {"
+      " [query] uint32 required_value;"
+      " optional [query] uint32 optional_value;"
+      " nullable [query] uint32 nullable_value;"
+      " optional nullable [query] uint32 defaulted_value default 7;"
+      "}"
+      "message StateResponse {"
+      " nullable uint32 nullable_result;"
+      " optional nullable uint32 tri_result;"
+      "}"
+      "service State { [rpc] Run: StateRequest -> StateResponse; }";
+  DataBind *codec = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  check_equal(data_bind_create_from_text(
+                  schema, sizeof(schema) - 1u, &codec, &error),
+              DATA_BIND_OK);
+  return codec;
+}
+
+static DataBindServiceNativeBinding state_native_binding(void) {
+  return (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+          FunctionMeta(state_run_root),
+          &STATE_REQUEST_NATIVE, &STATE_RESPONSE_NATIVE);
 }
 
 typedef struct ProjectionScratch {
@@ -296,15 +464,161 @@ static const char *entry_logical_name(const DataBindBindingPlanEntry *entry) {
   return entry->address.name;
 }
 
+typedef struct StateProvider {
+  OneTokenReader reader;
+  DataBindBindingValueState required_state;
+  DataBindBindingValueState optional_state;
+  DataBindBindingValueState nullable_state;
+  DataBindBindingValueState defaulted_state;
+  uint32_t required_value;
+  uint32_t optional_value;
+  uint32_t nullable_value;
+  uint32_t defaulted_value;
+
+  size_t begin_calls;
+  size_t write_calls;
+  size_t value_calls;
+  size_t null_calls;
+  size_t commit_calls;
+  size_t abort_calls;
+  DataBindBindingValueState nullable_result_state;
+  DataBindBindingValueState tri_result_state;
+  uint32_t nullable_result_value;
+  uint32_t tri_result_value;
+} StateProvider;
+
+static DataBindStatus state_provider_open(
+    void *context, const DataBindBindingPlanEntry *entry,
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error) {
+  StateProvider *provider = (StateProvider *)context;
+  const char *name;
+  uint32_t value = 0u;
+  (void)error;
+
+  if (provider == NULL || entry == NULL || reader == NULL || state == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  name = entry_logical_name(entry);
+  if (name == NULL) return DATA_BIND_ERR_SCHEMA;
+
+  if (strcmp(name, "required_value") == 0) {
+    *state = provider->required_state;
+    value = provider->required_value;
+  } else if (strcmp(name, "optional_value") == 0) {
+    *state = provider->optional_state;
+    value = provider->optional_value;
+  } else if (strcmp(name, "nullable_value") == 0) {
+    *state = provider->nullable_state;
+    value = provider->nullable_value;
+  } else if (strcmp(name, "defaulted_value") == 0) {
+    *state = provider->defaulted_state;
+    value = provider->defaulted_value;
+  } else {
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+  }
+
+  if (*state != DATA_BIND_STATE_VALUE) return DATA_BIND_OK;
+
+  provider->reader.token =
+      (cserde_token){.kind = CSERDE_UINT, .value.uint = value};
+  provider->reader.emitted = 0;
+  return cserde_reader_init(reader, &ONE_TOKEN_OPS, &provider->reader) ==
+                 CSERDE_OK
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
+}
+
+static DataBindStatus state_provider_begin(
+    void *context, DataBindError *error) {
+  StateProvider *provider = (StateProvider *)context;
+  (void)error;
+  if (provider == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++provider->begin_calls;
+  provider->write_calls = 0u;
+  provider->value_calls = 0u;
+  provider->null_calls = 0u;
+  provider->nullable_result_state = DATA_BIND_STATE_ABSENT;
+  provider->tri_result_state = DATA_BIND_STATE_ABSENT;
+  provider->nullable_result_value = 0u;
+  provider->tri_result_value = 0u;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus state_provider_write(
+    void *context, const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState state, const void *value, size_t value_bytes,
+    DataBindError *error) {
+  StateProvider *provider = (StateProvider *)context;
+  const char *name;
+  uint32_t scalar = 0u;
+  (void)error;
+
+  if (provider == NULL || entry == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  if (state != DATA_BIND_STATE_VALUE && state != DATA_BIND_STATE_NULL)
+    return DATA_BIND_ERR_SCHEMA;
+
+  if (state == DATA_BIND_STATE_NULL) {
+    if (value != NULL || value_bytes != 0u)
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    ++provider->null_calls;
+  } else {
+    if (value == NULL || value_bytes != sizeof(uint32_t))
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    scalar = *(const uint32_t *)value;
+    ++provider->value_calls;
+  }
+
+  name = entry_logical_name(entry);
+  ++provider->write_calls;
+  if (name != NULL && strcmp(name, "nullable_result") == 0) {
+    provider->nullable_result_state = state;
+    provider->nullable_result_value = scalar;
+    return DATA_BIND_OK;
+  }
+  if (name != NULL && strcmp(name, "tri_result") == 0) {
+    provider->tri_result_state = state;
+    provider->tri_result_value = scalar;
+    return DATA_BIND_OK;
+  }
+  return DATA_BIND_ERR_TYPE_NOT_FOUND;
+}
+
+static DataBindStatus state_provider_commit(
+    void *context, DataBindError *error) {
+  StateProvider *provider = (StateProvider *)context;
+  (void)error;
+  if (provider == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++provider->commit_calls;
+  return DATA_BIND_OK;
+}
+
+static void state_provider_abort(void *context) {
+  StateProvider *provider = (StateProvider *)context;
+  if (provider != NULL) ++provider->abort_calls;
+}
+
+static DataBindBindingProvider state_provider_for(StateProvider *state) {
+  DataBindBindingProvider provider = DATA_BIND_BINDING_PROVIDER_INIT;
+  provider.context = state;
+  provider.open_input = state_provider_open;
+  provider.begin_output = state_provider_begin;
+  provider.write_output = state_provider_write;
+  provider.commit_output = state_provider_commit;
+  provider.abort_output = state_provider_abort;
+  return provider;
+}
+
+
 static DataBindStatus provider_open(
     void *context, const DataBindBindingPlanEntry *entry,
-    cserde_reader *reader, int *present, DataBindError *error) {
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error) {
   TestProvider *provider = (TestProvider *)context;
   const char *name;
   uint64_t value;
   (void)error;
 
-  if (provider == NULL || entry == NULL || reader == NULL || present == NULL)
+  if (provider == NULL || entry == NULL || reader == NULL || state == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (entry->address.binding_class != DATA_BIND_BINDING_VALUE &&
       entry->address.binding_class != DATA_BIND_BINDING_METADATA &&
@@ -312,7 +626,7 @@ static DataBindStatus provider_open(
     return DATA_BIND_ERR_SCHEMA;
 
   name = entry_logical_name(entry);
-  *present = 1;
+  *state = DATA_BIND_STATE_VALUE;
   if (strcmp(name, "left") == 0) {
     value = 3u;
   } else if (strcmp(name, "right") == 0) {
@@ -330,7 +644,7 @@ static DataBindStatus provider_open(
     value = 4u;
   } else if (strcmp(name, "scale") == 0) {
     if (!provider->provide_scale) {
-      *present = 0;
+      *state = DATA_BIND_STATE_ABSENT;
       return DATA_BIND_OK;
     }
     value = 2u;
@@ -357,12 +671,14 @@ static DataBindStatus provider_begin(void *context, DataBindError *error) {
 
 static DataBindStatus provider_write(
     void *context, const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState state,
     const void *value, size_t value_bytes, DataBindError *error) {
   TestProvider *provider = (TestProvider *)context;
   (void)error;
   ++provider->write_calls;
   if (provider->fail_write) return DATA_BIND_ERR_RUNTIME;
-  if (entry->address.binding_class != DATA_BIND_BINDING_RESULT ||
+  if (state != DATA_BIND_STATE_VALUE ||
+      entry->address.binding_class != DATA_BIND_BINDING_RESULT ||
       strcmp(entry_logical_name(entry), "sum") != 0 ||
       value == NULL || value_bytes != sizeof(uint32_t))
     return DATA_BIND_ERR_TYPE_MISMATCH;
@@ -451,9 +767,12 @@ static DataBindStatus encode_provider_begin(
 
 static DataBindStatus encode_provider_write(
     void *context, const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState state,
     const void *value, size_t value_bytes, DataBindError *error) {
   EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
   DataBindStatus status;
+  if (state != DATA_BIND_STATE_VALUE || value == NULL)
+    return DATA_BIND_ERR_TYPE_MISMATCH;
   ++provider->write_calls;
   status = data_bind_native_encode(
       provider->options, entry->data, value, value_bytes,
@@ -606,7 +925,7 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(request.left, 3u);
     check_equal(request.right, 4u);
     check_equal(request.scale, 1u);
-    check_equal(request.presence, 0u);
+    check_equal(request.presence, (uint8_t)(1u << 0));
 
     response.sum = request.left + request.right * request.scale;
     check_equal(data_bind_binding_plan_write_outputs(
@@ -809,7 +1128,186 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
-  it("rejects malformed native optional-presence bindings") {
+  it("preserves ABSENT NULL VALUE through dual native state overlays") {
+    DataBind *codec = create_state_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-state", &scratch, rpc_project);
+    DataBindServiceNativeBinding native = state_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    StateProvider state = {
+        .required_state = DATA_BIND_STATE_VALUE,
+        .optional_state = DATA_BIND_STATE_ABSENT,
+        .nullable_state = DATA_BIND_STATE_NULL,
+        .defaulted_state = DATA_BIND_STATE_ABSENT,
+        .required_value = 11u,
+        .optional_value = 22u,
+        .nullable_value = 33u,
+        .defaulted_value = 44u};
+    DataBindBindingProvider provider = state_provider_for(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    StateRequest request = {
+        .required_value = 91u,
+        .optional_value = 92u,
+        .nullable_value = 93u,
+        .defaulted_value = 94u,
+        .presence = 0xffu,
+        .nulls = 0xffu};
+    StateResponse response = {0};
+    void *params[] = {NULL, &response};
+    const size_t param_bytes[] = {0u, sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingPlanEntry entry = DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "State", "Run", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    check(data_bind_binding_plan_ingress_at(plan, 2u, &entry));
+    check_equal(entry.nullable, 1);
+    check_equal(entry.has_null, 1);
+    check_equal(entry.has_presence, 0);
+
+    entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    check(data_bind_binding_plan_ingress_at(plan, 3u, &entry));
+    check_equal(entry.nullable, 1);
+    check_equal(entry.has_null, 1);
+    check_equal(entry.has_presence, 1);
+    check_equal(entry.has_default, 1);
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(request.required_value, 11u);
+    check_equal(request.optional_value, 0u);
+    check_equal(request.nullable_value, 0u);
+    check_equal(request.defaulted_value, 7u);
+    check_equal(request.presence, (uint8_t)(1u << 1));
+    check_equal(request.nulls, (uint8_t)(1u << 0));
+
+    check_equal(data_bind_native_clear(
+                    &options, &STATE_REQUEST_DATA, &request,
+                    sizeof(request), &native_diagnostic),
+                DATA_BIND_OK);
+
+    /* Explicit NULL is not replaced by the default. */
+    state.nullable_state = DATA_BIND_STATE_VALUE;
+    state.nullable_value = 5u;
+    state.defaulted_state = DATA_BIND_STATE_NULL;
+    request = (StateRequest){
+        .required_value = 81u,
+        .optional_value = 82u,
+        .nullable_value = 83u,
+        .defaulted_value = 84u,
+        .presence = 0xffu,
+        .nulls = 0xffu};
+    native_diagnostic =
+        (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(request.required_value, 11u);
+    check_equal(request.optional_value, 0u);
+    check_equal(request.nullable_value, 5u);
+    check_equal(request.defaulted_value, 0u);
+    check_equal(request.presence, (uint8_t)(1u << 1));
+    check_equal(request.nulls, (uint8_t)(1u << 1));
+
+    check_equal(data_bind_native_clear(
+                    &options, &STATE_REQUEST_DATA, &request,
+                    sizeof(request), &native_diagnostic),
+                DATA_BIND_OK);
+
+    /* A non-null field rejects explicit NULL and rolls back all state. */
+    state.required_state = DATA_BIND_STATE_NULL;
+    request = (StateRequest){
+        .required_value = 71u,
+        .optional_value = 72u,
+        .nullable_value = 73u,
+        .defaulted_value = 74u,
+        .presence = 0xffu,
+        .nulls = 0xffu};
+    check_equal(data_bind_binding_plan_bind_inputs(
+                    plan, &provider, &options, &frame, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(diagnostic.schema_field, "required_value");
+    check_equal(request.required_value, 0u);
+    check_equal(request.optional_value, 0u);
+    check_equal(request.nullable_value, 0u);
+    check_equal(request.defaulted_value, 0u);
+    check_equal(request.presence, 0u);
+    check_equal(request.nulls, 0u);
+    state.required_state = DATA_BIND_STATE_VALUE;
+
+    /* Required nullable NULL is published; optional nullable ABSENT is omitted. */
+    response = (StateResponse){
+        .nullable_result = 101u,
+        .tri_result = 102u,
+        .presence = 0u,
+        .nulls = (uint8_t)(1u << 0)};
+    check_equal(data_bind_binding_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.write_calls, 1u);
+    check_equal(state.null_calls, 1u);
+    check_equal(state.value_calls, 0u);
+    check_equal(state.nullable_result_state, DATA_BIND_STATE_NULL);
+    check_equal(state.tri_result_state, DATA_BIND_STATE_ABSENT);
+
+    /* Required nullable VALUE plus optional nullable NULL are distinct. */
+    response = (StateResponse){
+        .nullable_result = 13u,
+        .tri_result = 14u,
+        .presence = (uint8_t)(1u << 0),
+        .nulls = (uint8_t)(1u << 1)};
+    check_equal(data_bind_binding_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.write_calls, 2u);
+    check_equal(state.value_calls, 1u);
+    check_equal(state.null_calls, 1u);
+    check_equal(state.nullable_result_state, DATA_BIND_STATE_VALUE);
+    check_equal(state.nullable_result_value, 13u);
+    check_equal(state.tri_result_state, DATA_BIND_STATE_NULL);
+
+    /* null=1 while presence=0 is not a canonical native state. */
+    response = (StateResponse){
+        .nullable_result = 15u,
+        .tri_result = 16u,
+        .presence = 0u,
+        .nulls = (uint8_t)(1u << 1)};
+    {
+      size_t abort_before = state.abort_calls;
+      check_equal(data_bind_binding_plan_write_outputs(
+                      plan, &provider, &frame, &diagnostic),
+                  DATA_BIND_ERR_SCHEMA);
+      check_equal(diagnostic.schema_field, "tri_result");
+      check_equal(state.abort_calls, abort_before + 1u);
+    }
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects malformed native state bindings") {
     DataBind *codec = create_codec();
     ProjectionScratch scratch = {{0}, {0}};
     DataBindBindingProjection http =
@@ -818,8 +1316,8 @@ spec("DataBind canonical Service BindingPlan") {
         DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
     DataBindBindingPlan *plan = NULL;
 
-    const DataBindNativePresenceBinding required_presence[] = {
-        {sizeof(DataBindNativePresenceBinding), "left",
+    const DataBindNativeStateBinding required_presence[] = {
+        {sizeof(DataBindNativeStateBinding), "left",
          offsetof(AddRequest, presence), 1u}};
     DataBindNativeTypeBinding bad_required = ADD_REQUEST_NATIVE;
     DataBindServiceNativeBinding native;
@@ -838,10 +1336,10 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(diagnostic.schema_field, "left");
 
     {
-      const DataBindNativePresenceBinding duplicate_presence[] = {
-          {sizeof(DataBindNativePresenceBinding), "scale",
+      const DataBindNativeStateBinding duplicate_presence[] = {
+          {sizeof(DataBindNativeStateBinding), "scale",
            offsetof(AddRequest, presence), 0u},
-          {sizeof(DataBindNativePresenceBinding), "scale",
+          {sizeof(DataBindNativeStateBinding), "scale",
            offsetof(AddRequest, presence), 0u}};
       DataBindNativeTypeBinding bad_duplicate = ADD_REQUEST_NATIVE;
 
@@ -864,8 +1362,8 @@ spec("DataBind canonical Service BindingPlan") {
     }
 
     {
-      const DataBindNativePresenceBinding overlapping_presence[] = {
-          {sizeof(DataBindNativePresenceBinding), "scale",
+      const DataBindNativeStateBinding overlapping_presence[] = {
+          {sizeof(DataBindNativeStateBinding), "scale",
            offsetof(AddRequest, left), 0u}};
       DataBindNativeTypeBinding bad_overlap = ADD_REQUEST_NATIVE;
 
