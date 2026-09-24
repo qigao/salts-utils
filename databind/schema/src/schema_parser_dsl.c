@@ -666,7 +666,7 @@ static int annotate_var_data_accessors(Node *root) {
     return 0;
 }
 
-static int annotate_optional_fields(Node *root) {
+static int annotate_field_states(Node *root) {
     static const char *record_lists[] = { "messages", "composites", "groups" };
     
     for (size_t list_idx = 0; list_idx < sizeof(record_lists) / sizeof(record_lists[0]); ++list_idx) {
@@ -1439,7 +1439,7 @@ static int annotate_schema_tree(Node *root) {
     if (annotate_type_references(root) != 0) return -1;
     if (annotate_group_cursors(root) != 0) return -1;
     if (annotate_var_data_accessors(root) != 0) return -1;
-    if (annotate_optional_fields(root) != 0) return -1;
+    if (annotate_field_states(root) != 0) return -1;
     if (annotate_enum_helpers(root) != 0) return -1;
     if (annotate_unions(root) != 0) return -1;
     return 0;
