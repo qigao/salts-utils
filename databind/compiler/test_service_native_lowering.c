@@ -83,10 +83,10 @@ spec("DataBind canonical Service native lowering") {
     check_equal(databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
                     &request, &response, &native, &error),
                 DATA_BIND_OK);
-    check_equal(request.presence_count, (size_t)1u);
-    check_equal(response.presence_count, (size_t)1u);
-    check_equal(request.presence[0].field_name, "scale");
-    check_equal(response.presence[0].field_name, "sum");
+    check_equal(request.presence_count, (size_t)0u);
+    check_equal(response.presence_count, (size_t)0u);
+    check_null(request.presence);
+    check_null(response.presence);
     check_true(native.function == function);
     check_true(native.request == &request);
     check_true(native.response == &response);
