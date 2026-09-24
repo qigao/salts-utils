@@ -546,6 +546,233 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
     }
 }
 
+static int validation_token_equals(schema_token_t token, const char *text) {
+    size_t length = text != NULL ? strlen(text) : 0u;
+    return token.value != NULL && token.length == length &&
+           memcmp(token.value, text, length) == 0;
+}
+
+static Node *validation_constraint_node(schema_parse_ctx_t *ctx,
+                                        const char *kind) {
+    Node *node = create_node_map(NULL);
+    if (node == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+    add_string(ctx, node, "kind", kind);
+    if (ctx->error) {
+        node_free(node);
+        return NULL;
+    }
+    return node;
+}
+
+static Node *create_validation_numeric_constraint(
+    schema_parse_ctx_t *ctx, schema_token_t annotation,
+    schema_token_t value_token) {
+    Node *node = NULL;
+    char *value = tok_strdup(value_token);
+    const char *kind = NULL;
+
+    if (validation_token_equals(annotation, "Min"))
+        kind = "min";
+    else if (validation_token_equals(annotation, "Max"))
+        kind = "max";
+    else {
+        char *name = tok_strdup(annotation);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Validation annotation @%s does not accept one numeric argument",
+                 name != NULL ? name : "<invalid>");
+        free(name);
+        free(value);
+        ctx->error = 1;
+        return NULL;
+    }
+
+    if (value == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+    node = validation_constraint_node(ctx, kind);
+    if (node != NULL)
+        add_string(ctx, node, "value", value);
+    free(value);
+    if (ctx->error) {
+        node_free(node);
+        return NULL;
+    }
+    return node;
+}
+
+static Node *create_validation_pattern_constraint(
+    schema_parse_ctx_t *ctx, schema_token_t annotation,
+    schema_token_t pattern_token) {
+    Node *node = NULL;
+    char *pattern = tok_strdup(pattern_token);
+
+    if (!validation_token_equals(annotation, "Pattern")) {
+        char *name = tok_strdup(annotation);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Validation annotation @%s does not accept a string argument",
+                 name != NULL ? name : "<invalid>");
+        free(name);
+        free(pattern);
+        ctx->error = 1;
+        return NULL;
+    }
+
+    if (pattern == NULL) {
+        grammar_oom(ctx);
+        return NULL;
+    }
+    node = validation_constraint_node(ctx, "pattern");
+    if (node != NULL)
+        add_string(ctx, node, "pattern", pattern);
+    free(pattern);
+    if (ctx->error) {
+        node_free(node);
+        return NULL;
+    }
+    return node;
+}
+
+static int validation_size_arg(
+    schema_parse_ctx_t *ctx, Node *node,
+    schema_token_t name_token, schema_token_t value_token,
+    size_t *out_value) {
+    char *name = tok_strdup(name_token);
+    char *value = tok_strdup(value_token);
+    const char *key = NULL;
+    size_t parsed = 0u;
+
+    if (name == NULL || value == NULL) {
+        free(name);
+        free(value);
+        grammar_oom(ctx);
+        return 0;
+    }
+    if (strcmp(name, "min") == 0)
+        key = "min";
+    else if (strcmp(name, "max") == 0)
+        key = "max";
+    else {
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "@Size accepts only min/max arguments, got '%s'", name);
+        ctx->error = 1;
+    }
+
+    if (!ctx->error &&
+        (!is_numeric_literal(value) ||
+         !schema_parse_fixed_layout_size(value, &parsed))) {
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "@Size %s must be a bounded non-negative decimal integer",
+                 key != NULL ? key : "argument");
+        ctx->error = 1;
+    }
+
+    if (!ctx->error && map_get_string_value(node, key) != NULL) {
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "@Size repeats argument '%s'", key);
+        ctx->error = 1;
+    }
+
+    if (!ctx->error) {
+        add_string(ctx, node, key, value);
+        if (out_value != NULL) *out_value = parsed;
+    }
+
+    free(name);
+    free(value);
+    return !ctx->error;
+}
+
+static Node *create_validation_size_constraint(
+    schema_parse_ctx_t *ctx, schema_token_t annotation,
+    schema_token_t name1, schema_token_t value1,
+    int has_second, schema_token_t name2, schema_token_t value2) {
+    Node *node;
+    size_t first_value = 0u;
+    size_t second_value = 0u;
+
+    if (!validation_token_equals(annotation, "Size")) {
+        char *name = tok_strdup(annotation);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Validation annotation @%s does not accept named size arguments",
+                 name != NULL ? name : "<invalid>");
+        free(name);
+        ctx->error = 1;
+        return NULL;
+    }
+
+    node = validation_constraint_node(ctx, "size");
+    if (node == NULL) return NULL;
+    if (!validation_size_arg(ctx, node, name1, value1, &first_value) ||
+        (has_second &&
+         !validation_size_arg(ctx, node, name2, value2, &second_value))) {
+        node_free(node);
+        return NULL;
+    }
+
+    {
+        const char *minimum = map_get_string_value(node, "min");
+        const char *maximum = map_get_string_value(node, "max");
+        if (minimum != NULL && maximum != NULL) {
+            size_t min_value = 0u;
+            size_t max_value = 0u;
+            if (!schema_parse_fixed_layout_size(minimum, &min_value) ||
+                !schema_parse_fixed_layout_size(maximum, &max_value) ||
+                min_value > max_value) {
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                         "@Size requires min <= max");
+                ctx->error = 1;
+                node_free(node);
+                return NULL;
+            }
+        }
+    }
+    (void)first_value;
+    (void)second_value;
+    return node;
+}
+
+static Node *validation_constraints_append(schema_parse_ctx_t *ctx,
+                                           Node *list, Node *constraint) {
+    const char *kind;
+    size_t i;
+
+    if (constraint == NULL || ctx->error) {
+        node_free(constraint);
+        return list;
+    }
+    if (list == NULL) {
+        list = create_node_list("constraints");
+        if (list == NULL) {
+            node_free(constraint);
+            grammar_oom(ctx);
+            return NULL;
+        }
+    }
+
+    kind = map_get_string_value(constraint, "kind");
+    for (i = 0u; i < list->data.list.count; ++i) {
+        const char *existing =
+            map_get_string_value(list->data.list.items[i], "kind");
+        if (kind != NULL && existing != NULL && strcmp(kind, existing) == 0) {
+            snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                     "Duplicate validation constraint '%s'", kind);
+            ctx->error = 1;
+            node_free(constraint);
+            return list;
+        }
+    }
+
+    if (list_add(list, constraint) != 0) {
+        node_free(constraint);
+        grammar_oom(ctx);
+    }
+    return list;
+}
+
 static void add_field(schema_parse_ctx_t *ctx,
                       const char *type_str, const char *name_str,
                       int is_collection, const char *inner, const char *len_field,
