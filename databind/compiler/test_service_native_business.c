@@ -1,5 +1,7 @@
 #include "service_native_generated.h"
 
+#include <stdint.h>
+
 int databind_13_ServiceNative_4_Calc_3_Add(
     const AddRequest_t *request,
     AddResponse_t *response) {
@@ -16,6 +18,9 @@ int databind_13_ServiceNative_4_Calc_4_Find(
 
   *error = (databind_13_ServiceNative_4_Calc_4_Find__error)
       databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+
+  if (request->left == UINT32_MAX)
+    return -9;
 
   if (request->left == 0u) {
     error->kind = databind_13_ServiceNative_4_Calc_4_Find__ERROR_1;
