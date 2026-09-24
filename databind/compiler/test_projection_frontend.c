@@ -46,8 +46,16 @@ spec("DataBind public projection frontend") {
                 "image_processor.plugin.c");
     check_equal(path_base(plan.plugin_service_header, base),
                 "image_processor.plugin.h");
+    check_equal(path_base(plan.plugin_client_header, base),
+                "image_processor.plugin_client.h");
+    check_equal(path_base(plan.plugin_client_source, base),
+                "image_processor.plugin_client.c");
     check_true(plan.plugin.service_header_output ==
                plan.plugin_service_header);
+    check_true(plan.plugin.client_header_output ==
+               plan.plugin_client_header);
+    check_true(plan.plugin.client_source_output ==
+               plan.plugin_client_source);
   }
 
   it("parses whitespace around projection names") {
