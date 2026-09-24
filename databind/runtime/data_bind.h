@@ -25,14 +25,14 @@
 
 #define DATA_BIND_UUID_SIZE SALTS_UUID_SIZE
 
-#define DATA_BIND_VERSION_MAJOR 3
+#define DATA_BIND_VERSION_MAJOR 4
 #define DATA_BIND_VERSION_MINOR 0
 #define DATA_BIND_VERSION_PATCH 0
 #define DATA_BIND_VERSION                                                                          \
   (DATA_BIND_VERSION_MAJOR * 10000 + DATA_BIND_VERSION_MINOR * 100 + DATA_BIND_VERSION_PATCH)
 
 /* Increment when the public C ABI changes incompatibly. */
-#define DATA_BIND_ABI_VERSION 9
+#define DATA_BIND_ABI_VERSION 10
 
 #ifdef __cplusplus
 extern "C" {
@@ -410,12 +410,6 @@ typedef struct DataBindSchemaField {
   int has_cmeta_kind;
   cmeta_data_kind cmeta_kind;
   const cmeta_data_desc *cmeta_data;
-  /** Optional transport/logical binding projected from field attributes.
-   * binding_kind is one of path/query/header/cookie/body. binding_name is the
-   * explicit wire name or the canonical field name when the attribute is bare.
-   */
-  const char *binding_kind;
-  const char *binding_name;
 } DataBindSchemaField;
 
 #define DATA_BIND_SCHEMA_CMETA_REFLECTION 1
@@ -439,7 +433,7 @@ typedef struct DataBindService {
   size_t operation_count;
 } DataBindService;
 
-/** Immutable reflected service operation and initial transport projections. */
+/** Immutable transport-neutral reflected service operation. */
 typedef struct DataBindServiceOperation {
   size_t size;
   const char *service_name;
@@ -447,12 +441,6 @@ typedef struct DataBindServiceOperation {
   const char *request_type;
   const char *response_type;
   size_t error_count;
-  int has_http;
-  const char *http_method;
-  const char *http_path;
-  int has_rpc;
-  /** Effective wire name. Bare [rpc] resolves to Service.Operation. */
-  const char *rpc_name;
 } DataBindServiceOperation;
 
 /**
