@@ -1,5 +1,9 @@
 schema ErrorPlugin [version(1)];
 
+component StorePlugin {
+    service Store;
+}
+
 message Request {
     uint32 id;
 }
