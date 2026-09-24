@@ -5158,6 +5158,74 @@ static int fill_schema_type(Node *record, const char *list_name, DataBindSchemaT
   return name != NULL;
 }
 
+static DataBindSchemaConstraintKind schema_constraint_kind_from_text(
+    const char *kind) {
+  if (kind == NULL) return DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN;
+  if (strcmp(kind, "min") == 0) return DATA_BIND_SCHEMA_CONSTRAINT_MIN;
+  if (strcmp(kind, "max") == 0) return DATA_BIND_SCHEMA_CONSTRAINT_MAX;
+  if (strcmp(kind, "size") == 0) return DATA_BIND_SCHEMA_CONSTRAINT_SIZE;
+  if (strcmp(kind, "pattern") == 0) return DATA_BIND_SCHEMA_CONSTRAINT_PATTERN;
+  return DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN;
+}
+
+const char *data_bind_schema_constraint_kind_name(
+    DataBindSchemaConstraintKind kind) {
+  switch (kind) {
+  case DATA_BIND_SCHEMA_CONSTRAINT_MIN:
+    return "min";
+  case DATA_BIND_SCHEMA_CONSTRAINT_MAX:
+    return "max";
+  case DATA_BIND_SCHEMA_CONSTRAINT_SIZE:
+    return "size";
+  case DATA_BIND_SCHEMA_CONSTRAINT_PATTERN:
+    return "pattern";
+  case DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN:
+  default:
+    return "unknown";
+  }
+}
+
+static int fill_schema_constraint(Node *constraint,
+                                  DataBindSchemaConstraint *out) {
+  size_t out_size;
+  const char *kind_name;
+  DataBindSchemaConstraintKind kind;
+  size_t bound;
+
+  if (constraint == NULL || out == NULL || constraint->type != NODE_MAP)
+    return 0;
+
+  out_size = db_reflect_out_size(out->size, sizeof(*out));
+  memset(out, 0, out_size);
+  kind_name = get_string_val(find_child(constraint, "kind"));
+  kind = schema_constraint_kind_from_text(kind_name);
+
+  DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, size, out_size);
+  DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, kind, kind);
+  DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, kind_name,
+                 data_bind_schema_constraint_kind_name(kind));
+
+  if (kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN ||
+      kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, value,
+                   get_string_val(find_child(constraint, "value")));
+  } else if (kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
+    if (parse_size_value(get_string_val(find_child(constraint, "min")), &bound)) {
+      DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, has_min, 1);
+      DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, min_size, bound);
+    }
+    if (parse_size_value(get_string_val(find_child(constraint, "max")), &bound)) {
+      DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, has_max, 1);
+      DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, max_size, bound);
+    }
+  } else if (kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, pattern,
+                   get_string_val(find_child(constraint, "pattern")));
+  }
+
+  return kind != DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN;
+}
+
 static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField *out) {
   size_t out_size;
   const char *name;
@@ -12481,6 +12549,52 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
     return 0;
   }
   return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
+}
+
+
+size_t data_bind_schema_field_constraint_count(
+    DataBind *codec, const char *type_name, size_t field_index) {
+  Node *record;
+  Node *fields;
+  Node *constraints;
+
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL)
+    return 0u;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count)
+    return 0u;
+  constraints = find_child(fields->data.list.items[field_index], "constraints");
+  return constraints != NULL && constraints->type == NODE_LIST
+             ? constraints->data.list.count
+             : 0u;
+}
+
+int data_bind_schema_field_constraint_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t constraint_index, DataBindSchemaConstraint *out) {
+  Node *record;
+  Node *fields;
+  Node *constraints;
+
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL ||
+      out == NULL)
+    return 0;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+
+  constraints = find_child(fields->data.list.items[field_index], "constraints");
+  if (constraints == NULL || constraints->type != NODE_LIST ||
+      constraint_index >= constraints->data.list.count) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  return fill_schema_constraint(
+      constraints->data.list.items[constraint_index], out);
 }
 
 json_value_t *data_bind_internal_json_field_value(
