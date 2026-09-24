@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
       .plugin_version_major = 1u,
       .plugin_version_minor = 0u,
       .plugin_version_patch = 0u,
+      .component_name = "ImageProcessor",
       .native_header = argv[4],
       .service_header_output = argv[3],
   };
