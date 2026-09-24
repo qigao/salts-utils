@@ -175,64 +175,67 @@ static int native_unsigned(const char *text, unsigned *out) {
   return 1;
 }
 
-static void native_presence_clear(
-    databind_compiler_service_native_presence *presence,
+static void native_state_clear(
+    databind_compiler_service_native_state *state,
     size_t count) {
   size_t i;
-  if (presence == NULL) return;
-  for (i = 0u; i < count; ++i) free(presence[i].field_name);
-  free(presence);
+  if (state == NULL) return;
+  for (i = 0u; i < count; ++i) free(state[i].field_name);
+  free(state);
 }
 
-static int native_presence_build(
+static int native_state_build(
     const Node *message,
-    databind_compiler_service_native_presence **out_presence,
+    const char *semantic_flag,
+    const char *bit_field,
+    databind_compiler_service_native_state **out_state,
     size_t *out_count) {
   const Node *fields;
-  databind_compiler_service_native_presence *presence = NULL;
+  databind_compiler_service_native_state *state = NULL;
   size_t count = 0u;
   size_t i;
   size_t index = 0u;
 
-  if (out_presence == NULL || out_count == NULL || message == NULL)
+  if (out_state == NULL || out_count == NULL || message == NULL ||
+      semantic_flag == NULL || bit_field == NULL)
     return 0;
-  *out_presence = NULL;
+  *out_state = NULL;
   *out_count = 0u;
 
   fields = native_list(message, "fields");
   if (fields == NULL) return 1;
 
   for (i = 0u; i < fields->data.list.count; ++i)
-    if (native_child(fields->data.list.items[i], "is_optional") != NULL)
+    if (native_child(fields->data.list.items[i], semantic_flag) != NULL)
       ++count;
 
   if (count == 0u) return 1;
-  presence = (databind_compiler_service_native_presence *)calloc(
-      count, sizeof(*presence));
-  if (presence == NULL) return 0;
+  state = (databind_compiler_service_native_state *)calloc(
+      count, sizeof(*state));
+  if (state == NULL) return 0;
 
   for (i = 0u; i < fields->data.list.count; ++i) {
     const Node *field = fields->data.list.items[i];
     const char *field_name;
     const char *bit_text;
     unsigned bit;
-    if (native_child(field, "is_optional") == NULL) continue;
+    if (native_child(field, semantic_flag) == NULL) continue;
     field_name = native_string(field, "name");
-    bit_text = native_string(field, "optional_bit_index");
+    bit_text = native_string(field, bit_field);
     if (field_name == NULL || !native_unsigned(bit_text, &bit)) {
-      native_presence_clear(presence, count);
+      native_state_clear(state, count);
       return 0;
     }
-    presence[index].field_name = native_strdup(field_name);
-    presence[index].bit = bit;
-    if (presence[index].field_name == NULL) {
-      native_presence_clear(presence, count);
+    state[index].field_name = native_strdup(field_name);
+    state[index].bit = bit;
+    if (state[index].field_name == NULL) {
+      native_state_clear(state, count);
       return 0;
     }
     ++index;
   }
 
-  *out_presence = presence;
+  *out_state = state;
   *out_count = count;
   return 1;
 }
@@ -363,10 +366,14 @@ static void native_operation_clear(
   free(operation->response_type);
   free(operation->request_type_identity);
   free(operation->response_type_identity);
-  native_presence_clear(
+  native_state_clear(
       operation->request_presence, operation->request_presence_count);
-  native_presence_clear(
+  native_state_clear(
+      operation->request_nulls, operation->request_null_count);
+  native_state_clear(
       operation->response_presence, operation->response_presence_count);
+  native_state_clear(
+      operation->response_nulls, operation->response_null_count);
   native_errors_clear(operation->errors, operation->error_count);
   memset(operation, 0, sizeof(*operation));
 }
@@ -419,14 +426,18 @@ static int native_operation_fill(
   out->response_type_identity =
       native_type_identity(schema_name, response_type);
 
-  if (!native_presence_build(
-          request_message,
-          &out->request_presence,
-          &out->request_presence_count) ||
-      !native_presence_build(
-          response_message,
-          &out->response_presence,
-          &out->response_presence_count) ||
+  if (!native_state_build(
+          request_message, "is_optional", "optional_bit_index",
+          &out->request_presence, &out->request_presence_count) ||
+      !native_state_build(
+          request_message, "is_nullable", "nullable_bit_index",
+          &out->request_nulls, &out->request_null_count) ||
+      !native_state_build(
+          response_message, "is_optional", "optional_bit_index",
+          &out->response_presence, &out->response_presence_count) ||
+      !native_state_build(
+          response_message, "is_nullable", "nullable_bit_index",
+          &out->response_nulls, &out->response_null_count) ||
       !native_errors_build(
           root, schema_name, operation_node,
           &out->errors, &out->error_count))
@@ -805,33 +816,34 @@ int databind_compiler_service_native_emit_reflection(
   return 0;
 }
 
-static int native_emit_presence_array(
+static int native_emit_state_array(
     FILE *file,
     const char *symbol,
     const char *type_name,
     const char *suffix,
-    const databind_compiler_service_native_presence *presence,
+    const char *member_name,
+    const databind_compiler_service_native_state *state,
     size_t count) {
   size_t i;
   if (count == 0u) return 0;
   if (file == NULL || symbol == NULL || type_name == NULL ||
-      suffix == NULL || presence == NULL)
+      suffix == NULL || member_name == NULL || state == NULL)
     return -1;
 
   if (fprintf(
           file,
           "static const DataBindNativeStateBinding "
-          "%s__%s_presence[] = {\n",
+          "%s__%s[] = {\n",
           symbol, suffix) < 0)
     return -1;
 
   for (i = 0u; i < count; ++i) {
-    if (presence[i].field_name == NULL ||
+    if (state[i].field_name == NULL ||
         fprintf(
             file,
             "  {sizeof(DataBindNativeStateBinding), \"%s\", "
-            "offsetof(%s_t, _presence), %uu},\n",
-            presence[i].field_name, type_name, presence[i].bit) < 0)
+            "offsetof(%s_t, %s), %uu},\n",
+            state[i].field_name, type_name, member_name, state[i].bit) < 0)
       return -1;
   }
 
