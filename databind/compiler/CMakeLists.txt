@@ -74,6 +74,16 @@ add_test(NAME test_databind_nullable_codegen_rejected
 set_tests_properties(test_databind_nullable_codegen_rejected
   PROPERTIES LABELS "databind;compiler;nullable")
 
+add_test(NAME test_databind_projection_config_stale_rejected
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDATABINDC=$<TARGET_FILE:databindc>"
+    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+    "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_stale.json"
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/projection-config-stale"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_projection_config_stale_rejection.cmake")
+set_tests_properties(test_databind_projection_config_stale_rejected
+  PROPERTIES LABELS "databind;compiler;projection-config")
+
 
 set(DATABIND_METHOD_PLAN_FIXTURE_HTTP
     "${CMAKE_CURRENT_BINARY_DIR}/generated_http_projection.h")
