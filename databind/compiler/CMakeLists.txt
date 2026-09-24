@@ -24,7 +24,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c service_native.c plugin_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c service_native.c plugin_projection.c method_plan_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -75,6 +75,74 @@ set_tests_properties(test_databind_nullable_codegen_rejected
   PROPERTIES LABELS "databind;compiler;nullable")
 
 
+set(DATABIND_METHOD_PLAN_FIXTURE_HTTP
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_http_projection.h")
+set(DATABIND_METHOD_PLAN_FIXTURE_RPC
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_rpc_projection.h")
+
+add_executable(databind_method_plan_projection_fixture_gen
+  test_method_plan_projection_generate.c
+  projection.c
+  method_plan_projection.c
+  compiler_core.c
+  database_schema.c
+  mustache_helpers.c)
+target_link_libraries(databind_method_plan_projection_fixture_gen
+  PRIVATE
+    Salts::DataBindSchema
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core)
+target_include_directories(databind_method_plan_projection_fixture_gen
+  PRIVATE
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(databind_method_plan_projection_fixture_gen
+  PROPERTIES FOLDER "databind/compiler/tests")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  COMMAND
+    $<TARGET_FILE:databind_method_plan_projection_fixture_gen>
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  DEPENDS
+    databind_method_plan_projection_fixture_gen
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  VERBATIM)
+
+add_custom_target(databind_method_plan_projection_artifacts
+  DEPENDS
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}")
+set_target_properties(databind_method_plan_projection_artifacts
+  PROPERTIES FOLDER "databind/compiler/tests")
+
+cmake_add_test(test_databind_generated_method_plan_projection
+  SOURCES
+    test_generated_method_plan_projection.c
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${CMAKE_CURRENT_BINARY_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_generated_method_plan_projection
+  databind_method_plan_projection_artifacts)
+set_source_files_properties(
+  "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+  "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
+set_target_properties(test_databind_generated_method_plan_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+
 cmake_add_test(test_databind_projection_registry
   SOURCES
     test_projection_registry.c
@@ -106,6 +174,7 @@ cmake_add_test(test_databind_projection_frontend
     projection.c
     service_native.c
     plugin_projection.c
+    method_plan_projection.c
   LIBS
     Salts::DataBindSchema
     Salts::PluginABI
@@ -246,6 +315,22 @@ databind_target(
   ARTIFACT_NAME "image"
   PROJECTIONS PLUGIN
   SOURCES test_plugin_business_fixture.c)
+
+
+databind_target(
+  TARGET databind_method_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  ARTIFACT_NAME "public_calc"
+  PROJECTIONS HTTP RPC)
+
+cmake_add_test(test_databind_method_plan_public_frontend
+  SOURCES test_public_method_plan_frontend.c
+  LIBS Salts::DataBind Salts::TinyTest
+  INCLUDES
+    "${databind_method_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_method_plan_public_frontend
+  databind_method_plan_public_fixture_databind_codegen)
 
 get_target_property(
   _databind_plugin_generated_fixture_links

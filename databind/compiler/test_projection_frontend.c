@@ -58,6 +58,57 @@ spec("DataBind public projection frontend") {
                plan.plugin_client_source);
   }
 
+  it("lowers convention HTTP and RPC selections without Plugin inputs") {
+    databind_compiler_projection_frontend_input input = {
+        .projections = "http,rpc",
+        .artifact_name = "calc",
+        .output_path = "generated/calc_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)2u);
+    check_equal(plan.backend_count, (size_t)2u);
+
+    check_equal(plan.requests[0].kind,
+                DATABIND_COMPILER_PROJECTION_HTTP);
+    check_true(plan.requests[0].config == &plan.http);
+    check_equal(plan.http.symbol_prefix, "databind_calc");
+    check_equal(plan.backends[0].name, "http");
+    check_equal(path_base(plan.requests[0].output, base), "calc.http.h");
+
+    check_equal(plan.requests[1].kind,
+                DATABIND_COMPILER_PROJECTION_RPC);
+    check_true(plan.requests[1].config == &plan.rpc);
+    check_equal(plan.rpc.symbol_prefix, "databind_calc");
+    check_equal(plan.backends[1].name, "rpc");
+    check_equal(path_base(plan.requests[1].output, base), "calc.rpc.h");
+  }
+
+  it("composes Plugin and MethodPlan projections in one frontend invocation") {
+    databind_compiler_projection_frontend_input input = {
+        .projections = "plugin,http,rpc",
+        .component_id = "Image.ImageProcessor",
+        .artifact_name = "image",
+        .artifact_version = "1.2.3",
+        .output_path = "generated/image_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)3u);
+    check_equal(plan.backend_count, (size_t)3u);
+    check(strcmp(plan.requests[0].output, plan.requests[1].output) != 0);
+    check(strcmp(plan.requests[1].output, plan.requests[2].output) != 0);
+  }
+
   it("parses whitespace around projection names") {
     databind_compiler_projection_frontend_input input = {
         .projections = "  plugin  ",

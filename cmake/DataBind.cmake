@@ -153,7 +153,7 @@ function(databind_target)
   cmake_parse_arguments(DB
     "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
-  foreach(required_arg IN ITEMS TARGET IDL COMPONENT VERSION)
+  foreach(required_arg IN ITEMS TARGET IDL)
     if(NOT DB_${required_arg})
       message(FATAL_ERROR
               "databind_target() requires ${required_arg}")
@@ -165,28 +165,9 @@ function(databind_target)
             "databind_target() requires at least one PROJECTIONS entry")
   endif()
 
-  foreach(reserved_target IN ITEMS
-          "${DB_TARGET}"
-          "${DB_TARGET}_plugin"
-          "${DB_TARGET}_plugin_client"
-          "${DB_TARGET}_databind_codegen")
-    if(TARGET "${reserved_target}")
-      message(FATAL_ERROR
-              "databind_target generated target already exists: "
-              "${reserved_target}")
-    endif()
-  endforeach()
-
-  if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
-    message(FATAL_ERROR
-            "databind_target PLUGIN requires business implementation through "
-            "SOURCES and/or LIBRARIES")
-  endif()
-
   if(NOT DB_ARTIFACT_NAME)
     set(DB_ARTIFACT_NAME "${DB_TARGET}")
   endif()
-
   if(NOT DB_ARTIFACT_NAME MATCHES "^[A-Za-z0-9_.-]+$" OR
      DB_ARTIFACT_NAME STREQUAL "." OR
      DB_ARTIFACT_NAME STREQUAL "..")
@@ -195,30 +176,19 @@ function(databind_target)
             "${DB_ARTIFACT_NAME}")
   endif()
 
-  if(NOT DB_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
-    message(FATAL_ERROR
-            "databind_target VERSION must be MAJOR.MINOR.PATCH")
-  endif()
-  string(REPLACE "." ";" _version_parts "${DB_VERSION}")
-  foreach(_version_part IN LISTS _version_parts)
-    string(REGEX REPLACE "^0+" "" _version_part_normalized "${_version_part}")
-    if(_version_part_normalized STREQUAL "")
-      set(_version_part_normalized "0")
-    endif()
-    string(LENGTH "${_version_part_normalized}" _version_part_length)
-    if(_version_part_length GREATER 10 OR
-       (_version_part_length EQUAL 10 AND
-        _version_part_normalized STRGREATER "4294967295"))
-      message(FATAL_ERROR
-              "databind_target VERSION components must fit uint32: "
-              "${DB_VERSION}")
-    endif()
-  endforeach()
-
   set(_normalized_projections)
+  set(_has_plugin FALSE)
+  set(_has_http FALSE)
+  set(_has_rpc FALSE)
   foreach(projection IN LISTS DB_PROJECTIONS)
     string(TOUPPER "${projection}" projection_upper)
-    if(NOT projection_upper STREQUAL "PLUGIN")
+    if(projection_upper STREQUAL "PLUGIN")
+      set(_has_plugin TRUE)
+    elseif(projection_upper STREQUAL "HTTP")
+      set(_has_http TRUE)
+    elseif(projection_upper STREQUAL "RPC")
+      set(_has_rpc TRUE)
+    else()
       message(FATAL_ERROR
               "databind_target projection is not publicly available yet: "
               "${projection}")
@@ -233,6 +203,70 @@ function(databind_target)
   if(NOT _projection_count EQUAL _unique_projection_count)
     message(FATAL_ERROR
             "databind_target PROJECTIONS contains a duplicate backend")
+  endif()
+
+  foreach(reserved_target IN ITEMS
+          "${DB_TARGET}"
+          "${DB_TARGET}_databind_codegen")
+    if(TARGET "${reserved_target}")
+      message(FATAL_ERROR
+              "databind_target generated target already exists: "
+              "${reserved_target}")
+    endif()
+  endforeach()
+  if(_has_plugin)
+    foreach(reserved_target IN ITEMS
+            "${DB_TARGET}_plugin"
+            "${DB_TARGET}_plugin_client")
+      if(TARGET "${reserved_target}")
+        message(FATAL_ERROR
+                "databind_target generated target already exists: "
+                "${reserved_target}")
+      endif()
+    endforeach()
+  endif()
+
+  if(_has_plugin)
+    foreach(plugin_arg IN ITEMS COMPONENT VERSION)
+      if(NOT DB_${plugin_arg})
+        message(FATAL_ERROR
+                "databind_target PLUGIN requires ${plugin_arg}")
+      endif()
+    endforeach()
+    if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
+      message(FATAL_ERROR
+              "databind_target PLUGIN requires business implementation through "
+              "SOURCES and/or LIBRARIES")
+    endif()
+    if(NOT DB_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+      message(FATAL_ERROR
+              "databind_target VERSION must be MAJOR.MINOR.PATCH")
+    endif()
+    string(REPLACE "." ";" _version_parts "${DB_VERSION}")
+    foreach(_version_part IN LISTS _version_parts)
+      string(REGEX REPLACE "^0+" "" _version_part_normalized "${_version_part}")
+      if(_version_part_normalized STREQUAL "")
+        set(_version_part_normalized "0")
+      endif()
+      string(LENGTH "${_version_part_normalized}" _version_part_length)
+      if(_version_part_length GREATER 10 OR
+         (_version_part_length EQUAL 10 AND
+          _version_part_normalized STRGREATER "4294967295"))
+        message(FATAL_ERROR
+                "databind_target VERSION components must fit uint32: "
+                "${DB_VERSION}")
+      endif()
+    endforeach()
+  else()
+    if(DB_COMPONENT OR DB_VERSION)
+      message(FATAL_ERROR
+              "databind_target COMPONENT/VERSION are only valid when PLUGIN "
+              "is selected")
+    endif()
+    if(DB_SOURCES OR DB_LIBRARIES)
+      message(FATAL_ERROR
+              "databind_target SOURCES/LIBRARIES are only consumed by PLUGIN")
+    endif()
   endif()
 
   list(JOIN _normalized_projections "," _projection_csv)
@@ -268,6 +302,37 @@ function(databind_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.h")
   set(_plugin_client_source
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.c")
+  set(_http_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.http.h")
+  set(_rpc_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.rpc.h")
+
+  set(_generated_outputs "${_native_header}")
+  if(_has_plugin)
+    list(APPEND _generated_outputs
+      "${_plugin_header}"
+      "${_plugin_source}"
+      "${_plugin_client_header}"
+      "${_plugin_client_source}")
+  endif()
+  if(_has_http)
+    list(APPEND _generated_outputs "${_http_header}")
+  endif()
+  if(_has_rpc)
+    list(APPEND _generated_outputs "${_rpc_header}")
+  endif()
+
+  set(_compiler_args
+      "${_idl}"
+      --lang c
+      --output "${_native_header}"
+      --projections "${_projection_csv}"
+      --artifact-name "${DB_ARTIFACT_NAME}")
+  if(_has_plugin)
+    list(APPEND _compiler_args
+      --component "${DB_COMPONENT}"
+      --artifact-version "${DB_VERSION}")
+  endif()
 
   set(_generate_dependencies "${_idl}")
   if(_databindc_dependency)
@@ -275,91 +340,91 @@ function(databind_target)
   endif()
 
   add_custom_command(
-    OUTPUT
-      "${_native_header}"
-      "${_plugin_header}"
-      "${_plugin_source}"
-      "${_plugin_client_header}"
-      "${_plugin_client_source}"
+    OUTPUT ${_generated_outputs}
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_generated_dir}"
-    COMMAND ${_databindc_command}
-      "${_idl}"
-      --lang c
-      --output "${_native_header}"
-      --projections "${_projection_csv}"
-      --component "${DB_COMPONENT}"
-      --artifact-name "${DB_ARTIFACT_NAME}"
-      --artifact-version "${DB_VERSION}"
+    COMMAND ${_databindc_command} ${_compiler_args}
     DEPENDS ${_generate_dependencies}
     VERBATIM
     COMMENT
-      "Generating DataBind ${DB_TARGET} artifacts from ${DB_COMPONENT}")
+      "Generating DataBind ${DB_TARGET} projections: ${_projection_csv}")
 
-  set_source_files_properties(
-    "${_native_header}"
-    "${_plugin_header}"
-    "${_plugin_source}"
-    "${_plugin_client_header}"
-    "${_plugin_client_source}"
+  set_source_files_properties(${_generated_outputs}
     PROPERTIES GENERATED TRUE)
 
   add_custom_target("${DB_TARGET}_databind_codegen"
-    DEPENDS
-      "${_native_header}"
-      "${_plugin_header}"
+    DEPENDS ${_generated_outputs})
+
+  if(_has_plugin)
+    add_library("${DB_TARGET}_plugin" SHARED
       "${_plugin_source}"
+      "${_plugin_header}"
+      "${_native_header}"
+      ${DB_SOURCES})
+    add_dependencies("${DB_TARGET}_plugin"
+      "${DB_TARGET}_databind_codegen")
+    target_compile_features("${DB_TARGET}_plugin" PRIVATE c_std_11)
+    target_include_directories("${DB_TARGET}_plugin" PRIVATE
+      "${_generated_dir}")
+    target_link_libraries("${DB_TARGET}_plugin" PRIVATE
+      Salts::PluginABI
+      Salts::DataBindGeneratedABI
+      ${DB_LIBRARIES})
+    set_target_properties("${DB_TARGET}_plugin" PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "${DB_ARTIFACT_NAME}")
+
+    add_library("${DB_TARGET}_plugin_client" STATIC
+      "${_plugin_client_source}"
       "${_plugin_client_header}"
-      "${_plugin_client_source}")
-
-  add_library("${DB_TARGET}_plugin" SHARED
-    "${_plugin_source}"
-    "${_plugin_header}"
-    "${_native_header}"
-    ${DB_SOURCES})
-  add_dependencies("${DB_TARGET}_plugin"
-    "${DB_TARGET}_databind_codegen")
-  target_compile_features("${DB_TARGET}_plugin" PRIVATE c_std_11)
-  target_include_directories("${DB_TARGET}_plugin" PRIVATE
-    "${_generated_dir}")
-  target_link_libraries("${DB_TARGET}_plugin" PRIVATE
-    Salts::PluginABI
-    Salts::DataBindGeneratedABI
-    ${DB_LIBRARIES})
-  set_target_properties("${DB_TARGET}_plugin" PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "${DB_ARTIFACT_NAME}")
-
-  add_library("${DB_TARGET}_plugin_client" STATIC
-    "${_plugin_client_source}"
-    "${_plugin_client_header}"
-    "${_native_header}")
-  add_dependencies("${DB_TARGET}_plugin_client"
-    "${DB_TARGET}_databind_codegen")
-  target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
-  target_include_directories("${DB_TARGET}_plugin_client" PUBLIC
-    "${_generated_dir}")
-  target_link_libraries("${DB_TARGET}_plugin_client" PUBLIC
-    Salts::Plugin
-    Salts::DataBindGeneratedABI)
+      "${_native_header}")
+    add_dependencies("${DB_TARGET}_plugin_client"
+      "${DB_TARGET}_databind_codegen")
+    target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
+    target_include_directories("${DB_TARGET}_plugin_client" PUBLIC
+      "${_generated_dir}")
+    target_link_libraries("${DB_TARGET}_plugin_client" PUBLIC
+      Salts::Plugin
+      Salts::DataBindGeneratedABI)
+  endif()
 
   add_custom_target("${DB_TARGET}")
-  add_dependencies("${DB_TARGET}"
-    "${DB_TARGET}_plugin"
-    "${DB_TARGET}_plugin_client")
+  add_dependencies("${DB_TARGET}" "${DB_TARGET}_databind_codegen")
+  if(_has_plugin)
+    add_dependencies("${DB_TARGET}"
+      "${DB_TARGET}_plugin"
+      "${DB_TARGET}_plugin_client")
+  endif()
 
-  set_property(TARGET "${DB_TARGET}" PROPERTY
-    DATABIND_COMPONENT "${DB_COMPONENT}")
   set_property(TARGET "${DB_TARGET}" PROPERTY
     DATABIND_GENERATED_DIR "${_generated_dir}")
   set_property(TARGET "${DB_TARGET}" PROPERTY
-    DATABIND_PLUGIN_TARGET "${DB_TARGET}_plugin")
-  set_property(TARGET "${DB_TARGET}" PROPERTY
-    DATABIND_PLUGIN_CLIENT_TARGET "${DB_TARGET}_plugin_client")
+    DATABIND_PROJECTIONS "${_normalized_projections}")
 
-  set(${DB_TARGET}_PLUGIN_TARGET
-      "${DB_TARGET}_plugin" PARENT_SCOPE)
-  set(${DB_TARGET}_PLUGIN_CLIENT_TARGET
-      "${DB_TARGET}_plugin_client" PARENT_SCOPE)
+  if(_has_plugin)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_COMPONENT "${DB_COMPONENT}")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_PLUGIN_TARGET "${DB_TARGET}_plugin")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_PLUGIN_CLIENT_TARGET "${DB_TARGET}_plugin_client")
+    set(${DB_TARGET}_PLUGIN_TARGET
+        "${DB_TARGET}_plugin" PARENT_SCOPE)
+    set(${DB_TARGET}_PLUGIN_CLIENT_TARGET
+        "${DB_TARGET}_plugin_client" PARENT_SCOPE)
+  endif()
+  if(_has_http)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_HTTP_PROJECTION "${_http_header}")
+    set(${DB_TARGET}_HTTP_PROJECTION
+        "${_http_header}" PARENT_SCOPE)
+  endif()
+  if(_has_rpc)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_RPC_PROJECTION "${_rpc_header}")
+    set(${DB_TARGET}_RPC_PROJECTION
+        "${_rpc_header}" PARENT_SCOPE)
+  endif()
+
   set(${DB_TARGET}_GENERATED_DIR
       "${_generated_dir}" PARENT_SCOPE)
 endfunction()
