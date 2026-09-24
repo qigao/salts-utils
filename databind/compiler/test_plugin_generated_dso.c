@@ -3,6 +3,7 @@
 
 #include "data_bind_binding_plan.h"
 #include "image_binding_native.h"
+#include "image.plugin.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -173,6 +174,9 @@ spec("generated DataBind Plugin Service") {
     salts_plugin_registry_config config = {.capacity = 2u};
     salts_plugin_ref ref = {0};
     salts_plugin_lease lease = {0};
+    databind_5_Image_14_ImageProcessor_plugin_client client =
+        databind_5_Image_14_ImageProcessor_PLUGIN_CLIENT_INIT;
+    salts_plugin_lifecycle_info lifecycle = {0};
     const salts_plugin_manifest *manifest = NULL;
     const salts_plugin_export *entry = NULL;
     DataBind *codec = NULL;
@@ -208,6 +212,9 @@ spec("generated DataBind Plugin Service") {
         DATA_BIND_BINDING_CALL_FRAME_INIT;
     void *invoke_params[] = {&request, &response};
     int native_status = -99;
+    DecodeRequest_t direct_request = {0};
+    DecodeResponse_t direct_response = {0};
+    int direct_native_status = -99;
     bool quiescent = false;
 
     provider_state.input_width = 12u;
@@ -224,6 +231,76 @@ spec("generated DataBind Plugin Service") {
                 SALTS_PLUGIN_OK);
     check_equal(salts_plugin_registry_start(&registry, ref),
                 SALTS_PLUGIN_OK);
+
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &lifecycle),
+                SALTS_PLUGIN_OK);
+    check_equal(lifecycle.active_leases, (size_t)1u);
+
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_ALREADY);
+    lifecycle = (salts_plugin_lifecycle_info){0};
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &lifecycle),
+                SALTS_PLUGIN_OK);
+    check_equal(lifecycle.active_leases, (size_t)1u);
+    check_equal(salts_plugin_registry_unload(&registry, ref),
+                SALTS_PLUGIN_BUSY);
+
+    direct_request.width = 3u;
+    check_true(
+        databind_5_Image_14_ImageProcessor_5_Codec_6_Decode_plugin_call(
+            &client, &direct_request, &direct_response,
+            &direct_native_status));
+    check_equal(direct_native_status, 0);
+    check_equal(direct_response.pixels, 12u);
+
+    direct_request.width = 7u;
+    direct_response = (DecodeResponse_t){0};
+    direct_native_status = -99;
+    check_true(
+        databind_5_Image_14_ImageProcessor_5_Codec_6_Decode_plugin_call(
+            &client, &direct_request, &direct_response,
+            &direct_native_status));
+    check_equal(direct_native_status, 0);
+    check_equal(direct_response.pixels, 28u);
+
+    lifecycle = (salts_plugin_lifecycle_info){0};
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &lifecycle),
+                SALTS_PLUGIN_OK);
+    check_equal(lifecycle.active_leases, (size_t)1u);
+
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_close(&client),
+        SALTS_PLUGIN_OK);
+    check_false(salts_plugin_lease_valid(client.lease));
+
+    lifecycle = (salts_plugin_lifecycle_info){0};
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &lifecycle),
+                SALTS_PLUGIN_OK);
+    check_equal(lifecycle.active_leases, (size_t)0u);
+
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_OK);
+    lifecycle = (salts_plugin_lifecycle_info){0};
+    check_equal(salts_plugin_registry_get_lifecycle(
+                    &registry, ref, &lifecycle),
+                SALTS_PLUGIN_OK);
+    check_equal(lifecycle.active_leases, (size_t)1u);
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_close(&client),
+        SALTS_PLUGIN_OK);
+
     check_equal(salts_plugin_registry_acquire(
                     &registry, ref, &lease, &manifest),
                 SALTS_PLUGIN_OK);
@@ -371,6 +448,15 @@ spec("generated DataBind Plugin Service") {
     check_true(quiescent);
     check_equal(salts_plugin_registry_unload(&registry, ref),
                 SALTS_PLUGIN_OK);
+
+    client =
+        (databind_5_Image_14_ImageProcessor_plugin_client)
+            databind_5_Image_14_ImageProcessor_PLUGIN_CLIENT_INIT;
+    check_equal(
+        databind_5_Image_14_ImageProcessor_plugin_client_open(
+            &registry, ref, &client),
+        SALTS_PLUGIN_STALE);
+
     check_equal(salts_plugin_registry_destroy(&registry),
                 SALTS_PLUGIN_OK);
   }
