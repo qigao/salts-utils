@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(DataBindTargetInstalledConsumer LANGUAGES C)
+project(DataBindTargetInstalledConsumer LANGUAGES C CXX)
 
 find_package(SaltsUtils CONFIG REQUIRED)
 
@@ -31,3 +31,30 @@ if(NOT "Salts::DataBindGeneratedABI" IN_LIST _installed_plugin_links)
   message(FATAL_ERROR
           "installed generated Plugin must link Salts::DataBindGeneratedABI")
 endif()
+
+
+if(NOT TARGET installed_image_plugin_client)
+  message(FATAL_ERROR "missing installed_image_plugin_client")
+endif()
+get_target_property(
+  _installed_client_links installed_image_plugin_client LINK_LIBRARIES)
+if("Salts::DataBindSchema" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must not link Salts::DataBindSchema")
+endif()
+if(NOT "Salts::Plugin" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must link Salts::Plugin")
+endif()
+if(NOT "Salts::DataBindGeneratedABI" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must link Salts::DataBindGeneratedABI")
+endif()
+
+add_executable(installed_image_plugin_client_cpp client_cpp.cpp)
+target_compile_features(installed_image_plugin_client_cpp PRIVATE cxx_std_17)
+target_link_libraries(installed_image_plugin_client_cpp
+  PRIVATE installed_image_plugin_client)
+set_target_properties(installed_image_plugin_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO)
+add_dependencies(installed_image installed_image_plugin_client_cpp)

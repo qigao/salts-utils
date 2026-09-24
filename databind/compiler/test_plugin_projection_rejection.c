@@ -62,6 +62,10 @@ spec("DataBind Plugin projection semantic rejection") {
         "databind_plugin_typed_error_should_not_exist.c";
     static const char header_output[] =
         "databind_plugin_typed_error_should_not_exist.h";
+    static const char client_header_output[] =
+        "databind_plugin_typed_error_client_should_not_exist.h";
+    static const char client_source_output[] =
+        "databind_plugin_typed_error_client_should_not_exist.c";
     Node *root = NULL;
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
@@ -71,6 +75,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .component_id = "ErrorPlugin.StorePlugin",
         .native_header = "error_native.h",
         .service_header_output = header_output,
+        .client_header_output = client_header_output,
+        .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
         .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
@@ -82,6 +88,8 @@ spec("DataBind Plugin projection semantic rejection") {
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
+    (void)salts_fs_unlink(client_header_output);
+    (void)salts_fs_unlink(client_source_output);
 
     check_equal(tbe_compiler_parse_schema_file(
                     PLUGIN_TYPED_ERROR_SCHEMA, &root, &schema_data),
@@ -95,6 +103,8 @@ spec("DataBind Plugin projection semantic rejection") {
 
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     node_free(root);
     free(schema_data);
@@ -104,6 +114,10 @@ spec("DataBind Plugin projection semantic rejection") {
         "databind_plugin_bad_version_should_not_exist.c";
     static const char header_output[] =
         "databind_plugin_bad_version_should_not_exist.h";
+    static const char client_header_output[] =
+        "databind_plugin_bad_version_client_should_not_exist.h";
+    static const char client_source_output[] =
+        "databind_plugin_bad_version_client_should_not_exist.c";
     static const char *const invalid_versions[] = {
         "", "0", "bad", "4294967296"
     };
@@ -116,6 +130,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .component_id = "MultiServicePlugin.Bundle",
         .native_header = "bad_version_native.h",
         .service_header_output = header_output,
+        .client_header_output = client_header_output,
+        .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
         .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
@@ -137,6 +153,8 @@ spec("DataBind Plugin projection semantic rejection") {
          ++i) {
       (void)salts_fs_unlink(source_output);
       (void)salts_fs_unlink(header_output);
+      (void)salts_fs_unlink(client_header_output);
+      (void)salts_fs_unlink(client_source_output);
       check_true(plugin_test_set_schema_version(
           root, invalid_versions[i]));
       check_equal(databind_compiler_projection_run(
@@ -146,6 +164,10 @@ spec("DataBind Plugin projection semantic rejection") {
                 source_output, SALTS_FS_ACCESS_EXISTS) != 0);
       check(salts_fs_access(
                 header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+      check(salts_fs_access(
+                client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+      check(salts_fs_access(
+                client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     }
 
     node_free(root);
@@ -157,6 +179,10 @@ spec("DataBind Plugin projection semantic rejection") {
         "databind_plugin_component_required_should_not_exist.c";
     static const char header_output[] =
         "databind_plugin_component_required_should_not_exist.h";
+    static const char client_header_output[] =
+        "databind_plugin_component_required_client_should_not_exist.h";
+    static const char client_source_output[] =
+        "databind_plugin_component_required_client_should_not_exist.c";
     Node *root = NULL;
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
@@ -166,6 +192,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .component_id = NULL,
         .native_header = "component_required_native.h",
         .service_header_output = header_output,
+        .client_header_output = client_header_output,
+        .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
         .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
@@ -183,11 +211,15 @@ spec("DataBind Plugin projection semantic rejection") {
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
+    (void)salts_fs_unlink(client_header_output);
+    (void)salts_fs_unlink(client_source_output);
     check_equal(databind_compiler_projection_run(
                     root, &request, 1u, &backend, 1u),
                 -1);
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     config.component_id = "MultiServicePlugin.Missing";
     check_equal(databind_compiler_projection_run(
@@ -195,6 +227,8 @@ spec("DataBind Plugin projection semantic rejection") {
                 -1);
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
+    check(salts_fs_access(client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
     node_free(root);
     free(schema_data);
@@ -230,6 +264,10 @@ spec("DataBind Plugin projection semantic rejection") {
         "databind_plugin_multi_service.c";
     static const char header_output[] =
         "databind_plugin_multi_service.h";
+    static const char client_header_output[] =
+        "databind_plugin_multi_service_client.h";
+    static const char client_source_output[] =
+        "databind_plugin_multi_service_client.c";
     Node *root = NULL;
     char *schema_data = NULL;
     salts_fs_buf_t generated = {0};
@@ -240,6 +278,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .component_id = "MultiServicePlugin.Bundle",
         .native_header = "multi_native.h",
         .service_header_output = header_output,
+        .client_header_output = client_header_output,
+        .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
         .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
@@ -251,6 +291,8 @@ spec("DataBind Plugin projection semantic rejection") {
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
+    (void)salts_fs_unlink(client_header_output);
+    (void)salts_fs_unlink(client_source_output);
 
     check_equal(tbe_compiler_parse_schema_file(
                     PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
@@ -281,9 +323,22 @@ spec("DataBind Plugin projection semantic rejection") {
     check_equal(salts_fs_access(
                     header_output, SALTS_FS_ACCESS_EXISTS),
                 0);
+    check_equal(salts_fs_access(
+                    client_header_output, SALTS_FS_ACCESS_EXISTS),
+                0);
+    generated = (salts_fs_buf_t){0};
+    check_equal(salts_fs_read_file(client_source_output, &generated), 0);
+    check_not_null(generated.base);
+    check_not_null(strstr(
+        generated.base, "databind_18_MultiServicePlugin_5_First_4_Read_export"));
+    check_not_null(strstr(
+        generated.base, "databind_18_MultiServicePlugin_6_Second_5_Write_export"));
+    salts_fs_buf_free(&generated);
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
+    (void)salts_fs_unlink(client_header_output);
+    (void)salts_fs_unlink(client_source_output);
     node_free(root);
     free(schema_data);
   }

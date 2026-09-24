@@ -250,6 +250,26 @@ if(NOT "Salts::DataBindGeneratedABI"
           "generated Plugin must link Salts::DataBindGeneratedABI")
 endif()
 
+get_target_property(
+  _databind_plugin_generated_client_links
+  databind_plugin_generated_fixture_plugin_client
+  LINK_LIBRARIES)
+if("Salts::DataBindSchema"
+   IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must not link Salts::DataBindSchema")
+endif()
+if(NOT "Salts::Plugin"
+       IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must link Salts::Plugin")
+endif()
+if(NOT "Salts::DataBindGeneratedABI"
+       IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must link Salts::DataBindGeneratedABI")
+endif()
+
 add_custom_command(
   OUTPUT
     "${DATABIND_PLUGIN_TEST_BINDING_H}"
@@ -282,6 +302,63 @@ cmake_add_test(test_databind_plugin_generated_dso
   FOLDER "databind/compiler")
 add_dependencies(test_databind_plugin_generated_dso
   databind_plugin_generated_fixture_plugin)
+
+foreach(_client_fixture IN ITEMS
+        bad_plugin_id
+        bad_contract
+        bad_export
+        bad_function)
+  add_library("databind_plugin_client_${_client_fixture}" SHARED
+    test_plugin_client_mismatch_fixture.c)
+  target_compile_features(
+    "databind_plugin_client_${_client_fixture}" PRIVATE c_std_11)
+  target_link_libraries(
+    "databind_plugin_client_${_client_fixture}" PRIVATE Salts::PluginABI)
+  set_target_properties(
+    "databind_plugin_client_${_client_fixture}" PROPERTIES
+    PREFIX ""
+    FOLDER "databind/compiler/tests")
+endforeach()
+target_compile_definitions(databind_plugin_client_bad_plugin_id PRIVATE
+  PLUGIN_CLIENT_MISMATCH_PLUGIN_ID=1)
+target_compile_definitions(databind_plugin_client_bad_contract PRIVATE
+  PLUGIN_CLIENT_MISMATCH_CONTRACT_ID=1)
+target_compile_definitions(databind_plugin_client_bad_export PRIVATE
+  PLUGIN_CLIENT_MISMATCH_EXPORT_ID=1)
+target_compile_definitions(databind_plugin_client_bad_function PRIVATE
+  PLUGIN_CLIENT_MISMATCH_FUNCTION=1)
+
+cmake_add_test(test_databind_plugin_generated_client
+  SOURCES test_plugin_generated_client.c
+  LIBS
+    databind_plugin_generated_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
+    GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH="$<TARGET_FILE:databind_plugin_client_bad_plugin_id>"
+    GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH="$<TARGET_FILE:databind_plugin_client_bad_contract>"
+    GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH="$<TARGET_FILE:databind_plugin_client_bad_export>"
+    GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH="$<TARGET_FILE:databind_plugin_client_bad_function>"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_plugin_generated_client
+  databind_plugin_generated_fixture_plugin
+  databind_plugin_generated_fixture_plugin_client
+  databind_plugin_client_bad_plugin_id
+  databind_plugin_client_bad_contract
+  databind_plugin_client_bad_export
+  databind_plugin_client_bad_function)
+
+add_executable(test_databind_plugin_generated_client_cpp
+  test_plugin_generated_client_cpp.cpp)
+target_compile_features(test_databind_plugin_generated_client_cpp PRIVATE
+  cxx_std_17)
+target_link_libraries(test_databind_plugin_generated_client_cpp PRIVATE
+  databind_plugin_generated_fixture_plugin_client)
+set_target_properties(test_databind_plugin_generated_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO
+  FOLDER "databind/compiler")
+add_test(NAME test_databind_plugin_generated_client_cpp
+  COMMAND test_databind_plugin_generated_client_cpp)
 
 cmake_add_test(test_databind_plugin_projection_rejection
   SOURCES

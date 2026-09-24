@@ -220,14 +220,15 @@ static int plugin_native_ir_valid(
 
 static int plugin_header_guard(
     const char *schema_name, const char *component_name,
+    const char *suffix,
     char *out, size_t out_size) {
-  static const char suffix[] = "_PLUGIN_SERVICE_H";
   const char *parts[] = {schema_name, component_name};
   size_t used = 0u;
   size_t part;
 
   if (!plugin_text_valid(schema_name) ||
       !plugin_text_valid(component_name) ||
+      !plugin_text_valid(suffix) ||
       out == NULL || out_size == 0u)
     return 0;
 
@@ -253,12 +254,38 @@ static int plugin_header_guard(
     }
   }
 
-  if (used > SIZE_MAX - sizeof(suffix) ||
-      used + sizeof(suffix) > out_size)
+  {
+    size_t suffix_length = strlen(suffix);
+    if (used > SIZE_MAX - suffix_length - 1u ||
+        used + suffix_length + 1u > out_size)
+      return 0;
+    memcpy(out + used, suffix, suffix_length + 1u);
+  }
+  return 1;
+}
+
+static int plugin_client_symbol(
+    const Node *root,
+    const Node *component,
+    char *out,
+    size_t out_size) {
+  const char *schema_name = plugin_schema_name(root);
+  const char *component_name = plugin_string(component, "name");
+  char guard_probe[320];
+  int written;
+
+  if (!plugin_header_guard(
+          schema_name, component_name,
+          "_PLUGIN_CLIENT_H",
+          guard_probe, sizeof(guard_probe)))
     return 0;
 
-  memcpy(out + used, suffix, sizeof(suffix));
-  return 1;
+  written = snprintf(
+      out, out_size,
+      "databind_plugin_client_%zu_%s_%zu_%s",
+      strlen(schema_name), schema_name,
+      strlen(component_name), component_name);
+  return written > 0 && (size_t)written < out_size;
 }
 
 static const char *plugin_basename(const char *path) {
@@ -417,52 +444,45 @@ static void plugin_free_output_paths(
   output->backup_path = NULL;
 }
 
-static int plugin_commit_output_pair(
-    const char *header_final, char **header_staging,
-    const char *source_final, char **source_staging) {
-  plugin_output_transaction header = {0};
-  plugin_output_transaction source = {0};
+static int plugin_commit_output_set(
+    plugin_output_transaction *outputs,
+    size_t output_count) {
+  size_t i;
   int ok = 0;
 
-  if (header_staging == NULL || source_staging == NULL ||
-      *header_staging == NULL || *source_staging == NULL)
-    return 0;
+  if (outputs == NULL || output_count == 0u) return 0;
 
-  header.final_path = header_final;
-  header.staging_path = *header_staging;
-  source.final_path = source_final;
-  source.staging_path = *source_staging;
+  for (i = 0u; i < output_count; ++i)
+    if (outputs[i].final_path == NULL ||
+        outputs[i].staging_path == NULL)
+      goto rollback;
 
-  if (!plugin_prepare_output_backup(&header)) goto rollback;
-  if (!plugin_prepare_output_backup(&source)) goto rollback;
+  for (i = 0u; i < output_count; ++i)
+    if (!plugin_prepare_output_backup(&outputs[i]))
+      goto rollback;
 
-  if (salts_fs_rename(
-          header.staging_path, header.final_path) != 0)
-    goto rollback;
-  header.published = 1;
+  for (i = 0u; i < output_count; ++i) {
+    if (salts_fs_rename(
+            outputs[i].staging_path,
+            outputs[i].final_path) != 0)
+      goto rollback;
+    outputs[i].published = 1;
+  }
 
-  if (salts_fs_rename(
-          source.staging_path, source.final_path) != 0)
-    goto rollback;
-  source.published = 1;
-
-  if (header.had_original)
-    plugin_unlink_if_exists(header.backup_path);
-  if (source.had_original)
-    plugin_unlink_if_exists(source.backup_path);
+  for (i = 0u; i < output_count; ++i)
+    if (outputs[i].had_original)
+      plugin_unlink_if_exists(outputs[i].backup_path);
 
   ok = 1;
   goto cleanup;
 
 rollback:
-  plugin_rollback_output(&source);
-  plugin_rollback_output(&header);
+  for (i = output_count; i > 0u; --i)
+    plugin_rollback_output(&outputs[i - 1u]);
 
 cleanup:
-  plugin_free_output_paths(&source);
-  plugin_free_output_paths(&header);
-  *header_staging = NULL;
-  *source_staging = NULL;
+  for (i = 0u; i < output_count; ++i)
+    plugin_free_output_paths(&outputs[i]);
   return ok;
 }
 
@@ -478,6 +498,7 @@ static int plugin_write_header(
   if (!plugin_header_guard(
           plugin_schema_name(root),
           plugin_string(component, "name"),
+          "_PLUGIN_SERVICE_H",
           guard, sizeof(guard)))
     return 0;
 
@@ -499,6 +520,309 @@ static int plugin_write_header(
              "\n#ifdef __cplusplus\n}\n#endif\n\n"
              "#endif /* %s */\n",
              guard) >= 0;
+}
+
+static int plugin_write_client_header(
+    FILE *file,
+    const Node *root,
+    const Node *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir) {
+  char guard[320];
+  char init_macro[320];
+  char client_symbol[512];
+  size_t i;
+
+  if (!plugin_header_guard(
+          plugin_schema_name(root),
+          plugin_string(component, "name"),
+          "_PLUGIN_CLIENT_H",
+          guard, sizeof(guard)) ||
+      !plugin_header_guard(
+          plugin_schema_name(root),
+          plugin_string(component, "name"),
+          "_PLUGIN_CLIENT_INIT",
+          init_macro, sizeof(init_macro)) ||
+      !plugin_client_symbol(
+          root, component,
+          client_symbol, sizeof(client_symbol)))
+    return 0;
+
+  if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
+      fputs("#include ", file) == EOF ||
+      !plugin_write_c_string(file, config->native_header) ||
+      fputs(
+          "\n#include <salts/plugin.h>\n"
+          "#include <stdbool.h>\n\n"
+          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
+          file) == EOF ||
+      fprintf(
+          file,
+          "typedef struct %s {\n"
+          "  salts_plugin_registry *registry;\n"
+          "  salts_plugin_lease lease;\n",
+          client_symbol) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(
+            file,
+            "  const salts_plugin_export *%s_export;\n",
+            ir->operations[i].symbol) < 0)
+      return 0;
+
+  if (fprintf(
+          file,
+          "} %s;\n"
+          "#define %s {0}\n\n"
+          "bool %s_valid(const %s *client);\n"
+          "salts_plugin_status %s_open(\n"
+          "    salts_plugin_registry *registry, salts_plugin_ref ref,\n"
+          "    %s *out_client);\n"
+          "salts_plugin_status %s_close(%s *client);\n\n",
+          client_symbol, init_macro,
+          client_symbol, client_symbol,
+          client_symbol, client_symbol,
+          client_symbol, client_symbol) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *operation =
+        &ir->operations[i];
+
+    if (fprintf(
+            file,
+            "salts_plugin_status %s_plugin_client_call(\n"
+            "    %s *client,\n"
+            "    const %s_t *request, %s_t *response,\n"
+            "    int *native_status);\n\n",
+            operation->symbol,
+            client_symbol,
+            operation->request_type,
+            operation->response_type) < 0)
+      return 0;
+  }
+
+  return fprintf(
+             file,
+             "#ifdef __cplusplus\n}\n#endif\n\n"
+             "#endif /* %s */\n",
+             guard) >= 0;
+}
+
+static int plugin_write_client_source(
+    FILE *file,
+    const Node *root,
+    const Node *component,
+    const databind_compiler_plugin_config *config,
+    const databind_compiler_service_native_ir *ir,
+    uint32_t contract_version) {
+  const char *client_header =
+      plugin_basename(config->client_header_output);
+  const char *plugin_id =
+      plugin_string(component, "qualified_name");
+  char client_symbol[512];
+  size_t i;
+
+  if (!plugin_text_valid(client_header) ||
+      !plugin_text_valid(plugin_id) ||
+      !plugin_client_symbol(
+          root, component,
+          client_symbol, sizeof(client_symbol)))
+    return 0;
+
+  if (fputs("#include ", file) == EOF ||
+      !plugin_write_c_string(file, client_header) ||
+      fputs(
+          "\n#include <cmeta/function.h>\n"
+          "#include <string.h>\n\n",
+          file) == EOF)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    if (databind_compiler_service_native_emit_reflection(
+            file, &ir->operations[i], 0) != 0 ||
+        fputc('\n', file) == EOF)
+      return 0;
+  }
+
+  if (fprintf(
+          file,
+          "bool %s_valid(const %s *client) {\n"
+          "  return client != NULL && client->registry != NULL &&\n"
+          "         salts_plugin_lease_valid(client->lease)",
+          client_symbol, client_symbol) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(
+            file,
+            " &&\n         client->%s_export != NULL",
+            ir->operations[i].symbol) < 0)
+      return 0;
+
+  if (fputs(";\n}\n\n", file) == EOF)
+    return 0;
+
+  if (fprintf(
+          file,
+          "salts_plugin_status %s_open(\n"
+          "    salts_plugin_registry *registry, salts_plugin_ref ref,\n"
+          "    %s *out_client) {\n"
+          "  salts_plugin_status status;\n"
+          "  salts_plugin_status release_status;\n"
+          "  salts_plugin_lease lease = {0};\n"
+          "  const salts_plugin_manifest *manifest = NULL;\n"
+          "  const salts_plugin_export *entry = NULL;\n\n"
+          "  if (out_client == NULL)\n"
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+          "  if (out_client->registry != NULL ||\n"
+          "      out_client->lease.plugin.slot != 0u ||\n"
+          "      out_client->lease.plugin.generation != 0u ||\n"
+          "      out_client->lease.slot != 0u ||\n"
+          "      out_client->lease.generation != 0u",
+          client_symbol, client_symbol) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i)
+    if (fprintf(
+            file,
+            " ||\n      out_client->%s_export != NULL",
+            ir->operations[i].symbol) < 0)
+      return 0;
+
+  if (fputs(
+          ")\n"
+          "    return SALTS_PLUGIN_ALREADY;\n"
+          "  memset(out_client, 0, sizeof(*out_client));\n"
+          "  if (registry == NULL || !salts_plugin_ref_valid(ref))\n"
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n\n"
+          "  status = salts_plugin_registry_acquire(\n"
+          "      registry, ref, &lease, &manifest);\n"
+          "  if (status != SALTS_PLUGIN_OK) return status;\n\n"
+          "  if (manifest == NULL || manifest->plugin_id == NULL ||\n"
+          "      strcmp(manifest->plugin_id, ",
+          file) == EOF ||
+      !plugin_write_c_string(file, plugin_id) ||
+      fputs(
+          ") != 0) {\n"
+          "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+          "    goto fail;\n"
+          "  }\n\n",
+          file) == EOF)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *operation =
+        &ir->operations[i];
+
+    if (fputs(
+            "  entry = NULL;\n"
+            "  status = salts_plugin_manifest_find_export(\n"
+            "      manifest, ",
+            file) == EOF ||
+        !plugin_write_c_string(file, operation->qualified_operation) ||
+        fputs(", &entry);\n"
+              "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+              "  status = salts_plugin_export_require_function(\n"
+              "      entry, ",
+              file) == EOF ||
+        !plugin_write_c_string(file, operation->qualified_service) ||
+        fprintf(
+            file,
+            ", %uu, 0u);\n"
+            "  if (status != SALTS_PLUGIN_OK) goto fail;\n"
+            "  if (!cmeta_function_desc_equal(\n"
+            "          entry->value.function.desc,\n"
+            "          &%s__function_meta) ||\n"
+            "      !cmeta_function_abi_desc_equal(\n"
+            "          entry->value.function.abi,\n"
+            "          &%s__function_abi_meta)) {\n"
+            "    status = SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+            "    goto fail;\n"
+            "  }\n"
+            "  out_client->%s_export = entry;\n\n",
+            contract_version,
+            operation->symbol,
+            operation->symbol,
+            operation->symbol) < 0)
+      return 0;
+  }
+
+  if (fprintf(
+          file,
+          "  out_client->registry = registry;\n"
+          "  out_client->lease = lease;\n"
+          "  return SALTS_PLUGIN_OK;\n\n"
+          "fail:\n"
+          "  release_status = salts_plugin_registry_release(\n"
+          "      registry, &lease);\n"
+          "  memset(out_client, 0, sizeof(*out_client));\n"
+          "  if (release_status != SALTS_PLUGIN_OK) {\n"
+          "    out_client->registry = registry;\n"
+          "    out_client->lease = lease;\n"
+          "    return release_status;\n"
+          "  }\n"
+          "  return status;\n"
+          "}\n\n"
+          "salts_plugin_status %s_close(%s *client) {\n"
+          "  salts_plugin_registry *registry;\n"
+          "  salts_plugin_lease lease;\n"
+          "  salts_plugin_status status;\n"
+          "  if (client == NULL || client->registry == NULL ||\n"
+          "      !salts_plugin_lease_valid(client->lease))\n"
+          "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+          "  registry = client->registry;\n"
+          "  lease = client->lease;\n"
+          "  status = salts_plugin_registry_release(registry, &lease);\n"
+          "  if (status == SALTS_PLUGIN_OK)\n"
+          "    memset(client, 0, sizeof(*client));\n"
+          "  return status;\n"
+          "}\n\n",
+          client_symbol, client_symbol) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *operation =
+        &ir->operations[i];
+
+    if (fprintf(
+            file,
+            "salts_plugin_status %s_plugin_client_call(\n"
+            "    %s *client,\n"
+            "    const %s_t *request, %s_t *response,\n"
+            "    int *native_status) {\n"
+            "  const salts_plugin_export *entry;\n"
+            "  void *params[2];\n"
+            "  int result;\n"
+            "  if (client == NULL || request == NULL || response == NULL ||\n"
+            "      native_status == NULL)\n"
+            "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+            "  if (client->registry == NULL ||\n"
+            "      !salts_plugin_lease_valid(client->lease))\n"
+            "    return SALTS_PLUGIN_INVALID_STATE;\n"
+            "  entry = client->%s_export;\n"
+            "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
+            "      entry->value.function.invoke == NULL)\n"
+            "    return SALTS_PLUGIN_INVALID_STATE;\n"
+            "  params[0] = (void *)request;\n"
+            "  params[1] = response;\n"
+            "  if (!entry->value.function.invoke(\n"
+            "          entry->value.function.context, &result,\n"
+            "          params, 2u))\n"
+            "    return SALTS_PLUGIN_INVALID_STATE;\n"
+            "  *native_status = result;\n"
+            "  return SALTS_PLUGIN_OK;\n"
+            "}\n\n",
+            operation->symbol,
+            client_symbol,
+            operation->request_type,
+            operation->response_type,
+            operation->symbol) < 0)
+      return 0;
+  }
+
+  return 1;
 }
 
 static int plugin_write_adapter(
@@ -642,8 +966,13 @@ int databind_compiler_plugin_generate(
   uint32_t contract_version = 0u;
   char *header_staging = NULL;
   char *source_staging = NULL;
+  char *client_header_staging = NULL;
+  char *client_source_staging = NULL;
   FILE *header_file = NULL;
   FILE *source_file = NULL;
+  FILE *client_header_file = NULL;
+  FILE *client_source_file = NULL;
+  plugin_output_transaction outputs[4] = {{0}};
   int result = -1;
   (void)context;
 
@@ -654,7 +983,17 @@ int databind_compiler_plugin_generate(
       !plugin_text_valid(config->component_id) ||
       !plugin_text_valid(config->native_header) ||
       !plugin_text_valid(config->service_header_output) ||
+      !plugin_text_valid(config->client_header_output) ||
+      !plugin_text_valid(config->client_source_output) ||
       strcmp(request->output, config->service_header_output) == 0 ||
+      strcmp(request->output, config->client_header_output) == 0 ||
+      strcmp(request->output, config->client_source_output) == 0 ||
+      strcmp(config->service_header_output,
+             config->client_header_output) == 0 ||
+      strcmp(config->service_header_output,
+             config->client_source_output) == 0 ||
+      strcmp(config->client_header_output,
+             config->client_source_output) == 0 ||
       !plugin_schema_contract_version(
           canonical_ir, &contract_version))
     return -1;
@@ -685,21 +1024,50 @@ int databind_compiler_plugin_generate(
       request->output, &source_staging);
   if (source_file == NULL) goto cleanup;
 
+  client_header_file = plugin_open_staging(
+      config->client_header_output, &client_header_staging);
+  if (client_header_file == NULL) goto cleanup;
+
+  client_source_file = plugin_open_staging(
+      config->client_source_output, &client_source_staging);
+  if (client_source_file == NULL) goto cleanup;
+
   if (!plugin_write_header(
           header_file, canonical_ir, component,
           config, &native_ir) ||
       !plugin_write_source(
           source_file, component, config, &native_ir,
-          contract_version))
+          contract_version) ||
+      !plugin_write_client_header(
+          client_header_file, canonical_ir, component,
+          config, &native_ir) ||
+      !plugin_write_client_source(
+          client_source_file, canonical_ir, component,
+          config, &native_ir, contract_version))
     goto cleanup;
 
   if (!plugin_close_staging(&header_file) ||
-      !plugin_close_staging(&source_file))
+      !plugin_close_staging(&source_file) ||
+      !plugin_close_staging(&client_header_file) ||
+      !plugin_close_staging(&client_source_file))
     goto cleanup;
 
-  if (!plugin_commit_output_pair(
-          config->service_header_output, &header_staging,
-          request->output, &source_staging))
+  outputs[0].final_path = config->service_header_output;
+  outputs[0].staging_path = header_staging;
+  outputs[1].final_path = request->output;
+  outputs[1].staging_path = source_staging;
+  outputs[2].final_path = config->client_header_output;
+  outputs[2].staging_path = client_header_staging;
+  outputs[3].final_path = config->client_source_output;
+  outputs[3].staging_path = client_source_staging;
+
+  header_staging = NULL;
+  source_staging = NULL;
+  client_header_staging = NULL;
+  client_source_staging = NULL;
+
+  if (!plugin_commit_output_set(
+          outputs, sizeof(outputs) / sizeof(outputs[0])))
     goto cleanup;
 
   result = 0;
@@ -707,14 +1075,26 @@ int databind_compiler_plugin_generate(
 cleanup:
   if (header_file != NULL) fclose(header_file);
   if (source_file != NULL) fclose(source_file);
+  if (client_header_file != NULL) fclose(client_header_file);
+  if (client_source_file != NULL) fclose(client_source_file);
+
   if (header_staging != NULL) {
-    (void)salts_fs_unlink(header_staging);
+    plugin_unlink_if_exists(header_staging);
     free(header_staging);
   }
   if (source_staging != NULL) {
-    (void)salts_fs_unlink(source_staging);
+    plugin_unlink_if_exists(source_staging);
     free(source_staging);
   }
+  if (client_header_staging != NULL) {
+    plugin_unlink_if_exists(client_header_staging);
+    free(client_header_staging);
+  }
+  if (client_source_staging != NULL) {
+    plugin_unlink_if_exists(client_source_staging);
+    free(client_source_staging);
+  }
+
   databind_compiler_service_native_destroy(&native_ir);
   return result;
 }
