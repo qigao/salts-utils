@@ -21,13 +21,15 @@ typedef struct databind_compiler_plugin_config {
   uint32_t plugin_version_patch;
 
   /*
-   * Canonical Component name selected from root.components[].
+   * Canonical qualified Component identity selected from root.components[].
+   *
+   * Example: Image.ImageProcessor
    *
    * plugin_id = component.qualified_name
    *
    * There is no schema-wide fallback when this field is absent or invalid.
    */
-  const char *component_name;
+  const char *component_id;
 
   /* Existing generated native record header included by the Service header. */
   const char *native_header;
