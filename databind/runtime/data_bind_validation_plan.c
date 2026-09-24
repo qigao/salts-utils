@@ -715,6 +715,10 @@ static DataBindStatus validation_value_size(
   return DATA_BIND_ERR_TYPE_MISMATCH;
 }
 
+static DataBindStatus validation_pattern_status_at(
+    re_status_t status, DataBindError *error,
+    const char *prefix, const DataBindValidationRule *rule);
+
 static DataBindStatus validation_native_leaf_failure(
     const DataBindValidationPlan *plan,
     const DataBindValidationRule *rule,
