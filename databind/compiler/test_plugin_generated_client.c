@@ -12,6 +12,9 @@
 #ifndef GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH
 #error "GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH is required"
 #endif
+#ifndef GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH
+#error "GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH is required"
+#endif
 #ifndef GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH
 #error "GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH is required"
 #endif
@@ -27,7 +30,8 @@ static salts_plugin_registry make_registry(void) {
   return registry;
 }
 
-static void expect_client_open_rejected(const char *path) {
+static void expect_client_open_rejected(
+    const char *path, salts_plugin_status expected) {
   salts_plugin_registry registry = make_registry();
   salts_plugin_ref ref = {0};
   ImageProcessorPluginClient client = {0};
@@ -42,7 +46,7 @@ static void expect_client_open_rejected(const char *path) {
   check_equal(
       databind_plugin_client_5_Image_14_ImageProcessor_open(
           &registry, ref, &client),
-      SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
+      expected);
   check_false(
       databind_plugin_client_5_Image_14_ImageProcessor_valid(&client));
 
@@ -169,11 +173,17 @@ spec("generated DataBind Plugin client") {
 
   it("rejects plugin, contract and Function ABI mismatches without leaking leases") {
     expect_client_open_rejected(
-        GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH);
+        GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH,
+        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
     expect_client_open_rejected(
-        GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH);
+        GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH,
+        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
     expect_client_open_rejected(
-        GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH);
+        GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH,
+        SALTS_PLUGIN_UNKNOWN_EXPORT);
+    expect_client_open_rejected(
+        GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH,
+        SALTS_PLUGIN_INCOMPATIBLE_CONTRACT);
   }
 
   it("rejects invalid direct-call arguments without touching business status") {
