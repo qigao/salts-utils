@@ -517,7 +517,7 @@ static DataBindStatus state_provider_open(
     return DATA_BIND_ERR_TYPE_NOT_FOUND;
   }
 
-  if (*state != DATA_BIND_STATE_VALUE) return DATA_BIND_OK;
+  if (*state != DATA_BIND_VALUE_STATE_VALUE) return DATA_BIND_OK;
 
   provider->reader.token =
       (cserde_token){.kind = CSERDE_UINT, .value.uint = value};
@@ -537,8 +537,8 @@ static DataBindStatus state_provider_begin(
   provider->write_calls = 0u;
   provider->value_calls = 0u;
   provider->null_calls = 0u;
-  provider->nullable_result_state = DATA_BIND_STATE_ABSENT;
-  provider->tri_result_state = DATA_BIND_STATE_ABSENT;
+  provider->nullable_result_state = DATA_BIND_VALUE_STATE_ABSENT;
+  provider->tri_result_state = DATA_BIND_VALUE_STATE_ABSENT;
   provider->nullable_result_value = 0u;
   provider->tri_result_value = 0u;
   return DATA_BIND_OK;
@@ -554,10 +554,10 @@ static DataBindStatus state_provider_write(
   (void)error;
 
   if (provider == NULL || entry == NULL) return DATA_BIND_ERR_INVALID_ARG;
-  if (state != DATA_BIND_STATE_VALUE && state != DATA_BIND_STATE_NULL)
+  if (state != DATA_BIND_VALUE_STATE_VALUE && state != DATA_BIND_VALUE_STATE_NULL)
     return DATA_BIND_ERR_SCHEMA;
 
-  if (state == DATA_BIND_STATE_NULL) {
+  if (state == DATA_BIND_VALUE_STATE_NULL) {
     if (value != NULL || value_bytes != 0u)
       return DATA_BIND_ERR_TYPE_MISMATCH;
     ++provider->null_calls;
@@ -626,7 +626,7 @@ static DataBindStatus provider_open(
     return DATA_BIND_ERR_SCHEMA;
 
   name = entry_logical_name(entry);
-  *state = DATA_BIND_STATE_VALUE;
+  *state = DATA_BIND_VALUE_STATE_VALUE;
   if (strcmp(name, "left") == 0) {
     value = 3u;
   } else if (strcmp(name, "right") == 0) {
@@ -644,7 +644,7 @@ static DataBindStatus provider_open(
     value = 4u;
   } else if (strcmp(name, "scale") == 0) {
     if (!provider->provide_scale) {
-      *state = DATA_BIND_STATE_ABSENT;
+      *state = DATA_BIND_VALUE_STATE_ABSENT;
       return DATA_BIND_OK;
     }
     value = 2u;
@@ -677,7 +677,7 @@ static DataBindStatus provider_write(
   (void)error;
   ++provider->write_calls;
   if (provider->fail_write) return DATA_BIND_ERR_RUNTIME;
-  if (state != DATA_BIND_STATE_VALUE ||
+  if (state != DATA_BIND_VALUE_STATE_VALUE ||
       entry->address.binding_class != DATA_BIND_BINDING_RESULT ||
       strcmp(entry_logical_name(entry), "sum") != 0 ||
       value == NULL || value_bytes != sizeof(uint32_t))
@@ -771,7 +771,7 @@ static DataBindStatus encode_provider_write(
     const void *value, size_t value_bytes, DataBindError *error) {
   EncodeOutputProvider *provider = (EncodeOutputProvider *)context;
   DataBindStatus status;
-  if (state != DATA_BIND_STATE_VALUE || value == NULL)
+  if (state != DATA_BIND_VALUE_STATE_VALUE || value == NULL)
     return DATA_BIND_ERR_TYPE_MISMATCH;
   ++provider->write_calls;
   status = data_bind_native_encode(
@@ -1138,10 +1138,10 @@ spec("DataBind canonical Service BindingPlan") {
         DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
     DataBindBindingPlan *plan = NULL;
     StateProvider state = {
-        .required_state = DATA_BIND_STATE_VALUE,
-        .optional_state = DATA_BIND_STATE_ABSENT,
-        .nullable_state = DATA_BIND_STATE_NULL,
-        .defaulted_state = DATA_BIND_STATE_ABSENT,
+        .required_state = DATA_BIND_VALUE_STATE_VALUE,
+        .optional_state = DATA_BIND_VALUE_STATE_ABSENT,
+        .nullable_state = DATA_BIND_VALUE_STATE_NULL,
+        .defaulted_state = DATA_BIND_VALUE_STATE_ABSENT,
         .required_value = 11u,
         .optional_value = 22u,
         .nullable_value = 33u,
@@ -1209,9 +1209,9 @@ spec("DataBind canonical Service BindingPlan") {
                 DATA_BIND_OK);
 
     /* Explicit NULL is not replaced by the default. */
-    state.nullable_state = DATA_BIND_STATE_VALUE;
+    state.nullable_state = DATA_BIND_VALUE_STATE_VALUE;
     state.nullable_value = 5u;
-    state.defaulted_state = DATA_BIND_STATE_NULL;
+    state.defaulted_state = DATA_BIND_VALUE_STATE_NULL;
     request = (StateRequest){
         .required_value = 81u,
         .optional_value = 82u,
@@ -1237,7 +1237,7 @@ spec("DataBind canonical Service BindingPlan") {
                 DATA_BIND_OK);
 
     /* A non-null field rejects explicit NULL and rolls back all state. */
-    state.required_state = DATA_BIND_STATE_NULL;
+    state.required_state = DATA_BIND_VALUE_STATE_NULL;
     request = (StateRequest){
         .required_value = 71u,
         .optional_value = 72u,
@@ -1255,7 +1255,7 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(request.defaulted_value, 0u);
     check_equal(request.presence, 0u);
     check_equal(request.nulls, 0u);
-    state.required_state = DATA_BIND_STATE_VALUE;
+    state.required_state = DATA_BIND_VALUE_STATE_VALUE;
 
     /* Required nullable NULL is published; optional nullable ABSENT is omitted. */
     response = (StateResponse){
@@ -1269,8 +1269,8 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(state.write_calls, 1u);
     check_equal(state.null_calls, 1u);
     check_equal(state.value_calls, 0u);
-    check_equal(state.nullable_result_state, DATA_BIND_STATE_NULL);
-    check_equal(state.tri_result_state, DATA_BIND_STATE_ABSENT);
+    check_equal(state.nullable_result_state, DATA_BIND_VALUE_STATE_NULL);
+    check_equal(state.tri_result_state, DATA_BIND_VALUE_STATE_ABSENT);
 
     /* Required nullable VALUE plus optional nullable NULL are distinct. */
     response = (StateResponse){
@@ -1284,9 +1284,9 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(state.write_calls, 2u);
     check_equal(state.value_calls, 1u);
     check_equal(state.null_calls, 1u);
-    check_equal(state.nullable_result_state, DATA_BIND_STATE_VALUE);
+    check_equal(state.nullable_result_state, DATA_BIND_VALUE_STATE_VALUE);
     check_equal(state.nullable_result_value, 13u);
-    check_equal(state.tri_result_state, DATA_BIND_STATE_NULL);
+    check_equal(state.tri_result_state, DATA_BIND_VALUE_STATE_NULL);
 
     /* null=1 while presence=0 is not a canonical native state. */
     response = (StateResponse){
