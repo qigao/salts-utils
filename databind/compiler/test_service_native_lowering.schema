@@ -12,3 +12,11 @@ message AddResponse {
 service Calc {
     Add: AddRequest -> AddResponse;
 }
+
+service A_B {
+    C: AddRequest -> AddResponse;
+}
+
+service A {
+    B_C: AddRequest -> AddResponse;
+}
