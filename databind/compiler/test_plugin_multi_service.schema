@@ -1,5 +1,10 @@
 schema MultiServicePlugin [version(1)];
 
+component Bundle {
+    service First;
+    service Second;
+}
+
 message Request {
     uint32 id;
 }

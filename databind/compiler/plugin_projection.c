@@ -66,19 +66,90 @@ static int plugin_bounded_text_valid(const char *text, size_t max_length) {
   return plugin_text_valid(text) && strlen(text) <= max_length;
 }
 
-static int plugin_typed_errors_absent(const Node *root) {
+static const Node *plugin_component(
+    const Node *root, const char *component_id) {
+  const Node *components = plugin_list(root, "components");
+  size_t i;
+
+  if (components == NULL || component_id == NULL) return NULL;
+  for (i = 0u; i < components->data.list.count; ++i) {
+    const Node *qualified_name =
+        plugin_child(components->data.list.items[i], "qualified_name");
+    if (qualified_name != NULL &&
+        qualified_name->type == NODE_STRING &&
+        qualified_name->data.string_val != NULL &&
+        strcmp(qualified_name->data.string_val, component_id) == 0)
+      return components->data.list.items[i];
+  }
+  return NULL;
+}
+
+static const Node *plugin_component_capabilities(
+    const Node *component) {
+  return plugin_list(component, "capabilities");
+}
+
+static int plugin_component_has_service(
+    const Node *component, const char *service_name) {
+  const Node *capabilities =
+      plugin_component_capabilities(component);
+  size_t i;
+
+  if (capabilities == NULL || service_name == NULL) return 0;
+  for (i = 0u; i < capabilities->data.list.count; ++i) {
+    const Node *capability = capabilities->data.list.items[i];
+    const char *kind = plugin_string(capability, "kind");
+    const char *name = plugin_string(capability, "name");
+    if (kind != NULL && name != NULL &&
+        strcmp(kind, "service") == 0 &&
+        strcmp(name, service_name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+static const Node *plugin_service(
+    const Node *root, const char *service_name) {
   const Node *services = plugin_list(root, "services");
   size_t i;
 
-  if (services == NULL || services->data.list.count == 0u) return 0;
-
+  if (services == NULL || service_name == NULL) return NULL;
   for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *operations = plugin_list(services->data.list.items[i], "operations");
+    const Node *service = services->data.list.items[i];
+    const char *name = plugin_string(service, "name");
+    if (name != NULL && strcmp(name, service_name) == 0)
+      return service;
+  }
+  return NULL;
+}
+
+static int plugin_selected_typed_errors_absent(
+    const Node *root, const Node *component) {
+  const Node *capabilities =
+      plugin_component_capabilities(component);
+  size_t i;
+
+  if (capabilities == NULL) return 0;
+
+  for (i = 0u; i < capabilities->data.list.count; ++i) {
+    const Node *capability = capabilities->data.list.items[i];
+    const char *kind = plugin_string(capability, "kind");
+    const char *service_name = plugin_string(capability, "name");
+    const Node *service;
+    const Node *operations;
     size_t j;
-    if (operations == NULL || operations->data.list.count == 0u) return 0;
+
+    if (kind == NULL || strcmp(kind, "service") != 0)
+      continue;
+
+    service = plugin_service(root, service_name);
+    operations = plugin_list(service, "operations");
+    if (operations == NULL || operations->data.list.count == 0u)
+      return 0;
 
     for (j = 0u; j < operations->data.list.count; ++j) {
-      const Node *errors = plugin_list(operations->data.list.items[j], "errors");
+      const Node *errors =
+          plugin_list(operations->data.list.items[j], "errors");
       if (errors != NULL && errors->data.list.count != 0u)
         return 0;
     }
@@ -87,22 +158,44 @@ static int plugin_typed_errors_absent(const Node *root) {
   return 1;
 }
 
+static int plugin_operation_selected(
+    const Node *component,
+    const databind_compiler_service_native_operation *operation) {
+  return operation != NULL &&
+         plugin_component_has_service(
+             component, operation->service_name);
+}
+
+static int plugin_select_component_service(
+    void *context, const char *service_name) {
+  return plugin_component_has_service(
+      (const Node *)context, service_name);
+}
+
 static int plugin_native_ir_valid(
     const Node *root,
-    const databind_compiler_service_native_ir *ir) {
-  const char *schema_name = plugin_schema_name(root);
+    const Node *component,
+    const databind_compiler_service_native_ir *ir,
+    size_t *out_selected_count) {
+  const char *plugin_id =
+      plugin_string(component, "qualified_name");
+  size_t selected_count = 0u;
   size_t i;
 
-  if (!plugin_bounded_text_valid(schema_name, SALTS_PLUGIN_ID_MAX) ||
+  if (out_selected_count != NULL) *out_selected_count = 0u;
+
+  if (!plugin_bounded_text_valid(plugin_id, SALTS_PLUGIN_ID_MAX) ||
       ir == NULL || ir->operations == NULL ||
-      ir->operation_count == 0u ||
-      ir->operation_count > SALTS_PLUGIN_MAX_EXPORTS ||
-      !plugin_typed_errors_absent(root))
+      !plugin_selected_typed_errors_absent(root, component))
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
+
+    if (!plugin_operation_selected(component, operation))
+      continue;
+
     if (!plugin_bounded_text_valid(
             operation->qualified_service,
             SALTS_PLUGIN_CONTRACT_ID_MAX) ||
@@ -113,30 +206,51 @@ static int plugin_native_ir_valid(
         !plugin_text_valid(operation->request_type) ||
         !plugin_text_valid(operation->response_type))
       return 0;
+
+    ++selected_count;
+    if (selected_count > SALTS_PLUGIN_MAX_EXPORTS)
+      return 0;
   }
 
+  if (selected_count == 0u) return 0;
+  if (out_selected_count != NULL)
+    *out_selected_count = selected_count;
   return 1;
 }
 
 static int plugin_header_guard(
-    const char *schema_name, char *out, size_t out_size) {
+    const char *schema_name, const char *component_name,
+    char *out, size_t out_size) {
   static const char suffix[] = "_PLUGIN_SERVICE_H";
+  const char *parts[] = {schema_name, component_name};
   size_t used = 0u;
-  size_t i;
+  size_t part;
 
-  if (!plugin_text_valid(schema_name) || out == NULL || out_size == 0u)
+  if (!plugin_text_valid(schema_name) ||
+      !plugin_text_valid(component_name) ||
+      out == NULL || out_size == 0u)
     return 0;
 
-  for (i = 0u; schema_name[i] != '\0'; ++i) {
-    unsigned char ch = (unsigned char)schema_name[i];
-    if (!((ch >= 'A' && ch <= 'Z') ||
-          (ch >= 'a' && ch <= 'z') ||
-          (ch >= '0' && ch <= '9') ||
-          ch == '_'))
-      return 0;
-    if (used + 1u >= out_size) return 0;
-    out[used++] =
-        ch >= 'a' && ch <= 'z' ? (char)(ch - 'a' + 'A') : (char)ch;
+  for (part = 0u; part < 2u; ++part) {
+    const char *text = parts[part];
+    size_t i;
+    if (part != 0u) {
+      if (used + 1u >= out_size) return 0;
+      out[used++] = '_';
+    }
+    for (i = 0u; text[i] != '\0'; ++i) {
+      unsigned char ch = (unsigned char)text[i];
+      if (!((ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '_'))
+        return 0;
+      if (used + 1u >= out_size) return 0;
+      out[used++] =
+          ch >= 'a' && ch <= 'z'
+              ? (char)(ch - 'a' + 'A')
+              : (char)ch;
+    }
   }
 
   if (used > SIZE_MAX - sizeof(suffix) ||
@@ -349,13 +463,16 @@ cleanup:
 static int plugin_write_header(
     FILE *file,
     const Node *root,
+    const Node *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
   char guard[320];
   size_t i;
 
   if (!plugin_header_guard(
-          plugin_schema_name(root), guard, sizeof(guard)))
+          plugin_schema_name(root),
+          plugin_string(component, "name"),
+          guard, sizeof(guard)))
     return 0;
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
@@ -409,13 +526,14 @@ static int plugin_write_adapter(
 
 static int plugin_write_source(
     FILE *file,
-    const Node *root,
+    const Node *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir,
     uint32_t contract_version) {
   const char *service_header =
       plugin_basename(config->service_header_output);
-  const char *schema_name = plugin_schema_name(root);
+  const char *plugin_id =
+      plugin_string(component, "qualified_name");
   size_t i;
 
   if (fputs("#include ", file) == EOF ||
@@ -480,7 +598,7 @@ static int plugin_write_source(
           "  .abi_version = SALTS_PLUGIN_ABI_VERSION,\n"
           "  .plugin_id = ",
           file) == EOF ||
-      !plugin_write_c_string(file, schema_name) ||
+      !plugin_write_c_string(file, plugin_id) ||
       fprintf(
           file,
           ",\n"
@@ -513,6 +631,8 @@ int databind_compiler_plugin_generate(
           ? (const databind_compiler_plugin_config *)request->config
           : NULL;
   databind_compiler_service_native_ir native_ir = {0};
+  const Node *component = NULL;
+  size_t selected_count = 0u;
   uint32_t contract_version = 0u;
   char *header_staging = NULL;
   char *source_staging = NULL;
@@ -525,6 +645,7 @@ int databind_compiler_plugin_generate(
       request->kind != DATABIND_COMPILER_PROJECTION_PLUGIN ||
       config == NULL ||
       !plugin_text_valid(request->output) ||
+      !plugin_text_valid(config->component_id) ||
       !plugin_text_valid(config->native_header) ||
       !plugin_text_valid(config->service_header_output) ||
       strcmp(request->output, config->service_header_output) == 0 ||
@@ -532,11 +653,22 @@ int databind_compiler_plugin_generate(
           canonical_ir, &contract_version))
     return -1;
 
-  if (databind_compiler_service_native_build(
-          canonical_ir, &native_ir) != 0)
+  component = plugin_component(
+      canonical_ir, config->component_id);
+  if (component == NULL)
+    return -1;
+
+  if (databind_compiler_service_native_build_selected(
+          canonical_ir,
+          plugin_select_component_service,
+          (void *)component,
+          &native_ir) != 0)
     goto cleanup;
 
-  if (!plugin_native_ir_valid(canonical_ir, &native_ir))
+  if (!plugin_native_ir_valid(
+          canonical_ir, component, &native_ir,
+          &selected_count) ||
+      selected_count != native_ir.operation_count)
     goto cleanup;
 
   header_file = plugin_open_staging(
@@ -548,9 +680,10 @@ int databind_compiler_plugin_generate(
   if (source_file == NULL) goto cleanup;
 
   if (!plugin_write_header(
-          header_file, canonical_ir, config, &native_ir) ||
+          header_file, canonical_ir, component,
+          config, &native_ir) ||
       !plugin_write_source(
-          source_file, canonical_ir, config, &native_ir,
+          source_file, component, config, &native_ir,
           contract_version))
     goto cleanup;
 

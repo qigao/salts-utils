@@ -48,6 +48,25 @@ int databind_compiler_service_native_build(
     const Node *canonical_ir,
     databind_compiler_service_native_ir *out);
 
+typedef int (*databind_compiler_service_native_select_fn)(
+    void *context, const char *service_name);
+
+/*
+ * Build the same canonical native lowering for a selected Service subset.
+ *
+ * The selector is a control-plane filter over canonical Service identity.
+ * Unselected Services are not lowered and therefore cannot make the selected
+ * artifact fail due to backend-irrelevant native shapes.
+ *
+ * A NULL selector preserves the all-Service behavior.
+ */
+int databind_compiler_service_native_build_selected(
+    const Node *canonical_ir,
+    databind_compiler_service_native_select_fn select_service,
+    void *select_context,
+    databind_compiler_service_native_ir *out);
+
+
 void databind_compiler_service_native_destroy(
     databind_compiler_service_native_ir *ir);
 
