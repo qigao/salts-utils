@@ -6,10 +6,10 @@
 #include <string.h>
 
 const cmeta_function_desc *
-service_native_calc_add__databind_function(void);
+databind_13_ServiceNative_4_Calc_3_Add__databind_function(void);
 const cmeta_function_abi_desc *
-service_native_calc_add__databind_function_abi(void);
-DataBindStatus service_native_calc_add__databind_native_binding(
+databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi(void);
+DataBindStatus databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
     DataBindNativeTypeBinding *request_out,
     DataBindNativeTypeBinding *response_out,
     DataBindServiceNativeBinding *service_out,
@@ -39,9 +39,9 @@ static DataBindStatus project_field(
 spec("DataBind canonical Service native lowering") {
   it("emits complete FunctionAbi and compiles the shared BindingPlan tuple") {
     const cmeta_function_desc *function =
-        service_native_calc_add__databind_function();
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function();
     const cmeta_function_abi_desc *abi =
-        service_native_calc_add__databind_function_abi();
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi();
     DataBindNativeTypeBinding request =
         (DataBindNativeTypeBinding){0};
     DataBindNativeTypeBinding response =
@@ -80,7 +80,7 @@ spec("DataBind canonical Service native lowering") {
     check_equal(cmeta_function_param_abi(abi, 1u),
                 CMETA_ABI_OBJECT_POINTER);
 
-    check_equal(service_native_calc_add__databind_native_binding(
+    check_equal(databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
                     &request, &response, &native, &error),
                 DATA_BIND_OK);
     check_equal(request.presence_count, (size_t)1u);
