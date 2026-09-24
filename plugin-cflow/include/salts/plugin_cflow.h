@@ -21,6 +21,20 @@ static inline bool salts_plugin_cflow_publisher_handle_valid(
            cflow_publisher_valid(&handle->publisher);
 }
 
+typedef struct salts_plugin_cflow_subscription_handle {
+    salts_plugin_registry *registry;
+    salts_plugin_lease lease;
+    cflow_subscription subscription;
+} salts_plugin_cflow_subscription_handle;
+
+static inline bool salts_plugin_cflow_subscription_handle_valid(
+    const salts_plugin_cflow_subscription_handle *handle) {
+    return handle != NULL &&
+           handle->registry != NULL &&
+           salts_plugin_lease_valid(handle->lease) &&
+           handle->subscription.impl != NULL;
+}
+
 /*
  * Acquire one PublisherProvider export and create a fresh Publisher under the
  * same Plugin lease.
@@ -48,6 +62,43 @@ salts_plugin_status salts_plugin_cflow_publisher_acquire(
  */
 salts_plugin_status salts_plugin_cflow_publisher_release(
     salts_plugin_cflow_publisher_handle *handle);
+
+
+/*
+ * Move one lease-owned Publisher into a CFlow Subscription.
+ *
+ * Success transfers both Publisher ownership and the Plugin lease into
+ * out_subscription and clears source. Failure leaves source unchanged.
+ */
+cflow_status_result salts_plugin_cflow_subscribe_with_options(
+    salts_plugin_cflow_subscription_handle *out_subscription,
+    salts_plugin_cflow_publisher_handle *source,
+    const cflow_graph *graph,
+    cflow_scheduler *scheduler,
+    const cflow_subscriber *subscriber,
+    const cflow_eval_options *options);
+
+cflow_status_result salts_plugin_cflow_subscribe(
+    salts_plugin_cflow_subscription_handle *out_subscription,
+    salts_plugin_cflow_publisher_handle *source,
+    const cflow_graph *graph,
+    cflow_scheduler *scheduler,
+    const cflow_subscriber *subscriber);
+
+cflow_status_result salts_plugin_cflow_subscription_request_result(
+    salts_plugin_cflow_subscription_handle *subscription,
+    size_t demand);
+
+void salts_plugin_cflow_subscription_cancel(
+    salts_plugin_cflow_subscription_handle *subscription);
+
+/*
+ * Close the CFlow Subscription synchronously, then release the moved Plugin
+ * lease. On lease-release failure the closed subscription retains only the
+ * registry/lease token so release can be retried by calling close again.
+ */
+salts_plugin_status salts_plugin_cflow_subscription_close(
+    salts_plugin_cflow_subscription_handle *subscription);
 
 #ifdef __cplusplus
 }
