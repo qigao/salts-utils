@@ -820,7 +820,7 @@ static int native_emit_presence_array(
 
   if (fprintf(
           file,
-          "static const DataBindNativePresenceBinding "
+          "static const DataBindNativeStateBinding "
           "%s__%s_presence[] = {\n",
           symbol, suffix) < 0)
     return -1;
@@ -829,7 +829,7 @@ static int native_emit_presence_array(
     if (presence[i].field_name == NULL ||
         fprintf(
             file,
-            "  {sizeof(DataBindNativePresenceBinding), \"%s\", "
+            "  {sizeof(DataBindNativeStateBinding), \"%s\", "
             "offsetof(%s_t, _presence), %uu},\n",
             presence[i].field_name, type_name, presence[i].bit) < 0)
       return -1;
@@ -903,11 +903,11 @@ int databind_compiler_service_native_emit_binding(
              "  *request_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", request_data, %s, %zuu};\n"
+             "      \"%s\", request_data, %s, %zuu, NULL, 0u};\n"
              "  *response_out = (DataBindNativeTypeBinding){\n"
              "      sizeof(DataBindNativeTypeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      \"%s\", response_data, %s, %zuu};\n"
+             "      \"%s\", response_data, %s, %zuu, NULL, 0u};\n"
              "  *service_out = (DataBindServiceNativeBinding){\n"
              "      sizeof(DataBindServiceNativeBinding),\n"
              "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"

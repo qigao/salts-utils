@@ -71,14 +71,14 @@ static DataBindStatus plugin_provider_open_input(
     void *context,
     const DataBindBindingPlanEntry *entry,
     cserde_reader *reader,
-    int *present,
+    DataBindBindingValueState *state,
     DataBindError *error) {
   PluginBindingProvider *provider =
       (PluginBindingProvider *)context;
   (void)error;
 
   if (provider == NULL || entry == NULL ||
-      reader == NULL || present == NULL)
+      reader == NULL || state == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (entry->address.binding_class != DATA_BIND_BINDING_VALUE ||
       entry->schema_field == NULL ||
@@ -90,7 +90,7 @@ static DataBindStatus plugin_provider_open_input(
           .kind = CSERDE_UINT,
           .value.uint = provider->input_width};
   provider->reader.emitted = 0;
-  *present = 1;
+  *state = DATA_BIND_VALUE_STATE_VALUE;
 
   return cserde_reader_init(
              reader,
@@ -114,6 +114,7 @@ static DataBindStatus plugin_provider_begin_output(
 static DataBindStatus plugin_provider_write_output(
     void *context,
     const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState state,
     const void *value,
     size_t value_bytes,
     DataBindError *error) {
@@ -122,7 +123,7 @@ static DataBindStatus plugin_provider_write_output(
   (void)error;
 
   if (provider == NULL || entry == NULL ||
-      value == NULL)
+      state != DATA_BIND_VALUE_STATE_VALUE || value == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (entry->address.binding_class != DATA_BIND_BINDING_RESULT ||
       entry->schema_field == NULL ||
