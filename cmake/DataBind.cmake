@@ -43,16 +43,22 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
       HINTS ${_databind_hints}
       NO_DEFAULT_PATH
       NO_CACHE)
-  endif()
-  if(NOT _databindc_program)
+    if(NOT _databindc_program)
+      message(FATAL_ERROR
+              "The installed SaltsUtils package is missing its matching host "
+              "databindc under: ${SaltsUtils_DATABINDC_HINT}. "
+              "Set SaltsUtils_DATABINDC_EXECUTABLE explicitly only when a "
+              "different qualified host tool is intentional.")
+    endif()
+  else()
     find_program(_databindc_program
       NAMES databindc
       NO_CACHE)
-  endif()
-  if(NOT _databindc_program)
-    message(FATAL_ERROR
-            "databind_target() could not find host databindc. "
-            "Set SaltsUtils_DATABINDC_EXECUTABLE explicitly.")
+    if(NOT _databindc_program)
+      message(FATAL_ERROR
+              "databind_target() could not find host databindc. "
+              "Set SaltsUtils_DATABINDC_EXECUTABLE explicitly.")
+    endif()
   endif()
 
   set(${out_command} "${_databindc_program}" PARENT_SCOPE)
@@ -119,6 +125,17 @@ function(databind_target)
     message(FATAL_ERROR
             "databind_target VERSION must be MAJOR.MINOR.PATCH")
   endif()
+  string(REPLACE "." ";" _version_parts "${DB_VERSION}")
+  foreach(_version_part IN LISTS _version_parts)
+    string(LENGTH "${_version_part}" _version_part_length)
+    if(_version_part_length GREATER 10 OR
+       (_version_part_length EQUAL 10 AND
+        _version_part STRGREATER "4294967295"))
+      message(FATAL_ERROR
+              "databind_target VERSION components must fit uint32: "
+              "${DB_VERSION}")
+    endif()
+  endforeach()
 
   set(_normalized_projections)
   foreach(projection IN LISTS DB_PROJECTIONS)
