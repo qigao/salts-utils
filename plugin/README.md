@@ -297,6 +297,48 @@ POSIX/Windows native handles stay private.
 Admission failures are transactional: the newly opened DSO is closed and the
 registry remains unchanged.
 
+## DataBind public projection frontend
+
+DataBind artifact generation uses the same `databindc` frontend as ordinary
+native source generation.
+
+Example:
+
+```text
+databindc image.schema \
+  --lang c \
+  --output out/image_native.h \
+  --projections plugin \
+  --component Image.ImageProcessor \
+  --artifact-name image_processor \
+  --artifact-version 1.0.0
+```
+
+The source-language and artifact dimensions remain orthogonal:
+
+```text
+--lang c
+    -> native/source rendering
+
+--projections plugin
+    -> artifact backend selection
+```
+
+For the command above, PLUGIN outputs are derived deterministically next to the
+ordinary `--output` header:
+
+```text
+out/image_native.h
+out/image_processor.plugin.h
+out/image_processor.plugin.c
+```
+
+`--component` takes the canonical qualified Component identity and becomes
+the Plugin artifact identity through `Component.qualified_name`.
+
+There is no `--plugin-output`, no Plugin-specific parser frontend, and no
+schema-wide fallback when Component selection is missing.
+
 ## DataBind and CFlow boundaries
 
 `Salts::Plugin` depends on CMeta but not DataBind or CFlow.

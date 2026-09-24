@@ -24,7 +24,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c service_native.c plugin_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c service_native.c plugin_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -86,6 +86,27 @@ cmake_add_test(test_databind_projection_registry
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_projection_registry PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+cmake_add_test(test_databind_projection_frontend
+  SOURCES
+    test_projection_frontend.c
+    projection_frontend.c
+    projection.c
+    service_native.c
+    plugin_projection.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::PluginABI
+    Salts::TinyTest
+    Salts::Core
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_projection_frontend PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF)
@@ -188,8 +209,8 @@ set_target_properties(test_databind_service_native_public_cpp PROPERTIES
   CXX_STANDARD_REQUIRED YES
   CXX_EXTENSIONS NO)
 
-# Generated PLUGIN backend qualification. This is deliberately an internal
-# codegen driver rather than a second public databindc frontend.
+# Generated PLUGIN backend qualification through the canonical public
+# databindc projection frontend.
 set(DATABIND_PLUGIN_TEST_GENERATED_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/generated-plugin")
 file(MAKE_DIRECTORY "${DATABIND_PLUGIN_TEST_GENERATED_DIR}")
@@ -201,28 +222,9 @@ set(DATABIND_PLUGIN_TEST_BINDING_H
 set(DATABIND_PLUGIN_TEST_BINDING_C
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_binding_native.c")
 set(DATABIND_PLUGIN_TEST_SERVICE_H
-    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_plugin_service.h")
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.h")
 set(DATABIND_PLUGIN_TEST_SOURCE
-    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_plugin.c")
-
-cmake_add_executable(databind_plugin_codegen_fixture_tool
-  SOURCES
-    test_plugin_codegen_tool.c
-    compiler_core.c
-    projection.c
-    service_native.c
-    plugin_projection.c
-    database_schema.c
-    mustache_helpers.c
-  LIBS
-    Salts::DataBindSchema
-    Salts::PluginABI
-    ${DATABIND_COMPILER_TOOLING_TARGET}
-    Salts::Core
-  INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
-    ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.c")
 
 add_custom_command(
   OUTPUT
@@ -236,22 +238,18 @@ add_custom_command(
       "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
       --lang c
       --output "${DATABIND_PLUGIN_TEST_NATIVE_H}"
+      --projections plugin
+      --component "Image.ImageProcessor"
+      --artifact-name "image"
+      --artifact-version "1.0.0"
   COMMAND
     $<TARGET_FILE:databindc>
       "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
       --lang c
       --output "${DATABIND_PLUGIN_TEST_BINDING_H}"
       --source-output "${DATABIND_PLUGIN_TEST_BINDING_C}"
-  COMMAND
-    $<TARGET_FILE:databind_plugin_codegen_fixture_tool>
-      "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
-      "${DATABIND_PLUGIN_TEST_SOURCE}"
-      "${DATABIND_PLUGIN_TEST_SERVICE_H}"
-      "image_native.h"
-      "Image.ImageProcessor"
   DEPENDS
     databindc
-    databind_plugin_codegen_fixture_tool
     "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
   VERBATIM
   COMMENT "Generating DataBind Service Plugin fixture")

@@ -1,4 +1,4 @@
-#include "image_plugin_service.h"
+#include "image.plugin.h"
 
 int databind_5_Image_5_Codec_6_Decode(
     const DecodeRequest_t *request,

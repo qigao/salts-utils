@@ -322,6 +322,12 @@ static char *plugin_suffixed_path(
   return out;
 }
 
+static void plugin_unlink_if_exists(const char *path) {
+  if (path != NULL &&
+      salts_fs_access(path, SALTS_FS_ACCESS_EXISTS) == 0)
+    (void)salts_fs_unlink(path);
+}
+
 static FILE *plugin_open_staging(
     const char *final_path, char **out_staging_path) {
   char *staging;
@@ -333,7 +339,7 @@ static FILE *plugin_open_staging(
   staging = plugin_suffixed_path(final_path, ".databind-plugin.tmp");
   if (staging == NULL) return NULL;
 
-  (void)salts_fs_unlink(staging);
+  plugin_unlink_if_exists(staging);
   file = fopen(staging, "wb");
   if (file == NULL) {
     free(staging);
@@ -372,7 +378,7 @@ static int plugin_prepare_output_backup(
       plugin_suffixed_path(output->final_path, ".databind-plugin.bak");
   if (output->backup_path == NULL) return 0;
 
-  (void)salts_fs_unlink(output->backup_path);
+  plugin_unlink_if_exists(output->backup_path);
 
   if (salts_fs_access(
           output->final_path, SALTS_FS_ACCESS_EXISTS) == 0) {
@@ -390,16 +396,16 @@ static void plugin_rollback_output(
   if (output == NULL) return;
 
   if (output->published)
-    (void)salts_fs_unlink(output->final_path);
+    plugin_unlink_if_exists(output->final_path);
 
   if (output->had_original && output->backup_path != NULL)
     (void)salts_fs_rename(
         output->backup_path, output->final_path);
   else if (output->backup_path != NULL)
-    (void)salts_fs_unlink(output->backup_path);
+    plugin_unlink_if_exists(output->backup_path);
 
   if (output->staging_path != NULL)
-    (void)salts_fs_unlink(output->staging_path);
+    plugin_unlink_if_exists(output->staging_path);
 }
 
 static void plugin_free_output_paths(
@@ -441,9 +447,9 @@ static int plugin_commit_output_pair(
   source.published = 1;
 
   if (header.had_original)
-    (void)salts_fs_unlink(header.backup_path);
+    plugin_unlink_if_exists(header.backup_path);
   if (source.had_original)
-    (void)salts_fs_unlink(source.backup_path);
+    plugin_unlink_if_exists(source.backup_path);
 
   ok = 1;
   goto cleanup;

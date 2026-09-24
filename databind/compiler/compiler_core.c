@@ -1799,8 +1799,55 @@ static int tbe_compiler_validate_enum_backend(Node *root,
   return 1;
 }
 
+static Node *tbe_compiler_clone_canonical_node(const Node *node) {
+  Node *copy = NULL;
+  size_t i;
+
+  if (node == NULL) return NULL;
+
+  switch (node->type) {
+  case NODE_STRING:
+    return create_node_string(
+        node->name,
+        node->data.string_val != NULL ? node->data.string_val : "");
+
+  case NODE_LIST:
+    copy = create_node_list(node->name);
+    if (copy == NULL) return NULL;
+    for (i = 0u; i < node->data.list.count; ++i) {
+      Node *child =
+          tbe_compiler_clone_canonical_node(node->data.list.items[i]);
+      if (child == NULL || list_add(copy, child) != 0) {
+        node_free(child);
+        node_free(copy);
+        return NULL;
+      }
+    }
+    return copy;
+
+  case NODE_MAP:
+    copy = create_node_map(node->name);
+    if (copy == NULL) return NULL;
+    for (i = 0u; i < node->data.map.count; ++i) {
+      Node *child =
+          tbe_compiler_clone_canonical_node(node->data.map.items[i]);
+      if (child == NULL || map_add(copy, child) != 0) {
+        node_free(child);
+        node_free(copy);
+        return NULL;
+      }
+    }
+    return copy;
+
+  case NODE_ROOT:
+  default:
+    return NULL;
+  }
+}
+
 int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
+  Node *projection_root = NULL;
   Node *database_ir = NULL;
   char *schema_data = NULL;
   char template_path[SALTS_FS_MAX_PATH];
@@ -1819,18 +1866,18 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   if (status != 0) return status;
 
   /*
-   * Artifact backends consume the same immutable parse/normalize result before
-   * any legacy language renderer annotates it with backend-specific generation
-   * state. The current CLI passes an empty request set, so this is behaviorally
-   * inert until the unified #144 frontend selects projections.
+   * Preserve one immutable canonical IR for artifact backends. Ordinary source
+   * renderers are allowed to annotate their working tree, but projections run
+   * only after prerequisite renderer outputs succeed.
+   *
+   * This keeps parse-once semantics while preventing publication of a Plugin
+   * artifact when its generated native header/source failed earlier in the same
+   * compiler invocation.
    */
   if (options->projection_count != 0u) {
-    if (databind_compiler_projection_run(
-            root,
-            options->projection_requests,
-            options->projection_count,
-            options->projection_backends,
-            options->projection_backend_count) != 0) {
+    projection_root = tbe_compiler_clone_canonical_node(root);
+    if (projection_root == NULL) {
+      fprintf(stderr, "Failed to preserve canonical projection IR\n");
       status = 1;
       goto cleanup;
     }
@@ -2013,9 +2060,20 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
   }
 
+  if (status == 0 && options->projection_count != 0u) {
+    if (databind_compiler_projection_run(
+            projection_root,
+            options->projection_requests,
+            options->projection_count,
+            options->projection_backends,
+            options->projection_backend_count) != 0)
+      status = 1;
+  }
+
 cleanup:
   free(schema_data);
   tbe_database_schema_destroy(database_ir);
+  node_free(projection_root);
   node_free(root);
   return status;
 }
