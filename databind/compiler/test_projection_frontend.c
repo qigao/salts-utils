@@ -140,15 +140,22 @@ spec("DataBind public projection frontend") {
   }
 
   it("rejects deterministic artifact output collisions") {
+    char collision[SALTS_FS_MAX_PATH];
     databind_compiler_projection_frontend_input input = {
         .projections = "plugin",
         .component_id = "Image.ImageProcessor",
         .artifact_name = "image",
         .artifact_version = "1.0.0",
-        .output_path = "generated/image.plugin.c",
+        .output_path = "generated/image_native.h",
     };
     databind_compiler_projection_frontend_plan plan;
     char error[256];
+
+    check_equal(salts_fs_path_join(
+                    collision, sizeof(collision),
+                    "generated", "image.plugin.c"),
+                0);
+    input.source_output_path = collision;
 
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)),
