@@ -2,6 +2,7 @@
 
 #include "data_bind_binding_plan.h"
 #include "data_bind_method_plan.h"
+#include "data_bind_validation_plan.h"
 #include "test_data_bind_cmeta_public.c"
 
 static_assert(std::is_standard_layout_v<DataBindSchemaConstraint>);
