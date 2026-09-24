@@ -416,6 +416,12 @@ typedef struct DataBindSchemaField {
    */
   const char *binding_kind;
   const char *binding_name;
+  /**
+   * Logical DataBind nullability. This is independent from is_optional:
+   * optional controls ABSENT, nullable controls an explicitly present NULL.
+   * Appended to preserve the existing size-prefixed reflection ABI.
+   */
+  int is_nullable;
 } DataBindSchemaField;
 
 #define DATA_BIND_SCHEMA_CMETA_REFLECTION 1
