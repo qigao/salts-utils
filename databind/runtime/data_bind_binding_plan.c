@@ -1,4 +1,6 @@
 #include "data_bind_binding_plan.h"
+#include "data_bind_validation_plan.h"
+#include "data_bind_validation_plan_internal.h"
 
 #include <cmeta/type_traits.h>
 
@@ -18,6 +20,8 @@ typedef struct DataBindBindingPlanEntryOwned {
   char *format;
   cserde_token default_token;
   int has_default_token;
+  size_t validation_rule_start;
+  size_t validation_rule_count;
 } DataBindBindingPlanEntryOwned;
 
 struct DataBindBindingPlan {
@@ -29,6 +33,7 @@ struct DataBindBindingPlan {
 
   DataBindBindingPlanEntryOwned *ingress;
   size_t ingress_count;
+  DataBindValidationPlan *request_validation;
   DataBindBindingPlanEntryOwned *egress;
   size_t egress_count;
 
@@ -785,6 +790,148 @@ static DataBindStatus plan_compile_ingress(
   return DATA_BIND_OK;
 }
 
+static DataBindBindingPlanEntryOwned *plan_ingress_by_field(
+    DataBindBindingPlan *plan, const char *field_name) {
+  size_t i;
+  if (plan == NULL || field_name == NULL) return NULL;
+  for (i = 0u; i < plan->ingress_count; ++i) {
+    DataBindBindingPlanEntryOwned *owned = &plan->ingress[i];
+    if (owned->view.schema_field != NULL &&
+        strcmp(owned->view.schema_field, field_name) == 0)
+      return owned;
+  }
+  return NULL;
+}
+
+static DataBindStatus plan_compile_ingress_validation(
+    DataBind *codec, const char *request_type, DataBindBindingPlan *plan,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindValidationPlan *validation = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  size_t rule_count;
+  size_t rule_index;
+  DataBindStatus status;
+
+  if (codec == NULL || request_type == NULL || plan == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid BindingPlan ValidationPlan compile arguments");
+
+  status = data_bind_validation_plan_compile(
+      codec, request_type, &validation, &error);
+  if (status != DATA_BIND_OK)
+    return plan_diag_fail(
+        diagnostic, status, error.path[0] != '\0' ? error.path : request_type,
+        NULL, "%s",
+        error.message[0] != '\0'
+            ? error.message
+            : "Could not compile request ValidationPlan");
+
+  rule_count = data_bind_validation_plan_rule_count(validation);
+  if (data_bind_validation_plan_internal_child_count(validation) != 0u) {
+    data_bind_validation_plan_free(validation);
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, request_type, NULL,
+        "Nested native ValidationPlan execution is not admitted by this "
+        "BindingPlan slice");
+  }
+
+  if (rule_count == 0u) {
+    data_bind_validation_plan_free(validation);
+    return DATA_BIND_OK;
+  }
+
+  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
+    DataBindValidationRuleInfo info = {0};
+    DataBindBindingPlanEntryOwned *owned;
+    const cmeta_data_buffer_ops *buffer_ops = NULL;
+
+    if (!data_bind_validation_plan_internal_rule_info(
+            validation, rule_index, &info) ||
+        info.field_name == NULL) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, request_type, NULL,
+          "Compiled ValidationPlan rule has no field identity");
+    }
+
+    owned = plan_ingress_by_field(plan, info.field_name);
+    if (owned == NULL || owned->view.data == NULL) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+          "ValidationPlan field has no compiled ingress entry");
+    }
+
+    if (owned->view.data->kind != info.field_kind) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, info.field_name,
+          owned->view.function_param,
+          "ValidationPlan field kind does not match admitted native ingress");
+    }
+
+    if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
+      if (info.field_kind != CMETA_DATA_STRING &&
+          info.field_kind != CMETA_DATA_BYTES) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native @Size currently requires canonical string/bytes storage; "
+            "container size validation awaits a canonical range provider");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native @Size requires a canonical readable buffer provider");
+      }
+    } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
+      if (info.field_kind != CMETA_DATA_STRING) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native @Pattern requires canonical string storage");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native @Pattern requires a canonical readable string provider");
+      }
+    } else if (info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
+               info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+          owned->view.function_param,
+          "ValidationPlan contains an unsupported native constraint kind");
+    }
+
+    if (owned->validation_rule_count == 0u) {
+      owned->validation_rule_start = rule_index;
+    } else if (owned->validation_rule_start +
+                   owned->validation_rule_count !=
+               rule_index) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+          owned->view.function_param,
+          "ValidationPlan rules for one ingress field are not contiguous");
+    }
+    ++owned->validation_rule_count;
+  }
+
+  plan->request_validation = validation;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_compile_egress(
     DataBind *codec, const DataBindServiceOperation *operation,
     const DataBindBindingProjection *projection,
@@ -1140,6 +1287,7 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
   for (i = 0u; i < plan->error_count; ++i)
     plan_entry_owned_clear(&plan->errors[i]);
   free(plan->errors);
+  data_bind_validation_plan_free(plan->request_validation);
   free(plan->param_data);
   free(plan->param_ingress);
   free(plan->param_egress);
@@ -1250,6 +1398,10 @@ DataBindStatus data_bind_binding_plan_compile_service(
 
   status = plan_compile_ingress(codec, &operation, projection, native,
                                 plan, param_used, diagnostic);
+  if (status != DATA_BIND_OK) goto fail;
+
+  status = plan_compile_ingress_validation(
+      codec, operation.request_type, plan, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
   status = plan_compile_egress(codec, &operation, projection, native,
@@ -1537,6 +1689,41 @@ static const void *plan_egress_source(
   return base + entry->native_offset;
 }
 
+static DataBindStatus plan_validate_ingress_value(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntryOwned *owned,
+    const void *destination,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlanEntry *entry;
+  size_t i;
+
+  if (plan == NULL || owned == NULL || destination == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid native validation runtime arguments");
+  if (owned->validation_rule_count == 0u) return DATA_BIND_OK;
+  if (plan->request_validation == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, owned->view.schema_field,
+        owned->view.function_param,
+        "Ingress validation binding has no ValidationPlan");
+
+  entry = &owned->view;
+  for (i = 0u; i < owned->validation_rule_count; ++i) {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t rule_index = owned->validation_rule_start + i;
+    DataBindStatus status =
+        data_bind_validation_plan_internal_validate_native_rule(
+            plan->request_validation, rule_index, entry->data,
+            destination, &error);
+    if (status != DATA_BIND_OK)
+      return plan_runtime_fail_error(
+          diagnostic, status, entry, &error,
+          "Native input validation failed");
+  }
+  return DATA_BIND_OK;
+}
+
 static void plan_reset_request_state(
     const DataBindBindingPlan *plan, DataBindBindingCallFrame *frame) {
   size_t i;
@@ -1726,6 +1913,10 @@ DataBindStatus data_bind_binding_plan_bind_inputs(
               : "Native input decode failed");
       goto fail;
     }
+
+    status = plan_validate_ingress_value(
+        plan, owned, destination, diagnostic);
+    if (status != DATA_BIND_OK) goto fail;
 
     if (entry->has_presence &&
         input_state == DATA_BIND_VALUE_STATE_VALUE) {
