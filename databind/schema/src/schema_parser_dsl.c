@@ -1218,18 +1218,27 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
         return NULL;
     }
 
-    if (map_add(temp_root, messages_list) != 0 ||
-        map_add(temp_root, composites_list) != 0 ||
-        map_add(temp_root, groups_list) != 0 ||
-        map_add(temp_root, enums_list) != 0 ||
-        map_add(temp_root, unions_list) != 0 ||
-        map_add(temp_root, services_list) != 0 ||
-        map_add(temp_root, components_list) != 0) {
-        node_free(temp_root);
-        if (err) {
-            tbe_error_set(err, TBE_ERR_OUT_OF_MEMORY, -1, -1, "Failed to add child nodes");
+    {
+        Node *root_lists[] = {
+            messages_list, composites_list, groups_list, enums_list,
+            unions_list, services_list, components_list
+        };
+        size_t list_count = sizeof(root_lists) / sizeof(root_lists[0]);
+        size_t i;
+
+        for (i = 0u; i < list_count; ++i) {
+            if (map_add(temp_root, root_lists[i]) != 0) {
+                size_t j;
+                for (j = i; j < list_count; ++j) node_free(root_lists[j]);
+                node_free(temp_root);
+                if (err) {
+                    tbe_error_set(
+                        err, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                        "Failed to add child nodes");
+                }
+                return NULL;
+            }
         }
-        return NULL;
     }
 
     schema_parse_ctx_t ctx = {0};
