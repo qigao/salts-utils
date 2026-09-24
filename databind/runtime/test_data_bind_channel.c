@@ -1,6 +1,8 @@
 #include "data_bind.h"
 #include "tinytest.h"
 
+#include <stddef.h>
+
 spec("DataBind Channel reflection") {
   it("reflects Channels and mixed Component capabilities") {
     static const char schema[] =
@@ -59,6 +61,29 @@ spec("DataBind Channel reflection") {
               "Control", &capability) == 1);
     check_equal(capability.kind,
                 DATA_BIND_COMPONENT_CAPABILITY_SERVICE);
+
+    data_bind_free(codec);
+  }
+
+  it("honors size-prefix Channel reflection") {
+    static const char schema[] =
+        "message Event { uint32 value; }"
+        "channel Events: Event;";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindChannel channel = DATA_BIND_CHANNEL_INIT;
+
+    check_equal(data_bind_create_from_text(
+                    schema, sizeof(schema) - 1u, &codec, &error),
+                DATA_BIND_OK);
+
+    channel.size = offsetof(DataBindChannel, qualified_name);
+    channel.qualified_name = "untouched";
+    channel.message_type = "untouched";
+    check(data_bind_channel_at(codec, 0u, &channel) == 1);
+    check_equal(channel.name, "Events");
+    check_equal(channel.qualified_name, "untouched");
+    check_equal(channel.message_type, "untouched");
 
     data_bind_free(codec);
   }
