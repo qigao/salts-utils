@@ -1,4 +1,5 @@
 #include "data_bind_binding_plan.h"
+#include "data_bind_method_plan.h"
 #include "service_native_generated.h"
 #include "tinytest.h"
 
@@ -405,6 +406,206 @@ spec("DataBind canonical Service native lowering") {
     check_equal(state.abort_calls, (size_t)1u);
 
     data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("maps canonical BindingPlan outcomes through HTTP and RPC MethodPlans") {
+    const DataBindHttpErrorMapping http_errors[] = {
+        {sizeof(DataBindHttpErrorMapping), "NotFound", 404},
+        {sizeof(DataBindHttpErrorMapping), "PermissionDenied", 403}};
+    DataBindHttpProjectionConfig http_config =
+        (DataBindHttpProjectionConfig)DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    const DataBindRpcErrorMapping rpc_errors[] = {
+        {sizeof(DataBindRpcErrorMapping), "NotFound", -32004},
+        {sizeof(DataBindRpcErrorMapping), "PermissionDenied", -32003}};
+    DataBindRpcProjectionConfig rpc_config =
+        (DataBindRpcProjectionConfig)DATA_BIND_RPC_PROJECTION_CONFIG_INIT;
+    DataBindNativeTypeBinding request_binding = {0};
+    DataBindNativeTypeBinding response_binding = {0};
+    DataBindServiceNativeBinding native = {0};
+    DataBindHttpMethodPlan *http = NULL;
+    DataBindRpcMethodPlan *rpc = NULL;
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    AddRequest_t request = {0};
+    AddResponse_t response = {0};
+    databind_13_ServiceNative_4_Calc_4_Find__error typed_error =
+        databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    void *params[] = {&request, &response, &typed_error};
+    const size_t param_bytes[] = {
+        sizeof(request), sizeof(response), sizeof(typed_error)};
+    DataBindBindingCallFrame frame =
+        (DataBindBindingCallFrame)DATA_BIND_BINDING_CALL_FRAME_INIT;
+    OutcomeProviderState state = {0};
+    DataBindBindingProvider provider = outcome_provider(&state);
+    DataBindBindingOutcome outcome =
+        (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    DataBindHttpErrorMapping http_mapping =
+        (DataBindHttpErrorMapping)DATA_BIND_HTTP_ERROR_MAPPING_INIT;
+    DataBindRpcErrorMapping rpc_mapping =
+        (DataBindRpcErrorMapping)DATA_BIND_RPC_ERROR_MAPPING_INIT;
+    int native_status;
+    int http_status = -1;
+    int rpc_code = 1;
+
+    http_config.success_status = 201;
+    http_config.errors = http_errors;
+    http_config.error_count = 2u;
+    rpc_config.errors = rpc_errors;
+    rpc_config.error_count = 2u;
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_native_binding(
+            &request_binding, &response_binding, &native, &error),
+        DATA_BIND_OK);
+    check_equal(ServiceNative_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+
+    check_equal(
+        data_bind_http_method_plan_compile_service(
+            codec, "Calc", "Find", &http_config, &native,
+            &http, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(http);
+    check_equal(data_bind_http_method_plan_method(http), "POST");
+    check_equal(data_bind_http_method_plan_route(http), "/Calc/Find");
+    check_equal(data_bind_http_method_plan_success_status(http), 201);
+    check_equal(data_bind_http_method_plan_error_count(http), (size_t)2u);
+    check(data_bind_http_method_plan_error_at(http, 0u, &http_mapping));
+    check_equal(http_mapping.error_type, "NotFound");
+    check_equal(http_mapping.status, 404);
+
+    check_equal(
+        data_bind_rpc_method_plan_compile_service(
+            codec, "Calc", "Find", &rpc_config, &native,
+            &rpc, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(rpc);
+    check_equal(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Find");
+    check_equal(data_bind_rpc_method_plan_error_count(rpc), (size_t)2u);
+    check(data_bind_rpc_method_plan_error_at(rpc, 1u, &rpc_mapping));
+    check_equal(rpc_mapping.error_type, "PermissionDenied");
+    check_equal(rpc_mapping.code, -32003);
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+
+    request.left = 7u;
+    request.scale = 3u;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(native_status, 0);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_SUCCESS);
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 201);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, 0);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 0u;
+    request.scale = 41u;
+    response.sum = 999u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_TYPED_ERROR);
+    check_equal(outcome.typed_error, "NotFound");
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 404);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, -32004);
+
+    memset(&state, 0, sizeof(state));
+    request.left = 1u;
+    request.scale = 7u;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), &provider, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.typed_error, "PermissionDenied");
+    check(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 403);
+    check(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, -32003);
+
+    {
+      DataBindBindingOutcome mismatched =
+          (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+      int sentinel_http = 298;
+      int sentinel_rpc = 18;
+      mismatched.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+      mismatched.typed_error_index = 0u;
+      mismatched.typed_error = "PermissionDenied";
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_equal(sentinel_http, 298);
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+      check_equal(sentinel_rpc, 18);
+
+      mismatched.typed_error_index = 99u;
+      mismatched.typed_error = NULL;
+      check_false(data_bind_http_method_plan_status_for_outcome(
+          http, &mismatched, &sentinel_http));
+      check_false(data_bind_rpc_method_plan_code_for_outcome(
+          rpc, &mismatched, &sentinel_rpc));
+    }
+
+    request.left = UINT32_MAX;
+    typed_error =
+        (databind_13_ServiceNative_4_Calc_4_Find__error)
+            databind_13_ServiceNative_4_Calc_4_Find__ERROR_INIT;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    native_status = databind_13_ServiceNative_4_Calc_4_Find(
+        &request, &response, &typed_error);
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            data_bind_http_method_plan_binding(http), NULL, &frame,
+            native_status, &outcome, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_NATIVE_STATUS);
+    http_status = 299;
+    rpc_code = 17;
+    check_false(data_bind_http_method_plan_status_for_outcome(
+        http, &outcome, &http_status));
+    check_equal(http_status, 299);
+    check_false(data_bind_rpc_method_plan_code_for_outcome(
+        rpc, &outcome, &rpc_code));
+    check_equal(rpc_code, 17);
+
+    data_bind_rpc_method_plan_free(rpc);
+    data_bind_http_method_plan_free(http);
     data_bind_free(codec);
   }
 

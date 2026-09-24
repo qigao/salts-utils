@@ -140,6 +140,8 @@ add_library(
   data_bind_record.c
   data_bind_binding_plan.c
   data_bind_binding_plan.h
+  data_bind_method_plan.c
+  data_bind_method_plan.h
   data_bind_stream_format_state.c
   data_bind_stream_format_state_internal.h
   tbe_typed.c
@@ -232,6 +234,7 @@ install(
     data_bind_format_provider.h
     data_bind_native.h
     data_bind_binding_plan.h
+    data_bind_method_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
     data_bind_csv_provider.h
