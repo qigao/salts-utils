@@ -2308,27 +2308,6 @@ static Node *node_attribute_node(Node *node, const char *name) {
   return NULL;
 }
 
-static const char *field_transport_binding_kind(Node *field) {
-  static const char *const kinds[] = {
-      "path", "query", "header", "cookie", "body"
-  };
-  size_t i;
-  for (i = 0u; i < sizeof(kinds) / sizeof(kinds[0]); ++i)
-    if (node_attribute_node(field, kinds[i]) != NULL) return kinds[i];
-  return NULL;
-}
-
-static const char *field_transport_binding_name(Node *field,
-                                                const char *kind) {
-  Node *attr;
-  const char *name;
-  if (field == NULL || kind == NULL) return NULL;
-  attr = node_attribute_node(field, kind);
-  if (attr == NULL) return NULL;
-  name = get_string_val(find_child(field, "name"));
-  return field_flag(attr, "bare") ? name : node_attribute_value(field, kind);
-}
-
 static const char *field_format(Node *field) { return node_attribute_value(field, "format"); }
 
 static const char *field_binding_name(Node *field) {
@@ -5218,13 +5197,6 @@ static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField
   if (resolved) {
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_kind, semantic.kind);
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_data, semantic.data);
-  }
-  {
-    const char *binding_kind = field_transport_binding_kind(field);
-    DB_REFLECT_SET(DataBindSchemaField, out, out_size, binding_kind,
-                   binding_kind);
-    DB_REFLECT_SET(DataBindSchemaField, out, out_size, binding_name,
-                   field_transport_binding_name(field, binding_kind));
   }
   return name != NULL;
 }
@@ -12081,17 +12053,11 @@ static int fill_data_bind_service_operation(Node *operation,
   Node *errors;
   size_t out_size;
   const char *name;
-  const char *http_method;
-  const char *http_path;
-  const char *rpc_name;
   if (operation == NULL || out == NULL) return 0;
   out_size = db_reflect_out_size(out->size, sizeof(*out));
   memset(out, 0, out_size);
   name = get_string_val(find_child(operation, "name"));
   errors = find_child(operation, "errors");
-  http_method = get_string_val(find_child(operation, "http_method"));
-  http_path = get_string_val(find_child(operation, "http_path"));
-  rpc_name = get_string_val(find_child(operation, "rpc_name"));
   DB_REFLECT_SET(DataBindServiceOperation, out, out_size, size, out_size);
   DB_REFLECT_SET(DataBindServiceOperation, out, out_size, service_name,
                  get_string_val(find_child(operation, "service_name")));
@@ -12104,16 +12070,6 @@ static int fill_data_bind_service_operation(Node *operation,
                  errors != NULL && errors->type == NODE_LIST
                      ? errors->data.list.count
                      : 0u);
-  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, has_http,
-                 http_method != NULL && http_path != NULL);
-  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, http_method,
-                 http_method);
-  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, http_path,
-                 http_path);
-  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, has_rpc,
-                 rpc_name != NULL);
-  DB_REFLECT_SET(DataBindServiceOperation, out, out_size, rpc_name,
-                 rpc_name);
   return name != NULL;
 }
 
@@ -12619,7 +12575,7 @@ int data_bind_library_version(void) { return DATA_BIND_VERSION; }
 
 int data_bind_abi_version(void) { return DATA_BIND_ABI_VERSION; }
 
-const char *data_bind_version_string(void) { return "3.0.0"; }
+const char *data_bind_version_string(void) { return "4.0.0"; }
 
 const char *data_bind_format_name(DataBindFormat format) {
   switch (format) {
