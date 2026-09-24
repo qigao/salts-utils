@@ -123,41 +123,6 @@ static const Node *plugin_service(
   return NULL;
 }
 
-static int plugin_selected_typed_errors_absent(
-    const Node *root, const Node *component) {
-  const Node *capabilities =
-      plugin_component_capabilities(component);
-  size_t i;
-
-  if (capabilities == NULL) return 0;
-
-  for (i = 0u; i < capabilities->data.list.count; ++i) {
-    const Node *capability = capabilities->data.list.items[i];
-    const char *kind = plugin_string(capability, "kind");
-    const char *service_name = plugin_string(capability, "name");
-    const Node *service;
-    const Node *operations;
-    size_t j;
-
-    if (kind == NULL || strcmp(kind, "service") != 0)
-      continue;
-
-    service = plugin_service(root, service_name);
-    operations = plugin_list(service, "operations");
-    if (operations == NULL || operations->data.list.count == 0u)
-      return 0;
-
-    for (j = 0u; j < operations->data.list.count; ++j) {
-      const Node *errors =
-          plugin_list(operations->data.list.items[j], "errors");
-      if (errors != NULL && errors->data.list.count != 0u)
-        return 0;
-    }
-  }
-
-  return 1;
-}
-
 static int plugin_operation_selected(
     const Node *component,
     const databind_compiler_service_native_operation *operation) {
@@ -173,7 +138,6 @@ static int plugin_select_component_service(
 }
 
 static int plugin_native_ir_valid(
-    const Node *root,
     const Node *component,
     const databind_compiler_service_native_ir *ir,
     size_t *out_selected_count) {
@@ -185,8 +149,7 @@ static int plugin_native_ir_valid(
   if (out_selected_count != NULL) *out_selected_count = 0u;
 
   if (!plugin_bounded_text_valid(plugin_id, SALTS_PLUGIN_ID_MAX) ||
-      ir == NULL || ir->operations == NULL ||
-      !plugin_selected_typed_errors_absent(root, component))
+      ir == NULL || ir->operations == NULL)
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
@@ -528,6 +491,8 @@ static int plugin_write_client_header(
     const Node *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
+  const char *service_header =
+      plugin_basename(config->service_header_output);
   char guard[320];
   char init_macro[320];
   char client_symbol[512];
@@ -550,7 +515,7 @@ static int plugin_write_client_header(
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
       fputs("#include ", file) == EOF ||
-      !plugin_write_c_string(file, config->native_header) ||
+      !plugin_write_c_string(file, service_header) ||
       fputs(
           "\n#include <salts/plugin.h>\n"
           "#include <stdbool.h>\n\n"
@@ -590,17 +555,32 @@ static int plugin_write_client_header(
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
 
-    if (fprintf(
-            file,
-            "salts_plugin_status %s_plugin_client_call(\n"
-            "    %s *client,\n"
-            "    const %s_t *request, %s_t *response,\n"
-            "    int *native_status);\n\n",
-            operation->symbol,
-            client_symbol,
-            operation->request_type,
-            operation->response_type) < 0)
-      return 0;
+    if (operation->error_count == 0u) {
+      if (fprintf(
+              file,
+              "salts_plugin_status %s_plugin_client_call(\n"
+              "    %s *client,\n"
+              "    const %s_t *request, %s_t *response,\n"
+              "    int *native_status);\n\n",
+              operation->symbol,
+              client_symbol,
+              operation->request_type,
+              operation->response_type) < 0)
+        return 0;
+    } else {
+      if (fprintf(
+              file,
+              "salts_plugin_status %s_plugin_client_call(\n"
+              "    %s *client,\n"
+              "    const %s_t *request, %s_t *response,\n"
+              "    %s__error *typed_error, int *native_status);\n\n",
+              operation->symbol,
+              client_symbol,
+              operation->request_type,
+              operation->response_type,
+              operation->symbol) < 0)
+        return 0;
+    }
   }
 
   return fprintf(
@@ -786,40 +766,83 @@ static int plugin_write_client_source(
     const databind_compiler_service_native_operation *operation =
         &ir->operations[i];
 
-    if (fprintf(
-            file,
-            "salts_plugin_status %s_plugin_client_call(\n"
-            "    %s *client,\n"
-            "    const %s_t *request, %s_t *response,\n"
-            "    int *native_status) {\n"
-            "  const salts_plugin_export *entry;\n"
-            "  void *params[2];\n"
-            "  int result;\n"
-            "  if (client == NULL || request == NULL || response == NULL ||\n"
-            "      native_status == NULL)\n"
-            "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
-            "  if (client->registry == NULL ||\n"
-            "      !salts_plugin_lease_valid(client->lease))\n"
-            "    return SALTS_PLUGIN_INVALID_STATE;\n"
-            "  entry = client->%s_export;\n"
-            "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
-            "      entry->value.function.invoke == NULL)\n"
-            "    return SALTS_PLUGIN_INVALID_STATE;\n"
-            "  params[0] = (void *)request;\n"
-            "  params[1] = response;\n"
-            "  if (!entry->value.function.invoke(\n"
-            "          entry->value.function.context, &result,\n"
-            "          params, 2u))\n"
-            "    return SALTS_PLUGIN_INVALID_STATE;\n"
-            "  *native_status = result;\n"
-            "  return SALTS_PLUGIN_OK;\n"
-            "}\n\n",
-            operation->symbol,
-            client_symbol,
-            operation->request_type,
-            operation->response_type,
-            operation->symbol) < 0)
-      return 0;
+    if (operation->error_count == 0u) {
+      if (fprintf(
+              file,
+              "salts_plugin_status %s_plugin_client_call(\n"
+              "    %s *client,\n"
+              "    const %s_t *request, %s_t *response,\n"
+              "    int *native_status) {\n"
+              "  const salts_plugin_export *entry;\n"
+              "  void *params[2];\n"
+              "  int result;\n"
+              "  if (client == NULL || request == NULL || response == NULL ||\n"
+              "      native_status == NULL)\n"
+              "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+              "  if (client->registry == NULL ||\n"
+              "      !salts_plugin_lease_valid(client->lease))\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  entry = client->%s_export;\n"
+              "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
+              "      entry->value.function.invoke == NULL)\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  params[0] = (void *)request;\n"
+              "  params[1] = response;\n"
+              "  if (!entry->value.function.invoke(\n"
+              "          entry->value.function.context, &result,\n"
+              "          params, 2u))\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  *native_status = result;\n"
+              "  return SALTS_PLUGIN_OK;\n"
+              "}\n\n",
+              operation->symbol,
+              client_symbol,
+              operation->request_type,
+              operation->response_type,
+              operation->symbol) < 0)
+        return 0;
+    } else {
+      if (fprintf(
+              file,
+              "salts_plugin_status %s_plugin_client_call(\n"
+              "    %s *client,\n"
+              "    const %s_t *request, %s_t *response,\n"
+              "    %s__error *typed_error, int *native_status) {\n"
+              "  const salts_plugin_export *entry;\n"
+              "  void *params[3];\n"
+              "  %s__error local_error = %s__ERROR_INIT;\n"
+              "  int result;\n"
+              "  if (client == NULL || request == NULL || response == NULL ||\n"
+              "      typed_error == NULL || native_status == NULL)\n"
+              "    return SALTS_PLUGIN_INVALID_ARGUMENT;\n"
+              "  if (client->registry == NULL ||\n"
+              "      !salts_plugin_lease_valid(client->lease))\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  entry = client->%s_export;\n"
+              "  if (entry == NULL || entry->kind != SALTS_PLUGIN_EXPORT_FUNCTION ||\n"
+              "      entry->value.function.invoke == NULL)\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  params[0] = (void *)request;\n"
+              "  params[1] = response;\n"
+              "  params[2] = &local_error;\n"
+              "  if (!entry->value.function.invoke(\n"
+              "          entry->value.function.context, &result,\n"
+              "          params, 3u))\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  *typed_error = local_error;\n"
+              "  *native_status = result;\n"
+              "  return SALTS_PLUGIN_OK;\n"
+              "}\n\n",
+              operation->symbol,
+              client_symbol,
+              operation->request_type,
+              operation->response_type,
+              operation->symbol,
+              operation->symbol,
+              operation->symbol,
+              operation->symbol) < 0)
+        return 0;
+    }
   }
 
   return 1;
@@ -834,6 +857,27 @@ static int plugin_write_adapter(
       !plugin_text_valid(operation->response_type))
     return 0;
 
+  if (operation->error_count == 0u) {
+    return fprintf(
+               file,
+               "static bool SALTS_PLUGIN_CALL %s__plugin_invoke(\n"
+               "    void *context, void *return_storage, void *const *params,\n"
+               "    size_t param_count) {\n"
+               "  int result;\n"
+               "  (void)context;\n"
+               "  if (return_storage == NULL || params == NULL ||\n"
+               "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
+               "    return false;\n"
+               "  result = %s((const %s_t *)params[0], (%s_t *)params[1]);\n"
+               "  *(int *)return_storage = result;\n"
+               "  return true;\n"
+               "}\n\n",
+               operation->symbol,
+               operation->symbol,
+               operation->request_type,
+               operation->response_type) >= 0;
+  }
+
   return fprintf(
              file,
              "static bool SALTS_PLUGIN_CALL %s__plugin_invoke(\n"
@@ -842,16 +886,19 @@ static int plugin_write_adapter(
              "  int result;\n"
              "  (void)context;\n"
              "  if (return_storage == NULL || params == NULL ||\n"
-             "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
+             "      param_count != 3u || params[0] == NULL ||\n"
+             "      params[1] == NULL || params[2] == NULL)\n"
              "    return false;\n"
-             "  result = %s((const %s_t *)params[0], (%s_t *)params[1]);\n"
+             "  result = %s((const %s_t *)params[0], (%s_t *)params[1],\n"
+             "              (%s__error *)params[2]);\n"
              "  *(int *)return_storage = result;\n"
              "  return true;\n"
              "}\n\n",
              operation->symbol,
              operation->symbol,
              operation->request_type,
-             operation->response_type) >= 0;
+             operation->response_type,
+             operation->symbol) >= 0;
 }
 
 static int plugin_write_source(
@@ -1011,7 +1058,7 @@ int databind_compiler_plugin_generate(
     goto cleanup;
 
   if (!plugin_native_ir_valid(
-          canonical_ir, component, &native_ir,
+          component, &native_ir,
           &selected_count) ||
       selected_count != native_ir.operation_count)
     goto cleanup;
