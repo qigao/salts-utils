@@ -200,7 +200,7 @@ describe("compiler integration") {
     (void)remove(output);
   }
 
-  it("rejects an incomplete projection set before legacy output") {
+  it("rejects an incomplete projection set after prerequisite output without backend callbacks") {
     static const char output[] = "databind_projection_registry_rejected.h";
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
@@ -225,7 +225,8 @@ describe("compiler integration") {
     (void)remove(output);
     check_equal(tbe_compiler_run(&options), 1);
     check_equal(plugin.calls, (size_t)0u);
-    check_false(file_exists(output));
+    check_true(file_exists(output));
+    (void)remove(output);
   }
 }
 
