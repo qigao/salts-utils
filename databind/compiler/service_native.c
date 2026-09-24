@@ -306,7 +306,10 @@ static int native_operation_fill(
 
   request_message = native_message(root, request_type);
   response_message = native_message(root, response_type);
-  if (request_message == NULL || response_message == NULL) return 0;
+  if (request_message == NULL || response_message == NULL ||
+      native_child(request_message, "cmeta_graph_supported") == NULL ||
+      native_child(response_message, "cmeta_graph_supported") == NULL)
+    return 0;
 
   out->schema_name = native_strdup(schema_name);
   out->service_name = native_strdup(service_name);
