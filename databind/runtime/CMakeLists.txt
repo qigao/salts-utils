@@ -355,6 +355,19 @@ cmake_add_test(test_data_bind_component_public_cpp
   FOLDER "databind/runtime/tests")
 set_target_properties(test_data_bind_component_public_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+cmake_add_test(test_data_bind_channel
+  SOURCES test_data_bind_channel.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_channel PROPERTIES
+  LABELS "databind;channel;reflection")
+
+cmake_add_test(test_data_bind_channel_public_cpp
+  SOURCES test_data_bind_channel_public_cpp.cpp
+  LIBS Salts::DataBind
+  FOLDER "databind/runtime/tests")
+set_target_properties(test_data_bind_channel_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 cmake_add_test(test_data_bind_binding_plan
   SOURCES test_data_bind_binding_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
