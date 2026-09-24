@@ -229,10 +229,18 @@ spec("generated DataBind Plugin Service") {
                 SALTS_PLUGIN_OK);
 
     check_not_null(manifest);
+    check_equal(manifest->plugin_id, "Image.ImageProcessor");
     check_equal(manifest->export_count, (size_t)2u);
     check_equal(salts_plugin_manifest_find_export(
                     manifest, "Image.Codec.Decode", &entry),
                 SALTS_PLUGIN_OK);
+    {
+      const salts_plugin_export *unselected = NULL;
+      check_equal(salts_plugin_manifest_find_export(
+                      manifest, "Image.Admin.Inspect", &unselected),
+                  SALTS_PLUGIN_UNKNOWN_EXPORT);
+      check_null(unselected);
+    }
     check_not_null(entry);
     check_equal(entry->kind, SALTS_PLUGIN_EXPORT_FUNCTION);
     check_equal(salts_plugin_export_require_function(
