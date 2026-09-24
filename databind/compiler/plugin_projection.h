@@ -12,10 +12,8 @@ extern "C" {
 /*
  * Compiler-private configuration for the PLUGIN artifact backend.
  *
- * Component grammar is not available yet, so this first slice derives
- * plugin_id from canonical schema identity. Once DataBind Component lands, the
- * backend may derive the default identity from canonical Component IR without
- * changing Service contracts or the generated Plugin ABI.
+ * Component selection is mandatory. The backend publishes only Service
+ * capabilities referenced by the selected canonical Component.
  */
 typedef struct databind_compiler_plugin_config {
   uint32_t plugin_version_major;
@@ -23,12 +21,13 @@ typedef struct databind_compiler_plugin_config {
   uint32_t plugin_version_patch;
 
   /*
-   * Phase 1 semantic identity comes from canonical schema/service IR:
-   *   plugin_id        = schema_name
-   *   contract_version = schema [version(N)]
+   * Canonical Component name selected from root.components[].
    *
-   * Component grammar may later replace only the plugin_id default.
+   * plugin_id = component.qualified_name
+   *
+   * There is no schema-wide fallback when this field is absent or invalid.
    */
+  const char *component_name;
 
   /* Existing generated native record header included by the Service header. */
   const char *native_header;
@@ -39,7 +38,7 @@ typedef struct databind_compiler_plugin_config {
 
 /*
  * Generate one passive Plugin publication source plus one Service declaration
- * header from canonical Service IR.
+ * header from the selected canonical Component's Service capabilities.
  *
  * request->output is the generated Plugin .c path.
  */
