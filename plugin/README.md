@@ -38,6 +38,27 @@ Plugin does not carry private compatibility copies of those semantics.
 
 Plugin discovery/loading/lifecycle stay out of CMeta and CFlow.
 
+## Publication-only target
+
+Generated plugin DSOs link the publication contract only:
+
+```text
+Salts::PluginABI
+    -> <salts/plugin.h>
+    -> Salts::CMeta
+
+Salts::Plugin
+    -> Salts::PluginABI
+    -> loader / registry / lifecycle
+```
+
+`Salts::PluginABI` is an installed INTERFACE target. It deliberately carries
+no dynamic-loader or registry implementation. DataBind-generated Service
+plugins therefore publish FunctionMeta/FunctionAbi and
+`salts_plugin_query()` without linking host runtime machinery.
+
+Host applications continue to link `Salts::Plugin`.
+
 ## One query symbol, one ABI
 
 Every dynamic plugin exports:
