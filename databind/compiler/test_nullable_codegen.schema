@@ -1,0 +1,6 @@
+schema Nullable [version(1)];
+
+message User {
+    nullable string display_name;
+    optional nullable uint32 score default 7;
+}
