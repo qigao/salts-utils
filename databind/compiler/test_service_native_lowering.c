@@ -369,6 +369,16 @@ spec("DataBind canonical Service native lowering") {
     check_equal(state.write_calls, (size_t)0u);
     check_equal(state.commit_calls, (size_t)0u);
 
+    typed_error.kind =
+        databind_13_ServiceNative_4_Calc_4_Find__ERROR_1;
+    typed_error.payload.error_1.id = 77u;
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    check_equal(
+        data_bind_binding_plan_write_outcome(
+            plan, NULL, &frame, -9, &outcome, &diagnostic),
+        DATA_BIND_ERR_SCHEMA);
+    check_equal(outcome.kind, DATA_BIND_BINDING_OUTCOME_NONE);
+
     memset(&state, 0, sizeof(state));
     request.left = 0u;
     request.scale = 55u;
