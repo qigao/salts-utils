@@ -138,7 +138,7 @@ jobs:
           set -euxo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/plugin-abi \
-            -R '^(salts_plugin_(contract|header_cpp|loader)_test|test_databind_projection_registry|test_databind_service_native_lowering|test_databind_service_native_public_cpp|test_databind_plugin_generated_dso|test_databind_plugin_projection_rejection|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp)) \
+            -R '^(salts_plugin_(contract|header_cpp|loader)_test|test_databind_projection_registry|test_databind_service_native_lowering|test_databind_service_native_public_cpp|test_databind_plugin_generated_dso|test_databind_plugin_projection_rejection|test_data_bind_(binding_plan|native_writer|cmeta_public_cpp))
             --no-tests=error --output-on-failure
 
       - name: Configure sanitized BindingPlan build
