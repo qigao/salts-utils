@@ -139,10 +139,12 @@ add_custom_command(
       "${DATABIND_SERVICE_NATIVE_HEADER}"
       "${DATABIND_SERVICE_NATIVE_SOURCE}"
       "service_native_records.h"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
   DEPENDS
     databindc
     databind_service_native_codegen_fixture_tool
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
   VERBATIM
   COMMENT "Generating canonical DataBind Service native metadata")
 
