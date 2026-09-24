@@ -296,7 +296,88 @@ spec("typed nullable JSON") {
     data_bind_free(codec);
   }
 
-  it("keeps non-JSON nullable formats explicitly unsupported") {
+  it("preserves the same tri-state contract through YAML on both typed paths") {
+    static const char input[] =
+        "required_value: 1\n"
+        "nullable_value: null\n"
+        "tri_value: ~\n";
+    DataBind *codec = nullable_json_codec();
+    NullableJsonRecord ordinary;
+    NullableJsonRecord canonical;
+    NullableJsonRecord roundtrip;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    char *yaml = NULL;
+    size_t yaml_len = 0u;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    check_equal(tbe_typed_init(&NULLABLE_JSON_TYPE, &ordinary, &error),
+                DATA_BIND_OK);
+    check_equal(
+        tbe_typed_parse_ex(codec, "Record", &NULLABLE_JSON_TYPE,
+                           DATA_BIND_FORMAT_YAML, input, sizeof(input) - 1u,
+                           0u, &ordinary, &error),
+        DATA_BIND_OK);
+    check_null_state(&ordinary);
+
+    check_equal(
+        tbe_typed_serialize_ex(codec, "Record", &NULLABLE_JSON_TYPE, &ordinary,
+                               DATA_BIND_FORMAT_YAML, &yaml, &yaml_len, &error),
+        DATA_BIND_OK);
+    check_not_null(yaml);
+    check(yaml_len != 0u);
+
+    check_equal(tbe_typed_init(&NULLABLE_JSON_TYPE, &roundtrip, &error),
+                DATA_BIND_OK);
+    check_equal(
+        tbe_typed_parse_ex(codec, "Record", &NULLABLE_JSON_TYPE,
+                           DATA_BIND_FORMAT_YAML, yaml, yaml_len, 0u,
+                           &roundtrip, &error),
+        DATA_BIND_OK);
+    check_null_state(&roundtrip);
+    tbe_typed_clear(&NULLABLE_JSON_TYPE, &roundtrip);
+    tbe_typed_serialized_free(yaml);
+    yaml = NULL;
+    yaml_len = 0u;
+
+    check_equal(
+        tbe_typed_descriptor_init(&NULLABLE_JSON_DESCRIPTOR, &canonical, &error),
+        DATA_BIND_OK);
+    check_equal(
+        tbe_typed_descriptor_parse(
+            codec, "Record", &NULLABLE_JSON_DESCRIPTOR, DATA_BIND_FORMAT_YAML,
+            input, sizeof(input) - 1u, 0u, &canonical, &error),
+        DATA_BIND_OK);
+    check_null_state(&canonical);
+
+    check_equal(
+        tbe_typed_descriptor_serialize(
+            codec, "Record", &NULLABLE_JSON_DESCRIPTOR, &canonical,
+            DATA_BIND_FORMAT_YAML, &yaml, &yaml_len, &error),
+        DATA_BIND_OK);
+    check_not_null(yaml);
+    check(yaml_len != 0u);
+
+    check_equal(tbe_typed_init(&NULLABLE_JSON_TYPE, &roundtrip, &error),
+                DATA_BIND_OK);
+    check_equal(
+        tbe_typed_parse_ex(codec, "Record", &NULLABLE_JSON_TYPE,
+                           DATA_BIND_FORMAT_YAML, yaml, yaml_len, 0u,
+                           &roundtrip, &error),
+        DATA_BIND_OK);
+    check_null_state(&roundtrip);
+
+    tbe_typed_clear(&NULLABLE_JSON_TYPE, &roundtrip);
+    tbe_typed_serialized_free(yaml);
+    check_equal(
+        tbe_typed_descriptor_clear(&NULLABLE_JSON_DESCRIPTOR, &canonical, &error),
+        DATA_BIND_OK);
+    tbe_typed_clear(&NULLABLE_JSON_TYPE, &ordinary);
+    data_bind_free(codec);
+  }
+
+  it("keeps CSV XML and binary nullable formats explicitly unsupported") {
     static const char text[] = "{}";
     static const unsigned char binary[] = {0u};
     DataBind *codec = nullable_json_codec();
@@ -310,7 +391,7 @@ spec("typed nullable JSON") {
 
     check_equal(
         tbe_typed_parse_ex(codec, "Record", &NULLABLE_JSON_TYPE,
-                           DATA_BIND_FORMAT_YAML, text, sizeof(text) - 1u,
+                           DATA_BIND_FORMAT_CSV, text, sizeof(text) - 1u,
                            0u, &record, &error),
         DATA_BIND_ERR_SCHEMA);
     check_contains(error.message, "nullable");
