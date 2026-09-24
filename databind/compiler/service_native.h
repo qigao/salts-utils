@@ -11,6 +11,15 @@ extern "C" {
 #endif
 
 /*
+ * Injective compiler-private C symbol lowering for canonical semantic
+ * identifier parts.
+ *
+ * The returned string is heap-owned by the caller.
+ */
+char *databind_compiler_native_symbol(
+    const char *const *parts, size_t part_count);
+
+/*
  * Canonical compiler-private lowering of one DataBind Service operation to the
  * ordinary native C function shape shared by PLUGIN/WASM/native backends.
  */
