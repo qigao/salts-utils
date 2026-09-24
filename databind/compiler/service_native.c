@@ -401,51 +401,182 @@ int databind_compiler_service_native_emit_reflection(
       operation->response_type_identity == NULL)
     return -1;
 
+  if (fprintf(
+          file,
+          "static const cmeta_type_identity %s__request_id =\n"
+          "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+          "static const cmeta_type_desc %s__request_type = {\n"
+          "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+          "    CMETA_T_OBJECT, NULL, NULL, &%s__request_id};\n"
+          "static const cmeta_type_desc %s__request_ptr_type = {\n"
+          "    \"const %s_t *\", sizeof(const %s_t *), "
+          "_Alignof(const %s_t *),\n"
+          "    CMETA_T_POINTER, &%s__request_type, NULL, NULL};\n"
+          "static const cmeta_type_identity %s__response_id =\n"
+          "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
+          "static const cmeta_type_desc %s__response_type = {\n"
+          "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
+          "    CMETA_T_OBJECT, NULL, NULL, &%s__response_id};\n"
+          "static const cmeta_type_desc %s__response_ptr_type = {\n"
+          "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
+          "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n"
+          "CMETA_FUNCTION_METADATA_AS_ABI(\n"
+          "    %s, \"%s\", fallible, &cmeta_type_int, "
+          "CMETA_ABI_SCALAR,\n"
+          "    (const %s_t *, request,\n"
+          "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
+          "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
+          "    (%s_t *, response,\n"
+          "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
+          "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n"
+          "const cmeta_function_desc *%s__databind_function(void) {\n"
+          "  return &%s__function_meta;\n"
+          "}\n"
+          "const cmeta_function_abi_desc *%s__databind_function_abi(void) {\n"
+          "  return &%s__function_abi_meta;\n"
+          "}\n",
+          operation->symbol, operation->request_type_identity,
+          operation->symbol, operation->request_type,
+          operation->request_type, operation->request_type,
+          operation->symbol,
+          operation->symbol, operation->request_type,
+          operation->request_type, operation->request_type,
+          operation->symbol,
+          operation->symbol, operation->response_type_identity,
+          operation->symbol, operation->response_type,
+          operation->response_type, operation->response_type,
+          operation->symbol,
+          operation->symbol, operation->response_type,
+          operation->response_type, operation->response_type,
+          operation->symbol,
+          operation->symbol, operation->qualified_operation,
+          operation->request_type, operation->symbol,
+          operation->response_type, operation->symbol,
+          operation->symbol, operation->symbol,
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  return 0;
+}
+
+static int native_emit_presence_array(
+    FILE *file,
+    const char *symbol,
+    const char *type_name,
+    const char *suffix,
+    const databind_compiler_service_native_presence *presence,
+    size_t count) {
+  size_t i;
+  if (count == 0u) return 0;
+  if (file == NULL || symbol == NULL || type_name == NULL ||
+      suffix == NULL || presence == NULL)
+    return -1;
+
+  if (fprintf(
+          file,
+          "static const DataBindNativePresenceBinding "
+          "%s__%s_presence[] = {\n",
+          symbol, suffix) < 0)
+    return -1;
+
+  for (i = 0u; i < count; ++i) {
+    if (presence[i].field_name == NULL ||
+        fprintf(
+            file,
+            "  {sizeof(DataBindNativePresenceBinding), \"%s\", "
+            "offsetof(%s_t, _presence), %uu},\n",
+            presence[i].field_name, type_name, presence[i].bit) < 0)
+      return -1;
+  }
+
+  return fputs("};\n", file) == EOF ? -1 : 0;
+}
+
+int databind_compiler_service_native_emit_binding(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation) {
+  const char *request_presence_expr;
+  const char *response_presence_expr;
+  char request_presence[640];
+  char response_presence[640];
+
+  if (file == NULL || operation == NULL ||
+      operation->symbol == NULL ||
+      operation->request_type == NULL ||
+      operation->response_type == NULL)
+    return -1;
+
+  if (native_emit_presence_array(
+          file, operation->symbol, operation->request_type, "request",
+          operation->request_presence,
+          operation->request_presence_count) != 0 ||
+      native_emit_presence_array(
+          file, operation->symbol, operation->response_type, "response",
+          operation->response_presence,
+          operation->response_presence_count) != 0)
+    return -1;
+
+  if (operation->request_presence_count != 0u) {
+    if (snprintf(
+            request_presence, sizeof(request_presence),
+            "%s__request_presence", operation->symbol) <= 0)
+      return -1;
+    request_presence_expr = request_presence;
+  } else {
+    request_presence_expr = "NULL";
+  }
+
+  if (operation->response_presence_count != 0u) {
+    if (snprintf(
+            response_presence, sizeof(response_presence),
+            "%s__response_presence", operation->symbol) <= 0)
+      return -1;
+    response_presence_expr = response_presence;
+  } else {
+    response_presence_expr = "NULL";
+  }
+
   return fprintf(
              file,
-             "static const cmeta_type_identity %s__request_id =\n"
-             "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
-             "static const cmeta_type_desc %s__request_type = {\n"
-             "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
-             "    CMETA_T_OBJECT, NULL, NULL, &%s__request_id};\n"
-             "static const cmeta_type_desc %s__request_ptr_type = {\n"
-             "    \"const %s_t *\", sizeof(const %s_t *), "
-             "_Alignof(const %s_t *),\n"
-             "    CMETA_T_POINTER, &%s__request_type, NULL, NULL};\n"
-             "static const cmeta_type_identity %s__response_id =\n"
-             "    CMETA_TYPE_ID_ATOM_INIT(\"%s\");\n"
-             "static const cmeta_type_desc %s__response_type = {\n"
-             "    \"%s_t\", sizeof(%s_t), _Alignof(%s_t),\n"
-             "    CMETA_T_OBJECT, NULL, NULL, &%s__response_id};\n"
-             "static const cmeta_type_desc %s__response_ptr_type = {\n"
-             "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
-             "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n"
-             "CMETA_FUNCTION_METADATA_AS_ABI(\n"
-             "    %s, \"%s\", fallible, &cmeta_type_int, "
-             "CMETA_ABI_SCALAR,\n"
-             "    (const %s_t *, request,\n"
-             "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
-             "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
-             "    (%s_t *, response,\n"
-             "     CMETA_PARAM_OUT | CMETA_PARAM_BORROWED,\n"
-             "     &%s__response_ptr_type, CMETA_ABI_OBJECT_POINTER));\n",
-             operation->symbol, operation->request_type_identity,
-             operation->symbol, operation->request_type,
-             operation->request_type, operation->request_type,
+             "DataBindStatus %s__databind_native_binding(\n"
+             "    DataBindNativeTypeBinding *request_out,\n"
+             "    DataBindNativeTypeBinding *response_out,\n"
+             "    DataBindServiceNativeBinding *service_out,\n"
+             "    DataBindError *error) {\n"
+             "  const cmeta_data_desc *request_data = NULL;\n"
+             "  const cmeta_data_desc *response_data = NULL;\n"
+             "  DataBindStatus status;\n"
+             "  if (request_out == NULL || response_out == NULL || "
+             "service_out == NULL)\n"
+             "    return DATA_BIND_ERR_INVALID_ARG;\n"
+             "  status = %s_cmeta_data(&request_data, error);\n"
+             "  if (status != DATA_BIND_OK) return status;\n"
+             "  status = %s_cmeta_data(&response_data, error);\n"
+             "  if (status != DATA_BIND_OK) return status;\n"
+             "  *request_out = (DataBindNativeTypeBinding){\n"
+             "      sizeof(DataBindNativeTypeBinding),\n"
+             "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+             "      \"%s\", request_data, %s, %zuu};\n"
+             "  *response_out = (DataBindNativeTypeBinding){\n"
+             "      sizeof(DataBindNativeTypeBinding),\n"
+             "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+             "      \"%s\", response_data, %s, %zuu};\n"
+             "  *service_out = (DataBindServiceNativeBinding){\n"
+             "      sizeof(DataBindServiceNativeBinding),\n"
+             "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+             "      &%s__function_meta, request_out, response_out};\n"
+             "  return DATA_BIND_OK;\n"
+             "}\n",
              operation->symbol,
-             operation->symbol, operation->request_type,
-             operation->request_type, operation->request_type,
-             operation->symbol,
-             operation->symbol, operation->response_type_identity,
-             operation->symbol, operation->response_type,
-             operation->response_type, operation->response_type,
-             operation->symbol,
-             operation->symbol, operation->response_type,
-             operation->response_type, operation->response_type,
-             operation->symbol,
-             operation->symbol, operation->qualified_operation,
-             operation->request_type, operation->symbol,
-             operation->response_type, operation->symbol) < 0
+             operation->request_type,
+             operation->response_type,
+             operation->request_type,
+             request_presence_expr,
+             operation->request_presence_count,
+             operation->response_type,
+             response_presence_expr,
+             operation->response_presence_count,
+             operation->symbol) < 0
              ? -1
              : 0;
 }
