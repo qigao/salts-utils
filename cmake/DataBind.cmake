@@ -4,28 +4,70 @@ include(CMakeParseArguments)
 set(SaltsUtils_DATABINDC_EXECUTABLE ""
     CACHE FILEPATH
     "Host databindc executable used by databind_target()")
+set(SaltsUtils_DATABINDC_HOST_SALTS_ROOT ""
+    CACHE PATH
+    "Host Salts SDK used to run databindc while cross-compiling")
 
-function(_saltsutils_databind_resolve_compiler out_command out_dependency)
+function(_saltsutils_databind_resolve_compiler
+         out_executable out_dependency out_runtime_root out_salts_root)
   if(SaltsUtils_DATABINDC_EXECUTABLE)
     if(NOT EXISTS "${SaltsUtils_DATABINDC_EXECUTABLE}")
       message(FATAL_ERROR
               "SaltsUtils_DATABINDC_EXECUTABLE does not exist: "
               "${SaltsUtils_DATABINDC_EXECUTABLE}")
     endif()
-    set(${out_command} "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
-    set(${out_dependency} "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
+
+    get_filename_component(_databindc_bin
+      "${SaltsUtils_DATABINDC_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_databindc_prefix
+      "${_databindc_bin}" DIRECTORY)
+
+    if(CMAKE_CROSSCOMPILING)
+      if(NOT SaltsUtils_DATABINDC_HOST_SALTS_ROOT)
+        message(FATAL_ERROR
+                "Cross-compiling databind_target() requires "
+                "SaltsUtils_DATABINDC_HOST_SALTS_ROOT for the host compiler "
+                "runtime closure.")
+      endif()
+      set(_databindc_salts_root
+          "${SaltsUtils_DATABINDC_HOST_SALTS_ROOT}")
+    else()
+      if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
+        message(FATAL_ERROR
+                "SALTS_ROOT must identify the host Salts SDK used by databindc")
+      endif()
+      file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _databindc_salts_root)
+    endif()
+
+    set(${out_executable}
+        "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
+    set(${out_dependency}
+        "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
+    set(${out_runtime_root}
+        "${_databindc_prefix}" PARENT_SCOPE)
+    set(${out_salts_root}
+        "${_databindc_salts_root}" PARENT_SCOPE)
     return()
   endif()
 
   if(CMAKE_CROSSCOMPILING)
     message(FATAL_ERROR
             "databind_target() requires a host databindc while cross-compiling. "
-            "Set SaltsUtils_DATABINDC_EXECUTABLE to the host tool.")
+            "Set SaltsUtils_DATABINDC_EXECUTABLE and "
+            "SaltsUtils_DATABINDC_HOST_SALTS_ROOT.")
   endif()
 
+  if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
+    message(FATAL_ERROR
+            "SALTS_ROOT must identify the host Salts SDK used by databindc")
+  endif()
+  file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _databindc_salts_root)
+
   if(TARGET databindc)
-    set(${out_command} "$<TARGET_FILE:databindc>" PARENT_SCOPE)
+    set(${out_executable} "$<TARGET_FILE:databindc>" PARENT_SCOPE)
     set(${out_dependency} "databindc" PARENT_SCOPE)
+    set(${out_runtime_root} "${CMAKE_BINARY_DIR}" PARENT_SCOPE)
+    set(${out_salts_root} "${_databindc_salts_root}" PARENT_SCOPE)
     return()
   endif()
 
@@ -61,8 +103,38 @@ function(_saltsutils_databind_resolve_compiler out_command out_dependency)
     endif()
   endif()
 
-  set(${out_command} "${_databindc_program}" PARENT_SCOPE)
+  get_filename_component(_databindc_bin
+    "${_databindc_program}" DIRECTORY)
+  get_filename_component(_databindc_prefix
+    "${_databindc_bin}" DIRECTORY)
+
+  set(${out_executable} "${_databindc_program}" PARENT_SCOPE)
   set(${out_dependency} "${_databindc_program}" PARENT_SCOPE)
+  set(${out_runtime_root} "${_databindc_prefix}" PARENT_SCOPE)
+  set(${out_salts_root} "${_databindc_salts_root}" PARENT_SCOPE)
+endfunction()
+
+function(_saltsutils_databind_host_command
+         out_command executable runtime_root salts_root)
+  if(WIN32)
+    set(_runtime_path
+        "${runtime_root}/bin;${salts_root}/bin;$ENV{PATH}")
+    set(${out_command}
+        "${CMAKE_COMMAND};-E;env;PATH=${_runtime_path};${executable}"
+        PARENT_SCOPE)
+  elseif(APPLE)
+    set(_runtime_path
+        "${runtime_root}/lib:${salts_root}/lib:$ENV{DYLD_LIBRARY_PATH}")
+    set(${out_command}
+        "${CMAKE_COMMAND};-E;env;DYLD_LIBRARY_PATH=${_runtime_path};${executable}"
+        PARENT_SCOPE)
+  else()
+    set(_runtime_path
+        "${runtime_root}/lib:${salts_root}/lib:$ENV{LD_LIBRARY_PATH}")
+    set(${out_command}
+        "${CMAKE_COMMAND};-E;env;LD_LIBRARY_PATH=${_runtime_path};${executable}"
+        PARENT_SCOPE)
+  endif()
 endfunction()
 
 function(databind_target)
@@ -172,7 +244,15 @@ function(databind_target)
   endif()
 
   _saltsutils_databind_resolve_compiler(
-    _databindc _databindc_dependency)
+    _databindc
+    _databindc_dependency
+    _databindc_runtime_root
+    _databindc_salts_root)
+  _saltsutils_databind_host_command(
+    _databindc_command
+    "${_databindc}"
+    "${_databindc_runtime_root}"
+    "${_databindc_salts_root}")
 
   set(_generated_dir
       "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.databind")
@@ -194,7 +274,7 @@ function(databind_target)
       "${_plugin_header}"
       "${_plugin_source}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_generated_dir}"
-    COMMAND "${_databindc}"
+    COMMAND ${_databindc_command}
       "${_idl}"
       --lang c
       --output "${_native_header}"
