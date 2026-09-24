@@ -253,6 +253,14 @@ lex_start:
             return 1;
         }
 
+        "@" {
+            token->type = SCHEMA_TOKEN_AT;
+            token->value = token_start;
+            token->length = 1;
+            lexer->cursor = YYCURSOR;
+            return 1;
+        }
+
         ":" {
             token->type = SCHEMA_TOKEN_COLON;
             token->value = token_start;
