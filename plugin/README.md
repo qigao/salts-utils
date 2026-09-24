@@ -339,6 +339,49 @@ the Plugin artifact identity through `Component.qualified_name`.
 There is no `--plugin-output`, no Plugin-specific parser frontend, and no
 schema-wide fallback when Component selection is missing.
 
+## CMake projection frontend
+
+Installed SaltsUtils exposes the same artifact frontend through
+`databind_target()`:
+
+```cmake
+find_package(SaltsUtils CONFIG REQUIRED)
+
+databind_target(
+    TARGET image
+    IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
+    COMPONENT Image.ImageProcessor
+    VERSION 1.0.0
+    PROJECTIONS PLUGIN
+    SOURCES image.c)
+```
+
+The helper creates:
+
+```text
+image
+    logical umbrella target
+
+image_plugin
+    generated shared-library Plugin artifact
+    OUTPUT_NAME = image
+```
+
+The generated source/header path lives under the target build directory and the
+helper invokes the same public `databindc --projections plugin` CLI. It does
+not contain a second parser or Plugin generator.
+
+`ARTIFACT_NAME` may override the artifact basename without changing the CMake
+logical target name.
+
+For native host builds the helper prefers the `databindc` installed beside
+the same SaltsUtils package. During cross compilation, target-platform tools are
+never executed implicitly; set a host tool explicitly:
+
+```cmake
+-DSaltsUtils_DATABINDC_EXECUTABLE=/path/to/host/databindc
+```
+
 ## DataBind and CFlow boundaries
 
 `Salts::Plugin` depends on CMeta but not DataBind or CFlow.
