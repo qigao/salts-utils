@@ -68,7 +68,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
-        .component_name = "StorePlugin",
+        .component_id = "ErrorPlugin.StorePlugin",
         .native_header = "error_native.h",
         .service_header_output = header_output,
     };
@@ -113,7 +113,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
-        .component_name = "Bundle",
+        .component_id = "MultiServicePlugin.Bundle",
         .native_header = "bad_version_native.h",
         .service_header_output = header_output,
     };
@@ -163,7 +163,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
-        .component_name = NULL,
+        .component_id = NULL,
         .native_header = "component_required_native.h",
         .service_header_output = header_output,
     };
@@ -189,7 +189,7 @@ spec("DataBind Plugin projection semantic rejection") {
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
-    config.component_name = "Missing";
+    config.component_id = "MultiServicePlugin.Missing";
     check_equal(databind_compiler_projection_run(
                     root, &request, 1u, &backend, 1u),
                 -1);
@@ -237,7 +237,7 @@ spec("DataBind Plugin projection semantic rejection") {
         .plugin_version_major = 1u,
         .plugin_version_minor = 0u,
         .plugin_version_patch = 0u,
-        .component_name = "Bundle",
+        .component_id = "MultiServicePlugin.Bundle",
         .native_header = "multi_native.h",
         .service_header_output = header_output,
     };
