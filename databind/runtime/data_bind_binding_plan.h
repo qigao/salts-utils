@@ -58,6 +58,12 @@ typedef DataBindStatus (*DataBindBindingProjectFieldFn)(
     const DataBindSchemaField *field, DataBindBindingDirection direction,
     DataBindBindingAddress *out, DataBindError *error);
 
+typedef DataBindStatus (*DataBindBindingProjectErrorFieldFn)(
+    void *context, const DataBindServiceOperation *operation,
+    const char *error_type, size_t error_index,
+    const DataBindSchemaField *field,
+    DataBindBindingAddress *out, DataBindError *error);
+
 typedef struct DataBindBindingProjection {
   size_t size;
   uint32_t abi_version;
@@ -99,6 +105,34 @@ typedef struct DataBindNativeTypeBinding {
 #define DATA_BIND_NATIVE_TYPE_BINDING_INIT(TYPE_NAME, DATA) \
   { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     (TYPE_NAME), (DATA), NULL, 0u }
+
+typedef struct DataBindNativeErrorVariantBinding {
+  size_t size;
+  uint32_t abi_version;
+  uint32_t kind_value;
+  size_t payload_offset;
+  DataBindNativeTypeBinding payload;
+} DataBindNativeErrorVariantBinding;
+
+#define DATA_BIND_NATIVE_ERROR_VARIANT_BINDING_INIT \
+  { sizeof(DataBindNativeErrorVariantBinding), \
+    DATA_BIND_BINDING_PLAN_ABI_VERSION, 0u, 0u, \
+    { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
+      NULL, NULL, NULL, 0u } }
+
+typedef struct DataBindServiceNativeErrorBinding {
+  size_t size;
+  uint32_t abi_version;
+  const cmeta_type_desc *envelope_type;
+  size_t kind_offset;
+  size_t kind_bytes;
+  const DataBindNativeErrorVariantBinding *variants;
+  size_t variant_count;
+} DataBindServiceNativeErrorBinding;
+
+#define DATA_BIND_SERVICE_NATIVE_ERROR_BINDING_INIT \
+  { sizeof(DataBindServiceNativeErrorBinding), \
+    DATA_BIND_BINDING_PLAN_ABI_VERSION, NULL, 0u, 0u, NULL, 0u }
 
 typedef struct DataBindServiceNativeBinding {
   size_t size;
@@ -186,6 +220,9 @@ typedef DataBindStatus (*DataBindBindingOpenInputFn)(
     cserde_reader *reader, int *present, DataBindError *error);
 typedef DataBindStatus (*DataBindBindingBeginOutputFn)(
     void *context, DataBindError *error);
+typedef DataBindStatus (*DataBindBindingBeginErrorFn)(
+    void *context, const char *error_type, size_t error_index,
+    DataBindError *error);
 typedef DataBindStatus (*DataBindBindingWriteOutputFn)(
     void *context, const DataBindBindingPlanEntry *entry,
     const void *value, size_t value_bytes, DataBindError *error);
@@ -248,6 +285,14 @@ DATA_BIND_API size_t
 data_bind_binding_plan_error_count(const DataBindBindingPlan *plan);
 DATA_BIND_API const char *
 data_bind_binding_plan_error_at(const DataBindBindingPlan *plan, size_t index);
+
+DATA_BIND_API size_t
+data_bind_binding_plan_error_egress_count(
+    const DataBindBindingPlan *plan, size_t error_index);
+DATA_BIND_API int
+data_bind_binding_plan_error_egress_at(
+    const DataBindBindingPlan *plan, size_t error_index, size_t entry_index,
+    DataBindBindingPlanEntry *out);
 
 /**
  * Decode provider inputs into caller-owned native staging.
