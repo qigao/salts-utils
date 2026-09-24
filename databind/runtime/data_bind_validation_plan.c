@@ -118,12 +118,21 @@ static DataBindStatus validation_rule_error(
       error, DATA_BIND_ERR_VALIDATION, path, message);
 }
 
+static int validation_integer_base(const char *text) {
+  const char *cursor = text;
+  if (cursor == NULL) return 10;
+  if (*cursor == '+' || *cursor == '-') ++cursor;
+  return cursor[0] == '0' && (cursor[1] == 'x' || cursor[1] == 'X')
+             ? 0
+             : 10;
+}
+
 static int parse_signed_bound(const char *text, int64_t *out) {
   char *end = NULL;
   long long value;
   if (text == NULL || out == NULL || text[0] == '\0') return 0;
   errno = 0;
-  value = strtoll(text, &end, 0);
+  value = strtoll(text, &end, validation_integer_base(text));
   if (errno != 0 || end == text || end == NULL || *end != '\0')
     return 0;
   *out = (int64_t)value;
@@ -137,7 +146,7 @@ static int parse_unsigned_bound(const char *text, uint64_t *out) {
       text[0] == '-')
     return 0;
   errno = 0;
-  value = strtoull(text, &end, 0);
+  value = strtoull(text, &end, validation_integer_base(text));
   if (errno != 0 || end == text || end == NULL || *end != '\0')
     return 0;
   *out = (uint64_t)value;
