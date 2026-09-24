@@ -26,6 +26,7 @@ struct DataBindBindingPlan {
   const cmeta_function_desc *function;
   const DataBindNativeTypeBinding *request;
   const DataBindNativeTypeBinding *response;
+  const DataBindServiceExecutionAdapter *execution;
 
   DataBindBindingPlanEntryOwned *ingress;
   size_t ingress_count;
@@ -176,6 +177,17 @@ static int plan_data_semantically_equal(const cmeta_data_desc *left,
   if (left->stable_id != NULL && right->stable_id != NULL)
     return strcmp(left->stable_id, right->stable_id) == 0;
   return 1;
+}
+
+static int plan_execution_valid(
+    const DataBindServiceExecutionAdapter *execution,
+    const cmeta_function_desc *function) {
+  if (execution == NULL) return 1;
+  return execution->size >= sizeof(*execution) &&
+         execution->abi_version == DATA_BIND_BINDING_PLAN_ABI_VERSION &&
+         execution->invoke != NULL &&
+         cmeta_function_desc_valid(execution->function) &&
+         cmeta_function_desc_equal(execution->function, function);
 }
 
 static DataBindStatus plan_validate_native_type(
@@ -969,12 +981,11 @@ DataBindStatus data_bind_binding_plan_compile_service(
       projection->id == NULL || projection->id[0] == '\0' ||
       projection->project_field == NULL ||
       native == NULL || out_plan == NULL ||
-      native->size <
-          offsetof(DataBindServiceNativeBinding, response) +
-              sizeof(native->response) ||
+      native->size < sizeof(*native) ||
       native->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION ||
       !cmeta_function_desc_valid(native->function) ||
-      native->request == NULL)
+      native->request == NULL ||
+      !plan_execution_valid(native->execution, native->function))
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
                           "Invalid DataBind Service BindingPlan arguments");
 
@@ -1013,6 +1024,7 @@ DataBindStatus data_bind_binding_plan_compile_service(
   plan->function = native->function;
   plan->request = native->request;
   plan->response = native->response;
+  plan->execution = native->execution;
   if (plan->operation_id == NULL || plan->projection_id == NULL) {
     status = plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                             "Could not copy BindingPlan identity");
@@ -1092,6 +1104,21 @@ const char *data_bind_binding_plan_projection_id(
 const cmeta_function_desc *data_bind_binding_plan_function(
     const DataBindBindingPlan *plan) {
   return plan != NULL ? plan->function : NULL;
+}
+
+const DataBindNativeTypeBinding *data_bind_binding_plan_request(
+    const DataBindBindingPlan *plan) {
+  return plan != NULL ? plan->request : NULL;
+}
+
+const DataBindNativeTypeBinding *data_bind_binding_plan_response(
+    const DataBindBindingPlan *plan) {
+  return plan != NULL ? plan->response : NULL;
+}
+
+const DataBindServiceExecutionAdapter *data_bind_binding_plan_execution(
+    const DataBindBindingPlan *plan) {
+  return plan != NULL ? plan->execution : NULL;
 }
 
 size_t data_bind_binding_plan_ingress_count(
