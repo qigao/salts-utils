@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 
   if (argc != 7) {
     fprintf(stderr,
-            "usage: %s <schema> <service.h> <service.c> <native-header> <reject-schema> <owned-error-reject-schema>\n",
+            "usage: %s <schema> <service.h> <service.c> <native-header> <overlay-schema> <owned-error-reject-schema>\n",
             argc > 0 ? argv[0] : "service-native-codegen");
     return 2;
   }
@@ -115,36 +115,92 @@ int main(int argc, char **argv) {
   }
 
   {
-    int reject_index;
-    for (reject_index = 5; reject_index <= 6; ++reject_index) {
-      Node *reject_root = NULL;
-      char *reject_schema_data = NULL;
-      databind_compiler_service_native_ir reject_ir = {0};
+    Node *overlay_root = NULL;
+    char *overlay_schema_data = NULL;
+    databind_compiler_service_native_ir overlay_ir = {0};
+    const databind_compiler_service_native_operation *operation;
 
-      if (tbe_compiler_parse_schema_file(
-              argv[reject_index],
-              &reject_root, &reject_schema_data) != 0) {
-        fprintf(stderr,
-                "service-native-codegen: failed to parse reject schema %s\n",
-                argv[reject_index]);
-        node_free(reject_root);
-        free(reject_schema_data);
-        goto cleanup;
-      }
-      if (databind_compiler_service_native_build(
-              reject_root, &reject_ir) == 0) {
-        fprintf(stderr,
-                "service-native-codegen: reject schema unexpectedly lowered: %s\n",
-                argv[reject_index]);
-        databind_compiler_service_native_destroy(&reject_ir);
-        node_free(reject_root);
-        free(reject_schema_data);
-        goto cleanup;
-      }
+    if (tbe_compiler_parse_schema_file(
+            argv[5], &overlay_root, &overlay_schema_data) != 0) {
+      fprintf(stderr,
+              "service-native-codegen: failed to parse overlay schema %s\n",
+              argv[5]);
+      node_free(overlay_root);
+      free(overlay_schema_data);
+      goto cleanup;
+    }
+    if (databind_compiler_service_native_build(
+            overlay_root, &overlay_ir) != 0 ||
+        overlay_ir.operation_count != 1u) {
+      fprintf(stderr,
+              "service-native-codegen: overlay schema failed to lower\n");
+      databind_compiler_service_native_destroy(&overlay_ir);
+      node_free(overlay_root);
+      free(overlay_schema_data);
+      goto cleanup;
+    }
+
+    operation = &overlay_ir.operations[0];
+    if (operation->request_presence_count != 2u ||
+        operation->request_null_count != 2u ||
+        operation->response_presence_count != 1u ||
+        operation->response_null_count != 1u ||
+        operation->request_presence == NULL ||
+        operation->request_nulls == NULL ||
+        operation->response_presence == NULL ||
+        operation->response_nulls == NULL ||
+        strcmp(operation->request_presence[0].field_name, "optional_id") != 0 ||
+        operation->request_presence[0].bit != 0u ||
+        strcmp(operation->request_presence[1].field_name, "tri_id") != 0 ||
+        operation->request_presence[1].bit != 1u ||
+        strcmp(operation->request_nulls[0].field_name, "nullable_id") != 0 ||
+        operation->request_nulls[0].bit != 0u ||
+        strcmp(operation->request_nulls[1].field_name, "tri_id") != 0 ||
+        operation->request_nulls[1].bit != 1u ||
+        strcmp(operation->response_presence[0].field_name, "value") != 0 ||
+        operation->response_presence[0].bit != 0u ||
+        strcmp(operation->response_nulls[0].field_name, "value") != 0 ||
+        operation->response_nulls[0].bit != 0u) {
+      fprintf(stderr,
+              "service-native-codegen: unexpected overlay state metadata\n");
+      databind_compiler_service_native_destroy(&overlay_ir);
+      node_free(overlay_root);
+      free(overlay_schema_data);
+      goto cleanup;
+    }
+
+    databind_compiler_service_native_destroy(&overlay_ir);
+    node_free(overlay_root);
+    free(overlay_schema_data);
+  }
+
+  {
+    Node *reject_root = NULL;
+    char *reject_schema_data = NULL;
+    databind_compiler_service_native_ir reject_ir = {0};
+
+    if (tbe_compiler_parse_schema_file(
+            argv[6], &reject_root, &reject_schema_data) != 0) {
+      fprintf(stderr,
+              "service-native-codegen: failed to parse reject schema %s\n",
+              argv[6]);
+      node_free(reject_root);
+      free(reject_schema_data);
+      goto cleanup;
+    }
+    if (databind_compiler_service_native_build(
+            reject_root, &reject_ir) == 0) {
+      fprintf(stderr,
+              "service-native-codegen: reject schema unexpectedly lowered: %s\n",
+              argv[6]);
       databind_compiler_service_native_destroy(&reject_ir);
       node_free(reject_root);
       free(reject_schema_data);
+      goto cleanup;
     }
+    databind_compiler_service_native_destroy(&reject_ir);
+    node_free(reject_root);
+    free(reject_schema_data);
   }
 
   status = 0;
