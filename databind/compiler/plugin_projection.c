@@ -529,6 +529,7 @@ static int plugin_write_client_header(
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
   char guard[320];
+  char init_macro[320];
   char client_symbol[512];
   size_t i;
 
@@ -537,6 +538,11 @@ static int plugin_write_client_header(
           plugin_string(component, "name"),
           "_PLUGIN_CLIENT_H",
           guard, sizeof(guard)) ||
+      !plugin_header_guard(
+          plugin_schema_name(root),
+          plugin_string(component, "name"),
+          "_PLUGIN_CLIENT_INIT",
+          init_macro, sizeof(init_macro)) ||
       !plugin_client_symbol(
           root, component,
           client_symbol, sizeof(client_symbol)))
@@ -567,13 +573,14 @@ static int plugin_write_client_header(
 
   if (fprintf(
           file,
-          "} %s;\n\n"
+          "} %s;\n"
+          "#define %s {0}\n\n"
           "bool %s_valid(const %s *client);\n"
           "salts_plugin_status %s_open(\n"
           "    salts_plugin_registry *registry, salts_plugin_ref ref,\n"
           "    %s *out_client);\n"
           "salts_plugin_status %s_close(%s *client);\n\n",
-          client_symbol,
+          client_symbol, init_macro,
           client_symbol, client_symbol,
           client_symbol, client_symbol,
           client_symbol, client_symbol) < 0)
