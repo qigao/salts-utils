@@ -11,7 +11,7 @@
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>] [--lua-output <file>]
  *              [--dsl-output <file>]
- *              [--projections plugin]
+ *              [--projections plugin,http,rpc]
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
  * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
                                  "Generate DSL type declarations (.rfl file)"),
         cmd_arger_desc_string(
             &projection_names, "projections",
-            "Comma-separated artifact projections (currently: plugin)"),
+            "Comma-separated artifact projections (plugin,http,rpc)"),
         cmd_arger_desc_string(
             &component_id, "component",
             "Canonical qualified Component identity (Schema.Component)"),
