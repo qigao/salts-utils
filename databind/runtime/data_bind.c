@@ -12483,6 +12483,502 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
   return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
 }
 
+
+typedef struct db_validation_numeric_limit {
+  int has_i64;
+  int has_u64;
+  int has_f64;
+  int64_t i64;
+  uint64_t u64;
+  double f64;
+} db_validation_numeric_limit;
+
+typedef struct db_validation_rule {
+  char *field_name;
+  DataBindConstraintKind kind;
+  db_validation_numeric_limit numeric;
+  size_t size_min;
+  size_t size_max;
+  char *pattern;
+} db_validation_rule;
+
+struct DataBindValidationPlan {
+  char *type_name;
+  size_t rule_count;
+  db_validation_rule *rules;
+};
+
+static DataBindConstraintKind db_constraint_kind(const char *name) {
+  if (name == NULL) return (DataBindConstraintKind)0;
+  if (strcmp(name, "min") == 0) return DATA_BIND_CONSTRAINT_MIN;
+  if (strcmp(name, "max") == 0) return DATA_BIND_CONSTRAINT_MAX;
+  if (strcmp(name, "size") == 0) return DATA_BIND_CONSTRAINT_SIZE;
+  if (strcmp(name, "pattern") == 0) return DATA_BIND_CONSTRAINT_PATTERN;
+  return (DataBindConstraintKind)0;
+}
+
+static Node *db_constraint_field_node(DataBind *codec, const char *type_name,
+                                      size_t field_index) {
+  Node *record;
+  Node *fields;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL) return NULL;
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (fields == NULL || field_index >= fields->data.list.count) return NULL;
+  return fields->data.list.items[field_index];
+}
+
+static size_t db_constraint_arg_count(Node *attr) {
+  Node *values = find_child(attr, "values");
+  return values != NULL && values->type == NODE_LIST ? values->data.list.count : 0u;
+}
+
+static const char *db_constraint_arg_at(Node *attr, size_t index) {
+  Node *values = find_child(attr, "values");
+  Node *value;
+  if (values == NULL || values->type != NODE_LIST || index >= values->data.list.count)
+    return NULL;
+  value = values->data.list.items[index];
+  return value != NULL && value->type == NODE_STRING ? value->data.string_val : NULL;
+}
+
+static size_t db_constraint_count(Node *field) {
+  Node *attrs;
+  size_t i;
+  size_t count = 0u;
+  if (field == NULL) return 0u;
+  attrs = find_child(field, "attributes");
+  if (attrs == NULL || attrs->type != NODE_LIST) return 0u;
+  for (i = 0u; i < attrs->data.list.count; ++i) {
+    Node *attr = attrs->data.list.items[i];
+    if (db_constraint_kind(get_string_val(find_child(attr, "name"))) != 0) ++count;
+  }
+  return count;
+}
+
+size_t data_bind_schema_field_constraint_count(
+    DataBind *codec, const char *type_name, size_t field_index) {
+  return db_constraint_count(db_constraint_field_node(codec, type_name, field_index));
+}
+
+int data_bind_schema_field_constraint_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t constraint_index, DataBindSchemaConstraint *out) {
+  Node *field;
+  Node *attrs;
+  size_t i;
+  size_t match = 0u;
+  size_t out_size;
+  if (out == NULL) return 0;
+  field = db_constraint_field_node(codec, type_name, field_index);
+  attrs = field != NULL ? find_child(field, "attributes") : NULL;
+  if (attrs == NULL || attrs->type != NODE_LIST) {
+    db_reflect_clear(out, out->size, sizeof(*out));
+    return 0;
+  }
+  for (i = 0u; i < attrs->data.list.count; ++i) {
+    Node *attr = attrs->data.list.items[i];
+    DataBindConstraintKind kind =
+        db_constraint_kind(get_string_val(find_child(attr, "name")));
+    if (kind == 0) continue;
+    if (match++ != constraint_index) continue;
+    out_size = db_reflect_out_size(out->size, sizeof(*out));
+    memset(out, 0, out_size);
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, size, out_size);
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, kind, kind);
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, field_name,
+                   get_string_val(find_child(field, "name")));
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, argument0,
+                   db_constraint_arg_at(attr, 0u));
+    DB_REFLECT_SET(DataBindSchemaConstraint, out, out_size, argument1,
+                   db_constraint_arg_at(attr, 1u));
+    return 1;
+  }
+  db_reflect_clear(out, out->size, sizeof(*out));
+  return 0;
+}
+
+static char *db_validation_strdup(const char *text) {
+  size_t len;
+  char *copy;
+  if (text == NULL) return NULL;
+  len = strlen(text);
+  if (len == SIZE_MAX) return NULL;
+  copy = (char *)malloc(len + 1u);
+  if (copy == NULL) return NULL;
+  memcpy(copy, text, len + 1u);
+  return copy;
+}
+
+static int db_validation_parse_limit(
+    const char *text, db_validation_numeric_limit *out) {
+  char *end = NULL;
+  long long signed_value;
+  unsigned long long unsigned_value;
+  double float_value;
+  if (text == NULL || out == NULL || text[0] == '\0') return 0;
+  memset(out, 0, sizeof(*out));
+
+  errno = 0;
+  end = NULL;
+  signed_value = strtoll(text, &end, 10);
+  if (errno == 0 && end != text && end != NULL && *end == '\0' &&
+      signed_value >= INT64_MIN && signed_value <= INT64_MAX) {
+    out->has_i64 = 1;
+    out->i64 = (int64_t)signed_value;
+  }
+
+  if (text[0] != '-') {
+    errno = 0;
+    end = NULL;
+    unsigned_value = strtoull(text, &end, 10);
+    if (errno == 0 && end != text && end != NULL && *end == '\0' &&
+        unsigned_value <= UINT64_MAX) {
+      out->has_u64 = 1;
+      out->u64 = (uint64_t)unsigned_value;
+    }
+  }
+
+  errno = 0;
+  end = NULL;
+  float_value = strtod(text, &end);
+  if (errno == 0 && end != text && end != NULL && *end == '\0' &&
+      isfinite(float_value)) {
+    out->has_f64 = 1;
+    out->f64 = float_value;
+  }
+  return out->has_i64 || out->has_u64 || out->has_f64;
+}
+
+static int db_validation_parse_size(const char *text, size_t *out) {
+  char *end = NULL;
+  unsigned long long value;
+  const unsigned char *p;
+  if (text == NULL || out == NULL || text[0] == '\0') return 0;
+  for (p = (const unsigned char *)text; *p != '\0'; ++p)
+    if (!isdigit(*p)) return 0;
+  errno = 0;
+  value = strtoull(text, &end, 10);
+  if (errno != 0 || end == text || end == NULL || *end != '\0' ||
+      value > (unsigned long long)SIZE_MAX)
+    return 0;
+  *out = (size_t)value;
+  return 1;
+}
+
+static void db_validation_rule_clear(db_validation_rule *rule) {
+  if (rule == NULL) return;
+  free(rule->field_name);
+  free(rule->pattern);
+  memset(rule, 0, sizeof(*rule));
+}
+
+void data_bind_validation_plan_free(DataBindValidationPlan *plan) {
+  size_t i;
+  if (plan == NULL) return;
+  for (i = 0u; i < plan->rule_count; ++i) db_validation_rule_clear(&plan->rules[i]);
+  free(plan->rules);
+  free(plan->type_name);
+  free(plan);
+}
+
+static DataBindStatus db_validation_schema_error(
+    DataBindError *error, const char *type_name, const char *field_name,
+    const char *message) {
+  char path[260];
+  snprintf(path, sizeof(path), "%s.%s",
+           type_name != NULL ? type_name : "",
+           field_name != NULL ? field_name : "");
+  return db_error_set(error, DATA_BIND_ERR_SCHEMA, path, -1, -1, "%s", message);
+}
+
+DataBindStatus data_bind_validation_plan_compile(
+    DataBind *codec, const char *type_name, DataBindValidationPlan **out_plan,
+    DataBindError *error) {
+  Node *record;
+  Node *fields;
+  DataBindValidationPlan *plan = NULL;
+  size_t field_index;
+  size_t rule_count = 0u;
+  size_t next_rule = 0u;
+
+  if (out_plan != NULL) *out_plan = NULL;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL ||
+      type_name[0] == '\0' || out_plan == NULL)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+                        "Invalid ValidationPlan compile arguments");
+
+  record = find_schema_record(codec->schema_root, type_name);
+  fields = fields_node_for_record(record);
+  if (record == NULL || fields == NULL)
+    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
+                        "Validation type '%s' was not found", type_name);
+
+  for (field_index = 0u; field_index < fields->data.list.count; ++field_index) {
+    size_t count = db_constraint_count(fields->data.list.items[field_index]);
+    if (count > SIZE_MAX - rule_count)
+      return db_error_set(error, DATA_BIND_ERR_LIMIT, type_name, -1, -1,
+                          "Validation rule count overflow");
+    rule_count += count;
+  }
+  if (rule_count > SIZE_MAX / sizeof(db_validation_rule))
+    return db_error_set(error, DATA_BIND_ERR_LIMIT, type_name, -1, -1,
+                        "Validation rule allocation overflow");
+
+  plan = (DataBindValidationPlan *)calloc(1u, sizeof(*plan));
+  if (plan == NULL)
+    return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
+                        "Unable to allocate ValidationPlan");
+  plan->type_name = db_validation_strdup(type_name);
+  if (plan->type_name == NULL) {
+    data_bind_validation_plan_free(plan);
+    return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
+                        "Unable to copy ValidationPlan type identity");
+  }
+  if (rule_count != 0u) {
+    plan->rules = (db_validation_rule *)calloc(rule_count, sizeof(*plan->rules));
+    if (plan->rules == NULL) {
+      data_bind_validation_plan_free(plan);
+      return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
+                          "Unable to allocate ValidationPlan rules");
+    }
+  }
+
+  for (field_index = 0u; field_index < fields->data.list.count; ++field_index) {
+    Node *field = fields->data.list.items[field_index];
+    Node *attrs = find_child(field, "attributes");
+    const char *field_name = get_string_val(find_child(field, "name"));
+    unsigned seen = 0u;
+    size_t attr_index;
+    if (attrs == NULL || attrs->type != NODE_LIST) continue;
+
+    for (attr_index = 0u; attr_index < attrs->data.list.count; ++attr_index) {
+      Node *attr = attrs->data.list.items[attr_index];
+      DataBindConstraintKind kind =
+          db_constraint_kind(get_string_val(find_child(attr, "name")));
+      db_validation_rule *rule;
+      size_t argc;
+      unsigned bit;
+      const char *arg0;
+      const char *arg1;
+      if (kind == 0) continue;
+      bit = 1u << (unsigned)(kind - 1);
+      if ((seen & bit) != 0u) {
+        data_bind_validation_plan_free(plan);
+        return db_validation_schema_error(error, type_name, field_name,
+                                          "Duplicate validation constraint");
+      }
+      seen |= bit;
+      if (next_rule >= rule_count) {
+        data_bind_validation_plan_free(plan);
+        return db_validation_schema_error(error, type_name, field_name,
+                                          "Validation rule count changed during compilation");
+      }
+      rule = &plan->rules[next_rule];
+      rule->kind = kind;
+      rule->field_name = db_validation_strdup(field_name);
+      if (rule->field_name == NULL) {
+        data_bind_validation_plan_free(plan);
+        return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
+                            "Unable to copy validation field name");
+      }
+
+      argc = db_constraint_arg_count(attr);
+      arg0 = db_constraint_arg_at(attr, 0u);
+      arg1 = db_constraint_arg_at(attr, 1u);
+      if (kind == DATA_BIND_CONSTRAINT_MIN || kind == DATA_BIND_CONSTRAINT_MAX) {
+        if (argc != 1u || !db_validation_parse_limit(arg0, &rule->numeric)) {
+          data_bind_validation_plan_free(plan);
+          return db_validation_schema_error(error, type_name, field_name,
+                                            "min/max requires one finite numeric argument");
+        }
+      } else if (kind == DATA_BIND_CONSTRAINT_SIZE) {
+        if (argc != 2u ||
+            !db_validation_parse_size(arg0, &rule->size_min) ||
+            !db_validation_parse_size(arg1, &rule->size_max) ||
+            rule->size_min > rule->size_max) {
+          data_bind_validation_plan_free(plan);
+          return db_validation_schema_error(
+              error, type_name, field_name,
+              "size requires two non-negative bounds with min <= max");
+        }
+      } else if (kind == DATA_BIND_CONSTRAINT_PATTERN) {
+        if (argc != 1u || arg0 == NULL ||
+            re_validate_n(arg0, strlen(arg0), NULL) != RE_STATUS_OK) {
+          data_bind_validation_plan_free(plan);
+          return db_validation_schema_error(
+              error, type_name, field_name,
+              "pattern requires one valid regular expression");
+        }
+        rule->pattern = db_validation_strdup(arg0);
+        if (rule->pattern == NULL) {
+          data_bind_validation_plan_free(plan);
+          return db_error_set(error, DATA_BIND_ERR_OOM, type_name, -1, -1,
+                              "Unable to copy validation pattern");
+        }
+      }
+      ++next_rule;
+    }
+  }
+
+  plan->rule_count = next_rule;
+  *out_plan = plan;
+  db_error_clear(error);
+  return DATA_BIND_OK;
+}
+
+size_t data_bind_validation_plan_rule_count(const DataBindValidationPlan *plan) {
+  return plan != NULL ? plan->rule_count : 0u;
+}
+
+static int db_validation_compare_signed(
+    int64_t value, const db_validation_numeric_limit *limit) {
+  if (limit->has_i64) {
+    if (value < limit->i64) return -1;
+    if (value > limit->i64) return 1;
+    return 0;
+  }
+  if (limit->has_u64) {
+    uint64_t uvalue;
+    if (value < 0) return -1;
+    uvalue = (uint64_t)value;
+    if (uvalue < limit->u64) return -1;
+    if (uvalue > limit->u64) return 1;
+    return 0;
+  }
+  if ((double)value < limit->f64) return -1;
+  if ((double)value > limit->f64) return 1;
+  return 0;
+}
+
+static int db_validation_compare_unsigned(
+    uint64_t value, const db_validation_numeric_limit *limit) {
+  if (limit->has_u64) {
+    if (value < limit->u64) return -1;
+    if (value > limit->u64) return 1;
+    return 0;
+  }
+  if (limit->has_i64) {
+    uint64_t ulimit;
+    if (limit->i64 < 0) return 1;
+    ulimit = (uint64_t)limit->i64;
+    if (value < ulimit) return -1;
+    if (value > ulimit) return 1;
+    return 0;
+  }
+  if ((double)value < limit->f64) return -1;
+  if ((double)value > limit->f64) return 1;
+  return 0;
+}
+
+static int db_validation_compare_number(
+    const DataBindValue *value, const db_validation_numeric_limit *limit,
+    int *out_compare) {
+  if (value == NULL || limit == NULL || out_compare == NULL) return 0;
+  switch (value->kind) {
+  case DATA_BIND_VALUE_INT:
+    *out_compare = db_validation_compare_signed((int64_t)value->data.int_val, limit);
+    return 1;
+  case DATA_BIND_VALUE_INT64:
+    *out_compare = db_validation_compare_signed(value->data.int64_val, limit);
+    return 1;
+  case DATA_BIND_VALUE_UINT64:
+    *out_compare = db_validation_compare_unsigned(value->data.uint64_val, limit);
+    return 1;
+  case DATA_BIND_VALUE_DOUBLE:
+    if (!limit->has_f64 || !isfinite(value->data.double_val)) return 0;
+    if (value->data.double_val < limit->f64) *out_compare = -1;
+    else if (value->data.double_val > limit->f64) *out_compare = 1;
+    else *out_compare = 0;
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static int db_validation_value_size(const DataBindValue *value, size_t *out_size) {
+  if (value == NULL || out_size == NULL) return 0;
+  switch (value->kind) {
+  case DATA_BIND_VALUE_STRING:
+    *out_size = value->data.string_val.len;
+    return 1;
+  case DATA_BIND_VALUE_BYTES:
+    *out_size = value->data.bytes_val.len;
+    return 1;
+  case DATA_BIND_VALUE_LIST:
+  case DATA_BIND_VALUE_SET:
+  case DATA_BIND_VALUE_MAP:
+    *out_size = data_bind_value_count(value);
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static DataBindStatus db_validation_fail(
+    const DataBindValidationPlan *plan, const db_validation_rule *rule,
+    DataBindError *error, const char *message) {
+  char path[260];
+  snprintf(path, sizeof(path), "%s.%s",
+           plan != NULL && plan->type_name != NULL ? plan->type_name : "",
+           rule != NULL && rule->field_name != NULL ? rule->field_name : "");
+  return db_error_set(error, DATA_BIND_ERR_VALIDATION, path, -1, -1, "%s", message);
+}
+
+DataBindStatus data_bind_validation_plan_validate(
+    const DataBindValidationPlan *plan, const DataBindValue *value,
+    DataBindError *error) {
+  size_t i;
+  if (plan == NULL || value == NULL)
+    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+                        "Invalid ValidationPlan execution arguments");
+  if (value->kind != DATA_BIND_VALUE_OBJECT)
+    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, plan->type_name, -1, -1,
+                        "ValidationPlan requires an object value");
+
+  for (i = 0u; i < plan->rule_count; ++i) {
+    const db_validation_rule *rule = &plan->rules[i];
+    const DataBindValue *field = data_bind_value_get(value, rule->field_name);
+    if (field == NULL || field->kind == DATA_BIND_VALUE_NULL) continue;
+
+    if (rule->kind == DATA_BIND_CONSTRAINT_MIN ||
+        rule->kind == DATA_BIND_CONSTRAINT_MAX) {
+      int comparison = 0;
+      if (!db_validation_compare_number(field, &rule->numeric, &comparison))
+        return db_validation_fail(plan, rule, error,
+                                  "Numeric constraint applied to a non-numeric value");
+      if ((rule->kind == DATA_BIND_CONSTRAINT_MIN && comparison < 0) ||
+          (rule->kind == DATA_BIND_CONSTRAINT_MAX && comparison > 0))
+        return db_validation_fail(plan, rule, error,
+                                  rule->kind == DATA_BIND_CONSTRAINT_MIN
+                                      ? "Value is below the minimum"
+                                      : "Value exceeds the maximum");
+    } else if (rule->kind == DATA_BIND_CONSTRAINT_SIZE) {
+      size_t actual = 0u;
+      if (!db_validation_value_size(field, &actual))
+        return db_validation_fail(plan, rule, error,
+                                  "size constraint applied to an unsupported value");
+      if (actual < rule->size_min || actual > rule->size_max)
+        return db_validation_fail(plan, rule, error,
+                                  "Value size is outside the allowed range");
+    } else if (rule->kind == DATA_BIND_CONSTRAINT_PATTERN) {
+      re_match_result_t match = {0};
+      re_status_t status;
+      if (field->kind != DATA_BIND_VALUE_STRING)
+        return db_validation_fail(plan, rule, error,
+                                  "pattern constraint requires a string value");
+      status = re_match_n(rule->pattern, strlen(rule->pattern),
+                          field->data.string_val.ptr, field->data.string_val.len,
+                          NULL, &match);
+      if (status != RE_STATUS_OK)
+        return db_validation_fail(plan, rule, error,
+                                  "String does not match the required pattern");
+    }
+  }
+  db_error_clear(error);
+  return DATA_BIND_OK;
+}
+
 json_value_t *data_bind_internal_json_field_value(
     DataBind *codec, const char *type_name, size_t field_index,
     const json_value_t *object) {
@@ -12708,6 +13204,8 @@ const char *data_bind_status_name(DataBindStatus status) {
     return "buffer_too_small";
   case DATA_BIND_ERR_CANCELED:
     return "canceled";
+  case DATA_BIND_ERR_VALIDATION:
+    return "validation";
   default:
     return "unknown";
   }

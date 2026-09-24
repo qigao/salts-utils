@@ -342,6 +342,12 @@ cmake_add_test(test_data_bind_schema_reflection_contract
   SOURCES test_data_bind_schema_reflection_contract.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
+cmake_add_test(test_data_bind_validation_plan
+  SOURCES test_data_bind_validation_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_validation_plan PROPERTIES
+  LABELS "databind;validation;plan")
 cmake_add_test(test_data_bind_component
   SOURCES test_data_bind_component.c
   LIBS ${DATA_BIND_TEST_LIBS}

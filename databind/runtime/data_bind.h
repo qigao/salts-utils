@@ -90,7 +90,9 @@ typedef enum DataBindStatus {
   /** The caller-provided output buffer is too small; required length is returned. */
   DATA_BIND_ERR_BUFFER_TOO_SMALL,
   /** The operation was explicitly canceled by the caller or record callback. */
-  DATA_BIND_ERR_CANCELED
+  DATA_BIND_ERR_CANCELED,
+  /** A decoded/bound logical value violated a compiled DataBind constraint. */
+  DATA_BIND_ERR_VALIDATION
 } DataBindStatus;
 
 typedef struct DataBindError {
@@ -440,6 +442,32 @@ typedef struct DataBindSchemaAttribute {
   const char *value;
 } DataBindSchemaAttribute;
 
+typedef enum DataBindConstraintKind {
+  DATA_BIND_CONSTRAINT_MIN = 1,
+  DATA_BIND_CONSTRAINT_MAX,
+  DATA_BIND_CONSTRAINT_SIZE,
+  DATA_BIND_CONSTRAINT_PATTERN
+} DataBindConstraintKind;
+
+/**
+ * Borrowed schema-overlay constraint reflection.
+ *
+ * argument0/argument1 and field_name are owned by the codec and remain valid
+ * until data_bind_free(). Constraints are DataBind semantics; CMeta remains the
+ * native structural/type authority.
+ */
+typedef struct DataBindSchemaConstraint {
+  size_t size;
+  DataBindConstraintKind kind;
+  const char *field_name;
+  const char *argument0;
+  const char *argument1;
+} DataBindSchemaConstraint;
+
+/** Immutable compiled validation artifact. */
+typedef struct DataBindValidationPlan DataBindValidationPlan;
+
+
 /** Immutable reflected service declaration owned by one DataBind codec. */
 typedef struct DataBindService {
   size_t size;
@@ -504,6 +532,7 @@ typedef struct DataBindComponentCapability {
 #define DATA_BIND_SCHEMA_FIELD_INIT {sizeof(DataBindSchemaField)}
 #define DATA_BIND_SCHEMA_ENUM_ITEM_INIT {sizeof(DataBindSchemaEnumItem)}
 #define DATA_BIND_SCHEMA_ATTRIBUTE_INIT {sizeof(DataBindSchemaAttribute)}
+#define DATA_BIND_SCHEMA_CONSTRAINT_INIT {sizeof(DataBindSchemaConstraint)}
 #define DATA_BIND_SERVICE_INIT {sizeof(DataBindService)}
 #define DATA_BIND_SERVICE_OPERATION_INIT {sizeof(DataBindServiceOperation)}
 #define DATA_BIND_CHANNEL_INIT {sizeof(DataBindChannel)}
@@ -1514,6 +1543,47 @@ DATA_BIND_API size_t data_bind_schema_field_count(DataBind *codec, const char *t
  */
 DATA_BIND_API int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
                                             DataBindSchemaField *out);
+
+/** Return the number of canonical validation constraints attached to one field. */
+DATA_BIND_API size_t data_bind_schema_field_constraint_count(
+    DataBind *codec, const char *type_name, size_t field_index);
+
+/**
+ * Read one canonical field constraint in declaration order.
+ * Unknown/non-validation attributes are not exposed through this view.
+ */
+DATA_BIND_API int data_bind_schema_field_constraint_at(
+    DataBind *codec, const char *type_name, size_t field_index,
+    size_t constraint_index, DataBindSchemaConstraint *out);
+
+/**
+ * Compile one record's DataBind constraints into an owned immutable plan.
+ *
+ * Compilation may inspect schema reflection/AST state. The returned plan owns
+ * every string and parsed bound required by execution and remains valid after
+ * the codec is freed.
+ */
+DATA_BIND_API DataBindStatus data_bind_validation_plan_compile(
+    DataBind *codec, const char *type_name, DataBindValidationPlan **out_plan,
+    DataBindError *error);
+
+/** Number of compiled rules in an immutable plan. */
+DATA_BIND_API size_t data_bind_validation_plan_rule_count(
+    const DataBindValidationPlan *plan);
+
+/**
+ * Validate an already decoded/bound record without schema/reflection lookup.
+ *
+ * Presence/default/nullability normalization is expected to have happened
+ * before this call. ABSENT and explicit NULL values are therefore not treated
+ * as ordinary value-constraint failures in this layer.
+ */
+DATA_BIND_API DataBindStatus data_bind_validation_plan_validate(
+    const DataBindValidationPlan *plan, const DataBindValue *value,
+    DataBindError *error);
+
+/** Release an immutable ValidationPlan. */
+DATA_BIND_API void data_bind_validation_plan_free(DataBindValidationPlan *plan);
 
 /** Query canonical storage for a field value type, not DataBindValue/generated
  * field layout. Use field_at for kind-only information. Optional presence stays
