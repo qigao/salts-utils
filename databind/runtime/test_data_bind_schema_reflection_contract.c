@@ -58,6 +58,20 @@ spec("DataBind schema reflection contract") {
     data_bind_free(codec);
   }
 
+  it("rejects nullable runtime schemas until exact lowering is implemented") {
+    static const char schema[] =
+        "message Nullable { nullable string name; }";
+    DataBind *codec = (DataBind *)(uintptr_t)1;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(codec);
+    check_equal(error.code, DATA_BIND_ERR_SCHEMA);
+    check_equal(error.path, "Nullable.name");
+    check_not_null(strstr(error.message, "nullable"));
+  }
+
   it("reflects minimal service contracts and transport projections") {
     static const char schema[] =
         "message GetUserRequest {"
