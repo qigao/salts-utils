@@ -3,13 +3,12 @@ project(DataBindTargetInstalledConsumer LANGUAGES C CXX)
 
 find_package(SaltsUtils CONFIG REQUIRED)
 
-if(NOT TARGET Salts::DataBindGeneratedABI)
-  message(FATAL_ERROR "missing Salts::DataBindGeneratedABI")
+if(NOT TARGET Salts::DataBind)
+  message(FATAL_ERROR "missing canonical Salts::DataBind")
 endif()
-get_target_property(_generated_abi_type Salts::DataBindGeneratedABI TYPE)
-if(NOT _generated_abi_type STREQUAL "INTERFACE_LIBRARY")
+if(TARGET Salts::DataBindGeneratedABI)
   message(FATAL_ERROR
-          "Salts::DataBindGeneratedABI must be an INTERFACE_LIBRARY")
+          "removed Salts::DataBindGeneratedABI must not be exported")
 endif()
 
 databind_target(
@@ -27,9 +26,13 @@ if("Salts::DataBindSchema" IN_LIST _installed_plugin_links)
   message(FATAL_ERROR
           "installed generated Plugin must not link Salts::DataBindSchema")
 endif()
-if(NOT "Salts::DataBindGeneratedABI" IN_LIST _installed_plugin_links)
+if(NOT "Salts::DataBind" IN_LIST _installed_plugin_links)
   message(FATAL_ERROR
-          "installed generated Plugin must link Salts::DataBindGeneratedABI")
+          "installed generated Plugin must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI" IN_LIST _installed_plugin_links)
+  message(FATAL_ERROR
+          "installed generated Plugin must not link removed Salts::DataBindGeneratedABI")
 endif()
 
 
@@ -46,9 +49,13 @@ if(NOT "Salts::Plugin" IN_LIST _installed_client_links)
   message(FATAL_ERROR
           "installed generated Plugin client must link Salts::Plugin")
 endif()
-if(NOT "Salts::DataBindGeneratedABI" IN_LIST _installed_client_links)
+if(NOT "Salts::DataBind" IN_LIST _installed_client_links)
   message(FATAL_ERROR
-          "installed generated Plugin client must link Salts::DataBindGeneratedABI")
+          "installed generated Plugin client must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI" IN_LIST _installed_client_links)
+  message(FATAL_ERROR
+          "installed generated Plugin client must not link removed Salts::DataBindGeneratedABI")
 endif()
 
 add_executable(installed_image_plugin_client_cpp client_cpp.cpp)
