@@ -287,6 +287,8 @@ typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
+  TBE_COMPILER_NATIVE_OVERLAY_NULL,
+  TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL,
   TBE_COMPILER_NATIVE_DEFERRED_CONTAINER
 } tbe_compiler_native_requirement_t;
 
@@ -301,6 +303,10 @@ static const char *tbe_compiler_native_requirement_name(
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
       return "overlay_presence";
+    case TBE_COMPILER_NATIVE_OVERLAY_NULL:
+      return "overlay_null";
+    case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL:
+      return "overlay_presence_null";
     case TBE_COMPILER_NATIVE_DEFERRED_CONTAINER:
       return "deferred_container";
   }
@@ -791,15 +797,13 @@ static void tbe_compiler_annotate_native_requirement(
   if (!root || !field || !semantic) return;
   type = tbe_compiler_string_value(field, "type");
 
-  if (tbe_compiler_has_child(field, "is_nullable")) {
-    /*
-     * #191 has not frozen a native NULL representation yet. Do not label a
-     * nullable field as an ordinary fixed/owned value and let a downstream
-     * consumer mistake structural CMeta reflection for completed lowering.
-     */
-    return;
-  } else if (cmeta_data_kind_is_container(semantic->kind)) {
+  if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
+  } else if (tbe_compiler_has_child(field, "is_optional") &&
+             tbe_compiler_has_child(field, "is_nullable")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE_NULL;
+  } else if (tbe_compiler_has_child(field, "is_nullable")) {
+    requirement = TBE_COMPILER_NATIVE_OVERLAY_NULL;
   } else if (tbe_compiler_has_child(field, "is_optional")) {
     requirement = TBE_COMPILER_NATIVE_OVERLAY_PRESENCE;
   } else if (semantic->kind == CMETA_DATA_STRING ||
@@ -1005,8 +1009,9 @@ static int tbe_compiler_cmeta_classify_record(
     size_t target_index;
 
     if (!type || !kind ||
-        tbe_compiler_has_child(field, "is_optional") ||
-        tbe_compiler_has_child(field, "is_nullable") ||
+        (context->runtime &&
+         (tbe_compiler_has_child(field, "is_optional") ||
+          tbe_compiler_has_child(field, "is_nullable"))) ||
         tbe_compiler_has_child(field, "is_collection") ||
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
