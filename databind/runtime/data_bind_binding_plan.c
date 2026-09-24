@@ -1749,7 +1749,7 @@ fail:
   return status;
 }
 
-DataBindStatus data_bind_binding_plan_write_outputs(
+static DataBindStatus plan_write_response_outputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
     const DataBindBindingCallFrame *frame,
@@ -1865,6 +1865,23 @@ DataBindStatus data_bind_binding_plan_write_outputs(
   return DATA_BIND_OK;
 }
 
+DataBindStatus data_bind_binding_plan_write_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  if (!plan_diag_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+  if (plan != NULL && plan->has_error_param)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function != NULL && plan->error_param_index < plan->function->param_count
+            ? plan->function->params[plan->error_param_index].name
+            : NULL,
+        "Throws Service outcomes must use data_bind_binding_plan_write_outcome");
+  return plan_write_response_outputs(plan, provider, frame, diagnostic);
+}
+
 
 static int plan_outcome_header_valid(const DataBindBindingOutcome *outcome) {
   return outcome == NULL ||
@@ -1972,7 +1989,7 @@ DataBindStatus data_bind_binding_plan_write_outcome(
   }
 
   if (error_kind == 0u) {
-    status = data_bind_binding_plan_write_outputs(
+    status = plan_write_response_outputs(
         plan, provider, frame, diagnostic);
     if (status == DATA_BIND_OK)
       plan_outcome_set(
