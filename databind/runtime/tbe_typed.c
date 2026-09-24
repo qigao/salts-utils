@@ -3598,9 +3598,15 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     const void *ptr = (const uint8_t *)object + field->offset;
+    const int present = typed_optional_present(type, object, field);
+    const int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null) {
+      *supported = 0;
+      return 0;
+    }
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
-      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
+      size_t count = present && !is_null ? vec->size : 0u;
       size_t payload_size;
       size_t field_size;
       if (field->object_type == NULL || field->object_type->fixed_block_size > UINT16_MAX ||
@@ -3617,7 +3623,7 @@ static size_t typed_binary_size(const TbeTypedType *type, const void *object, in
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       size_t len = 0u;
       size_t field_size;
-      if (typed_optional_present(type, object, field)) {
+      if (present && !is_null) {
         len = field->kind == TBE_TYPED_STRING
                   ? (*(const tstr *)ptr ? tstr_len(*(const tstr *)ptr) : 0)
                   : ((const vec_t *)ptr)->size;
@@ -3690,12 +3696,18 @@ static int typed_write_fixed(const TbeTypedType *type, const void *object, uint8
   if (size < type->fixed_block_size) return 0;
   if (type->presence_size != 0)
     memcpy(dst, (const uint8_t *)object + type->presence_offset, type->presence_size);
+  if (type->null_size != 0)
+    memcpy(dst + type->presence_size,
+           (const uint8_t *)object + type->null_offset, type->null_size);
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     const uint8_t *src = (const uint8_t *)object + field->offset;
     size_t j;
+    const int present = typed_optional_present(type, object, field);
+    const int is_null = typed_nullable_is_null(type, object, field);
+    if (!present && is_null) return 0;
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0) continue;
-    if (!typed_optional_present(type, object, field)) continue;
+    if (!present || is_null) continue;
     if (field->kind == TBE_TYPED_OBJECT) {
       if (!typed_write_fixed(field->object_type, src, dst + field->wire_offset,
                              size - field->wire_offset))
@@ -3763,8 +3775,14 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     const void *ptr = (const uint8_t *)object + field->offset;
     if ((field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       const vec_t *vec = (const vec_t *)ptr;
-      size_t count = typed_optional_present(type, object, field) ? vec->size : 0u;
+      const int present = typed_optional_present(type, object, field);
+      const int is_null = typed_nullable_is_null(type, object, field);
+      size_t count;
       size_t j;
+      if (!present && is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      count = present && !is_null ? vec->size : 0u;
       tbe_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
       tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
@@ -3781,7 +3799,12 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
     } else if ((field->flags & TBE_TYPED_FIELD_VAR_DATA) != 0) {
       const void *bytes;
       size_t len;
-      if (!typed_optional_present(type, object, field)) {
+      const int present = typed_optional_present(type, object, field);
+      const int is_null = typed_nullable_is_null(type, object, field);
+      if (!present && is_null)
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
+                           "Typed null state is set while optional field is absent");
+      if (!present || is_null) {
         bytes = NULL;
         len = 0u;
       } else if (field->kind == TBE_TYPED_STRING) {
