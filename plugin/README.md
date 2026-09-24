@@ -375,12 +375,20 @@ not contain a second parser or Plugin generator.
 logical target name.
 
 For native host builds the helper prefers the `databindc` installed beside
-the same SaltsUtils package. During cross compilation, target-platform tools are
-never executed implicitly; set a host tool explicitly:
+the same SaltsUtils package and launches it with the package-local SaltsUtils
+runtime plus the current host `SALTS_ROOT`.
+
+During cross compilation, target-platform tools and target-platform Salts
+libraries are never executed implicitly. Provide both the host compiler and its
+matching host Salts SDK explicitly:
 
 ```cmake
 -DSaltsUtils_DATABINDC_EXECUTABLE=/path/to/host/databindc
+-DSaltsUtils_DATABINDC_HOST_SALTS_ROOT=/path/to/host/salts-sdk
 ```
+
+The generated target therefore never relies on an Android/target `SALTS_ROOT`
+to launch a host compiler.
 
 ## DataBind and CFlow boundaries
 
