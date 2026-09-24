@@ -1,0 +1,22 @@
+schema ServiceNative [version(7)];
+
+message AddRequest {
+    uint32 left;
+    uint32 scale;
+}
+
+message AddResponse {
+    uint32 sum;
+}
+
+service Calc {
+    Add: AddRequest -> AddResponse;
+}
+
+service A_B {
+    C: AddRequest -> AddResponse;
+}
+
+service A {
+    B_C: AddRequest -> AddResponse;
+}

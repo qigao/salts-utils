@@ -1,0 +1,13 @@
+schema OptionalService [version(1)];
+
+message Request {
+    optional uint32 id;
+}
+
+message Response {
+    uint32 value;
+}
+
+service Store {
+    Read: Request -> Response;
+}
