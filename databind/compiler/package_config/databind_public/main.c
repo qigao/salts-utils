@@ -9,9 +9,13 @@
 int main(void) {
   static const char schema[] =
       "schema ProjectionPlanConsumer [version(1)];"
-      "message Request { optional nullable string note; }"
+      "message Request {"
+      " optional uint32 optional_id;"
+      " nullable uint32 nullable_id;"
+      " optional nullable uint32 tri_id;"
+      "}"
       "message Response { uint32 value; }"
-      "service Calc { Add: Request -> Response; }";
+      "service Store { Read: Request -> Response; }";
   uint8_t storage[4] = {0};
   salts_uuid_t uuid = {{0}};
   DataBind *codec = NULL;
