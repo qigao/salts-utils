@@ -7,14 +7,15 @@ static DataBind *projection_plan_codec(void) {
   static const char schema[] =
       "schema ProjectionPlan [version(1)];"
       "message Request {"
-      " optional nullable string note;"
-      " uint32 count;"
+      " optional uint32 optional_id;"
+      " nullable uint32 nullable_id;"
+      " optional nullable uint32 tri_id;"
       "}"
       "message Response {"
-      " uint32 result;"
+      " uint32 value;"
       "}"
-      "service Calc {"
-      " Add: Request -> Response;"
+      "service Store {"
+      " Read: Request -> Response;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -105,15 +106,15 @@ spec("DataBind FormatPlan and TransportPlan") {
 
     check_equal(
         data_bind_transport_plan_compile_service(
-            codec, "Calc", "Add", DATA_BIND_TRANSPORT_HTTP,
+            codec, "Store", "Read", DATA_BIND_TRANSPORT_HTTP,
             DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_XML,
             &transport, &error),
         DATA_BIND_OK);
     check_not_null(transport);
     check(data_bind_transport_plan_info(transport, &info));
     check_equal(info.kind, DATA_BIND_TRANSPORT_HTTP);
-    check_equal(info.service_name, "Calc");
-    check_equal(info.operation_name, "Add");
+    check_equal(info.service_name, "Store");
+    check_equal(info.operation_name, "Read");
     check_not_null(info.ingress);
     check_not_null(info.egress);
     check(data_bind_format_plan_info(info.ingress, &ingress));
@@ -129,7 +130,7 @@ spec("DataBind FormatPlan and TransportPlan") {
     error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(
         data_bind_transport_plan_compile_service(
-            codec, "Calc", "Add", DATA_BIND_TRANSPORT_RPC,
+            codec, "Store", "Read", DATA_BIND_TRANSPORT_RPC,
             DATA_BIND_FORMAT_CSV, DATA_BIND_FORMAT_JSON,
             &transport, &error),
         DATA_BIND_ERR_SCHEMA);
