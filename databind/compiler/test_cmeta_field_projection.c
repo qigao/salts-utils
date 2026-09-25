@@ -183,13 +183,89 @@ suite("compiler_cmeta_field_projection") {
             if (cases[i].kind == CMETA_DATA_MAP) {
                 check_not_null(field_projection_text(field, "native_data_symbol"));
                 check_not_null(field_projection_text(field, "native_type_symbol"));
+                check_equal(field_projection_text(field, "native_element_type_symbol"),
+                            "cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_element_data_symbol"),
+                            "cmeta_data_int32");
+                check_equal(field_projection_text(field, "native_map_value_type_symbol"),
+                            "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_map_value_data_symbol"),
                             "cmeta_data_int32");
             } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
-                       cases[i].kind == CMETA_DATA_SET)
+                       cases[i].kind == CMETA_DATA_SET) {
                 check_null(field_projection_text(field, "native_data_symbol"));
+                check_equal(field_projection_text(field, "native_element_type_symbol"),
+                            "cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_element_data_symbol"),
+                            "cmeta_data_int32");
+            }
             node_free(root);
         }
+    }
+
+    it("projects canonical symbols for custom container members") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+        Node *item;
+        Node *state;
+
+        check_not_null(root);
+        if (!root) return;
+
+        state = field_projection_add_enum(root, "State", "uint16", 0);
+        check_not_null(state);
+        item = field_projection_add_record(root, "composites", "Item");
+        check_not_null(item);
+        if (item) {
+            Node *item_field = field_projection_add_field(item, "Item", "value", "int32");
+            check_not_null(item_field);
+            if (item_field)
+                check_equal(map_add(item_field, create_node_string("is_fixed_size", "1")), 0);
+        }
+
+        record = field_projection_add_record(root, "messages", "Containers");
+        field = field_projection_add_field(record, "Containers", "items", "list");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+            check_equal(map_add(field, create_node_string("inner_type", "Item")), 0);
+        }
+        field = field_projection_add_field(record, "Containers", "states", "set");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+            check_equal(map_add(field, create_node_string("inner_type", "State")), 0);
+        }
+        field = field_projection_add_field(record, "Containers", "by_name", "map");
+        check_not_null(field);
+        if (field) {
+            check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+            check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+            check_equal(map_add(field, create_node_string("value_type", "Item")), 0);
+        }
+
+        tbe_compiler_annotate_language_types(root);
+
+        {
+            Node *fields = field_projection_child(record, "fields");
+            Node *items = fields->data.list.items[0];
+            Node *states = fields->data.list.items[1];
+            Node *map = fields->data.list.items[2];
+
+            check_equal(field_projection_text(items, "native_element_type_symbol"),
+                        "Item_CMETA_TYPE");
+            check_equal(field_projection_text(items, "native_element_data_symbol"),
+                        "Item_CMETA_DATA");
+            check_not_null(field_projection_text(states, "native_element_type_symbol"));
+            check_not_null(field_projection_text(states, "native_element_data_symbol"));
+            check_equal(field_projection_text(map, "native_map_value_type_symbol"),
+                        "Item_CMETA_TYPE");
+            check_equal(field_projection_text(map, "native_map_value_data_symbol"),
+                        "Item_CMETA_DATA");
+        }
+
+        node_free(root);
     }
 
     it("publishes installed fixed providers and keeps remaining capabilities deferred") {
