@@ -10078,25 +10078,24 @@ static JINJA_CMETA_NODE *jinja_iteration_child_at(JINJA_CMETA_NODE *node, unsign
                                                                     node->parent),
                                           (size_t)index, node->collection_item_count, node);
   }
-  if (jinja_is_sequence_desc(node->desc)) {
-    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)node->object;
-    size_t offset;
-    if (view->count > (size_t)UINT_MAX) {
+  if (jinja_is_collection_desc(node->desc)) {
+    const void *element = NULL;
+    const cmeta_data_desc *element_data = NULL;
+    size_t count = 0u;
+    JINJA_CMETA_STATUS status = jinja_collection_element_at(
+        node, (size_t)index, &element, &element_data, &count);
+    if (status != JINJA_CMETA_OK) {
+      jinja_provider_fail(provider, status);
+      return NULL;
+    }
+    if (count > (size_t)UINT_MAX || count > provider->shared.node_capacity) {
       jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
       return NULL;
     }
-    if ((size_t)index >= view->count) return NULL;
-    if (view->data == NULL || view->stride == 0u || !cmeta_data_desc_valid(view->element) ||
-        view->element->storage_type == NULL || view->element->storage_type->size > view->stride ||
-        (size_t)index > SIZE_MAX / view->stride) {
-      jinja_provider_fail(provider, JINJA_CMETA_ERR_METADATA);
-      return NULL;
-    }
-    offset = (size_t)index * view->stride;
+    if (element == NULL) return NULL;
     return jinja_provider_iteration_child(
-        jinja_provider_node(provider, (const unsigned char *)view->data + offset, view->element,
-                            node),
-        (size_t)index, view->count, node);
+        jinja_provider_node(provider, element, element_data, node),
+        (size_t)index, count, node);
   }
   jinja_provider_fail(provider, JINJA_CMETA_ERR_RENDER);
   return NULL;
