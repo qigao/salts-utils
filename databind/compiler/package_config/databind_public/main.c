@@ -2,7 +2,7 @@
 #include <data_bind.h>
 #include <data_bind_projection_plan.h>
 #include <salts_uuid.h>
-#include <tbe_wire.h>
+#include <data_bind_binary_wire.h>
 
 #include <stdint.h>
 
@@ -24,7 +24,7 @@ int main(void) {
   DataBindError error = DATA_BIND_ERROR_INIT;
   int ok = 0;
 
-  tbe_wire_write_u32(storage, 0, 42u);
+  data_bind_binary_wire_write_u32(storage, 0, 42u);
   if (data_bind_create_from_text(
           schema, sizeof(schema) - 1u, &codec, &error) != DATA_BIND_OK)
     return 2;
@@ -36,7 +36,7 @@ int main(void) {
     goto cleanup;
 
   ok = data_bind_abi_version() == DATA_BIND_ABI_VERSION &&
-       tbe_wire_read_u32(storage, 0) == 42u &&
+       data_bind_binary_wire_read_u32(storage, 0) == 42u &&
        uuid.bytes[0] == 0u &&
        cmeta_type_desc_valid(&cmeta_type_int) &&
        info.abi_version == DATA_BIND_PROJECTION_PLAN_ABI_VERSION &&

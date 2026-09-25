@@ -111,7 +111,7 @@ suite("enum_enhanced_functional") {
             check(UserProfile_view_bind(&view, buffer, sizeof(buffer)));
             check(UserProfile_has_username(&view));
 
-            tbe_var_data_t ud;
+            DataBindBinaryVarData ud;
             check(UserProfile_username(&view, &ud));
             check_equal(ud.size, strlen(username));
             check(memcmp(ud.data, username, ud.size) == 0);

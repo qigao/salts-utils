@@ -20,7 +20,7 @@ cmake_add_source(SOURCE_FILES RECURSE
 add_library(
   ${TARGET_NAME} STATIC
   ${SOURCE_FILES}
-  $<TARGET_OBJECTS:databind_tbe_format_objects>
+  $<TARGET_OBJECTS:databind_binary_format_objects>
   ${SCHEMA_LEXER_GEN} ${SCHEMA_GRAMMAR_GEN} ${SCHEMA_GRAMMAR_Y}
   ${SCHEMA_LEXER_RE})
 add_dependencies(${TARGET_NAME} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
@@ -28,7 +28,7 @@ add_dependencies(${TARGET_NAME} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
 target_include_directories(
   ${TARGET_NAME}
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-         $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
+         $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/include>
          $<INSTALL_INTERFACE:include>
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
 

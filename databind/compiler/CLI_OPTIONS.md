@@ -333,7 +333,7 @@ These macros do not create an ABI-v2 descriptor. A descriptor-routed existing st
 provide an explicit canonical CMeta graph and initialize
 `TBE_TYPED_DESCRIPTOR_INIT(&overlay, &native_data)`. ABI-v1 and graphless descriptors fail;
 they never fall back to the raw route. Raw convenience metadata does not infer a binary wire
-layout; use the explicit `_EX` macros or generated code when direct TBE binary encoding is
+layout; use the explicit `_EX` macros or generated code when direct DataBind Binary encoding is
 required. #47 remains open while deferred native families still require this raw route.
 
 `Orders_schema_codec()` exposes a schema-specific dispatch table for trusted host providers.
@@ -403,12 +403,12 @@ CSV input accepts a zero-based logical record index. The runtime remains respons
 for applying its input, output, object, and execution quotas before invoking the
 trusted host codec.
 
-For a freestanding wasm32 build, define `TBE_WASM_GUEST=1`. This removes the generated
+For a freestanding wasm32 build, define `DATA_BIND_BINARY_WASM_GUEST=1`. This removes the generated
 wire header's dependency on host libc and the Salts UUID runtime while preserving
 the same fixed 16-byte `salts_uuid_t` value layout:
 
 ```bash
-clang --target=wasm32-unknown-unknown -DTBE_WASM_GUEST=1 -O2 -nostdlib \
+clang --target=wasm32-unknown-unknown -DDATA_BIND_BINARY_WASM_GUEST=1 -O2 -nostdlib \
   -Igenerated -Ipath/to/databind/schema/include -c order_guest.c
 ```
 

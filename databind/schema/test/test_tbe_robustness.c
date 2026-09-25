@@ -1,7 +1,7 @@
 #include "schema_parser_dsl.h"
 #include "tbe_error.h"
-#include "tbe_wire.h"
-#include "tbe_version.h"
+#include "data_bind_binary_wire.h"
+#include "data_bind_binary_version.h"
 #include "tinytest.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,35 +70,35 @@ suite("tbe_robustness") {
 
         it("should handle null pointer gracefully in wire functions") {
             // Test null pointer handling in wire read functions
-            uint8_t result_u8 = tbe_wire_read_u8(NULL, 0);
+            uint8_t result_u8 = data_bind_binary_wire_read_u8(NULL, 0);
             check_equal(result_u8, 0);
             
-            int8_t result_i8 = tbe_wire_read_i8(NULL, 0);
+            int8_t result_i8 = data_bind_binary_wire_read_i8(NULL, 0);
             check_equal(result_i8, 0);
             
-            uint16_t result_u16 = tbe_wire_read_u16(NULL, 0);
+            uint16_t result_u16 = data_bind_binary_wire_read_u16(NULL, 0);
             check_equal(result_u16, 0);
             
-            uint32_t result_u32 = tbe_wire_read_u32(NULL, 0);
+            uint32_t result_u32 = data_bind_binary_wire_read_u32(NULL, 0);
             check_equal(result_u32, 0);
             
-            uint64_t result_u64 = tbe_wire_read_u64(NULL, 0);
+            uint64_t result_u64 = data_bind_binary_wire_read_u64(NULL, 0);
             check_equal(result_u64, 0);
             
-            float result_f32 = tbe_wire_read_f32(NULL, 0);
+            float result_f32 = data_bind_binary_wire_read_f32(NULL, 0);
             check_within(result_f32, 0.0f, 0.0f);
             
-            double result_f64 = tbe_wire_read_f64(NULL, 0);
+            double result_f64 = data_bind_binary_wire_read_f64(NULL, 0);
             check_within(result_f64, 0.0, 0.0);
             
             // Test write functions don't crash with null pointers
-            tbe_wire_write_u8(NULL, 0, 42);
-            tbe_wire_write_i8(NULL, 0, -42);
-            tbe_wire_write_u16(NULL, 0, 1000);
-            tbe_wire_write_u32(NULL, 0, 100000);
-            tbe_wire_write_u64(NULL, 0, 1000000000ULL);
-            tbe_wire_write_f32(NULL, 0, 3.14f);
-            tbe_wire_write_f64(NULL, 0, 2.718281828);
+            data_bind_binary_wire_write_u8(NULL, 0, 42);
+            data_bind_binary_wire_write_i8(NULL, 0, -42);
+            data_bind_binary_wire_write_u16(NULL, 0, 1000);
+            data_bind_binary_wire_write_u32(NULL, 0, 100000);
+            data_bind_binary_wire_write_u64(NULL, 0, 1000000000ULL);
+            data_bind_binary_wire_write_f32(NULL, 0, 3.14f);
+            data_bind_binary_wire_write_f64(NULL, 0, 2.718281828);
             
             // If we get here, no crashes occurred
             check_equal(1, 1);
@@ -211,12 +211,12 @@ suite("tbe_robustness") {
     
     describe("Version Compatibility") {
         it("should provide version information") {
-            const char *version = tbe_version();
+            const char *version = data_bind_binary_version();
             check_not_null(version);
             check_equal(version, "1.0.0");
             
             int major = -1, minor = -1, patch = -1;
-            tbe_version_components(&major, &minor, &patch);
+            data_bind_binary_version_components(&major, &minor, &patch);
             check_equal(major, 1);
             check_equal(minor, 0);
             check_equal(patch, 0);
@@ -224,17 +224,17 @@ suite("tbe_robustness") {
         
         it("should check version compatibility correctly") {
             // Same version should be compatible
-            check_equal(tbe_version_compatible(1, 0, 0), 1);
+            check_equal(data_bind_binary_version_compatible(1, 0, 0), 1);
             
             // Higher minor version should be compatible
-            check_equal(tbe_version_compatible(1, 0, 0), 1);  // Our version is 1.0.0
+            check_equal(data_bind_binary_version_compatible(1, 0, 0), 1);  // Our version is 1.0.0
             
             // Different major version should not be compatible
-            check_equal(tbe_version_compatible(2, 0, 0), 0);
-            check_equal(tbe_version_compatible(0, 9, 0), 0);
+            check_equal(data_bind_binary_version_compatible(2, 0, 0), 0);
+            check_equal(data_bind_binary_version_compatible(0, 9, 0), 0);
             
             // Higher required minor version should not be compatible
-            check_equal(tbe_version_compatible(1, 1, 0), 0);
+            check_equal(data_bind_binary_version_compatible(1, 1, 0), 0);
         }
     }
 
