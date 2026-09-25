@@ -9,9 +9,8 @@ manifest. Plugins built against an obsolete ABI must be rebuilt.
 
 ## Current semantic baseline
 
-The single current Plugin ABI requires **Salts.Native 1.5.0** or newer within
-the same declared package contract. That release provides the canonical CMeta
-Function/FunctionAbi and Interface reflection/equality used by Plugin admission.
+The single current Plugin ABI requires **Salts.Native 1.6.0** or newer within
+the same declared package contract. This baseline includes the canonical CMeta Function/FunctionAbi and Interface reflection/equality used by Plugin admission, plus the canonical reflected Function-to-CFlow projection consumed by the current semantic stack.
 
 Plugin does not carry private compatibility copies of those semantics.
 
