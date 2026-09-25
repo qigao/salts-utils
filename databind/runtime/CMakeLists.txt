@@ -249,6 +249,7 @@ install(
     data_bind_temporal_adapter.h
     data_bind_cflow.h
     data_bind_cmeta.h
+    data_bind_native_descriptor.h
     tbe_typed.h
   DESTINATION include
   COMPONENT DataBind)
