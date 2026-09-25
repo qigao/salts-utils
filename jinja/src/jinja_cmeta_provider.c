@@ -3204,15 +3204,6 @@ static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vs
   return JINJA_CMETA_ERR_METADATA;
 }
 
-static JINJA_CMETA_STATUS jinja_validate_sequence_view(const cmeta_data_collection_view *view) {
-  if (view == NULL) return JINJA_CMETA_ERR_METADATA;
-  if (view->count == 0u) return JINJA_CMETA_OK;
-  if (view->data == NULL || view->stride == 0u || !cmeta_data_desc_valid(view->element) ||
-      view->element->storage_type == NULL || view->element->storage_type->size > view->stride ||
-      view->count - 1u > SIZE_MAX / view->stride)
-    return JINJA_CMETA_ERR_METADATA;
-  return JINJA_CMETA_OK;
-}
 
 static JINJA_CMETA_STATUS jinja_lookup_struct_item(const JINJA_CMETA_NODE *base, vstr name,
                                                    JINJA_CMETA_VALUE *result) {
@@ -6696,8 +6687,7 @@ static JINJA_CMETA_STATUS jinja_json_value_impl(JINJA_CMETA_PROVIDER *provider,
     if (value->node.object == NULL || !cmeta_data_desc_valid(desc)) return JINJA_CMETA_ERR_METADATA;
     if (desc->kind == CMETA_DATA_STRUCT)
       return jinja_json_struct(provider, &value->node, depth, pretty, indent);
-    if (desc->kind == CMETA_DATA_SEQUENCE || desc->kind == CMETA_DATA_SET ||
-        (desc->kind == CMETA_DATA_CUSTOM && jinja_is_sequence_desc(desc))) {
+    if (desc->kind == CMETA_DATA_SEQUENCE || desc->kind == CMETA_DATA_SET) {
       JINJA_CMETA_VALUE source = *value;
       JINJA_CMETA_VALUE list;
       JINJA_CMETA_STATUS status = jinja_materialize_list(provider, &source, &list);
@@ -7082,8 +7072,7 @@ static JINJA_CMETA_STATUS jinja_attr_value(JINJA_CMETA_PROVIDER *provider,
   if (operand->kind == JINJA_CMETA_VALUE_NODE) {
     if (operand->node.object == NULL || !cmeta_data_desc_valid(operand->node.desc))
       return JINJA_CMETA_ERR_METADATA;
-    /* Sequence descriptors are host adapters, not objects exposing their C storage fields. */
-    if (!jinja_is_sequence_desc(operand->node.desc) && operand->node.desc->kind == CMETA_DATA_STRUCT)
+    if (operand->node.desc->kind == CMETA_DATA_STRUCT)
       return jinja_lookup_struct_item(&operand->node, key.string, result);
   }
   return JINJA_CMETA_OK;
