@@ -1,5 +1,5 @@
-#ifndef TBE_COMPILER_CORE_H
-#define TBE_COMPILER_CORE_H
+#ifndef DATABIND_COMPILER_CORE_H
+#define DATABIND_COMPILER_CORE_H
 
 #include "node_tree.h"
 #include "projection.h"
@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-typedef struct tbe_compiler_options_s {
+typedef struct databind_compiler_options_s {
   const char *schema_path;
   const char *template_path;
   const char *output_path;
@@ -33,35 +33,35 @@ typedef struct tbe_compiler_options_s {
   size_t projection_count;
   const databind_compiler_projection_backend *projection_backends;
   size_t projection_backend_count;
-} tbe_compiler_options_t;
+} databind_compiler_options_t;
 
 enum {
-  TBE_COMPILER_LANG_C = 0,
-  TBE_COMPILER_LANG_PYTHON = 1,
-  TBE_COMPILER_LANG_RUST = 2,
-  TBE_COMPILER_LANG_CPP = 3,
-  TBE_COMPILER_LANG_GO = 4,
-  TBE_COMPILER_LANG_TS = 5,
-  TBE_COMPILER_LANG_SQLITE = 6,
-  TBE_COMPILER_LANG_POSTGRESQL = 7
+  DATABIND_COMPILER_LANG_C = 0,
+  DATABIND_COMPILER_LANG_PYTHON = 1,
+  DATABIND_COMPILER_LANG_RUST = 2,
+  DATABIND_COMPILER_LANG_CPP = 3,
+  DATABIND_COMPILER_LANG_GO = 4,
+  DATABIND_COMPILER_LANG_TS = 5,
+  DATABIND_COMPILER_LANG_SQLITE = 6,
+  DATABIND_COMPILER_LANG_POSTGRESQL = 7
 };
 
-char *tbe_compiler_read_file(const char *filename);
+char *databind_compiler_read_file(const char *filename);
 
-int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum);
+int databind_compiler_parse_language_name(const char *name, int64_t *out_lang_enum);
 
-const char *tbe_compiler_resolve_template(const char *user_template,
+const char *databind_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum);
 
-void tbe_compiler_annotate_language_types(Node *root);
+void databind_compiler_annotate_language_types(Node *root);
 
-int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
+int databind_compiler_parse_schema_file(const char *schema_path, Node **out_root,
                                    char **out_schema_data);
 
-int tbe_compiler_render_file(Node *root, const char *template_path,
+int databind_compiler_render_file(Node *root, const char *template_path,
                              const char *output_path);
 
-int tbe_compiler_run(const tbe_compiler_options_t *options);
+int databind_compiler_run(const databind_compiler_options_t *options);
 
 #ifdef __cplusplus
 }
