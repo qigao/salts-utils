@@ -35,8 +35,39 @@ typedef struct NativeContainerTokenSource {
 typed(Vec, NativeIntVec, int);
 typed(Set, NativeIntSet, int);
 typed(Map, NativeIntLongMap, int, long);
-typed(Vec, NativeTextVec, tstr,
-      &salts_tstr_cmeta_type, &salts_tstr_cmeta_data);
+
+typedef struct NativeTextRecord {
+  tstr text;
+} NativeTextRecord;
+
+static const cmeta_data_desc NATIVE_TEXT_RECORD_DATA;
+CMETA_DEFINE_DATA_TRAITS(
+    native_text_record, &NATIVE_TEXT_RECORD_DATA);
+
+static const cmeta_type_identity NATIVE_TEXT_RECORD_ID =
+    CMETA_TYPE_ID_ATOM_INIT("test.databind.NativeTextRecord");
+static const cmeta_type_desc NATIVE_TEXT_RECORD_TYPE = {
+    "NativeTextRecord", sizeof(NativeTextRecord), _Alignof(NativeTextRecord),
+    CMETA_T_OBJECT, NULL, &cmeta_traits_native_text_record,
+    &NATIVE_TEXT_RECORD_ID};
+static cmeta_field_desc NATIVE_TEXT_RECORD_LAYOUT_FIELDS[1];
+static cmeta_data_field_desc NATIVE_TEXT_RECORD_FIELDS[1];
+static const cmeta_struct_desc NATIVE_TEXT_RECORD_LAYOUT = {
+    "NativeTextRecord", sizeof(NativeTextRecord), _Alignof(NativeTextRecord),
+    NATIVE_TEXT_RECORD_LAYOUT_FIELDS, 1u};
+static const cmeta_data_struct_shape NATIVE_TEXT_RECORD_SHAPE = {
+    &NATIVE_TEXT_RECORD_LAYOUT, NATIVE_TEXT_RECORD_FIELDS, 1u};
+static const cmeta_data_desc NATIVE_TEXT_RECORD_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.databind.NativeTextRecord.data",
+    .display_name = "NativeTextRecord",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &NATIVE_TEXT_RECORD_TYPE,
+    .shape = &NATIVE_TEXT_RECORD_SHAPE};
+
+typed(Vec, NativeTextRecordVec, NativeTextRecord,
+      &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
 
 static ContainerWorkspace workspace;
 static DataBindNativeOptions options;
@@ -81,6 +112,20 @@ static void reset_native(void) {
   options.max_items = CONTAINER_MAX_ITEMS;
   options.max_owned_bytes = CONTAINER_MAX_OWNED_BYTES;
   element_callback_calls = 0u;
+
+  NATIVE_TEXT_RECORD_LAYOUT_FIELDS[0] = (cmeta_field_desc){
+      .name = "text",
+      .type_name = "tstr",
+      .offset = offsetof(NativeTextRecord, text),
+      .size = sizeof(tstr),
+      .align = _Alignof(tstr),
+      .type = salts_tstr_cmeta_data.storage_type,
+      .declared_type = NULL};
+  NATIVE_TEXT_RECORD_FIELDS[0] = (cmeta_data_field_desc){
+      .stable_id = "test.databind.NativeTextRecord.text",
+      .name = "text",
+      .offset = offsetof(NativeTextRecord, text),
+      .value = &salts_tstr_cmeta_data};
 }
 
 static void open_writer(TokenSink *sink, cserde_writer *writer) {
@@ -260,46 +305,58 @@ spec("DataBind canonical CSTL native containers") {
                 DATA_BIND_OK);
   }
 
-  it("uses Salts 1.7.2 managed traits for explicit Vec<tstr>") {
-    NativeTextVec source = {0};
-    NativeTextVec destination = {0};
+  it("uses Salts managed lifecycle inside an explicit generated record Vec") {
+    NativeTextRecordVec source = {0};
+    NativeTextRecordVec destination = {0};
+    NativeTextRecord first = {0};
+    NativeTextRecord second = {0};
     TokenSink sink;
-    tstr first = NULL;
-    tstr second = NULL;
-    const tstr *value;
+    const NativeTextRecord *value;
 
-    check_equal(native_init(&NativeTextVec_collection_data, &source),
+    check_true(cmeta_data_value_traits_supported(&NATIVE_TEXT_RECORD_DATA));
+    check_equal(native_init(&NativeTextRecordVec_collection_data, &source),
                 DATA_BIND_OK);
-    check_equal(native_init(&NativeTextVec_collection_data, &destination),
+    check_equal(native_init(&NativeTextRecordVec_collection_data, &destination),
                 DATA_BIND_OK);
-    first = tstr_dup("alpha");
-    second = tstr_dup("beta");
-    check_not_null(first);
-    check_not_null(second);
-    check_equal(NativeTextVec_push(&source, first), STL_OK);
-    check_equal(NativeTextVec_push(&source, second), STL_OK);
-    tstr_free(first);
-    tstr_free(second);
-    first = NULL;
-    second = NULL;
+    check_equal(cmeta_data_value_init_zero(&NATIVE_TEXT_RECORD_DATA, &first),
+                CMETA_OK);
+    check_equal(cmeta_data_value_init_zero(&NATIVE_TEXT_RECORD_DATA, &second),
+                CMETA_OK);
+    check_equal(cmeta_data_buffer_assign(
+                    &salts_tstr_cmeta_data, &first.text,
+                    (const unsigned char *)"alpha", 5u, 5u),
+                CMETA_OK);
+    check_equal(cmeta_data_buffer_assign(
+                    &salts_tstr_cmeta_data, &second.text,
+                    (const unsigned char *)"beta", 4u, 4u),
+                CMETA_OK);
+
+    check_equal(NativeTextRecordVec_push(&source, first), STL_OK);
+    check_equal(NativeTextRecordVec_push(&source, second), STL_OK);
+    check_equal(cmeta_data_value_restore_zero(
+                    &NATIVE_TEXT_RECORD_DATA, &first), CMETA_OK);
+    check_equal(cmeta_data_value_restore_zero(
+                    &NATIVE_TEXT_RECORD_DATA, &second), CMETA_OK);
 
     check_equal(roundtrip(
-                    &NativeTextVec_collection_data, &source, &destination,
-                    &sink),
+                    &NativeTextRecordVec_collection_data,
+                    &source, &destination, &sink),
                 DATA_BIND_OK);
-    check_equal(NativeTextVec_size(&destination), (size_t)2u);
-    value = NativeTextVec_at_const(&destination, 0u);
+    check_equal(NativeTextRecordVec_size(&destination), (size_t)2u);
+    value = NativeTextRecordVec_at_const(&destination, 0u);
     check_not_null(value);
-    check_equal(tstr_len(*value), (size_t)5u);
-    check_equal(memcmp(*value, "alpha", 5u), 0);
-    value = NativeTextVec_at_const(&destination, 1u);
+    check_equal(tstr_len(value->text), (size_t)5u);
+    check_equal(memcmp(value->text, "alpha", 5u), 0);
+    value = NativeTextRecordVec_at_const(&destination, 1u);
     check_not_null(value);
-    check_equal(tstr_len(*value), (size_t)4u);
-    check_equal(memcmp(*value, "beta", 4u), 0);
+    check_equal(tstr_len(value->text), (size_t)4u);
+    check_equal(memcmp(value->text, "beta", 4u), 0);
 
-    check_equal(native_clear(&NativeTextVec_collection_data, &destination),
+    check_equal(native_clear(
+                    &NativeTextRecordVec_collection_data, &destination),
                 DATA_BIND_OK);
-    check_equal(native_clear(&NativeTextVec_collection_data, &source),
+    check_equal(native_clear(
+                    &NativeTextRecordVec_collection_data, &source),
                 DATA_BIND_OK);
   }
 
