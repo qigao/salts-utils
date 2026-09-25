@@ -62,16 +62,6 @@ typedef struct salts_uuid_s {
 {{#typed_source_enabled}}
 #include "tbe_typed.h"
 
-{{#lua_output_enabled}}
-struct lua_State;
-{{#has_lua_imports}}
-#ifndef SALTS_LUA_EXECUTOR_TYPE_DEFINED
-#define SALTS_LUA_EXECUTOR_TYPE_DEFINED
-typedef struct salts_lua_executor salts_lua_executor_t;
-#endif
-{{/has_lua_imports}}
-{{/lua_output_enabled}}
-
 #ifndef TBE_SCHEMA_CODEC_V1_DEFINED
 #define TBE_SCHEMA_CODEC_V1_DEFINED
 
@@ -412,13 +402,6 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-{{#lua_output_enabled}}
-{{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
-{{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
-{{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
 
@@ -771,13 +754,6 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-{{#lua_output_enabled}}
-{{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
-{{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
-{{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
 
@@ -1385,13 +1361,6 @@ TBE_GENERATED_API DataBindStatus {{name}}_to_json(DataBind *codec, const {{name}
 TBE_GENERATED_API DataBindStatus {{name}}_to_yaml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_csv(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
 TBE_GENERATED_API DataBindStatus {{name}}_to_xml(DataBind *codec, const {{name}}_t *object, char **out, size_t *out_len, DataBindError *error);
-{{#lua_output_enabled}}
-{{^typed_cmeta_runtime_supported}}
-TBE_GENERATED_API const TbeTypedType *{{name}}_typed_type(void);
-{{/typed_cmeta_runtime_supported}}
-TBE_GENERATED_API DataBindStatus {{name}}_push_lua(struct lua_State *L, const {{name}}_t *object, size_t max_depth);
-TBE_GENERATED_API DataBindStatus {{name}}_from_lua(struct lua_State *L, int index, {{name}}_t *object, size_t max_depth, size_t max_dynamic_items);
-{{/lua_output_enabled}}
 {{/typed_source_enabled}}
 {{/guest_adapter_only}}
 
@@ -2012,189 +1981,6 @@ static inline bool {{owner_name}}_{{name}}_get_default(const {{owner_name}}_view
 {{/has_optional_fields}}
 {{/messages}}
 
-{{#has_lua_bindings}}
-typedef struct {{schema.schema_name}}_lua_limits_s {
-    size_t max_depth;
-    size_t max_dynamic_items;
-{{#has_lua_async_operations}}
-    /** Maximum live async futures; zero is invalid for an async module. */
-    size_t max_pending_operations;
-{{/has_lua_async_operations}}
-} {{schema.schema_name}}_lua_limits_t;
-{{/has_lua_bindings}}
-
-{{#has_lua_operations}}
-/* ========================================================================= */
-/* Lua Host Operations                                                       */
-/* ========================================================================= */
-
-{{#messages}}{{#lua_operation_enabled}}{{#lua_async_enabled}}
-/**
- * Explicit state machine returned by the {{lua_operation_name}} starter.
- *
- * poll and destroy run only on the Lua owner thread. poll leaves response
- * unchanged while out_done is zero. The generated Future calls destroy exactly
- * once after success, failure, or cancellation; canceled is nonzero only for
- * cancellation. state is application-owned and may be NULL.
- */
-typedef struct {{schema.schema_name}}_lua_{{lua_operation_name}}_async_s {
-    void *state;
-    DataBindStatus (*poll)(void *state,
-                           {{lua_response_type}}_t *response,
-                           int *out_done, DataBindError *error);
-    void (*destroy)(void *state, int canceled);
-} {{schema.schema_name}}_lua_{{lua_operation_name}}_async_t;
-
-{{/lua_async_enabled}}{{/lua_operation_enabled}}{{/messages}}
-typedef struct {{schema.schema_name}}_lua_api_s {
-    /** Borrowed; it must outlive the Lua module table and its pending Futures. */
-    void *context;
-{{#messages}}{{#lua_operation_enabled}}
-{{^lua_async_enabled}}
-    DataBindStatus (*{{lua_operation_name}})(void *context,
-                                             const {{name}}_t *request,
-                                             {{lua_response_type}}_t *response,
-                                             DataBindError *error);
-{{/lua_async_enabled}}
-{{#lua_async_enabled}}
-    /**
-     * Start an explicit asynchronous operation. On success, operation must
-     * provide non-NULL poll and destroy callbacks. On failure it must leave
-     * operation cleared and release any state it allocated.
-     */
-    DataBindStatus (*{{lua_operation_name}})(
-        void *context, const {{name}}_t *request,
-        {{schema.schema_name}}_lua_{{lua_operation_name}}_async_t *operation,
-        DataBindError *error);
-{{/lua_async_enabled}}
-{{/lua_operation_enabled}}{{/messages}}
-} {{schema.schema_name}}_lua_api_t;
-
-/**
- * @brief Push a Lua module table containing the schema-declared operations.
- *
- * The callback table and limits are copied into Lua-owned userdata. The API
- * context remains borrowed and must outlive the returned module table and every
- * Future created from it. The adapter initializes and clears request/response
- * objects; callbacks fill the response but must not initialize, clear, or retain
- * either object.
-{{#has_lua_async_operations}}
- *
- * An operation annotated with `lua_async(future)` returns a Lua Future with
- * `poll()`, `await()`, `done()`, and `cancel()` methods. poll() advances the
- * application state machine once
- * and returns `false, nil, nil` while suspended, or
- * `true, result, nil` / `true, nil, error` after completion. await() requires a
- * yieldable Lua coroutine; while pending it yields the Future to the host and
- * advances once whenever that Lua coroutine is resumed. All Future methods and
- * callbacks must run on the Lua executor thread that owns the module.
- * The starter returns poll/destroy hooks, and generated glue owns that handle
- * until exactly one terminal destroy call.
-{{/has_lua_async_operations}}
- * Expected failures are returned to Lua as `nil, error`, where error contains
- * numeric `code` plus string `path` and `message` fields.
- *
- * @return DATA_BIND_OK with one module table pushed, or an error with the Lua
- * stack restored to its original height.
- */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_push_module(
-    struct lua_State *L, const {{schema.schema_name}}_lua_api_t *api,
-    const {{schema.schema_name}}_lua_limits_t *limits);
-{{/has_lua_operations}}
-
-{{#has_lua_imports}}
-/* ========================================================================= */
-/* Typed Lua Client                                                          */
-/* ========================================================================= */
-
-typedef struct {{schema.schema_name}}_lua_client_s
-    {{schema.schema_name}}_lua_client_t;
-
-/**
- * @brief Retain a Lua module table for schema-typed C calls.
- *
- * The client owns a Lua registry reference and borrows executor. Creation must
- * run on executor's owner thread because module_index names that thread's Lua
- * stack. Synchronous `_on_owner` calls and close enforce the same identity.
- * Async submissions may come from producer threads. Quiesce producers before
- * close; executor must outlive the client and every Future. module_index is
- * inspected but not consumed. limits is copied. out must point to NULL.
- */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_create(
-    {{schema.schema_name}}_lua_client_t **out, salts_lua_executor_t *executor,
-    int module_index, const {{schema.schema_name}}_lua_limits_t *limits,
-    DataBindError *error);
-
-/**
- * Stop new submissions and release caller ownership on the executor owner.
- * Accepted commands retain the client until terminal dispatch. On failure the
- * client remains open. Producers must be quiescent before this call.
- */
-TBE_GENERATED_API DataBindStatus {{schema.schema_name}}_lua_client_close(
-    {{schema.schema_name}}_lua_client_t *client, DataBindError *error);
-
-{{#messages}}{{#lua_import_enabled}}
-/**
- * @brief Call Lua function `{{lua_import_name}}(request)` through a typed boundary.
- *
- * Lua returns `response, nil` or `nil, { code, path, message }`. request is
- * borrowed for the call. response must be initialized; it is replaced only on
- * success and remains unchanged on failure. The Lua stack is always restored.
- */
-TBE_GENERATED_API DataBindStatus
-{{schema.schema_name}}_lua_client_{{lua_import_name}}_on_owner(
-    {{schema.schema_name}}_lua_client_t *client, const {{name}}_t *request,
-    {{lua_response_type}}_t *response, DataBindError *error);
-
-{{#lua_async_enabled}}
-typedef struct {{schema.schema_name}}_lua_{{lua_import_name}}_future_s
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t;
-
-/**
- * @brief Queue a typed snapshot of request on the bounded Lua executor.
- *
- * The client-bound executor receives the command. Queue-full and shutdown are
- * reported synchronously and leave out unchanged. On success, out owns one
- * Future reference; the executor owns the command reference until dispatch.
- * Producer threads may call this while the client remains open.
- */
-TBE_GENERATED_API DataBindStatus
-{{schema.schema_name}}_lua_client_{{lua_import_name}}_async(
-    {{schema.schema_name}}_lua_client_t *client,
-    const {{name}}_t *request,
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t **out,
-    DataBindError *error);
-
-/** Return nonzero after success, failure, or cancellation becomes observable. */
-TBE_GENERATED_API int
-{{schema.schema_name}}_lua_{{lua_import_name}}_future_done(
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
-
-/** Request cancellation. Returns nonzero only for the first pending request. */
-TBE_GENERATED_API int
-{{schema.schema_name}}_lua_{{lua_import_name}}_future_cancel(
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
-
-/**
- * Observe a Future without blocking.
- *
- * Pending returns DATA_BIND_OK with out_done=0 and leaves response unchanged.
- * Terminal success moves the response to the initialized output exactly once.
- * Terminal failure/cancellation leaves response unchanged and returns its code.
- */
-TBE_GENERATED_API DataBindStatus
-{{schema.schema_name}}_lua_{{lua_import_name}}_future_poll(
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future,
-    int *out_done, {{lua_response_type}}_t *response, DataBindError *error);
-
-/** Cancel if pending and release the caller reference; NULL is accepted. */
-TBE_GENERATED_API void
-{{schema.schema_name}}_lua_{{lua_import_name}}_future_destroy(
-    {{schema.schema_name}}_lua_{{lua_import_name}}_future_t *future);
-
-{{/lua_async_enabled}}
-{{/lua_import_enabled}}{{/messages}}
-{{/has_lua_imports}}
 
 {{#guest_adapter_enabled}}
 /* ========================================================================= */

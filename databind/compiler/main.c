@@ -9,13 +9,13 @@
  * CLI (via cmd_arger):
  *   databindc <file> [--template <file>]
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
- *              [--output <file>] [--source-output <file>] [--lua-output <file>]
+ *              [--output <file>] [--source-output <file>]
  *              [--dsl-output <file>]
  *              [--projections plugin,http,rpc]
  *              [--projection-config <file.json>]
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
- * Database DDL languages require explicit --output. Auxiliary source, guest, Lua,
+ * Database DDL languages require explicit --output. Auxiliary source, guest,
  * and DSL outputs remain part of the built-in C generation path only.
  */
 
@@ -80,7 +80,6 @@ int main(int argc, char **argv) {
     char    *lang_name = NULL;
     char    *output_path   = NULL;
     char    *source_output_path = NULL;
-    char    *lua_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
     char    *projection_names = NULL;
@@ -113,8 +112,6 @@ int main(int argc, char **argv) {
             "default: stdout for other languages)"),
         cmd_arger_desc_string_sh(&source_output_path, "source-output", "s",
                                  "Generate the C typed serde companion source"),
-        cmd_arger_desc_string(&lua_output_path, "lua-output",
-                              "Generate C adapters from typed records to Lua tables"),
         cmd_arger_desc_string_sh(&guest_output_path, "guest-output", "g",
                                  "Generate the C Wasm guest adapter source"),
         cmd_arger_desc_string_sh(&dsl_output_path, "dsl-output", "d",
@@ -167,7 +164,6 @@ int main(int argc, char **argv) {
             .projection_config_path = projection_config_path,
             .output_path = output_path,
             .source_output_path = source_output_path,
-            .lua_output_path = lua_output_path,
             .guest_output_path = guest_output_path,
             .dsl_output_path = dsl_output_path,
         };
@@ -196,7 +192,6 @@ int main(int argc, char **argv) {
         .template_path = template_path,
         .output_path = output_path,
         .source_output_path = source_output_path,
-        .lua_output_path = lua_output_path,
         .guest_output_path = guest_output_path,
         .dsl_output_path = dsl_output_path,
         .resource_dir = resource_dir,

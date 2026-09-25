@@ -717,14 +717,6 @@ static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
 {{/typed_cmeta_runtime_supported}}
 {{/messages}}
 
-{{#lua_output_enabled}}
-{{#composites}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
-{{/typed_cmeta_runtime_supported}}{{/composites}}{{#groups}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
-{{/typed_cmeta_runtime_supported}}{{/groups}}{{#messages}}{{^typed_cmeta_runtime_supported}}const TbeTypedType *{{name}}_typed_type(void) { return &{{name}}_TYPED_TYPE; }
-{{/typed_cmeta_runtime_supported}}
-{{/messages}}
-{{/lua_output_enabled}}
-
 static DataBindStatus {{schema.schema_name}}_schema_codec_error(DataBindError *error,
                                                                 DataBindStatus status,
                                                                 const char *path,

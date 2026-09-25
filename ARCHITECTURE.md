@@ -44,7 +44,7 @@ package 消费它。
 - `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
 - `Salts::Serial`
 - `Salts::Playback`
-- 可选的 `Salts::Capture`、`Salts::CFlowUSB`；`Salts::LuaBind` 当前仅作为构建树内适配 target
+- 可选的 `Salts::Capture`、`Salts::CFlowUSB`；Lua 运行时绑定由 Salts `Salts::Lua` 基于 CMeta 提供
 
 基础 Salts 包拥有并导出：
 

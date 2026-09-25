@@ -1487,149 +1487,6 @@ static int tbe_compiler_typed_schema_supported(Node *root) {
          tbe_compiler_typed_list_supported(root, "messages");
 }
 
-static Node *tbe_compiler_find_typed_record(Node *root, const char *name) {
-  Node *record = tbe_compiler_find_record(root, "composites", name);
-  if (!record) record = tbe_compiler_find_record(root, "groups", name);
-  if (!record) record = tbe_compiler_find_record(root, "messages", name);
-  return record;
-}
-
-static int tbe_compiler_prepare_lua_operations(Node *root) {
-  Node *messages = tbe_compiler_find_child(root, "messages");
-  size_t operation_count = 0;
-  size_t import_count = 0;
-  size_t i;
-
-  if (!messages || messages->type != NODE_LIST) return 1;
-
-  for (i = 0; i < messages->data.list.count; ++i) {
-    Node *request = messages->data.list.items[i];
-    const size_t operation_name_count =
-        tbe_compiler_attribute_count(request, "lua_operation");
-    const size_t import_name_count =
-        tbe_compiler_attribute_count(request, "lua_import");
-    const size_t response_count = tbe_compiler_attribute_count(request, "lua_response");
-    const size_t async_count = tbe_compiler_attribute_count(request, "lua_async");
-    const char *name_attribute;
-    const char *binding_kind;
-    const char *binding_name;
-    const char *response_type;
-    const char *async_value;
-    int is_import;
-    size_t previous;
-
-    if (operation_name_count == 0u && import_name_count == 0u &&
-        response_count == 0u && async_count == 0u) {
-      continue;
-    }
-    if (import_name_count != 0u) {
-      fprintf(stderr,
-              "Lua import message %s is unsupported; bind Lua coroutines "
-              "through the C11 Lua API\n",
-              tbe_compiler_string_value(request, "name"));
-      return 0;
-    }
-    if (operation_name_count != 0u && import_name_count != 0u) {
-      fprintf(stderr,
-              "Lua binding message %s cannot declare both lua_operation and "
-              "lua_import\n",
-              tbe_compiler_string_value(request, "name"));
-      return 0;
-    }
-    is_import = import_name_count != 0u;
-    name_attribute = is_import ? "lua_import" : "lua_operation";
-    binding_kind = is_import ? "import" : "operation";
-    if ((is_import ? import_name_count : operation_name_count) != 1u ||
-        response_count != 1u) {
-      fprintf(stderr,
-              "Lua %s message %s requires exactly one %s and one lua_response "
-              "attribute\n",
-              binding_kind, tbe_compiler_string_value(request, "name"),
-              name_attribute);
-      return 0;
-    }
-    if (async_count > 1u) {
-      fprintf(stderr, "Lua %s message %s allows at most one lua_async attribute\n",
-              binding_kind, tbe_compiler_string_value(request, "name"));
-      return 0;
-    }
-
-    binding_name = tbe_compiler_attribute_value(request, name_attribute);
-    response_type = tbe_compiler_attribute_value(request, "lua_response");
-    async_value = tbe_compiler_attribute_value(request, "lua_async");
-    if (!tbe_compiler_c_identifier_valid(binding_name)) {
-      fprintf(stderr, "Lua %s %s uses an invalid C/Lua identifier\n", binding_kind,
-              binding_name ? binding_name : "(null)");
-      return 0;
-    }
-    if (!tbe_compiler_find_typed_record(root, response_type)) {
-      fprintf(stderr, "Lua %s %s references unknown response type %s\n",
-              binding_kind, binding_name,
-              response_type ? response_type : "(null)");
-      return 0;
-    }
-
-    for (previous = 0; previous < i; ++previous) {
-      Node *other = messages->data.list.items[previous];
-      const char *other_name =
-          tbe_compiler_attribute_value(other, name_attribute);
-      if (other_name && strcmp(binding_name, other_name) == 0) {
-        fprintf(stderr, "Lua %s name %s is declared more than once\n",
-                binding_kind, binding_name);
-        return 0;
-      }
-    }
-
-    if (async_count == 1u &&
-        (!async_value || strcmp(async_value, "future") != 0)) {
-      fprintf(stderr,
-              "Lua %s %s requires lua_async(future) when asynchronous\n",
-              binding_kind, binding_name);
-      return 0;
-    }
-
-    if (is_import) {
-      if (tbe_compiler_set_string(request, "lua_import_enabled", "1") != 0 ||
-          tbe_compiler_set_string(request, "lua_import_name", binding_name) != 0 ||
-          tbe_compiler_set_string(request, "lua_response_type", response_type) != 0) {
-        return 0;
-      }
-      if (async_count == 1u &&
-          (tbe_compiler_set_string(request, "lua_async_enabled", "1") != 0 ||
-           tbe_compiler_set_string(root, "has_lua_async_imports", "1") != 0)) {
-        return 0;
-      }
-      ++import_count;
-    } else {
-      if (tbe_compiler_set_string(request, "lua_operation_enabled", "1") != 0 ||
-          tbe_compiler_set_string(request, "lua_operation_name", binding_name) != 0 ||
-          tbe_compiler_set_string(request, "lua_response_type", response_type) != 0) {
-        return 0;
-      }
-      if (async_count == 1u &&
-          (tbe_compiler_set_string(request, "lua_async_enabled", "1") != 0 ||
-           tbe_compiler_set_string(root, "has_lua_async_operations", "1") != 0)) {
-        return 0;
-      }
-      ++operation_count;
-    }
-  }
-
-  if (operation_count != 0u &&
-      tbe_compiler_set_string(root, "has_lua_operations", "1") != 0) {
-    return 0;
-  }
-  if (import_count != 0u &&
-      tbe_compiler_set_string(root, "has_lua_imports", "1") != 0) {
-    return 0;
-  }
-  if ((operation_count != 0u || import_count != 0u) &&
-      tbe_compiler_set_string(root, "has_lua_bindings", "1") != 0) {
-    return 0;
-  }
-  return 1;
-}
-
 char *tbe_compiler_read_file(const char *filename) {
   FILE *f = fopen(filename, "rb");
   if (!f) return NULL;
@@ -1796,8 +1653,6 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
           lang_name, "--source-output", options->source_output_path) ||
       !tbe_compiler_validate_database_output_option(
           lang_name, "--guest-output", options->guest_output_path) ||
-      !tbe_compiler_validate_database_output_option(
-          lang_name, "--lua-output", options->lua_output_path) ||
       !tbe_compiler_validate_database_output_option(
           lang_name, "--dsl-output", options->dsl_output_path)) {
     return 0;
@@ -2131,42 +1986,6 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
   }
 
-  if (options->lua_output_path) {
-    if (options->output_path == NULL || options->output_path[0] == '\0') {
-      fprintf(stderr, "--lua-output requires --output for the generated header\n");
-      status = 1;
-      goto cleanup;
-    }
-    if (options->source_output_path == NULL || options->source_output_path[0] == '\0') {
-      fprintf(stderr, "--lua-output requires --source-output for typed metadata\n");
-      status = 1;
-      goto cleanup;
-    }
-    if (strcmp(options->output_path, options->lua_output_path) == 0 ||
-        strcmp(options->source_output_path, options->lua_output_path) == 0 ||
-        (options->guest_output_path != NULL &&
-         strcmp(options->guest_output_path, options->lua_output_path) == 0) ||
-        (options->dsl_output_path != NULL &&
-         strcmp(options->dsl_output_path, options->lua_output_path) == 0)) {
-      fprintf(stderr, "--lua-output must name a distinct file\n");
-      status = 1;
-      goto cleanup;
-    }
-    if (options->lang_enum != TBE_COMPILER_LANG_C || options->template_path != NULL) {
-      fprintf(stderr, "--lua-output is supported only for the built-in C generator\n");
-      status = 1;
-      goto cleanup;
-    }
-    if (tbe_compiler_set_string(root, "lua_output_enabled", "1") != 0) {
-      status = 1;
-      goto cleanup;
-    }
-    if (!tbe_compiler_prepare_lua_operations(root)) {
-      status = 1;
-      goto cleanup;
-    }
-  }
-
   resolved_template = options->template_path;
   if (resolved_template == NULL) {
     resolved_template = tbe_compiler_resolve_resource(
@@ -2193,14 +2012,6 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
         options, "templates/c_guest_adapter.mustache", template_path, sizeof(template_path));
     status = resolved_template != NULL
                  ? tbe_compiler_render_file(root, resolved_template, options->guest_output_path)
-                 : 1;
-  }
-
-  if (status == 0 && options->lua_output_path) {
-    resolved_template = tbe_compiler_resolve_resource(
-        options, "templates/c_lua_bind.mustache", template_path, sizeof(template_path));
-    status = resolved_template != NULL
-                 ? tbe_compiler_render_file(root, resolved_template, options->lua_output_path)
                  : 1;
   }
 

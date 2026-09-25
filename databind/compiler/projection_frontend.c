@@ -83,7 +83,6 @@ static int path_reserved(
   const char *reserved[] = {
       input->output_path,
       input->source_output_path,
-      input->lua_output_path,
       input->guest_output_path,
       input->dsl_output_path,
       input->projection_config_path,
@@ -473,4 +472,3 @@ void databind_compiler_projection_frontend_dispose(
   if (plan == NULL) return;
   databind_compiler_projection_config_dispose(&plan->external_config);
 }
-
