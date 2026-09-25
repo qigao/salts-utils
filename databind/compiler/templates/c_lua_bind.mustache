@@ -16,8 +16,8 @@
 #define TBE_LUA_DEFINE_DESCRIPTOR_RECORD(name)                                     \
     DataBindStatus name##_push_lua(struct lua_State *L, const name##_t *object,    \
                                     size_t max_depth) {                             \
-        return c11_lua_push_tbe_typed_descriptor(                                  \
-            L, name##_typed_descriptor(), object, max_depth);                      \
+        return c11_lua_push_native_descriptor(                                     \
+            L, name##_native_descriptor(), object, max_depth);                      \
     }                                                                               \
     DataBindStatus name##_from_lua(struct lua_State *L, int index,                 \
                                     name##_t *object, size_t max_depth,             \
