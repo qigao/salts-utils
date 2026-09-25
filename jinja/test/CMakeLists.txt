@@ -34,6 +34,14 @@ foreach(test_source IN LISTS JINJA_CMETA_CASE_SOURCES)
   set_tests_properties(${test_target} PROPERTIES LABELS "jinja;cmeta;unit")
 endforeach()
 
+cmake_add_test(test_jinja_cmeta_cstl_collections
+  SOURCES test_jinja_cmeta_cstl_collections.c
+  LIBS Salts::JinjaCMeta Salts::CSTL Salts::TinyTest
+  INCLUDES ${TEST_INCLUDES}
+  FOLDER "jinja/tests")
+set_tests_properties(test_jinja_cmeta_cstl_collections
+  PROPERTIES LABELS "jinja;cmeta;cstl;unit")
+
 cmake_add_test(test_jinja_cmeta_header_cpp
   SOURCES test_jinja_cmeta_header_cpp.cpp
   LIBS Salts::JinjaCMeta Salts::TinyTest
