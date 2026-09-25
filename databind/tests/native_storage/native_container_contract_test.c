@@ -40,7 +40,7 @@ typedef struct NativeTextRecord {
   tstr text;
 } NativeTextRecord;
 
-static const cmeta_data_desc NATIVE_TEXT_RECORD_DATA;
+static cmeta_data_desc NATIVE_TEXT_RECORD_DATA;
 CMETA_DEFINE_DATA_TRAITS(
     native_text_record, &NATIVE_TEXT_RECORD_DATA);
 
@@ -57,14 +57,6 @@ static const cmeta_struct_desc NATIVE_TEXT_RECORD_LAYOUT = {
     NATIVE_TEXT_RECORD_LAYOUT_FIELDS, 1u};
 static const cmeta_data_struct_shape NATIVE_TEXT_RECORD_SHAPE = {
     &NATIVE_TEXT_RECORD_LAYOUT, NATIVE_TEXT_RECORD_FIELDS, 1u};
-static const cmeta_data_desc NATIVE_TEXT_RECORD_DATA = {
-    .struct_size = sizeof(cmeta_data_desc),
-    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
-    .stable_id = "test.databind.NativeTextRecord.data",
-    .display_name = "NativeTextRecord",
-    .kind = CMETA_DATA_STRUCT,
-    .storage_type = &NATIVE_TEXT_RECORD_TYPE,
-    .shape = &NATIVE_TEXT_RECORD_SHAPE};
 
 typed(Vec, NativeTextRecordVec, NativeTextRecord,
       &NATIVE_TEXT_RECORD_TYPE, &NATIVE_TEXT_RECORD_DATA);
@@ -126,6 +118,14 @@ static void reset_native(void) {
       .name = "text",
       .offset = offsetof(NativeTextRecord, text),
       .value = &salts_tstr_cmeta_data};
+  NATIVE_TEXT_RECORD_DATA = (cmeta_data_desc){
+      .struct_size = sizeof(cmeta_data_desc),
+      .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+      .stable_id = "test.databind.NativeTextRecord.data",
+      .display_name = "NativeTextRecord",
+      .kind = CMETA_DATA_STRUCT,
+      .storage_type = &NATIVE_TEXT_RECORD_TYPE,
+      .shape = &NATIVE_TEXT_RECORD_SHAPE};
 }
 
 static void open_writer(TokenSink *sink, cserde_writer *writer) {
@@ -180,6 +180,8 @@ static const cmeta_data_desc *counting_element(const void *object) {
 }
 
 spec("DataBind canonical CSTL native containers") {
+  (void)ttest_config__;
+
   before_each() {
     reset_native();
   }
