@@ -681,6 +681,25 @@ int databind_compiler_service_native_emit_prototype(
           "  default:\n"
           "    return DATA_BIND_ERR_SCHEMA;\n"
           "  }\n"
+          "  switch (destination->kind) {\n"
+          "  case %s__ERROR_NONE:\n"
+          "    break;\n",
+          operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    break;\n",
+            operation->symbol, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return DATA_BIND_ERR_SCHEMA;\n"
+          "  }\n"
           "  %s__error_clear(destination);\n"
           "  switch (source->kind) {\n"
           "  case %s__ERROR_NONE:\n"
