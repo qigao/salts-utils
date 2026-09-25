@@ -502,8 +502,17 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
 static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
                                         const cmeta_data_desc *data, void *storage,
                                         const char *path) {
-  cmeta_status status = cmeta_data_value_init_zero(data, storage);
+  cmeta_status status;
+  /*
+   * CMeta owns reflected-value lifecycle. DataBind owns the complete native
+   * storage envelope, including presence/null/default overlay bytes that are
+   * intentionally not CMeta fields.
+   */
+  memset(storage, 0, data->storage_type->size);
+  status = cmeta_data_value_init_zero(data, storage);
   if (status == CMETA_OK) return DATA_BIND_OK;
+  (void)cmeta_data_value_restore_zero(data, storage);
+  memset(storage, 0, data->storage_type->size);
   return native_fail(
       diagnostic,
       status == CMETA_OUT_OF_MEMORY
@@ -517,9 +526,10 @@ static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
 
 static DataBindStatus native_restore_value(const cmeta_data_desc *data,
                                            void *storage) {
-  return cmeta_data_value_restore_zero(data, storage) == CMETA_OK
-             ? DATA_BIND_OK
-             : DATA_BIND_ERR_RUNTIME;
+  cmeta_status status = cmeta_data_value_restore_zero(data, storage);
+  if (status != CMETA_OK) return DATA_BIND_ERR_RUNTIME;
+  memset(storage, 0, data->storage_type->size);
+  return DATA_BIND_OK;
 }
 
 static int native_value_is_zero(const cmeta_data_desc *data, const void *storage) {
