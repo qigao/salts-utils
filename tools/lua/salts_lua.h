@@ -54,10 +54,9 @@
 extern "C" {
 #endif
 
-#if defined(TBE_TYPED_H)
 #include <salts_cmeta_fixed_width.h>
 
-static inline int c11_lua_tbe_scalar_matches(
+static inline int c11_lua_cmeta_scalar_matches(
     const cmeta_data_desc *data, const cmeta_data_desc *canonical) {
     if (!cmeta_data_desc_valid(data) || !cmeta_data_desc_valid(canonical) ||
         data->kind != canonical->kind ||
@@ -75,77 +74,115 @@ static inline int c11_lua_tbe_scalar_matches(
     return 0;
 }
 
-static inline int c11_lua_tbe_uint_pushable(uint64_t value) {
+static inline int c11_lua_cmeta_uint_pushable(uint64_t value) {
     return value <= (uint64_t)LUA_MAXINTEGER;
 }
-
-static inline int c11_lua_tbe_uint_readable(lua_Integer value,
-                                            uint64_t maximum) {
+static inline int c11_lua_cmeta_uint_readable(lua_Integer value,
+                                              uint64_t maximum) {
     return value >= 0 && (uint64_t)value <= maximum;
 }
 
-static inline DataBindStatus c11_lua_tbe_push_value(
-    lua_State *L, const cmeta_data_desc *data, const TbeTypedType *overlay,
-    const void *object, size_t depth, size_t max_depth);
-
-static inline DataBindStatus c11_lua_tbe_push_scalar(
+static inline DataBindStatus c11_lua_cmeta_push_scalar(
     lua_State *L, const cmeta_data_desc *data, const void *object) {
-#define C11_LUA_TBE_PUSH_SIGNED(CANONICAL, TYPE) do {                            \
-    if (c11_lua_tbe_scalar_matches(data, &(CANONICAL))) {                       \
-        TYPE value;                                                              \
-        memcpy(&value, object, sizeof(value));                                   \
-        lua_pushinteger(L, (lua_Integer)value);                                  \
-        return DATA_BIND_OK;                                                     \
-    }                                                                            \
+#define C11_LUA_CMETA_PUSH_SIGNED(CANONICAL, TYPE) do { \
+    if (c11_lua_cmeta_scalar_matches(data, &(CANONICAL))) { TYPE value; \
+        memcpy(&value, object, sizeof(value)); \
+        lua_pushinteger(L, (lua_Integer)value); return DATA_BIND_OK; } \
 } while (0)
-#define C11_LUA_TBE_PUSH_UNSIGNED(CANONICAL, TYPE) do {                          \
-    if (c11_lua_tbe_scalar_matches(data, &(CANONICAL))) {                       \
-        TYPE value;                                                              \
-        memcpy(&value, object, sizeof(value));                                   \
-        if (!c11_lua_tbe_uint_pushable((uint64_t)value))                         \
-            return DATA_BIND_ERR_TYPE_MISMATCH;                                  \
-        lua_pushinteger(L, (lua_Integer)value);                                  \
-        return DATA_BIND_OK;                                                     \
-    }                                                                            \
+#define C11_LUA_CMETA_PUSH_UNSIGNED(CANONICAL, TYPE) do { \
+    if (c11_lua_cmeta_scalar_matches(data, &(CANONICAL))) { TYPE value; \
+        memcpy(&value, object, sizeof(value)); \
+        if (!c11_lua_cmeta_uint_pushable((uint64_t)value)) return DATA_BIND_ERR_TYPE_MISMATCH; \
+        lua_pushinteger(L, (lua_Integer)value); return DATA_BIND_OK; } \
 } while (0)
-    C11_LUA_TBE_PUSH_SIGNED(salts_int8_cmeta_data, int8_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint8_cmeta_data, uint8_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int16_cmeta_data, int16_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint16_cmeta_data, uint16_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int32_cmeta_data, int32_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint32_cmeta_data, uint32_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int64_cmeta_data, int64_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint64_cmeta_data, uint64_t);
-#undef C11_LUA_TBE_PUSH_UNSIGNED
-#undef C11_LUA_TBE_PUSH_SIGNED
-    if (c11_lua_tbe_scalar_matches(data, &cmeta_data_float)) {
-        float value;
-        memcpy(&value, object, sizeof(value));
+    C11_LUA_CMETA_PUSH_SIGNED(salts_int8_cmeta_data, int8_t);
+    C11_LUA_CMETA_PUSH_UNSIGNED(salts_uint8_cmeta_data, uint8_t);
+    C11_LUA_CMETA_PUSH_SIGNED(salts_int16_cmeta_data, int16_t);
+    C11_LUA_CMETA_PUSH_UNSIGNED(salts_uint16_cmeta_data, uint16_t);
+    C11_LUA_CMETA_PUSH_SIGNED(salts_int32_cmeta_data, int32_t);
+    C11_LUA_CMETA_PUSH_UNSIGNED(salts_uint32_cmeta_data, uint32_t);
+    C11_LUA_CMETA_PUSH_SIGNED(salts_int64_cmeta_data, int64_t);
+    C11_LUA_CMETA_PUSH_UNSIGNED(salts_uint64_cmeta_data, uint64_t);
+#undef C11_LUA_CMETA_PUSH_UNSIGNED
+#undef C11_LUA_CMETA_PUSH_SIGNED
+    if (c11_lua_cmeta_scalar_matches(data, &cmeta_data_float)) {
+        float value; memcpy(&value, object, sizeof(value));
         if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
-        lua_pushnumber(L, (lua_Number)value);
-        return DATA_BIND_OK;
+        lua_pushnumber(L, (lua_Number)value); return DATA_BIND_OK;
     }
-    if (c11_lua_tbe_scalar_matches(data, &cmeta_data_double)) {
-        double value;
-        memcpy(&value, object, sizeof(value));
+    if (c11_lua_cmeta_scalar_matches(data, &cmeta_data_double)) {
+        double value; memcpy(&value, object, sizeof(value));
         if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
-        lua_pushnumber(L, (lua_Number)value);
-        return DATA_BIND_OK;
+        lua_pushnumber(L, (lua_Number)value); return DATA_BIND_OK;
     }
     if (data != NULL && data->kind == CMETA_DATA_ENUM) {
-        const cmeta_data_enum_shape *shape =
-            (const cmeta_data_enum_shape *)data->shape;
-        int64_t value;
-        const char *text;
-        if (cmeta_data_enum_read(data, object, &value) != CMETA_OK)
-            return DATA_BIND_ERR_TYPE_MISMATCH;
+        const cmeta_data_enum_shape *shape = (const cmeta_data_enum_shape *)data->shape;
+        int64_t value; const char *text;
+        if (cmeta_data_enum_read(data, object, &value) != CMETA_OK) return DATA_BIND_ERR_TYPE_MISMATCH;
         text = shape != NULL ? cmeta_enum_to_string(shape->meta, value) : NULL;
         if (text == NULL) return DATA_BIND_ERR_TYPE_MISMATCH;
-        lua_pushstring(L, text);
-        return DATA_BIND_OK;
+        lua_pushstring(L, text); return DATA_BIND_OK;
     }
     return DATA_BIND_ERR_SCHEMA;
 }
+
+static inline DataBindStatus c11_lua_cmeta_read_scalar(
+    lua_State *L, int index, const cmeta_data_desc *data, void *object) {
+    lua_Integer raw;
+#define C11_LUA_CMETA_READ_SIGNED(CANONICAL, TYPE, MINIMUM, MAXIMUM) do { \
+    if (c11_lua_cmeta_scalar_matches(data, &(CANONICAL))) { TYPE value; \
+        if (!lua_isinteger(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH; raw = lua_tointeger(L, index); \
+        if (raw < (lua_Integer)(MINIMUM) || raw > (lua_Integer)(MAXIMUM)) return DATA_BIND_ERR_TYPE_MISMATCH; \
+        value = (TYPE)raw; memcpy(object, &value, sizeof(value)); return DATA_BIND_OK; } \
+} while (0)
+#define C11_LUA_CMETA_READ_UNSIGNED(CANONICAL, TYPE, MAXIMUM) do { \
+    if (c11_lua_cmeta_scalar_matches(data, &(CANONICAL))) { TYPE value; \
+        if (!lua_isinteger(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH; raw = lua_tointeger(L, index); \
+        if (!c11_lua_cmeta_uint_readable(raw, (uint64_t)(MAXIMUM))) return DATA_BIND_ERR_TYPE_MISMATCH; \
+        value = (TYPE)raw; memcpy(object, &value, sizeof(value)); return DATA_BIND_OK; } \
+} while (0)
+    C11_LUA_CMETA_READ_SIGNED(salts_int8_cmeta_data, int8_t, INT8_MIN, INT8_MAX);
+    C11_LUA_CMETA_READ_UNSIGNED(salts_uint8_cmeta_data, uint8_t, UINT8_MAX);
+    C11_LUA_CMETA_READ_SIGNED(salts_int16_cmeta_data, int16_t, INT16_MIN, INT16_MAX);
+    C11_LUA_CMETA_READ_UNSIGNED(salts_uint16_cmeta_data, uint16_t, UINT16_MAX);
+    C11_LUA_CMETA_READ_SIGNED(salts_int32_cmeta_data, int32_t, INT32_MIN, INT32_MAX);
+    C11_LUA_CMETA_READ_UNSIGNED(salts_uint32_cmeta_data, uint32_t, UINT32_MAX);
+    C11_LUA_CMETA_READ_SIGNED(salts_int64_cmeta_data, int64_t, INT64_MIN, INT64_MAX);
+    C11_LUA_CMETA_READ_UNSIGNED(salts_uint64_cmeta_data, uint64_t, UINT64_MAX);
+#undef C11_LUA_CMETA_READ_UNSIGNED
+#undef C11_LUA_CMETA_READ_SIGNED
+    if (c11_lua_cmeta_scalar_matches(data, &cmeta_data_float)) {
+        lua_Number raw_number; float value;
+        if (!lua_isnumber(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;
+        raw_number = lua_tonumber(L, index);
+        if (!isfinite((double)raw_number) || raw_number < -(lua_Number)FLT_MAX || raw_number > (lua_Number)FLT_MAX)
+            return DATA_BIND_ERR_TYPE_MISMATCH;
+        value = (float)raw_number; memcpy(object, &value, sizeof(value)); return DATA_BIND_OK;
+    }
+    if (c11_lua_cmeta_scalar_matches(data, &cmeta_data_double)) {
+        double value;
+        if (!lua_isnumber(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;
+        value = (double)lua_tonumber(L, index);
+        if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
+        memcpy(object, &value, sizeof(value)); return DATA_BIND_OK;
+    }
+    if (data != NULL && data->kind == CMETA_DATA_ENUM) {
+        const cmeta_data_enum_shape *shape = (const cmeta_data_enum_shape *)data->shape;
+        int64_t value;
+        if (lua_type(L, index) == LUA_TSTRING) {
+            if (shape == NULL || !cmeta_enum_from_string(shape->meta, lua_tostring(L, index), &value))
+                return DATA_BIND_ERR_TYPE_MISMATCH;
+        } else if (lua_isinteger(L, index)) value = (int64_t)lua_tointeger(L, index);
+        else return DATA_BIND_ERR_TYPE_MISMATCH;
+        return cmeta_data_enum_assign(data, object, value) == CMETA_OK ? DATA_BIND_OK : DATA_BIND_ERR_TYPE_MISMATCH;
+    }
+    return DATA_BIND_ERR_SCHEMA;
+}
+
+#if defined(TBE_TYPED_H)
+static inline DataBindStatus c11_lua_tbe_push_value(
+    lua_State *L, const cmeta_data_desc *data, const TbeTypedType *overlay,
+    const void *object, size_t depth, size_t max_depth);
 
 static inline DataBindStatus c11_lua_tbe_push_value(
     lua_State *L, const cmeta_data_desc *data, const TbeTypedType *overlay,
@@ -155,7 +192,7 @@ static inline DataBindStatus c11_lua_tbe_push_value(
     size_t i;
     if (data == NULL || object == NULL) return DATA_BIND_ERR_INVALID_ARG;
     if (data->kind != CMETA_DATA_STRUCT)
-        return c11_lua_tbe_push_scalar(L, data, object);
+        return c11_lua_cmeta_push_scalar(L, data, object);
     if (overlay == NULL) return DATA_BIND_ERR_SCHEMA;
     if (depth > max_depth) return DATA_BIND_ERR_LIMIT;
     shape = (const cmeta_data_struct_shape *)data->shape;
@@ -201,84 +238,6 @@ static inline DataBindStatus c11_lua_tbe_read_value(
     const TbeTypedType *overlay, void *object, size_t depth,
     size_t max_depth);
 
-static inline DataBindStatus c11_lua_tbe_read_scalar(
-    lua_State *L, int index, const cmeta_data_desc *data, void *object) {
-    lua_Integer raw;
-#define C11_LUA_TBE_READ_SIGNED(CANONICAL, TYPE, MINIMUM, MAXIMUM) do {           \
-    if (c11_lua_tbe_scalar_matches(data, &(CANONICAL))) {                       \
-        TYPE value;                                                              \
-        if (!lua_isinteger(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;        \
-        raw = lua_tointeger(L, index);                                            \
-        if (raw < (lua_Integer)(MINIMUM) || raw > (lua_Integer)(MAXIMUM))        \
-            return DATA_BIND_ERR_TYPE_MISMATCH;                                  \
-        value = (TYPE)raw;                                                        \
-        memcpy(object, &value, sizeof(value));                                   \
-        return DATA_BIND_OK;                                                     \
-    }                                                                            \
-} while (0)
-#define C11_LUA_TBE_READ_UNSIGNED(CANONICAL, TYPE, MAXIMUM) do {                  \
-    if (c11_lua_tbe_scalar_matches(data, &(CANONICAL))) {                       \
-        TYPE value;                                                              \
-        if (!lua_isinteger(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;        \
-        raw = lua_tointeger(L, index);                                            \
-        if (!c11_lua_tbe_uint_readable(raw, (uint64_t)(MAXIMUM)))                \
-            return DATA_BIND_ERR_TYPE_MISMATCH;                                  \
-        value = (TYPE)raw;                                                        \
-        memcpy(object, &value, sizeof(value));                                   \
-        return DATA_BIND_OK;                                                     \
-    }                                                                            \
-} while (0)
-    C11_LUA_TBE_READ_SIGNED(salts_int8_cmeta_data, int8_t, INT8_MIN, INT8_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint8_cmeta_data, uint8_t, UINT8_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int16_cmeta_data, int16_t, INT16_MIN, INT16_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint16_cmeta_data, uint16_t, UINT16_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int32_cmeta_data, int32_t, INT32_MIN, INT32_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint32_cmeta_data, uint32_t, UINT32_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int64_cmeta_data, int64_t, INT64_MIN, INT64_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint64_cmeta_data, uint64_t, UINT64_MAX);
-#undef C11_LUA_TBE_READ_UNSIGNED
-#undef C11_LUA_TBE_READ_SIGNED
-    if (c11_lua_tbe_scalar_matches(data, &cmeta_data_float)) {
-        lua_Number raw_number;
-        float value;
-        if (!lua_isnumber(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;
-        raw_number = lua_tonumber(L, index);
-        if (!isfinite((double)raw_number) || raw_number < -(lua_Number)FLT_MAX ||
-            raw_number > (lua_Number)FLT_MAX)
-            return DATA_BIND_ERR_TYPE_MISMATCH;
-        value = (float)raw_number;
-        memcpy(object, &value, sizeof(value));
-        return DATA_BIND_OK;
-    }
-    if (c11_lua_tbe_scalar_matches(data, &cmeta_data_double)) {
-        lua_Number raw_number;
-        double value;
-        if (!lua_isnumber(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;
-        raw_number = lua_tonumber(L, index);
-        value = (double)raw_number;
-        if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
-        memcpy(object, &value, sizeof(value));
-        return DATA_BIND_OK;
-    }
-    if (data != NULL && data->kind == CMETA_DATA_ENUM) {
-        const cmeta_data_enum_shape *shape =
-            (const cmeta_data_enum_shape *)data->shape;
-        int64_t value;
-        if (lua_type(L, index) == LUA_TSTRING) {
-            if (shape == NULL ||
-                !cmeta_enum_from_string(shape->meta, lua_tostring(L, index), &value))
-                return DATA_BIND_ERR_TYPE_MISMATCH;
-        } else if (lua_isinteger(L, index)) {
-            value = (int64_t)lua_tointeger(L, index);
-        } else {
-            return DATA_BIND_ERR_TYPE_MISMATCH;
-        }
-        return cmeta_data_enum_assign(data, object, value) == CMETA_OK
-                   ? DATA_BIND_OK : DATA_BIND_ERR_TYPE_MISMATCH;
-    }
-    return DATA_BIND_ERR_SCHEMA;
-}
-
 static inline DataBindStatus c11_lua_tbe_read_value(
     lua_State *L, int index, const cmeta_data_desc *data,
     const TbeTypedType *overlay, void *object, size_t depth,
@@ -288,7 +247,7 @@ static inline DataBindStatus c11_lua_tbe_read_value(
     size_t i;
     if (data == NULL || object == NULL) return DATA_BIND_ERR_INVALID_ARG;
     if (data->kind != CMETA_DATA_STRUCT)
-        return c11_lua_tbe_read_scalar(L, index, data, object);
+        return c11_lua_cmeta_read_scalar(L, index, data, object);
     if (overlay == NULL || !lua_istable(L, index))
         return DATA_BIND_ERR_TYPE_MISMATCH;
     if (depth > max_depth) return DATA_BIND_ERR_LIMIT;
@@ -363,12 +322,8 @@ static inline DataBindStatus c11_lua_cmeta_push_value(
     size_t i;
     if (L == NULL || data == NULL || object == NULL)
         return DATA_BIND_ERR_INVALID_ARG;
-#if defined(TBE_TYPED_H)
-    if (data->kind != CMETA_DATA_STRUCT)
-        return c11_lua_tbe_push_scalar(L, data, object);
-#else
-    if (data->kind != CMETA_DATA_STRUCT) return DATA_BIND_ERR_SCHEMA;
-#endif
+if (data->kind != CMETA_DATA_STRUCT)
+        return c11_lua_cmeta_push_scalar(L, data, object);
     if (depth > max_depth) return DATA_BIND_ERR_LIMIT;
     shape = (const cmeta_data_struct_shape *)data->shape;
     if (shape == NULL || shape->fields == NULL) return DATA_BIND_ERR_SCHEMA;
@@ -403,16 +358,6 @@ static inline DataBindStatus c11_lua_push_native_descriptor(
         return DATA_BIND_ERR_SCHEMA;
     return c11_lua_cmeta_push_value(
         L, descriptor->native_data, object, 0u, max_depth);
-}
-
-static inline DataBindStatus c11_lua_cmeta_read_scalar(
-    lua_State *L, int index, const cmeta_data_desc *data, void *object) {
-#if defined(TBE_TYPED_H)
-    return c11_lua_tbe_read_scalar(L, index, data, object);
-#else
-    (void)L; (void)index; (void)data; (void)object;
-    return DATA_BIND_ERR_SCHEMA;
-#endif
 }
 
 static inline DataBindStatus c11_lua_cmeta_read_value(
