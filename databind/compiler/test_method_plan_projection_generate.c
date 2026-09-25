@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
   int result;
 
   if (argc != 4) return 2;
-  if (tbe_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0)
+  if (databind_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0)
     return 3;
 
   requests[0] = (databind_compiler_projection_request){
