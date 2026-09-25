@@ -211,7 +211,6 @@ static const char *direction_name(
 static const char *runtime_format_name(DataBindFormat format) {
   switch (format) {
   case DATA_BIND_FORMAT_JSON:
-  case DATA_BIND_FORMAT_JSON:
     return "DATA_BIND_FORMAT_JSON";
   case DATA_BIND_FORMAT_BINARY:
     return "DATA_BIND_FORMAT_BINARY";
