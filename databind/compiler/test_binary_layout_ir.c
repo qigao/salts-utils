@@ -3,6 +3,7 @@
 
 #include <tinytest.h>
 
+#include <stdlib.h>
 #include <string.h>
 
 spec("DataBind BinaryLayoutIR") {
