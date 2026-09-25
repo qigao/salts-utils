@@ -202,6 +202,28 @@ static int plan_data_semantically_equal(const cmeta_data_desc *left,
   return 1;
 }
 
+static int plan_owned_buffer_provider_matches(
+    const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data) {
+  const cmeta_data_buffer_ops *ops;
+  const cmeta_data_buffer_shape *shape;
+  if (schema_field == NULL || native_data == NULL ||
+      !schema_field->has_cmeta_kind ||
+      (schema_field->cmeta_kind != CMETA_DATA_STRING &&
+       schema_field->cmeta_kind != CMETA_DATA_BYTES) ||
+      native_data->kind != schema_field->cmeta_kind ||
+      native_data->storage_type == NULL || native_data->shape == NULL)
+    return 0;
+  ops = cmeta_data_buffer_ops_of(native_data);
+  shape = (const cmeta_data_buffer_shape *)native_data->shape;
+  return ops != NULL &&
+         shape->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->is_zero != NULL && ops->assign != NULL &&
+         ops->restore_zero != NULL && ops->read != NULL &&
+         ops->init_zero != NULL && ops->move != NULL;
+}
+
 static DataBindStatus plan_validate_native_type(
     DataBind *codec, const DataBindNativeTypeBinding *binding,
     const char *expected_name, DataBindBindingPlanDiagnostic *diagnostic) {
@@ -348,13 +370,25 @@ static DataBindStatus plan_validate_native_type(
 
     schema_data = schema_field.cmeta_data;
     if (schema_data == NULL &&
-        data_bind_schema_field_cmeta_data(codec, expected_name, i,
-                                          &schema_data, &error) != DATA_BIND_OK)
+        plan_owned_buffer_provider_matches(
+            &schema_field, native_field->value)) {
+      /*
+       * STRING/BYTES are canonical semantic kinds but do not choose physical
+       * storage in the IDL. The generated native graph supplies the explicit
+       * owned provider, so admission verifies the provider lifecycle instead
+       * of inventing a schema-owned storage identity.
+       */
+      schema_data = native_field->value;
+    } else if (schema_data == NULL &&
+               data_bind_schema_field_cmeta_data(
+                   codec, expected_name, i, &schema_data, &error) !=
+                   DATA_BIND_OK) {
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
           "IDL field '%s.%s' has no canonical CMeta data mapping",
           expected_name,
           schema_field.name != NULL ? schema_field.name : "");
+    }
 
     if (!plan_data_semantically_equal(schema_data, native_field->value))
       return plan_diag_fail(
