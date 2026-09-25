@@ -135,7 +135,7 @@ spec("Jinja CMeta collections and runtime: templates 10") {
     const JinjaTestUser users[] = {{vstr_from_cstr("Ada"), 37}};
     JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, true, {users, 1u, sizeof(users[0]), NULL}};
     JinjaTestModel model;
-    cmeta_data_desc sequence_copy = *jinja_cmeta_sequence_data();
+    cmeta_data_desc sequence_copy = cmeta_data_sequence_view;
     char *output = NULL;
 
     jinja_test_model_init(&model);
