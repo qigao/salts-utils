@@ -409,6 +409,10 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                        "Invalid canonical CMeta descriptor");
 
+  if (!cmeta_data_value_move_supported(data))
+    return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Canonical native descriptor has no complete move lifecycle");
+
   for (i = 0u; i + 1u < depth; ++i) {
     if (plan->ancestors[i] == data)
       return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
@@ -558,47 +562,12 @@ static DataBindStatus native_publish_value(DataBindNativeDiagnostic *diagnostic,
                                            const cmeta_data_desc *data,
                                            void *destination, void *source,
                                            const char *path) {
-  size_t i;
-  if (native_scalar_supported(data)) {
-    memcpy(destination, source, data->storage_type->size);
-    (void)native_scalar_zero(data, source);
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
-    if (cmeta_data_buffer_move(data, destination, source) != CMETA_OK)
-      return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                         "Buffer provider violated no-fail move contract");
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_ENUM) {
-    uint64_t bits = 0u;
-    if (cmeta_data_enum_read_bits(data, source, &bits) != CMETA_OK ||
-        cmeta_data_enum_assign_bits(data, destination, bits) != CMETA_OK)
-      return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                         "Enum provider could not publish canonical bits");
-    if (cmeta_data_enum_bits_restore_zero(data, source) != CMETA_OK)
-      return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                         "Enum staging storage did not restore semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    for (i = 0u; i < shape->field_count; ++i) {
-      char child_path[sizeof(((DataBindError *)0)->path)];
-      DataBindStatus status;
-      if (!native_path_join(child_path, sizeof(child_path), path, shape->fields[i].name))
-        return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                           "Native field path changed after preflight");
-      status = native_publish_value(
-          diagnostic, shape->fields[i].value,
-          (unsigned char *)destination + shape->fields[i].offset,
-          (unsigned char *)source + shape->fields[i].offset, child_path);
-      if (status != DATA_BIND_OK) return status;
-    }
-    return DATA_BIND_OK;
-  }
-  return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                     "Unsupported publication kind after preflight");
+  cmeta_status status = cmeta_data_value_move(data, destination, source);
+  if (status == CMETA_OK) return DATA_BIND_OK;
+  return native_fail(
+      diagnostic,
+      status == CMETA_TRAIT_MISSING ? DATA_BIND_ERR_SCHEMA : DATA_BIND_ERR_RUNTIME,
+      CSERDE_OK, path, "Canonical CMeta move lifecycle failed during publication");
 }
 
 static DataBindStatus native_reader_failure(NativeDecode *decode, cserde_status source_status,

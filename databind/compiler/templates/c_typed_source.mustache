@@ -218,6 +218,24 @@ static cmeta_status {{native_enum_symbol}}Assign(void *object, uint64_t bits) {
 static void {{native_enum_symbol}}RestoreZero(void *object) {
     if (object != NULL) *({{enum_name}}_t *)object = ({{enum_name}}_t)0;
 }
+static cmeta_status {{native_enum_symbol}}InitZero(void *object) {
+    if (object == NULL) return CMETA_INVALID_ARGUMENT;
+    {{native_enum_symbol}}RestoreZero(object);
+    return CMETA_OK;
+}
+static void {{native_enum_symbol}}Move(void *destination, void *source) {
+    if (destination == NULL || source == NULL || destination == source) return;
+    *({{enum_name}}_t *)destination = *(const {{enum_name}}_t *)source;
+    {{native_enum_symbol}}RestoreZero(source);
+}
+static const cmeta_data_construct_ops {{native_enum_symbol}}ConstructOps = {
+    .struct_size = sizeof(cmeta_data_construct_ops),
+    .abi_version = CMETA_DATA_CONSTRUCT_OPS_ABI_VERSION,
+    .storage_type = &{{native_enum_symbol}}Type,
+    .init_zero = {{native_enum_symbol}}InitZero,
+    .restore_zero = {{native_enum_symbol}}RestoreZero,
+    .move = {{native_enum_symbol}}Move
+};
 static const cmeta_data_enum_bits_ops {{native_enum_symbol}}Ops = {
     sizeof(cmeta_data_enum_bits_ops), CMETA_DATA_ENUM_BITS_OPS_ABI_VERSION,
     &{{native_enum_symbol}}Type, &{{native_enum_symbol}}Domain, {{native_enum_symbol}}IsZero,
@@ -226,10 +244,14 @@ static const cmeta_data_enum_bits_ops {{native_enum_symbol}}Ops = {
 };
 {{/typed_cmeta_runtime_supported}}
 static const cmeta_data_desc {{native_enum_symbol}}Data = {
-    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
-    "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data", "{{enum_name}}_t",
-    CMETA_DATA_ENUM, &{{native_enum_symbol}}Type, NULL,
-    NULL, NULL, NULL, NULL, &{{native_enum_symbol}}Ops
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "tbe.native.{{schema.schema_name}}.{{enum_name}}_t.data",
+    .display_name = "{{enum_name}}_t",
+    .kind = CMETA_DATA_ENUM,
+    .storage_type = &{{native_enum_symbol}}Type,
+    .enum_bits_ops = &{{native_enum_symbol}}Ops,
+    .construct_ops = &{{native_enum_symbol}}ConstructOps
 };
 {{/native_enum_supported}}
 {{^native_enum_supported}}

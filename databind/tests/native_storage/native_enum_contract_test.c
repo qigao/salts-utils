@@ -61,6 +61,20 @@ static void canonical_enum_restore(void *object) {
   value->engaged = false;
 }
 
+static cmeta_status canonical_enum_init_zero(void *object) {
+  if (object == NULL) return CMETA_INVALID_ARGUMENT;
+  canonical_enum_restore(object);
+  return CMETA_OK;
+}
+
+static void canonical_enum_move(void *destination, void *source) {
+  CanonicalEnumBox *to = (CanonicalEnumBox *)destination;
+  CanonicalEnumBox *from = (CanonicalEnumBox *)source;
+  if (to == NULL || from == NULL || to == from) return;
+  *to = *from;
+  canonical_enum_restore(from);
+}
+
 static const cmeta_type_identity canonical_enum_identity =
     CMETA_TYPE_ID_ATOM_INIT("test.native-enum.Canonical");
 static const cmeta_type_desc canonical_enum_storage = {
@@ -69,6 +83,13 @@ static const cmeta_type_desc canonical_enum_storage = {
     .align = _Alignof(CanonicalEnumBox),
     .kind = CMETA_T_OBJECT,
     .identity = &canonical_enum_identity};
+static const cmeta_data_construct_ops canonical_enum_construct_ops = {
+    .struct_size = sizeof(cmeta_data_construct_ops),
+    .abi_version = CMETA_DATA_CONSTRUCT_OPS_ABI_VERSION,
+    .storage_type = &canonical_enum_storage,
+    .init_zero = canonical_enum_init_zero,
+    .restore_zero = canonical_enum_restore,
+    .move = canonical_enum_move};
 
 static const cmeta_enum_bits_item signed_items[] = {
     {0u, "ZERO", "zero"},
@@ -90,7 +111,8 @@ static const cmeta_data_desc signed_enum_data = {
     .display_name = "SignedEnum",
     .kind = CMETA_DATA_ENUM,
     .storage_type = &canonical_enum_storage,
-    .enum_bits_ops = &signed_ops};
+    .enum_bits_ops = &signed_ops,
+    .construct_ops = &canonical_enum_construct_ops};
 
 static const cmeta_enum_bits_item flag_items[] = {
     {1u, "READ", "read"},
@@ -111,7 +133,8 @@ static const cmeta_data_desc flag_enum_data = {
     .display_name = "FlagEnum",
     .kind = CMETA_DATA_ENUM,
     .storage_type = &canonical_enum_storage,
-    .enum_bits_ops = &flag_ops};
+    .enum_bits_ops = &flag_ops,
+    .construct_ops = &canonical_enum_construct_ops};
 
 typedef struct EnumRow {
   int id;
