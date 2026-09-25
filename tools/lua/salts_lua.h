@@ -135,6 +135,15 @@ static inline DataBindStatus c11_lua_cmeta_push_scalar(
         if (text == NULL) return DATA_BIND_ERR_TYPE_MISMATCH;
         lua_pushstring(L, text); return DATA_BIND_OK;
     }
+    if (data != NULL &&
+        (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)) {
+        const void *view = NULL;
+        size_t size = 0u;
+        if (cmeta_data_buffer_read(data, object, SIZE_MAX, &view, &size) != CMETA_OK)
+            return DATA_BIND_ERR_TYPE_MISMATCH;
+        lua_pushlstring(L, view != NULL ? (const char *)view : "", size);
+        return DATA_BIND_OK;
+    }
     return DATA_BIND_ERR_SCHEMA;
 }
 
@@ -201,6 +210,20 @@ static inline DataBindStatus c11_lua_cmeta_read_scalar(
         } else if (lua_isinteger(L, index)) value = (int64_t)lua_tointeger(L, index);
         else return DATA_BIND_ERR_TYPE_MISMATCH;
         return cmeta_data_enum_assign(data, object, value) == CMETA_OK ? DATA_BIND_OK : DATA_BIND_ERR_TYPE_MISMATCH;
+    }
+    if (data != NULL &&
+        (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)) {
+        const char *bytes;
+        size_t size;
+        const cmeta_data_buffer_ops *ops = cmeta_data_buffer_ops_of(data);
+        if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED)
+            return DATA_BIND_ERR_SCHEMA;
+        bytes = lua_tolstring(L, index, &size);
+        if (bytes == NULL) return DATA_BIND_ERR_TYPE_MISMATCH;
+        return cmeta_data_buffer_assign(
+                   data, object, bytes, size, size) == CMETA_OK
+                   ? DATA_BIND_OK
+                   : DATA_BIND_ERR_TYPE_MISMATCH;
     }
     return DATA_BIND_ERR_SCHEMA;
 }
