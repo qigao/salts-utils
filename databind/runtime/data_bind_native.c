@@ -819,7 +819,7 @@ static DataBindStatus native_assign_enum(
                      "Enum provider rejected canonical assignment");
 }
 
-static DataBindStatus native_decode_admit(
+static DataBindStatus native_decode_check_budget(
     NativeDecode *decode, size_t depth, const char *path) {
   if (depth == 0u || depth > decode->options->max_depth)
     return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
@@ -827,6 +827,13 @@ static DataBindStatus native_decode_admit(
   if (decode->items == decode->options->max_items)
     return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Decoded value item count exceeds configured limit");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus native_decode_admit(
+    NativeDecode *decode, size_t depth, const char *path) {
+  DataBindStatus status = native_decode_check_budget(decode, depth, path);
+  if (status != DATA_BIND_OK) return status;
   ++decode->items;
   return DATA_BIND_OK;
 }
@@ -844,17 +851,17 @@ static DataBindStatus native_decode_value_admitted(
         decode, data, storage, depth, path, scratch, token);
 
   if (native_scalar_supported(data))
-    return native_assign_scalar(decode->diagnostic, data, &token, storage, path);
+    return native_assign_scalar(decode->diagnostic, data, token, storage, path);
 
   if (data->kind == CMETA_DATA_ENUM)
-    return native_assign_enum(decode->diagnostic, data, &token, storage, path);
+    return native_assign_enum(decode->diagnostic, data, token, storage, path);
 
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     cmeta_status buffer_status;
     size_t remaining;
     cserde_token_kind expected =
         data->kind == CMETA_DATA_STRING ? CSERDE_STRING : CSERDE_BYTES;
-    if (token.kind != expected)
+    if (token->kind != expected)
       return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
                          data->kind == CMETA_DATA_STRING
                              ? "Expected string token for owned native buffer"
@@ -864,11 +871,11 @@ static DataBindStatus native_decode_value_admitted(
                          "Owned payload accounting exceeded configured limit");
     remaining = decode->options->max_owned_bytes - decode->owned_bytes;
     if (decode->max_buffer_bytes < remaining) remaining = decode->max_buffer_bytes;
-    if (token.value.slice.size > remaining)
+    if (token->value.slice.size > remaining)
       return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                          "Owned payload exceeds aggregate or per-value byte limit");
     buffer_status = cmeta_data_buffer_assign(
-        data, storage, token.value.slice.data, token.value.slice.size, remaining);
+        data, storage, token->value.slice.data, token->value.slice.size, remaining);
     if (buffer_status != CMETA_OK) {
       DataBindStatus mapped = DATA_BIND_ERR_RUNTIME;
       if (buffer_status == CMETA_CAPACITY_EXCEEDED)
@@ -881,7 +888,7 @@ static DataBindStatus native_decode_value_admitted(
       return native_fail(decode->diagnostic, mapped, CSERDE_OK, path,
                          "Owned buffer provider rejected reader payload");
     }
-    decode->owned_bytes += token.value.slice.size;
+    decode->owned_bytes += token->value.slice.size;
     return DATA_BIND_OK;
   }
 
@@ -904,11 +911,11 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
                                           void *storage, size_t depth,
                                           const char *path, NativeArena *scratch) {
   cserde_token token;
-  DataBindStatus status = native_decode_admit(decode, depth, path);
+  DataBindStatus status = native_decode_check_budget(decode, depth, path);
   if (status != DATA_BIND_OK) return status;
   status = native_next(decode, &token, path);
   if (status != DATA_BIND_OK) return status;
-  return native_decode_value_admitted(
+  return native_decode_value_from_token(
       decode, data, storage, depth, path, scratch, &token);
 }
 
