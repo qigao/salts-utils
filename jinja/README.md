@@ -597,8 +597,8 @@ not just header inclusion or compilation.
 The root value is described by `cmeta_data_desc`. Struct fields use
 `cmeta_data_struct_shape`; bool, integer, float, string, and enum fields use
 CMeta's semantic descriptors. Contiguous collections use a borrowed
-`JINJA_CMETA_SEQUENCE_VIEW`, with their field descriptor pointing to
-`jinja_cmeta_sequence_data()`.
+`cmeta_data_collection_view`, with their field descriptor pointing to
+`&cmeta_data_sequence_view`.
 
 Borrowed objects, descriptors, string bytes, and sequence elements must remain
 immutable and address-stable until rendering returns. Every render has explicit
