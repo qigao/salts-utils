@@ -35,5 +35,11 @@ DataBindStatus data_bind_native_descriptor_validate(
                             "native descriptor is incomplete");
     return DATA_BIND_ERR_SCHEMA;
   }
+  if ((descriptor->presence_count != 0u && descriptor->presence == NULL) ||
+      (descriptor->null_count != 0u && descriptor->nulls == NULL)) {
+    native_descriptor_error(error, DATA_BIND_ERR_SCHEMA,
+                            "native descriptor state overlay is incomplete");
+    return DATA_BIND_ERR_SCHEMA;
+  }
   return DATA_BIND_OK;
 }
