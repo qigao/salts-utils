@@ -4272,8 +4272,7 @@ static JINJA_CMETA_STATUS jinja_sequence_edge(JINJA_CMETA_PROVIDER *provider,
     return JINJA_CMETA_OK;
   }
   if (!jinja_value_is_string(operand) && !jinja_value_is_collection(operand->kind) &&
-      operand->kind != JINJA_CMETA_VALUE_RANGE &&
-      operand->kind == JINJA_CMETA_VALUE_NODE)
+      operand->kind != JINJA_CMETA_VALUE_RANGE)
     return JINJA_CMETA_ERR_RENDER;
   JINJA_CMETA_STATUS status = jinja_lookup_item(provider, operand, &key, 0u, result);
   /* first iterates characters; last uses indexing in upstream Jinja. */
