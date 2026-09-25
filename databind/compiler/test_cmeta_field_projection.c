@@ -177,6 +177,14 @@ suite("compiler_cmeta_field_projection") {
             check_equal(field_projection_text(field, "type"), cases[i].type);
             if (cases[i].kind == CMETA_DATA_SEQUENCE || cases[i].kind == CMETA_DATA_SET || cases[i].kind == CMETA_DATA_MAP)
                 check_null(field_projection_text(field, "native_data_symbol"));
+            if (strcmp(cases[i].type, "string") == 0) {
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "salts_tstr_cmeta_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "salts_tstr_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"), "tstr");
+                check_not_null(field_projection_child(field, "native_external"));
+            }
             node_free(root);
         }
     }
@@ -237,6 +245,13 @@ suite("compiler_cmeta_field_projection") {
             else
                 check_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
+            if (strcmp(names[i], "TextStorage") == 0) {
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "salts_tstr_cmeta_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "salts_tstr_cmeta_type");
+                check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+            }
         }
 
         node_free(root);
@@ -519,6 +534,12 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
             "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "TextStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "UnsupportedNested"),
+            "cmeta_graph_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "FixedBytesStorage"),
             "typed_cmeta_runtime_supported"));

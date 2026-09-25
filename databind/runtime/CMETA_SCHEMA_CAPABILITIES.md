@@ -96,10 +96,13 @@ typed-kind metadata. Optional presence is therefore not a reason to suppress an
 otherwise valid structural graph, while generated `uint8_t` Bool, storage-unselected
 buffers/containers, uint64-wide enums, cycles and depth 33 remain unavailable.
 
-The stricter `typed_cmeta_runtime_supported` classifier emits a public
-`Record_typed_descriptor` only when the entire transitive graph contains
-non-optional fixed-width integers/floats, adapter-backed non-flags enums, and nested
-Structs through depth 32. ABI-v2 joins exactly one schema overlay and one native
+The stricter `typed_cmeta_runtime_supported` classifier remains narrower than
+structural/native CMeta publication. It emits a public `Record_typed_descriptor`
+only when the historical mixed descriptor route can represent both native and
+Binary behavior. Generated owned `tstr` STRING storage now has a canonical CMeta
+provider and native lifecycle, but remains outside this mixed descriptor route
+until Binary tail/layout semantics are split into their own plan. Optional/null
+overlays, dynamic BYTES and generated containers remain explicit gates. ABI-v2 joins exactly one schema overlay and one native
 graph:
 
 ```c
@@ -119,7 +122,9 @@ delegates after failure, or constructs a graphless descriptor.
 | Bool backed by generated `uint8_t` | deferred | canonical Bool-storage ABI or provider required | wire Bool policy |
 | Flags and uint64-wide Enum | deferred | unsigned/flags-capable enum operations required | wire integer policy |
 | Optional/presence | deferred | explicit native-presence contract required | presence/default policy |
-| STRING/BYTES/fixed buffer/UUID/custom | deferred | lifecycle/adapter contract required | wire policy |
+| STRING backed by generated `tstr` | mixed typed descriptor deferred; CMeta/native supported | canonical `salts_tstr_cmeta_data` owned buffer provider | Binary tail remains a separate wire concern |
+| BYTES/custom without an admitted generated provider | deferred | lifecycle/adapter contract required | wire policy |
+| fixed buffer/UUID | supported where an exact provider is generated/selected | canonical fixed/UUID provider | wire policy |
 | Sequence/set/map | deferred | A separate native-container provider slice must bind the actual generated storage to CMeta/CSTL | container wire policy |
 
 The completion contract assigns `cmeta_native_requirement` to each candidate
@@ -133,15 +138,16 @@ do not by themselves enable `typed_cmeta_runtime_supported`.
 | `bool` | `uint8_t` | `CMETA_DATA_BOOL` | `fixed_value` | supported | Uses canonical `salts_bool8_cmeta_data`; the `_Bool` descriptor remains invalid for this octet slot. |
 | `uuid` | `salts_uuid_t` | `CMETA_DATA_CUSTOM` | `fixed_value` | supported | Uses the canonical UUID buffer adapter plus its exact fixed-value operations. |
 | `bytes[16]` | `uint8_t[16]` | `CMETA_DATA_BYTES` | `fixed_value` | supported | Compiler emits an extent-specific provider through public `CMETA_DEFINE_FIXED_BYTES`. |
-| `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
+| `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | supported | Compiler selects canonical `salts_tstr_cmeta_data/type`; provider owns init, assign/read and restore-zero lifecycle. |
 | `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
 | `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred | Requires a separate native-container/CSTL provider contract; #46's dynamic storage migration does not enable generated list, set or map descriptors. |
 
-All non-owned `fixed_value` providers and the currently supported
-`enum_domain` subset are installed at this checkpoint. The executable
-characterization requires a record to be published only when every transitive
-field requirement has an installed canonical CMeta provider. In particular,
+All non-owned `fixed_value` providers, the currently supported
+`enum_domain` subset, and generated owned `tstr` STRING lifecycle are installed
+at this checkpoint. The executable characterization requires a record to be
+published only when every transitive field requirement has an installed
+canonical CMeta provider. In particular,
 all rows still marked deferred above lack `typed_cmeta_runtime_supported`,
 and sequence, set and map records remain on
 the raw/deferred route.
@@ -156,8 +162,13 @@ uses `cmeta_type_equal`, never descriptor address equality.
 `test_tbe_typed_cmeta_graph` and the public C/C++ fixture compile against the real
 CLI-generated header/archive. They cover copied semantic identities, enum
 operations, native padding versus wire offsets, supported depth 32, rejected depth
-33, generated Bool and wide-enum rejection, optional/UUID structural publication,
-and descriptor parse rollback after a CMeta layout mutation.
+33, generated Bool/UUID/fixed-provider publication, optional gates, and descriptor
+parse rollback after a CMeta layout mutation. The dedicated generated `NativeStringRecord` fixture proves that
+required/non-null owned `tstr` storage is published through canonical CMeta and
+is initialized/cleared through `data_bind_native_*`. The historical generated
+Binary fixture remains independent, so admitting the native provider does not
+select or widen the mixed `TbeTypedDescriptor` Binary route. Dynamic BYTES,
+state overlays and containers remain deferred.
 
 ## Shared field semantics and public DataBind reflection
 

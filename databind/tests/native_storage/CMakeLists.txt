@@ -61,3 +61,13 @@ target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_writer PRIVATE Salts::TinyTest)
+
+# The canonical native-writer qualification gate also proves that the real
+# databindc-generated required/non-null tstr record is descriptor-routed and
+# lifecycle-safe. CTest fixtures make the generated test part of any focused
+# selection of test_data_bind_native_writer without changing CI regexes.
+if(TARGET test_databind_generated_string_native)
+  add_dependencies(test_data_bind_native_writer test_databind_generated_string_native)
+  set_tests_properties(test_data_bind_native_writer PROPERTIES
+    FIXTURES_REQUIRED databind_generated_native_contract)
+endif()

@@ -334,6 +334,21 @@ set_target_properties(test_data_bind_public_header_boundary
 add_test(NAME test_data_bind_public_header_boundary
   COMMAND test_data_bind_public_header_boundary)
 
+execute_process(
+  COMMAND ${CMAKE_COMMAND}
+    "-DTBE_TYPED_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/tbe_typed.h"
+    "-DOWNERSHIP_DOC=${CMAKE_SOURCE_DIR}/docs/DATABIND_TYPED_OWNERSHIP.md"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_tbe_typed_ownership_inventory.cmake"
+  RESULT_VARIABLE DATA_BIND_TYPED_OWNERSHIP_RESULT
+  OUTPUT_VARIABLE DATA_BIND_TYPED_OWNERSHIP_OUTPUT
+  ERROR_VARIABLE DATA_BIND_TYPED_OWNERSHIP_ERROR)
+if(NOT DATA_BIND_TYPED_OWNERSHIP_RESULT EQUAL 0)
+  message(FATAL_ERROR
+    "DataBind historical typed ownership inventory failed:\n"
+    "${DATA_BIND_TYPED_OWNERSHIP_OUTPUT}"
+    "${DATA_BIND_TYPED_OWNERSHIP_ERROR}")
+endif()
+
 add_test(NAME test_tbe_typed_ownership_inventory
   COMMAND ${CMAKE_COMMAND}
     "-DTBE_TYPED_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/tbe_typed.h"
@@ -506,6 +521,31 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_SAFETY_GENERATED_DIR}"
     FOLDER "databind/runtime/tests")
+
+  set(DATABIND_STRING_NATIVE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_string_native")
+  set(DATABIND_STRING_NATIVE_HEADER "${DATABIND_STRING_NATIVE_DIR}/generated_string_native.h")
+  set(DATABIND_STRING_NATIVE_SOURCE "${DATABIND_STRING_NATIVE_DIR}/generated_string_native.c")
+  add_custom_command(
+    OUTPUT "${DATABIND_STRING_NATIVE_HEADER}" "${DATABIND_STRING_NATIVE_SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DATABIND_STRING_NATIVE_DIR}"
+    COMMAND $<TARGET_FILE:databindc>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_string_native.schema"
+            --lang c --output "${DATABIND_STRING_NATIVE_HEADER}"
+            --source-output "${DATABIND_STRING_NATIVE_SOURCE}"
+    DEPENDS databindc
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_string_native.schema"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+    COMMENT "Generating canonical tstr native lifecycle fixture"
+    VERBATIM)
+  cmake_add_test(test_databind_generated_string_native
+    SOURCES test_generated_string_native.c
+            "${DATABIND_STRING_NATIVE_HEADER}" "${DATABIND_STRING_NATIVE_SOURCE}"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${DATABIND_STRING_NATIVE_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_databind_generated_string_native PROPERTIES
+    FIXTURES_SETUP databind_generated_native_contract)
   set(TBE_CMETA_GRAPH_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmeta_graph_generated")
   add_custom_command(
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
