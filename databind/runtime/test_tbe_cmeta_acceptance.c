@@ -180,7 +180,13 @@ suite("real generated and runtime CMeta acceptance") {
       }
       check(sample_descriptor->native_data == sample);
       check(flag_descriptor->native_data == flags);
-      check_equal(tbe_typed_descriptor_validate(sample_descriptor, &error), DATA_BIND_OK);
+      {
+        DataBindStatus validation =
+            tbe_typed_descriptor_validate(sample_descriptor, &error);
+        info("Sample descriptor validation: status=%d path=%s message=%s",
+             (int)validation, error.path, error.message);
+        check_equal(validation, DATA_BIND_OK);
+      }
       check_equal(tbe_typed_descriptor_validate(flag_descriptor, &error), DATA_BIND_OK);
       check_equal(shape->field_count, 3u);
       check_equal(flag_shape->field_count, 1u);
@@ -450,10 +456,17 @@ suite("real generated and runtime CMeta acceptance") {
       check_equal(base->storage_type->identity->form, CMETA_TYPE_ATOM);
       same_value_type(base, &cmeta_data_int32);
     }
-    out = base;
-    check_equal(OptionalStorage_cmeta_data(&out, &error), DATA_BIND_ERR_SCHEMA);
-    check(out == base);
-    check_equal(error.path, "OptionalStorage");
+    out = NULL;
+    check_equal(OptionalStorage_cmeta_data(&out, &error), DATA_BIND_OK);
+    check_not_null(out);
+    if (out) {
+      const cmeta_data_struct_shape *optional_shape =
+          (const cmeta_data_struct_shape *)out->shape;
+      check_equal(out->kind, CMETA_DATA_STRUCT);
+      check_not_null(optional_shape);
+      if (optional_shape && optional_shape->field_count == 1u)
+        same_value_type(optional_shape->fields[0].value, &cmeta_data_int32);
+    }
     check_equal(data_bind_schema_field_cmeta_data(codec, "BoolStorage", 0, &base, &error), DATA_BIND_OK);
     same_value_type(base, &cmeta_data_bool);
     out = base;

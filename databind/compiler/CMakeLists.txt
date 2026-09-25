@@ -605,7 +605,7 @@ cmake_add_test(test_tbe_compiler_schema_boundary
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
 cmake_add_test(test_tbe_compiler_cmeta_fields
-  SOURCES test_cmeta_field_projection.c compiler_core.c database_schema.c mustache_helpers.c
+  SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
