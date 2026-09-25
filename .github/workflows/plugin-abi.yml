@@ -145,7 +145,8 @@ jobs:
                      test_databind_plugin_typed_error_client \
                      test_databind_plugin_typed_error_client_cpp \
                      test_databind_plugin_projection_rejection \
-                     test_data_bind_binding_plan test_data_bind_projection_plan test_data_bind_native_writer test_data_bind_validation_plan \
+                     test_data_bind_binding_plan test_data_bind_projection_plan \
+                     test_data_bind_native_writer test_data_bind_validation_plan \
                      test_data_bind_cmeta_public_cpp \
             --parallel 2
 
@@ -186,7 +187,8 @@ jobs:
           cmake --build build/binding-plan-sanitized \
             --target plugin_cflow_function_projection_test \
                      test_databind_plugin_generated_dso \
-                     test_data_bind_binding_plan test_data_bind_projection_plan test_data_bind_native_writer test_data_bind_validation_plan \
+                     test_data_bind_binding_plan test_data_bind_projection_plan \
+                     test_data_bind_native_writer test_data_bind_validation_plan \
                      test_databind_service_native_lowering --parallel 2
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/binding-plan-sanitized \
