@@ -2,6 +2,7 @@
 #define DATA_BIND_NATIVE_DESCRIPTOR_H
 
 #include "data_bind.h"
+#include "data_bind_binding_plan.h"
 #include <cmeta/data.h>
 
 #include <stddef.h>
@@ -28,11 +29,18 @@ typedef struct DataBindNativeDescriptor {
   uint32_t abi_version;
   const char *schema_type;
   const cmeta_data_desc *native_data;
+
+  /* DataBind logical state overlays. These are not CMeta value fields and are
+   * not wire-format layout. */
+  const DataBindNativeStateBinding *presence;
+  size_t presence_count;
+  const DataBindNativeStateBinding *nulls;
+  size_t null_count;
 } DataBindNativeDescriptor;
 
 #define DATA_BIND_NATIVE_DESCRIPTOR_INIT(SCHEMA_TYPE, NATIVE_DATA) \
   { sizeof(DataBindNativeDescriptor), DATA_BIND_NATIVE_DESCRIPTOR_ABI_VERSION, \
-    (SCHEMA_TYPE), (NATIVE_DATA) }
+    (SCHEMA_TYPE), (NATIVE_DATA), NULL, 0u, NULL, 0u }
 
 /* Validate only the format-neutral native/schema join. No codec or wire-layout
  * validation is performed here. */
