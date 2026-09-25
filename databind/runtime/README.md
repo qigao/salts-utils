@@ -117,13 +117,13 @@ JSONPath，YAML 使用 YPath，CSV 使用 DSV filter，XML 使用 XPath。各前
 
 ## DataBind IDL Service Contract
 
-DataBind IDL 可以在同一份数据类型定义中声明 transport-neutral service contract：
+DataBind IDL 的 Service contract 只声明逻辑语义：
 
 ```text
 message GetUserRequest {
-  [path] uint64 id;
-  optional [query] string expand default "summary";
-  [header("Authorization")] string authorization;
+  uint64 id;
+  optional string expand default "summary";
+  string authorization;
 }
 
 message GetUserResponse {
@@ -135,39 +135,62 @@ message NotFoundError {
 }
 
 service UserService {
-  [GET("/users/{id}"), rpc]
   GetUser: GetUserRequest -> GetUserResponse throws NotFoundError;
 }
 ```
 
-Service 的逻辑事实只有：
+Service 的 canonical 事实只有：
 
 ```text
 Operation: Request -> Response [throws Error...]
 ```
 
-`GET/POST/.../rpc` 是 transport projection，不是 Service 本身。字段复用既有
-attribute 机制表达 `path/query/header/cookie/body`；bare attribute 默认使用字段名，
-只有外部名称不同才显式写名字，例如 `[header("X-Request-ID")]`。
+HTTP/RPC method、route、path/query/header/cookie/body placement、wire method
+等都不是 canonical IDL 语义。SaltsUtils 4.0 通过外部 projection config 编译这些
+事实，并生成 immutable `FormatPlan` / `TransportPlan` / `MethodPlan`。
 
-bare `[rpc]` 的 effective wire name 为 `Service.Operation`；兼容既有协议时可用
-`[rpc("legacy.method")]` 覆盖。HTTP route 采用 `/users/{id}` 形式，并在 schema
-admission 时校验每个 placeholder 与 request message 中恰好一个 required `[path]`
-字段双向匹配。
+例如 HTTP projection config 可以概念化为：
+
+```json
+{
+  "operations": [{
+    "service": "UserService",
+    "operation": "GetUser",
+    "method": "GET",
+    "route": "/users/{id}",
+    "ingress_format": "json",
+    "egress_format": "json"
+  }],
+  "fields": [
+    {"service":"UserService","operation":"GetUser","direction":"ingress",
+     "field":"id","location":"path","wire_name":"id"},
+    {"service":"UserService","operation":"GetUser","direction":"ingress",
+     "field":"authorization","location":"header","wire_name":"Authorization"}
+  ]
+}
+```
+
+旧的 `[GET(...)]`、`[rpc]`、`[path]`、`[query]`、`[header]`、
+`[cookie]`、`[body]` canonical IDL 写法在 4.0 中明确拒绝；不存在兼容
+alias 或 fallback。transport mapping 只能从 projection config / generated
+plan 获得。
 
 Service reflection 通过 `DataBindService` / `DataBindServiceOperation` 和
-`data_bind_service_*` API 暴露。所有字符串均借用 immutable codec schema tree，
-有效期到 `data_bind_free()`；结构体保持 size-versioned prefix 规则。
+`data_bind_service_*` API 暴露逻辑 contract。所有字符串均借用 immutable codec
+schema tree，有效期到 `data_bind_free()`；结构体保持 size-versioned prefix
+规则。canonical field reflection 同样不包含 transport placement。
 
 这一层只描述 IDL/wire contract：
 
 - DataBind 不绑定 C implementation symbol；
 - CMeta 仍是 native type/function semantics 的事实源；
+- FormatPlan 描述 representability；
+- TransportPlan/MethodPlan 描述 HTTP/RPC 等 projection；
 - callable/function adapter、CFlow graph、scheduler、retry/cache/auth policy 都属于后续
   binding/execution 层；
-- CHTTP/CRPC 只消费 projection，不成为 DataBind runtime dependency。
+- CHTTP/CRPC 只消费 producer-generated plan，不成为 DataBind runtime dependency。
 
-后续编译 binding plan 时使用同一份 Service Contract 与 CMeta
+后续编译 BindingPlan/MethodPlan 时使用同一份 Service Contract 与 CMeta
 `cmeta_function_desc` 做 compatibility join；请求 hot path 不重新解释 schema AST。
 
 ## Schema 注解标准
