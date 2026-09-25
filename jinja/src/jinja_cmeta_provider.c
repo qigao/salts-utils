@@ -4691,10 +4691,8 @@ static JINJA_CMETA_STATUS jinja_slice_value(JINJA_CMETA_PROVIDER *provider,
   if (base->kind == JINJA_CMETA_VALUE_RANGE) length = base->range.count;
   else if (jinja_value_is_collection(base->kind)) length = base->collection_item_count;
   else if (base->kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(base->node.desc)) {
-    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)base->node.object;
-    status = jinja_validate_sequence_view(view);
+    status = jinja_collection_length(&base->node, &length);
     if (status != JINJA_CMETA_OK) return status;
-    length = view->count;
   } else return JINJA_CMETA_ERR_RENDER;
   status = jinja_slice_normalize(provider, bounds, length, &slice);
   if (status != JINJA_CMETA_OK) return status;
