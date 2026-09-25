@@ -94,15 +94,15 @@ static void require_overlapping_layout_rejected(void) {
   const cmeta_field_desc fields[] = {
       {.name = "a", .type_name = "int32_t", .offset = offsetof(LifecyclePair, a),
        .size = sizeof(int32_t), .align = _Alignof(int32_t),
-       .type = salts_int32_cmeta_data.storage_type},
+       .type = cmeta_data_int32.storage_type},
       {.name = "b", .type_name = "int32_t", .offset = offsetof(LifecyclePair, a),
        .size = sizeof(int32_t), .align = _Alignof(int32_t),
-       .type = salts_int32_cmeta_data.storage_type}};
+       .type = cmeta_data_int32.storage_type}};
   const cmeta_struct_desc layout = {
       "LifecyclePair", sizeof(value), _Alignof(LifecyclePair), fields, 2u};
   const cmeta_data_field_desc values[] = {
-      {"lifecycle.a", "a", offsetof(LifecyclePair, a), &salts_int32_cmeta_data},
-      {"lifecycle.b", "b", offsetof(LifecyclePair, a), &salts_int32_cmeta_data}};
+      {"lifecycle.a", "a", offsetof(LifecyclePair, a), &cmeta_data_int32},
+      {"lifecycle.b", "b", offsetof(LifecyclePair, a), &cmeta_data_int32}};
   const cmeta_data_struct_shape record = {&layout, values, 2u};
   const cmeta_data_desc shape = {
       .struct_size = sizeof(cmeta_data_desc),
@@ -162,7 +162,7 @@ spec("DataBind plain-CMeta native lifecycle") {
   }
 
   it("rejects scalar width mismatch before modifying raw storage") {
-    cmeta_data_desc shape = salts_int32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_int32;
     const cmeta_data_integer_shape narrow = {8u};
     int32_t value = INT32_C(123456);
     shape.shape = &narrow;

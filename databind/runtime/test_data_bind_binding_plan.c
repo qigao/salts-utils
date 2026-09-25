@@ -1,7 +1,7 @@
 #include "data_bind_binding_plan.h"
 #include "tinytest.h"
 
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -39,25 +39,25 @@ static const cmeta_type_desc ADD_RESPONSE_PTR_TYPE = {
     CMETA_T_POINTER, &ADD_RESPONSE_TYPE, NULL, NULL};
 static const cmeta_type_desc UINT32_PTR_TYPE = {
     "uint32_t *", sizeof(uint32_t *), _Alignof(uint32_t *),
-    CMETA_T_POINTER, &salts_uint32_cmeta_type, NULL, NULL};
+    CMETA_T_POINTER, &cmeta_type_uint32, NULL, NULL};
 
 static const cmeta_field_desc ADD_REQUEST_LAYOUT_FIELDS[] = {
     {"left", "uint32_t", offsetof(AddRequest, left), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"right", "uint32_t", offsetof(AddRequest, right), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"scale", "uint32_t", offsetof(AddRequest, scale), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc ADD_REQUEST_LAYOUT = {
     "AddRequest", sizeof(AddRequest), _Alignof(AddRequest),
     ADD_REQUEST_LAYOUT_FIELDS, 3u};
 static const cmeta_data_field_desc ADD_REQUEST_FIELDS[] = {
     {"test.calc.AddRequest.left", "left", offsetof(AddRequest, left),
-     &salts_uint32_cmeta_data},
+     &cmeta_data_uint32},
     {"test.calc.AddRequest.right", "right", offsetof(AddRequest, right),
-     &salts_uint32_cmeta_data},
+     &cmeta_data_uint32},
     {"test.calc.AddRequest.scale", "scale", offsetof(AddRequest, scale),
-     &salts_uint32_cmeta_data}};
+     &cmeta_data_uint32}};
 static const cmeta_data_struct_shape ADD_REQUEST_SHAPE = {
     &ADD_REQUEST_LAYOUT, ADD_REQUEST_FIELDS, 3u};
 static const cmeta_data_desc ADD_REQUEST_DATA = {
@@ -71,13 +71,13 @@ static const cmeta_data_desc ADD_REQUEST_DATA = {
 
 static const cmeta_field_desc ADD_RESPONSE_LAYOUT_FIELDS[] = {
     {"sum", "uint32_t", offsetof(AddResponse, sum), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc ADD_RESPONSE_LAYOUT = {
     "AddResponse", sizeof(AddResponse), _Alignof(AddResponse),
     ADD_RESPONSE_LAYOUT_FIELDS, 1u};
 static const cmeta_data_field_desc ADD_RESPONSE_FIELDS[] = {
     {"test.calc.AddResponse.sum", "sum", offsetof(AddResponse, sum),
-     &salts_uint32_cmeta_data}};
+     &cmeta_data_uint32}};
 static const cmeta_data_struct_shape ADD_RESPONSE_SHAPE = {
     &ADD_RESPONSE_LAYOUT, ADD_RESPONSE_FIELDS, 1u};
 static const cmeta_data_desc ADD_RESPONSE_DATA = {
@@ -121,9 +121,9 @@ FunctionDeclAs(
 
 FunctionDeclAs(
     value, int, &cmeta_type_int, calc_add_fields,
-    (uint32_t, left, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
-    (uint32_t, right, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
-    (uint32_t, scale, CMETA_PARAM_IN, &salts_uint32_cmeta_type),
+    (uint32_t, left, CMETA_PARAM_IN, &cmeta_type_uint32),
+    (uint32_t, right, CMETA_PARAM_IN, &cmeta_type_uint32),
+    (uint32_t, scale, CMETA_PARAM_IN, &cmeta_type_uint32),
     (uint32_t *, sum, CMETA_PARAM_OUT, &UINT32_PTR_TYPE));
 
 FunctionDeclAs(
@@ -195,25 +195,25 @@ static const cmeta_type_desc STATE_RESPONSE_PTR_TYPE = {
 
 static const cmeta_field_desc STATE_REQUEST_LAYOUT_FIELDS[] = {
     {"required_value", "uint32_t", offsetof(StateRequest, required_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"optional_value", "uint32_t", offsetof(StateRequest, optional_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"nullable_value", "uint32_t", offsetof(StateRequest, nullable_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"defaulted_value", "uint32_t", offsetof(StateRequest, defaulted_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc STATE_REQUEST_LAYOUT = {
     "StateRequest", sizeof(StateRequest), _Alignof(StateRequest),
     STATE_REQUEST_LAYOUT_FIELDS, 4u};
 static const cmeta_data_field_desc STATE_REQUEST_FIELDS[] = {
     {"test.state.StateRequest.required_value", "required_value",
-     offsetof(StateRequest, required_value), &salts_uint32_cmeta_data},
+     offsetof(StateRequest, required_value), &cmeta_data_uint32},
     {"test.state.StateRequest.optional_value", "optional_value",
-     offsetof(StateRequest, optional_value), &salts_uint32_cmeta_data},
+     offsetof(StateRequest, optional_value), &cmeta_data_uint32},
     {"test.state.StateRequest.nullable_value", "nullable_value",
-     offsetof(StateRequest, nullable_value), &salts_uint32_cmeta_data},
+     offsetof(StateRequest, nullable_value), &cmeta_data_uint32},
     {"test.state.StateRequest.defaulted_value", "defaulted_value",
-     offsetof(StateRequest, defaulted_value), &salts_uint32_cmeta_data}};
+     offsetof(StateRequest, defaulted_value), &cmeta_data_uint32}};
 static const cmeta_data_struct_shape STATE_REQUEST_SHAPE = {
     &STATE_REQUEST_LAYOUT, STATE_REQUEST_FIELDS, 4u};
 static const cmeta_data_desc STATE_REQUEST_DATA = {
@@ -227,17 +227,17 @@ static const cmeta_data_desc STATE_REQUEST_DATA = {
 
 static const cmeta_field_desc STATE_RESPONSE_LAYOUT_FIELDS[] = {
     {"nullable_result", "uint32_t", offsetof(StateResponse, nullable_result),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"tri_result", "uint32_t", offsetof(StateResponse, tri_result),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc STATE_RESPONSE_LAYOUT = {
     "StateResponse", sizeof(StateResponse), _Alignof(StateResponse),
     STATE_RESPONSE_LAYOUT_FIELDS, 2u};
 static const cmeta_data_field_desc STATE_RESPONSE_FIELDS[] = {
     {"test.state.StateResponse.nullable_result", "nullable_result",
-     offsetof(StateResponse, nullable_result), &salts_uint32_cmeta_data},
+     offsetof(StateResponse, nullable_result), &cmeta_data_uint32},
     {"test.state.StateResponse.tri_result", "tri_result",
-     offsetof(StateResponse, tri_result), &salts_uint32_cmeta_data}};
+     offsetof(StateResponse, tri_result), &cmeta_data_uint32}};
 static const cmeta_data_struct_shape STATE_RESPONSE_SHAPE = {
     &STATE_RESPONSE_LAYOUT, STATE_RESPONSE_FIELDS, 2u};
 static const cmeta_data_desc STATE_RESPONSE_DATA = {

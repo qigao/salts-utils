@@ -2,7 +2,7 @@
 #define TBE_SCHEMA_BUILTIN_TYPE_H
 
 #include "schema_cmeta.h"
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -20,14 +20,14 @@ typedef struct schema_builtin_type_info {
  * Consumers derive scalar classification from the borrowed descriptor. */
 static const schema_builtin_type_info_t SCHEMA_BUILTIN_TYPES[] = {
     {"bool", 1, "u8", "uint8_t", &cmeta_data_bool},
-    {"uint8_t", 1, "u8", "uint8_t", &salts_uint8_cmeta_data},
-    {"int8_t", 1, "i8", "int8_t", &salts_int8_cmeta_data},
-    {"uint16_t", 2, "u16", "uint16_t", &salts_uint16_cmeta_data},
-    {"int16_t", 2, "i16", "int16_t", &salts_int16_cmeta_data},
-    {"uint32_t", 4, "u32", "uint32_t", &salts_uint32_cmeta_data},
-    {"int32_t", 4, "i32", "int32_t", &salts_int32_cmeta_data},
-    {"uint64_t", 8, "u64", "uint64_t", &salts_uint64_cmeta_data},
-    {"int64_t", 8, "i64", "int64_t", &salts_int64_cmeta_data},
+    {"uint8_t", 1, "u8", "uint8_t", &cmeta_data_uint8},
+    {"int8_t", 1, "i8", "int8_t", &cmeta_data_int8},
+    {"uint16_t", 2, "u16", "uint16_t", &cmeta_data_uint16},
+    {"int16_t", 2, "i16", "int16_t", &cmeta_data_int16},
+    {"uint32_t", 4, "u32", "uint32_t", &cmeta_data_uint32},
+    {"int32_t", 4, "i32", "int32_t", &cmeta_data_int32},
+    {"uint64_t", 8, "u64", "uint64_t", &cmeta_data_uint64},
+    {"int64_t", 8, "i64", "int64_t", &cmeta_data_int64},
     {"float", 4, "f32", "float", &cmeta_data_float},
     {"double", 8, "f64", "double", &cmeta_data_double},
 };

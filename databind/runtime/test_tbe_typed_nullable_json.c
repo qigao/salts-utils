@@ -2,7 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -70,30 +70,30 @@ static const cmeta_type_desc NULLABLE_JSON_CTYPE = {
 
 static const cmeta_field_desc NULLABLE_JSON_LAYOUT_FIELDS[] = {
     {"required_value", "uint32_t", offsetof(NullableJsonRecord, required_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"optional_value", "uint32_t", offsetof(NullableJsonRecord, optional_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"nullable_value", "uint32_t", offsetof(NullableJsonRecord, nullable_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"tri_value", "uint32_t", offsetof(NullableJsonRecord, tri_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL},
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL},
     {"defaulted_value", "uint32_t", offsetof(NullableJsonRecord, defaulted_value),
-     sizeof(uint32_t), _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     sizeof(uint32_t), _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc NULLABLE_JSON_LAYOUT = {
     "NullableJsonRecord", sizeof(NullableJsonRecord), _Alignof(NullableJsonRecord),
     NULLABLE_JSON_LAYOUT_FIELDS,
     sizeof(NULLABLE_JSON_LAYOUT_FIELDS) / sizeof(NULLABLE_JSON_LAYOUT_FIELDS[0])};
 static const cmeta_data_field_desc NULLABLE_JSON_DATA_FIELDS[] = {
     {"test.NullableJson.Record.required_value", "required_value",
-     offsetof(NullableJsonRecord, required_value), &salts_uint32_cmeta_data},
+     offsetof(NullableJsonRecord, required_value), &cmeta_data_uint32},
     {"test.NullableJson.Record.optional_value", "optional_value",
-     offsetof(NullableJsonRecord, optional_value), &salts_uint32_cmeta_data},
+     offsetof(NullableJsonRecord, optional_value), &cmeta_data_uint32},
     {"test.NullableJson.Record.nullable_value", "nullable_value",
-     offsetof(NullableJsonRecord, nullable_value), &salts_uint32_cmeta_data},
+     offsetof(NullableJsonRecord, nullable_value), &cmeta_data_uint32},
     {"test.NullableJson.Record.tri_value", "tri_value",
-     offsetof(NullableJsonRecord, tri_value), &salts_uint32_cmeta_data},
+     offsetof(NullableJsonRecord, tri_value), &cmeta_data_uint32},
     {"test.NullableJson.Record.defaulted_value", "defaulted_value",
-     offsetof(NullableJsonRecord, defaulted_value), &salts_uint32_cmeta_data}};
+     offsetof(NullableJsonRecord, defaulted_value), &cmeta_data_uint32}};
 static const cmeta_data_struct_shape NULLABLE_JSON_SHAPE = {
     &NULLABLE_JSON_LAYOUT,
     NULLABLE_JSON_DATA_FIELDS,

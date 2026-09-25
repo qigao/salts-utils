@@ -101,7 +101,7 @@ int main(void) {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
     const cmeta_data_field_desc *field = cmeta_data_struct_find_field(shape, "u64c");
     if (shape->field_count != 29u || field == NULL ||
-        !cmeta_type_equal(field->value->storage_type, &salts_uint64_cmeta_type))
+        !cmeta_type_equal(field->value->storage_type, &cmeta_type_uint64))
       return 10;
   }
   {

@@ -41,7 +41,7 @@ concurrency:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_SDK_VERSION: "1.6.0"
+  SALTS_SDK_VERSION: "1.7.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -87,7 +87,7 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore published Salts 1.6.0 and re2c 4.6.3
+      - name: Restore published Salts 1.7.0 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -261,7 +261,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.6.0 and re2c 4.6.3
+      - name: Restore published Salts 1.7.0 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

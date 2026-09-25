@@ -266,7 +266,7 @@ spec("Jinja CMeta collections and runtime: attributes 4") {
     jinja_cmeta_release(templ);
 
     root.user.name = vstr_from_buf(invalid_utf8, sizeof(invalid_utf8) - 1u);
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){NULL, 0u, 0u, NULL};
+    root.users = (cmeta_data_collection_view){NULL, 0u, 0u, NULL};
     output = NULL;
     error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT;
     templ = jinja_cmeta_compile(vstr_from_cstr("{{ user.name[0] }}"), NULL, &error);

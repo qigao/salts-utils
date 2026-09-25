@@ -1,7 +1,7 @@
 #include "tbe_typed.h"
 #include "tinytest.h"
 
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 #include <math.h>
 #include <stddef.h>
@@ -275,13 +275,13 @@ static const cmeta_type_desc MACRO_WIRE_CMETA_TYPE = {
     NULL, NULL, &MACRO_WIRE_CMETA_ID};
 static const cmeta_field_desc MACRO_WIRE_CMETA_LAYOUT_FIELDS[] = {{
     "id", "uint32_t", offsetof(MacroWire, id), sizeof(uint32_t),
-    _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+    _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc MACRO_WIRE_CMETA_LAYOUT = {
     "MacroWire", sizeof(MacroWire), _Alignof(MacroWire),
     MACRO_WIRE_CMETA_LAYOUT_FIELDS, 1u};
 static const cmeta_data_field_desc MACRO_WIRE_CMETA_FIELDS[] = {{
     "test.MacroWire.id", "id", offsetof(MacroWire, id),
-    &salts_uint32_cmeta_data}};
+    &cmeta_data_uint32}};
 static const cmeta_data_struct_shape MACRO_WIRE_CMETA_SHAPE = {
     &MACRO_WIRE_CMETA_LAYOUT, MACRO_WIRE_CMETA_FIELDS, 1u};
 static const cmeta_data_desc MACRO_WIRE_CMETA_DATA = {

@@ -145,12 +145,12 @@ spec("DataBind native storage requirements before reader cutover") {
 
   it("preserves canonical fixed-width signed storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &cmeta_data_int32, TBE_TYPED_I32);
     require_storage(&probe);
   }
   it("preserves canonical fixed-width unsigned storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeU64, uint64_t, &salts_uint64_cmeta_data, TBE_TYPED_U64);
+    DESCRIBE(probe, ProbeU64, uint64_t, &cmeta_data_uint64, TBE_TYPED_U64);
     require_storage(&probe);
   }
   it("preserves the existing explicit bool8 provider") {
@@ -194,13 +194,13 @@ spec("DataBind native storage requirements before reader cutover") {
   }
   it("rejects a field offset mismatch without touching destination storage") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &cmeta_data_int32, TBE_TYPED_I32);
     ++probe.field.offset;
     reject_without_touching(&probe);
   }
   it("takes native layout from CMeta rather than obsolete overlay offsets") {
     ProbeDescriptor probe;
-    DESCRIBE(probe, ProbeI32, int32_t, &salts_int32_cmeta_data, TBE_TYPED_I32);
+    DESCRIBE(probe, ProbeI32, int32_t, &cmeta_data_int32, TBE_TYPED_I32);
     probe.wire.offset = SIZE_MAX;
     probe.wire.kind = TBE_TYPED_STRING;
     require_storage(&probe);

@@ -1090,11 +1090,11 @@ static int typed_nonempty(const char *text) { return text != NULL && text[0] != 
 static int typed_native_scalar_supported(const cmeta_data_desc *data) {
   const TbeTypedCMetaKindMapping typed_cmeta_kind_mappings[] = {
       {&cmeta_data_bool, TBE_TYPED_BOOL},        {&cmeta_data_int, TBE_TYPED_I32},
-      {&cmeta_data_long, TBE_TYPED_I64},         {&salts_int8_cmeta_data, TBE_TYPED_I8},
-      {&salts_uint8_cmeta_data, TBE_TYPED_U8},   {&salts_int16_cmeta_data, TBE_TYPED_I16},
-      {&salts_uint16_cmeta_data, TBE_TYPED_U16}, {&salts_int32_cmeta_data, TBE_TYPED_I32},
-      {&salts_uint32_cmeta_data, TBE_TYPED_U32}, {&salts_int64_cmeta_data, TBE_TYPED_I64},
-      {&salts_uint64_cmeta_data, TBE_TYPED_U64}, {&cmeta_data_float, TBE_TYPED_F32},
+      {&cmeta_data_long, TBE_TYPED_I64},         {&cmeta_data_int8, TBE_TYPED_I8},
+      {&cmeta_data_uint8, TBE_TYPED_U8},   {&cmeta_data_int16, TBE_TYPED_I16},
+      {&cmeta_data_uint16, TBE_TYPED_U16}, {&cmeta_data_int32, TBE_TYPED_I32},
+      {&cmeta_data_uint32, TBE_TYPED_U32}, {&cmeta_data_int64, TBE_TYPED_I64},
+      {&cmeta_data_uint64, TBE_TYPED_U64}, {&cmeta_data_float, TBE_TYPED_F32},
       {&cmeta_data_double, TBE_TYPED_F64},
   };
   size_t i;
@@ -1568,37 +1568,37 @@ static DataBindStatus typed_native_from_json_scalar(const cmeta_data_desc *data,
       goto range_error;
     return DATA_BIND_OK;
   }
-  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data)) {
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int8)) {
     if (!typed_json_read_i64(value, &signed_value) || signed_value < INT8_MIN ||
         signed_value > INT8_MAX)
       goto range_error;
     *(int8_t *)storage = (int8_t)signed_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint8)) {
     if (!typed_json_read_u64(value, &unsigned_value) || unsigned_value > UINT8_MAX)
       goto range_error;
     *(uint8_t *)storage = (uint8_t)unsigned_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_int16)) {
     if (!typed_json_read_i64(value, &signed_value) || signed_value < INT16_MIN ||
         signed_value > INT16_MAX)
       goto range_error;
     *(int16_t *)storage = (int16_t)signed_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint16)) {
     if (!typed_json_read_u64(value, &unsigned_value) || unsigned_value > UINT16_MAX)
       goto range_error;
     *(uint16_t *)storage = (uint16_t)unsigned_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_int32)) {
     if (!typed_json_read_i64(value, &signed_value) || signed_value < INT32_MIN ||
         signed_value > INT32_MAX)
       goto range_error;
     *(int32_t *)storage = (int32_t)signed_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint32)) {
     if (!typed_json_read_u64(value, &unsigned_value) || unsigned_value > UINT32_MAX)
       goto range_error;
     *(uint32_t *)storage = (uint32_t)unsigned_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_int64)) {
     if (!typed_json_read_i64(value, &signed_value)) goto range_error;
     *(int64_t *)storage = signed_value;
-  } else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data)) {
+  } else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint64)) {
     if (!typed_json_read_u64(value, &unsigned_value)) goto range_error;
     *(uint64_t *)storage = unsigned_value;
   } else if (typed_cmeta_scalar_matches(data, &cmeta_data_float)) {
@@ -1831,21 +1831,21 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
     free(candidate);
     return json;
   }
-  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int8))
     return typed_json_created(json_create_int64(*(const int8_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_uint8))
     return typed_json_created(json_create_int64(*(const uint8_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int16))
     return typed_json_created(json_create_int64(*(const int16_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_uint16))
     return typed_json_created(json_create_int64(*(const uint16_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int32))
     return typed_json_created(json_create_int64(*(const int32_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_uint32))
     return typed_json_created(json_create_int64(*(const uint32_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int64))
     return typed_json_created(json_create_int64(*(const int64_t *)storage), path, error);
-  if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data))
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_uint64))
     return typed_json_created(json_create_uint64(*(const uint64_t *)storage), path, error);
   if (typed_cmeta_scalar_matches(data, &cmeta_data_float)) {
     float value = *(const float *)storage;
@@ -3172,21 +3172,21 @@ static DataBindStatus typed_native_read_wire_scalar(const cmeta_data_desc *data,
     return typed_native_enum_assign_number(data, input_signed, signed_value, unsigned_value,
                                            storage, path, error);
   }
-  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) && wire_kind == TBE_TYPED_I8)
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int8) && wire_kind == TBE_TYPED_I8)
     *(int8_t *)storage = tbe_wire_read_i8(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) && wire_kind == TBE_TYPED_U8)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint8) && wire_kind == TBE_TYPED_U8)
     *(uint8_t *)storage = tbe_wire_read_u8(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) && wire_kind == TBE_TYPED_I16)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int16) && wire_kind == TBE_TYPED_I16)
     *(int16_t *)storage = tbe_wire_read_i16(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) && wire_kind == TBE_TYPED_U16)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint16) && wire_kind == TBE_TYPED_U16)
     *(uint16_t *)storage = tbe_wire_read_u16(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) && wire_kind == TBE_TYPED_I32)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int32) && wire_kind == TBE_TYPED_I32)
     *(int32_t *)storage = tbe_wire_read_i32(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) && wire_kind == TBE_TYPED_U32)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint32) && wire_kind == TBE_TYPED_U32)
     *(uint32_t *)storage = tbe_wire_read_u32(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) && wire_kind == TBE_TYPED_I64)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int64) && wire_kind == TBE_TYPED_I64)
     *(int64_t *)storage = tbe_wire_read_i64(source, big_endian);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) && wire_kind == TBE_TYPED_U64)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint64) && wire_kind == TBE_TYPED_U64)
     *(uint64_t *)storage = tbe_wire_read_u64(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) && wire_kind == TBE_TYPED_F32)
     *(float *)storage = tbe_wire_read_f32(source, big_endian);
@@ -3351,21 +3351,21 @@ static DataBindStatus typed_native_write_wire_scalar(const cmeta_data_desc *data
     return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                        "Canonical enum value exceeds its wire storage");
   }
-  if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) && wire_kind == TBE_TYPED_I8)
+  if (typed_cmeta_scalar_matches(data, &cmeta_data_int8) && wire_kind == TBE_TYPED_I8)
     tbe_wire_write_i8(destination, big_endian, *(const int8_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) && wire_kind == TBE_TYPED_U8)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint8) && wire_kind == TBE_TYPED_U8)
     tbe_wire_write_u8(destination, big_endian, *(const uint8_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) && wire_kind == TBE_TYPED_I16)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int16) && wire_kind == TBE_TYPED_I16)
     tbe_wire_write_i16(destination, big_endian, *(const int16_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) && wire_kind == TBE_TYPED_U16)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint16) && wire_kind == TBE_TYPED_U16)
     tbe_wire_write_u16(destination, big_endian, *(const uint16_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) && wire_kind == TBE_TYPED_I32)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int32) && wire_kind == TBE_TYPED_I32)
     tbe_wire_write_i32(destination, big_endian, *(const int32_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) && wire_kind == TBE_TYPED_U32)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint32) && wire_kind == TBE_TYPED_U32)
     tbe_wire_write_u32(destination, big_endian, *(const uint32_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) && wire_kind == TBE_TYPED_I64)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_int64) && wire_kind == TBE_TYPED_I64)
     tbe_wire_write_i64(destination, big_endian, *(const int64_t *)storage);
-  else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) && wire_kind == TBE_TYPED_U64)
+  else if (typed_cmeta_scalar_matches(data, &cmeta_data_uint64) && wire_kind == TBE_TYPED_U64)
     tbe_wire_write_u64(destination, big_endian, *(const uint64_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) && wire_kind == TBE_TYPED_F32)
     tbe_wire_write_f32(destination, big_endian, *(const float *)storage);

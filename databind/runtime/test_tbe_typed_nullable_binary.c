@@ -2,7 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 #include <tstr.h>
 
 #include <stddef.h>
@@ -80,17 +80,17 @@ static const cmeta_type_desc CANONICAL_BINARY_CTYPE = {
     NULL, NULL, &CANONICAL_BINARY_ID};
 static const cmeta_field_desc CANONICAL_BINARY_LAYOUT_FIELDS[] = {
     {"required_value", "uint16_t", offsetof(CanonicalBinaryRecord, required_value),
-     sizeof(uint16_t), _Alignof(uint16_t), &salts_uint16_cmeta_type, NULL},
+     sizeof(uint16_t), _Alignof(uint16_t), &cmeta_type_uint16, NULL},
     {"tri_value", "uint16_t", offsetof(CanonicalBinaryRecord, tri_value),
-     sizeof(uint16_t), _Alignof(uint16_t), &salts_uint16_cmeta_type, NULL}};
+     sizeof(uint16_t), _Alignof(uint16_t), &cmeta_type_uint16, NULL}};
 static const cmeta_struct_desc CANONICAL_BINARY_LAYOUT = {
     "CanonicalBinaryRecord", sizeof(CanonicalBinaryRecord),
     _Alignof(CanonicalBinaryRecord), CANONICAL_BINARY_LAYOUT_FIELDS, 2u};
 static const cmeta_data_field_desc CANONICAL_BINARY_DATA_FIELDS[] = {
     {"test.NullableBinary.Canonical.required_value", "required_value",
-     offsetof(CanonicalBinaryRecord, required_value), &salts_uint16_cmeta_data},
+     offsetof(CanonicalBinaryRecord, required_value), &cmeta_data_uint16},
     {"test.NullableBinary.Canonical.tri_value", "tri_value",
-     offsetof(CanonicalBinaryRecord, tri_value), &salts_uint16_cmeta_data}};
+     offsetof(CanonicalBinaryRecord, tri_value), &cmeta_data_uint16}};
 static const cmeta_data_struct_shape CANONICAL_BINARY_SHAPE = {
     &CANONICAL_BINARY_LAYOUT, CANONICAL_BINARY_DATA_FIELDS, 2u};
 static const cmeta_data_desc CANONICAL_BINARY_DATA = {

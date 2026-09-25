@@ -1,10 +1,149 @@
 #include "jinja_cmeta_test_support.h"
 
+#include <cstl/typed.h>
+
+typed(Vec, JinjaCanonicalVec, int);
+typed(Deque, JinjaCanonicalDeque, int);
+typed(List, JinjaCanonicalList, int);
+typed(Set, JinjaCanonicalSet, int);
+typed(HashSet, JinjaCanonicalHashSet, int);
+typed(Map, JinjaCanonicalMap, int, int);
+typed(MultiMap, JinjaCanonicalMultiMap, int, int);
+
+typedef struct JinjaCanonicalRoot {
+  cmeta_data_collection_view view;
+  JinjaCanonicalVec vec;
+  JinjaCanonicalDeque deque;
+  JinjaCanonicalList list;
+  JinjaCanonicalSet set;
+  JinjaCanonicalHashSet hash_set;
+  JinjaCanonicalMap map;
+  JinjaCanonicalMultiMap multi;
+} JinjaCanonicalRoot;
+
+static const cmeta_type_identity jinja_canonical_root_identity =
+    CMETA_TYPE_ID_ATOM_INIT("test.JinjaCanonicalRoot");
+static const cmeta_type_desc jinja_canonical_root_type = {
+    "JinjaCanonicalRoot", sizeof(JinjaCanonicalRoot), _Alignof(JinjaCanonicalRoot),
+    CMETA_T_OBJECT, NULL, NULL, &jinja_canonical_root_identity};
+static const cmeta_field_desc jinja_canonical_root_layout_fields[] = {
+    {"view", "cmeta_data_collection_view", offsetof(JinjaCanonicalRoot, view),
+     sizeof(cmeta_data_collection_view), _Alignof(cmeta_data_collection_view),
+     &cmeta_type_collection_view, NULL},
+    {"vec", "JinjaCanonicalVec", offsetof(JinjaCanonicalRoot, vec),
+     sizeof(JinjaCanonicalVec), _Alignof(JinjaCanonicalVec), &JinjaCanonicalVec_cmeta_type, NULL},
+    {"deque", "JinjaCanonicalDeque", offsetof(JinjaCanonicalRoot, deque),
+     sizeof(JinjaCanonicalDeque), _Alignof(JinjaCanonicalDeque), &JinjaCanonicalDeque_cmeta_type, NULL},
+    {"list", "JinjaCanonicalList", offsetof(JinjaCanonicalRoot, list),
+     sizeof(JinjaCanonicalList), _Alignof(JinjaCanonicalList), &JinjaCanonicalList_cmeta_type, NULL},
+    {"set", "JinjaCanonicalSet", offsetof(JinjaCanonicalRoot, set),
+     sizeof(JinjaCanonicalSet), _Alignof(JinjaCanonicalSet), &JinjaCanonicalSet_cmeta_type, NULL},
+    {"hash_set", "JinjaCanonicalHashSet", offsetof(JinjaCanonicalRoot, hash_set),
+     sizeof(JinjaCanonicalHashSet), _Alignof(JinjaCanonicalHashSet),
+     &JinjaCanonicalHashSet_cmeta_type, NULL},
+    {"map", "JinjaCanonicalMap", offsetof(JinjaCanonicalRoot, map),
+     sizeof(JinjaCanonicalMap), _Alignof(JinjaCanonicalMap), &JinjaCanonicalMap_cmeta_type, NULL},
+    {"multi", "JinjaCanonicalMultiMap", offsetof(JinjaCanonicalRoot, multi),
+     sizeof(JinjaCanonicalMultiMap), _Alignof(JinjaCanonicalMultiMap),
+     &JinjaCanonicalMultiMap_cmeta_type, NULL}};
+static const cmeta_struct_desc jinja_canonical_root_layout = {
+    "JinjaCanonicalRoot", sizeof(JinjaCanonicalRoot), _Alignof(JinjaCanonicalRoot),
+    jinja_canonical_root_layout_fields,
+    sizeof(jinja_canonical_root_layout_fields) / sizeof(jinja_canonical_root_layout_fields[0])};
+static const cmeta_data_field_desc jinja_canonical_root_fields[] = {
+    {"test.JinjaCanonicalRoot.view", "view", offsetof(JinjaCanonicalRoot, view),
+     &cmeta_data_sequence_view},
+    {"test.JinjaCanonicalRoot.vec", "vec", offsetof(JinjaCanonicalRoot, vec),
+     &JinjaCanonicalVec_collection_data},
+    {"test.JinjaCanonicalRoot.deque", "deque", offsetof(JinjaCanonicalRoot, deque),
+     &JinjaCanonicalDeque_collection_data},
+    {"test.JinjaCanonicalRoot.list", "list", offsetof(JinjaCanonicalRoot, list),
+     &JinjaCanonicalList_collection_data},
+    {"test.JinjaCanonicalRoot.set", "set", offsetof(JinjaCanonicalRoot, set),
+     &JinjaCanonicalSet_collection_data},
+    {"test.JinjaCanonicalRoot.hash_set", "hash_set", offsetof(JinjaCanonicalRoot, hash_set),
+     &JinjaCanonicalHashSet_collection_data},
+    {"test.JinjaCanonicalRoot.map", "map", offsetof(JinjaCanonicalRoot, map),
+     &JinjaCanonicalMap_map_data},
+    {"test.JinjaCanonicalRoot.multi", "multi", offsetof(JinjaCanonicalRoot, multi),
+     &JinjaCanonicalMultiMap_map_data}};
+static const cmeta_data_struct_shape jinja_canonical_root_shape = {
+    &jinja_canonical_root_layout, jinja_canonical_root_fields,
+    sizeof(jinja_canonical_root_fields) / sizeof(jinja_canonical_root_fields[0])};
+static const cmeta_data_desc jinja_canonical_root_data = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.JinjaCanonicalRoot.data",
+    .display_name = "Jinja canonical collection root",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &jinja_canonical_root_type,
+    .shape = &jinja_canonical_root_shape};
+
 spec("Jinja CMeta collections and runtime: collections 2") {
   /* TinyTest puts this spec's cases in one function; share diagnostics instead
    * of reserving hundreds of ASan-instrumented stack objects. */
   static JINJA_CMETA_ERROR error;
   before_each() { error = (JINJA_CMETA_ERROR)JINJA_CMETA_ERROR_INIT; }
+  it("consumes canonical contiguous CSTL collection set and map providers") {
+    static const int view_values[] = {1, 2};
+    static const char source[] =
+        "{{view[1]}}|{{vec|length}}:{%for x in vec%}{{x}}{%endfor%}|"
+        "{{deque|length}}:{%for x in deque%}{{x}}{%endfor%}|"
+        "{{list|length}}:{%for x in list%}{{x}}{%endfor%}|"
+        "{{set|length}}:{%for x in set%}{{x}}{%endfor%}:{{2 in set}}|"
+        "{{hash_set|length}}:{{14 in hash_set}}|"
+        "{{map|length}}:{{map[2]}}:{%for k in map%}{{k}}{%endfor%}:{{1 in map}}|"
+        "{{multi|length}}:{{multi[1]}}:{%for k in multi%}{{k}}{%endfor%}:{{1 in multi}}|"
+        "{{vec is sequence}}:{{set is sequence}}:{{set is iterable}}:"
+        "{{map is mapping}}:{{map is iterable}}";
+    JinjaCanonicalRoot root = {0};
+    JINJA_CMETA_TEMPLATE *templ;
+    char *output = NULL;
+
+    root.view = (cmeta_data_collection_view){
+        view_values, 2u, sizeof(view_values[0]), &cmeta_data_int};
+    check_equal(JinjaCanonicalVec_init(&root.vec, 2u), STL_OK);
+    check_equal(JinjaCanonicalVec_push(&root.vec, 3), STL_OK);
+    check_equal(JinjaCanonicalVec_push(&root.vec, 4), STL_OK);
+    check_equal(JinjaCanonicalDeque_init(&root.deque, 2u), STL_OK);
+    check_equal(JinjaCanonicalDeque_push_back(&root.deque, 5), STL_OK);
+    check_equal(JinjaCanonicalDeque_push_back(&root.deque, 6), STL_OK);
+    check_equal(JinjaCanonicalList_init(&root.list, 2u), STL_OK);
+    check_equal(JinjaCanonicalList_push_back(&root.list, 7), STL_OK);
+    check_equal(JinjaCanonicalList_push_back(&root.list, 8), STL_OK);
+    check_equal(JinjaCanonicalSet_init(&root.set, 2u), STL_OK);
+    check_equal(JinjaCanonicalSet_add(&root.set, 2), STL_OK);
+    check_equal(JinjaCanonicalSet_add(&root.set, 1), STL_OK);
+    check_equal(JinjaCanonicalHashSet_init(&root.hash_set, 2u), STL_OK);
+    check_equal(JinjaCanonicalHashSet_add(&root.hash_set, 13), STL_OK);
+    check_equal(JinjaCanonicalHashSet_add(&root.hash_set, 14), STL_OK);
+    check_equal(JinjaCanonicalMap_init(&root.map, 2u), STL_OK);
+    check_equal(JinjaCanonicalMap_put(&root.map, 2, 20), STL_OK);
+    check_equal(JinjaCanonicalMap_put(&root.map, 1, 10), STL_OK);
+    check_equal(JinjaCanonicalMultiMap_init(&root.multi, 2u), STL_OK);
+    check_equal(JinjaCanonicalMultiMap_put(&root.multi, 1, 10), STL_OK);
+    check_equal(JinjaCanonicalMultiMap_put(&root.multi, 1, 11), STL_OK);
+
+    templ = jinja_cmeta_compile(vstr_from_cstr(source), NULL, &error);
+    check_not_null(templ);
+    check_equal(jinja_cmeta_render_string(
+                    templ, &jinja_canonical_root_data, &root,
+                    NULL, &output, &error), JINJA_CMETA_OK);
+    check_equal(output,
+                "2|2:34|2:56|2:78|2:12:True|2:True|2:20:12:True|"
+                "2:11:11:True|True:False:True:True:True");
+
+    free(output);
+    jinja_cmeta_release(templ);
+    JinjaCanonicalMultiMap_destroy(&root.multi);
+    JinjaCanonicalMap_destroy(&root.map);
+    JinjaCanonicalHashSet_destroy(&root.hash_set);
+    JinjaCanonicalSet_destroy(&root.set);
+    JinjaCanonicalList_destroy(&root.list);
+    JinjaCanonicalDeque_destroy(&root.deque);
+    JinjaCanonicalVec_destroy(&root.vec);
+  }
+
   it("concatenates Jinja values with tilde and preserves multiplication precedence") {
     JinjaTestRoot root = {{vstr_from_cstr("Ada"), 37}, false, {NULL, 0u, 0u, NULL}};
     JinjaTestModel model;

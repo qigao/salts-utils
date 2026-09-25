@@ -193,7 +193,7 @@ spec("Jinja value traversal budgets") {
     cmeta_data_desc invalid = cmeta_data_double;
     cmeta_data_float_shape wrong_width = {32u};
     invalid.shape = &wrong_width;
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){&number, 1u, sizeof(number), &invalid};
+    root.users = (cmeta_data_collection_view){&number, 1u, sizeof(number), &invalid};
     options.max_value_visits = 2u;
     options.max_value_depth = 2u;
     check_equal(jinja_test_render("{% set a=[users[0]] %}{{a==a}}",

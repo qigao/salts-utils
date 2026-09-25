@@ -55,7 +55,7 @@ extern "C" {
 #endif
 
 #if defined(TBE_TYPED_H)
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 static inline int c11_lua_tbe_scalar_matches(
     const cmeta_data_desc *data, const cmeta_data_desc *canonical) {
@@ -108,14 +108,14 @@ static inline DataBindStatus c11_lua_tbe_push_scalar(
         return DATA_BIND_OK;                                                     \
     }                                                                            \
 } while (0)
-    C11_LUA_TBE_PUSH_SIGNED(salts_int8_cmeta_data, int8_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint8_cmeta_data, uint8_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int16_cmeta_data, int16_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint16_cmeta_data, uint16_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int32_cmeta_data, int32_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint32_cmeta_data, uint32_t);
-    C11_LUA_TBE_PUSH_SIGNED(salts_int64_cmeta_data, int64_t);
-    C11_LUA_TBE_PUSH_UNSIGNED(salts_uint64_cmeta_data, uint64_t);
+    C11_LUA_TBE_PUSH_SIGNED(cmeta_data_int8, int8_t);
+    C11_LUA_TBE_PUSH_UNSIGNED(cmeta_data_uint8, uint8_t);
+    C11_LUA_TBE_PUSH_SIGNED(cmeta_data_int16, int16_t);
+    C11_LUA_TBE_PUSH_UNSIGNED(cmeta_data_uint16, uint16_t);
+    C11_LUA_TBE_PUSH_SIGNED(cmeta_data_int32, int32_t);
+    C11_LUA_TBE_PUSH_UNSIGNED(cmeta_data_uint32, uint32_t);
+    C11_LUA_TBE_PUSH_SIGNED(cmeta_data_int64, int64_t);
+    C11_LUA_TBE_PUSH_UNSIGNED(cmeta_data_uint64, uint64_t);
 #undef C11_LUA_TBE_PUSH_UNSIGNED
 #undef C11_LUA_TBE_PUSH_SIGNED
     if (c11_lua_tbe_scalar_matches(data, &cmeta_data_float)) {
@@ -228,14 +228,14 @@ static inline DataBindStatus c11_lua_tbe_read_scalar(
         return DATA_BIND_OK;                                                     \
     }                                                                            \
 } while (0)
-    C11_LUA_TBE_READ_SIGNED(salts_int8_cmeta_data, int8_t, INT8_MIN, INT8_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint8_cmeta_data, uint8_t, UINT8_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int16_cmeta_data, int16_t, INT16_MIN, INT16_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint16_cmeta_data, uint16_t, UINT16_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int32_cmeta_data, int32_t, INT32_MIN, INT32_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint32_cmeta_data, uint32_t, UINT32_MAX);
-    C11_LUA_TBE_READ_SIGNED(salts_int64_cmeta_data, int64_t, INT64_MIN, INT64_MAX);
-    C11_LUA_TBE_READ_UNSIGNED(salts_uint64_cmeta_data, uint64_t, UINT64_MAX);
+    C11_LUA_TBE_READ_SIGNED(cmeta_data_int8, int8_t, INT8_MIN, INT8_MAX);
+    C11_LUA_TBE_READ_UNSIGNED(cmeta_data_uint8, uint8_t, UINT8_MAX);
+    C11_LUA_TBE_READ_SIGNED(cmeta_data_int16, int16_t, INT16_MIN, INT16_MAX);
+    C11_LUA_TBE_READ_UNSIGNED(cmeta_data_uint16, uint16_t, UINT16_MAX);
+    C11_LUA_TBE_READ_SIGNED(cmeta_data_int32, int32_t, INT32_MIN, INT32_MAX);
+    C11_LUA_TBE_READ_UNSIGNED(cmeta_data_uint32, uint32_t, UINT32_MAX);
+    C11_LUA_TBE_READ_SIGNED(cmeta_data_int64, int64_t, INT64_MIN, INT64_MAX);
+    C11_LUA_TBE_READ_UNSIGNED(cmeta_data_uint64, uint64_t, UINT64_MAX);
 #undef C11_LUA_TBE_READ_UNSIGNED
 #undef C11_LUA_TBE_READ_SIGNED
     if (c11_lua_tbe_scalar_matches(data, &cmeta_data_float)) {

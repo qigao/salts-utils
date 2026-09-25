@@ -1,7 +1,7 @@
 #include "tinytest.h"
 #include "schema_cmeta.h"
 #include "node_tree.h"
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 #include <salts_cmeta_data.h>
 #include <string.h>
 
@@ -44,7 +44,7 @@ suite("schema_cmeta_fields") {
         check_equal(type.schema_kind, "scalar");
         check(type.data != NULL);
         if (type.data) {
-            cmeta_type_desc copy = salts_int32_cmeta_type;
+            cmeta_type_desc copy = cmeta_type_int32;
             cmeta_type_identity identity = *copy.identity;
             copy.identity = &identity;
             check(cmeta_type_equal(type.data->storage_type, &copy));

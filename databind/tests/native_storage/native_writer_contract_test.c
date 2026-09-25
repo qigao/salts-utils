@@ -225,7 +225,7 @@ spec("DataBind native writer contract") {
     cserde_reader reader;
 
     open_writer(&sink, &writer);
-    check_equal(encode_value(&salts_int32_cmeta_data, &source, sizeof(source),
+    check_equal(encode_value(&cmeta_data_int32, &source, sizeof(source),
                              &writer),
                 DATA_BIND_OK);
     check_equal(source, -123);
@@ -236,7 +236,7 @@ spec("DataBind native writer contract") {
     check_true(writer.state == CSERDE_WRITER_READY);
 
     open_reader(&sink, &token_source, &reader);
-    check_equal(decode_value(&salts_int32_cmeta_data, &reader, &destination,
+    check_equal(decode_value(&cmeta_data_int32, &reader, &destination,
                              sizeof(destination)),
                 DATA_BIND_OK);
     check_equal(destination, -123);

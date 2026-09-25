@@ -61,28 +61,28 @@ static void expect_scalar(const cmeta_data_desc *data) {
 
 spec("TBE typed canonical scalar matching") {
   it("accepts the complete fixed-width integer and float CMeta slice") {
-    expect_scalar(&salts_int8_cmeta_data);
-    expect_scalar(&salts_uint8_cmeta_data);
-    expect_scalar(&salts_int16_cmeta_data);
-    expect_scalar(&salts_uint16_cmeta_data);
-    expect_scalar(&salts_int32_cmeta_data);
-    expect_scalar(&salts_uint32_cmeta_data);
-    expect_scalar(&salts_int64_cmeta_data);
-    expect_scalar(&salts_uint64_cmeta_data);
+    expect_scalar(&cmeta_data_int8);
+    expect_scalar(&cmeta_data_uint8);
+    expect_scalar(&cmeta_data_int16);
+    expect_scalar(&cmeta_data_uint16);
+    expect_scalar(&cmeta_data_int32);
+    expect_scalar(&cmeta_data_uint32);
+    expect_scalar(&cmeta_data_int64);
+    expect_scalar(&cmeta_data_uint64);
     expect_scalar(&cmeta_data_float);
     expect_scalar(&cmeta_data_double);
   }
 
   it("matches copied scalar descriptors by semantic identity") {
-    cmeta_data_desc data = salts_int32_cmeta_data;
+    cmeta_data_desc data = cmeta_data_int32;
     cmeta_type_desc type = *data.storage_type;
     cmeta_type_identity identity = *type.identity;
     type.identity = &identity;
     data.storage_type = &type;
 
-    check(&data != &salts_int32_cmeta_data);
+    check(&data != &cmeta_data_int32);
     check(cmeta_type_equal(data.storage_type,
-                          salts_int32_cmeta_data.storage_type));
+                          cmeta_data_int32.storage_type));
     expect_scalar(&data);
   }
 
@@ -107,7 +107,7 @@ spec("TBE typed canonical scalar matching") {
     expect_scalar(&salts_bool8_cmeta_data);
     expect_scalar(&salts_uuid_cmeta_data);
     for (i = 0; i < sizeof(containers) / sizeof(containers[0]); ++i) {
-      cmeta_data_desc malformed = salts_int32_cmeta_data;
+      cmeta_data_desc malformed = cmeta_data_int32;
       malformed.kind = containers[i];
       check_equal(scalar_descriptor_status(&malformed), DATA_BIND_ERR_SCHEMA);
     }

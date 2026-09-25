@@ -18,12 +18,12 @@
 
 Struct(JinjaTestUser, (vstr, name), (int, age));
 
-Struct(JinjaTestRoot, (JinjaTestUser, user), (bool, active), (JINJA_CMETA_SEQUENCE_VIEW, users));
+Struct(JinjaTestRoot, (JinjaTestUser, user), (bool, active), (cmeta_data_collection_view, users));
 
 Struct(JinjaTestIntegerRoot, (int, signed_value), (size_t, unsigned_value), (bool, boolean_value));
 
-Struct(JinjaTestMembershipRoot, (JINJA_CMETA_SEQUENCE_VIEW, ages),
-       (JINJA_CMETA_SEQUENCE_VIEW, names), (JINJA_CMETA_SEQUENCE_VIEW, empty));
+Struct(JinjaTestMembershipRoot, (cmeta_data_collection_view, ages),
+       (cmeta_data_collection_view, names), (cmeta_data_collection_view, empty));
 
 Struct(JinjaTestFloatRoot, (double, value));
 
@@ -143,7 +143,7 @@ static void jinja_test_model_init(JinjaTestModel *model) {
   model->root_fields[1] = (cmeta_data_field_desc){
       "test.JinjaRoot.active", "active", offsetof(JinjaTestRoot, active), &cmeta_data_bool};
   model->root_fields[2] = (cmeta_data_field_desc){
-      "test.JinjaRoot.users", "users", offsetof(JinjaTestRoot, users), jinja_cmeta_sequence_data()};
+      "test.JinjaRoot.users", "users", offsetof(JinjaTestRoot, users), &cmeta_data_sequence_view};
   model->root_shape = (cmeta_data_struct_shape){StructMeta(JinjaTestRoot), model->root_fields, 3u};
   model->root_desc = (cmeta_data_desc){sizeof(cmeta_data_desc),
                                        CMETA_DATA_DESC_ABI_VERSION,
@@ -185,13 +185,13 @@ static void jinja_test_membership_model_init(JinjaTestMembershipModel *model) {
   memset(model, 0, sizeof(*model));
   model->fields[0] =
       (cmeta_data_field_desc){"test.JinjaMembershipRoot.ages", "ages",
-                              offsetof(JinjaTestMembershipRoot, ages), jinja_cmeta_sequence_data()};
+                              offsetof(JinjaTestMembershipRoot, ages), &cmeta_data_sequence_view};
   model->fields[1] = (cmeta_data_field_desc){"test.JinjaMembershipRoot.names", "names",
                                              offsetof(JinjaTestMembershipRoot, names),
-                                             jinja_cmeta_sequence_data()};
+                                             &cmeta_data_sequence_view};
   model->fields[2] = (cmeta_data_field_desc){"test.JinjaMembershipRoot.empty", "empty",
                                              offsetof(JinjaTestMembershipRoot, empty),
-                                             jinja_cmeta_sequence_data()};
+                                             &cmeta_data_sequence_view};
   model->shape = (cmeta_data_struct_shape){StructMeta(JinjaTestMembershipRoot), model->fields, 3u};
   model->desc = (cmeta_data_desc){sizeof(cmeta_data_desc),
                                   CMETA_DATA_DESC_ABI_VERSION,
