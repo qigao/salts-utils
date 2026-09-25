@@ -40,7 +40,7 @@ typedef struct databind_binary_field_layout {
   size_t child_fixed_block_size;
 
   /* GROUP/VAR_DATA: binary tail length/header prefix width. */
-  size_t length_prefix_bytes;
+  size_t tail_prefix_bytes;
 
   unsigned optional_bit;
   unsigned nullable_bit;
