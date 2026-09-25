@@ -208,24 +208,24 @@ static const char *direction_name(
   }
 }
 
-static const char *runtime_format_name(databind_compiler_format format) {
+static const char *runtime_format_name(DataBindFormat format) {
   switch (format) {
-  case DATABIND_COMPILER_FORMAT_DEFAULT:
-  case DATABIND_COMPILER_FORMAT_JSON:
+  case DATA_BIND_FORMAT_JSON:
+  case DATA_BIND_FORMAT_JSON:
     return "DATA_BIND_FORMAT_JSON";
-  case DATABIND_COMPILER_FORMAT_BINARY:
+  case DATA_BIND_FORMAT_BINARY:
     return "DATA_BIND_FORMAT_BINARY";
-  case DATABIND_COMPILER_FORMAT_YAML:
+  case DATA_BIND_FORMAT_YAML:
     return "DATA_BIND_FORMAT_YAML";
-  case DATABIND_COMPILER_FORMAT_CSV:
+  case DATA_BIND_FORMAT_CSV:
     return "DATA_BIND_FORMAT_CSV";
-  case DATABIND_COMPILER_FORMAT_XML:
+  case DATA_BIND_FORMAT_XML:
     return "DATA_BIND_FORMAT_XML";
   }
   return NULL;
 }
 
-static int compiler_format_valid(databind_compiler_format format) {
+static int compiler_format_valid(DataBindFormat format) {
   return runtime_format_name(format) != NULL;
 }
 
@@ -849,10 +849,10 @@ static int http_generate(
               file, ", %s, %s",
               runtime_format_name(
                   op_config != NULL ? op_config->ingress_format
-                                    : DATABIND_COMPILER_FORMAT_DEFAULT),
+                                    : DATA_BIND_FORMAT_JSON),
               runtime_format_name(
                   op_config != NULL ? op_config->egress_format
-                                    : DATABIND_COMPILER_FORMAT_DEFAULT)) < 0)
+                                    : DATA_BIND_FORMAT_JSON)) < 0)
         goto cleanup;
       if (fputs(" } },\n", file) == EOF) goto cleanup;
     }
@@ -1031,10 +1031,10 @@ static int rpc_generate(
               file, ", %s, %s",
               runtime_format_name(
                   op_config != NULL ? op_config->ingress_format
-                                    : DATABIND_COMPILER_FORMAT_DEFAULT),
+                                    : DATA_BIND_FORMAT_JSON),
               runtime_format_name(
                   op_config != NULL ? op_config->egress_format
-                                    : DATABIND_COMPILER_FORMAT_DEFAULT)) < 0)
+                                    : DATA_BIND_FORMAT_JSON)) < 0)
         goto cleanup;
       if (fputs(" } },\n", file) == EOF) goto cleanup;
     }
