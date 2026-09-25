@@ -22,8 +22,8 @@
     DataBindStatus name##_from_lua(struct lua_State *L, int index,                 \
                                     name##_t *object, size_t max_depth,             \
                                     size_t max_dynamic_items) {                     \
-        return c11_lua_read_tbe_typed_descriptor(                                  \
-            L, index, name##_typed_descriptor(), object, max_depth,                \
+        return c11_lua_read_native_descriptor(                                      \
+            L, index, name##_native_descriptor(), object, max_depth,               \
             max_dynamic_items);                                                     \
     }
 
