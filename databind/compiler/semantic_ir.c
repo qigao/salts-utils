@@ -43,6 +43,9 @@ int databind_semantic_field_build(const Node *root, const Node *field,
 
   if (!schema_cmeta_field_resolve(root, field, &result.semantic)) return 0;
 
+  result.is_optional = semantic_child(field, "is_optional") != NULL;
+  result.is_nullable = semantic_child(field, "is_nullable") != NULL;
+
   *out = result;
   return 1;
 }

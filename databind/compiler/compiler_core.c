@@ -5,6 +5,8 @@
 #include "compiler_core.h"
 
 #include "database_schema.h"
+#include "native_lowering.h"
+#include "semantic_ir.h"
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "schema_parser_dsl.h"
@@ -743,7 +745,24 @@ static void databind_compiler_annotate_typed_field(Node *root, Node *field,
     return;
   }
   if (semantic && semantic->kind == CMETA_DATA_STRING) {
-    snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
+    databind_semantic_field_ir semantic_ir = {0};
+    databind_native_field_ir native_ir = {0};
+
+    if (!databind_semantic_field_build(root, field, &semantic_ir) ||
+        !databind_native_field_lower_generated_c(&semantic_ir, &native_ir)) {
+      snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
+    } else {
+      snprintf(declaration, sizeof(declaration), "%s %s;",
+               native_ir.c_storage_type, c_name);
+      databind_compiler_set_string(field, "native_data_symbol",
+                                   native_ir.native_data_symbol);
+      databind_compiler_set_string(field, "native_type_symbol",
+                                   native_ir.native_type_symbol);
+      databind_compiler_set_string(field, "native_c_type",
+                                   native_ir.c_storage_type);
+      if (native_ir.provider_external)
+        databind_compiler_set_string(field, "native_external", "1");
+    }
     databind_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
     databind_compiler_set_string(field, "typed_is_var_data", "1");
     databind_compiler_set_string(field, "typed_declaration", declaration);
@@ -835,9 +854,11 @@ static void databind_compiler_annotate_field_types(Node *root, Node *field) {
   char type_buf[256];
   char field_name[128];
   const char *name = databind_compiler_string_value(field, "name");
-  schema_cmeta_field_type resolved;
+  databind_semantic_field_ir semantic_ir = {0};
   const schema_cmeta_field_type *semantic =
-      schema_cmeta_field_resolve(root, field, &resolved) ? &resolved : NULL;
+      databind_semantic_field_build(root, field, &semantic_ir)
+          ? &semantic_ir.semantic
+          : NULL;
 
   if (semantic) {
     snprintf(type_buf, sizeof(type_buf), "%d", (int)semantic->kind);

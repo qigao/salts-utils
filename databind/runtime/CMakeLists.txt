@@ -510,6 +510,31 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_SAFETY_GENERATED_DIR}"
     FOLDER "databind/runtime/tests")
+
+  set(DATABIND_STRING_NATIVE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_string_native")
+  set(DATABIND_STRING_NATIVE_HEADER "${DATABIND_STRING_NATIVE_DIR}/generated_string_native.h")
+  set(DATABIND_STRING_NATIVE_SOURCE "${DATABIND_STRING_NATIVE_DIR}/generated_string_native.c")
+  add_custom_command(
+    OUTPUT "${DATABIND_STRING_NATIVE_HEADER}" "${DATABIND_STRING_NATIVE_SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DATABIND_STRING_NATIVE_DIR}"
+    COMMAND $<TARGET_FILE:databindc>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_string_native.schema"
+            --lang c --output "${DATABIND_STRING_NATIVE_HEADER}"
+            --source-output "${DATABIND_STRING_NATIVE_SOURCE}"
+    DEPENDS databindc
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_string_native.schema"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+    COMMENT "Generating Semantic IR canonical tstr native fixture"
+    VERBATIM)
+  cmake_add_test(test_databind_generated_string_native
+    SOURCES test_generated_string_native.c
+            "${DATABIND_STRING_NATIVE_HEADER}" "${DATABIND_STRING_NATIVE_SOURCE}"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${DATABIND_STRING_NATIVE_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_databind_generated_string_native PROPERTIES
+    FIXTURES_SETUP databind_generated_native_contract)
   set(TBE_CMETA_GRAPH_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmeta_graph_generated")
   add_custom_command(
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"

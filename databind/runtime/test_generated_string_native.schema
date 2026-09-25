@@ -1,0 +1,7 @@
+schema NativeString [id(1), version(1), byte_order(little)];
+
+[id(1)]
+message NativeStringRecord {
+    uint32 id;
+    string text;
+}

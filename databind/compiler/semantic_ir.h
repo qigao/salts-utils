@@ -19,6 +19,11 @@ typedef struct databind_semantic_field_ir {
   const char *name;
   const char *declared_type;
   schema_cmeta_field_type semantic;
+
+  /* Canonical logical state. These are Contract semantics, not native storage
+   * or wire representation choices. */
+  int is_optional;
+  int is_nullable;
 } databind_semantic_field_ir;
 
 /*

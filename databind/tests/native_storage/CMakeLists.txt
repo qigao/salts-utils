@@ -61,3 +61,12 @@ target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_writer PRIVATE Salts::TinyTest)
+
+# The existing native-writer qualification gate also proves the generated-C
+# Semantic IR -> CMeta lowering for required/non-null string storage. Fixture
+# semantics keep this inside the standard focused/sanitized test selection.
+if(TARGET test_databind_generated_string_native)
+  add_dependencies(test_data_bind_native_writer test_databind_generated_string_native)
+  set_tests_properties(test_data_bind_native_writer PROPERTIES
+    FIXTURES_REQUIRED databind_generated_native_contract)
+endif()
