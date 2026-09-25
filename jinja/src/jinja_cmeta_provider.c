@@ -4237,6 +4237,26 @@ static JINJA_CMETA_STATUS jinja_sequence_edge(JINJA_CMETA_PROVIDER *provider,
                     result, &found);
   }
   if (operand->kind == JINJA_CMETA_VALUE_UNDEFINED) return JINJA_CMETA_OK;
+  if (operand->kind == JINJA_CMETA_VALUE_NODE &&
+      jinja_is_collection_desc(operand->node.desc)) {
+    const void *element = NULL;
+    const cmeta_data_desc *element_data = NULL;
+    size_t count = 0u;
+    size_t index;
+    JINJA_CMETA_STATUS status = jinja_collection_length(&operand->node, &count);
+    if (status != JINJA_CMETA_OK) return status;
+    if (count == 0u) return JINJA_CMETA_OK;
+    index = last ? count - 1u : 0u;
+    status = jinja_collection_element_at(
+        &operand->node, index, &element, &element_data, NULL);
+    if (status != JINJA_CMETA_OK) return status;
+    if (element == NULL || element_data == NULL) return JINJA_CMETA_ERR_METADATA;
+    *result = (JINJA_CMETA_VALUE){
+        .kind = JINJA_CMETA_VALUE_NODE,
+        .node = {.object = element, .desc = element_data,
+                 .parent = operand->node.parent}};
+    return JINJA_CMETA_OK;
+  }
   if (operand->kind == JINJA_CMETA_VALUE_DICT) {
     size_t i;
     for (i = 0u; i < operand->collection_item_count; ++i) {
@@ -4253,7 +4273,7 @@ static JINJA_CMETA_STATUS jinja_sequence_edge(JINJA_CMETA_PROVIDER *provider,
   }
   if (!jinja_value_is_string(operand) && !jinja_value_is_collection(operand->kind) &&
       operand->kind != JINJA_CMETA_VALUE_RANGE &&
-      !(operand->kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(operand->node.desc)))
+      operand->kind == JINJA_CMETA_VALUE_NODE)
     return JINJA_CMETA_ERR_RENDER;
   JINJA_CMETA_STATUS status = jinja_lookup_item(provider, operand, &key, 0u, result);
   /* first iterates characters; last uses indexing in upstream Jinja. */
