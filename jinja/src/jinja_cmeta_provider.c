@@ -10009,9 +10009,14 @@ static int jinja_truthy(JINJA_CMETA_PROVIDER *provider, const JINJA_CMETA_NODE *
   }
   case CMETA_DATA_STRUCT:
     return 1;
+  case CMETA_DATA_SEQUENCE:
+  case CMETA_DATA_SET: {
+    size_t count = 0u;
+    JINJA_CMETA_STATUS status = jinja_collection_length(node, &count);
+    if (status != JINJA_CMETA_OK) jinja_provider_fail(provider, status);
+    return status == JINJA_CMETA_OK && count != 0u;
+  }
   case CMETA_DATA_CUSTOM:
-    if (jinja_is_sequence_desc(node->desc))
-      return ((const cmeta_data_collection_view *)node->object)->count != 0u;
     jinja_provider_fail(provider, JINJA_CMETA_ERR_METADATA);
     return 0;
   default:
