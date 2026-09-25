@@ -273,7 +273,32 @@ static void native_errors_clear(
   free(errors);
 }
 
-static int native_error_message_trivially_owned(
+static int native_error_field_admitted(const Node *field) {
+  const char *requirement;
+  const char *typed_kind;
+  if (field == NULL) return 0;
+  requirement = native_string(field, "cmeta_native_requirement");
+  if (requirement == NULL) return 0;
+  if (strcmp(requirement, "fixed_value") == 0 ||
+      strcmp(requirement, "enum_domain") == 0)
+    return 1;
+  if (strcmp(requirement, "owned_lifecycle") != 0)
+    return 0;
+
+  /*
+   * 4.0 admits only direct generated string/bytes ownership. Optional/null
+   * overlays, nested objects and containers remain separate requirements and
+   * therefore fail before publication.
+   */
+  typed_kind = native_string(field, "typed_kind");
+  return typed_kind != NULL &&
+         (strcmp(typed_kind, "TBE_TYPED_STRING") == 0 ||
+          strcmp(typed_kind, "TBE_TYPED_BYTES") == 0) &&
+         native_string(field, "native_data_symbol") != NULL &&
+         native_string(field, "native_type_symbol") != NULL;
+}
+
+static int native_error_message_admitted(
     const Node *root, const char *type_name) {
   const Node *message = native_message(root, type_name);
   const Node *fields;
@@ -286,15 +311,9 @@ static int native_error_message_trivially_owned(
   fields = native_list(message, "fields");
   if (fields == NULL) return 0;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const char *requirement =
-        native_string(fields->data.list.items[i],
-                      "cmeta_native_requirement");
-    if (requirement == NULL ||
-        (strcmp(requirement, "fixed_value") != 0 &&
-         strcmp(requirement, "enum_domain") != 0))
+  for (i = 0u; i < fields->data.list.count; ++i)
+    if (!native_error_field_admitted(fields->data.list.items[i]))
       return 0;
-  }
   return 1;
 }
 
@@ -330,7 +349,7 @@ static int native_errors_build(
             : NULL;
 
     if (type_name == NULL ||
-        !native_error_message_trivially_owned(root, type_name)) {
+        !native_error_message_admitted(root, type_name)) {
       native_errors_clear(result, errors->data.list.count);
       return 0;
     }
