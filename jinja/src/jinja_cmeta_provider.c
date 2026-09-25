@@ -11333,7 +11333,7 @@ static JINJA_CMETA_STATUS jinja_execute_range_impl(JINJA_CMETA_PROVIDER *provide
       }
       if (!jinja_value_is_container(value.kind) && value.kind != JINJA_CMETA_VALUE_RANGE &&
           value.kind != JINJA_CMETA_VALUE_ITERATOR &&
-          !(value.kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(value.node.desc)))
+          !(value.kind == JINJA_CMETA_VALUE_NODE && jinja_is_collection_desc(value.node.desc)))
         return JINJA_CMETA_ERR_RENDER;
       node = jinja_provider_value_node(provider, &value, context);
       if (node == NULL) return provider->shared.status;
