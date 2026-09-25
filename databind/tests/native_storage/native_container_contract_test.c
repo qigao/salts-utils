@@ -17,9 +17,8 @@ enum {
   CONTAINER_MAX_TOKENS = 64
 };
 
-typedef union ContainerWorkspace {
-  max_align_t alignment;
-  unsigned char bytes[CONTAINER_WORKSPACE_BYTES];
+typedef struct ContainerWorkspace {
+  _Alignas(64) unsigned char bytes[CONTAINER_WORKSPACE_BYTES];
 } ContainerWorkspace;
 
 typedef struct TokenSink {
@@ -27,11 +26,11 @@ typedef struct TokenSink {
   size_t count;
 } TokenSink;
 
-typedef struct TokenSource {
+typedef struct NativeContainerTokenSource {
   const cserde_token *tokens;
   size_t count;
   size_t index;
-} TokenSource;
+} NativeContainerTokenSource;
 
 typed(Vec, NativeIntVec, int);
 typed(Set, NativeIntSet, int);
@@ -61,7 +60,7 @@ static const cserde_writer_ops SINK_OPS = {
     sink_write, sink_finish};
 
 static cserde_status source_next(void *context, cserde_token *out) {
-  TokenSource *source = (TokenSource *)context;
+  NativeContainerTokenSource *source = (NativeContainerTokenSource *)context;
   if (source == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
   if (source->index == source->count) return CSERDE_DONE;
   *out = source->tokens[source->index++];
@@ -90,7 +89,7 @@ static void open_writer(TokenSink *sink, cserde_writer *writer) {
   check_equal(cserde_writer_init(writer, &SINK_OPS, sink), CSERDE_OK);
 }
 
-static void open_reader(const TokenSink *sink, TokenSource *source,
+static void open_reader(const TokenSink *sink, NativeContainerTokenSource *source,
                         cserde_reader *reader) {
   memset(source, 0, sizeof(*source));
   source->tokens = sink->tokens;
@@ -114,7 +113,7 @@ static DataBindStatus roundtrip(
     TokenSink *sink) {
   cserde_writer writer;
   cserde_reader reader;
-  TokenSource token_source;
+  NativeContainerTokenSource token_source;
   DataBindStatus status;
 
   open_writer(sink, &writer);
@@ -307,7 +306,7 @@ spec("DataBind canonical CSTL native containers") {
   it("aborts a partially decoded Vec and leaves destination empty") {
     NativeIntVec destination = {0};
     cserde_token tokens[4] = {0};
-    TokenSource source = {0};
+    NativeContainerTokenSource source = {0};
     cserde_reader reader = {0};
 
     tokens[0].kind = CSERDE_ARRAY_BEGIN;
