@@ -4290,11 +4290,11 @@ static JINJA_CMETA_STATUS jinja_value_length(JINJA_CMETA_PROVIDER *provider,
     if (status != JINJA_CMETA_OK) return status;
     count = unique;
   } else if (operand->kind == JINJA_CMETA_VALUE_NODE &&
-             jinja_is_sequence_desc(operand->node.desc)) {
-    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)operand->node.object;
-    status = jinja_validate_sequence_view(view);
+             jinja_is_collection_desc(operand->node.desc)) {
+    size_t borrowed_count = 0u;
+    status = jinja_collection_length(&operand->node, &borrowed_count);
     if (status != JINJA_CMETA_OK) return status;
-    count = view->count;
+    count = borrowed_count;
   } else if (operand->kind != JINJA_CMETA_VALUE_UNDEFINED) return JINJA_CMETA_ERR_RENDER;
   if (count > INT64_MAX) return JINJA_CMETA_ERR_CAPACITY;
   *result = (JINJA_CMETA_VALUE){.kind = JINJA_CMETA_VALUE_INTEGER, .integer = (int64_t)count};
