@@ -115,6 +115,18 @@ static inline DataBindStatus c11_lua_cmeta_push_scalar(
         if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
         lua_pushnumber(L, (lua_Number)value); return DATA_BIND_OK;
     }
+    if (data != NULL &&
+        (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)) {
+        const cmeta_data_buffer_ops *ops = cmeta_data_buffer_ops_of(data);
+        const void *bytes = NULL;
+        size_t length = 0u;
+        if (ops == NULL || ops->read == NULL ||
+            ops->read(object, &bytes, &length) != CMETA_OK ||
+            (length != 0u && bytes == NULL))
+            return DATA_BIND_ERR_SCHEMA;
+        lua_pushlstring(L, (const char *)(bytes != NULL ? bytes : ""), length);
+        return DATA_BIND_OK;
+    }
     if (data != NULL && data->kind == CMETA_DATA_ENUM) {
         const cmeta_data_enum_shape *shape = (const cmeta_data_enum_shape *)data->shape;
         int64_t value; const char *text;
@@ -165,6 +177,20 @@ static inline DataBindStatus c11_lua_cmeta_read_scalar(
         value = (double)lua_tonumber(L, index);
         if (!isfinite(value)) return DATA_BIND_ERR_TYPE_MISMATCH;
         memcpy(object, &value, sizeof(value)); return DATA_BIND_OK;
+    }
+    if (data != NULL &&
+        (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)) {
+        const cmeta_data_buffer_ops *ops = cmeta_data_buffer_ops_of(data);
+        size_t length = 0u;
+        const char *bytes;
+        if (ops == NULL || ops->assign == NULL ||
+            (data->kind == CMETA_DATA_STRING && lua_type(L, index) != LUA_TSTRING) ||
+            (data->kind == CMETA_DATA_BYTES && lua_type(L, index) != LUA_TSTRING))
+            return DATA_BIND_ERR_TYPE_MISMATCH;
+        bytes = lua_tolstring(L, index, &length);
+        return cmeta_data_buffer_assign(
+                   data, object, bytes, length, length) == CMETA_OK
+                   ? DATA_BIND_OK : DATA_BIND_ERR_TYPE_MISMATCH;
     }
     if (data != NULL && data->kind == CMETA_DATA_ENUM) {
         const cmeta_data_enum_shape *shape = (const cmeta_data_enum_shape *)data->shape;
