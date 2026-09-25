@@ -1,5 +1,5 @@
 -- Generate the sibling DDL before running this probe:
--- tbe_compiler test_postgresql_security_probe.schema --lang postgresql \
+-- databindc test_postgresql_security_probe.schema --lang postgresql \
 --   --output test_postgresql_security_probe.generated.sql
 -- psql -X --set ON_ERROR_STOP=1 --file test_postgresql_security_probe_verify.sql
 
