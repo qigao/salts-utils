@@ -2,7 +2,7 @@
 #define DATA_BIND_NATIVE_DESCRIPTOR_H
 
 #include "data_bind.h"
-#include "data_bind_binding_plan.h"
+
 #include <cmeta/data.h>
 
 #include <stddef.h>
@@ -13,6 +13,16 @@ extern "C" {
 #endif
 
 #define DATA_BIND_NATIVE_DESCRIPTOR_ABI_VERSION 1u
+
+typedef struct DataBindNativeStateSlot {
+  size_t struct_size;
+  const char *field_name;
+  size_t byte_offset;
+  unsigned bit;
+} DataBindNativeStateSlot;
+
+#define DATA_BIND_NATIVE_STATE_SLOT_INIT \
+  { sizeof(DataBindNativeStateSlot), NULL, 0u, 0u }
 
 /*
  * Format-neutral native binding descriptor.
@@ -32,9 +42,9 @@ typedef struct DataBindNativeDescriptor {
 
   /* DataBind logical state overlays. These are not CMeta value fields and are
    * not wire-format layout. */
-  const DataBindNativeStateBinding *presence;
+  const DataBindNativeStateSlot *presence;
   size_t presence_count;
-  const DataBindNativeStateBinding *nulls;
+  const DataBindNativeStateSlot *nulls;
   size_t null_count;
 } DataBindNativeDescriptor;
 
