@@ -297,7 +297,7 @@ FunctionDeclAs(
 static DataBind *create_state_codec(void) {
   static const char schema[] =
       "message StateRequest {"
-      " [query] uint32 required_value;"
+      " uint32 required_value;"
       " optional uint32 optional_value;"
       " nullable uint32 nullable_value;"
       " optional nullable uint32 defaulted_value default 7;"
