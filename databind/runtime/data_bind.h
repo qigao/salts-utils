@@ -414,12 +414,6 @@ typedef struct DataBindSchemaField {
   int has_cmeta_kind;
   cmeta_data_kind cmeta_kind;
   const cmeta_data_desc *cmeta_data;
-  /** Optional transport/logical binding projected from field attributes.
-   * binding_kind is one of path/query/header/cookie/body. binding_name is the
-   * explicit wire name or the canonical field name when the attribute is bare.
-   */
-  const char *binding_kind;
-  const char *binding_name;
   /**
    * Logical DataBind nullability. This is independent from is_optional:
    * optional controls ABSENT, nullable controls an explicitly present NULL.
@@ -478,7 +472,7 @@ typedef struct DataBindService {
   size_t operation_count;
 } DataBindService;
 
-/** Immutable reflected service operation and initial transport projections. */
+/** Immutable reflected transport-neutral Service operation. */
 typedef struct DataBindServiceOperation {
   size_t size;
   const char *service_name;
@@ -486,12 +480,6 @@ typedef struct DataBindServiceOperation {
   const char *request_type;
   const char *response_type;
   size_t error_count;
-  int has_http;
-  const char *http_method;
-  const char *http_path;
-  int has_rpc;
-  /** Effective wire name. Bare [rpc] resolves to Service.Operation. */
-  const char *rpc_name;
 } DataBindServiceOperation;
 
 /** Immutable reflected one-way Channel contract owned by one DataBind codec. */
