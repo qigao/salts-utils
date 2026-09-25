@@ -212,16 +212,16 @@ static int parse_direction(
 }
 
 static int parse_format_name(
-    const char *text, databind_compiler_format *out) {
+    const char *text, DataBindFormat *out) {
   static const struct {
     const char *name;
-    databind_compiler_format format;
+    DataBindFormat format;
   } rows[] = {
-      {"binary", DATABIND_COMPILER_FORMAT_BINARY},
-      {"json", DATABIND_COMPILER_FORMAT_JSON},
-      {"yaml", DATABIND_COMPILER_FORMAT_YAML},
-      {"csv", DATABIND_COMPILER_FORMAT_CSV},
-      {"xml", DATABIND_COMPILER_FORMAT_XML},
+      {"binary", DATA_BIND_FORMAT_BINARY},
+      {"json", DATA_BIND_FORMAT_JSON},
+      {"yaml", DATA_BIND_FORMAT_YAML},
+      {"csv", DATA_BIND_FORMAT_CSV},
+      {"xml", DATA_BIND_FORMAT_XML},
   };
   size_t i;
   if (text == NULL || out == NULL) return 0;
@@ -236,10 +236,10 @@ static int parse_format_name(
 
 static int optional_format(
     const json_value_t *object, const char *key,
-    databind_compiler_format *out,
+    DataBindFormat *out,
     char *error, size_t error_size) {
   const char *text = NULL;
-  *out = DATABIND_COMPILER_FORMAT_DEFAULT;
+  *out = DATA_BIND_FORMAT_JSON;
   if (json_object_get(object, key) == NULL) return 0;
   if (optional_string(object, key, &text, error, error_size) != 0)
     return -1;
