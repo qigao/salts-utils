@@ -134,13 +134,12 @@ FunctionDeclAs(
 static DataBind *create_codec(void) {
   static const char schema[] =
       "message AddRequest {"
-      " @Min(1) @Max(5) [query] uint32 left;"
-      " @Min(1) @Max(10) [header(\"X-Right\")] uint32 right;"
-      " optional @Min(1) @Max(3) [query] uint32 scale default 1;"
+      " @Min(1) @Max(5) uint32 left;"
+      " @Min(1) @Max(10) uint32 right;"
+      " optional @Min(1) @Max(3) uint32 scale default 1;"
       "}"
       "message AddResponse { uint32 sum; }"
       "service Calc {"
-      " [GET(\"/add\"), rpc]"
       " Add: AddRequest -> AddResponse;"
       "}";
   DataBind *codec = NULL;
@@ -298,16 +297,16 @@ FunctionDeclAs(
 static DataBind *create_state_codec(void) {
   static const char schema[] =
       "message StateRequest {"
-      " [query] uint32 required_value;"
-      " optional [query] uint32 optional_value;"
-      " nullable [query] uint32 nullable_value;"
-      " optional nullable [query] uint32 defaulted_value default 7;"
+      " uint32 required_value;"
+      " optional uint32 optional_value;"
+      " nullable uint32 nullable_value;"
+      " optional nullable uint32 defaulted_value default 7;"
       "}"
       "message StateResponse {"
       " nullable uint32 nullable_result;"
       " optional nullable uint32 tri_result;"
       "}"
-      "service State { [rpc] Run: StateRequest -> StateResponse; }";
+      "service State { Run: StateRequest -> StateResponse; }";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
   check_equal(data_bind_create_from_text(
@@ -342,22 +341,14 @@ static DataBindStatus http_project(
     out->binding_class = DATA_BIND_BINDING_RESULT;
     snprintf(scratch->space, sizeof(scratch->space), "http.result");
     snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
-  } else if (field->binding_kind != NULL &&
-             strcmp(field->binding_kind, "header") == 0) {
+  } else if (strcmp(field->name, "right") == 0) {
     out->binding_class = DATA_BIND_BINDING_METADATA;
     snprintf(scratch->space, sizeof(scratch->space), "http.header");
-    snprintf(scratch->name, sizeof(scratch->name), "%s",
-             field->binding_name != NULL ? field->binding_name : field->name);
-  } else if (field->binding_kind != NULL &&
-             strcmp(field->binding_kind, "body") == 0) {
-    out->binding_class = DATA_BIND_BINDING_PAYLOAD;
-    snprintf(scratch->space, sizeof(scratch->space), "http.body");
-    snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
+    snprintf(scratch->name, sizeof(scratch->name), "X-Right");
   } else {
     out->binding_class = DATA_BIND_BINDING_VALUE;
     snprintf(scratch->space, sizeof(scratch->space), "http.query");
-    snprintf(scratch->name, sizeof(scratch->name), "%s",
-             field->binding_name != NULL ? field->binding_name : field->name);
+    snprintf(scratch->name, sizeof(scratch->name), "%s", field->name);
   }
   out->space = scratch->space;
   out->name = scratch->name;
