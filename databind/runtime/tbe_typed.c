@@ -1549,6 +1549,32 @@ static DataBindStatus typed_native_from_json_scalar(const cmeta_data_desc *data,
                          "UUID provider could not copy canonical storage");
     return DATA_BIND_OK;
   }
+  if (data->kind == CMETA_DATA_STRING &&
+      cmeta_data_buffer_ops_of(data) != NULL) {
+    const char *text;
+    size_t length;
+    cmeta_status buffer_status;
+    if (json_type(value) != JSON_STRING)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "Expected String value");
+    text = json_string(value);
+    length = json_string_len(value);
+    buffer_status = cmeta_data_buffer_assign(
+        data, storage, (const unsigned char *)text, length, length);
+    if (buffer_status == CMETA_OK) return DATA_BIND_OK;
+    if (buffer_status == CMETA_OUT_OF_MEMORY)
+      return typed_error(error, DATA_BIND_ERR_OOM, path,
+                         "String provider could not allocate native storage");
+    if (buffer_status == CMETA_CAPACITY_EXCEEDED)
+      return typed_error(error, DATA_BIND_ERR_LIMIT, path,
+                         "String provider rejected the bounded payload");
+    if (buffer_status == CMETA_INVALID_ARGUMENT ||
+        buffer_status == CMETA_TYPE_MISMATCH)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "String provider rejected the input value");
+    return typed_error(error, DATA_BIND_ERR_RUNTIME, path,
+                       "String provider failed to assign native storage");
+  }
   if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
     size_t extent;
     if (json_type(value) != JSON_STRING || cmeta_data_fixed_extent(data, &extent) != CMETA_OK ||
@@ -1805,6 +1831,25 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
       return NULL;
     }
     return typed_json_created(json_create_string(text), path, error);
+  }
+  if (data->kind == CMETA_DATA_STRING &&
+      cmeta_data_buffer_ops_of(data) != NULL) {
+    const unsigned char *bytes = NULL;
+    size_t length = 0u;
+    cmeta_status buffer_status =
+        cmeta_data_buffer_read(data, storage, &bytes, &length);
+    if (buffer_status != CMETA_OK || (length != 0u && bytes == NULL)) {
+      typed_error(error,
+                  buffer_status == CMETA_OUT_OF_MEMORY
+                      ? DATA_BIND_ERR_OOM
+                      : DATA_BIND_ERR_TYPE_MISMATCH,
+                  path, "String provider could not expose native storage");
+      return NULL;
+    }
+    return typed_json_created(
+        json_create_string_n((const char *)(bytes != NULL ? bytes : (const unsigned char *)""),
+                             length),
+        path, error);
   }
   if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
     size_t extent;
