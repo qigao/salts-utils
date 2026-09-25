@@ -145,7 +145,7 @@ static Node *field_projection_add_enum(Node *root, const char *name,
 suite("compiler_cmeta_field_projection") {
     it("annotates real backend projections from the shared field semantic rule") {
         static const struct { const char *type; const char *flag; cmeta_data_kind kind; const char *label; const char *cpp; const char *typed; const char *id; } cases[] = {
-            {"int32", NULL, CMETA_DATA_SINT, "scalar", "std::int32_t", "TBE_TYPED_I32", "salts.int32.data"},
+            {"int32", NULL, CMETA_DATA_SINT, "scalar", "std::int32_t", "TBE_TYPED_I32", "cmeta.int32.data"},
             {"f32", "is_optional", CMETA_DATA_FLOAT, "scalar", "float", "TBE_TYPED_F32", "cmeta.float.data"},
             {"bool", NULL, CMETA_DATA_BOOL, "scalar", "bool", "TBE_TYPED_BOOL", "cmeta.bool.data"},
             {"uuid", NULL, CMETA_DATA_CUSTOM, "custom", "salts_uuid_t", "TBE_TYPED_UUID", "salts.uuid.data"},

@@ -180,13 +180,7 @@ suite("real generated and runtime CMeta acceptance") {
       }
       check(sample_descriptor->native_data == sample);
       check(flag_descriptor->native_data == flags);
-      {
-        DataBindStatus validation =
-            tbe_typed_descriptor_validate(sample_descriptor, &error);
-        info("Sample descriptor validation: status=%d path=%s message=%s",
-             (int)validation, error.path, error.message);
-        check_equal(validation, DATA_BIND_OK);
-      }
+      check_equal(tbe_typed_descriptor_validate(sample_descriptor, &error), DATA_BIND_OK);
       check_equal(tbe_typed_descriptor_validate(flag_descriptor, &error), DATA_BIND_OK);
       check_equal(shape->field_count, 3u);
       check_equal(flag_shape->field_count, 1u);
