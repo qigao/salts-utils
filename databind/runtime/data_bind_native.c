@@ -499,90 +499,27 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
                      "Canonical descriptor kind is outside native reader v1");
 }
 
-static DataBindStatus native_restore_value(const cmeta_data_desc *data,
-                                                  void *storage);
-
 static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
                                         const cmeta_data_desc *data, void *storage,
                                         const char *path) {
-  if (native_scalar_supported(data)) {
-    if (!native_scalar_zero(data, storage))
-      return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                         "Could not initialize native scalar semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
-    cmeta_status status = cmeta_data_buffer_init_zero(data, storage);
-    if (status == CMETA_OK) return DATA_BIND_OK;
-    return native_fail(diagnostic,
-                       status == CMETA_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM
-                                                    : DATA_BIND_ERR_RUNTIME,
-                       CSERDE_OK, path,
-                       "Buffer provider could not initialize semantic zero");
-  }
-  if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_bits_restore_zero(data, storage) == CMETA_OK)
-      return DATA_BIND_OK;
-    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                       "Enum provider could not initialize semantic zero");
-  }
-  if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    size_t i;
-    memset(storage, 0, data->storage_type->size);
-    for (i = 0u; i < shape->field_count; ++i) {
-      char child_path[sizeof(((DataBindError *)0)->path)];
-      DataBindStatus status;
-      if (!native_path_join(child_path, sizeof(child_path), path, shape->fields[i].name))
-        return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                           "Native field path exceeds diagnostic capacity");
-      status = native_init_value(diagnostic, shape->fields[i].value,
-                                 (unsigned char *)storage + shape->fields[i].offset,
-                                 child_path);
-      if (status != DATA_BIND_OK) {
-        DataBindStatus rollback_status = DATA_BIND_OK;
-        while (i != 0u) {
-          --i;
-          if (native_restore_value(
-                  shape->fields[i].value,
-                  (unsigned char *)storage + shape->fields[i].offset) != DATA_BIND_OK)
-            rollback_status = DATA_BIND_ERR_RUNTIME;
-        }
-        if (rollback_status != DATA_BIND_OK)
-          return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
-                             "Native initialization rollback did not restore semantic zero");
-        return status;
-      }
-    }
-    return DATA_BIND_OK;
-  }
-  return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                     "Unsupported native semantic-zero initialization");
+  cmeta_status status = cmeta_data_value_init_zero(data, storage);
+  if (status == CMETA_OK) return DATA_BIND_OK;
+  return native_fail(
+      diagnostic,
+      status == CMETA_OUT_OF_MEMORY
+          ? DATA_BIND_ERR_OOM
+          : status == CMETA_TRAIT_MISSING
+                ? DATA_BIND_ERR_SCHEMA
+                : DATA_BIND_ERR_RUNTIME,
+      CSERDE_OK, path,
+      "CMeta value lifecycle could not initialize semantic zero");
 }
 
-static DataBindStatus native_restore_value(const cmeta_data_desc *data, void *storage) {
-  size_t i;
-  if (native_scalar_supported(data))
-    return native_scalar_zero(data, storage) ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;
-  if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES)
-    return cmeta_data_buffer_restore_zero(data, storage) == CMETA_OK
-               ? DATA_BIND_OK
-               : DATA_BIND_ERR_RUNTIME;
-  if (data->kind == CMETA_DATA_ENUM)
-    return cmeta_data_enum_bits_restore_zero(data, storage) == CMETA_OK
-               ? DATA_BIND_OK
-               : DATA_BIND_ERR_RUNTIME;
-  if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    DataBindStatus result = DATA_BIND_OK;
-    for (i = 0u; i < shape->field_count; ++i) {
-      if (native_restore_value(shape->fields[i].value,
-                               (unsigned char *)storage + shape->fields[i].offset) != DATA_BIND_OK)
-        result = DATA_BIND_ERR_RUNTIME;
-    }
-    return result;
-  }
-  return DATA_BIND_ERR_RUNTIME;
+static DataBindStatus native_restore_value(const cmeta_data_desc *data,
+                                           void *storage) {
+  return cmeta_data_value_restore_zero(data, storage) == CMETA_OK
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
 }
 
 static int native_value_is_zero(const cmeta_data_desc *data, const void *storage) {
