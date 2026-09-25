@@ -612,6 +612,7 @@ cmake_add_test(test_databind_binary_layout_ir
     test_binary_layout_ir.c
     binary_layout_ir.c
     compiler_core.c
+    projection.c
     database_schema.c
     mustache_helpers.c
   LIBS
