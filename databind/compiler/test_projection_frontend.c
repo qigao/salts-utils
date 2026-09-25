@@ -112,9 +112,9 @@ spec("DataBind public projection frontend") {
     check_equal(plan.http.operations[0].success_status, 201);
     check_equal(plan.http.operations[0].context_flags, UINT64_C(4));
     check_equal(plan.http.operations[0].ingress_format,
-                DATABIND_COMPILER_FORMAT_YAML);
+                DATA_BIND_FORMAT_YAML);
     check_equal(plan.http.operations[0].egress_format,
-                DATABIND_COMPILER_FORMAT_XML);
+                DATA_BIND_FORMAT_XML);
     check_equal(plan.http.field_count, (size_t)3u);
     check_equal(plan.http.errors[0].error_type, "CalcError");
     check_equal(plan.http.errors[0].status, 422);
@@ -122,9 +122,9 @@ spec("DataBind public projection frontend") {
     check_equal(plan.rpc.operation_count, (size_t)1u);
     check_equal(plan.rpc.operations[0].wire_method, "calc.add");
     check_equal(plan.rpc.operations[0].ingress_format,
-                DATABIND_COMPILER_FORMAT_JSON);
+                DATA_BIND_FORMAT_JSON);
     check_equal(plan.rpc.operations[0].egress_format,
-                DATABIND_COMPILER_FORMAT_BINARY);
+                DATA_BIND_FORMAT_BINARY);
     check_equal(plan.rpc.field_count, (size_t)3u);
     check_equal(plan.rpc.fields[0].wire_name, "lhs");
     check_equal(plan.rpc.fields[0].ordinal, (size_t)0u);
