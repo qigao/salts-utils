@@ -12,6 +12,7 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_OVERLAY_PRESENCE,
     EXPECT_OVERLAY_NULL,
     EXPECT_OVERLAY_PRESENCE_NULL,
+    EXPECT_MAP_PROVIDER,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -32,6 +33,8 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
     { "nullable int32", "null + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_NULL },
     { "optional nullable int32", "presence + null + int32_t", CMETA_DATA_SINT,
       EXPECT_OVERLAY_PRESENCE_NULL },
+    { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
+      EXPECT_MAP_PROVIDER },
     { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
 };
 
@@ -48,6 +51,8 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "overlay_null";
         case EXPECT_OVERLAY_PRESENCE_NULL:
             return "overlay_presence_null";
+        case EXPECT_MAP_PROVIDER:
+            return "map_provider";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -140,7 +145,7 @@ static Node *field_projection_add_enum(Node *root, const char *name,
 suite("compiler_cmeta_field_projection") {
     it("annotates real backend projections from the shared field semantic rule") {
         static const struct { const char *type; const char *flag; cmeta_data_kind kind; const char *label; const char *cpp; const char *typed; const char *id; } cases[] = {
-            {"int32", NULL, CMETA_DATA_SINT, "scalar", "std::int32_t", "TBE_TYPED_I32", "salts.int32.data"},
+            {"int32", NULL, CMETA_DATA_SINT, "scalar", "std::int32_t", "TBE_TYPED_I32", "cmeta.int32.data"},
             {"f32", "is_optional", CMETA_DATA_FLOAT, "scalar", "float", "TBE_TYPED_F32", "cmeta.float.data"},
             {"bool", NULL, CMETA_DATA_BOOL, "scalar", "bool", "TBE_TYPED_BOOL", "cmeta.bool.data"},
             {"uuid", NULL, CMETA_DATA_CUSTOM, "custom", "salts_uuid_t", "TBE_TYPED_UUID", "salts.uuid.data"},
@@ -175,7 +180,13 @@ suite("compiler_cmeta_field_projection") {
             if (cases[i].id) check_equal(field_projection_text(field, "cmeta_data_id"), cases[i].id);
             else check_null(field_projection_text(field, "cmeta_data_id"));
             check_equal(field_projection_text(field, "type"), cases[i].type);
-            if (cases[i].kind == CMETA_DATA_SEQUENCE || cases[i].kind == CMETA_DATA_SET || cases[i].kind == CMETA_DATA_MAP)
+            if (cases[i].kind == CMETA_DATA_MAP) {
+                check_not_null(field_projection_text(field, "native_data_symbol"));
+                check_not_null(field_projection_text(field, "native_type_symbol"));
+                check_equal(field_projection_text(field, "native_map_value_data_symbol"),
+                            "cmeta_data_int32");
+            } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
+                       cases[i].kind == CMETA_DATA_SET)
                 check_null(field_projection_text(field, "native_data_symbol"));
             node_free(root);
         }
@@ -185,10 +196,10 @@ suite("compiler_cmeta_field_projection") {
         static const char *const names[] = {
             "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
             "BytesStorage", "OptionalStorage", "NullableStorage",
-            "TriStateStorage", "ListStorage"};
+            "TriStateStorage", "MapStorage", "ListStorage"};
         static const char *const types[] = {
             "bool", "uuid", "bytes", "string", "bytes", "int32", "int32",
-            "int32", "list"};
+            "int32", "map", "list"};
         Node *root = create_node_map("root");
         size_t i;
 
@@ -209,6 +220,10 @@ suite("compiler_cmeta_field_projection") {
             } else if (EXPECTED[i].requirement == EXPECT_OVERLAY_PRESENCE_NULL) {
                 check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
                 check_equal(map_add(field, create_node_string("is_nullable", "1")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+                check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+                check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
             } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
@@ -237,6 +252,9 @@ suite("compiler_cmeta_field_projection") {
             else
                 check_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
+            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER)
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_graph_supported"));
         }
 
         node_free(root);
@@ -360,10 +378,53 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("length-encodes private map provider identifiers") {
+        Node *root = create_node_map("root");
+        Node *left = field_projection_add_record(root, "messages", "A_B");
+        Node *right = field_projection_add_record(root, "messages", "A");
+        Node *left_field = field_projection_add_field(left, "A_B", "C", "map");
+        Node *right_field = field_projection_add_field(right, "A", "B_C", "map");
+        const char *left_symbol;
+        const char *right_symbol;
+
+        check_not_null(left_field);
+        check_not_null(right_field);
+        if (!left_field || !right_field) {
+            node_free(root);
+            return;
+        }
+#define COMPLETE_MAP(FIELD) do {                                                    \
+            check_equal(map_add((FIELD), create_node_string("is_map", "1")), 0);   \
+            check_equal(map_add((FIELD), create_node_string("key_type",            \
+                                                              "string")), 0);      \
+            check_equal(map_add((FIELD), create_node_string("value_type",          \
+                                                              "int32")), 0);       \
+        } while (0)
+        COMPLETE_MAP(left_field);
+        COMPLETE_MAP(right_field);
+#undef COMPLETE_MAP
+
+        tbe_compiler_annotate_language_types(root);
+        left_symbol = field_projection_text(left_field, "native_map_name");
+        right_symbol = field_projection_text(right_field, "native_map_name");
+        check_equal(left_symbol, "databindCmetaMap3xA_B1xC");
+        check_equal(right_symbol, "databindCmetaMap1xA3xB_C");
+        check(strcmp(left_symbol, right_symbol) != 0);
+        check_equal(field_projection_text(left_field, "native_data_symbol"),
+                    "databindCmetaMap3xA_B1xCData");
+        check_equal(field_projection_text(right_field, "native_type_symbol"),
+                    "databindCmetaMap1xA3xB_CType");
+        check_not_null(field_projection_child(left, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(right, "cmeta_graph_supported"));
+        check_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
             "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
-            "MapStorage", "OptionalStorage",
+            "OptionalStorage",
             "UnsupportedNested", "Cycle"
         };
         Node *root = create_node_map("root");
@@ -501,7 +562,7 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "Sample"),
             "cmeta_graph_supported"));
-        check_null(field_projection_child(
+        check_not_null(field_projection_child(
             field_projection_record(root, "messages", "OptionalStorage"),
             "cmeta_graph_supported"));
         check_not_null(field_projection_child(
@@ -527,6 +588,12 @@ suite("compiler_cmeta_field_projection") {
             "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
+            "cmeta_graph_supported"));
+        check_null(field_projection_child(
+            field_projection_record(root, "messages", "MapStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "MapStorage"),
             "cmeta_graph_supported"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "Depth33"),

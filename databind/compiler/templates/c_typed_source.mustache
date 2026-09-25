@@ -35,7 +35,7 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
         .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
         .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
         .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-        .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+        .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
         .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
         .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
         .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -75,7 +75,7 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
       .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
       .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
       .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
       .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -111,7 +111,7 @@ static const TbeTypedField {{name}}_TYPED_FIELDS[] = {
       .element_wire_kind = {{#typed_element_wire_kind}}{{typed_element_wire_kind}}{{/typed_element_wire_kind}}{{^typed_element_wire_kind}}{{#typed_element_kind}}{{typed_element_kind}}{{/typed_element_kind}}{{^typed_element_kind}}TBE_TYPED_BOOL{{/typed_element_kind}}{{/typed_element_wire_kind}},
       .element_size = {{#typed_element_c_type}}sizeof({{typed_element_c_type}}){{/typed_element_c_type}}{{^typed_element_c_type}}0{{/typed_element_c_type}},
       .fixed_count = {{#typed_fixed_count}}{{typed_fixed_count}}{{/typed_fixed_count}}{{^typed_fixed_count}}0{{/typed_fixed_count}},
-      .object_type = {{#typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}}{{/typed_cmeta_runtime_supported}},
+      .object_type = {{#typed_object_descriptor}}{{typed_object_descriptor}}{{/typed_object_descriptor}}{{^typed_object_descriptor}}NULL{{/typed_object_descriptor}},
       .nested_overlay = {{#typed_nested_overlay}}{{typed_nested_overlay}}{{/typed_nested_overlay}}{{^typed_nested_overlay}}NULL{{/typed_nested_overlay}},
       .map_entry_size = {{#typed_map_entry_type}}sizeof({{typed_map_entry_type}}){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
       .map_key_offset = {{#typed_map_entry_type}}offsetof({{typed_map_entry_type}}, key){{/typed_map_entry_type}}{{^typed_map_entry_type}}0{{/typed_map_entry_type}},
@@ -236,6 +236,156 @@ static const cmeta_data_desc {{native_enum_symbol}}Data = {
 static const cmeta_data_desc {{native_enum_symbol}}Data = {0};
 {{/native_enum_supported}}
 {{/enums}}
+
+/* Schema maps keep their deterministic vector representation, but their
+ * semantic K/V metadata is emitted explicitly from the normalized schema.
+ * The provider never tries to recover erased element types from vec_t. */
+#define DATABIND_GENERATED_MAP_METHOD_I(type, method) type##_##method
+#define DATABIND_GENERATED_MAP_METHOD(type, method) \
+    DATABIND_GENERATED_MAP_METHOD_I(type, method)
+#define DATABIND_GENERATED_STRING_I(value) #value
+#define DATABIND_GENERATED_STRING(value) DATABIND_GENERATED_STRING_I(value)
+#define DATABIND_GENERATED_MAP_PROVIDER(NAME, VECTOR_TYPE, ENTRY_TYPE, VALUE_DATA, \
+                                        STABLE_ID, DISPLAY_NAME)                 \
+    static const cmeta_type_identity NAME##Id =                               \
+        CMETA_TYPE_ID_ATOM_INIT(STABLE_ID ".storage");                       \
+    static const cmeta_type_desc NAME##Type = {                               \
+        DATABIND_GENERATED_STRING(VECTOR_TYPE), sizeof(VECTOR_TYPE),          \
+        TBE_TYPED_ALIGNOF(VECTOR_TYPE), CMETA_T_OBJECT, NULL, NULL,            \
+        &NAME##Id                                                             \
+    };                                                                        \
+    static const cmeta_data_desc *NAME##Key(const void *object) {             \
+        (void)object;                                                         \
+        return &salts_tstr_cmeta_data;                                        \
+    }                                                                         \
+    static const cmeta_data_desc *NAME##Value(const void *object) {           \
+        (void)object;                                                         \
+        return &(VALUE_DATA);                                                 \
+    }                                                                         \
+    static bool NAME##KeysUnique(const VECTOR_TYPE *map) {                   \
+        size_t count;                                                         \
+        size_t i;                                                             \
+        size_t j;                                                             \
+        if (map == NULL) return false;                                        \
+        count = DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, size)(map);        \
+        for (i = 0u; i < count; ++i) {                                       \
+            const ENTRY_TYPE *left =                                         \
+                DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, at_const)(map, i); \
+            size_t left_size;                                                 \
+            if (left == NULL) return false;                                  \
+            left_size = tstr_len(left->key);                                  \
+            for (j = i + 1u; j < count; ++j) {                               \
+                const ENTRY_TYPE *right =                                    \
+                    DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, at_const)(     \
+                        map, j);                                              \
+                size_t right_size;                                            \
+                if (right == NULL) return false;                             \
+                right_size = tstr_len(right->key);                            \
+                if (left_size == right_size &&                               \
+                    (left_size == 0u ||                                      \
+                     memcmp(left->key, right->key, left_size) == 0))          \
+                    return false;                                             \
+            }                                                                 \
+        }                                                                     \
+        return true;                                                          \
+    }                                                                         \
+    static cmeta_status NAME##Foreach(                                        \
+        const void *object, cmeta_data_map_visit_fn visit, void *context,     \
+        size_t max_items) {                                                   \
+        const VECTOR_TYPE *map = (const VECTOR_TYPE *)object;                 \
+        size_t count;                                                         \
+        size_t i;                                                             \
+        if (map == NULL || visit == NULL) return CMETA_INVALID_ARGUMENT;      \
+        count = DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, size)(map);        \
+        if (count > max_items) return CMETA_CAPACITY_EXCEEDED;                \
+        if (!NAME##KeysUnique(map)) return CMETA_CALLBACK_ERROR;              \
+        for (i = 0u; i < count; ++i) {                                       \
+            const ENTRY_TYPE *entry =                                        \
+                DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, at_const)(map, i); \
+            cmeta_status status;                                              \
+            if (entry == NULL) return CMETA_CALLBACK_ERROR;                  \
+            status = visit(context, &entry->key, &entry->value);             \
+            if (status != CMETA_OK) return status;                           \
+        }                                                                     \
+        return CMETA_OK;                                                      \
+    }                                                                         \
+    static size_t NAME##BorrowSize(const void *object) {                      \
+        const VECTOR_TYPE *map = (const VECTOR_TYPE *)object;                 \
+        return map != NULL                                                    \
+            ? DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, size)(map)          \
+            : 0u;                                                            \
+    }                                                                         \
+    static cmeta_gen_status NAME##BorrowNext(                                 \
+        const void *object, cmeta_range_cursor *cursor,                      \
+        const void **out_key, const void **out_value) {                       \
+        const VECTOR_TYPE *map = (const VECTOR_TYPE *)object;                 \
+        const ENTRY_TYPE *entry;                                              \
+        size_t count;                                                         \
+        if (map == NULL || cursor == NULL || out_key == NULL ||              \
+            out_value == NULL)                                                \
+            return CMETA_GEN_ERROR;                                          \
+        *out_key = NULL;                                                      \
+        *out_value = NULL;                                                    \
+        count = DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, size)(map);        \
+        if (cursor->index >= count) return CMETA_GEN_DONE;                   \
+        if (cursor->index == 0u && !NAME##KeysUnique(map))                    \
+            return CMETA_GEN_ERROR;                                          \
+        entry = DATABIND_GENERATED_MAP_METHOD(VECTOR_TYPE, at_const)(         \
+            map, cursor->index);                                              \
+        if (entry == NULL) return CMETA_GEN_ERROR;                           \
+        *out_key = &entry->key;                                               \
+        *out_value = &entry->value;                                           \
+        ++cursor->index;                                                      \
+        return cursor->index == count ? CMETA_GEN_VALUE_AND_DONE             \
+                                      : CMETA_GEN_VALUE;                      \
+    }                                                                         \
+    static const cmeta_data_map_borrow_ops NAME##BorrowOps = {                \
+        sizeof(cmeta_data_map_borrow_ops),                                    \
+        CMETA_DATA_MAP_BORROW_OPS_ABI_VERSION, NAME##BorrowSize,              \
+        NAME##BorrowNext, NULL                                                \
+    };                                                                        \
+    static const cmeta_data_map_ops NAME##Ops = {                             \
+        sizeof(cmeta_data_map_ops), CMETA_DATA_MAP_OPS_ABI_VERSION,           \
+        &NAME##Type, CMETA_DATA_MAP_UNIQUE_KEYS | CMETA_DATA_MAP_ORDERED,     \
+        NAME##Key, NAME##Value, NAME##Foreach, NULL, NULL, &NAME##BorrowOps   \
+    };                                                                        \
+    static const cmeta_data_desc NAME##Data = {                               \
+        .struct_size = sizeof(cmeta_data_desc),                               \
+        .abi_version = CMETA_DATA_DESC_ABI_VERSION,                           \
+        .stable_id = STABLE_ID,                                               \
+        .display_name = DISPLAY_NAME,                                         \
+        .kind = CMETA_DATA_MAP,                                               \
+        .storage_type = &NAME##Type,                                          \
+        .map_ops = &NAME##Ops                                                 \
+    };
+
+{{#composites}}{{#fields}}{{#native_map_name}}
+DATABIND_GENERATED_MAP_PROVIDER(
+    {{native_map_name}}, {{typed_vector_type}}, {{typed_map_entry_type}},
+    {{native_map_value_data_symbol}},
+    "databind.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}.map",
+    "{{owner_name}}_t.{{c_name}}")
+{{/native_map_name}}{{/fields}}{{/composites}}
+{{#groups}}{{#fields}}{{#native_map_name}}
+DATABIND_GENERATED_MAP_PROVIDER(
+    {{native_map_name}}, {{typed_vector_type}}, {{typed_map_entry_type}},
+    {{native_map_value_data_symbol}},
+    "databind.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}.map",
+    "{{owner_name}}_t.{{c_name}}")
+{{/native_map_name}}{{/fields}}{{/groups}}
+{{#messages}}{{#fields}}{{#native_map_name}}
+DATABIND_GENERATED_MAP_PROVIDER(
+    {{native_map_name}}, {{typed_vector_type}}, {{typed_map_entry_type}},
+    {{native_map_value_data_symbol}},
+    "databind.native.{{schema.schema_name}}.{{owner_name}}_t.{{c_name}}.map",
+    "{{owner_name}}_t.{{c_name}}")
+{{/native_map_name}}{{/fields}}{{/messages}}
+
+#undef DATABIND_GENERATED_MAP_PROVIDER
+#undef DATABIND_GENERATED_STRING
+#undef DATABIND_GENERATED_STRING_I
+#undef DATABIND_GENERATED_MAP_METHOD
+#undef DATABIND_GENERATED_MAP_METHOD_I
 
 {{#composites}}
 static const cmeta_type_identity {{name}}_CMETA_ID =

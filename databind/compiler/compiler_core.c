@@ -285,6 +285,7 @@ typedef struct tbe_compiler_scalar_projection {
 typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_FIXED_VALUE,
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
+  DATABIND_COMPILER_NATIVE_MAP_PROVIDER,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
   TBE_COMPILER_NATIVE_OVERLAY_NULL,
@@ -299,6 +300,8 @@ static const char *tbe_compiler_native_requirement_name(
       return "fixed_value";
     case TBE_COMPILER_NATIVE_ENUM_DOMAIN:
       return "enum_domain";
+    case DATABIND_COMPILER_NATIVE_MAP_PROVIDER:
+      return "map_provider";
     case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
@@ -603,6 +606,73 @@ static int tbe_compiler_set_enum_symbol(Node *target, const char *key,
   return status;
 }
 
+/* Map provider identifiers are private to one generated translation unit.
+ * Length prefixes keep legal owner/field pairs injective without relying on
+ * the public generated API's historical underscore spelling. */
+static int databind_compiler_set_map_symbol(Node *target, const char *key,
+                                            const char *owner,
+                                            const char *field,
+                                            const char *role) {
+  static const char prefix[] = "databindCmetaMap";
+  size_t owner_length;
+  size_t field_length;
+  size_t role_length;
+  size_t capacity;
+  char *symbol;
+  int written;
+  int status;
+  if (!target || !key || !owner || !field || !role) return -1;
+  owner_length = strlen(owner);
+  field_length = strlen(field);
+  role_length = strlen(role);
+  if (owner_length > SIZE_MAX - field_length ||
+      owner_length + field_length > SIZE_MAX - role_length ||
+      owner_length + field_length + role_length > SIZE_MAX - sizeof(prefix) - 48u)
+    return -1;
+  capacity = owner_length + field_length + role_length + sizeof(prefix) + 48u;
+  symbol = (char *)malloc(capacity);
+  if (!symbol) return -1;
+  written = snprintf(symbol, capacity, "%s%zux%s%zux%s%s", prefix,
+                     owner_length, owner, field_length, field, role);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return -1;
+  }
+  status = tbe_compiler_set_string(target, key, symbol);
+  free(symbol);
+  return status;
+}
+
+static int databind_compiler_annotate_map_value_provider(
+    Node *root, Node *field, const char *value_type) {
+  const tbe_compiler_scalar_projection_t *scalar;
+  Node *target;
+  char symbol[256];
+  if (!root || !field || !value_type) return -1;
+  scalar = tbe_compiler_scalar_projection(value_type);
+  if (scalar && scalar->native_data_symbol)
+    return tbe_compiler_set_string(field, "native_map_value_data_symbol",
+                                   scalar->native_data_symbol);
+  if (strcmp(value_type, "string") == 0)
+    return tbe_compiler_set_string(field, "native_map_value_data_symbol",
+                                   "salts_tstr_cmeta_data");
+  if (strcmp(value_type, "uuid") == 0)
+    return tbe_compiler_set_string(field, "native_map_value_data_symbol",
+                                   "salts_uuid_cmeta_data");
+  target = tbe_compiler_find_record(root, "enums", value_type);
+  if (target)
+    return tbe_compiler_set_enum_symbol(field, "native_map_value_data_symbol",
+                                        value_type, "Data");
+  target = tbe_compiler_find_record(root, "composites", value_type);
+  if (!target) target = tbe_compiler_find_record(root, "groups", value_type);
+  if (!target) target = tbe_compiler_find_record(root, "messages", value_type);
+  if (!target) return -1;
+  if (snprintf(symbol, sizeof(symbol), "%s_CMETA_DATA", value_type) < 0 ||
+      strlen(value_type) + strlen("_CMETA_DATA") >= sizeof(symbol))
+    return -1;
+  return tbe_compiler_set_string(field, "native_map_value_data_symbol", symbol);
+}
+
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                              const schema_cmeta_field_type *semantic) {
   const char *name = tbe_compiler_string_value(field, "name");
@@ -682,7 +752,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
   }
   if (semantic && cmeta_data_kind_is_container(semantic->kind)) {
     const char *inner = tbe_compiler_string_value(field, "inner_type");
-    kind = tbe_compiler_typed_named_kind(root, inner, c_type, sizeof(c_type), descriptor,
+    const char *storage_element = semantic->kind == CMETA_DATA_MAP
+        ? tbe_compiler_string_value(field, "value_type")
+        : inner;
+    kind = tbe_compiler_typed_named_kind(root, storage_element, c_type,
+                                         sizeof(c_type), descriptor,
                                          sizeof(descriptor));
     if (!kind) {
       snprintf(declaration, sizeof(declaration), "%s_t %s;", inner ? inner : "unknown", c_name);
@@ -730,6 +804,16 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_element_c_type", entry_type);
       tbe_compiler_set_string(field, "typed_needs_map_vector", "1");
+      if (databind_compiler_annotate_map_value_provider(
+              root, field, value_type ? value_type : inner) == 0 &&
+          databind_compiler_set_map_symbol(field, "native_map_name", owner,
+                                           c_name, "") == 0 &&
+          databind_compiler_set_map_symbol(field, "native_data_symbol", owner,
+                                           c_name, "Data") == 0 &&
+          databind_compiler_set_map_symbol(field, "native_type_symbol", owner,
+                                           c_name, "Type") == 0) {
+        tbe_compiler_set_string(field, "native_c_type", vector_type);
+      }
     } else {
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
@@ -797,7 +881,12 @@ static void tbe_compiler_annotate_native_requirement(
   if (!root || !field || !semantic) return;
   type = tbe_compiler_string_value(field, "type");
 
-  if (cmeta_data_kind_is_container(semantic->kind)) {
+  if (semantic->kind == CMETA_DATA_MAP &&
+      tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+      tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
+      tbe_compiler_string_value(field, "native_map_value_data_symbol") != NULL) {
+    requirement = DATABIND_COMPILER_NATIVE_MAP_PROVIDER;
+  } else if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
   } else if (tbe_compiler_has_child(field, "is_optional") &&
              tbe_compiler_has_child(field, "is_nullable")) {
@@ -1004,6 +1093,7 @@ static int tbe_compiler_cmeta_classify_record(
     Node *field = fields->data.list.items[i];
     const char *type = tbe_compiler_string_value(field, "type");
     const char *kind = tbe_compiler_string_value(field, "typed_kind");
+    const int is_map = tbe_compiler_has_child(field, "is_map");
     const tbe_compiler_scalar_projection_t *scalar;
     Node *target;
     size_t target_index;
@@ -1012,12 +1102,47 @@ static int tbe_compiler_cmeta_classify_record(
         (context->runtime &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
-        tbe_compiler_has_child(field, "is_collection") ||
+        (tbe_compiler_has_child(field, "is_collection") && !is_map) ||
         tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
-        tbe_compiler_has_child(field, "is_map") ||
         tbe_compiler_has_child(field, "is_group_field"))
       goto unsupported;
+
+    if (is_map) {
+      const char *key_type = tbe_compiler_string_value(field, "key_type");
+      const char *value_type = tbe_compiler_string_value(field, "value_type");
+      if (!key_type || strcmp(key_type, "string") != 0 || !value_type ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_map_value_data_symbol") == NULL)
+        goto unsupported;
+      /* The generated map graph is a complete read provider. The mixed
+       * typed-descriptor lifecycle stays unavailable until its transactional
+       * collector/construct slice lands; do not advertise partial mutation. */
+      if (context->runtime) goto unsupported;
+      scalar = tbe_compiler_scalar_projection(value_type);
+      if ((scalar && scalar->native_data_symbol) ||
+          strcmp(value_type, "string") == 0 ||
+          strcmp(value_type, "uuid") == 0)
+        continue;
+      target = tbe_compiler_find_record(context->root, "enums", value_type);
+      if (target) {
+        const char *marker = context->runtime ? "typed_cmeta_runtime_supported"
+                                              : "native_enum_supported";
+        if (!tbe_compiler_has_child(target, marker)) goto unsupported;
+        continue;
+      }
+      target = tbe_compiler_find_any_record(context->root, value_type);
+      if (!target) goto unsupported;
+      target_index = tbe_compiler_cmeta_record_index(context, target);
+      if (target_index == SIZE_MAX ||
+          !tbe_compiler_cmeta_classify_record(context, target_index) ||
+          context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+        goto unsupported;
+      if (context->depths[target_index] + 1u > max_depth)
+        max_depth = context->depths[target_index] + 1u;
+      continue;
+    }
 
     scalar = tbe_compiler_scalar_projection(type);
     if (scalar) {
