@@ -385,6 +385,12 @@ typedef struct TbeTypedDescriptor {
 
 TBE_TYPED_VEC_DEFINE(tbe_bytes_t, uint8_t)
 
+/** Canonical CMeta provider for generated owning dynamic bytes storage. */
+DATA_BIND_API extern const cmeta_type_desc tbe_bytes_cmeta_type;
+DATA_BIND_API extern const cmeta_data_buffer_shape tbe_bytes_cmeta_shape;
+DATA_BIND_API extern const cmeta_data_buffer_ops tbe_bytes_cmeta_buffer_ops;
+DATA_BIND_API extern const cmeta_data_desc tbe_bytes_cmeta_data;
+
 /**
  * Initialize an owning generated object from its descriptor.
  * @param type Generated record descriptor.
