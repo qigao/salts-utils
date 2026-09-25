@@ -8,6 +8,7 @@
 
 int main(void) {
   static const char schema[] =
+      "schema ProjectionPlanConsumer [version(1)];"
       "message Request { optional nullable string note; }"
       "message Response { uint32 value; }"
       "service Calc { Add: Request -> Response; }";
