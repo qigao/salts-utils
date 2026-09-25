@@ -79,20 +79,6 @@ typedef struct JINJA_CMETA_RENDER_OPTIONS {
 
 #define JINJA_CMETA_RENDER_OPTIONS_INIT {0u, 0u, 0u, 0u, 0u}
 
-/**
- * Borrowed contiguous sequence view.
- *
- * A non-empty view requires non-NULL data, nonzero stride, and a valid element
- * descriptor. All bytes and descriptors must remain immutable until rendering
- * returns. No ownership is transferred.
- */
-typedef struct JINJA_CMETA_SEQUENCE_VIEW {
-  const void *data;
-  size_t count;
-  size_t stride;
-  const cmeta_data_desc *element;
-} JINJA_CMETA_SEQUENCE_VIEW;
-
 typedef struct JINJA_CMETA_TEMPLATE JINJA_CMETA_TEMPLATE;
 
 typedef enum JINJA_CMETA_EXTENSION_TAG {
@@ -427,9 +413,6 @@ JINJA_CMETA_API JINJA_CMETA_STATUS jinja_cmeta_render_string(
 
 /** CMeta STRING descriptor for borrowed vstr fields. */
 JINJA_CMETA_API const cmeta_data_desc *jinja_cmeta_vstr_data(void);
-
-/** CMeta CUSTOM descriptor for JINJA_CMETA_SEQUENCE_VIEW fields. */
-JINJA_CMETA_API const cmeta_data_desc *jinja_cmeta_sequence_data(void);
 
 #ifdef __cplusplus
 }
