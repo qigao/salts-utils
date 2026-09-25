@@ -811,6 +811,7 @@ static int plugin_write_client_source(
               "  const salts_plugin_export *entry;\n"
               "  void *params[3];\n"
               "  %s__error local_error = %s__ERROR_INIT;\n"
+              "  DataBindStatus move_status;\n"
               "  int result;\n"
               "  if (client == NULL || request == NULL || response == NULL ||\n"
               "      typed_error == NULL || native_status == NULL)\n"
@@ -827,9 +828,15 @@ static int plugin_write_client_source(
               "  params[2] = &local_error;\n"
               "  if (!entry->value.function.invoke(\n"
               "          entry->value.function.context, &result,\n"
-              "          params, 3u))\n"
+              "          params, 3u)) {\n"
+              "    %s__error_clear(&local_error);\n"
               "    return SALTS_PLUGIN_INVALID_STATE;\n"
-              "  *typed_error = local_error;\n"
+              "  }\n"
+              "  move_status = %s__error_move(typed_error, &local_error);\n"
+              "  if (move_status != DATA_BIND_OK) {\n"
+              "    %s__error_clear(&local_error);\n"
+              "    return SALTS_PLUGIN_INCOMPATIBLE_CONTRACT;\n"
+              "  }\n"
               "  *native_status = result;\n"
               "  return SALTS_PLUGIN_OK;\n"
               "}\n\n",
@@ -837,6 +844,9 @@ static int plugin_write_client_source(
               client_symbol,
               operation->request_type,
               operation->response_type,
+              operation->symbol,
+              operation->symbol,
+              operation->symbol,
               operation->symbol,
               operation->symbol,
               operation->symbol,
