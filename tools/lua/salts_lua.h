@@ -404,6 +404,67 @@ static inline DataBindStatus c11_lua_push_native_descriptor(
     return c11_lua_cmeta_push_value(
         L, descriptor->native_data, object, 0u, max_depth);
 }
+
+static inline DataBindStatus c11_lua_cmeta_read_scalar(
+    lua_State *L, int index, const cmeta_data_desc *data, void *object) {
+#if defined(TBE_TYPED_H)
+    return c11_lua_tbe_read_scalar(L, index, data, object);
+#else
+    (void)L; (void)index; (void)data; (void)object;
+    return DATA_BIND_ERR_SCHEMA;
+#endif
+}
+
+static inline DataBindStatus c11_lua_cmeta_read_value(
+    lua_State *L, int index, const cmeta_data_desc *data, void *object,
+    size_t depth, size_t max_depth) {
+    const cmeta_data_struct_shape *shape;
+    int table_index;
+    size_t i;
+    if (L == NULL || data == NULL || object == NULL)
+        return DATA_BIND_ERR_INVALID_ARG;
+    if (data->kind != CMETA_DATA_STRUCT)
+        return c11_lua_cmeta_read_scalar(L, index, data, object);
+    if (!lua_istable(L, index)) return DATA_BIND_ERR_TYPE_MISMATCH;
+    if (depth > max_depth) return DATA_BIND_ERR_LIMIT;
+    shape = (const cmeta_data_struct_shape *)data->shape;
+    if (shape == NULL || shape->fields == NULL) return DATA_BIND_ERR_SCHEMA;
+    table_index = lua_absindex(L, index);
+    for (i = 0u; i < shape->field_count; ++i) {
+        const cmeta_data_field_desc *field = &shape->fields[i];
+        DataBindStatus status;
+        if (field->name == NULL || field->name[0] == '\0' ||
+            field->value == NULL)
+            return DATA_BIND_ERR_SCHEMA;
+        lua_getfield(L, table_index, field->name);
+        status = lua_isnil(L, -1)
+                     ? DATA_BIND_ERR_TYPE_MISMATCH
+                     : c11_lua_cmeta_read_value(
+                           L, -1, field->value,
+                           (uint8_t *)object + field->offset,
+                           depth + 1u, max_depth);
+        lua_pop(L, 1);
+        if (status != DATA_BIND_OK) return status;
+    }
+    return DATA_BIND_OK;
+}
+
+/*
+ * Read only into caller-provided canonical storage. Lifecycle/rollback remains
+ * the caller's DataBind native responsibility; the Lua adapter neither invents
+ * ownership nor copies opaque runtime state.
+ */
+static inline DataBindStatus c11_lua_read_native_descriptor(
+    lua_State *L, int index, const DataBindNativeDescriptor *descriptor,
+    void *object, size_t max_depth, size_t max_dynamic_items) {
+    (void)max_dynamic_items;
+    if (L == NULL || descriptor == NULL || object == NULL)
+        return DATA_BIND_ERR_INVALID_ARG;
+    if (data_bind_native_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
+        return DATA_BIND_ERR_SCHEMA;
+    return c11_lua_cmeta_read_value(
+        L, index, descriptor->native_data, object, 0u, max_depth);
+}
 #endif /* DATA_BIND_NATIVE_DESCRIPTOR_H */
 
 /* The legacy flat typed-function declaration can contain 20 tokens, beyond
