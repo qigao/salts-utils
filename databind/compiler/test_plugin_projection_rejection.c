@@ -91,7 +91,7 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     PLUGIN_OWNED_TYPED_ERROR_SCHEMA,
                     &root, &schema_data),
                 0);
@@ -144,7 +144,7 @@ spec("DataBind Plugin projection semantic rejection") {
         DATABIND_COMPILER_PLUGIN_BACKEND;
     size_t i;
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
                 0);
     check_not_null(root);
@@ -205,7 +205,7 @@ spec("DataBind Plugin projection semantic rejection") {
     databind_compiler_projection_backend backend =
         DATABIND_COMPILER_PLUGIN_BACKEND;
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
                 0);
     check_not_null(root);
@@ -241,7 +241,7 @@ spec("DataBind Plugin projection semantic rejection") {
     char *schema_data = NULL;
     databind_compiler_service_native_ir native_ir = {0};
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     PLUGIN_COMPONENT_SCHEMA, &root, &schema_data),
                 0);
     check_not_null(root);
@@ -296,7 +296,7 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
                 0);
     check_not_null(root);
