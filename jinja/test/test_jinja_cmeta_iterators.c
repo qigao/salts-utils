@@ -129,7 +129,7 @@ spec("Jinja CMeta: iterators 8") {
     JINJA_CMETA_ERROR error = JINJA_CMETA_ERROR_INIT;
     char *output = NULL;
     jinja_test_model_init(&model);
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){&root.user, 1u, sizeof(root.user), &model.user_desc};
+    root.users = (cmeta_data_collection_view){&root.user, 1u, sizeof(root.user), &model.user_desc};
     check_equal(jinja_test_render(
         "{% for pairs in [{}|items] %}{{ pairs in users }}|{{ pairs not in users }}{% endfor %}",
         &model, &root, NULL, &output, &error), JINJA_CMETA_OK);
