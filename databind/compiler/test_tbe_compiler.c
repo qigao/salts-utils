@@ -229,7 +229,7 @@ static char *render_c_template(const char *schema) {
   if (!root) goto cleanup;
 
   if (parse_schema(schema, strlen(schema), root, NULL) != 0) goto cleanup;
-  tbe_compiler_annotate_language_types(root);
+  databind_compiler_annotate_language_types(root);
 
   templ = mustache_compile(template_text, template_size, NULL, NULL, 0);
   if (!templ) goto cleanup;
@@ -276,8 +276,8 @@ static char *render_compiler_template_from_schema(const char *schema,
   cleanup_test_file(schema_path);
   cleanup_test_file(output_path);
   if (write_test_file(schema_path, schema) != 0) goto cleanup;
-  if (tbe_compiler_parse_schema_file(schema_path, &root, &schema_data) != 0) goto cleanup;
-  if (tbe_compiler_render_file(root, template_file, output_path) != 0) goto cleanup;
+  if (databind_compiler_parse_schema_file(schema_path, &root, &schema_data) != 0) goto cleanup;
+  if (databind_compiler_render_file(root, template_file, output_path) != 0) goto cleanup;
   output = tt_read_file(output_path, &output_size);
   if (!output || output_size == 0) {
     free(output);
@@ -340,7 +340,7 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   return result;
 }
 
-static char *run_compiler_capture_stderr(const tbe_compiler_options_t *options,
+static char *run_compiler_capture_stderr(const databind_compiler_options_t *options,
                                          int *out_status) {
   int saved_stderr = -1;
   FILE *capture_file = NULL;
@@ -350,7 +350,7 @@ static char *run_compiler_capture_stderr(const tbe_compiler_options_t *options,
 
   if (out_status) *out_status = -1;
 
-  stderr_path = tt_make_temp_file("tbe_compiler_stderr", ".log");
+  stderr_path = tt_make_temp_file("databind_compiler_stderr", ".log");
   if (!stderr_path) return NULL;
 
   fflush(stderr);
@@ -361,9 +361,9 @@ static char *run_compiler_capture_stderr(const tbe_compiler_options_t *options,
   if (!capture_file) goto cleanup;
 
   if (out_status) {
-    *out_status = tbe_compiler_run(options);
+    *out_status = databind_compiler_run(options);
   } else {
-    (void)tbe_compiler_run(options);
+    (void)databind_compiler_run(options);
   }
   fflush(stderr);
 
@@ -426,7 +426,7 @@ static const char *compiler_conflicting_output_suffix(
   }
 }
 
-static void compiler_assign_conflicting_output(tbe_compiler_options_t *options,
+static void compiler_assign_conflicting_output(databind_compiler_options_t *options,
                                                compiler_conflicting_output_kind_t kind,
                                                const char *path) {
   if (!options) return;
@@ -450,7 +450,7 @@ static void compiler_assign_conflicting_output(tbe_compiler_options_t *options,
 
 static void check_database_language_requires_explicit_output(const char *language_name,
                                                              int64_t lang_enum) {
-  tbe_compiler_options_t options = {
+  databind_compiler_options_t options = {
       .schema_path = "missing_database_output_contract.schema",
       .resource_dir = TBE_COMPILER_RESOURCE_DIR,
       .lang_enum = lang_enum,
@@ -477,7 +477,7 @@ static void check_database_language_conflicting_output_fails_fast(
     compiler_conflicting_output_kind_t conflicting_output_kind) {
   char output_path[128];
   char conflicting_output_path[128];
-  tbe_compiler_options_t options = {
+  databind_compiler_options_t options = {
       .schema_path = "missing_database_conflict_contract.schema",
       .resource_dir = TBE_COMPILER_RESOURCE_DIR,
       .lang_enum = lang_enum,
@@ -489,10 +489,10 @@ static void check_database_language_conflicting_output_fails_fast(
   size_t generated_conflicting_output_size = 0;
   int status = -1;
 
-  snprintf(output_path, sizeof(output_path), "test_tbe_compiler_%s_conflict_output.sql",
+  snprintf(output_path, sizeof(output_path), "test_databind_compiler_%s_conflict_output.sql",
            language_name);
   snprintf(conflicting_output_path, sizeof(conflicting_output_path),
-           "test_tbe_compiler_%s_conflict_%s.out", language_name,
+           "test_databind_compiler_%s_conflict_%s.out", language_name,
            compiler_conflicting_output_suffix(conflicting_output_kind));
   cleanup_test_file(output_path);
   cleanup_test_file(conflicting_output_path);
@@ -531,7 +531,7 @@ static void check_database_language_empty_conflicting_output_fails_fast(
     const char *language_name, int64_t lang_enum,
     compiler_conflicting_output_kind_t conflicting_output_kind) {
   char output_path[128];
-  tbe_compiler_options_t options = {
+  databind_compiler_options_t options = {
       .schema_path = "missing_database_empty_conflict_contract.schema",
       .resource_dir = TBE_COMPILER_RESOURCE_DIR,
       .lang_enum = lang_enum,
@@ -542,7 +542,7 @@ static void check_database_language_empty_conflicting_output_fails_fast(
   int status = -1;
 
   snprintf(output_path, sizeof(output_path),
-           "test_tbe_compiler_%s_empty_conflict_output.sql", language_name);
+           "test_databind_compiler_%s_empty_conflict_output.sql", language_name);
   cleanup_test_file(output_path);
 
   options.output_path = output_path;
@@ -570,7 +570,7 @@ static void check_database_language_empty_conflicting_output_fails_fast(
   cleanup_test_file(output_path);
 }
 
-spec("tbe_compiler") {
+spec("databindc") {
   describe("nullable state generator IR") {
     it("renders independent presence and null overlays") {
       const char *schema =
@@ -1722,7 +1722,7 @@ spec("tbe_compiler") {
         Node *enums;
         size_t i;
 
-        tbe_compiler_annotate_language_types(root);
+        databind_compiler_annotate_language_types(root);
         messages = find_child(root, "messages");
         fields = find_child(messages->data.list.items[0], "fields");
         enums = find_child(root, "enums");
@@ -1872,52 +1872,52 @@ spec("tbe_compiler") {
     it("should parse CLI language names with stable enum values") {
       int64_t lang_enum = -1;
 
-      check_equal(TBE_COMPILER_LANG_C, 0);
-      check_equal(TBE_COMPILER_LANG_PYTHON, 1);
-      check_equal(TBE_COMPILER_LANG_RUST, 2);
-      check_equal(TBE_COMPILER_LANG_CPP, 3);
-      check_equal(TBE_COMPILER_LANG_GO, 4);
-      check_equal(TBE_COMPILER_LANG_TS, 5);
-      check_equal(TBE_COMPILER_LANG_SQLITE, 6);
-      check_equal(TBE_COMPILER_LANG_POSTGRESQL, 7);
+      check_equal(DATABIND_COMPILER_LANG_C, 0);
+      check_equal(DATABIND_COMPILER_LANG_PYTHON, 1);
+      check_equal(DATABIND_COMPILER_LANG_RUST, 2);
+      check_equal(DATABIND_COMPILER_LANG_CPP, 3);
+      check_equal(DATABIND_COMPILER_LANG_GO, 4);
+      check_equal(DATABIND_COMPILER_LANG_TS, 5);
+      check_equal(DATABIND_COMPILER_LANG_SQLITE, 6);
+      check_equal(DATABIND_COMPILER_LANG_POSTGRESQL, 7);
 
-      check_equal(tbe_compiler_parse_language_name("cxx", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_CPP);
-      check_equal(tbe_compiler_parse_language_name("py", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_PYTHON);
-      check_equal(tbe_compiler_parse_language_name("typescript", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_TS);
-      check_equal(tbe_compiler_parse_language_name("sqlite", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_SQLITE);
-      check_equal(tbe_compiler_parse_language_name("postgresql", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_POSTGRESQL);
-      check_equal(tbe_compiler_parse_language_name("postgres", &lang_enum), 0);
-      check_equal(lang_enum, TBE_COMPILER_LANG_POSTGRESQL);
+      check_equal(databind_compiler_parse_language_name("cxx", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_CPP);
+      check_equal(databind_compiler_parse_language_name("py", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_PYTHON);
+      check_equal(databind_compiler_parse_language_name("typescript", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_TS);
+      check_equal(databind_compiler_parse_language_name("sqlite", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_SQLITE);
+      check_equal(databind_compiler_parse_language_name("postgresql", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_POSTGRESQL);
+      check_equal(databind_compiler_parse_language_name("postgres", &lang_enum), 0);
+      check_equal(lang_enum, DATABIND_COMPILER_LANG_POSTGRESQL);
     }
 
     it("should resolve built-in templates through compiler core") {
-      check_equal(tbe_compiler_resolve_template(NULL, 0), "templates/c_structs.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, 1),
+      check_equal(databind_compiler_resolve_template(NULL, 0), "templates/c_structs.mustache");
+      check_equal(databind_compiler_resolve_template(NULL, 1),
                    "templates/python_dataclass.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, 2), "templates/rust_structs.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_CPP),
+      check_equal(databind_compiler_resolve_template(NULL, 2), "templates/rust_structs.mustache");
+      check_equal(databind_compiler_resolve_template(NULL, DATABIND_COMPILER_LANG_CPP),
                    "templates/cpp_types.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_GO),
+      check_equal(databind_compiler_resolve_template(NULL, DATABIND_COMPILER_LANG_GO),
                    "templates/go_types.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_TS),
+      check_equal(databind_compiler_resolve_template(NULL, DATABIND_COMPILER_LANG_TS),
                    "templates/ts_types.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_SQLITE),
+      check_equal(databind_compiler_resolve_template(NULL, DATABIND_COMPILER_LANG_SQLITE),
                   "templates/sqlite_schema.mustache");
-      check_equal(tbe_compiler_resolve_template(NULL, TBE_COMPILER_LANG_POSTGRESQL),
+      check_equal(databind_compiler_resolve_template(NULL, DATABIND_COMPILER_LANG_POSTGRESQL),
                   "templates/postgresql_schema.mustache");
-      check_equal(tbe_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
+      check_equal(databind_compiler_resolve_template("custom.mustache", 0), "custom.mustache");
     }
 
     it("should parse schema files through compiler core") {
       Node *root = NULL;
       char *schema_data = NULL;
 
-      check_equal(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+      check_equal(databind_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
       check_not_null(root);
       check_not_null(schema_data);
       check(find_child(root, "schema") != NULL);
@@ -1928,15 +1928,15 @@ spec("tbe_compiler") {
     }
 
     it("should render template output through compiler core") {
-      const char *output_path = "test_tbe_compiler_render.out";
+      const char *output_path = "test_databind_compiler_render.out";
       size_t output_size = 0;
       Node *root = NULL;
       char *schema_data = NULL;
       char *output = NULL;
 
       cleanup_test_file(output_path);
-      check_equal(tbe_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
-      check_equal(tbe_compiler_render_file(root, C_STRUCT_TEMPLATE_FILE, output_path), 0);
+      check_equal(databind_compiler_parse_schema_file(SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+      check_equal(databind_compiler_render_file(root, C_STRUCT_TEMPLATE_FILE, output_path), 0);
 
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
@@ -1952,11 +1952,11 @@ spec("tbe_compiler") {
     }
 
     it("should run compiler core end-to-end with custom template") {
-      const char *output_path = "test_tbe_compiler_run.out";
+      const char *output_path = "test_databind_compiler_run.out";
       const char *template_path = C_STRUCT_TEMPLATE_FILE;
       size_t output_size = 0;
       char *output = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = SCHEMA_EXAMPLE_FILE,
           .template_path = template_path,
           .output_path = output_path,
@@ -1965,7 +1965,7 @@ spec("tbe_compiler") {
       };
 
       cleanup_test_file(output_path);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
 
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
@@ -1978,8 +1978,8 @@ spec("tbe_compiler") {
     }
 
     it("should render deterministic SQLite bootstrap DDL") {
-      const char *schema_path = "test_tbe_compiler_sqlite.schema";
-      const char *output_path = "test_tbe_compiler_sqlite.sql";
+      const char *schema_path = "test_databind_compiler_sqlite.schema";
+      const char *output_path = "test_databind_compiler_sqlite.sql";
       const char *schema =
           "[db_table(\"User Records\")] message User {"
           " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
@@ -2009,10 +2009,10 @@ spec("tbe_compiler") {
           ", PRIMARY KEY (\"user id\", \"tenant\")\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2020,7 +2020,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2032,8 +2032,8 @@ spec("tbe_compiler") {
     }
 
     it("should render deterministic PostgreSQL bootstrap DDL") {
-      const char *schema_path = "test_tbe_compiler_postgresql.schema";
-      const char *output_path = "test_tbe_compiler_postgresql.sql";
+      const char *schema_path = "test_databind_compiler_postgresql.schema";
+      const char *output_path = "test_databind_compiler_postgresql.sql";
       const char *schema =
           "[db_table(\"User Records\")] message User {"
           " [db_column(\"User Id\"), db_primary_key(1), db_generated(identity)] int64 id;"
@@ -2063,10 +2063,10 @@ spec("tbe_compiler") {
           ", PRIMARY KEY (\"user id\", \"tenant\")\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+          .lang_enum = DATABIND_COMPILER_LANG_POSTGRESQL,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2074,7 +2074,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2086,12 +2086,12 @@ spec("tbe_compiler") {
     }
 
     it("should render deterministic database relationships indexes checks and seed inserts") {
-      const char *schema_path = "test_tbe_compiler_database_v2.schema";
+      const char *schema_path = "test_databind_compiler_database_v2.schema";
       const char *output_paths[] = {
-          "test_tbe_compiler_database_v2.sqlite.sql",
-          "test_tbe_compiler_database_v2.postgresql.sql"};
+          "test_databind_compiler_database_v2.sqlite.sql",
+          "test_databind_compiler_database_v2.postgresql.sql"};
       const int64_t languages[] = {
-          TBE_COMPILER_LANG_SQLITE, TBE_COMPILER_LANG_POSTGRESQL};
+          DATABIND_COMPILER_LANG_SQLITE, DATABIND_COMPILER_LANG_POSTGRESQL};
       const char *schema =
           "schema Shop ["
           " db_init(sqlite, \"INSERT INTO users(id, tenant) VALUES (1, 7)\"),"
@@ -2156,7 +2156,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       check_equal(write_test_file(schema_path, schema), 0);
       for (size_t dialect_index = 0; dialect_index < 2u; ++dialect_index) {
-        tbe_compiler_options_t options = {
+        databind_compiler_options_t options = {
             .schema_path = schema_path,
             .output_path = output_paths[dialect_index],
             .lang_enum = languages[dialect_index],
@@ -2166,7 +2166,7 @@ spec("tbe_compiler") {
 
         cleanup_test_file(output_paths[dialect_index]);
         info("dialect_index=%zu", dialect_index);
-        check_equal(tbe_compiler_run(&options), 0);
+        check_equal(databind_compiler_run(&options), 0);
         output = tt_read_file(output_paths[dialect_index], &output_size);
         check_not_null(output);
         if (output) {
@@ -2183,7 +2183,7 @@ spec("tbe_compiler") {
 
     it("should render parsed numeric and injection-shaped PostgreSQL defaults") {
       const char *schema_path = POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE;
-      const char *output_path = "test_tbe_compiler_postgresql_defaults.sql";
+      const char *output_path = "test_databind_compiler_postgresql_defaults.sql";
       const char *expected =
           "BEGIN;\n"
           "CREATE TABLE \"defaults\" (\n"
@@ -2193,16 +2193,16 @@ spec("tbe_compiler") {
           "  \"payload\" text NOT NULL DEFAULT E'safe\\\\''; DROP TABLE protected; --'\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+          .lang_enum = DATABIND_COMPILER_LANG_POSTGRESQL,
       };
       char *output = NULL;
       size_t output_size = 0;
 
       cleanup_test_file(output_path);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2213,8 +2213,8 @@ spec("tbe_compiler") {
     }
 
     it("should render a non-identity single primary key for SQLite") {
-      const char *schema_path = "test_tbe_compiler_sqlite_single_pk.schema";
-      const char *output_path = "test_tbe_compiler_sqlite_single_pk.sql";
+      const char *schema_path = "test_databind_compiler_sqlite_single_pk.schema";
+      const char *output_path = "test_databind_compiler_sqlite_single_pk.sql";
       const char *schema =
           "[db_table(single_pk)] message SinglePk {"
           " [db_primary_key(1)] int64 id;"
@@ -2227,10 +2227,10 @@ spec("tbe_compiler") {
           "  \"value\" TEXT NOT NULL\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2238,7 +2238,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2250,8 +2250,8 @@ spec("tbe_compiler") {
     }
 
     it("should render a non-identity single primary key for PostgreSQL") {
-      const char *schema_path = "test_tbe_compiler_postgresql_single_pk.schema";
-      const char *output_path = "test_tbe_compiler_postgresql_single_pk.sql";
+      const char *schema_path = "test_databind_compiler_postgresql_single_pk.schema";
+      const char *output_path = "test_databind_compiler_postgresql_single_pk.sql";
       const char *schema =
           "[db_table(single_pk)] message SinglePk {"
           " [db_primary_key(1)] int64 id;"
@@ -2264,10 +2264,10 @@ spec("tbe_compiler") {
           "  \"value\" text NOT NULL\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_POSTGRESQL,
+          .lang_enum = DATABIND_COMPILER_LANG_POSTGRESQL,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2275,7 +2275,7 @@ spec("tbe_compiler") {
       cleanup_test_file(schema_path);
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2287,9 +2287,9 @@ spec("tbe_compiler") {
     }
 
     it("should pass normalized database IR to custom database templates") {
-      const char *schema_path = "test_tbe_compiler_database_custom.schema";
-      const char *template_path = "test_tbe_compiler_database_custom.mustache";
-      const char *output_path = "test_tbe_compiler_database_custom.out";
+      const char *schema_path = "test_databind_compiler_database_custom.schema";
+      const char *template_path = "test_databind_compiler_database_custom.mustache";
+      const char *output_path = "test_databind_compiler_database_custom.out";
       const char *schema =
           "[db_table(records)] message Record {"
           " [db_column(record_id), db_primary_key(1)] uint64 id;"
@@ -2307,11 +2307,11 @@ spec("tbe_compiler") {
           "\"record_id\" NOT GLOB '*[^0-9]*' AND (\"record_id\" = '0' OR "
           "substr(\"record_id\", 1, 1) <> '0') AND (length(\"record_id\") < 20 OR "
           "\"record_id\" <= '18446744073709551615'))) PRIMARY KEY;\"note\" TEXT";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2321,7 +2321,7 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
       check_equal(write_test_file(template_path, template_text), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2334,9 +2334,9 @@ spec("tbe_compiler") {
     }
 
     it("should expose relationship index check and initializer IR to custom templates") {
-      const char *schema_path = "test_tbe_compiler_database_v2_custom.schema";
-      const char *template_path = "test_tbe_compiler_database_v2_custom.mustache";
-      const char *output_path = "test_tbe_compiler_database_v2_custom.out";
+      const char *schema_path = "test_databind_compiler_database_v2_custom.schema";
+      const char *template_path = "test_databind_compiler_database_v2_custom.mustache";
+      const char *output_path = "test_databind_compiler_database_v2_custom.out";
       const char *schema =
           "schema Custom [db_init(sqlite, \"INSERT INTO users(id) VALUES (1)\")];"
           "[db_table(users)] message User { [db_primary_key(1)] int64 id; }"
@@ -2360,11 +2360,11 @@ spec("tbe_compiler") {
           " F\"fk_user\">\"users\"(\"user_id\"=\"id\");"
           " IU\"uidx_order_user\"@\"orders\"(\"order_id\",\"user_id\");"
           " SINSERT INTO users(id) VALUES (1);";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2374,7 +2374,7 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
       check_equal(write_test_file(template_path, template_text), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2387,9 +2387,9 @@ spec("tbe_compiler") {
     }
 
     it("should expose scoped database template markers without is_last") {
-      const char *schema_path = "test_tbe_compiler_database_markers.schema";
-      const char *template_path = "test_tbe_compiler_database_markers.mustache";
-      const char *output_path = "test_tbe_compiler_database_markers.out";
+      const char *schema_path = "test_databind_compiler_database_markers.schema";
+      const char *template_path = "test_databind_compiler_database_markers.mustache";
+      const char *output_path = "test_databind_compiler_database_markers.out";
       const char *schema =
           "[db_table(alpha)] message Alpha {"
           " [db_primary_key(1)] int64 a1;"
@@ -2410,11 +2410,11 @@ spec("tbe_compiler") {
       const char *expected =
           "T=\"alpha\"[\"a1\"C,\"a3\"C,\"a2\"]PK=\"a1\"+\"a3\";|"
           "T=\"beta\"[\"b1\"C]";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = template_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       size_t output_size = 0;
@@ -2424,7 +2424,7 @@ spec("tbe_compiler") {
       cleanup_test_file(output_path);
       check_equal(write_test_file(schema_path, schema), 0);
       check_equal(write_test_file(template_path, template_text), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2438,14 +2438,14 @@ spec("tbe_compiler") {
 
     it("should create POSIX output with fopen-compatible permissions") {
 #ifndef _WIN32
-      const char *schema_path = "test_tbe_compiler_posix_mode.schema";
-      const char *output_path = "test_tbe_compiler_posix_mode.sql";
+      const char *schema_path = "test_databind_compiler_posix_mode.schema";
+      const char *output_path = "test_databind_compiler_posix_mode.sql";
       const char *schema =
           "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       struct stat output_status;
       mode_t saved_umask;
@@ -2457,7 +2457,7 @@ spec("tbe_compiler") {
       umask(saved_umask);
       expected_mode = (mode_t)(0666 & ~saved_umask);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       check_equal(stat(output_path, &output_status), 0);
       check_equal((mode_t)(output_status.st_mode & 0777), expected_mode);
       cleanup_test_file(schema_path);
@@ -2470,14 +2470,14 @@ spec("tbe_compiler") {
     it("should preserve existing POSIX output permissions when overwriting") {
 #ifndef _WIN32
       static const mode_t modes[] = {0600, 0640};
-      const char *schema_path = "test_tbe_compiler_posix_overwrite_mode.schema";
-      const char *output_path = "test_tbe_compiler_posix_overwrite_mode.sql";
+      const char *schema_path = "test_databind_compiler_posix_overwrite_mode.schema";
+      const char *output_path = "test_databind_compiler_posix_overwrite_mode.sql";
       const char *schema =
           "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
 
       cleanup_test_file(schema_path);
@@ -2488,7 +2488,7 @@ spec("tbe_compiler") {
 
         check_equal(write_test_file(output_path, "existing-output"), 0);
         check_equal(chmod(output_path, modes[index]), 0);
-        check_equal(tbe_compiler_run(&options), 0);
+        check_equal(databind_compiler_run(&options), 0);
         check_equal(stat(output_path, &output_status), 0);
         check_equal((mode_t)(output_status.st_mode & 0777), modes[index]);
       }
@@ -2500,9 +2500,9 @@ spec("tbe_compiler") {
     }
 
     it("should preserve a similarly named pre-existing temporary file") {
-      const char *schema_path = "test_tbe_compiler_temp_owner.schema";
-      const char *output_path = "test_tbe_compiler_temp_owner.sql";
-      const char *old_temp_path = "test_tbe_compiler_temp_owner.sql.tbe.tmp";
+      const char *schema_path = "test_databind_compiler_temp_owner.schema";
+      const char *output_path = "test_databind_compiler_temp_owner.sql";
+      const char *old_temp_path = "test_databind_compiler_temp_owner.sql.tbe.tmp";
       const char *schema =
           "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
       const char *expected =
@@ -2511,10 +2511,10 @@ spec("tbe_compiler") {
           "  \"id\" INTEGER NOT NULL PRIMARY KEY\n"
           ");\n\n"
           "COMMIT;\n";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       char *output = NULL;
       char *old_temp = NULL;
@@ -2527,7 +2527,7 @@ spec("tbe_compiler") {
       check_equal(write_test_file(schema_path, schema), 0);
       check_equal(write_test_file(output_path, "known-good-output"), 0);
       check_equal(write_test_file(old_temp_path, "unrelated-temporary-file"), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       output = tt_read_file(output_path, &output_size);
       old_temp = tt_read_file(old_temp_path, &old_temp_size);
       check_not_null(output);
@@ -2546,8 +2546,8 @@ spec("tbe_compiler") {
     }
 
     it("should preserve an existing output when template compilation fails") {
-      const char *template_path = "test_tbe_compiler_invalid_template.mustache";
-      const char *output_path = "test_tbe_compiler_preserved_output.out";
+      const char *template_path = "test_databind_compiler_invalid_template.mustache";
+      const char *output_path = "test_databind_compiler_preserved_output.out";
       Node *root = create_node_map(NULL);
       char *output = NULL;
       size_t output_size = 0;
@@ -2557,7 +2557,7 @@ spec("tbe_compiler") {
       check_not_null(root);
       check_equal(write_test_file(template_path, "{{/unterminated}}"), 0);
       check_equal(write_test_file(output_path, "known-good-output"), 0);
-      if (root) check_not_equal(tbe_compiler_render_file(root, template_path, output_path), 0);
+      if (root) check_not_equal(databind_compiler_render_file(root, template_path, output_path), 0);
       output = tt_read_file(output_path, &output_size);
       check_not_null(output);
       if (output) {
@@ -2570,81 +2570,81 @@ spec("tbe_compiler") {
     }
 
     it("should require explicit output for SQLite and PostgreSQL DDL") {
-      check_database_language_requires_explicit_output("sqlite", TBE_COMPILER_LANG_SQLITE);
+      check_database_language_requires_explicit_output("sqlite", DATABIND_COMPILER_LANG_SQLITE);
       check_database_language_requires_explicit_output("postgresql",
-                                                       TBE_COMPILER_LANG_POSTGRESQL);
+                                                       DATABIND_COMPILER_LANG_POSTGRESQL);
     }
 
     it("should reject source output with database languages before parsing") {
       check_database_language_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_SOURCE);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_SOURCE);
       check_database_language_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL,
           COMPILER_CONFLICTING_OUTPUT_SOURCE);
     }
 
     it("should reject guest output with database languages before parsing") {
       check_database_language_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_GUEST);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_GUEST);
       check_database_language_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL,
           COMPILER_CONFLICTING_OUTPUT_GUEST);
     }
 
     it("should reject Lua output with database languages before parsing") {
       check_database_language_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_LUA);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_LUA);
       check_database_language_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_LUA);
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_LUA);
     }
 
     it("should reject DSL output with database languages before parsing") {
       check_database_language_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_DSL);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_DSL);
       check_database_language_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_DSL);
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_DSL);
     }
 
     it("should reject empty source output with database languages before parsing") {
       check_database_language_empty_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_SOURCE);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_SOURCE);
       check_database_language_empty_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL,
           COMPILER_CONFLICTING_OUTPUT_SOURCE);
     }
 
     it("should reject empty guest output with database languages before parsing") {
       check_database_language_empty_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_GUEST);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_GUEST);
       check_database_language_empty_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL,
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL,
           COMPILER_CONFLICTING_OUTPUT_GUEST);
     }
 
     it("should reject empty Lua output with database languages before parsing") {
       check_database_language_empty_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_LUA);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_LUA);
       check_database_language_empty_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_LUA);
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_LUA);
     }
 
     it("should reject empty DSL output with database languages before parsing") {
       check_database_language_empty_conflicting_output_fails_fast(
-          "sqlite", TBE_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_DSL);
+          "sqlite", DATABIND_COMPILER_LANG_SQLITE, COMPILER_CONFLICTING_OUTPUT_DSL);
       check_database_language_empty_conflicting_output_fails_fast(
-          "postgresql", TBE_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_DSL);
+          "postgresql", DATABIND_COMPILER_LANG_POSTGRESQL, COMPILER_CONFLICTING_OUTPUT_DSL);
     }
 
     it("should preserve an existing output when replacement fails") {
 #ifdef _WIN32
-      const char *schema_path = "test_tbe_compiler_rename_failure.schema";
-      const char *output_path = "test_tbe_compiler_rename_failure.sql";
+      const char *schema_path = "test_databind_compiler_rename_failure.schema";
+      const char *output_path = "test_databind_compiler_rename_failure.sql";
       const char *schema =
           "[db_table(records)] message Record { [db_primary_key(1)] int64 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = output_path,
-          .lang_enum = TBE_COMPILER_LANG_SQLITE,
+          .lang_enum = DATABIND_COMPILER_LANG_SQLITE,
       };
       HANDLE output_lock;
       char *output = NULL;
@@ -2658,7 +2658,7 @@ spec("tbe_compiler") {
                                 FILE_ATTRIBUTE_NORMAL, NULL);
       check_not_equal(output_lock, INVALID_HANDLE_VALUE);
       if (output_lock != INVALID_HANDLE_VALUE) {
-        check_not_equal(tbe_compiler_run(&options), 0);
+        check_not_equal(databind_compiler_run(&options), 0);
         CloseHandle(output_lock);
       }
       output = tt_read_file(output_path, &output_size);
@@ -2675,9 +2675,9 @@ spec("tbe_compiler") {
     }
 
     it("should generate RulesForge type declarations with the built-in DSL template") {
-      const char *schema_path = "test_tbe_compiler_rfl.schema";
-      const char *header_path = "test_tbe_compiler_rfl.h";
-      const char *dsl_path = "test_tbe_compiler_rfl.rfl";
+      const char *schema_path = "test_databind_compiler_rfl.schema";
+      const char *header_path = "test_databind_compiler_rfl.h";
+      const char *dsl_path = "test_databind_compiler_rfl.rfl";
       const char *schema =
           "schema Market;"
           "enum Side <uint8> { Buy = 0; Sell = 1; }"
@@ -2687,19 +2687,19 @@ spec("tbe_compiler") {
           "group<Level> bids; string symbol; }";
       size_t dsl_size = 0;
       char *dsl = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .dsl_output_path = dsl_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(dsl_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       dsl = tt_read_file(dsl_path, &dsl_size);
       check_not_null(dsl);
       check(dsl_size > 0);
@@ -2725,23 +2725,23 @@ spec("tbe_compiler") {
     }
 
     it("should generate a Wasm guest bridge adapter with the built-in C generator") {
-      const char *header_path = "test_tbe_compiler_guest.h";
-      const char *guest_path = "test_tbe_compiler_guest.c";
+      const char *header_path = "test_databind_compiler_guest.h";
+      const char *guest_path = "test_databind_compiler_guest.c";
       size_t header_size = 0;
       size_t guest_size = 0;
       char *header = NULL;
       char *guest = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = SCHEMA_EXAMPLE_FILE,
           .template_path = NULL,
           .output_path = header_path,
           .guest_output_path = guest_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(header_path);
       cleanup_test_file(guest_path);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       guest = tt_read_file(guest_path, &guest_size);
       check_not_null(header);
@@ -2767,9 +2767,9 @@ spec("tbe_compiler") {
     }
 
     it("should honor c field annotations in typed C output") {
-      const char *schema_path = "test_tbe_compiler_c_name.tbe";
-      const char *header_path = "test_tbe_compiler_c_name.h";
-      const char *source_path = "test_tbe_compiler_c_name.c";
+      const char *schema_path = "test_databind_compiler_c_name.tbe";
+      const char *header_path = "test_databind_compiler_c_name.h";
+      const char *source_path = "test_databind_compiler_c_name.c";
       const char *schema =
           "schema Annotated;"
           "message Order { [c(order_id)] uint32 id; string symbol; }";
@@ -2777,19 +2777,19 @@ spec("tbe_compiler") {
       size_t source_size = 0;
       char *header = NULL;
       char *source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       source = tt_read_file(source_path, &source_size);
       check_not_null(header);
@@ -2808,9 +2808,9 @@ spec("tbe_compiler") {
     }
 
     it("should expose public descriptors for canonical runtime records") {
-      const char *schema_path = "test_tbe_compiler_cmeta_descriptor.tbe";
-      const char *header_path = "test_tbe_compiler_cmeta_descriptor.h";
-      const char *source_path = "test_tbe_compiler_cmeta_descriptor.c";
+      const char *schema_path = "test_databind_compiler_cmeta_descriptor.tbe";
+      const char *header_path = "test_databind_compiler_cmeta_descriptor.h";
+      const char *source_path = "test_databind_compiler_cmeta_descriptor.c";
       const char *schema =
           "schema DescriptorGraph;"
           "enum State <uint8> { Idle = 0; Ready = 7; }"
@@ -2825,19 +2825,19 @@ spec("tbe_compiler") {
       size_t source_size = 0;
       char *header = NULL;
       char *source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       source = tt_read_file(source_path, &source_size);
       check_not_null(header);
@@ -2861,26 +2861,26 @@ spec("tbe_compiler") {
     }
 
     it("should generate typed C to Lua adapters") {
-      const char *header_path = "test_tbe_compiler_lua.h";
-      const char *source_path = "test_tbe_compiler_lua_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua.c";
+      const char *header_path = "test_databind_compiler_lua.h";
+      const char *source_path = "test_databind_compiler_lua_typed.c";
+      const char *lua_path = "test_databind_compiler_lua.c";
       size_t header_size = 0;
       size_t lua_size = 0;
       char *header = NULL;
       char *lua_source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = SCHEMA_EXAMPLE_FILE,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -2906,10 +2906,10 @@ spec("tbe_compiler") {
     }
 
     it("should route supported Lua records through their public descriptor") {
-      const char *schema_path = "test_tbe_compiler_lua_descriptor.tbe";
-      const char *header_path = "test_tbe_compiler_lua_descriptor.h";
-      const char *source_path = "test_tbe_compiler_lua_descriptor_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_descriptor.c";
+      const char *schema_path = "test_databind_compiler_lua_descriptor.tbe";
+      const char *header_path = "test_databind_compiler_lua_descriptor.h";
+      const char *source_path = "test_databind_compiler_lua_descriptor_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_descriptor.c";
       const char *schema =
           "schema LuaDescriptor;"
           "enum State <uint8> { Idle = 0; Ready = 7; }"
@@ -2919,13 +2919,13 @@ spec("tbe_compiler") {
       size_t lua_size = 0;
       char *header = NULL;
       char *lua_source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -2933,7 +2933,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -2958,28 +2958,28 @@ spec("tbe_compiler") {
     }
 
     it("should require typed metadata for Lua adapter output") {
-      const char *header_path = "test_tbe_compiler_lua_invalid.h";
-      const char *lua_path = "test_tbe_compiler_lua_invalid.c";
-      tbe_compiler_options_t options = {
+      const char *header_path = "test_databind_compiler_lua_invalid.h";
+      const char *lua_path = "test_databind_compiler_lua_invalid.c";
+      databind_compiler_options_t options = {
           .schema_path = SCHEMA_EXAMPLE_FILE,
           .template_path = NULL,
           .output_path = header_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(header_path);
       cleanup_test_file(lua_path);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(header_path);
       cleanup_test_file(lua_path);
     }
 
     it("should generate schema-declared Lua operation callbacks") {
-      const char *schema_path = "test_tbe_compiler_lua_operation.tbe";
-      const char *header_path = "test_tbe_compiler_lua_operation.h";
-      const char *source_path = "test_tbe_compiler_lua_operation_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_operation.c";
+      const char *schema_path = "test_databind_compiler_lua_operation.tbe";
+      const char *header_path = "test_databind_compiler_lua_operation.h";
+      const char *source_path = "test_databind_compiler_lua_operation_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_operation.c";
       const char *schema =
           "schema Orders;"
           "[lua_operation(create_order), lua_response(OrderResult)] "
@@ -2993,12 +2993,12 @@ spec("tbe_compiler") {
       size_t lua_size = 0;
       char *header = NULL;
       char *lua_source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3006,7 +3006,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -3044,10 +3044,10 @@ spec("tbe_compiler") {
     }
 
     it("should reject removed synchronous Lua imports") {
-      const char *schema_path = "test_tbe_compiler_lua_import.tbe";
-      const char *header_path = "test_tbe_compiler_lua_import.h";
-      const char *source_path = "test_tbe_compiler_lua_import_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_import.c";
+      const char *schema_path = "test_databind_compiler_lua_import.tbe";
+      const char *header_path = "test_databind_compiler_lua_import.h";
+      const char *source_path = "test_databind_compiler_lua_import_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_import.c";
       const char *schema =
           "schema Rules;"
           "[lua_import(evaluate), lua_response(Result)] "
@@ -3057,12 +3057,12 @@ spec("tbe_compiler") {
       size_t lua_size = 0;
       char *header = NULL;
       char *lua_source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3070,7 +3070,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
@@ -3102,10 +3102,10 @@ spec("tbe_compiler") {
     }
 
     it("should generate Future operations without C coroutine dependencies") {
-      const char *schema_path = "test_tbe_compiler_lua_future.tbe";
-      const char *header_path = "test_tbe_compiler_lua_future.h";
-      const char *source_path = "test_tbe_compiler_lua_future_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_future.c";
+      const char *schema_path = "test_databind_compiler_lua_future.tbe";
+      const char *header_path = "test_databind_compiler_lua_future.h";
+      const char *source_path = "test_databind_compiler_lua_future_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_future.c";
       const char *schema =
           "schema Stateful;"
           "[lua_operation(fetch), lua_response(Result), lua_async(future)] "
@@ -3115,12 +3115,12 @@ spec("tbe_compiler") {
       size_t lua_size = 0;
       char *header = NULL;
       char *lua_source = NULL;
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3128,7 +3128,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check_equal(tbe_compiler_run(&options), 0);
+      check_equal(databind_compiler_run(&options), 0);
       header = tt_read_file(header_path, &header_size);
       lua_source = tt_read_file(lua_path, &lua_size);
       check_not_null(header);
@@ -3154,21 +3154,21 @@ spec("tbe_compiler") {
     }
 
     it("should reject the removed salts_coro async interface") {
-      const char *schema_path = "test_tbe_compiler_lua_async_invalid.tbe";
-      const char *header_path = "test_tbe_compiler_lua_async_invalid.h";
-      const char *source_path = "test_tbe_compiler_lua_async_invalid_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_async_invalid.c";
+      const char *schema_path = "test_databind_compiler_lua_async_invalid.tbe";
+      const char *header_path = "test_databind_compiler_lua_async_invalid.h";
+      const char *source_path = "test_databind_compiler_lua_async_invalid_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_async_invalid.c";
       const char *schema =
           "schema Orders;"
           "[lua_operation(fetch_order), lua_response(OrderResult), lua_async(salts_coro)] "
           "message FetchOrder { uint32 id; }"
           "message OrderResult { uint32 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3176,7 +3176,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
@@ -3184,21 +3184,21 @@ spec("tbe_compiler") {
     }
 
     it("should reject removed asynchronous Lua imports") {
-      const char *schema_path = "test_tbe_compiler_lua_import_async.tbe";
-      const char *header_path = "test_tbe_compiler_lua_import_async.h";
-      const char *source_path = "test_tbe_compiler_lua_import_async_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_import_async.c";
+      const char *schema_path = "test_databind_compiler_lua_import_async.tbe";
+      const char *header_path = "test_databind_compiler_lua_import_async.h";
+      const char *source_path = "test_databind_compiler_lua_import_async_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_import_async.c";
       const char *schema =
           "schema Orders;"
           "[lua_import(fetch_order), lua_response(OrderResult), lua_async(future)] "
           "message FetchOrder { uint32 id; }"
           "message OrderResult { uint32 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3206,7 +3206,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
@@ -3241,20 +3241,20 @@ spec("tbe_compiler") {
     }
 
     it("should reject an unknown Lua operation response type") {
-      const char *schema_path = "test_tbe_compiler_lua_operation_invalid.tbe";
-      const char *header_path = "test_tbe_compiler_lua_operation_invalid.h";
-      const char *source_path = "test_tbe_compiler_lua_operation_invalid_typed.c";
-      const char *lua_path = "test_tbe_compiler_lua_operation_invalid.c";
+      const char *schema_path = "test_databind_compiler_lua_operation_invalid.tbe";
+      const char *header_path = "test_databind_compiler_lua_operation_invalid.h";
+      const char *source_path = "test_databind_compiler_lua_operation_invalid_typed.c";
+      const char *lua_path = "test_databind_compiler_lua_operation_invalid.c";
       const char *schema =
           "schema Orders;"
           "[lua_operation(create_order), lua_response(Missing)] "
           "message CreateOrder { uint32 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .output_path = header_path,
           .source_output_path = source_path,
           .lua_output_path = lua_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
@@ -3262,7 +3262,7 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
       cleanup_test_file(lua_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
@@ -3270,68 +3270,68 @@ spec("tbe_compiler") {
     }
 
     it("should reject duplicate c field annotations in typed C output") {
-      const char *schema_path = "test_tbe_compiler_c_collision.tbe";
-      const char *header_path = "test_tbe_compiler_c_collision.h";
-      const char *source_path = "test_tbe_compiler_c_collision.c";
+      const char *schema_path = "test_databind_compiler_c_collision.tbe";
+      const char *header_path = "test_databind_compiler_c_collision.h";
+      const char *source_path = "test_databind_compiler_c_collision.c";
       const char *schema =
           "schema Annotated;"
           "message Order { [c(value)] uint32 id; [c(value)] string symbol; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
     }
 
     it("should reject invalid c identifiers in typed C output") {
-      const char *schema_path = "test_tbe_compiler_c_invalid.tbe";
-      const char *header_path = "test_tbe_compiler_c_invalid.h";
-      const char *source_path = "test_tbe_compiler_c_invalid.c";
+      const char *schema_path = "test_databind_compiler_c_invalid.tbe";
+      const char *header_path = "test_databind_compiler_c_invalid.h";
+      const char *source_path = "test_databind_compiler_c_invalid.c";
       const char *schema =
           "schema Annotated;"
           "message Order { [c(\"order-id\")] uint32 id; }";
-      tbe_compiler_options_t options = {
+      databind_compiler_options_t options = {
           .schema_path = schema_path,
           .template_path = NULL,
           .output_path = header_path,
           .source_output_path = source_path,
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
       check_equal(write_test_file(schema_path, schema), 0);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(schema_path);
       cleanup_test_file(header_path);
       cleanup_test_file(source_path);
     }
 
     it("should reject guest adapter output outside the built-in C generator") {
-      const char *output_path = "test_tbe_compiler_guest_invalid.out";
-      tbe_compiler_options_t options = {
+      const char *output_path = "test_databind_compiler_guest_invalid.out";
+      databind_compiler_options_t options = {
           .schema_path = SCHEMA_EXAMPLE_FILE,
           .template_path = C_STRUCT_TEMPLATE_FILE,
           .output_path = output_path,
-          .guest_output_path = "test_tbe_compiler_guest_invalid.c",
-          .lang_enum = TBE_COMPILER_LANG_C,
+          .guest_output_path = "test_databind_compiler_guest_invalid.c",
+          .lang_enum = DATABIND_COMPILER_LANG_C,
       };
 
       cleanup_test_file(output_path);
       cleanup_test_file(options.guest_output_path);
-      check(tbe_compiler_run(&options) != 0);
+      check(databind_compiler_run(&options) != 0);
       cleanup_test_file(output_path);
       cleanup_test_file(options.guest_output_path);
     }
@@ -3345,20 +3345,20 @@ spec("tbe_compiler") {
           "message Book { Header header; bytes(16) digest; uuid request_id; group<Level> bids; "
           "string symbol; }";
       char *cpp_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", CPP_TYPES_TEMPLATE_FILE,
-          "test_tbe_compiler_lang.cpp.out");
+          schema, "test_databind_compiler_lang.schema", CPP_TYPES_TEMPLATE_FILE,
+          "test_databind_compiler_lang.cpp.out");
       char *go_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", GO_TYPES_TEMPLATE_FILE,
-          "test_tbe_compiler_lang.go.out");
+          schema, "test_databind_compiler_lang.schema", GO_TYPES_TEMPLATE_FILE,
+          "test_databind_compiler_lang.go.out");
       char *py_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", PYTHON_DATACLASS_TEMPLATE_FILE,
-          "test_tbe_compiler_lang.py.out");
+          schema, "test_databind_compiler_lang.schema", PYTHON_DATACLASS_TEMPLATE_FILE,
+          "test_databind_compiler_lang.py.out");
       char *rust_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", RUST_STRUCTS_TEMPLATE_FILE,
-          "test_tbe_compiler_lang.rs.out");
+          schema, "test_databind_compiler_lang.schema", RUST_STRUCTS_TEMPLATE_FILE,
+          "test_databind_compiler_lang.rs.out");
       char *ts_output = render_compiler_template_from_schema(
-          schema, "test_tbe_compiler_lang.schema", TS_TYPES_TEMPLATE_FILE,
-          "test_tbe_compiler_lang.ts.out");
+          schema, "test_databind_compiler_lang.schema", TS_TYPES_TEMPLATE_FILE,
+          "test_databind_compiler_lang.ts.out");
 
       check_not_null(cpp_output);
       check_not_null(go_output);
