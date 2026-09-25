@@ -198,9 +198,12 @@ static int typed_type_has_nullable_at(
   for (i = 0u; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
     if ((field->flags & TBE_TYPED_FIELD_NULLABLE) != 0u) return 1;
-    if (field->kind == TBE_TYPED_OBJECT && field->object_type != NULL &&
-        typed_type_has_nullable_at(field->object_type, depth + 1u))
-      return 1;
+    if (field->kind == TBE_TYPED_OBJECT) {
+      const TbeTypedType *object_overlay = typed_field_object_overlay(field);
+      if (object_overlay != NULL &&
+          typed_type_has_nullable_at(object_overlay, depth + 1u))
+        return 1;
+    }
     if ((field->kind == TBE_TYPED_FIXED_ARRAY ||
          field->kind == TBE_TYPED_LIST || field->kind == TBE_TYPED_SET) &&
         field->element_kind == TBE_TYPED_OBJECT &&
@@ -829,6 +832,11 @@ static int typed_scalar_kind_from_name(const char *name, TbeTypedKind *kind) {
   return 1;
 }
 
+static const TbeTypedType *typed_field_object_overlay(const TbeTypedField *field) {
+  if (field == NULL) return NULL;
+  return field->nested_overlay != NULL ? field->nested_overlay : field->object_type;
+}
+
 static int typed_named_kind_matches(DataBind *codec, const char *name, TbeTypedKind kind,
                                     TbeTypedKind wire_kind, const TbeTypedType *object_type) {
   TbeTypedKind schema_kind;
@@ -896,10 +904,12 @@ static int typed_field_host_extent(const TbeTypedField *field, size_t *extent) {
   case TBE_TYPED_FIXED_BYTES:
     *extent = field->fixed_count;
     return 1;
-  case TBE_TYPED_OBJECT:
-    if (field->object_type == NULL) return 0;
-    *extent = field->object_type->size;
+  case TBE_TYPED_OBJECT: {
+    const TbeTypedType *object_overlay = typed_field_object_overlay(field);
+    if (object_overlay == NULL) return 0;
+    *extent = object_overlay->size;
     return 1;
+  }
   case TBE_TYPED_FIXED_ARRAY:
     return field->element_size != 0 &&
            typed_multiply_fits(field->fixed_count, field->element_size, extent);
@@ -927,8 +937,9 @@ static int typed_field_wire_extent(const TbeTypedField *field, size_t *extent) {
   size_t element_wire_size;
   if (field == NULL || extent == NULL) return 0;
   if (field->kind == TBE_TYPED_OBJECT) {
-    if (field->object_type == NULL) return 0;
-    *extent = field->object_type->fixed_block_size;
+    const TbeTypedType *object_overlay = typed_field_object_overlay(field);
+    if (object_overlay == NULL) return 0;
+    *extent = object_overlay->fixed_block_size;
     return 1;
   }
   if (field->kind == TBE_TYPED_FIXED_BYTES) {
@@ -1027,7 +1038,7 @@ static DataBindStatus typed_validate_descriptor_at(const TbeTypedType *type, uns
                            "Typed host field storage overlaps owning storage");
     }
     if (field->kind == TBE_TYPED_OBJECT) {
-      nested_type = field->object_type;
+      nested_type = typed_field_object_overlay(field);
     } else if (field->kind == TBE_TYPED_FIXED_ARRAY || field->kind == TBE_TYPED_LIST ||
                field->kind == TBE_TYPED_SET) {
       size_t element_extent;
@@ -2550,9 +2561,10 @@ static int typed_supports_direct_binary(const TbeTypedType *type) {
   if (type == NULL) return 0;
   for (i = 0; i < type->field_count; ++i) {
     const TbeTypedField *field = &type->fields[i];
-    if (field->kind == TBE_TYPED_OBJECT ||
-        (field->kind == TBE_TYPED_FIXED_ARRAY && field->element_kind == TBE_TYPED_OBJECT) ||
-        (field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
+    if (field->kind == TBE_TYPED_OBJECT) {
+      if (!typed_supports_direct_binary(typed_field_object_overlay(field))) return 0;
+    } else if ((field->kind == TBE_TYPED_FIXED_ARRAY && field->element_kind == TBE_TYPED_OBJECT) ||
+               (field->flags & TBE_TYPED_FIELD_GROUP) != 0) {
       if (!typed_supports_direct_binary(field->object_type)) return 0;
     }
     if ((field->flags & TBE_TYPED_FIELD_WIRE_OFFSET) == 0 &&
@@ -2611,7 +2623,7 @@ static DataBindStatus typed_validate_schema_at(DataBind *codec, const char *type
       nested_type = field->object_type;
       nested_name = schema_field.group_type;
     } else if (field->kind == TBE_TYPED_OBJECT) {
-      nested_type = field->object_type;
+      nested_type = typed_field_object_overlay(field);
       nested_name = schema_field.type;
     } else if ((field->kind == TBE_TYPED_FIXED_ARRAY || field->kind == TBE_TYPED_LIST ||
                 field->kind == TBE_TYPED_SET) &&
