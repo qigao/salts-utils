@@ -37,6 +37,94 @@ typedef struct TbeTypedCMetaKindMapping {
   TbeTypedKind kind;
 } TbeTypedCMetaKindMapping;
 
+static bool tbe_bytes_cmeta_is_zero(const void *object) {
+  const tbe_bytes_t *buffer = (const tbe_bytes_t *)object;
+  return buffer != NULL && buffer->raw.initialized &&
+         buffer->raw.element_type == NULL &&
+         buffer->raw.elem_size == sizeof(uint8_t) &&
+         buffer->raw.elem_align == _Alignof(uint8_t) &&
+         tbe_bytes_t_size(buffer) == 0u;
+}
+
+static cmeta_status tbe_bytes_cmeta_init_zero(void *object) {
+  tbe_bytes_t *buffer = (tbe_bytes_t *)object;
+  if (buffer == NULL) return CMETA_INVALID_ARGUMENT;
+  memset(buffer, 0, sizeof(*buffer));
+  return tbe_bytes_t_init(buffer, SIZE_MAX) == STL_OK
+             ? CMETA_OK
+             : CMETA_OUT_OF_MEMORY;
+}
+
+static cmeta_status tbe_bytes_cmeta_assign(
+    void *object, const unsigned char *data, size_t size, size_t max_bytes) {
+  tbe_bytes_t *buffer = (tbe_bytes_t *)object;
+  stl_status status;
+  if (buffer == NULL || (size != 0u && data == NULL))
+    return CMETA_INVALID_ARGUMENT;
+  if (size > max_bytes) return CMETA_CAPACITY_EXCEEDED;
+  if (!tbe_bytes_cmeta_is_zero(buffer)) return CMETA_INVALID_ARGUMENT;
+  status = tbe_bytes_t_resize(buffer, size);
+  if (status == STL_OUT_OF_MEMORY) return CMETA_OUT_OF_MEMORY;
+  if (status == STL_CAPACITY_EXCEEDED) return CMETA_CAPACITY_EXCEEDED;
+  if (status != STL_OK) return CMETA_CALLBACK_ERROR;
+  if (size != 0u) memcpy(tbe_bytes_t_data(buffer), data, size);
+  return CMETA_OK;
+}
+
+static void tbe_bytes_cmeta_restore_zero(void *object) {
+  tbe_bytes_t *buffer = (tbe_bytes_t *)object;
+  if (buffer == NULL) return;
+  if (buffer->raw.initialized) tbe_bytes_t_destroy(buffer);
+  memset(buffer, 0, sizeof(*buffer));
+  (void)tbe_bytes_t_init(buffer, SIZE_MAX);
+}
+
+static cmeta_status tbe_bytes_cmeta_read(
+    const void *object, const unsigned char **out_data, size_t *out_size) {
+  const tbe_bytes_t *buffer = (const tbe_bytes_t *)object;
+  if (buffer == NULL || out_data == NULL || out_size == NULL ||
+      !buffer->raw.initialized || buffer->raw.element_type != NULL ||
+      buffer->raw.elem_size != sizeof(uint8_t) ||
+      buffer->raw.elem_align != _Alignof(uint8_t))
+    return CMETA_INVALID_ARGUMENT;
+  *out_data = tbe_bytes_t_data_const(buffer);
+  *out_size = tbe_bytes_t_size(buffer);
+  return CMETA_OK;
+}
+
+static void tbe_bytes_cmeta_move(void *destination, void *source) {
+  tbe_bytes_t *to = (tbe_bytes_t *)destination;
+  tbe_bytes_t *from = (tbe_bytes_t *)source;
+  if (to == NULL || from == NULL || to == from) return;
+  if (to->raw.initialized) tbe_bytes_t_destroy(to);
+  *to = *from;
+  memset(from, 0, sizeof(*from));
+  (void)tbe_bytes_t_init(from, SIZE_MAX);
+}
+
+static const cmeta_type_identity TBE_BYTES_CMETA_ID =
+    CMETA_TYPE_ID_ATOM_INIT("databind.tbe_bytes");
+
+DATA_BIND_API const cmeta_type_desc tbe_bytes_cmeta_type = {
+    "tbe_bytes_t", sizeof(tbe_bytes_t), _Alignof(tbe_bytes_t),
+    CMETA_T_OBJECT, NULL, NULL, &TBE_BYTES_CMETA_ID};
+
+DATA_BIND_API const cmeta_data_buffer_shape tbe_bytes_cmeta_shape = {
+    CMETA_DATA_BUFFER_OWNED};
+
+DATA_BIND_API const cmeta_data_buffer_ops tbe_bytes_cmeta_buffer_ops = {
+    sizeof(cmeta_data_buffer_ops), CMETA_DATA_BUFFER_OPS_ABI_VERSION,
+    &tbe_bytes_cmeta_type, CMETA_DATA_BUFFER_OWNED,
+    tbe_bytes_cmeta_is_zero, tbe_bytes_cmeta_assign,
+    tbe_bytes_cmeta_restore_zero, tbe_bytes_cmeta_read,
+    tbe_bytes_cmeta_init_zero, tbe_bytes_cmeta_move};
+
+DATA_BIND_API const cmeta_data_desc tbe_bytes_cmeta_data = {
+    sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
+    "databind.tbe_bytes.data", "tbe_bytes_t", CMETA_DATA_BYTES,
+    &tbe_bytes_cmeta_type, &tbe_bytes_cmeta_shape,
+    &tbe_bytes_cmeta_buffer_ops, NULL, NULL, NULL, NULL};
+
 static int typed_cmeta_shape_matches(const cmeta_data_desc *data,
                                      const cmeta_data_desc *canonical) {
   if (data->kind == CMETA_DATA_SINT || data->kind == CMETA_DATA_UINT) {
