@@ -11,7 +11,7 @@ spec("DataBind BinaryLayoutIR") {
     Node *root = NULL;
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
-    databind_binary_layout_diagnostic diagnostic = {{0}};
+    databind_binary_layout_diagnostic diagnostic = {0};
 
     check_equal(
         tbe_compiler_parse_schema_file(
@@ -64,7 +64,7 @@ spec("DataBind BinaryLayoutIR") {
         .fixed_block_size = 8u,
         .fields = fields,
         .field_count = 2u};
-    databind_binary_layout_diagnostic diagnostic = {{0}};
+    databind_binary_layout_diagnostic diagnostic = {0};
 
     check_equal(
         databind_binary_layout_validate(&layout, &diagnostic),
