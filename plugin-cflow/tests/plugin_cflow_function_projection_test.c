@@ -1,4 +1,5 @@
 #include <salts/plugin_cflow.h>
+#include <cflow/adapters.h>
 #include <tinytest.h>
 
 #ifndef PLUGIN_CFLOW_FUNCTION_FIXTURE_PATH
