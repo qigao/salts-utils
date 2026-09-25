@@ -103,7 +103,7 @@ spec("Jinja container identity comparisons") {
 
   it("recognizes borrowed NaN identity without merging distinct host elements") {
     double values[] = {NAN, NAN};
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){values, 2u, sizeof(values[0]), &cmeta_data_double};
+    root.users = (cmeta_data_collection_view){values, 2u, sizeof(values[0]), &cmeta_data_double};
     check_equal(jinja_test_render(
         "{{users[0] in users}}|{{users[0] in [users[0]]}}|"
         "{{users[0] in [users[1]]}}|{{users[0]==users[0]}}",
@@ -123,7 +123,7 @@ spec("Jinja container identity comparisons") {
     cmeta_data_float_shape wrong_width = {32u};
     invalid.shape = &wrong_width;
     check_true(cmeta_data_desc_valid(&invalid));
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){&value, 1u, sizeof(value), &invalid};
+    root.users = (cmeta_data_collection_view){&value, 1u, sizeof(value), &invalid};
     check_equal(jinja_test_render("{{users[0] in users}}", &model, &root, NULL,
         &output, &error), JINJA_CMETA_ERR_METADATA);
     check_null(output);
@@ -140,7 +140,7 @@ spec("Jinja container identity comparisons") {
     cmeta_data_float_shape wrong_width = {32u};
     invalid.shape = &wrong_width;
     check_true(cmeta_data_desc_valid(&invalid));
-    root.users = (JINJA_CMETA_SEQUENCE_VIEW){&value, 1u, sizeof(value), &invalid};
+    root.users = (cmeta_data_collection_view){&value, 1u, sizeof(value), &invalid};
     for (size_t i = 0u; i < sizeof(sources) / sizeof(sources[0]); ++i) {
       info("source: %s", sources[i]);
       check_equal(jinja_test_render(sources[i], &model, &root, NULL, &output, &error),
