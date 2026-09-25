@@ -596,11 +596,9 @@ not just header inclusion or compilation.
 
 The root value is described by `cmeta_data_desc`. Struct fields use
 `cmeta_data_struct_shape`; bool, integer, float, string, and enum fields use
-CMeta's semantic descriptors. Collections and maps use the canonical Salts
-CMeta providers. A contiguous borrowed collection uses
-`cmeta_data_collection_view` with the `cmeta_data_sequence_view` descriptor;
-typed CSTL sequence, set, and map descriptors are consumed without a
-Jinja-specific container ABI.
+CMeta's semantic descriptors. Contiguous collections use a borrowed
+`cmeta_data_collection_view`, with their field descriptor pointing to
+`&cmeta_data_sequence_view`.
 
 Borrowed objects, descriptors, string bytes, and sequence elements must remain
 immutable and address-stable until rendering returns. Every render has explicit
