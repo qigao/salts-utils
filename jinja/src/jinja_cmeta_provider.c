@@ -455,8 +455,83 @@ static const cmeta_data_desc jinja_cmeta_vstr_desc = {sizeof(cmeta_data_desc),
                                                       NULL,
                                                       NULL};
 
+static int jinja_is_collection_desc(const cmeta_data_desc *desc) {
+  return cmeta_data_desc_valid(desc) &&
+         (desc->kind == CMETA_DATA_SEQUENCE || desc->kind == CMETA_DATA_SET) &&
+         cmeta_data_collection_ops_of(desc) != NULL;
+}
+
 static int jinja_is_sequence_desc(const cmeta_data_desc *desc) {
-  return cmeta_data_desc_equal(desc, &cmeta_data_sequence_view);
+  return jinja_is_collection_desc(desc) && desc->kind == CMETA_DATA_SEQUENCE;
+}
+
+static JINJA_CMETA_STATUS jinja_borrow_status(cmeta_status status) {
+  switch (status) {
+  case CMETA_OK:
+    return JINJA_CMETA_OK;
+  case CMETA_TRAIT_MISSING:
+    return JINJA_CMETA_ERR_UNSUPPORTED;
+  case CMETA_CAPACITY_EXCEEDED:
+    return JINJA_CMETA_ERR_CAPACITY;
+  default:
+    return JINJA_CMETA_ERR_METADATA;
+  }
+}
+
+static JINJA_CMETA_STATUS jinja_collection_borrow_begin(
+    const JINJA_CMETA_NODE *node, cmeta_data_collection_borrow_cursor *cursor) {
+  cmeta_status status;
+  if (node == NULL || node->object == NULL || cursor == NULL ||
+      !jinja_is_collection_desc(node->desc))
+    return JINJA_CMETA_ERR_METADATA;
+  status = cmeta_data_collection_borrow_begin(node->desc, node->object, cursor);
+  return jinja_borrow_status(status);
+}
+
+static JINJA_CMETA_STATUS jinja_collection_length(
+    const JINJA_CMETA_NODE *node, size_t *count) {
+  cmeta_data_collection_borrow_cursor cursor = {0};
+  cmeta_status status;
+  JINJA_CMETA_STATUS mapped;
+  if (count == NULL) return JINJA_CMETA_ERR_INVALID_ARGUMENT;
+  mapped = jinja_collection_borrow_begin(node, &cursor);
+  if (mapped != JINJA_CMETA_OK) return mapped;
+  status = cmeta_data_collection_borrow_size(&cursor, count);
+  return jinja_borrow_status(status);
+}
+
+static JINJA_CMETA_STATUS jinja_collection_element_at(
+    const JINJA_CMETA_NODE *node, size_t index, const void **element,
+    const cmeta_data_desc **element_data, size_t *length) {
+  cmeta_data_collection_borrow_cursor cursor = {0};
+  const void *item = NULL;
+  size_t count = 0u;
+  size_t i;
+  cmeta_gen_status generated;
+  JINJA_CMETA_STATUS status;
+
+  if (element == NULL || element_data == NULL)
+    return JINJA_CMETA_ERR_INVALID_ARGUMENT;
+  *element = NULL;
+  *element_data = NULL;
+  status = jinja_collection_borrow_begin(node, &cursor);
+  if (status != JINJA_CMETA_OK) return status;
+  status = jinja_borrow_status(
+      cmeta_data_collection_borrow_size(&cursor, &count));
+  if (status != JINJA_CMETA_OK) return status;
+  if (length != NULL) *length = count;
+  if (index >= count) return JINJA_CMETA_OK;
+
+  for (i = 0u; i <= index; ++i) {
+    generated = cmeta_data_collection_borrow_next(&cursor, &item);
+    if (generated == CMETA_GEN_MUTATED) return JINJA_CMETA_ERR_METADATA;
+    if (generated == CMETA_GEN_ERROR || generated == CMETA_GEN_DONE ||
+        item == NULL)
+      return JINJA_CMETA_ERR_METADATA;
+  }
+  *element = item;
+  *element_data = cursor.element;
+  return JINJA_CMETA_OK;
 }
 
 const cmeta_data_desc *jinja_cmeta_vstr_data(void) { return &jinja_cmeta_vstr_desc; }
@@ -560,7 +635,7 @@ static JINJA_CMETA_NODE *jinja_provider_collection_node(JINJA_CMETA_PROVIDER *pr
   if (node == NULL) return NULL;
   node->owned_sequence = (cmeta_data_collection_view){NULL, visible_count, 0u, NULL};
   node->object = &node->owned_sequence;
-  node->desc = &cmeta_data_sequence_view;
+  node->desc = &cmeta_data_sequence;
   node->parent = parent;
   node->first_collection_item = value->first_collection_item;
   node->collection_item_count = value->collection_item_count;
@@ -8470,7 +8545,7 @@ static void *jinja_provider_value_node_impl(JINJA_CMETA_PROVIDER *provider,
     node->expression_kind = JINJA_CMETA_EXPRESSION_ITEMS;
     node->owned_sequence = (cmeta_data_collection_view){0};
     node->object = &node->owned_sequence;
-    node->desc = &cmeta_data_sequence_view;
+    node->desc = &cmeta_data_sequence;
     node->parent = context;
     return node;
   }
@@ -8486,7 +8561,7 @@ static void *jinja_provider_value_node_impl(JINJA_CMETA_PROVIDER *provider,
     node->expression_kind = JINJA_CMETA_EXPRESSION_RANGE;
     node->owned_sequence = (cmeta_data_collection_view){0};
     node->object = &node->owned_sequence;
-    node->desc = &cmeta_data_sequence_view;
+    node->desc = &cmeta_data_sequence;
     node->parent = context;
     return node;
   }
