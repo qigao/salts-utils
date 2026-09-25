@@ -747,6 +747,15 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
     tbe_compiler_set_string(field, "typed_declaration", declaration);
+    /*
+     * Generated tstr storage already has one canonical Salts-owned CMeta
+     * lifecycle provider. Reuse it directly; DataBind does not synthesize a
+     * second string allocator/cleanup contract.
+     */
+    tbe_compiler_set_string(field, "native_data_symbol", "salts_tstr_cmeta_data");
+    tbe_compiler_set_string(field, "native_type_symbol", "salts_tstr_cmeta_type");
+    tbe_compiler_set_string(field, "native_external", "1");
+    tbe_compiler_set_string(field, "native_c_type", "tstr");
     return;
   }
   kind = tbe_compiler_typed_named_kind(root, type, c_type, sizeof(c_type), descriptor,
@@ -1039,6 +1048,15 @@ static int tbe_compiler_cmeta_classify_record(
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
         (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
          strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+      continue;
+
+    if (context->runtime &&
+        tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
+        strcmp(tbe_compiler_string_value(field, "cmeta_native_requirement"),
+               "owned_lifecycle") == 0 &&
+        strcmp(kind, "TBE_TYPED_STRING") == 0 &&
+        tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL)
       continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);
