@@ -138,7 +138,7 @@ static DataBind *create_codec(void) {
       " @Min(1) @Max(10) uint32 right;"
       " optional @Min(1) @Max(3) uint32 scale default 1;"
       "}"
-      "message AddResponse { uint32 sum; }"
+      "message AddResponse { @Min(1) @Max(100) uint32 sum; }"
       "service Calc {"
       " Add: AddRequest -> AddResponse;"
       "}";
@@ -1188,6 +1188,53 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
+  it("validates response before starting the output transaction") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-egress-validation", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_fields));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    TestProvider state = {.published_sum = 77u};
+    DataBindBindingProvider provider = provider_for(&state);
+    uint32_t left = 0u, right = 0u, scale = 0u, sum = 101u;
+    void *params[] = {&left, &right, &scale, &sum};
+    const size_t param_bytes[] = {
+        sizeof(left), sizeof(right), sizeof(scale), sizeof(sum)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+
+    check_equal(data_bind_binding_plan_write_outputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "sum");
+    check(strstr(diagnostic.message, "@Max") != NULL);
+    check_equal(state.begin_calls, (size_t)0u);
+    check_equal(state.write_calls, (size_t)0u);
+    check_equal(state.commit_calls, (size_t)0u);
+    check_equal(state.abort_calls, (size_t)0u);
+    check_equal(state.published_sum, 77u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("aborts transactional output publication on provider failure") {
     DataBind *codec = create_codec();
     ProjectionScratch scratch = {{0}, {0}};
@@ -1396,12 +1443,18 @@ spec("DataBind canonical Service BindingPlan") {
         .presence = 0u,
         .nulls = (uint8_t)(1u << 1)};
     {
+      size_t begin_before = state.begin_calls;
+      size_t write_before = state.write_calls;
+      size_t commit_before = state.commit_calls;
       size_t abort_before = state.abort_calls;
       check_equal(data_bind_binding_plan_write_outputs(
                       plan, &provider, &frame, &diagnostic),
                   DATA_BIND_ERR_SCHEMA);
       check_equal(diagnostic.schema_field, "tri_result");
-      check_equal(state.abort_calls, abort_before + 1u);
+      check_equal(state.begin_calls, begin_before);
+      check_equal(state.write_calls, write_before);
+      check_equal(state.commit_calls, commit_before);
+      check_equal(state.abort_calls, abort_before);
     }
 
     data_bind_binding_plan_free(plan);
