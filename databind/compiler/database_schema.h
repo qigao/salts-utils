@@ -1,5 +1,5 @@
-#ifndef TBE_COMPILER_DATABASE_SCHEMA_H
-#define TBE_COMPILER_DATABASE_SCHEMA_H
+#ifndef DATABIND_COMPILER_DATABASE_SCHEMA_H
+#define DATABIND_COMPILER_DATABASE_SCHEMA_H
 
 #include "node_tree.h"
 
@@ -54,4 +54,4 @@ void tbe_database_schema_destroy(Node *database_ir);
 }
 #endif
 
-#endif /* TBE_COMPILER_DATABASE_SCHEMA_H */
+#endif /* DATABIND_COMPILER_DATABASE_SCHEMA_H */
