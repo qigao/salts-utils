@@ -125,8 +125,8 @@ jobs:
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/binding-plan \
-            --target test_data_bind_binding_plan test_data_bind_native_writer \
-                     test_data_bind_cmeta_public_cpp \
+            --target test_data_bind_binding_plan test_data_bind_projection_plan \
+                     test_data_bind_native_writer test_data_bind_cmeta_public_cpp \
             --parallel 2
 
       - name: Run canonical BindingPlan runtime contract
@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -195,6 +195,7 @@ jobs:
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
+          test -f "$prefix/include/data_bind_projection_plan.h"
 
           cmake -S plugin/tests/package_config/plugin_abi \
             -B build/plugin-abi-installed -G Ninja \
@@ -300,6 +301,7 @@ jobs:
           cmake --install build/native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
+          test -f "$prefix/include/data_bind_projection_plan.h"
 
           cmake -S databind/compiler/package_config/databind_public \
             -B build/databind-public-installed -G Ninja \
@@ -562,6 +564,7 @@ jobs:
           cmake --install build/android-native-sdk
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -f "$prefix/include/data_bind_binding_plan.h"
+          test -f "$prefix/include/data_bind_projection_plan.h"
 
           cmake -S databind/compiler/package_config/databind_public \
             -B build/databind-public-android -G Ninja \

@@ -25,6 +25,7 @@ struct DataBindHttpMethodPlan {
   int success_status;
   uint64_t context_flags;
   DataBindBindingPlan *binding;
+  DataBindTransportPlan *transport;
   DataBindHttpErrorMapping *errors;
   size_t error_count;
 };
@@ -32,6 +33,7 @@ struct DataBindHttpMethodPlan {
 struct DataBindRpcMethodPlan {
   char *wire_method;
   DataBindBindingPlan *binding;
+  DataBindTransportPlan *transport;
   DataBindRpcErrorMapping *errors;
   size_t error_count;
 };
@@ -74,6 +76,10 @@ static char *method_plan_join(
 
 static size_t method_plan_out_size(size_t requested, size_t full) {
   return requested != 0u && requested < full ? requested : full;
+}
+
+static int method_plan_format_valid(DataBindFormat format) {
+  return format >= DATA_BIND_FORMAT_BINARY && format <= DATA_BIND_FORMAT_XML;
 }
 
 static DataBindStatus method_plan_fail(
@@ -128,7 +134,9 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
       (config->field_count != 0u && config->fields == NULL) ||
       (config->error_count != 0u && config->errors == NULL) ||
       config->success_status < 100 || config->success_status > 599 ||
-      (config->context_flags & ~DATA_BIND_HTTP_CONTEXT_MASK) != 0u)
+      (config->context_flags & ~DATA_BIND_HTTP_CONTEXT_MASK) != 0u ||
+      !method_plan_format_valid(config->ingress_format) ||
+      !method_plan_format_valid(config->egress_format))
     return 0;
   if (config->method != NULL && !http_method_valid(config->method))
     return 0;
@@ -166,7 +174,9 @@ static int rpc_config_valid(const DataBindRpcProjectionConfig *config) {
       config->abi_version != DATA_BIND_METHOD_PLAN_ABI_VERSION ||
       (config->field_count != 0u && config->fields == NULL) ||
       (config->error_count != 0u && config->errors == NULL) ||
-      (config->wire_method != NULL && config->wire_method[0] == '\0'))
+      (config->wire_method != NULL && config->wire_method[0] == '\0') ||
+      !method_plan_format_valid(config->ingress_format) ||
+      !method_plan_format_valid(config->egress_format))
     return 0;
   for (i = 0u; i < config->field_count; ++i) {
     const DataBindRpcFieldProjection *left = &config->fields[i];
@@ -557,6 +567,11 @@ DataBindStatus data_bind_http_method_plan_compile_service(
   const char *method = config != NULL && config->method != NULL
                            ? config->method : "POST";
   const char *route;
+  const DataBindFormat ingress_format =
+      config != NULL ? config->ingress_format : DATA_BIND_FORMAT_JSON;
+  const DataBindFormat egress_format =
+      config != NULL ? config->egress_format : DATA_BIND_FORMAT_JSON;
+  DataBindError projection_error = DATA_BIND_ERROR_INIT;
   DataBindStatus status;
 
   if (out_plan != NULL) *out_plan = NULL;
@@ -594,6 +609,18 @@ DataBindStatus data_bind_http_method_plan_compile_service(
     free(default_route);
     return method_plan_fail(diagnostic, DATA_BIND_ERR_OOM,
                             "Could not allocate HTTP MethodPlan");
+  }
+
+  status = data_bind_transport_plan_compile_service(
+      codec, service_name, operation_name, DATA_BIND_TRANSPORT_HTTP,
+      ingress_format, egress_format, &plan->transport, &projection_error);
+  if (status != DATA_BIND_OK) {
+    status = method_plan_fail(
+        diagnostic, status,
+        projection_error.message[0] != '\0'
+            ? projection_error.message
+            : "HTTP FormatPlan/TransportPlan admission failed");
+    goto fail;
   }
 
   status = data_bind_binding_plan_compile_service(
@@ -638,6 +665,7 @@ void data_bind_http_method_plan_free(DataBindHttpMethodPlan *plan) {
   free(plan->method);
   free(plan->route);
   free(plan->errors);
+  data_bind_transport_plan_free(plan->transport);
   data_bind_binding_plan_free(plan->binding);
   free(plan);
 }
@@ -665,6 +693,11 @@ uint64_t data_bind_http_method_plan_context_flags(
 const DataBindBindingPlan *data_bind_http_method_plan_binding(
     const DataBindHttpMethodPlan *plan) {
   return plan != NULL ? plan->binding : NULL;
+}
+
+const DataBindTransportPlan *data_bind_http_method_plan_transport(
+    const DataBindHttpMethodPlan *plan) {
+  return plan != NULL ? plan->transport : NULL;
 }
 
 size_t data_bind_http_method_plan_error_count(
@@ -727,6 +760,11 @@ DataBindStatus data_bind_rpc_method_plan_compile_service(
   unsigned char *used = NULL;
   char *default_wire_method = NULL;
   const char *wire_method;
+  const DataBindFormat ingress_format =
+      config != NULL ? config->ingress_format : DATA_BIND_FORMAT_JSON;
+  const DataBindFormat egress_format =
+      config != NULL ? config->egress_format : DATA_BIND_FORMAT_JSON;
+  DataBindError projection_error = DATA_BIND_ERROR_INIT;
   DataBindStatus status;
 
   if (out_plan != NULL) *out_plan = NULL;
@@ -768,6 +806,18 @@ DataBindStatus data_bind_rpc_method_plan_compile_service(
                             "Could not allocate RPC MethodPlan");
   }
 
+  status = data_bind_transport_plan_compile_service(
+      codec, service_name, operation_name, DATA_BIND_TRANSPORT_RPC,
+      ingress_format, egress_format, &plan->transport, &projection_error);
+  if (status != DATA_BIND_OK) {
+    status = method_plan_fail(
+        diagnostic, status,
+        projection_error.message[0] != '\0'
+            ? projection_error.message
+            : "RPC FormatPlan/TransportPlan admission failed");
+    goto fail;
+  }
+
   status = data_bind_binding_plan_compile_service(
       codec, service_name, operation_name, &projection, native,
       &plan->binding, diagnostic);
@@ -804,6 +854,7 @@ void data_bind_rpc_method_plan_free(DataBindRpcMethodPlan *plan) {
   if (plan == NULL) return;
   free(plan->wire_method);
   free(plan->errors);
+  data_bind_transport_plan_free(plan->transport);
   data_bind_binding_plan_free(plan->binding);
   free(plan);
 }
@@ -816,6 +867,11 @@ const char *data_bind_rpc_method_plan_wire_method(
 const DataBindBindingPlan *data_bind_rpc_method_plan_binding(
     const DataBindRpcMethodPlan *plan) {
   return plan != NULL ? plan->binding : NULL;
+}
+
+const DataBindTransportPlan *data_bind_rpc_method_plan_transport(
+    const DataBindRpcMethodPlan *plan) {
+  return plan != NULL ? plan->transport : NULL;
 }
 
 size_t data_bind_rpc_method_plan_error_count(

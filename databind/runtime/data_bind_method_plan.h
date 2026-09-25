@@ -2,6 +2,7 @@
 #define DATA_BIND_METHOD_PLAN_H
 
 #include "data_bind_binding_plan.h"
+#include "data_bind_projection_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -10,7 +11,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindHttpFieldLocation {
   DATA_BIND_HTTP_PATH = 1,
@@ -64,11 +65,14 @@ typedef struct DataBindHttpProjectionConfig {
   size_t field_count;
   const DataBindHttpErrorMapping *errors;
   size_t error_count;
+  DataBindFormat ingress_format;
+  DataBindFormat egress_format;
 } DataBindHttpProjectionConfig;
 
 #define DATA_BIND_HTTP_PROJECTION_CONFIG_INIT \
   { sizeof(DataBindHttpProjectionConfig), DATA_BIND_METHOD_PLAN_ABI_VERSION, \
-    NULL, NULL, 200, DATA_BIND_HTTP_CONTEXT_NONE, NULL, 0u, NULL, 0u }
+    NULL, NULL, 200, DATA_BIND_HTTP_CONTEXT_NONE, NULL, 0u, NULL, 0u, \
+    DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON }
 
 typedef struct DataBindRpcFieldProjection {
   size_t size;
@@ -98,11 +102,13 @@ typedef struct DataBindRpcProjectionConfig {
   size_t field_count;
   const DataBindRpcErrorMapping *errors;
   size_t error_count;
+  DataBindFormat ingress_format;
+  DataBindFormat egress_format;
 } DataBindRpcProjectionConfig;
 
 #define DATA_BIND_RPC_PROJECTION_CONFIG_INIT \
   { sizeof(DataBindRpcProjectionConfig), DATA_BIND_METHOD_PLAN_ABI_VERSION, \
-    NULL, NULL, 0u, NULL, 0u }
+    NULL, NULL, 0u, NULL, 0u, DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON }
 
 typedef struct DataBindHttpProjectionArtifactEntry {
   size_t size;
@@ -182,6 +188,8 @@ DATA_BIND_API uint64_t
 data_bind_http_method_plan_context_flags(const DataBindHttpMethodPlan *plan);
 DATA_BIND_API const DataBindBindingPlan *
 data_bind_http_method_plan_binding(const DataBindHttpMethodPlan *plan);
+DATA_BIND_API const DataBindTransportPlan *
+data_bind_http_method_plan_transport(const DataBindHttpMethodPlan *plan);
 DATA_BIND_API size_t
 data_bind_http_method_plan_error_count(const DataBindHttpMethodPlan *plan);
 DATA_BIND_API int data_bind_http_method_plan_error_at(
@@ -215,6 +223,8 @@ DATA_BIND_API const char *
 data_bind_rpc_method_plan_wire_method(const DataBindRpcMethodPlan *plan);
 DATA_BIND_API const DataBindBindingPlan *
 data_bind_rpc_method_plan_binding(const DataBindRpcMethodPlan *plan);
+DATA_BIND_API const DataBindTransportPlan *
+data_bind_rpc_method_plan_transport(const DataBindRpcMethodPlan *plan);
 DATA_BIND_API size_t
 data_bind_rpc_method_plan_error_count(const DataBindRpcMethodPlan *plan);
 DATA_BIND_API int data_bind_rpc_method_plan_error_at(

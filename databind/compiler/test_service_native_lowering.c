@@ -446,6 +446,12 @@ spec("DataBind canonical Service native lowering") {
         (DataBindHttpErrorMapping)DATA_BIND_HTTP_ERROR_MAPPING_INIT;
     DataBindRpcErrorMapping rpc_mapping =
         (DataBindRpcErrorMapping)DATA_BIND_RPC_ERROR_MAPPING_INIT;
+    DataBindTransportPlanInfo http_transport =
+        (DataBindTransportPlanInfo)DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindTransportPlanInfo rpc_transport =
+        (DataBindTransportPlanInfo)DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindFormatPlanInfo format =
+        (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
     int native_status;
     int http_status = -1;
     int rpc_code = 1;
@@ -473,9 +479,33 @@ spec("DataBind canonical Service native lowering") {
     check_equal(data_bind_http_method_plan_route(http), "/Calc/Find");
     check_equal(data_bind_http_method_plan_success_status(http), 201);
     check_equal(data_bind_http_method_plan_error_count(http), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_http_method_plan_transport(http), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_HTTP);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
     check(data_bind_http_method_plan_error_at(http, 0u, &http_mapping));
     check_equal(http_mapping.error_type, "NotFound");
     check_equal(http_mapping.status, 404);
+    check(data_bind_transport_plan_info(
+        data_bind_http_method_plan_transport(http), &http_transport));
+    check_equal(http_transport.kind, DATA_BIND_TRANSPORT_HTTP);
+    check_equal(http_transport.service_name, "Calc");
+    check_equal(http_transport.operation_name, "Find");
+    check_not_null(http_transport.ingress);
+    check_not_null(http_transport.egress);
+    check(data_bind_format_plan_info(http_transport.ingress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(http_transport.egress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
 
     check_equal(
         data_bind_rpc_method_plan_compile_service(
@@ -485,9 +515,32 @@ spec("DataBind canonical Service native lowering") {
     check_not_null(rpc);
     check_equal(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Find");
     check_equal(data_bind_rpc_method_plan_error_count(rpc), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_rpc_method_plan_transport(rpc), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_RPC);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
     check(data_bind_rpc_method_plan_error_at(rpc, 1u, &rpc_mapping));
     check_equal(rpc_mapping.error_type, "PermissionDenied");
     check_equal(rpc_mapping.code, -32003);
+    check(data_bind_transport_plan_info(
+        data_bind_rpc_method_plan_transport(rpc), &rpc_transport));
+    check_equal(rpc_transport.kind, DATA_BIND_TRANSPORT_RPC);
+    check_equal(rpc_transport.service_name, "Calc");
+    check_equal(rpc_transport.operation_name, "Find");
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(rpc_transport.ingress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
+    format = (DataBindFormatPlanInfo)DATA_BIND_FORMAT_PLAN_INFO_INIT;
+    check(data_bind_format_plan_info(rpc_transport.egress, &format));
+    check_equal(format.format, DATA_BIND_FORMAT_JSON);
 
     frame.request = &request;
     frame.request_bytes = sizeof(request);

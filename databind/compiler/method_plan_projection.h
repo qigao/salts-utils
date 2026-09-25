@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_METHOD_PLAN_PROJECTION_H
 
 #include "projection.h"
+#include "../runtime/data_bind.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -32,6 +33,8 @@ typedef struct databind_compiler_http_operation_config {
   const char *route;
   int success_status;
   uint64_t context_flags;
+  DataBindFormat ingress_format;
+  DataBindFormat egress_format;
 } databind_compiler_http_operation_config;
 
 typedef struct databind_compiler_http_field_config {
@@ -65,6 +68,8 @@ typedef struct databind_compiler_rpc_operation_config {
   const char *service_name;
   const char *operation_name;
   const char *wire_method;
+  DataBindFormat ingress_format;
+  DataBindFormat egress_format;
 } databind_compiler_rpc_operation_config;
 
 typedef struct databind_compiler_rpc_field_config {

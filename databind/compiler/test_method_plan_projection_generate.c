@@ -8,7 +8,8 @@ int main(int argc, char **argv) {
   char *schema_data = NULL;
   databind_compiler_http_operation_config http_operations[] = {
       {"Calc", "Add", "GET", "/add/{left}", 201,
-       UINT64_C(4)}
+       UINT64_C(4), DATA_BIND_FORMAT_YAML,
+       DATA_BIND_FORMAT_XML}
   };
   databind_compiler_http_field_config http_fields[] = {
       {"Calc", "Add", DATABIND_COMPILER_PROJECTION_INGRESS,
@@ -28,7 +29,9 @@ int main(int argc, char **argv) {
       http_errors, sizeof(http_errors) / sizeof(http_errors[0])
   };
   databind_compiler_rpc_operation_config rpc_operations[] = {
-      {"Calc", "Add", "calc.add"}
+      {"Calc", "Add", "calc.add",
+       DATA_BIND_FORMAT_JSON,
+       DATA_BIND_FORMAT_BINARY}
   };
   databind_compiler_rpc_field_config rpc_fields[] = {
       {"Calc", "Add", DATABIND_COMPILER_PROJECTION_INGRESS,

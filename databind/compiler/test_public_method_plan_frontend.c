@@ -18,6 +18,8 @@ spec("DataBind public MethodPlan projection frontend") {
     check_equal(config->context_flags, UINT64_C(0));
     check_equal(config->field_count, (size_t)0);
     check_equal(config->error_count, (size_t)0);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_JSON);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_JSON);
   }
 
   it("publishes convention RPC projection through databind_target") {
@@ -29,6 +31,8 @@ spec("DataBind public MethodPlan projection frontend") {
     check_null(config->wire_method);
     check_equal(config->field_count, (size_t)0);
     check_equal(config->error_count, (size_t)0);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_JSON);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_JSON);
   }
 
   it("applies external HTTP projection config without changing IDL") {
@@ -48,6 +52,8 @@ spec("DataBind public MethodPlan projection frontend") {
     check_equal(config->fields[2].schema_field, "sum");
     check_true(config->fields[2].location == DATA_BIND_HTTP_RESPONSE_BODY);
     check_equal(config->error_count, (size_t)1);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_YAML);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_XML);
     check_equal(config->errors[0].error_type, "CalcError");
     check_equal(config->errors[0].status, 422);
   }
@@ -67,6 +73,8 @@ spec("DataBind public MethodPlan projection frontend") {
     check_equal(config->fields[2].wire_name, "result");
     check_equal(config->fields[2].ordinal, (size_t)0);
     check_equal(config->error_count, (size_t)1);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_JSON);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_BINARY);
     check_equal(config->errors[0].error_type, "CalcError");
     check_equal(config->errors[0].code, -32042);
   }
