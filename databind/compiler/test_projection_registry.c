@@ -91,7 +91,7 @@ describe("shared canonical IR") {
          probe_generate, &wasm},
     };
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_schema_file(
                     SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
     check_not_null(root);
     check_not_null(schema_data);
@@ -179,11 +179,11 @@ describe("compiler integration") {
         {DATABIND_COMPILER_PROJECTION_WASM, "wasm",
          probe_generate, &wasm},
     };
-    tbe_compiler_options_t options = {
+    databind_compiler_options_t options = {
         .schema_path = SCHEMA_EXAMPLE_FILE,
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
-        .lang_enum = TBE_COMPILER_LANG_C,
+        .lang_enum = DATABIND_COMPILER_LANG_C,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -191,7 +191,7 @@ describe("compiler integration") {
     };
 
     (void)remove(output);
-    check_equal(tbe_compiler_run(&options), 0);
+    check_equal(databind_compiler_run(&options), 0);
     check_equal(plugin.calls, (size_t)1u);
     check_equal(wasm.calls, (size_t)1u);
     check_not_null(plugin.seen_root);
@@ -211,11 +211,11 @@ describe("compiler integration") {
         {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
          probe_generate, &plugin},
     };
-    tbe_compiler_options_t options = {
+    databind_compiler_options_t options = {
         .schema_path = SCHEMA_EXAMPLE_FILE,
         .output_path = output,
         .resource_dir = TBE_COMPILER_RESOURCE_DIR,
-        .lang_enum = TBE_COMPILER_LANG_C,
+        .lang_enum = DATABIND_COMPILER_LANG_C,
         .projection_requests = requests,
         .projection_count = sizeof(requests) / sizeof(requests[0]),
         .projection_backends = backends,
@@ -223,7 +223,7 @@ describe("compiler integration") {
     };
 
     (void)remove(output);
-    check_equal(tbe_compiler_run(&options), 1);
+    check_equal(databind_compiler_run(&options), 1);
     check_equal(plugin.calls, (size_t)0u);
     check_true(file_exists(output));
     (void)remove(output);
