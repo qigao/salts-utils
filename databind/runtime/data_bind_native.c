@@ -638,19 +638,24 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
                                           void *storage, size_t depth,
                                           const char *path, NativeArena *scratch);
 
+static DataBindStatus native_decode_value_from_token(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *token);
+
 static DataBindStatus native_decode_struct(NativeDecode *decode,
                                            const cmeta_data_desc *data,
                                            void *storage, size_t depth,
-                                           const char *path, NativeArena *scratch) {
+                                           const char *path, NativeArena *scratch,
+                                           const cserde_token *opener) {
   const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
   cserde_token token;
   unsigned char *seen;
   size_t mark = scratch->offset;
   const size_t bitmap_bytes = native_bitmap_bytes(shape->field_count);
   size_t i;
-  DataBindStatus status = native_next(decode, &token, path);
-  if (status != DATA_BIND_OK) return status;
-  if (token.kind != CSERDE_MAP_BEGIN)
+  DataBindStatus status;
+  if (opener == NULL || opener->kind != CSERDE_MAP_BEGIN)
     return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK, path,
                        "Expected map token for native Struct");
 
@@ -814,12 +819,8 @@ static DataBindStatus native_assign_enum(
                      "Enum provider rejected canonical assignment");
 }
 
-static DataBindStatus native_decode_value(NativeDecode *decode,
-                                          const cmeta_data_desc *data,
-                                          void *storage, size_t depth,
-                                          const char *path, NativeArena *scratch) {
-  cserde_token token;
-  DataBindStatus status;
+static DataBindStatus native_decode_admit(
+    NativeDecode *decode, size_t depth, const char *path) {
   if (depth == 0u || depth > decode->options->max_depth)
     return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Decoded value depth exceeds configured limit");
@@ -827,12 +828,20 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
     return native_fail(decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Decoded value item count exceeds configured limit");
   ++decode->items;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus native_decode_value_admitted(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *token) {
+  if (token == NULL)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_INVALID_ARG,
+                       CSERDE_OK, path, "Decoded token is required");
 
   if (data->kind == CMETA_DATA_STRUCT)
-    return native_decode_struct(decode, data, storage, depth, path, scratch);
-
-  status = native_next(decode, &token, path);
-  if (status != DATA_BIND_OK) return status;
+    return native_decode_struct(
+        decode, data, storage, depth, path, scratch, token);
 
   if (native_scalar_supported(data))
     return native_assign_scalar(decode->diagnostic, data, &token, storage, path);
@@ -878,6 +887,29 @@ static DataBindStatus native_decode_value(NativeDecode *decode,
 
   return native_fail(decode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                      "Unsupported native reader descriptor after preflight");
+}
+
+static DataBindStatus native_decode_value_from_token(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *token) {
+  DataBindStatus status = native_decode_admit(decode, depth, path);
+  if (status != DATA_BIND_OK) return status;
+  return native_decode_value_admitted(
+      decode, data, storage, depth, path, scratch, token);
+}
+
+static DataBindStatus native_decode_value(NativeDecode *decode,
+                                          const cmeta_data_desc *data,
+                                          void *storage, size_t depth,
+                                          const char *path, NativeArena *scratch) {
+  cserde_token token;
+  DataBindStatus status = native_decode_admit(decode, depth, path);
+  if (status != DATA_BIND_OK) return status;
+  status = native_next(decode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+  return native_decode_value_admitted(
+      decode, data, storage, depth, path, scratch, &token);
 }
 
 static int native_diagnostic_header_valid(const DataBindNativeDiagnostic *diagnostic) {
