@@ -284,6 +284,15 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
+static const DataBindNativeDescriptor {{name}}_NATIVE_DESCRIPTOR =
+    DATA_BIND_NATIVE_DESCRIPTOR_INIT("{{name}}", &{{name}}_CMETA_DATA);
+
+const DataBindNativeDescriptor *{{name}}_native_descriptor(void) {
+    return &{{name}}_NATIVE_DESCRIPTOR;
+}
+
+/* Legacy mixed wire/native descriptor. Binary/TBE consumers still use this
+ * during migration; new generic consumers must use native_descriptor(). */
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
@@ -357,6 +366,15 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
+static const DataBindNativeDescriptor {{name}}_NATIVE_DESCRIPTOR =
+    DATA_BIND_NATIVE_DESCRIPTOR_INIT("{{name}}", &{{name}}_CMETA_DATA);
+
+const DataBindNativeDescriptor *{{name}}_native_descriptor(void) {
+    return &{{name}}_NATIVE_DESCRIPTOR;
+}
+
+/* Legacy mixed wire/native descriptor. Binary/TBE consumers still use this
+ * during migration; new generic consumers must use native_descriptor(). */
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
@@ -430,6 +448,15 @@ static const cmeta_data_desc {{name}}_CMETA_DATA = {
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
 {{#typed_cmeta_runtime_supported}}
+static const DataBindNativeDescriptor {{name}}_NATIVE_DESCRIPTOR =
+    DATA_BIND_NATIVE_DESCRIPTOR_INIT("{{name}}", &{{name}}_CMETA_DATA);
+
+const DataBindNativeDescriptor *{{name}}_native_descriptor(void) {
+    return &{{name}}_NATIVE_DESCRIPTOR;
+}
+
+/* Legacy mixed wire/native descriptor. Binary/TBE consumers still use this
+ * during migration; new generic consumers must use native_descriptor(). */
 static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
     TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
 
