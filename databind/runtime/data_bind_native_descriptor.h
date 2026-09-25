@@ -39,6 +39,15 @@ typedef struct DataBindNativeDescriptor {
 DATA_BIND_API DataBindStatus data_bind_native_descriptor_validate(
     const DataBindNativeDescriptor *descriptor, DataBindError *error);
 
+/* Initialize/clear through the canonical CMeta native graph. These operations
+ * are format-neutral and must not inspect any wire/backend metadata. */
+DATA_BIND_API DataBindStatus data_bind_native_descriptor_init(
+    const DataBindNativeDescriptor *descriptor, void *object,
+    size_t object_bytes, DataBindError *error);
+DATA_BIND_API DataBindStatus data_bind_native_descriptor_clear(
+    const DataBindNativeDescriptor *descriptor, void *object,
+    size_t object_bytes, DataBindError *error);
+
 #ifdef __cplusplus
 }
 #endif
