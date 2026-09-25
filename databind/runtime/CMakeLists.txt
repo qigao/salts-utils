@@ -4,7 +4,9 @@ add_library(
   data_bind_format_provider.c
   data_bind_format_provider.h
   data_bind_native.c
-  data_bind_native.h)
+  data_bind_native.h
+  data_bind_native_descriptor.c
+  data_bind_native_descriptor.h)
 target_include_directories(
   ${DATA_BIND_CORE_TARGET}
   PUBLIC
