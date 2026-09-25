@@ -2,7 +2,7 @@
 #include "tinytest.h"
 
 #include <cmeta/data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -57,13 +57,13 @@ static const cmeta_type_desc STATE_BOUNDARY_TYPE = {
     CMETA_T_OBJECT, NULL, NULL, &STATE_BOUNDARY_ID};
 static const cmeta_field_desc STATE_BOUNDARY_LAYOUT_FIELDS[] = {
     {"value", "uint32_t", offsetof(StateBoundary, value), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc STATE_BOUNDARY_LAYOUT = {
     "StateBoundary", sizeof(StateBoundary), _Alignof(StateBoundary),
     STATE_BOUNDARY_LAYOUT_FIELDS, 1u};
 static const cmeta_data_field_desc STATE_BOUNDARY_FIELDS[] = {
     {"test.StateBoundary.value", "value", offsetof(StateBoundary, value),
-     &salts_uint32_cmeta_data}};
+     &cmeta_data_uint32}};
 static const cmeta_data_struct_shape STATE_BOUNDARY_SHAPE = {
     &STATE_BOUNDARY_LAYOUT, STATE_BOUNDARY_FIELDS, 1u};
 static const cmeta_data_desc STATE_BOUNDARY_DATA = {

@@ -191,7 +191,7 @@ spec("DataBind direct reader to native contract") {
     const NativeReaderProbeStep steps[] = {native_reader_probe_sint(INT64_MAX)};
     int32_t value = 0;
     open_source(steps, 1u);
-    check_equal(decode(&salts_int32_cmeta_data, &value, sizeof(value)), DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(decode(&cmeta_data_int32, &value, sizeof(value)), DATA_BIND_ERR_TYPE_MISMATCH);
     check_equal(probe.calls, 1u);
     check_equal(value, 0);
     check_equal(diagnostic.source_status, CSERDE_OK);

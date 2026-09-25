@@ -1,7 +1,7 @@
 #include "data_bind.h"
 #include "tinytest.h"
 #include <cmeta/data.h>
-#include <salts_cmeta_fixed_width.h>
+#include <cmeta/data.h>
 #include <string.h>
 
 /* Mutations caught: the legacy flag/string classifier masks canonical kind;
@@ -87,7 +87,7 @@ suite("databind_cmeta_reflection") {
         check_equal(field.default_value, "7");
         check_equal(field.cmeta_data->storage_type->identity->form, CMETA_TYPE_ATOM);
         {
-            cmeta_type_desc copy = salts_int32_cmeta_type;
+            cmeta_type_desc copy = cmeta_type_int32;
             cmeta_type_identity identity = *copy.identity;
             copy.identity = &identity;
             check(cmeta_type_equal(field.cmeta_data->storage_type, &copy));
@@ -111,7 +111,7 @@ suite("databind_cmeta_reflection") {
 #ifdef DATA_BIND_SCHEMA_CMETA_REFLECTION
         static const char *const unresolved[] = {"point", "state", "permission", "title", "payload", "items", "unique", "lookup", "choice", "timestamp", "unknown"};
         DataBind *codec = reflection_codec();
-        const cmeta_data_desc *out = &salts_int32_cmeta_data;
+        const cmeta_data_desc *out = &cmeta_data_int32;
         DataBindSchemaField field;
         DataBindError error = DATA_BIND_ERROR_INIT;
         size_t i, index;
@@ -122,7 +122,7 @@ suite("databind_cmeta_reflection") {
             index = reflection_field(codec, unresolved[i], &field);
             snprintf(path, sizeof(path), "Shape.%s", unresolved[i]);
             check_equal(data_bind_schema_field_cmeta_data(codec, "Shape", index, &out, &error), DATA_BIND_ERR_SCHEMA);
-            check(out == &salts_int32_cmeta_data);
+            check(out == &cmeta_data_int32);
             check_equal(error.code, DATA_BIND_ERR_SCHEMA);
             check_equal(error.path, path);
             check_not_null(strstr(error.message, "CMeta"));
@@ -136,7 +136,7 @@ suite("databind_cmeta_reflection") {
         check_not_null(out);
         if (out) {
             check_equal(out->stable_id, "salts.int32.data");
-            check(cmeta_type_equal(out->storage_type, &salts_int32_cmeta_type));
+            check(cmeta_type_equal(out->storage_type, &cmeta_type_int32));
         }
         const cmeta_data_desc *published = out;
         check_equal(data_bind_schema_field_cmeta_data(codec, "Missing", 0u, &out, &error), DATA_BIND_ERR_TYPE_NOT_FOUND);

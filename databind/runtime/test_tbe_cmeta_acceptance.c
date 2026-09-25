@@ -33,17 +33,17 @@ static void same_value_type(const cmeta_data_desc *runtime, const cmeta_data_des
 
 static void unresolved_field(DataBind *codec, const char *record, size_t index,
                              const char *path) {
-  const cmeta_data_desc *data = &salts_int32_cmeta_data;
+  const cmeta_data_desc *data = &cmeta_data_int32;
   DataBindError first = DATA_BIND_ERROR_INIT, second = DATA_BIND_ERROR_INIT;
   check_equal(data_bind_schema_field_cmeta_data(codec, record, index, &data, &first),
               DATA_BIND_ERR_SCHEMA);
-  check(data == &salts_int32_cmeta_data);
+  check(data == &cmeta_data_int32);
   check_equal(first.code, DATA_BIND_ERR_SCHEMA);
   check_equal(first.path, path);
   check_not_null(strstr(first.message, "CMeta"));
   check_equal(data_bind_schema_field_cmeta_data(codec, record, index, &data, &second),
               DATA_BIND_ERR_SCHEMA);
-  check(data == &salts_int32_cmeta_data);
+  check(data == &cmeta_data_int32);
   check_equal(second.code, first.code);
   check_equal(second.path, first.path);
   check_equal(second.message, first.message);
@@ -267,7 +267,7 @@ suite("real generated and runtime CMeta acceptance") {
     for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
       DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
       DataBindError error = DATA_BIND_ERROR_INIT, again = DATA_BIND_ERROR_INIT;
-      const cmeta_data_desc *out = &salts_int32_cmeta_data;
+      const cmeta_data_desc *out = &cmeta_data_int32;
       check(data_bind_schema_field_at(codec, cases[i].record, cases[i].index, &field));
       check_equal(field.cmeta_kind, cases[i].kind);
       if (cases[i].id) {
@@ -281,10 +281,10 @@ suite("real generated and runtime CMeta acceptance") {
       } else check_null(field.cmeta_data);
       unresolved_field(codec, cases[i].record, cases[i].index, cases[i].path);
       check_equal(cases[i].get(&out, &error), DATA_BIND_ERR_SCHEMA);
-      check(out == &salts_int32_cmeta_data);
+      check(out == &cmeta_data_int32);
       check_equal(error.path, cases[i].record);
       check_equal(cases[i].get(&out, &again), DATA_BIND_ERR_SCHEMA);
-      check(out == &salts_int32_cmeta_data);
+      check(out == &cmeta_data_int32);
       check_equal(again.code, error.code);
       check_equal(again.path, error.path);
       check_equal(again.message, error.message);
@@ -305,7 +305,7 @@ suite("real generated and runtime CMeta acceptance") {
     check_not_null(base);
     if (base) {
       check_equal(base->storage_type->identity->form, CMETA_TYPE_ATOM);
-      same_value_type(base, &salts_int32_cmeta_data);
+      same_value_type(base, &cmeta_data_int32);
     }
     out = base;
     check_equal(OptionalStorage_cmeta_data(&out, &error), DATA_BIND_ERR_SCHEMA);

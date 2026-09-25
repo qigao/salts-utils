@@ -80,9 +80,9 @@ static void require_bitmap_boundary(size_t field_count, size_t branches,
     fields[i] = (cmeta_field_desc){
         .name = names[i], .type_name = "int32_t", .offset = i * sizeof(int32_t),
         .size = sizeof(int32_t), .align = _Alignof(int32_t),
-        .type = salts_int32_cmeta_data.storage_type};
+        .type = cmeta_data_int32.storage_type};
     values[i] = (cmeta_data_field_desc){names[i], names[i], i * sizeof(int32_t),
-                                       &salts_int32_cmeta_data};
+                                       &cmeta_data_int32};
   }
   for (i = 0u; i < branches; ++i) {
     parent_fields[i] = (cmeta_field_desc){
@@ -204,7 +204,7 @@ spec("DataBind field bitmap byte boundaries and nested lifetimes") {
     limits.max_depth = 1u;
     limits.max_items = 1u;
     check_equal(native_reader_probe_open(&source, steps, 1u, &input), CSERDE_OK);
-    check_equal(data_bind_native_measure(&limits, &salts_int32_cmeta_data,
+    check_equal(data_bind_native_measure(&limits, &cmeta_data_int32,
                                          &required, &error), DATA_BIND_OK);
     check_equal(required.container_depth, 0u);
     check_equal(required.field_tracking_bytes, 0u);
@@ -212,17 +212,17 @@ spec("DataBind field bitmap byte boundaries and nested lifetimes") {
     check_equal(required.descriptor_nodes, 1u);
     check_equal(source.calls, 0u);
     limits.workspace_bytes = required.decode_bytes - 1u;
-    check_equal(data_bind_native_decode_bounded(&limits, &salts_int32_cmeta_data,
+    check_equal(data_bind_native_decode_bounded(&limits, &cmeta_data_int32,
                 &input, &output, sizeof(output), 0u, &error), DATA_BIND_ERR_LIMIT);
     check_equal(source.calls, 0u);
     check_equal(output, 0);
     limits.workspace_bytes = required.decode_bytes;
-    check_equal(data_bind_native_decode_bounded(&limits, &salts_int32_cmeta_data,
+    check_equal(data_bind_native_decode_bounded(&limits, &cmeta_data_int32,
                 &input, &output, sizeof(output), 0u, &error), DATA_BIND_OK);
     check_equal(source.calls, 1u);
     check_equal(output, 7);
     limits.workspace_bytes = required.lifecycle_bytes;
-    check_equal(data_bind_native_clear(&limits, &salts_int32_cmeta_data,
+    check_equal(data_bind_native_clear(&limits, &cmeta_data_int32,
                                       &output, sizeof(output), &error), DATA_BIND_OK);
     check_equal(output, 0);
   }

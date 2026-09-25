@@ -177,16 +177,16 @@ static int native_scalar_supported(const cmeta_data_desc *data) {
     case CMETA_DATA_SINT:
       return native_data_matches(data, &cmeta_data_int) ||
              native_data_matches(data, &cmeta_data_long) ||
-             native_data_matches(data, &salts_int8_cmeta_data) ||
-             native_data_matches(data, &salts_int16_cmeta_data) ||
-             native_data_matches(data, &salts_int32_cmeta_data) ||
-             native_data_matches(data, &salts_int64_cmeta_data);
+             native_data_matches(data, &cmeta_data_int8) ||
+             native_data_matches(data, &cmeta_data_int16) ||
+             native_data_matches(data, &cmeta_data_int32) ||
+             native_data_matches(data, &cmeta_data_int64);
     case CMETA_DATA_UINT:
       return native_data_matches(data, &cmeta_data_size) ||
-             native_data_matches(data, &salts_uint8_cmeta_data) ||
-             native_data_matches(data, &salts_uint16_cmeta_data) ||
-             native_data_matches(data, &salts_uint32_cmeta_data) ||
-             native_data_matches(data, &salts_uint64_cmeta_data);
+             native_data_matches(data, &cmeta_data_uint8) ||
+             native_data_matches(data, &cmeta_data_uint16) ||
+             native_data_matches(data, &cmeta_data_uint32) ||
+             native_data_matches(data, &cmeta_data_uint64);
     case CMETA_DATA_FLOAT:
       return native_data_matches(data, &cmeta_data_float) ||
              native_data_matches(data, &cmeta_data_double);
@@ -206,21 +206,21 @@ static int native_scalar_zero(const cmeta_data_desc *data, void *storage) {
     *(long *)storage = 0L;
   } else if (native_data_matches(data, &cmeta_data_size)) {
     *(size_t *)storage = 0u;
-  } else if (native_data_matches(data, &salts_int8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int8)) {
     *(int8_t *)storage = INT8_C(0);
-  } else if (native_data_matches(data, &salts_int16_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int16)) {
     *(int16_t *)storage = INT16_C(0);
-  } else if (native_data_matches(data, &salts_int32_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int32)) {
     *(int32_t *)storage = INT32_C(0);
-  } else if (native_data_matches(data, &salts_int64_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int64)) {
     *(int64_t *)storage = INT64_C(0);
-  } else if (native_data_matches(data, &salts_uint8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint8)) {
     *(uint8_t *)storage = UINT8_C(0);
-  } else if (native_data_matches(data, &salts_uint16_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint16)) {
     *(uint16_t *)storage = UINT16_C(0);
-  } else if (native_data_matches(data, &salts_uint32_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint32)) {
     *(uint32_t *)storage = UINT32_C(0);
-  } else if (native_data_matches(data, &salts_uint64_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint64)) {
     *(uint64_t *)storage = UINT64_C(0);
   } else if (native_data_matches(data, &cmeta_data_float)) {
     *(float *)storage = 0.0f;
@@ -243,21 +243,21 @@ static int native_scalar_is_zero(const cmeta_data_desc *data, const void *storag
     return *(const long *)storage == 0L;
   if (native_data_matches(data, &cmeta_data_size))
     return *(const size_t *)storage == 0u;
-  if (native_data_matches(data, &salts_int8_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_int8))
     return *(const int8_t *)storage == INT8_C(0);
-  if (native_data_matches(data, &salts_int16_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_int16))
     return *(const int16_t *)storage == INT16_C(0);
-  if (native_data_matches(data, &salts_int32_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_int32))
     return *(const int32_t *)storage == INT32_C(0);
-  if (native_data_matches(data, &salts_int64_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_int64))
     return *(const int64_t *)storage == INT64_C(0);
-  if (native_data_matches(data, &salts_uint8_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_uint8))
     return *(const uint8_t *)storage == UINT8_C(0);
-  if (native_data_matches(data, &salts_uint16_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_uint16))
     return *(const uint16_t *)storage == UINT16_C(0);
-  if (native_data_matches(data, &salts_uint32_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_uint32))
     return *(const uint32_t *)storage == UINT32_C(0);
-  if (native_data_matches(data, &salts_uint64_cmeta_data))
+  if (native_data_matches(data, &cmeta_data_uint64))
     return *(const uint64_t *)storage == UINT64_C(0);
   if (native_data_matches(data, &cmeta_data_float))
     return *(const float *)storage == 0.0f;
@@ -321,16 +321,16 @@ static DataBindStatus native_assign_scalar(DataBindNativeDiagnostic *diagnostic,
     } else if (native_data_matches(data, &cmeta_data_long)) {
       if (signed_value < (int64_t)LONG_MIN || signed_value > (int64_t)LONG_MAX) goto range;
       *(long *)storage = (long)signed_value;
-    } else if (native_data_matches(data, &salts_int8_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_int8)) {
       if (signed_value < INT8_MIN || signed_value > INT8_MAX) goto range;
       *(int8_t *)storage = (int8_t)signed_value;
-    } else if (native_data_matches(data, &salts_int16_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_int16)) {
       if (signed_value < INT16_MIN || signed_value > INT16_MAX) goto range;
       *(int16_t *)storage = (int16_t)signed_value;
-    } else if (native_data_matches(data, &salts_int32_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_int32)) {
       if (signed_value < INT32_MIN || signed_value > INT32_MAX) goto range;
       *(int32_t *)storage = (int32_t)signed_value;
-    } else if (native_data_matches(data, &salts_int64_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_int64)) {
       *(int64_t *)storage = signed_value;
     } else {
       return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
@@ -346,16 +346,16 @@ static DataBindStatus native_assign_scalar(DataBindNativeDiagnostic *diagnostic,
     if (native_data_matches(data, &cmeta_data_size)) {
       if (unsigned_value > (uint64_t)SIZE_MAX) goto range;
       *(size_t *)storage = (size_t)unsigned_value;
-    } else if (native_data_matches(data, &salts_uint8_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_uint8)) {
       if (unsigned_value > UINT8_MAX) goto range;
       *(uint8_t *)storage = (uint8_t)unsigned_value;
-    } else if (native_data_matches(data, &salts_uint16_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_uint16)) {
       if (unsigned_value > UINT16_MAX) goto range;
       *(uint16_t *)storage = (uint16_t)unsigned_value;
-    } else if (native_data_matches(data, &salts_uint32_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_uint32)) {
       if (unsigned_value > UINT32_MAX) goto range;
       *(uint32_t *)storage = (uint32_t)unsigned_value;
-    } else if (native_data_matches(data, &salts_uint64_cmeta_data)) {
+    } else if (native_data_matches(data, &cmeta_data_uint64)) {
       *(uint64_t *)storage = unsigned_value;
     } else {
       return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
@@ -1438,28 +1438,28 @@ static int native_scalar_token(const cmeta_data_desc *data,
   } else if (native_data_matches(data, &cmeta_data_size)) {
     token->kind = CSERDE_UINT;
     token->value.uint = (uint64_t)*(const size_t *)source;
-  } else if (native_data_matches(data, &salts_int8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int8)) {
     token->kind = CSERDE_SINT;
     token->value.sint = (int64_t)*(const int8_t *)source;
-  } else if (native_data_matches(data, &salts_int16_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int16)) {
     token->kind = CSERDE_SINT;
     token->value.sint = (int64_t)*(const int16_t *)source;
-  } else if (native_data_matches(data, &salts_int32_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int32)) {
     token->kind = CSERDE_SINT;
     token->value.sint = (int64_t)*(const int32_t *)source;
-  } else if (native_data_matches(data, &salts_int64_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_int64)) {
     token->kind = CSERDE_SINT;
     token->value.sint = *(const int64_t *)source;
-  } else if (native_data_matches(data, &salts_uint8_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint8)) {
     token->kind = CSERDE_UINT;
     token->value.uint = (uint64_t)*(const uint8_t *)source;
-  } else if (native_data_matches(data, &salts_uint16_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint16)) {
     token->kind = CSERDE_UINT;
     token->value.uint = (uint64_t)*(const uint16_t *)source;
-  } else if (native_data_matches(data, &salts_uint32_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint32)) {
     token->kind = CSERDE_UINT;
     token->value.uint = (uint64_t)*(const uint32_t *)source;
-  } else if (native_data_matches(data, &salts_uint64_cmeta_data)) {
+  } else if (native_data_matches(data, &cmeta_data_uint64)) {
     token->kind = CSERDE_UINT;
     token->value.uint = *(const uint64_t *)source;
   } else if (native_data_matches(data, &cmeta_data_float)) {

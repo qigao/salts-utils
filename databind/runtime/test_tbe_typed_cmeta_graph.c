@@ -227,7 +227,7 @@ spec("generated native CMeta graph") {
       check_equal(point->field_count, 2u);
       check_equal(point->fields[1].offset, offsetof(Point_t, y));
       check(cmeta_type_equal(point->fields[0].value->storage_type,
-                             salts_int32_cmeta_data.storage_type));
+                             cmeta_data_int32.storage_type));
       check_equal(shape->fields[1].value->kind, CMETA_DATA_ENUM);
       check_equal(shape->fields[1].value->storage_type->size, sizeof(State_t));
       check_not_null(state);
@@ -252,7 +252,7 @@ spec("generated native CMeta graph") {
         cmeta_data_struct_shape altered = *shape;
         cmeta_data_field_desc fields[3];
         memcpy(fields, shape->fields, sizeof(fields));
-        fields[2].value = &salts_uint32_cmeta_data;
+        fields[2].value = &cmeta_data_uint32;
         altered.fields = fields;
         copy.shape = &altered;
         check_equal(tbe_typed_descriptor_validate(&descriptor_copy, &error),
@@ -656,7 +656,7 @@ spec("generated native CMeta graph") {
   }
 
   it("keeps structural publication independent from descriptor overlay support") {
-    const cmeta_data_desc *sentinel = &salts_int32_cmeta_data;
+    const cmeta_data_desc *sentinel = &cmeta_data_int32;
     const cmeta_data_desc *data = sentinel;
     DataBindError error = DATA_BIND_ERROR_INIT;
 
@@ -726,7 +726,7 @@ spec("generated native CMeta graph") {
   }
 
   it("publishes generated uint8 boolean storage through canonical Bool8") {
-    const cmeta_data_desc *data = &salts_int32_cmeta_data;
+    const cmeta_data_desc *data = &cmeta_data_int32;
     const cmeta_data_desc *native_bool;
     const cmeta_data_struct_shape *shape;
     DataBindError error = DATA_BIND_ERROR_INIT;

@@ -45,13 +45,13 @@ static void require_pair_layout(bool overlap) {
   const size_t second_offset = overlap ? offsetof(PreflightPair, a) : offsetof(PreflightPair, b);
   const cmeta_field_desc fields[] = {
       {.name = "a", .type_name = "int32_t", .offset = offsetof(PreflightPair, a),
-       .size = sizeof(int32_t), .align = _Alignof(int32_t), .type = salts_int32_cmeta_data.storage_type},
+       .size = sizeof(int32_t), .align = _Alignof(int32_t), .type = cmeta_data_int32.storage_type},
       {.name = "b", .type_name = "int32_t", .offset = second_offset,
-       .size = sizeof(int32_t), .align = _Alignof(int32_t), .type = salts_int32_cmeta_data.storage_type}};
+       .size = sizeof(int32_t), .align = _Alignof(int32_t), .type = cmeta_data_int32.storage_type}};
   const cmeta_struct_desc layout = {"PreflightPair", sizeof(output), _Alignof(PreflightPair), fields, 2u};
   const cmeta_data_field_desc values[] = {
-      {"test.preflight.a", "a", offsetof(PreflightPair, a), &salts_int32_cmeta_data},
-      {"test.preflight.b", "b", second_offset, &salts_int32_cmeta_data}};
+      {"test.preflight.a", "a", offsetof(PreflightPair, a), &cmeta_data_int32},
+      {"test.preflight.b", "b", second_offset, &cmeta_data_int32}};
   const cmeta_data_struct_shape record = {&layout, values, 2u};
   const cmeta_data_desc shape = {
       .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,
@@ -120,7 +120,7 @@ spec("DataBind native preflight preserves canonical storage and control records"
   }
 
   it("accepts an equivalent scalar descriptor without requiring pointer identity") {
-    cmeta_data_desc shape = salts_int32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_int32;
     cmeta_data_integer_shape integer = *(const cmeta_data_integer_shape *)shape.shape;
     const NativeReaderProbeStep steps[] = {native_reader_probe_sint(300)};
     int32_t value = 0;
@@ -132,7 +132,7 @@ spec("DataBind native preflight preserves canonical storage and control records"
     check_equal(probe.calls, 1u);
   }
   it("rejects a signed shape width that disagrees with its canonical storage") {
-    cmeta_data_desc shape = salts_int32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_int32;
     const cmeta_data_integer_shape integer = {8u};
     const NativeReaderProbeStep steps[] = {native_reader_probe_sint(300)};
     int32_t value = 0;
@@ -142,7 +142,7 @@ spec("DataBind native preflight preserves canonical storage and control records"
     check_equal(value, 0);
   }
   it("rejects an unsigned shape width that disagrees with its canonical storage") {
-    cmeta_data_desc shape = salts_uint32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_uint32;
     const cmeta_data_integer_shape integer = {8u};
     NativeReaderProbeStep step = native_reader_probe_token(CSERDE_UINT);
     uint32_t value = 0u;
@@ -164,7 +164,7 @@ spec("DataBind native preflight preserves canonical storage and control records"
     check_true(value == 0.0);
   }
   it("rejects a different native kind reusing the canonical scalar identity") {
-    cmeta_data_desc shape = salts_int32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_int32;
     cmeta_type_desc type = *shape.storage_type;
     const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
     int32_t value = 0;
@@ -205,15 +205,15 @@ static void require_measured_pair(bool nested, bool short_depth, bool short_item
   const cmeta_field_desc fields[] = {
       {.name = "a", .type_name = "int32_t", .offset = offsetof(PreflightPair, a),
        .size = sizeof(int32_t), .align = _Alignof(int32_t),
-       .type = salts_int32_cmeta_data.storage_type},
+       .type = cmeta_data_int32.storage_type},
       {.name = "b", .type_name = "int32_t", .offset = offsetof(PreflightPair, b),
        .size = sizeof(int32_t), .align = _Alignof(int32_t),
-       .type = salts_int32_cmeta_data.storage_type}};
+       .type = cmeta_data_int32.storage_type}};
   const cmeta_struct_desc layout = {
       "MeasuredPair", sizeof(PreflightPair), _Alignof(PreflightPair), fields, 2u};
   const cmeta_data_field_desc values[] = {
-      {"measure.a", "a", offsetof(PreflightPair, a), &salts_int32_cmeta_data},
-      {"measure.b", "b", offsetof(PreflightPair, b), &salts_int32_cmeta_data}};
+      {"measure.a", "a", offsetof(PreflightPair, a), &cmeta_data_int32},
+      {"measure.b", "b", offsetof(PreflightPair, b), &cmeta_data_int32}};
   const cmeta_data_struct_shape record = {&layout, values, 2u};
   const cmeta_data_desc pair = {
       .struct_size = sizeof(cmeta_data_desc), .abi_version = CMETA_DATA_DESC_ABI_VERSION,
@@ -341,9 +341,9 @@ spec("DataBind native workspace measurement before source dispatch") {
       padding = (uintptr_t)options.workspace % alignment;
       if (padding != 0u) padding = alignment - padding;
       options.workspace_bytes = traversal + padding - 1u;
-      require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_LIMIT);
+      require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_LIMIT);
       options.workspace_bytes += 1u;
-      check_equal(data_bind_native_measure(&options, &salts_int32_cmeta_data,
+      check_equal(data_bind_native_measure(&options, &cmeta_data_int32,
                   &measured, &diagnostic), DATA_BIND_OK);
       check_equal(measured.traversal_bytes, traversal);
       check_equal(measured.field_tracking_bytes, 0u);
@@ -365,15 +365,15 @@ spec("DataBind native workspace measurement before source dispatch") {
   }
   it("rejects zero item budget and missing probe storage without publication") {
     options.max_items = 0u;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_LIMIT);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_LIMIT);
     options.max_items = PREFLIGHT_ITEMS;
     options.workspace = NULL;
     options.workspace_bytes = 0u;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_LIMIT);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_LIMIT);
   }
   it("rejects depth multiplication overflow before touching probe storage") {
     options.max_depth = SIZE_MAX;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_LIMIT);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_LIMIT);
     check_equal(workspace.bytes[0], 0u);
   }
   it("rejects staging addition overflow") {
@@ -383,7 +383,7 @@ spec("DataBind native workspace measurement before source dispatch") {
     require_measure_size_overflow(true);
   }
   it("rejects canonical scalar mismatch through the existing graph validator") {
-    cmeta_data_desc shape = salts_int32_cmeta_data;
+    cmeta_data_desc shape = cmeta_data_int32;
     const cmeta_data_integer_shape integer = {8u};
     shape.shape = &integer;
     require_measurement_failure(&shape, DATA_BIND_ERR_SCHEMA);
@@ -393,23 +393,23 @@ spec("DataBind native workspace measurement before source dispatch") {
   }
   it("validates output ABI and leaves invalid control records untouched") {
     measured.abi_version += 1u;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_INVALID_ARG);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
     measured.abi_version = DATA_BIND_NATIVE_ABI_VERSION;
     measured.size -= 1u;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_INVALID_ARG);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
   }
   it("rejects output aliasing probe workspace before mutating either") {
     DataBindNativeRequirements *aliased = (DataBindNativeRequirements *)(void *)workspace.bytes;
     DataBindNativeRequirements before = measured;
     memcpy(workspace.bytes, &measured, sizeof(measured));
-    check_equal(data_bind_native_measure(&options, &salts_int32_cmeta_data,
+    check_equal(data_bind_native_measure(&options, &cmeta_data_int32,
                 aliased, &diagnostic), DATA_BIND_ERR_INVALID_ARG);
     check_equal(memcmp(workspace.bytes, &before, sizeof(before)), 0);
   }
   it("rejects workspace address overflow before any traversal") {
     options.workspace = (void *)(uintptr_t)(UINTPTR_MAX - 1u);
     options.workspace_bytes = 8u;
-    require_measurement_failure(&salts_int32_cmeta_data, DATA_BIND_ERR_INVALID_ARG);
+    require_measurement_failure(&cmeta_data_int32, DATA_BIND_ERR_INVALID_ARG);
   }
   it("preserves a larger valid result header and does not charge zero payload") {
     struct ExtendedRequirements { DataBindNativeRequirements base; size_t tail; } out;
