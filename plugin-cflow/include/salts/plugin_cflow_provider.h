@@ -3,6 +3,7 @@
 
 #include <salts/plugin.h>
 #include <cflow/reactive.h>
+#include <cflow/executor.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,20 @@ extern "C" {
 CMETA_INTERFACE(
     salts_plugin_cflow_publisher_provider,
     SALTS_PLUGIN_CFLOW_PUBLISHER_PROVIDER_METHODS);
+
+/*
+ * Long-lived Plugin capability that creates one fresh CFlow Executor per open.
+ *
+ * Each successful open transfers ownership of a valid cflow_executor handle.
+ * Destroy must fully quiesce accepted work and guarantee that no later callback
+ * can enter Plugin-owned code before PluginCFlow releases the DSO lease.
+ */
+#define SALTS_PLUGIN_CFLOW_EXECUTOR_PROVIDER_METHODS(X, I) \
+    X(I, R1, bool, open, cflow_executor *, out)
+
+CMETA_INTERFACE(
+    salts_plugin_cflow_executor_provider,
+    SALTS_PLUGIN_CFLOW_EXECUTOR_PROVIDER_METHODS);
 
 #ifdef __cplusplus
 }
