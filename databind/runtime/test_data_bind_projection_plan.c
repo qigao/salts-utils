@@ -5,6 +5,7 @@
 
 static DataBind *projection_plan_codec(void) {
   static const char schema[] =
+      "schema ProjectionPlan [version(1)];"
       "message Request {"
       " optional nullable string note;"
       " uint32 count;"
