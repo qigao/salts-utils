@@ -243,20 +243,24 @@ static databind_binary_layout_status binary_build_field(
     return DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY;
 
   if (binary_has_child(field_node, "is_optional")) {
+    size_t bit;
     field->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
     text = binary_string_value(field_node, "optional_bit_index");
-    if (!binary_parse_size(text, (size_t *)&field->optional_bit)) {
+    if (!binary_parse_size(text, &bit) || bit > (size_t)UINT_MAX) {
       binary_diag(diagnostic, name, "Optional field bit is invalid");
       return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
     }
+    field->optional_bit = (unsigned)bit;
   }
   if (binary_has_child(field_node, "is_nullable")) {
+    size_t bit;
     field->flags |= DATABIND_BINARY_FIELD_NULLABLE;
     text = binary_string_value(field_node, "nullable_bit_index");
-    if (!binary_parse_size(text, (size_t *)&field->nullable_bit)) {
+    if (!binary_parse_size(text, &bit) || bit > (size_t)UINT_MAX) {
       binary_diag(diagnostic, name, "Nullable field bit is invalid");
       return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
     }
+    field->nullable_bit = (unsigned)bit;
   }
 
   if (binary_has_child(field_node, "is_group_field") ||
