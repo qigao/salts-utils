@@ -49,6 +49,23 @@ static void unresolved_field(DataBind *codec, const char *record, size_t index,
   check_equal(second.message, first.message);
 }
 
+typedef struct MapVisitState {
+  size_t count;
+  const char *keys[2];
+  int32_t values[2];
+} MapVisitState;
+
+static cmeta_status collect_map_entry(void *context, const void *key,
+                                      const void *value) {
+  MapVisitState *state = (MapVisitState *)context;
+  if (!state || !key || !value || state->count >= 2u)
+    return CMETA_CALLBACK_ERROR;
+  state->keys[state->count] = *(const tstr *)key;
+  state->values[state->count] = *(const int32_t *)value;
+  ++state->count;
+  return CMETA_OK;
+}
+
 suite("real generated and runtime CMeta acceptance") {
   /* Mutations: alias/width drift in either production consumer, or pointer-only
    * identity that rejects an intact descriptor from another translation unit. */
@@ -251,14 +268,13 @@ suite("real generated and runtime CMeta acceptance") {
     data_bind_free(codec);
   }
 
-  it("rejects buffer and container native queries with repeatable atomic diagnostics") {
+  it("rejects buffer and deferred container native queries with repeatable atomic diagnostics") {
     typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
     static const struct { const char *record; size_t index; cmeta_data_kind kind; const char *path; const char *id; Getter get; } cases[] = {
       {"Unsupported", 1, CMETA_DATA_STRING, "Unsupported.bad", NULL, Unsupported_cmeta_data},
       {"BytesStorage", 0, CMETA_DATA_BYTES, "BytesStorage.value", NULL, BytesStorage_cmeta_data},
       {"ListStorage", 0, CMETA_DATA_SEQUENCE, "ListStorage.value", "cmeta.data.sequence", ListStorage_cmeta_data},
-      {"SetStorage", 0, CMETA_DATA_SET, "SetStorage.value", "cmeta.data.set", SetStorage_cmeta_data},
-      {"MapStorage", 0, CMETA_DATA_MAP, "MapStorage.value", "cmeta.data.map", MapStorage_cmeta_data}
+      {"SetStorage", 0, CMETA_DATA_SET, "SetStorage.value", "cmeta.data.set", SetStorage_cmeta_data}
     };
     DataBind *codec = acceptance_codec();
     size_t i;
@@ -289,6 +305,133 @@ suite("real generated and runtime CMeta acceptance") {
       check_equal(again.path, error.path);
       check_equal(again.message, error.message);
     }
+    data_bind_free(codec);
+  }
+
+  it("publishes explicit ordered map key/value providers without erased inference") {
+    DataBind *codec = acceptance_codec();
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *record_data = NULL;
+    const cmeta_data_desc *map_data;
+    const cmeta_data_map_ops *ops;
+    const cmeta_data_struct_shape *shape;
+    MapStorage_t object;
+    MapStorage_value_entry_t first = {0}, second = {0}, duplicate = {0};
+    MapVisitState visited = {0};
+    cmeta_data_map_borrow_cursor cursor;
+    cmeta_collector collector;
+    stl_status duplicate_status;
+    const void *key = NULL, *value = NULL;
+    size_t size = 0u;
+
+    check_not_null(codec);
+    if (!codec) return;
+    check(data_bind_schema_field_at(codec, "MapStorage", 0u, &schema_field));
+    check_equal(schema_field.cmeta_kind, CMETA_DATA_MAP);
+    check_not_null(schema_field.cmeta_data);
+    if (schema_field.cmeta_data) {
+      check_null(schema_field.cmeta_data->storage_type);
+      check_null(schema_field.cmeta_data->map_ops);
+    }
+    unresolved_field(codec, "MapStorage", 0u, "MapStorage.value");
+
+    check_equal(MapStorage_cmeta_data(&record_data, &error), DATA_BIND_OK);
+    check_not_null(record_data);
+    if (!record_data) {
+      data_bind_free(codec);
+      return;
+    }
+    shape = (const cmeta_data_struct_shape *)record_data->shape;
+    check_not_null(shape);
+    if (!shape || shape->field_count != 1u || !shape->fields) {
+      data_bind_free(codec);
+      return;
+    }
+    map_data = shape->fields[0].value;
+    check_not_null(map_data);
+    if (!map_data) {
+      data_bind_free(codec);
+      return;
+    }
+    check(cmeta_data_desc_valid(map_data));
+    check_equal(map_data->kind, CMETA_DATA_MAP);
+    check_null(map_data->collection_ops);
+    check_not_null(strstr(map_data->stable_id, "databind.native.Graph.MapStorage_t.value.map"));
+    ops = cmeta_data_map_ops_of(map_data);
+    check_not_null(ops);
+    if (!ops) {
+      data_bind_free(codec);
+      return;
+    }
+    check_equal(ops->flags, CMETA_DATA_MAP_UNIQUE_KEYS | CMETA_DATA_MAP_ORDERED);
+
+    MapStorage_init(&object);
+    first.key = tstr_dup("first");
+    first.value = 11;
+    second.key = tstr_dup("second");
+    second.value = 22;
+    check_not_null(first.key);
+    check_not_null(second.key);
+    if (!first.key || !second.key) {
+      tstr_free(first.key);
+      tstr_free(second.key);
+      MapStorage_clear(&object);
+      data_bind_free(codec);
+      return;
+    }
+    check_equal(MapStorage_value_vec_t_push(&object.value, first), STL_OK);
+    check_equal(MapStorage_value_vec_t_push(&object.value, second), STL_OK);
+    check(cmeta_data_desc_equal(ops->key(&object.value), &salts_tstr_cmeta_data));
+    same_value_type(ops->value(&object.value), &cmeta_data_int32);
+    check_equal(cmeta_data_map_foreach(map_data, &object.value, collect_map_entry,
+                                      &visited, 2u), CMETA_OK);
+    check_equal(visited.count, 2u);
+    check_equal(visited.keys[0], "first");
+    check_equal(visited.values[0], 11);
+    check_equal(visited.keys[1], "second");
+    check_equal(visited.values[1], 22);
+    visited = (MapVisitState){0};
+    check_equal(cmeta_data_map_foreach(map_data, &object.value, collect_map_entry,
+                                      &visited, 1u), CMETA_CAPACITY_EXCEEDED);
+    check_equal(visited.count, 0u);
+
+    check_equal(cmeta_data_map_borrow_begin(map_data, &object.value, &cursor), CMETA_OK);
+    check_equal(cmeta_data_map_borrow_size(&cursor, &size), CMETA_OK);
+    check_equal(size, 2u);
+    check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value), CMETA_GEN_VALUE);
+    check_equal(*(const tstr *)key, "first");
+    check_equal(*(const int32_t *)value, 11);
+    check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value),
+                CMETA_GEN_VALUE_AND_DONE);
+    check_equal(*(const tstr *)key, "second");
+    check_equal(*(const int32_t *)value, 22);
+    check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value), CMETA_GEN_DONE);
+    check_equal(cmeta_data_map_collector(map_data, &object.value, 2u, &collector),
+                CMETA_TRAIT_MISSING);
+
+    duplicate.key = tstr_dup("first");
+    duplicate.value = 33;
+    check_not_null(duplicate.key);
+    if (duplicate.key) {
+      duplicate_status = MapStorage_value_vec_t_push(&object.value, duplicate);
+      check_equal(duplicate_status, STL_OK);
+      if (duplicate_status == STL_OK) {
+        visited = (MapVisitState){0};
+        check_equal(cmeta_data_map_foreach(map_data, &object.value,
+                                          collect_map_entry, &visited, 3u),
+                    CMETA_CALLBACK_ERROR);
+        check_equal(visited.count, 0u);
+        check_equal(cmeta_data_map_borrow_begin(map_data, &object.value, &cursor),
+                    CMETA_OK);
+        check_equal(cmeta_data_map_borrow_next(&cursor, &key, &value),
+                    CMETA_GEN_ERROR);
+      } else {
+        tstr_free(duplicate.key);
+      }
+    }
+
+    MapStorage_clear(&object);
     data_bind_free(codec);
   }
 
