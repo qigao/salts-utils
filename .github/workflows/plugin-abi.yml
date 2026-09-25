@@ -189,7 +189,7 @@ jobs:
                      test_databind_service_native_lowering --parallel 2
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/binding-plan-sanitized \
-            -R '^(plugin_cflow_function_projection_test|test_data_bind_(binding_plan|native_writer|validation_plan)|test_databind_service_native_lowering)
+            -R '^(plugin_cflow_function_projection_test|test_data_bind_(binding_plan|native_writer|validation_plan)|test_databind_service_native_lowering)$' \
             --no-tests=error --output-on-failure
 
       - name: Verify exact head and clean tracked source
