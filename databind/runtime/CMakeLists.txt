@@ -333,6 +333,14 @@ set_target_properties(test_data_bind_public_header_boundary
   PROPERTIES FOLDER "databind/runtime/tests")
 add_test(NAME test_data_bind_public_header_boundary
   COMMAND test_data_bind_public_header_boundary)
+
+add_test(NAME test_tbe_typed_ownership_inventory
+  COMMAND ${CMAKE_COMMAND}
+    "-DTBE_TYPED_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/tbe_typed.h"
+    "-DOWNERSHIP_DOC=${CMAKE_SOURCE_DIR}/docs/DATABIND_TYPED_OWNERSHIP.md"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_tbe_typed_ownership_inventory.cmake")
+set_tests_properties(test_tbe_typed_ownership_inventory PROPERTIES
+  LABELS "databind;architecture;typed-ownership")
 cmake_add_test(test_data_bind_value_boundary
   SOURCES test_data_bind_value_boundary.c
   LIBS ${DATA_BIND_TEST_LIBS}
