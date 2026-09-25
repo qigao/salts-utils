@@ -72,7 +72,7 @@ typedef struct JINJA_CMETA_NODE {
   double owned_float;
   vstr owned_string;
   int string_safe;
-  JINJA_CMETA_SEQUENCE_VIEW owned_sequence;
+  cmeta_data_collection_view owned_sequence;
   size_t first_collection_item;
   size_t collection_item_count;
   const struct JINJA_CMETA_VALUE *collection_values;
