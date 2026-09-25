@@ -10386,8 +10386,10 @@ static JINJA_CMETA_STATUS jinja_filtered_cache_until(JINJA_CMETA_PROVIDER *provi
       if (source->range.count > provider->shared.node_capacity) return JINJA_CMETA_ERR_CAPACITY;
       count = (size_t)source->range.count;
     } else {
-      if (!jinja_is_sequence_desc(source->desc) || source->object == NULL) return JINJA_CMETA_ERR_RENDER;
-      count = ((const cmeta_data_collection_view *)source->object)->count;
+      if (!jinja_is_collection_desc(source->desc) || source->object == NULL)
+        return JINJA_CMETA_ERR_RENDER;
+      status = jinja_collection_length(source, &count);
+      if (status != JINJA_CMETA_OK) return status;
     }
     if (count > provider->shared.node_capacity) count = provider->shared.node_capacity;
     size_t offset = provider->shared.collection_value_count;
