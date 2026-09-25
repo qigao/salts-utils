@@ -344,7 +344,67 @@ static inline DataBindStatus c11_lua_read_tbe_typed_descriptor(
     free(temporary);
     return status;
 }
+
 #endif /* TBE_TYPED_H */
+
+/* -------------------------------------------------------------------------
+ * Canonical CMeta reflection bridge.
+ *
+ * New generated/runtime consumers use this path. It intentionally has no TBE
+ * overlay dependency: member names, offsets and nested value descriptors come
+ * from the canonical CMeta graph itself.
+ * ------------------------------------------------------------------------- */
+#if defined(DATA_BIND_NATIVE_DESCRIPTOR_H)
+static inline DataBindStatus c11_lua_cmeta_push_value(
+    lua_State *L, const cmeta_data_desc *data, const void *object,
+    size_t depth, size_t max_depth) {
+    const cmeta_data_struct_shape *shape;
+    int top;
+    size_t i;
+    if (L == NULL || data == NULL || object == NULL)
+        return DATA_BIND_ERR_INVALID_ARG;
+#if defined(TBE_TYPED_H)
+    if (data->kind != CMETA_DATA_STRUCT)
+        return c11_lua_tbe_push_scalar(L, data, object);
+#else
+    if (data->kind != CMETA_DATA_STRUCT) return DATA_BIND_ERR_SCHEMA;
+#endif
+    if (depth > max_depth) return DATA_BIND_ERR_LIMIT;
+    shape = (const cmeta_data_struct_shape *)data->shape;
+    if (shape == NULL || shape->fields == NULL) return DATA_BIND_ERR_SCHEMA;
+    top = lua_gettop(L);
+    lua_createtable(L, 0, (int)shape->field_count);
+    for (i = 0u; i < shape->field_count; ++i) {
+        const cmeta_data_field_desc *field = &shape->fields[i];
+        DataBindStatus status;
+        if (field->name == NULL || field->name[0] == '\0' ||
+            field->value == NULL) {
+            lua_settop(L, top);
+            return DATA_BIND_ERR_SCHEMA;
+        }
+        status = c11_lua_cmeta_push_value(
+            L, field->value, (const uint8_t *)object + field->offset,
+            depth + 1u, max_depth);
+        if (status != DATA_BIND_OK) {
+            lua_settop(L, top);
+            return status;
+        }
+        lua_setfield(L, -2, field->name);
+    }
+    return DATA_BIND_OK;
+}
+
+static inline DataBindStatus c11_lua_push_native_descriptor(
+    lua_State *L, const DataBindNativeDescriptor *descriptor,
+    const void *object, size_t max_depth) {
+    if (L == NULL || descriptor == NULL || object == NULL)
+        return DATA_BIND_ERR_INVALID_ARG;
+    if (data_bind_native_descriptor_validate(descriptor, NULL) != DATA_BIND_OK)
+        return DATA_BIND_ERR_SCHEMA;
+    return c11_lua_cmeta_push_value(
+        L, descriptor->native_data, object, 0u, max_depth);
+}
+#endif /* DATA_BIND_NATIVE_DESCRIPTOR_H */
 
 /* The legacy flat typed-function declaration can contain 20 tokens, beyond
  * CMeta's 16-item public iteration contract. Keep this compatibility-only
