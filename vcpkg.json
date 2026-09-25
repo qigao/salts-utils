@@ -15,8 +15,7 @@
     "miniaudio",
     {
       "name": "zstd"
-    },
-    "lua"
+    }
   ],
   "features": {
     "capture": {

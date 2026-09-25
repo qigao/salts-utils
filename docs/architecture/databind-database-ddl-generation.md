@@ -18,7 +18,7 @@ databindc model.schema --lang postgresql --output schema.postgresql.sql
 databindc model.schema --lang postgres --output schema.postgresql.sql
 ```
 
-数据库输出要求显式给出 `--output`。`--source-output`、`--guest-output`、`--lua-output` 与 `--dsl-output` 仅属于 C 代码生成；与数据库语言组合时编译器立即报错。
+数据库输出要求显式给出 `--output`。`--source-output`、`--guest-output` 与 `--dsl-output` 仅属于 C 代码生成；与数据库语言组合时编译器立即报错。
 
 数据库语言也可与 `--template` 组合。自定义模板消费的是已经校验、归一化后的数据库 IR，而不是未经约束的原始语法树；内置模板仍是默认路径。
 

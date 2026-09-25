@@ -29,7 +29,6 @@ typedef struct databind_compiler_projection_frontend_input {
 
   /* Other active renderer outputs reserved against artifact collisions. */
   const char *source_output_path;
-  const char *lua_output_path;
   const char *guest_output_path;
   const char *dsl_output_path;
 } databind_compiler_projection_frontend_input;
