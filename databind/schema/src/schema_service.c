@@ -85,26 +85,6 @@ static int service_reject_transport_attributes(
     return 1;
 }
 
-static int service_reject_field_transport_attributes(
-    Node *root, const char *type_name, tbe_error_t *err) {
-    Node *type;
-    Node *fields;
-    size_t i;
-
-    if (type_name == NULL || strcmp(type_name, "void") == 0) return 1;
-    type = schema_type_ref_node(root, type_name);
-    fields = type != NULL ? service_find_child(type, "fields") : NULL;
-    if (fields == NULL || fields->type != NODE_LIST) return 1;
-
-    for (i = 0u; i < fields->data.list.count; ++i) {
-        Node *field = fields->data.list.items[i];
-        if (!service_reject_transport_attributes(
-                field, "Field", service_string(field, "name"), err))
-            return 0;
-    }
-    return 1;
-}
-
 static int service_reject_all_message_transport_attributes(
     Node *root, tbe_error_t *err) {
     Node *messages = service_find_child(root, "messages");
@@ -150,7 +130,6 @@ static int service_name_duplicate(Node *services, size_t index) {
 
 static int service_validate_operation(
     Node *root, Node *service, Node *operation, tbe_error_t *err) {
-    const char *service_name = service_string(service, "name");
     const char *operation_name = service_string(operation, "name");
     const char *request_type = service_string(operation, "request_type");
     const char *response_type = service_string(operation, "response_type");
@@ -195,7 +174,6 @@ static int service_validate_operation(
         }
     }
 
-    (void)service_name;
     return 1;
 }
 
