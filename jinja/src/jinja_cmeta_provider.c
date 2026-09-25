@@ -3456,20 +3456,24 @@ static JINJA_CMETA_STATUS jinja_lookup_item(JINJA_CMETA_PROVIDER *provider,
   if (base->node.object == NULL || !cmeta_data_desc_valid(base->node.desc))
     return JINJA_CMETA_ERR_METADATA;
   if (jinja_is_sequence_desc(base->node.desc)) {
-    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)base->node.object;
+    const void *element = NULL;
+    const cmeta_data_desc *element_data = NULL;
+    size_t count = 0u;
     size_t normalized;
 
-    status = jinja_validate_sequence_view(view);
+    status = jinja_collection_length(&base->node, &count);
     if (status != JINJA_CMETA_OK) return status;
     status = jinja_lookup_integer_key(provider, key, &index, &valid);
     if (status != JINJA_CMETA_OK || !valid ||
-        !jinja_normalize_lookup_index(index, view->count, &normalized))
+        !jinja_normalize_lookup_index(index, count, &normalized))
       return status;
+    status = jinja_collection_element_at(
+        &base->node, normalized, &element, &element_data, NULL);
+    if (status != JINJA_CMETA_OK) return status;
+    if (element == NULL || element_data == NULL) return JINJA_CMETA_ERR_METADATA;
     result->kind = JINJA_CMETA_VALUE_NODE;
-    result->node =
-        (JINJA_CMETA_NODE){.object = (const unsigned char *)view->data + normalized * view->stride,
-                           .desc = view->element,
-                           .parent = base->node.parent};
+    result->node = (JINJA_CMETA_NODE){
+        .object = element, .desc = element_data, .parent = base->node.parent};
     return JINJA_CMETA_OK;
   }
   if (base->node.desc->kind == CMETA_DATA_STRUCT) {
