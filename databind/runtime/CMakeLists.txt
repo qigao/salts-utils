@@ -175,6 +175,15 @@ target_link_libraries(
     Salts::DataBindCore)
 
 if(BUILD_TESTS)
+cmake_add_test(test_data_bind_native_descriptor
+  SOURCES test_data_bind_native_descriptor.c
+  LIBS Salts::DataBindCore Salts::TinyTest
+  FOLDER "databind/runtime")
+set_target_properties(test_data_bind_native_descriptor PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
   get_target_property(DATA_BIND_PUBLIC_LINKS
     ${DATA_BIND_TARGET} INTERFACE_LINK_LIBRARIES)
   if(DATA_BIND_PUBLIC_LINKS MATCHES
