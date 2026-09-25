@@ -105,6 +105,25 @@ static int service_reject_field_transport_attributes(
     return 1;
 }
 
+static int service_reject_all_message_transport_attributes(
+    Node *root, tbe_error_t *err) {
+    Node *messages = service_find_child(root, "messages");
+    size_t i, j;
+    if (messages == NULL || messages->type != NODE_LIST) return 1;
+    for (i = 0u; i < messages->data.list.count; ++i) {
+        Node *message = messages->data.list.items[i];
+        Node *fields = service_find_child(message, "fields");
+        if (fields == NULL || fields->type != NODE_LIST) continue;
+        for (j = 0u; j < fields->data.list.count; ++j) {
+            Node *field = fields->data.list.items[j];
+            if (!service_reject_transport_attributes(
+                    field, "Field", service_string(field, "name"), err))
+                return 0;
+        }
+    }
+    return 1;
+}
+
 static int service_operation_name_duplicate(Node *operations, size_t index) {
     const char *name = service_string(operations->data.list.items[index], "name");
     size_t i;
@@ -150,9 +169,7 @@ static int service_validate_operation(
             operation_name, response_type);
 
     if (!service_reject_transport_attributes(
-            operation, "Service operation", operation_name, err) ||
-        !service_reject_field_transport_attributes(root, request_type, err) ||
-        !service_reject_field_transport_attributes(root, response_type, err))
+            operation, "Service operation", operation_name, err))
         return 0;
 
     if (errors != NULL && errors->type == NODE_LIST) {
@@ -167,8 +184,6 @@ static int service_validate_operation(
                 return service_errorf(
                     err, "Service operation '%s' has unknown error type '%s'",
                     operation_name, error_type);
-            if (!service_reject_field_transport_attributes(root, error_type, err))
-                return 0;
             for (j = 0u; j < i; ++j) {
                 Node *previous = errors->data.list.items[j];
                 if (previous != NULL && previous->type == NODE_STRING &&
@@ -190,6 +205,8 @@ int schema_validate_services(Node *root, tbe_error_t *err) {
 
     if (services == NULL || services->type != NODE_LIST)
         return service_error(err, "Schema service list is missing");
+    if (!service_reject_all_message_transport_attributes(root, err))
+        return 0;
 
     for (i = 0u; i < services->data.list.count; ++i) {
         Node *service = services->data.list.items[i];
