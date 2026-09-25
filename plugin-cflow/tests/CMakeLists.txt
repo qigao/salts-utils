@@ -17,3 +17,23 @@ add_dependencies(plugin_cflow_publisher_provider_test
   plugin_cflow_publisher_fixture)
 set_tests_properties(plugin_cflow_publisher_provider_test PROPERTIES
   LABELS "plugin;cflow;publisher;provider;lifecycle")
+
+add_library(plugin_cflow_function_fixture SHARED
+  fixture_plugin_cflow_function.c)
+target_compile_features(plugin_cflow_function_fixture PRIVATE c_std_11)
+target_link_libraries(plugin_cflow_function_fixture
+  PRIVATE Salts::PluginCFlowABI Salts::Platform)
+set_target_properties(plugin_cflow_function_fixture PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "plugin_cflow_function_fixture")
+
+cmake_add_test(plugin_cflow_function_projection_test
+  SOURCES plugin_cflow_function_projection_test.c
+  LIBS Salts::PluginCFlow Salts::TinyTest
+  DEFS
+    PLUGIN_CFLOW_FUNCTION_FIXTURE_PATH="$<TARGET_FILE:plugin_cflow_function_fixture>"
+  FOLDER "plugin-cflow/tests")
+add_dependencies(plugin_cflow_function_projection_test
+  plugin_cflow_function_fixture)
+set_tests_properties(plugin_cflow_function_projection_test PROPERTIES
+  LABELS "plugin;cflow;function;projection;lifecycle")
