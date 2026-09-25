@@ -1443,12 +1443,18 @@ spec("DataBind canonical Service BindingPlan") {
         .presence = 0u,
         .nulls = (uint8_t)(1u << 1)};
     {
+      size_t begin_before = state.begin_calls;
+      size_t write_before = state.write_calls;
+      size_t commit_before = state.commit_calls;
       size_t abort_before = state.abort_calls;
       check_equal(data_bind_binding_plan_write_outputs(
                       plan, &provider, &frame, &diagnostic),
                   DATA_BIND_ERR_SCHEMA);
       check_equal(diagnostic.schema_field, "tri_result");
-      check_equal(state.abort_calls, abort_before + 1u);
+      check_equal(state.begin_calls, begin_before);
+      check_equal(state.write_calls, write_before);
+      check_equal(state.commit_calls, commit_before);
+      check_equal(state.abort_calls, abort_before);
     }
 
     data_bind_binding_plan_free(plan);
