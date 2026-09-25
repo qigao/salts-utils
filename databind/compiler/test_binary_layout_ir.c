@@ -42,7 +42,7 @@ spec("DataBind BinaryLayoutIR") {
 
     check_equal(strcmp(layout.fields[2].field_id, "username"), 0);
     check_equal(layout.fields[2].kind, DATABIND_BINARY_FIELD_VAR_DATA);
-    check_equal(layout.fields[2].length_prefix_bytes, (size_t)4u);
+    check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
 
     databind_binary_layout_destroy(&layout);
     node_free(root);
@@ -106,7 +106,7 @@ spec("DataBind BinaryLayoutIR") {
     databind_binary_field_layout fields[2] = {
         {.field_id = "payload",
          .kind = DATABIND_BINARY_FIELD_VAR_DATA,
-         .length_prefix_bytes = 4u},
+         .tail_prefix_bytes = 4u},
         {.field_id = "code",
          .kind = DATABIND_BINARY_FIELD_FIXED,
          .wire_offset = 0u,
