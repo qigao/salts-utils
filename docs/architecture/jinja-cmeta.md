@@ -270,7 +270,7 @@ source view；它们仅在 `jinja_cmeta_compile()` 调用期间有效，不逃�
 
 普通 struct 通过 `CMETA_DATA_STRUCT` 与 `cmeta_data_struct_shape` 查字段；bool、整数、
 浮点、字符串和 enum 使用 CMeta 既有 descriptor/adapter。序列使用
-`JINJA_CMETA_SEQUENCE_VIEW`，其 `data/count/stride/element` 都由调用方提供；空序列允许
+`cmeta_data_collection_view`，其 `data/count/stride/element` 都由调用方提供；空序列允许
 `data == NULL`，非空序列要求非空数据、非零 stride 和合法元素 descriptor。
 
 render 内部一次性分配固定数量的 node wrapper。容量单位是 wrapper 个数，由
