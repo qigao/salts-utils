@@ -38,7 +38,7 @@ static const cmeta_field_desc jinja_cstl_root_layout_fields[] = {
         .size = sizeof(JinjaCMetaIntVec),
         .align = _Alignof(JinjaCMetaIntVec),
         .type = CMETA_TYPEOF(JinjaCMetaIntVec),
-        .nested_struct = NULL
+        .declared_type = NULL
     },
     {
         .name = "list",
@@ -47,7 +47,7 @@ static const cmeta_field_desc jinja_cstl_root_layout_fields[] = {
         .size = sizeof(JinjaCMetaIntList),
         .align = _Alignof(JinjaCMetaIntList),
         .type = CMETA_TYPEOF(JinjaCMetaIntList),
-        .nested_struct = NULL
+        .declared_type = NULL
     },
     {
         .name = "set",
@@ -56,7 +56,7 @@ static const cmeta_field_desc jinja_cstl_root_layout_fields[] = {
         .size = sizeof(JinjaCMetaIntSet),
         .align = _Alignof(JinjaCMetaIntSet),
         .type = CMETA_TYPEOF(JinjaCMetaIntSet),
-        .nested_struct = NULL
+        .declared_type = NULL
     }
 };
 
