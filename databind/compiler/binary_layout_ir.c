@@ -188,7 +188,7 @@ databind_binary_layout_status databind_binary_layout_validate(
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
     } else if (field->kind == DATABIND_BINARY_FIELD_GROUP) {
-      if (field->length_prefix_bytes != 4u ||
+      if (field->tail_prefix_bytes != 4u ||
           field->child_fixed_block_size == 0u ||
           field->wire_extent != 0u) {
         binary_diag(diagnostic, field->field_id,
@@ -196,7 +196,7 @@ databind_binary_layout_status databind_binary_layout_validate(
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
     } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
-      if (field->length_prefix_bytes != 4u ||
+      if (field->tail_prefix_bytes != 4u ||
           field->child_fixed_block_size != 0u ||
           field->wire_extent != 0u) {
         binary_diag(diagnostic, field->field_id,
@@ -271,7 +271,7 @@ static databind_binary_layout_status binary_build_field(
                             ? binary_find_record(root, group_type)
                             : NULL;
     field->kind = DATABIND_BINARY_FIELD_GROUP;
-    field->length_prefix_bytes = 4u;
+    field->tail_prefix_bytes = 4u;
     if (group == NULL ||
         !binary_parse_size(binary_string_value(group, "fixed_block_size"),
                            &field->child_fixed_block_size)) {
@@ -283,7 +283,7 @@ static databind_binary_layout_status binary_build_field(
 
   if (binary_has_child(field_node, "typed_is_var_data")) {
     field->kind = DATABIND_BINARY_FIELD_VAR_DATA;
-    field->length_prefix_bytes = 4u;
+    field->tail_prefix_bytes = 4u;
     return DATABIND_BINARY_LAYOUT_OK;
   }
 
