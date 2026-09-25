@@ -2,7 +2,7 @@
 
 #include "data_bind_internal.h"
 #include "fmt.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 #include <csv_parser.h>
 #include <cyaml.h>
 #include <cyaml_json_adapter.h>
@@ -2754,37 +2754,37 @@ static void typed_read_wire_scalar(TbeTypedKind kind, const uint8_t *source, int
                                    void *output) {
   switch (kind) {
   case TBE_TYPED_BOOL:
-    *(uint8_t *)output = (uint8_t)(tbe_wire_read_u8(source, big_endian) != 0);
+    *(uint8_t *)output = (uint8_t)(data_bind_binary_wire_read_u8(source, big_endian) != 0);
     break;
   case TBE_TYPED_I8:
-    *(int8_t *)output = tbe_wire_read_i8(source, big_endian);
+    *(int8_t *)output = data_bind_binary_wire_read_i8(source, big_endian);
     break;
   case TBE_TYPED_U8:
-    *(uint8_t *)output = tbe_wire_read_u8(source, big_endian);
+    *(uint8_t *)output = data_bind_binary_wire_read_u8(source, big_endian);
     break;
   case TBE_TYPED_I16:
-    *(int16_t *)output = tbe_wire_read_i16(source, big_endian);
+    *(int16_t *)output = data_bind_binary_wire_read_i16(source, big_endian);
     break;
   case TBE_TYPED_U16:
-    *(uint16_t *)output = tbe_wire_read_u16(source, big_endian);
+    *(uint16_t *)output = data_bind_binary_wire_read_u16(source, big_endian);
     break;
   case TBE_TYPED_I32:
-    *(int32_t *)output = tbe_wire_read_i32(source, big_endian);
+    *(int32_t *)output = data_bind_binary_wire_read_i32(source, big_endian);
     break;
   case TBE_TYPED_U32:
-    *(uint32_t *)output = tbe_wire_read_u32(source, big_endian);
+    *(uint32_t *)output = data_bind_binary_wire_read_u32(source, big_endian);
     break;
   case TBE_TYPED_I64:
-    *(int64_t *)output = tbe_wire_read_i64(source, big_endian);
+    *(int64_t *)output = data_bind_binary_wire_read_i64(source, big_endian);
     break;
   case TBE_TYPED_U64:
-    *(uint64_t *)output = tbe_wire_read_u64(source, big_endian);
+    *(uint64_t *)output = data_bind_binary_wire_read_u64(source, big_endian);
     break;
   case TBE_TYPED_F32:
-    *(float *)output = tbe_wire_read_f32(source, big_endian);
+    *(float *)output = data_bind_binary_wire_read_f32(source, big_endian);
     break;
   case TBE_TYPED_F64:
-    *(double *)output = tbe_wire_read_f64(source, big_endian);
+    *(double *)output = data_bind_binary_wire_read_f64(source, big_endian);
     break;
   case TBE_TYPED_UUID:
     memcpy(((salts_uuid_t *)output)->bytes, source, SALTS_UUID_SIZE);
@@ -2886,8 +2886,8 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
       if (!typed_size_fits(cursor, 4u, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary group header is truncated");
-      block_length = tbe_wire_read_u16(data + cursor, type->wire_big_endian);
-      count = tbe_wire_read_u16(data + cursor + 2u, type->wire_big_endian);
+      block_length = data_bind_binary_wire_read_u16(data + cursor, type->wire_big_endian);
+      count = data_bind_binary_wire_read_u16(data + cursor + 2u, type->wire_big_endian);
       cursor += 4u;
       if (block_length < field->object_type->fixed_block_size ||
           !typed_multiply_fits(count, block_length, &payload_size) ||
@@ -2920,7 +2920,7 @@ static DataBindStatus typed_read_tail(const TbeTypedType *type, const uint8_t *d
       if (!typed_size_fits(cursor, 4u, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
                            "Binary variable-data header is truncated");
-      value_size = tbe_wire_read_u32(data + cursor, type->wire_big_endian);
+      value_size = data_bind_binary_wire_read_u32(data + cursor, type->wire_big_endian);
       cursor += 4u;
       if (!typed_size_fits(cursor, value_size, len))
         return typed_error(error, DATA_BIND_ERR_PARSE, field->name,
@@ -3121,7 +3121,7 @@ static DataBindStatus typed_native_read_wire_scalar(const cmeta_data_desc *data,
     return DATA_BIND_OK;
   }
   if (typed_cmeta_scalar_matches(data, &salts_bool8_cmeta_data) && wire_kind == TBE_TYPED_BOOL) {
-    uint8_t candidate = (uint8_t)(tbe_wire_read_u8(source, big_endian) != 0u);
+    uint8_t candidate = (uint8_t)(data_bind_binary_wire_read_u8(source, big_endian) != 0u);
     if (cmeta_data_fixed_copy(data, storage, &candidate, sizeof(candidate)) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path, "Bool provider rejected wire storage");
     return DATA_BIND_OK;
@@ -3140,31 +3140,31 @@ static DataBindStatus typed_native_read_wire_scalar(const cmeta_data_desc *data,
     switch (wire_kind) {
     case TBE_TYPED_I8:
       input_signed = 1;
-      signed_value = tbe_wire_read_i8(source, big_endian);
+      signed_value = data_bind_binary_wire_read_i8(source, big_endian);
       break;
     case TBE_TYPED_U8:
-      unsigned_value = tbe_wire_read_u8(source, big_endian);
+      unsigned_value = data_bind_binary_wire_read_u8(source, big_endian);
       break;
     case TBE_TYPED_I16:
       input_signed = 1;
-      signed_value = tbe_wire_read_i16(source, big_endian);
+      signed_value = data_bind_binary_wire_read_i16(source, big_endian);
       break;
     case TBE_TYPED_U16:
-      unsigned_value = tbe_wire_read_u16(source, big_endian);
+      unsigned_value = data_bind_binary_wire_read_u16(source, big_endian);
       break;
     case TBE_TYPED_I32:
       input_signed = 1;
-      signed_value = tbe_wire_read_i32(source, big_endian);
+      signed_value = data_bind_binary_wire_read_i32(source, big_endian);
       break;
     case TBE_TYPED_U32:
-      unsigned_value = tbe_wire_read_u32(source, big_endian);
+      unsigned_value = data_bind_binary_wire_read_u32(source, big_endian);
       break;
     case TBE_TYPED_I64:
       input_signed = 1;
-      signed_value = tbe_wire_read_i64(source, big_endian);
+      signed_value = data_bind_binary_wire_read_i64(source, big_endian);
       break;
     case TBE_TYPED_U64:
-      unsigned_value = tbe_wire_read_u64(source, big_endian);
+      unsigned_value = data_bind_binary_wire_read_u64(source, big_endian);
       break;
     default:
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path, "Enum wire kind is not an integer");
@@ -3173,25 +3173,25 @@ static DataBindStatus typed_native_read_wire_scalar(const cmeta_data_desc *data,
                                            storage, path, error);
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) && wire_kind == TBE_TYPED_I8)
-    *(int8_t *)storage = tbe_wire_read_i8(source, big_endian);
+    *(int8_t *)storage = data_bind_binary_wire_read_i8(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) && wire_kind == TBE_TYPED_U8)
-    *(uint8_t *)storage = tbe_wire_read_u8(source, big_endian);
+    *(uint8_t *)storage = data_bind_binary_wire_read_u8(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) && wire_kind == TBE_TYPED_I16)
-    *(int16_t *)storage = tbe_wire_read_i16(source, big_endian);
+    *(int16_t *)storage = data_bind_binary_wire_read_i16(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) && wire_kind == TBE_TYPED_U16)
-    *(uint16_t *)storage = tbe_wire_read_u16(source, big_endian);
+    *(uint16_t *)storage = data_bind_binary_wire_read_u16(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) && wire_kind == TBE_TYPED_I32)
-    *(int32_t *)storage = tbe_wire_read_i32(source, big_endian);
+    *(int32_t *)storage = data_bind_binary_wire_read_i32(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) && wire_kind == TBE_TYPED_U32)
-    *(uint32_t *)storage = tbe_wire_read_u32(source, big_endian);
+    *(uint32_t *)storage = data_bind_binary_wire_read_u32(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) && wire_kind == TBE_TYPED_I64)
-    *(int64_t *)storage = tbe_wire_read_i64(source, big_endian);
+    *(int64_t *)storage = data_bind_binary_wire_read_i64(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) && wire_kind == TBE_TYPED_U64)
-    *(uint64_t *)storage = tbe_wire_read_u64(source, big_endian);
+    *(uint64_t *)storage = data_bind_binary_wire_read_u64(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) && wire_kind == TBE_TYPED_F32)
-    *(float *)storage = tbe_wire_read_f32(source, big_endian);
+    *(float *)storage = data_bind_binary_wire_read_f32(source, big_endian);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_double) && wire_kind == TBE_TYPED_F64)
-    *(double *)storage = tbe_wire_read_f64(source, big_endian);
+    *(double *)storage = data_bind_binary_wire_read_f64(source, big_endian);
   else
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Wire scalar kind disagrees with canonical CMeta storage");
@@ -3267,7 +3267,7 @@ static DataBindStatus typed_native_write_wire_scalar(const cmeta_data_desc *data
     if (cmeta_data_fixed_copy(data, &candidate, storage, data->storage_type->size) != CMETA_OK)
       return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
                          "Bool provider rejected native storage");
-    tbe_wire_write_u8(destination, big_endian, candidate);
+    data_bind_binary_wire_write_u8(destination, big_endian, candidate);
     return DATA_BIND_OK;
   }
   if (salts_uuid_cmeta_data_valid(data) && wire_kind == TBE_TYPED_UUID) {
@@ -3334,16 +3334,16 @@ static DataBindStatus typed_native_write_wire_scalar(const cmeta_data_desc *data
     }
     switch (wire_bits) {
     case 8u:
-      tbe_wire_write_u8(destination, big_endian, (uint8_t)bits);
+      data_bind_binary_wire_write_u8(destination, big_endian, (uint8_t)bits);
       break;
     case 16u:
-      tbe_wire_write_u16(destination, big_endian, (uint16_t)bits);
+      data_bind_binary_wire_write_u16(destination, big_endian, (uint16_t)bits);
       break;
     case 32u:
-      tbe_wire_write_u32(destination, big_endian, (uint32_t)bits);
+      data_bind_binary_wire_write_u32(destination, big_endian, (uint32_t)bits);
       break;
     case 64u:
-      tbe_wire_write_u64(destination, big_endian, bits);
+      data_bind_binary_wire_write_u64(destination, big_endian, bits);
       break;
     }
     return DATA_BIND_OK;
@@ -3352,25 +3352,25 @@ static DataBindStatus typed_native_write_wire_scalar(const cmeta_data_desc *data
                        "Canonical enum value exceeds its wire storage");
   }
   if (typed_cmeta_scalar_matches(data, &salts_int8_cmeta_data) && wire_kind == TBE_TYPED_I8)
-    tbe_wire_write_i8(destination, big_endian, *(const int8_t *)storage);
+    data_bind_binary_wire_write_i8(destination, big_endian, *(const int8_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_uint8_cmeta_data) && wire_kind == TBE_TYPED_U8)
-    tbe_wire_write_u8(destination, big_endian, *(const uint8_t *)storage);
+    data_bind_binary_wire_write_u8(destination, big_endian, *(const uint8_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_int16_cmeta_data) && wire_kind == TBE_TYPED_I16)
-    tbe_wire_write_i16(destination, big_endian, *(const int16_t *)storage);
+    data_bind_binary_wire_write_i16(destination, big_endian, *(const int16_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_uint16_cmeta_data) && wire_kind == TBE_TYPED_U16)
-    tbe_wire_write_u16(destination, big_endian, *(const uint16_t *)storage);
+    data_bind_binary_wire_write_u16(destination, big_endian, *(const uint16_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_int32_cmeta_data) && wire_kind == TBE_TYPED_I32)
-    tbe_wire_write_i32(destination, big_endian, *(const int32_t *)storage);
+    data_bind_binary_wire_write_i32(destination, big_endian, *(const int32_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_uint32_cmeta_data) && wire_kind == TBE_TYPED_U32)
-    tbe_wire_write_u32(destination, big_endian, *(const uint32_t *)storage);
+    data_bind_binary_wire_write_u32(destination, big_endian, *(const uint32_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_int64_cmeta_data) && wire_kind == TBE_TYPED_I64)
-    tbe_wire_write_i64(destination, big_endian, *(const int64_t *)storage);
+    data_bind_binary_wire_write_i64(destination, big_endian, *(const int64_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &salts_uint64_cmeta_data) && wire_kind == TBE_TYPED_U64)
-    tbe_wire_write_u64(destination, big_endian, *(const uint64_t *)storage);
+    data_bind_binary_wire_write_u64(destination, big_endian, *(const uint64_t *)storage);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_float) && wire_kind == TBE_TYPED_F32)
-    tbe_wire_write_f32(destination, big_endian, *(const float *)storage);
+    data_bind_binary_wire_write_f32(destination, big_endian, *(const float *)storage);
   else if (typed_cmeta_scalar_matches(data, &cmeta_data_double) && wire_kind == TBE_TYPED_F64)
-    tbe_wire_write_f64(destination, big_endian, *(const double *)storage);
+    data_bind_binary_wire_write_f64(destination, big_endian, *(const double *)storage);
   else
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Wire scalar kind disagrees with canonical CMeta storage");
@@ -3681,35 +3681,35 @@ static void typed_write_scalar(TbeTypedKind kind, uint8_t *dst, int big_endian, 
   switch (kind) {
   case TBE_TYPED_BOOL:
   case TBE_TYPED_U8:
-    tbe_wire_write_u8(dst, big_endian, *(const uint8_t *)src);
+    data_bind_binary_wire_write_u8(dst, big_endian, *(const uint8_t *)src);
     break;
   case TBE_TYPED_I8:
-    tbe_wire_write_i8(dst, big_endian, *(const int8_t *)src);
+    data_bind_binary_wire_write_i8(dst, big_endian, *(const int8_t *)src);
     break;
   case TBE_TYPED_U16:
-    tbe_wire_write_u16(dst, big_endian, *(const uint16_t *)src);
+    data_bind_binary_wire_write_u16(dst, big_endian, *(const uint16_t *)src);
     break;
   case TBE_TYPED_I16:
-    tbe_wire_write_i16(dst, big_endian, *(const int16_t *)src);
+    data_bind_binary_wire_write_i16(dst, big_endian, *(const int16_t *)src);
     break;
   case TBE_TYPED_U32:
-    tbe_wire_write_u32(dst, big_endian, *(const uint32_t *)src);
+    data_bind_binary_wire_write_u32(dst, big_endian, *(const uint32_t *)src);
     break;
   case TBE_TYPED_I32:
   case TBE_TYPED_ENUM:
-    tbe_wire_write_i32(dst, big_endian, *(const int32_t *)src);
+    data_bind_binary_wire_write_i32(dst, big_endian, *(const int32_t *)src);
     break;
   case TBE_TYPED_U64:
-    tbe_wire_write_u64(dst, big_endian, *(const uint64_t *)src);
+    data_bind_binary_wire_write_u64(dst, big_endian, *(const uint64_t *)src);
     break;
   case TBE_TYPED_I64:
-    tbe_wire_write_i64(dst, big_endian, *(const int64_t *)src);
+    data_bind_binary_wire_write_i64(dst, big_endian, *(const int64_t *)src);
     break;
   case TBE_TYPED_F32:
-    tbe_wire_write_f32(dst, big_endian, *(const float *)src);
+    data_bind_binary_wire_write_f32(dst, big_endian, *(const float *)src);
     break;
   case TBE_TYPED_F64:
-    tbe_wire_write_f64(dst, big_endian, *(const double *)src);
+    data_bind_binary_wire_write_f64(dst, big_endian, *(const double *)src);
     break;
   case TBE_TYPED_UUID:
     memcpy(dst, ((const salts_uuid_t *)src)->bytes, SALTS_UUID_SIZE);
@@ -3817,9 +3817,9 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
         return typed_error(error, DATA_BIND_ERR_SCHEMA, field->name,
                            "Typed null state is set while optional field is absent");
       count = present && !is_null ? vec->size : 0u;
-      tbe_wire_write_u16(output + cursor, type->wire_big_endian,
+      data_bind_binary_wire_write_u16(output + cursor, type->wire_big_endian,
                          (uint16_t)field->object_type->fixed_block_size);
-      tbe_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
+      data_bind_binary_wire_write_u16(output + cursor + 2u, type->wire_big_endian, (uint16_t)count);
       cursor += 4u;
       for (j = 0; j < count; ++j) {
         if (!typed_write_fixed(field->object_type,
@@ -3850,7 +3850,7 @@ DataBindStatus tbe_typed_serialize_binary_into(const TbeTypedType *type, const v
         bytes = vec->data;
         len = vec->size;
       }
-      tbe_wire_write_u32(output + cursor, type->wire_big_endian, (uint32_t)len);
+      data_bind_binary_wire_write_u32(output + cursor, type->wire_big_endian, (uint32_t)len);
       if (len != 0) memcpy(output + cursor + 4u, bytes, len);
       cursor += 4u + len;
     }

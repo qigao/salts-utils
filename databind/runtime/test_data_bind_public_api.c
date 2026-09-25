@@ -87,7 +87,7 @@ spec("data_bind public API") {
         data_bind_stream_feed_file;
     DataBindStatus (*finish_fn)(data_bind_stream_t *) = data_bind_stream_finish;
     check_equal(data_bind_version_string(), "3.0.0");
-    check_equal(data_bind_format_name(DATA_BIND_FORMAT_BINARY), "bin");
+    check_equal(data_bind_format_name(DATA_BIND_FORMAT_BINARY), "binary");
     check_equal(data_bind_format_name(DATA_BIND_FORMAT_JSON), "json");
     check_null(data_bind_format_name((DataBindFormat)99));
     check_not_null(feed_fn);

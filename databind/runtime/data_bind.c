@@ -16,7 +16,7 @@
 #include "schema_parser_dsl.h"
 #include "tbe_typed.h"
 #include "tbe_error.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 #include <json_parser.h>
 #include <csv_parser.h>
 #include <dsv_filter.h>
@@ -5826,7 +5826,7 @@ static DataBindStatus db_binary_write_u16(data_bind_binary_writer_t *writer, uin
                                           const char *path) {
   uint8_t *dst = NULL;
   DataBindStatus status = db_binary_writer_reserve(writer, sizeof(value), path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL) tbe_wire_write_u16(dst, 0, value);
+  if (status == DATA_BIND_OK && dst != NULL) data_bind_binary_wire_write_u16(dst, 0, value);
   return status;
 }
 
@@ -5834,7 +5834,7 @@ static DataBindStatus db_binary_write_u32(data_bind_binary_writer_t *writer, uin
                                           const char *path) {
   uint8_t *dst = NULL;
   DataBindStatus status = db_binary_writer_reserve(writer, sizeof(value), path, &dst);
-  if (status == DATA_BIND_OK && dst != NULL) tbe_wire_write_u32(dst, 0, value);
+  if (status == DATA_BIND_OK && dst != NULL) data_bind_binary_wire_write_u32(dst, 0, value);
   return status;
 }
 
@@ -5884,7 +5884,7 @@ static DataBindStatus db_binary_write_integer(data_bind_binary_writer_t *writer,
   if (type == DB_WIRE_U64 && value != NULL && value->kind == DATA_BIND_VALUE_UINT64) {
     status = db_binary_writer_reserve(writer, (size_t)size, path, &dst);
     if (status == DATA_BIND_OK && dst != NULL)
-      tbe_wire_write_u64(dst, 0, value->data.uint64_val);
+      data_bind_binary_wire_write_u64(dst, 0, value->data.uint64_val);
     return status;
   }
   if (!db_binary_integer_value(value, &integer) || !db_binary_integer_fits(type, integer))
@@ -5894,28 +5894,28 @@ static DataBindStatus db_binary_write_integer(data_bind_binary_writer_t *writer,
   if (status != DATA_BIND_OK || dst == NULL) return status;
   switch (type) {
   case DB_WIRE_U8:
-    tbe_wire_write_u8(dst, 0, (uint8_t)integer);
+    data_bind_binary_wire_write_u8(dst, 0, (uint8_t)integer);
     break;
   case DB_WIRE_I8:
-    tbe_wire_write_i8(dst, 0, (int8_t)integer);
+    data_bind_binary_wire_write_i8(dst, 0, (int8_t)integer);
     break;
   case DB_WIRE_U16:
-    tbe_wire_write_u16(dst, 0, (uint16_t)integer);
+    data_bind_binary_wire_write_u16(dst, 0, (uint16_t)integer);
     break;
   case DB_WIRE_I16:
-    tbe_wire_write_i16(dst, 0, (int16_t)integer);
+    data_bind_binary_wire_write_i16(dst, 0, (int16_t)integer);
     break;
   case DB_WIRE_U32:
-    tbe_wire_write_u32(dst, 0, (uint32_t)integer);
+    data_bind_binary_wire_write_u32(dst, 0, (uint32_t)integer);
     break;
   case DB_WIRE_I32:
-    tbe_wire_write_i32(dst, 0, (int32_t)integer);
+    data_bind_binary_wire_write_i32(dst, 0, (int32_t)integer);
     break;
   case DB_WIRE_U64:
-    tbe_wire_write_u64(dst, 0, (uint64_t)integer);
+    data_bind_binary_wire_write_u64(dst, 0, (uint64_t)integer);
     break;
   case DB_WIRE_I64:
-    tbe_wire_write_i64(dst, 0, integer);
+    data_bind_binary_wire_write_i64(dst, 0, integer);
     break;
   default:
     return db_error_set(writer->error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
@@ -5939,8 +5939,8 @@ static DataBindStatus db_binary_write_number(data_bind_binary_writer_t *writer,
                         "Floating-point value does not fit float32");
   status = db_binary_writer_reserve(writer, (size_t)field->size, field->name, &dst);
   if (status != DATA_BIND_OK || dst == NULL) return status;
-  if (field->wire_type == DB_WIRE_F32) tbe_wire_write_f32(dst, 0, (float)number);
-  else tbe_wire_write_f64(dst, 0, number);
+  if (field->wire_type == DB_WIRE_F32) data_bind_binary_wire_write_f32(dst, 0, (float)number);
+  else data_bind_binary_wire_write_f64(dst, 0, number);
   return DATA_BIND_OK;
 }
 
@@ -6222,7 +6222,7 @@ static DataBindStatus db_binary_read_u32(data_bind_binary_reader_t *reader, cons
     return db_error_set(reader != NULL ? reader->error : NULL, DATA_BIND_ERR_INVALID_ARG, path, -1,
                         -1, "Invalid binary integer output");
   status = db_binary_reader_take(reader, sizeof(uint32_t), path, &data);
-  if (status == DATA_BIND_OK) *out = tbe_wire_read_u32(data, 0);
+  if (status == DATA_BIND_OK) *out = data_bind_binary_wire_read_u32(data, 0);
   return status;
 }
 
@@ -6259,24 +6259,24 @@ static DataBindStatus db_binary_read_scalar(data_bind_binary_reader_t *reader,
     case EF_I64:
     case EF_U64:
       switch (field->wire_type) {
-      case DB_WIRE_U8: value = dbv_int((int32_t)tbe_wire_read_u8(data, 0)); break;
-      case DB_WIRE_I8: value = dbv_int((int32_t)tbe_wire_read_i8(data, 0)); break;
-      case DB_WIRE_U16: value = dbv_int((int32_t)tbe_wire_read_u16(data, 0)); break;
-      case DB_WIRE_I16: value = dbv_int((int32_t)tbe_wire_read_i16(data, 0)); break;
-      case DB_WIRE_U32: value = dbv_uint32_compat(tbe_wire_read_u32(data, 0)); break;
-      case DB_WIRE_I32: value = dbv_int(tbe_wire_read_i32(data, 0)); break;
-      case DB_WIRE_U64: value = dbv_uint64(tbe_wire_read_u64(data, 0)); break;
-      case DB_WIRE_I64: value = dbv_int64(tbe_wire_read_i64(data, 0)); break;
+      case DB_WIRE_U8: value = dbv_int((int32_t)data_bind_binary_wire_read_u8(data, 0)); break;
+      case DB_WIRE_I8: value = dbv_int((int32_t)data_bind_binary_wire_read_i8(data, 0)); break;
+      case DB_WIRE_U16: value = dbv_int((int32_t)data_bind_binary_wire_read_u16(data, 0)); break;
+      case DB_WIRE_I16: value = dbv_int((int32_t)data_bind_binary_wire_read_i16(data, 0)); break;
+      case DB_WIRE_U32: value = dbv_uint32_compat(data_bind_binary_wire_read_u32(data, 0)); break;
+      case DB_WIRE_I32: value = dbv_int(data_bind_binary_wire_read_i32(data, 0)); break;
+      case DB_WIRE_U64: value = dbv_uint64(data_bind_binary_wire_read_u64(data, 0)); break;
+      case DB_WIRE_I64: value = dbv_int64(data_bind_binary_wire_read_i64(data, 0)); break;
       default:
         return db_error_set(reader->error, DATA_BIND_ERR_SCHEMA, field->name, -1, -1,
                             "Unsupported integer wire type");
       }
       break;
-    case EF_BOOL: value = dbv_bool(tbe_wire_read_u8(data, 0) != 0); break;
+    case EF_BOOL: value = dbv_bool(data_bind_binary_wire_read_u8(data, 0) != 0); break;
     case EF_DBL:
       value = dbv_double(field->wire_type == DB_WIRE_F32
-                             ? (double)tbe_wire_read_f32(data, 0)
-                             : tbe_wire_read_f64(data, 0));
+                             ? (double)data_bind_binary_wire_read_f32(data, 0)
+                             : data_bind_binary_wire_read_f64(data, 0));
       break;
     case EF_UUID: value = dbv_uuid_bytes(data); break;
     case EF_FIX_BYTES: value = dbv_bytes(data, (size_t)field->size); break;
@@ -6423,8 +6423,8 @@ static DataBindStatus db_binary_read_group(data_bind_binary_reader_t *reader,
                         "Invalid group dimension size");
   status = db_binary_reader_take(reader, (size_t)field->group_dim, field->name, &dimension);
   if (status != DATA_BIND_OK) return status;
-  block_length = tbe_wire_read_u16(dimension, 0);
-  count = tbe_wire_read_u16(dimension + 2u, 0);
+  block_length = data_bind_binary_wire_read_u16(dimension, 0);
+  count = data_bind_binary_wire_read_u16(dimension + 2u, 0);
   if (block_length < (uint16_t)field->size)
     return db_error_set(reader->error, DATA_BIND_ERR_PARSE, field->name, -1, -1,
                         "Group block length is smaller than the schema layout");
@@ -12779,7 +12779,7 @@ const char *data_bind_version_string(void) { return "3.0.0"; }
 
 const char *data_bind_format_name(DataBindFormat format) {
   switch (format) {
-  case DATA_BIND_FORMAT_BINARY: return "bin";
+  case DATA_BIND_FORMAT_BINARY: return "binary";
   case DATA_BIND_FORMAT_JSON: return "json";
   case DATA_BIND_FORMAT_YAML: return "yaml";
   case DATA_BIND_FORMAT_CSV: return "csv";

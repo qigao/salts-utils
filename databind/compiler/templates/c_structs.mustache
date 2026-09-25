@@ -17,8 +17,8 @@
 #endif
 #endif
 
-#include "tbe_wire.h"
-#if defined(TBE_WASM_GUEST)
+#include "data_bind_binary_wire.h"
+#if defined(DATA_BIND_BINARY_WASM_GUEST)
 static inline void *tbe_generated_memcpy(void *destination, const void *source, size_t size) {
     unsigned char *out = (unsigned char *)destination;
     const unsigned char *in = (const unsigned char *)source;
@@ -540,12 +540,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
+    data_bind_binary_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
     return true;
 }
 
 static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return ({{enum_c_type}})tbe_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
+    return ({{enum_c_type}})data_bind_binary_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
                                                                {{wire_endian_const}});
 }
 
@@ -581,12 +581,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
+    data_bind_binary_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
     return true;
 }
 
 static inline {{host_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return tbe_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
+    return data_bind_binary_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
 }
 
 {{/is_numeric}}
@@ -618,7 +618,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         value);
@@ -635,7 +635,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         ({{collection_element_host_type}})value);
@@ -837,8 +837,8 @@ static inline bool {{name}}_cursor_bind({{name}}_cursor_t *cursor, const void *d
 
     cursor->data = (const uint8_t *)data;
     cursor->size = size;
-    cursor->block_length = tbe_wire_read_u16(cursor->data, {{wire_endian_const}});
-    cursor->num_in_group = tbe_wire_read_u16(cursor->data + 2, {{wire_endian_const}});
+    cursor->block_length = data_bind_binary_wire_read_u16(cursor->data, {{wire_endian_const}});
+    cursor->num_in_group = data_bind_binary_wire_read_u16(cursor->data + 2, {{wire_endian_const}});
     cursor->current_index = 0;
     entries_size = (size_t)cursor->block_length * (size_t)cursor->num_in_group;
 
@@ -912,8 +912,8 @@ static inline bool {{name}}_builder_cursor_bind({{name}}_builder_cursor_t *curso
     cursor->num_in_group = num_in_group;
     cursor->current_index = 0;
 
-    tbe_wire_write_u16(cursor->data, {{wire_endian_const}}, cursor->block_length);
-    tbe_wire_write_u16(cursor->data + 2, {{wire_endian_const}}, cursor->num_in_group);
+    data_bind_binary_wire_write_u16(cursor->data, {{wire_endian_const}}, cursor->block_length);
+    data_bind_binary_wire_write_u16(cursor->data + 2, {{wire_endian_const}}, cursor->num_in_group);
 
     size_t entries_size = (size_t)cursor->block_length * (size_t)cursor->num_in_group;
     if (size < {{group_dimension_size}} + entries_size) {
@@ -994,7 +994,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1022,7 +1022,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1030,7 +1030,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 {{/var_data_from_previous_group}}
 {{#var_data_from_previous_var_data}}
     {{owner_name}}_view_t read_view;
-    tbe_var_data_t previous;
+    DataBindBinaryVarData previous;
     const uint8_t *payload_data;
     size_t payload_offset;
 
@@ -1044,13 +1044,13 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    payload_data = tbe_wire_var_data_end(&previous);
+    payload_data = data_bind_binary_wire_var_data_end(&previous);
     payload_offset = (size_t)(payload_data - view->data);
     if (payload_offset > view->size) {
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1059,7 +1059,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 }
 
 static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
-                                           tbe_var_data_t *value) {
+                                           DataBindBinaryVarData *value) {
 {{#var_data_from_block_length}}
     size_t payload_offset = {{owner_name}}_BLOCK_LENGTH;
 
@@ -1067,7 +1067,7 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    return tbe_wire_read_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_read_var_data(view->data + payload_offset,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
@@ -1091,13 +1091,13 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    return tbe_wire_read_var_data(payload_data,
+    return data_bind_binary_wire_read_var_data(payload_data,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
 {{/var_data_from_previous_group}}
 {{#var_data_from_previous_var_data}}
-    tbe_var_data_t previous;
+    DataBindBinaryVarData previous;
     const uint8_t *payload_data;
     size_t payload_offset;
 
@@ -1109,13 +1109,13 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    payload_data = tbe_wire_var_data_end(&previous);
+    payload_data = data_bind_binary_wire_var_data_end(&previous);
     payload_offset = (size_t)(payload_data - view->data);
     if (payload_offset > view->size) {
         return false;
     }
 
-    return tbe_wire_read_var_data(payload_data,
+    return data_bind_binary_wire_read_var_data(payload_data,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
@@ -1131,12 +1131,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
+    data_bind_binary_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
     return true;
 }
 
 static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return ({{enum_c_type}})tbe_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
+    return ({{enum_c_type}})data_bind_binary_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
                                                                {{wire_endian_const}});
 }
 
@@ -1172,12 +1172,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
+    data_bind_binary_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
     return true;
 }
 
 static inline {{host_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return tbe_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
+    return data_bind_binary_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
 }
 
 {{/is_numeric}}
@@ -1209,7 +1209,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         value);
@@ -1226,7 +1226,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         ({{collection_element_host_type}})value);
@@ -1658,7 +1658,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1686,7 +1686,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1694,7 +1694,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 {{/var_data_from_previous_group}}
 {{#var_data_from_previous_var_data}}
     {{owner_name}}_view_t read_view;
-    tbe_var_data_t previous;
+    DataBindBinaryVarData previous;
     const uint8_t *payload_data;
     size_t payload_offset;
 
@@ -1708,13 +1708,13 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    payload_data = tbe_wire_var_data_end(&previous);
+    payload_data = data_bind_binary_wire_var_data_end(&previous);
     payload_offset = (size_t)(payload_data - view->data);
     if (payload_offset > view->size) {
         return false;
     }
 
-    return tbe_wire_write_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_write_var_data(view->data + payload_offset,
                                    view->size - payload_offset,
                                    {{wire_endian_const}},
                                    data,
@@ -1723,7 +1723,7 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
 }
 
 static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
-                                           tbe_var_data_t *value) {
+                                           DataBindBinaryVarData *value) {
 {{#var_data_from_block_length}}
     size_t payload_offset = {{owner_name}}_BLOCK_LENGTH;
 
@@ -1731,7 +1731,7 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    return tbe_wire_read_var_data(view->data + payload_offset,
+    return data_bind_binary_wire_read_var_data(view->data + payload_offset,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
@@ -1755,13 +1755,13 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    return tbe_wire_read_var_data(payload_data,
+    return data_bind_binary_wire_read_var_data(payload_data,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
 {{/var_data_from_previous_group}}
 {{#var_data_from_previous_var_data}}
-    tbe_var_data_t previous;
+    DataBindBinaryVarData previous;
     const uint8_t *payload_data;
     size_t payload_offset;
 
@@ -1773,13 +1773,13 @@ static inline bool {{owner_name}}_{{name}}(const {{owner_name}}_view_t *view,
         return false;
     }
 
-    payload_data = tbe_wire_var_data_end(&previous);
+    payload_data = data_bind_binary_wire_var_data_end(&previous);
     payload_offset = (size_t)(payload_data - view->data);
     if (payload_offset > view->size) {
         return false;
     }
 
-    return tbe_wire_read_var_data(payload_data,
+    return data_bind_binary_wire_read_var_data(payload_data,
                                   view->size - payload_offset,
                                   {{wire_endian_const}},
                                   value);
@@ -1795,12 +1795,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
+    data_bind_binary_wire_write_{{enum_wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, ({{enum_host_type}})value);
     return true;
 }
 
 static inline {{enum_c_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return ({{enum_c_type}})tbe_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
+    return ({{enum_c_type}})data_bind_binary_wire_read_{{enum_wire_reader}}(view->data + {{offset}},
                                                                {{wire_endian_const}});
 }
 
@@ -1836,12 +1836,12 @@ static inline bool {{owner_name}}_{{name}}_set({{owner_name}}_builder_t *view,
         return false;
     }
 
-    tbe_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
+    data_bind_binary_wire_write_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}}, value);
     return true;
 }
 
 static inline {{host_type}} {{owner_name}}_{{name}}_get(const {{owner_name}}_view_t *view) {
-    return tbe_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
+    return data_bind_binary_wire_read_{{wire_reader}}(view->data + {{offset}}, {{wire_endian_const}});
 }
 
 {{/is_numeric}}
@@ -1873,7 +1873,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         value);
@@ -1890,7 +1890,7 @@ static inline bool {{owner_name}}_{{name}}_set_at({{owner_name}}_builder_t *view
         return false;
     }
 
-    tbe_wire_write_{{collection_element_wire_reader}}(
+    data_bind_binary_wire_write_{{collection_element_wire_reader}}(
         view->data + {{offset}} + ((size_t)index * {{element_size_bytes}}),
         {{wire_endian_const}},
         ({{collection_element_host_type}})value);
@@ -1988,7 +1988,7 @@ static inline {{#host_type}}{{host_type}}{{/host_type}}{{^host_type}}{{type}}_t{
 /**
  * @brief Get {{name}} with default value if not present
  */
-static inline bool {{owner_name}}_{{name}}_get_or(const {{owner_name}}_view_t *view, const char *default_str, tbe_var_data_t *out) {
+static inline bool {{owner_name}}_{{name}}_get_or(const {{owner_name}}_view_t *view, const char *default_str, DataBindBinaryVarData *out) {
     if ({{owner_name}}_has_{{name}}(view)) {
         return {{owner_name}}_{{name}}(view, out);
     }
@@ -2001,7 +2001,7 @@ static inline bool {{owner_name}}_{{name}}_get_or(const {{owner_name}}_view_t *v
 /**
  * @brief Get {{name}} with built-in default value if not present
  */
-static inline bool {{owner_name}}_{{name}}_get_default(const {{owner_name}}_view_t *view, tbe_var_data_t *out) {
+static inline bool {{owner_name}}_{{name}}_get_default(const {{owner_name}}_view_t *view, DataBindBinaryVarData *out) {
     return {{owner_name}}_{{name}}_get_or(view, {{owner_name}}_{{name}}_DEFAULT, out);
 }
 
