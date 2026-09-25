@@ -1244,81 +1244,30 @@ static DataBindStatus typed_descriptor_native_record(const TbeTypedDescriptor *d
 
 static DataBindStatus typed_native_init_value(const cmeta_data_desc *data, void *storage,
                                               const char *path, DataBindError *error) {
+  cmeta_status status;
   if (data == NULL || storage == NULL || data->storage_type == NULL)
-    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path, "Invalid canonical native storage");
-  if (cmeta_data_fixed_ops_of(data) != NULL) {
-    if (cmeta_data_fixed_restore_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Fixed provider did not establish semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (cmeta_data_buffer_ops_of(data) != NULL) {
-    if (cmeta_data_buffer_init_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Buffer provider did not establish semantic zero");
-    return DATA_BIND_OK;
-  }
-  memset(storage, 0, data->storage_type->size);
-  if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum provider did not establish semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    size_t i;
-    for (i = 0u; i < shape->field_count; ++i) {
-      char field_path[sizeof(((DataBindError *)0)->path)];
-      DataBindStatus status =
-          typed_native_path(field_path, sizeof(field_path), path, shape->fields[i].name, error);
-      if (status == DATA_BIND_OK)
-        status = typed_native_init_value(shape->fields[i].value,
-                                         (uint8_t *)storage + shape->fields[i].offset, field_path,
-                                         error);
-      if (status != DATA_BIND_OK) return status;
-    }
-  }
-  return DATA_BIND_OK;
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native storage");
+  status = cmeta_data_value_init_zero(data, storage);
+  if (status == CMETA_OK) return DATA_BIND_OK;
+  return typed_error(
+      error,
+      status == CMETA_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM : DATA_BIND_ERR_SCHEMA,
+      path, "Canonical CMeta lifecycle could not initialize semantic zero");
 }
 
 static DataBindStatus typed_native_clear_value(const cmeta_data_desc *data, void *storage,
                                                const char *path, DataBindError *error) {
+  cmeta_status status;
   if (data == NULL || storage == NULL || data->storage_type == NULL)
-    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path, "Invalid canonical native storage");
-  if (cmeta_data_fixed_ops_of(data) != NULL) {
-    if (cmeta_data_fixed_restore_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Fixed provider did not restore semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (cmeta_data_buffer_ops_of(data) != NULL) {
-    if (cmeta_data_buffer_restore_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Buffer provider did not restore semantic zero");
-    return DATA_BIND_OK;
-  }
-  if (data->kind == CMETA_DATA_ENUM) {
-    if (cmeta_data_enum_bits_restore_zero(data, storage) != CMETA_OK)
-      return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
-                         "Enum provider did not restore semantic zero");
-  } else if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    size_t i;
-    for (i = 0u; i < shape->field_count; ++i) {
-      char field_path[sizeof(((DataBindError *)0)->path)];
-      DataBindStatus status =
-          typed_native_path(field_path, sizeof(field_path), path, shape->fields[i].name, error);
-      if (status == DATA_BIND_OK)
-        status = typed_native_clear_value(shape->fields[i].value,
-                                          (uint8_t *)storage + shape->fields[i].offset, field_path,
-                                          error);
-      if (status != DATA_BIND_OK) return status;
-    }
-    return DATA_BIND_OK;
-  }
-  memset(storage, 0, data->storage_type->size);
-  return DATA_BIND_OK;
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native storage");
+  status = cmeta_data_value_restore_zero(data, storage);
+  if (status == CMETA_OK) return DATA_BIND_OK;
+  return typed_error(
+      error,
+      status == CMETA_OUT_OF_MEMORY ? DATA_BIND_ERR_OOM : DATA_BIND_ERR_SCHEMA,
+      path, "Canonical CMeta lifecycle could not restore semantic zero");
 }
 
 /* Numeric wire/text adaptation only; native storage and membership belong to
