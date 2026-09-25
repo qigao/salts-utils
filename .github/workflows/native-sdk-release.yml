@@ -125,7 +125,7 @@ jobs:
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/binding-plan \
-            --target test_data_bind_binding_plan test_data_bind_native_writer \
+            --target test_data_bind_binding_plan test_data_bind_projection_plan test_data_bind_native_writer \
                      test_data_bind_cmeta_public_cpp \
             --parallel 2
 
@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"

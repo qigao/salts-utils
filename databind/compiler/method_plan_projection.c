@@ -208,6 +208,27 @@ static const char *direction_name(
   }
 }
 
+static const char *runtime_format_name(databind_compiler_format format) {
+  switch (format) {
+  case DATABIND_COMPILER_FORMAT_DEFAULT:
+  case DATABIND_COMPILER_FORMAT_JSON:
+    return "DATA_BIND_FORMAT_JSON";
+  case DATABIND_COMPILER_FORMAT_BINARY:
+    return "DATA_BIND_FORMAT_BINARY";
+  case DATABIND_COMPILER_FORMAT_YAML:
+    return "DATA_BIND_FORMAT_YAML";
+  case DATABIND_COMPILER_FORMAT_CSV:
+    return "DATA_BIND_FORMAT_CSV";
+  case DATABIND_COMPILER_FORMAT_XML:
+    return "DATA_BIND_FORMAT_XML";
+  }
+  return NULL;
+}
+
+static int compiler_format_valid(databind_compiler_format format) {
+  return runtime_format_name(format) != NULL;
+}
+
 static int http_method_valid(const char *method) {
   static const char *const methods[] = {
       "GET", "HEAD", "POST", "PUT", "DELETE",
@@ -306,6 +327,8 @@ static int http_config_shape_valid(
     const databind_compiler_http_operation_config *left = &config->operations[i];
     if (left->service_name == NULL || left->operation_name == NULL ||
         (left->method != NULL && !http_method_valid(left->method)) ||
+        !compiler_format_valid(left->ingress_format) ||
+        !compiler_format_valid(left->egress_format) ||
         (left->route != NULL &&
          (left->route[0] != '/' || strchr(left->route, '?') != NULL ||
           strchr(left->route, '#') != NULL)) ||
@@ -366,7 +389,9 @@ static int rpc_config_shape_valid(
   for (i = 0u; i < config->operation_count; ++i) {
     const databind_compiler_rpc_operation_config *left = &config->operations[i];
     if (left->service_name == NULL || left->operation_name == NULL ||
-        (left->wire_method != NULL && left->wire_method[0] == '\0'))
+        (left->wire_method != NULL && left->wire_method[0] == '\0') ||
+        !compiler_format_valid(left->ingress_format) ||
+        !compiler_format_valid(left->egress_format))
       return 0;
     for (j = 0u; j < i; ++j)
       if (config_operation_matches(
@@ -820,6 +845,15 @@ static int http_generate(
                     prefix, operation_index, error_count) < 0)
           goto cleanup;
       } else if (fputs("NULL, 0u", file) == EOF) goto cleanup;
+      if (fprintf(
+              file, ", %s, %s",
+              runtime_format_name(
+                  op_config != NULL ? op_config->ingress_format
+                                    : DATABIND_COMPILER_FORMAT_DEFAULT),
+              runtime_format_name(
+                  op_config != NULL ? op_config->egress_format
+                                    : DATABIND_COMPILER_FORMAT_DEFAULT)) < 0)
+        goto cleanup;
       if (fputs(" } },\n", file) == EOF) goto cleanup;
     }
   }
@@ -993,6 +1027,15 @@ static int rpc_generate(
                     prefix, operation_index, error_count) < 0)
           goto cleanup;
       } else if (fputs("NULL, 0u", file) == EOF) goto cleanup;
+      if (fprintf(
+              file, ", %s, %s",
+              runtime_format_name(
+                  op_config != NULL ? op_config->ingress_format
+                                    : DATABIND_COMPILER_FORMAT_DEFAULT),
+              runtime_format_name(
+                  op_config != NULL ? op_config->egress_format
+                                    : DATABIND_COMPILER_FORMAT_DEFAULT)) < 0)
+        goto cleanup;
       if (fputs(" } },\n", file) == EOF) goto cleanup;
     }
   }

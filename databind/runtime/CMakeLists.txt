@@ -142,6 +142,8 @@ add_library(
   data_bind_binding_plan.h
   data_bind_method_plan.c
   data_bind_method_plan.h
+  data_bind_projection_plan.c
+  data_bind_projection_plan.h
   data_bind_validation_plan.c
   data_bind_validation_plan.h
   data_bind_stream_format_state.c
@@ -238,6 +240,7 @@ install(
     data_bind_native.h
     data_bind_binding_plan.h
     data_bind_method_plan.h
+    data_bind_projection_plan.h
     data_bind_validation_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
@@ -384,6 +387,13 @@ cmake_add_test(test_data_bind_binding_plan
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_binding_plan PROPERTIES
   LABELS "databind;cmeta;service-contract;binding-plan")
+
+cmake_add_test(test_data_bind_projection_plan
+  SOURCES test_data_bind_projection_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_projection_plan PROPERTIES
+  LABELS "databind;format-plan;transport-plan;method-plan")
 cmake_add_test(test_data_bind_cmeta_reflection
   SOURCES test_data_bind_cmeta_reflection.c
   LIBS ${DATA_BIND_TEST_LIBS}

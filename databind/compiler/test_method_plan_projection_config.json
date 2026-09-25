@@ -9,6 +9,8 @@
         "route": "/add/{left}",
         "success_status": 201,
         "context": ["request_id"],
+        "ingress_format": "yaml",
+        "egress_format": "xml",
         "fields": [
           {
             "direction": "ingress",
@@ -44,6 +46,8 @@
         "service": "Calc",
         "operation": "Add",
         "wire_method": "calc.add",
+        "ingress_format": "json",
+        "egress_format": "binary",
         "fields": [
           {
             "direction": "ingress",

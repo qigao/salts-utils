@@ -15,6 +15,8 @@ spec("DataBind generated MethodPlan projection artifacts") {
     check_equal(config->success_status, 201);
     check_equal(config->field_count, (size_t)3);
     check_equal(config->error_count, (size_t)1);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_YAML);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_XML);
     check_equal(config->fields[0].schema_field, "left");
     check_true(config->fields[0].location == DATA_BIND_HTTP_PATH);
     check_equal(config->fields[1].wire_name, "X-Right");
@@ -29,6 +31,8 @@ spec("DataBind generated MethodPlan projection artifacts") {
 
     check_not_null(config);
     check_equal(config->wire_method, "calc.add");
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_JSON);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_BINARY);
     check_equal(config->field_count, (size_t)3);
     check_equal(config->fields[0].wire_name, "lhs");
     check_equal(config->fields[0].ordinal, (size_t)0);

@@ -211,6 +211,46 @@ static int parse_direction(
   return 0;
 }
 
+static int parse_format_name(
+    const char *text, databind_compiler_format *out) {
+  static const struct {
+    const char *name;
+    databind_compiler_format format;
+  } rows[] = {
+      {"binary", DATABIND_COMPILER_FORMAT_BINARY},
+      {"json", DATABIND_COMPILER_FORMAT_JSON},
+      {"yaml", DATABIND_COMPILER_FORMAT_YAML},
+      {"csv", DATABIND_COMPILER_FORMAT_CSV},
+      {"xml", DATABIND_COMPILER_FORMAT_XML},
+  };
+  size_t i;
+  if (text == NULL || out == NULL) return 0;
+  for (i = 0u; i < sizeof(rows) / sizeof(rows[0]); ++i) {
+    if (strcmp(text, rows[i].name) == 0) {
+      *out = rows[i].format;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int optional_format(
+    const json_value_t *object, const char *key,
+    databind_compiler_format *out,
+    char *error, size_t error_size) {
+  const char *text = NULL;
+  *out = DATABIND_COMPILER_FORMAT_DEFAULT;
+  if (json_object_get(object, key) == NULL) return 0;
+  if (optional_string(object, key, &text, error, error_size) != 0)
+    return -1;
+  if (text == NULL || !parse_format_name(text, out))
+    return config_errorf(
+        error, error_size,
+        "Unknown projection format '%s'",
+        text != NULL ? text : "");
+  return 0;
+}
+
 static int parse_http_location(
     const char *text, databind_compiler_http_field_location *out) {
   static const struct {
@@ -342,7 +382,7 @@ static int parse_http(
     char *error, size_t error_size) {
   static const char *const operation_keys[] = {
       "service", "operation", "method", "route", "success_status",
-      "context", "fields", "errors"};
+      "context", "ingress_format", "egress_format", "fields", "errors"};
   static const char *const field_keys[] = {
       "direction", "field", "location", "name", "ordinal"};
   static const char *const error_keys[] = {"type", "status"};
@@ -398,7 +438,11 @@ static int parse_http(
         optional_int(operation, "success_status", 100, 599, 0,
                      &op->success_status, error, error_size) != 0 ||
         parse_http_context(operation, &op->context_flags,
-                           error, error_size) != 0)
+                           error, error_size) != 0 ||
+        optional_format(operation, "ingress_format", &op->ingress_format,
+                        error, error_size) != 0 ||
+        optional_format(operation, "egress_format", &op->egress_format,
+                        error, error_size) != 0)
       return -1;
 
     fields = json_object_get(operation, "fields");
@@ -474,7 +518,8 @@ static int parse_rpc(
     databind_compiler_projection_config *out,
     char *error, size_t error_size) {
   static const char *const operation_keys[] = {
-      "service", "operation", "wire_method", "fields", "errors"};
+      "service", "operation", "wire_method",
+      "ingress_format", "egress_format", "fields", "errors"};
   static const char *const field_keys[] = {
       "direction", "field", "name", "ordinal"};
   static const char *const error_keys[] = {"type", "code"};
@@ -526,6 +571,10 @@ static int parse_rpc(
         required_string(operation, "operation", error, error_size);
     if (op->operation_name == NULL) return -1;
     if (optional_string(operation, "wire_method", &op->wire_method,
+                        error, error_size) != 0 ||
+        optional_format(operation, "ingress_format", &op->ingress_format,
+                        error, error_size) != 0 ||
+        optional_format(operation, "egress_format", &op->egress_format,
                         error, error_size) != 0)
       return -1;
 

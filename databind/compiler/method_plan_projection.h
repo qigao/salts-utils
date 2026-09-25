@@ -25,6 +25,15 @@ typedef enum databind_compiler_projection_direction {
   DATABIND_COMPILER_PROJECTION_EGRESS = 2
 } databind_compiler_projection_direction;
 
+typedef enum databind_compiler_format {
+  DATABIND_COMPILER_FORMAT_DEFAULT = 0,
+  DATABIND_COMPILER_FORMAT_BINARY,
+  DATABIND_COMPILER_FORMAT_JSON,
+  DATABIND_COMPILER_FORMAT_YAML,
+  DATABIND_COMPILER_FORMAT_CSV,
+  DATABIND_COMPILER_FORMAT_XML
+} databind_compiler_format;
+
 typedef struct databind_compiler_http_operation_config {
   const char *service_name;
   const char *operation_name;
@@ -32,6 +41,8 @@ typedef struct databind_compiler_http_operation_config {
   const char *route;
   int success_status;
   uint64_t context_flags;
+  databind_compiler_format ingress_format;
+  databind_compiler_format egress_format;
 } databind_compiler_http_operation_config;
 
 typedef struct databind_compiler_http_field_config {
@@ -65,6 +76,8 @@ typedef struct databind_compiler_rpc_operation_config {
   const char *service_name;
   const char *operation_name;
   const char *wire_method;
+  databind_compiler_format ingress_format;
+  databind_compiler_format egress_format;
 } databind_compiler_rpc_operation_config;
 
 typedef struct databind_compiler_rpc_field_config {
