@@ -621,10 +621,91 @@ int databind_compiler_service_native_emit_prototype(
             operation->errors[i].type_name, i + 1u) < 0)
       return -1;
 
+  if (fprintf(
+          file,
+          "  } payload;\n"
+          "} %s__error;\n"
+          "static inline void %s__error_init(%s__error *error) {\n"
+          "  if (error != NULL) error->kind = %s__ERROR_NONE;\n"
+          "}\n"
+          "static inline void %s__error_clear(%s__error *error) {\n"
+          "  if (error == NULL) return;\n"
+          "  switch (error->kind) {\n"
+          "  case %s__ERROR_NONE:\n"
+          "    break;\n",
+          operation->symbol,
+          operation->symbol, operation->symbol, operation->symbol,
+          operation->symbol, operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    %s_clear(&error->payload.error_%zu);\n"
+            "    break;\n",
+            operation->symbol, i + 1u,
+            operation->errors[i].type_name, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return;\n"
+          "  }\n"
+          "  error->kind = %s__ERROR_NONE;\n"
+          "}\n"
+          "static inline DataBindStatus %s__error_move(\n"
+          "    %s__error *destination, %s__error *source) {\n"
+          "  if (destination == NULL || source == NULL)\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  if (destination == source) return DATA_BIND_OK;\n"
+          "  switch (source->kind) {\n"
+          "  case %s__ERROR_NONE:\n"
+          "    break;\n",
+          operation->symbol,
+          operation->symbol, operation->symbol, operation->symbol,
+          operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    break;\n",
+            operation->symbol, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return DATA_BIND_ERR_SCHEMA;\n"
+          "  }\n"
+          "  %s__error_clear(destination);\n"
+          "  switch (source->kind) {\n"
+          "  case %s__ERROR_NONE:\n"
+          "    break;\n",
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    destination->payload.error_%zu = source->payload.error_%zu;\n"
+            "    break;\n",
+            operation->symbol, i + 1u, i + 1u, i + 1u) < 0)
+      return -1;
+
   return fprintf(
              file,
-             "  } payload;\n"
-             "} %s__error;\n"
+             "  default:\n"
+             "    return DATA_BIND_ERR_SCHEMA;\n"
+             "  }\n"
+             "  destination->kind = source->kind;\n"
+             "  source->kind = %s__ERROR_NONE;\n"
+             "  return DATA_BIND_OK;\n"
+             "}\n"
              "int %s(const %s_t *request, %s_t *response, "
              "%s__error *error);\n",
              operation->symbol,
