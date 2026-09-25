@@ -420,28 +420,6 @@ static JINJA_CMETA_STATUS jinja_iterator_next(JINJA_CMETA_PROVIDER *provider,
                                             JINJA_CMETA_VALUE *source,
                                             JINJA_CMETA_VALUE *result, int *found);
 
-static const cmeta_type_identity jinja_cmeta_sequence_identity =
-    CMETA_TYPE_ID_ATOM_INIT("salts-utils.jinja-cmeta.SequenceView.v1");
-static const cmeta_type_desc jinja_cmeta_sequence_type = {"JINJA_CMETA_SEQUENCE_VIEW",
-                                                          sizeof(JINJA_CMETA_SEQUENCE_VIEW),
-                                                          _Alignof(JINJA_CMETA_SEQUENCE_VIEW),
-                                                          CMETA_T_OBJECT,
-                                                          NULL,
-                                                          NULL,
-                                                          &jinja_cmeta_sequence_identity};
-static const unsigned char jinja_cmeta_sequence_shape = 1u;
-static const cmeta_data_desc jinja_cmeta_sequence_desc = {
-    sizeof(cmeta_data_desc),
-    CMETA_DATA_DESC_ABI_VERSION,
-    "salts-utils.jinja-cmeta.SequenceView.data.v1",
-    "Jinja sequence view",
-    CMETA_DATA_CUSTOM,
-    &jinja_cmeta_sequence_type,
-    &jinja_cmeta_sequence_shape,
-    NULL,
-    NULL,
-    NULL};
-
 static const cmeta_type_identity jinja_cmeta_integer_identity =
     CMETA_TYPE_ID_ATOM_INIT("salts-utils.jinja-cmeta.IntegerLiteral.v1");
 static const cmeta_type_desc jinja_cmeta_integer_type = {"int64_t",
@@ -478,20 +456,10 @@ static const cmeta_data_desc jinja_cmeta_vstr_desc = {sizeof(cmeta_data_desc),
                                                       NULL};
 
 static int jinja_is_sequence_desc(const cmeta_data_desc *desc) {
-  const cmeta_type_desc *type;
-  if (!cmeta_data_desc_valid(desc) || desc->kind != CMETA_DATA_CUSTOM ||
-      strcmp(desc->stable_id, jinja_cmeta_sequence_desc.stable_id) != 0)
-    return 0;
-  type = desc->storage_type;
-  return cmeta_type_equal(type, &jinja_cmeta_sequence_type) &&
-         type->kind == jinja_cmeta_sequence_type.kind &&
-         type->size == jinja_cmeta_sequence_type.size &&
-         type->align == jinja_cmeta_sequence_type.align;
+  return cmeta_data_desc_equal(desc, &cmeta_data_sequence_view);
 }
 
 const cmeta_data_desc *jinja_cmeta_vstr_data(void) { return &jinja_cmeta_vstr_desc; }
-
-const cmeta_data_desc *jinja_cmeta_sequence_data(void) { return &jinja_cmeta_sequence_desc; }
 
 static void jinja_provider_fail(JINJA_CMETA_PROVIDER *provider, JINJA_CMETA_STATUS status) {
   if (provider->shared.status == JINJA_CMETA_OK) provider->shared.status = status;
@@ -590,9 +558,9 @@ static JINJA_CMETA_NODE *jinja_provider_collection_node(JINJA_CMETA_PROVIDER *pr
   }
   node = jinja_provider_reserve(provider);
   if (node == NULL) return NULL;
-  node->owned_sequence = (JINJA_CMETA_SEQUENCE_VIEW){NULL, visible_count, 0u, NULL};
+  node->owned_sequence = (cmeta_data_collection_view){NULL, visible_count, 0u, NULL};
   node->object = &node->owned_sequence;
-  node->desc = &jinja_cmeta_sequence_desc;
+  node->desc = &cmeta_data_sequence_view;
   node->parent = parent;
   node->first_collection_item = value->first_collection_item;
   node->collection_item_count = value->collection_item_count;
@@ -2211,8 +2179,8 @@ static JINJA_CMETA_STATUS jinja_membership_result(JINJA_CMETA_PROVIDER *provider
 
   if (right_value->kind == JINJA_CMETA_VALUE_NODE &&
       jinja_is_sequence_desc(right_value->node.desc)) {
-    const JINJA_CMETA_SEQUENCE_VIEW *view =
-        (const JINJA_CMETA_SEQUENCE_VIEW *)right_value->node.object;
+    const cmeta_data_collection_view *view =
+        (const cmeta_data_collection_view *)right_value->node.object;
     size_t i;
 
     if (view == NULL) return JINJA_CMETA_ERR_METADATA;
@@ -3154,7 +3122,7 @@ static JINJA_CMETA_STATUS jinja_utf8_scalar_lookup(vstr input, int64_t index, vs
   return JINJA_CMETA_ERR_METADATA;
 }
 
-static JINJA_CMETA_STATUS jinja_validate_sequence_view(const JINJA_CMETA_SEQUENCE_VIEW *view) {
+static JINJA_CMETA_STATUS jinja_validate_sequence_view(const cmeta_data_collection_view *view) {
   if (view == NULL) return JINJA_CMETA_ERR_METADATA;
   if (view->count == 0u) return JINJA_CMETA_OK;
   if (view->data == NULL || view->stride == 0u || !cmeta_data_desc_valid(view->element) ||
@@ -3406,7 +3374,7 @@ static JINJA_CMETA_STATUS jinja_lookup_item(JINJA_CMETA_PROVIDER *provider,
   if (base->node.object == NULL || !cmeta_data_desc_valid(base->node.desc))
     return JINJA_CMETA_ERR_METADATA;
   if (jinja_is_sequence_desc(base->node.desc)) {
-    const JINJA_CMETA_SEQUENCE_VIEW *view = (const JINJA_CMETA_SEQUENCE_VIEW *)base->node.object;
+    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)base->node.object;
     size_t normalized;
 
     status = jinja_validate_sequence_view(view);
@@ -4237,7 +4205,7 @@ static JINJA_CMETA_STATUS jinja_value_length(JINJA_CMETA_PROVIDER *provider,
     count = unique;
   } else if (operand->kind == JINJA_CMETA_VALUE_NODE &&
              jinja_is_sequence_desc(operand->node.desc)) {
-    const JINJA_CMETA_SEQUENCE_VIEW *view = (const JINJA_CMETA_SEQUENCE_VIEW *)operand->node.object;
+    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)operand->node.object;
     status = jinja_validate_sequence_view(view);
     if (status != JINJA_CMETA_OK) return status;
     count = view->count;
@@ -4637,7 +4605,7 @@ static JINJA_CMETA_STATUS jinja_slice_value(JINJA_CMETA_PROVIDER *provider,
   if (base->kind == JINJA_CMETA_VALUE_RANGE) length = base->range.count;
   else if (jinja_value_is_collection(base->kind)) length = base->collection_item_count;
   else if (base->kind == JINJA_CMETA_VALUE_NODE && jinja_is_sequence_desc(base->node.desc)) {
-    const JINJA_CMETA_SEQUENCE_VIEW *view = (const JINJA_CMETA_SEQUENCE_VIEW *)base->node.object;
+    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)base->node.object;
     status = jinja_validate_sequence_view(view);
     if (status != JINJA_CMETA_OK) return status;
     length = view->count;
@@ -8500,9 +8468,9 @@ static void *jinja_provider_value_node_impl(JINJA_CMETA_PROVIDER *provider,
     if (node == NULL) return NULL;
     node->iterator = value->iterator;
     node->expression_kind = JINJA_CMETA_EXPRESSION_ITEMS;
-    node->owned_sequence = (JINJA_CMETA_SEQUENCE_VIEW){0};
+    node->owned_sequence = (cmeta_data_collection_view){0};
     node->object = &node->owned_sequence;
-    node->desc = &jinja_cmeta_sequence_desc;
+    node->desc = &cmeta_data_sequence_view;
     node->parent = context;
     return node;
   }
@@ -8516,9 +8484,9 @@ static void *jinja_provider_value_node_impl(JINJA_CMETA_PROVIDER *provider,
     if (node == NULL) return NULL;
     node->range = value->range;
     node->expression_kind = JINJA_CMETA_EXPRESSION_RANGE;
-    node->owned_sequence = (JINJA_CMETA_SEQUENCE_VIEW){0};
+    node->owned_sequence = (cmeta_data_collection_view){0};
     node->object = &node->owned_sequence;
-    node->desc = &jinja_cmeta_sequence_desc;
+    node->desc = &cmeta_data_sequence_view;
     node->parent = context;
     return node;
   }
@@ -9959,7 +9927,7 @@ static int jinja_truthy(JINJA_CMETA_PROVIDER *provider, const JINJA_CMETA_NODE *
     return 1;
   case CMETA_DATA_CUSTOM:
     if (jinja_is_sequence_desc(node->desc))
-      return ((const JINJA_CMETA_SEQUENCE_VIEW *)node->object)->count != 0u;
+      return ((const cmeta_data_collection_view *)node->object)->count != 0u;
     jinja_provider_fail(provider, JINJA_CMETA_ERR_METADATA);
     return 0;
   default:
@@ -10022,7 +9990,7 @@ static JINJA_CMETA_NODE *jinja_iteration_child_at(JINJA_CMETA_NODE *node, unsign
                                           (size_t)index, node->collection_item_count, node);
   }
   if (jinja_is_sequence_desc(node->desc)) {
-    const JINJA_CMETA_SEQUENCE_VIEW *view = (const JINJA_CMETA_SEQUENCE_VIEW *)node->object;
+    const cmeta_data_collection_view *view = (const cmeta_data_collection_view *)node->object;
     size_t offset;
     if (view->count > (size_t)UINT_MAX) {
       jinja_provider_fail(provider, JINJA_CMETA_ERR_CAPACITY);
@@ -10331,7 +10299,7 @@ static JINJA_CMETA_STATUS jinja_filtered_cache_until(JINJA_CMETA_PROVIDER *provi
       count = (size_t)source->range.count;
     } else {
       if (!jinja_is_sequence_desc(source->desc) || source->object == NULL) return JINJA_CMETA_ERR_RENDER;
-      count = ((const JINJA_CMETA_SEQUENCE_VIEW *)source->object)->count;
+      count = ((const cmeta_data_collection_view *)source->object)->count;
     }
     if (count > provider->shared.node_capacity) count = provider->shared.node_capacity;
     size_t offset = provider->shared.collection_value_count;
