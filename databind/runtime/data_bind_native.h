@@ -86,13 +86,17 @@ DATA_BIND_API DataBindStatus data_bind_native_probe_workspace_size(
  *
  * Returned lifecycle_bytes and decode_bytes are exact for a workspace base
  * aligned to workspace_alignment (including root staging, traversal and the
- * peak simultaneously active field bitmaps). For another base, reserve up to
+ * peak simultaneously active Struct bitmaps plus collection/map element,
+ * key and value temporaries). For another base, reserve up to
  * workspace_alignment - 1 extra bytes and align it before calling native APIs.
- * Bounds, graph and ABI must remain unchanged when using the result. Provider
- * payload allocations and the bounded recursive C call stack are not included.
+ * Bounds, graph and ABI must remain unchanged when using the result. CSTL or
+ * other provider-owned container payload allocations and the bounded recursive
+ * C call stack are not included; all DataBind temporary native values are.
  *
- * container_depth counts only Struct nodes (zero for scalar/enum/buffer roots).
- * field_tracking_bytes counts the actual active field bitmaps. The requirements
+ * container_depth records the deepest aggregate node (Struct, SEQUENCE, SET or
+ * MAP; zero for scalar/enum/buffer roots). field_tracking_bytes counts only
+ * active Struct field bitmaps; container temporaries are included in
+ * decode_bytes. The requirements
  * record is evolving within this unreleased feature; callers must use its INIT.
  * This does not translate caller-defined scratch/container/per-value budgets:
  * v1 max_depth includes scalar descriptor leaves; max_items is a whole-graph
