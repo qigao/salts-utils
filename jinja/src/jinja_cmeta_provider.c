@@ -2253,28 +2253,35 @@ static JINJA_CMETA_STATUS jinja_membership_result(JINJA_CMETA_PROVIDER *provider
   }
 
   if (right_value->kind == JINJA_CMETA_VALUE_NODE &&
-      jinja_is_sequence_desc(right_value->node.desc)) {
-    const cmeta_data_collection_view *view =
-        (const cmeta_data_collection_view *)right_value->node.object;
+      jinja_is_collection_desc(right_value->node.desc)) {
+    cmeta_data_collection_borrow_cursor cursor = {0};
+    const void *element = NULL;
+    size_t count = 0u;
     size_t i;
 
-    if (view == NULL) return JINJA_CMETA_ERR_METADATA;
-    if (view->count == 0u) {
-      *result = 0;
-      return JINJA_CMETA_OK;
-    }
-    if (view->data == NULL || view->stride == 0u || !cmeta_data_desc_valid(view->element) ||
-        view->element->storage_type == NULL || view->element->storage_type->size > view->stride ||
-        view->count - 1u > SIZE_MAX / view->stride)
-      return JINJA_CMETA_ERR_METADATA;
-    if (view->count > provider->shared.node_capacity) return JINJA_CMETA_ERR_CAPACITY;
-    for (i = 0u; i < view->count; ++i) {
-      JINJA_CMETA_VALUE candidate = {
-          .kind = JINJA_CMETA_VALUE_NODE,
-          .node = {.object = (const unsigned char *)view->data + i * view->stride,
-                   .desc = view->element}};
+    status = jinja_collection_borrow_begin(&right_value->node, &cursor);
+    if (status != JINJA_CMETA_OK) return status;
+    status = jinja_borrow_status(
+        cmeta_data_collection_borrow_size(&cursor, &count));
+    if (status != JINJA_CMETA_OK) return status;
+    if (count > provider->shared.node_capacity) return JINJA_CMETA_ERR_CAPACITY;
+
+    for (i = 0u; i < count; ++i) {
+      cmeta_gen_status generated =
+          cmeta_data_collection_borrow_next(&cursor, &element);
+      JINJA_CMETA_VALUE candidate;
       int equal = 0;
-      status = jinja_container_equal(provider, left_value, &candidate, depth + 1u, &equal);
+      if ((generated != CMETA_GEN_VALUE &&
+           generated != CMETA_GEN_VALUE_AND_DONE) ||
+          element == NULL)
+        return generated == CMETA_GEN_MUTATED
+                   ? JINJA_CMETA_ERR_METADATA
+                   : JINJA_CMETA_ERR_METADATA;
+      candidate = (JINJA_CMETA_VALUE){
+          .kind = JINJA_CMETA_VALUE_NODE,
+          .node = {.object = element, .desc = cursor.element}};
+      status = jinja_container_equal(
+          provider, left_value, &candidate, depth + 1u, &equal);
       if (status != JINJA_CMETA_OK) return status;
       if (equal) {
         *result = 1;
