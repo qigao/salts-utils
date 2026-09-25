@@ -129,8 +129,8 @@ spec("Jinja consumes typed CSTL collections through canonical CMeta") {
 
     check_equal(JinjaCMetaIntVec_push(&root.vec, 3), STL_OK);
     check_equal(JinjaCMetaIntVec_push(&root.vec, 5), STL_OK);
-    check_equal(JinjaCMetaIntList_push_back(&root.list, 7, NULL), STL_OK);
-    check_equal(JinjaCMetaIntList_push_back(&root.list, 11, NULL), STL_OK);
+    check_equal(JinjaCMetaIntList_push_back(&root.list, 7), STL_OK);
+    check_equal(JinjaCMetaIntList_push_back(&root.list, 11), STL_OK);
     check_equal(JinjaCMetaIntSet_add(&root.set, 5), STL_OK);
     check_equal(JinjaCMetaIntSet_add(&root.set, 3), STL_OK);
 
