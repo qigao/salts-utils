@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  if (tbe_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0) {
+  if (databind_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0) {
     fprintf(stderr, "service-native-codegen: failed to parse main schema\n");
     goto cleanup;
   }
@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
     databind_compiler_service_native_ir overlay_ir = {0};
     const databind_compiler_service_native_operation *operation;
 
-    if (tbe_compiler_parse_schema_file(
+    if (databind_compiler_parse_schema_file(
             argv[5], &overlay_root, &overlay_schema_data) != 0) {
       fprintf(stderr,
               "service-native-codegen: failed to parse overlay schema %s\n",
@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
     char *reject_schema_data = NULL;
     databind_compiler_service_native_ir reject_ir = {0};
 
-    if (tbe_compiler_parse_schema_file(
+    if (databind_compiler_parse_schema_file(
             argv[6], &reject_root, &reject_schema_data) != 0) {
       fprintf(stderr,
               "service-native-codegen: failed to parse reject schema %s\n",
