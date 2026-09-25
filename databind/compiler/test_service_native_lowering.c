@@ -479,6 +479,18 @@ spec("DataBind canonical Service native lowering") {
     check_equal(data_bind_http_method_plan_route(http), "/Calc/Find");
     check_equal(data_bind_http_method_plan_success_status(http), 201);
     check_equal(data_bind_http_method_plan_error_count(http), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_http_method_plan_transport(http), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_HTTP);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
     check(data_bind_http_method_plan_error_at(http, 0u, &http_mapping));
     check_equal(http_mapping.error_type, "NotFound");
     check_equal(http_mapping.status, 404);
@@ -503,6 +515,18 @@ spec("DataBind canonical Service native lowering") {
     check_not_null(rpc);
     check_equal(data_bind_rpc_method_plan_wire_method(rpc), "Calc.Find");
     check_equal(data_bind_rpc_method_plan_error_count(rpc), (size_t)2u);
+    {
+      DataBindTransportPlanInfo transport = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo ingress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      DataBindFormatPlanInfo egress = DATA_BIND_FORMAT_PLAN_INFO_INIT;
+      check(data_bind_transport_plan_info(
+          data_bind_rpc_method_plan_transport(rpc), &transport));
+      check_equal(transport.kind, DATA_BIND_TRANSPORT_RPC);
+      check(data_bind_format_plan_info(transport.ingress, &ingress));
+      check(data_bind_format_plan_info(transport.egress, &egress));
+      check_equal(ingress.format, DATA_BIND_FORMAT_JSON);
+      check_equal(egress.format, DATA_BIND_FORMAT_JSON);
+    }
     check(data_bind_rpc_method_plan_error_at(rpc, 1u, &rpc_mapping));
     check_equal(rpc_mapping.error_type, "PermissionDenied");
     check_equal(rpc_mapping.code, -32003);
