@@ -36,6 +36,7 @@ struct DataBindBindingPlan {
   DataBindValidationPlan *request_validation;
   DataBindBindingPlanEntryOwned *egress;
   size_t egress_count;
+  DataBindValidationPlan *response_validation;
 
   DataBindBindingPlanEntryOwned *errors;
   size_t error_count;
@@ -1144,6 +1145,154 @@ static DataBindStatus plan_compile_egress(
   return DATA_BIND_OK;
 }
 
+static DataBindBindingPlanEntryOwned *plan_egress_by_field(
+    DataBindBindingPlan *plan, const char *field_name) {
+  size_t i;
+  if (plan == NULL || field_name == NULL) return NULL;
+  for (i = 0u; i < plan->egress_count; ++i) {
+    DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
+    if (owned->view.schema_field != NULL &&
+        strcmp(owned->view.schema_field, field_name) == 0)
+      return owned;
+  }
+  return NULL;
+}
+
+static DataBindStatus plan_compile_egress_validation(
+    DataBind *codec, const char *response_type, DataBindBindingPlan *plan,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindValidationPlan *validation = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  size_t rule_count;
+  size_t rule_index;
+  DataBindStatus status;
+
+  if (codec == NULL || response_type == NULL || plan == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid response ValidationPlan compile arguments");
+  if (strcmp(response_type, "void") == 0) return DATA_BIND_OK;
+
+  status = data_bind_validation_plan_compile(
+      codec, response_type, &validation, &error);
+  if (status != DATA_BIND_OK)
+    return plan_diag_fail(
+        diagnostic, status,
+        error.path[0] != '\0' ? error.path : response_type,
+        NULL, "%s",
+        error.message[0] != '\0'
+            ? error.message
+            : "Could not compile response ValidationPlan");
+
+  rule_count = data_bind_validation_plan_rule_count(validation);
+  if (data_bind_validation_plan_internal_child_count(validation) != 0u) {
+    data_bind_validation_plan_free(validation);
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, response_type, NULL,
+        "Nested native response ValidationPlan execution is not admitted by "
+        "this BindingPlan slice");
+  }
+
+  if (rule_count == 0u) {
+    data_bind_validation_plan_free(validation);
+    return DATA_BIND_OK;
+  }
+
+  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
+    DataBindValidationRuleInfo info = {0};
+    DataBindBindingPlanEntryOwned *owned;
+    const cmeta_data_buffer_ops *buffer_ops = NULL;
+
+    if (!data_bind_validation_plan_internal_rule_info(
+            validation, rule_index, &info) ||
+        info.field_name == NULL) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, response_type, NULL,
+          "Compiled response ValidationPlan rule has no field identity");
+    }
+
+    owned = plan_egress_by_field(plan, info.field_name);
+    if (owned == NULL || owned->view.data == NULL) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+          "ValidationPlan field has no compiled egress entry");
+    }
+
+    if (owned->view.data->kind != info.field_kind) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, info.field_name,
+          owned->view.function_param,
+          "ValidationPlan field kind does not match admitted native egress");
+    }
+
+    if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
+      if (info.field_kind != CMETA_DATA_STRING &&
+          info.field_kind != CMETA_DATA_BYTES) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native response @Size currently requires canonical string/bytes "
+            "storage; container size validation awaits a canonical range "
+            "provider");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native response @Size requires a canonical readable buffer "
+            "provider");
+      }
+    } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
+      if (info.field_kind != CMETA_DATA_STRING) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native response @Pattern requires canonical string storage");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+            owned->view.function_param,
+            "Native response @Pattern requires a canonical readable string "
+            "provider");
+      }
+    } else if (info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
+               info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+          owned->view.function_param,
+          "Response ValidationPlan contains an unsupported native constraint "
+          "kind");
+    }
+
+    if (owned->validation_rule_count == 0u) {
+      owned->validation_rule_start = rule_index;
+    } else if (owned->validation_rule_start +
+                   owned->validation_rule_count !=
+               rule_index) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+          owned->view.function_param,
+          "ValidationPlan rules for one egress field are not contiguous");
+    }
+    ++owned->validation_rule_count;
+  }
+
+  plan->response_validation = validation;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_compile_errors(
     DataBind *codec, const char *service_name, const char *operation_name,
     const DataBindServiceOperation *operation,
@@ -1288,6 +1437,7 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
     plan_entry_owned_clear(&plan->errors[i]);
   free(plan->errors);
   data_bind_validation_plan_free(plan->request_validation);
+  data_bind_validation_plan_free(plan->response_validation);
   free(plan->param_data);
   free(plan->param_ingress);
   free(plan->param_egress);
@@ -1406,6 +1556,10 @@ DataBindStatus data_bind_binding_plan_compile_service(
 
   status = plan_compile_egress(codec, &operation, projection, native,
                                plan, param_used, diagnostic);
+  if (status != DATA_BIND_OK) goto fail;
+
+  status = plan_compile_egress_validation(
+      codec, operation.response_type, plan, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
   status = plan_compile_errors(
@@ -1940,6 +2094,115 @@ fail:
   return status;
 }
 
+static DataBindStatus plan_egress_value(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntryOwned *owned,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingValueState *out_state,
+    const void **out_source,
+    size_t *out_source_bytes,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlanEntry *entry;
+  const unsigned char *state_base = NULL;
+  const void *source = NULL;
+  size_t source_bytes = 0u;
+  int present = 1;
+  int is_null = 0;
+  DataBindBindingValueState state = DATA_BIND_VALUE_STATE_VALUE;
+
+  if (plan == NULL || owned == NULL || frame == NULL ||
+      out_state == NULL || out_source == NULL || out_source_bytes == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid egress value classification arguments");
+
+  entry = &owned->view;
+  if (entry->has_presence || entry->has_null) {
+    if (entry->target_is_return) {
+      state_base = (const unsigned char *)frame->return_value;
+    } else if (entry->function_param_index < frame->param_count &&
+               frame->params != NULL) {
+      state_base =
+          (const unsigned char *)frame->params[entry->function_param_index];
+    }
+    if (state_base == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Output DataBind state storage is unavailable");
+  }
+
+  if (entry->has_presence)
+    present = (state_base[entry->presence_offset] &
+               (unsigned char)(1u << entry->presence_bit)) != 0u;
+  if (entry->has_null)
+    is_null = (state_base[entry->null_offset] &
+               (unsigned char)(1u << entry->null_bit)) != 0u;
+
+  if (!present) {
+    if (is_null)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Native output state has NULL set while presence is ABSENT");
+    state = DATA_BIND_VALUE_STATE_ABSENT;
+  } else if (is_null) {
+    if (!entry->nullable)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Native output state is NULL for a non-null DataBind field");
+    state = DATA_BIND_VALUE_STATE_NULL;
+  } else {
+    source = plan_egress_source(plan, entry, frame, &source_bytes);
+    if (source == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Compiled egress entry has no native source");
+  }
+
+  *out_state = state;
+  *out_source = source;
+  *out_source_bytes = source_bytes;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus plan_validate_egress_value(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntryOwned *owned,
+    const void *source,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlanEntry *entry;
+  size_t i;
+
+  if (plan == NULL || owned == NULL || source == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid response validation runtime arguments");
+  if (owned->validation_rule_count == 0u) return DATA_BIND_OK;
+  if (plan->response_validation == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, owned->view.schema_field,
+        owned->view.function_param,
+        "Egress validation binding has no ValidationPlan");
+
+  entry = &owned->view;
+  for (i = 0u; i < owned->validation_rule_count; ++i) {
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t rule_index = owned->validation_rule_start + i;
+    DataBindStatus status =
+        data_bind_validation_plan_internal_validate_native_rule(
+            plan->response_validation, rule_index, entry->data,
+            source, &error);
+    if (status != DATA_BIND_OK)
+      return plan_runtime_fail_error(
+          diagnostic, status, entry, &error,
+          "Native response validation failed");
+  }
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_write_response_outputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
@@ -1964,6 +2227,29 @@ static DataBindStatus plan_write_response_outputs(
   if (status != DATA_BIND_OK) return status;
   if (plan->egress_count == 0u) return DATA_BIND_OK;
 
+  /*
+   * Validate the complete native response before the provider observes any
+   * output transaction. ABSENT/NULL skip value constraints; only VALUE executes
+   * the compiled canonical ValidationPlan.
+   */
+  for (i = 0u; i < plan->egress_count; ++i) {
+    const DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
+    DataBindBindingValueState output_state = DATA_BIND_VALUE_STATE_VALUE;
+    const void *source = NULL;
+    size_t source_bytes = 0u;
+
+    status = plan_egress_value(
+        plan, owned, frame, &output_state, &source, &source_bytes, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+    (void)source_bytes;
+
+    if (output_state == DATA_BIND_VALUE_STATE_VALUE) {
+      status = plan_validate_egress_value(
+          plan, owned, source, diagnostic);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+
   status = provider->begin_output(provider->context, &error);
   if (status != DATA_BIND_OK)
     return plan_runtime_fail_error(
@@ -1971,66 +2257,17 @@ static DataBindStatus plan_write_response_outputs(
         "Output transaction could not begin");
 
   for (i = 0u; i < plan->egress_count; ++i) {
-    const DataBindBindingPlanEntry *entry = &plan->egress[i].view;
-    const unsigned char *state_base = NULL;
+    const DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
+    const DataBindBindingPlanEntry *entry = &owned->view;
     const void *source = NULL;
     size_t source_bytes = 0u;
-    int present = 1;
-    int is_null = 0;
     DataBindBindingValueState output_state = DATA_BIND_VALUE_STATE_VALUE;
 
-    if (entry->has_presence || entry->has_null) {
-      if (entry->target_is_return) {
-        state_base = (const unsigned char *)frame->return_value;
-      } else if (entry->function_param_index < frame->param_count &&
-                 frame->params != NULL) {
-        state_base = (const unsigned char *)
-            frame->params[entry->function_param_index];
-      }
-      if (state_base == NULL) {
-        provider->abort_output(provider->context);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_INVALID_ARG,
-            entry->schema_field, entry->function_param,
-            "Output DataBind state storage is unavailable");
-      }
-    }
-
-    if (entry->has_presence)
-      present = (state_base[entry->presence_offset] &
-                 (unsigned char)(1u << entry->presence_bit)) != 0u;
-    if (entry->has_null)
-      is_null = (state_base[entry->null_offset] &
-                 (unsigned char)(1u << entry->null_bit)) != 0u;
-
-    if (!present) {
-      if (is_null) {
-        provider->abort_output(provider->context);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA,
-            entry->schema_field, entry->function_param,
-            "Native output state has NULL set while presence is ABSENT");
-      }
-      output_state = DATA_BIND_VALUE_STATE_ABSENT;
-    } else if (is_null) {
-      if (!entry->nullable) {
-        provider->abort_output(provider->context);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA,
-            entry->schema_field, entry->function_param,
-            "Native output state is NULL for a non-null DataBind field");
-      }
-      output_state = DATA_BIND_VALUE_STATE_NULL;
-    } else {
-      output_state = DATA_BIND_VALUE_STATE_VALUE;
-      source = plan_egress_source(plan, entry, frame, &source_bytes);
-      if (source == NULL) {
-        provider->abort_output(provider->context);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_INVALID_ARG,
-            entry->schema_field, entry->function_param,
-            "Compiled egress entry has no native source");
-      }
+    status = plan_egress_value(
+        plan, owned, frame, &output_state, &source, &source_bytes, diagnostic);
+    if (status != DATA_BIND_OK) {
+      provider->abort_output(provider->context);
+      return status;
     }
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
