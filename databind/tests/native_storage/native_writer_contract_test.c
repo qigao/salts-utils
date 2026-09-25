@@ -149,11 +149,28 @@ static void enum_restore(void *object) {
   value->engaged = false;
 }
 
+static cmeta_status enum_init_zero(void *object) {
+  if (object == NULL) return CMETA_INVALID_ARGUMENT;
+  enum_restore(object);
+  return CMETA_OK;
+}
+
+static void enum_move(void *destination, void *source) {
+  NativeEnumBox *to = (NativeEnumBox *)destination;
+  NativeEnumBox *from = (NativeEnumBox *)source;
+  if (to == NULL || from == NULL || to == from) return;
+  *to = *from;
+  enum_restore(from);
+}
+
 static const cmeta_type_identity ENUM_IDENTITY =
     CMETA_TYPE_ID_ATOM_INIT("test.native-writer.Enum");
 static const cmeta_type_desc ENUM_TYPE = {
     "NativeEnumBox", sizeof(NativeEnumBox), _Alignof(NativeEnumBox),
     CMETA_T_OBJECT, NULL, NULL, &ENUM_IDENTITY};
+static const cmeta_data_construct_ops ENUM_CONSTRUCT_OPS = {
+    sizeof(cmeta_data_construct_ops), CMETA_DATA_CONSTRUCT_OPS_ABI_VERSION,
+    &ENUM_TYPE, enum_init_zero, enum_restore, enum_move};
 static const cmeta_enum_bits_item ENUM_ITEMS[] = {
     {0u, "ZERO", "zero"},
     {1u, "READY", "ready"}};
@@ -171,7 +188,8 @@ static const cmeta_data_desc ENUM_DATA = {
     .display_name = "NativeEnum",
     .kind = CMETA_DATA_ENUM,
     .storage_type = &ENUM_TYPE,
-    .enum_bits_ops = &ENUM_OPS};
+    .enum_bits_ops = &ENUM_OPS,
+    .construct_ops = &ENUM_CONSTRUCT_OPS};
 
 Struct(WriterRow, (int, id), (tstr, name));
 static const cmeta_type_identity ROW_IDENTITY =
