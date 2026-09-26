@@ -7,6 +7,33 @@
 extern "C" {
 #endif
 
+typedef struct DataBindNativeDecodeUsage {
+  size_t items;
+  size_t owned_bytes;
+} DataBindNativeDecodeUsage;
+
+/*
+ * Internal continuation entry for callers that must inspect one forward-only
+ * CSerde token before delegating the complete VALUE to the canonical native
+ * decoder.
+ *
+ * first_token is the already-read first token of exactly one value. reader is
+ * left positioned immediately after that token. On success, usage publishes
+ * this decode call's exact semantic item and owned-payload counters. On
+ * failure, usage is zeroed. Public data_bind_native_decode* semantics are
+ * unchanged and route through the same implementation without a first token.
+ */
+DataBindStatus data_bind_native_decode_from_token_internal(
+    const DataBindNativeOptions *options,
+    const cmeta_data_desc *shape,
+    cserde_reader *reader,
+    const cserde_token *first_token,
+    void *destination,
+    size_t destination_bytes,
+    size_t max_buffer_bytes,
+    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic);
+
 /*
  * Read one already-admitted canonical native leaf into a borrowed CSerde token.
  *
