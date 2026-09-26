@@ -5,19 +5,39 @@
 #include <string.h>
 
 int main(void) {
-  return databind_installed_device_socket_plan.abi_version ==
-             DATA_BIND_SOCKET_PLAN_ABI_VERSION &&
-         databind_installed_device_socket_plan.channel_name != NULL &&
-         strcmp(databind_installed_device_socket_plan.channel_name,
-                "Device.Telemetry") == 0 &&
-         databind_installed_device_socket_plan.message_type != NULL &&
-         strcmp(databind_installed_device_socket_plan.message_type,
-                "TelemetryEvent") == 0 &&
-         databind_installed_device_socket_plan.format == DATA_BIND_FORMAT_BINARY &&
-         databind_installed_device_socket_plan.mode == DATA_BIND_SOCKET_MODE_STREAM &&
-         databind_installed_device_socket_plan.framing ==
-             DATA_BIND_SOCKET_FRAMING_LENGTH32_BE &&
-         databind_installed_device_socket_plan.max_frame_bytes == (size_t)65536u
-             ? 0
-             : 1;
+  DataBindNativeTypeBinding native = {0};
+  DataBindError error = DATA_BIND_ERROR_INIT;
+
+  if (databind_installed_device_socket_plan.abi_version !=
+          DATA_BIND_SOCKET_PLAN_ABI_VERSION ||
+      databind_installed_device_socket_plan.channel_name == NULL ||
+      strcmp(databind_installed_device_socket_plan.channel_name,
+             "Device.Telemetry") != 0 ||
+      databind_installed_device_socket_plan.message_type == NULL ||
+      strcmp(databind_installed_device_socket_plan.message_type,
+             "TelemetryEvent") != 0 ||
+      databind_installed_device_socket_plan.format != DATA_BIND_FORMAT_BINARY ||
+      databind_installed_device_socket_plan.mode != DATA_BIND_SOCKET_MODE_STREAM ||
+      databind_installed_device_socket_plan.framing !=
+          DATA_BIND_SOCKET_FRAMING_LENGTH32_BE ||
+      databind_installed_device_socket_plan.max_frame_bytes != (size_t)65536u ||
+      databind_installed_device_socket_plan.native_binding == NULL)
+    return 1;
+
+  if (databind_installed_device_socket_plan.native_binding(
+          &native, &error) != DATA_BIND_OK)
+    return 2;
+  if (native.abi_version != DATA_BIND_NATIVE_BINDING_ABI_VERSION ||
+      native.idl_type_name == NULL ||
+      strcmp(native.idl_type_name, "TelemetryEvent") != 0 ||
+      native.data == NULL ||
+      native.presence_count != 1u ||
+      native.presence == NULL ||
+      strcmp(native.presence[0].field_name, "quality") != 0 ||
+      native.null_count != 1u ||
+      native.nulls == NULL ||
+      strcmp(native.nulls[0].field_name, "error_code") != 0)
+    return 3;
+
+  return 0;
 }
