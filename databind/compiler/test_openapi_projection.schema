@@ -1,0 +1,22 @@
+schema OpenApiFixture [version(1)];
+
+message CreateUserRequest {
+    @Min(1) uint32 id;
+    @Size(min = 2, max = 16) @Pattern("^[a-z]+$") string name;
+    optional nullable string nickname;
+    optional string locale default "en";
+}
+
+message UserResponse {
+    uint32 id;
+    string name;
+    optional string etag;
+}
+
+message NotFoundError {
+    @Size(max = 32) string resource;
+}
+
+service Users {
+    Create: CreateUserRequest -> UserResponse throws NotFoundError;
+}
