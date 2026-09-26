@@ -49,6 +49,17 @@ static int openapi_flag(const Node *parent, const char *name) {
   return openapi_child(parent, name) != NULL;
 }
 
+static char *openapi_strdup(const char *text) {
+  size_t length;
+  char *copy;
+  if (text == NULL) return NULL;
+  length = strlen(text);
+  if (length == SIZE_MAX) return NULL;
+  copy = (char *)malloc(length + 1u);
+  if (copy != NULL) memcpy(copy, text, length + 1u);
+  return copy;
+}
+
 static const Node *openapi_find_named(
     const Node *root, const char *list_name, const char *name) {
   const Node *list = openapi_list(root, list_name);
@@ -468,7 +479,7 @@ static int openapi_operations_build(
           op_config != NULL ? op_config->route : NULL;
       result[index].route =
           configured_route != NULL
-              ? strdup(configured_route)
+              ? openapi_strdup(configured_route)
               : openapi_default_route(service_name, operation_name);
       if (result[index].route == NULL ||
           result[index].route[0] != '/' ||
@@ -1218,17 +1229,36 @@ static const char *openapi_parameter_location(
 static int openapi_emit_parameters(
     FILE *file, const Node *root,
     const databind_compiler_http_projection_config *config,
-    const openapi_operation *operation) {
+    const openapi_operation *operation,
+    int *operation_first) {
   const Node *record = openapi_record(root, operation->request_type);
   const Node *fields = openapi_list(record, "fields");
   size_t i;
-  int first = 1;
+  size_t count = 0u;
 
   if (operation->request_type == NULL ||
       strcmp(operation->request_type, "void") == 0)
     return 0;
-  if (fields == NULL) return -1;
+  if (fields == NULL || operation_first == NULL) return -1;
 
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *name = openapi_string(field, "name");
+    const databind_compiler_http_field_config *mapping =
+        openapi_field_config(
+            config, operation->service_name, operation->operation_name,
+            DATABIND_COMPILER_PROJECTION_INGRESS, name);
+    if (mapping != NULL &&
+        mapping->location != DATABIND_COMPILER_HTTP_BODY)
+      ++count;
+  }
+  if (count == 0u) return 0;
+
+  if (openapi_emit_key(file, operation_first, "parameters") != 0 ||
+      fputc('[', file) == EOF)
+    return -1;
+
+  count = 0u;
   for (i = 0u; i < fields->data.list.count; ++i) {
     const Node *field = fields->data.list.items[i];
     const char *name = openapi_string(field, "name");
@@ -1239,22 +1269,18 @@ static int openapi_emit_parameters(
     const char *location;
     const char *wire;
     int required;
+
     if (mapping == NULL ||
         mapping->location == DATABIND_COMPILER_HTTP_BODY)
       continue;
+
     location = openapi_parameter_location(mapping->location);
     if (location == NULL) return -1;
     wire = mapping->wire_name != NULL ? mapping->wire_name : name;
     required = mapping->location == DATABIND_COMPILER_HTTP_PATH ||
                !openapi_flag(field, "is_optional");
 
-    if (first) {
-      if (fputs("\"parameters\":[", file) == EOF) return -1;
-      first = 0;
-    } else if (fputc(',', file) == EOF) {
-      return -1;
-    }
-
+    if (count++ != 0u && fputc(',', file) == EOF) return -1;
     if (fputs("{\"name\":", file) == EOF ||
         openapi_json_string(file, wire) != 0 ||
         fputs(",\"in\":", file) == EOF ||
@@ -1266,26 +1292,45 @@ static int openapi_emit_parameters(
       return -1;
   }
 
-  if (!first && fputc(']', file) == EOF) return -1;
-  return first ? 0 : 1;
+  return fputc(']', file) == EOF ? -1 : 0;
 }
 
 static int openapi_emit_response_headers(
     FILE *file, const Node *root,
     const databind_compiler_http_projection_config *config,
-    const openapi_operation *operation) {
+    const openapi_operation *operation,
+    int *response_first) {
   const Node *record;
   const Node *fields;
   size_t i;
-  int first = 1;
+  size_t count = 0u;
 
   if (operation->response_type == NULL ||
       strcmp(operation->response_type, "void") == 0)
     return 0;
+  if (response_first == NULL) return -1;
   record = openapi_record(root, operation->response_type);
   fields = openapi_list(record, "fields");
   if (fields == NULL) return -1;
 
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *name = openapi_string(field, "name");
+    const databind_compiler_http_field_config *mapping =
+        openapi_field_config(
+            config, operation->service_name, operation->operation_name,
+            DATABIND_COMPILER_PROJECTION_EGRESS, name);
+    if (mapping != NULL &&
+        mapping->location == DATABIND_COMPILER_HTTP_RESPONSE_HEADER)
+      ++count;
+  }
+  if (count == 0u) return 0;
+
+  if (openapi_emit_key(file, response_first, "headers") != 0 ||
+      fputc('{', file) == EOF)
+    return -1;
+
+  count = 0u;
   for (i = 0u; i < fields->data.list.count; ++i) {
     const Node *field = fields->data.list.items[i];
     const char *name = openapi_string(field, "name");
@@ -1298,12 +1343,8 @@ static int openapi_emit_response_headers(
         mapping->location != DATABIND_COMPILER_HTTP_RESPONSE_HEADER)
       continue;
     wire = mapping->wire_name != NULL ? mapping->wire_name : name;
-    if (first) {
-      if (fputs("\"headers\":{", file) == EOF) return -1;
-      first = 0;
-    } else if (fputc(',', file) == EOF) {
-      return -1;
-    }
+
+    if (count++ != 0u && fputc(',', file) == EOF) return -1;
     if (openapi_json_string(file, wire) != 0 ||
         fputs(":{\"schema\":", file) == EOF ||
         openapi_emit_field_schema(file, root, field) != 0 ||
@@ -1311,8 +1352,7 @@ static int openapi_emit_response_headers(
       return -1;
   }
 
-  if (!first && fputc('}', file) == EOF) return -1;
-  return first ? 0 : 1;
+  return fputc('}', file) == EOF ? -1 : 0;
 }
 
 static int openapi_emit_error_schema_for_status(
@@ -1366,29 +1406,32 @@ static int openapi_emit_operation(
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation) {
   int first = 1;
-  int parameter_result;
   int request_body_required = 0;
   int request_body_count;
   int response_body_count;
-  int response_header_result;
   const Node *errors;
   size_t i, j;
+  char operation_id[512];
+  int operation_id_length;
 
   if (fputc('{', file) == EOF) return -1;
 
-  if (openapi_emit_key(file, &first, "operationId") != 0 ||
-      fprintf(file, "\"%s.%s\"", operation->service_name,
-              operation->operation_name) < 0 ||
+  operation_id_length = snprintf(
+      operation_id, sizeof(operation_id), "%s.%s",
+      operation->service_name, operation->operation_name);
+  if (operation_id_length <= 0 ||
+      (size_t)operation_id_length >= sizeof(operation_id) ||
+      openapi_emit_key(file, &first, "operationId") != 0 ||
+      openapi_json_string(file, operation_id) != 0 ||
       openapi_emit_key(file, &first, "tags") != 0 ||
       fputc('[', file) == EOF ||
       openapi_json_string(file, operation->service_name) != 0 ||
       fputc(']', file) == EOF)
     return -1;
 
-  parameter_result = openapi_emit_parameters(
-      file, root, config, operation);
-  if (parameter_result < 0) return -1;
-  if (parameter_result > 0) first = 0;
+  if (openapi_emit_parameters(
+          file, root, config, operation, &first) != 0)
+    return -1;
 
   request_body_count = openapi_body_field_count(
       root, config, operation,
@@ -1397,8 +1440,10 @@ static int openapi_emit_operation(
   if (request_body_count < 0) return -1;
   if (request_body_count > 0) {
     if (openapi_emit_key(file, &first, "requestBody") != 0 ||
-        fprintf(file, "{\"required\":%s,\"content\":{\"application/json\":{\"schema\":",
-                request_body_required ? "true" : "false") < 0 ||
+        fprintf(
+            file,
+            "{\"required\":%s,\"content\":{\"application/json\":{\"schema\":",
+            request_body_required ? "true" : "false") < 0 ||
         openapi_emit_body_schema(
             file, root, config, operation,
             DATABIND_COMPILER_PROJECTION_INGRESS) != 0 ||
@@ -1412,44 +1457,59 @@ static int openapi_emit_operation(
 
   {
     char status[4];
-    int written = snprintf(status, sizeof(status), "%d", operation->success_status);
-    int response_first = 1;
-    if (written != 3 ||
-        openapi_emit_key(file, &response_first, status) != 0 ||
-        fputs("{\"description\":\"Success\"", file) == EOF)
-      return -1;
+    int response_map_first = 1;
+    int success_first = 1;
+    int written =
+        snprintf(status, sizeof(status), "%d", operation->success_status);
 
-    response_header_result = openapi_emit_response_headers(
-        file, root, config, operation);
-    if (response_header_result < 0) return -1;
-    if (response_header_result > 0 && fputc(',', file) == EOF) return -1;
+    if (written != 3 ||
+        openapi_emit_key(file, &response_map_first, status) != 0 ||
+        fputc('{', file) == EOF ||
+        openapi_emit_key(file, &success_first, "description") != 0 ||
+        openapi_json_string(file, "Success") != 0 ||
+        openapi_emit_response_headers(
+            file, root, config, operation, &success_first) != 0)
+      return -1;
 
     response_body_count = openapi_body_field_count(
         root, config, operation,
         DATABIND_COMPILER_PROJECTION_EGRESS, NULL);
     if (response_body_count < 0) return -1;
     if (response_body_count > 0) {
-      if (fputs("\"content\":{\"application/json\":{\"schema\":", file) == EOF ||
+      if (openapi_emit_key(file, &success_first, "content") != 0 ||
+          fputs("{\"application/json\":{\"schema\":", file) == EOF ||
           openapi_emit_body_schema(
               file, root, config, operation,
               DATABIND_COMPILER_PROJECTION_EGRESS) != 0 ||
-          fputs("}}}", file) == EOF)
+          fputs("}}", file) == EOF)
         return -1;
     }
     if (fputc('}', file) == EOF) return -1;
 
     errors = openapi_list(operation->operation, "errors");
     for (i = 0u; errors != NULL && i < errors->data.list.count; ++i) {
-      const char *error_type = errors->data.list.items[i]->data.string_val;
-      int error_status = openapi_error_status(
-          config, operation->service_name,
-          operation->operation_name, error_type);
+      const Node *item = errors->data.list.items[i];
+      const char *error_type =
+          item != NULL && item->type == NODE_STRING
+              ? item->data.string_val : NULL;
+      int error_status;
       int seen = 0;
       char error_status_text[4];
+      int error_first = 1;
+
+      if (error_type == NULL) return -1;
+      error_status = openapi_error_status(
+          config, operation->service_name,
+          operation->operation_name, error_type);
       if (error_status == operation->success_status) return -1;
+
       for (j = 0u; j < i; ++j) {
-        const char *previous = errors->data.list.items[j]->data.string_val;
-        if (openapi_error_status(
+        const Node *previous_item = errors->data.list.items[j];
+        const char *previous =
+            previous_item != NULL && previous_item->type == NODE_STRING
+                ? previous_item->data.string_val : NULL;
+        if (previous != NULL &&
+            openapi_error_status(
                 config, operation->service_name,
                 operation->operation_name, previous) == error_status) {
           seen = 1;
@@ -1457,21 +1517,24 @@ static int openapi_emit_operation(
         }
       }
       if (seen) continue;
+
       if (snprintf(error_status_text, sizeof(error_status_text),
                    "%d", error_status) != 3 ||
-          fputc(',', file) == EOF ||
-          openapi_json_string(file, error_status_text) != 0 ||
-          fputs(":{\"description\":\"Typed Service error\",\"content\":{\"application/json\":{\"schema\":",
-                file) == EOF ||
+          openapi_emit_key(
+              file, &response_map_first, error_status_text) != 0 ||
+          fputc('{', file) == EOF ||
+          openapi_emit_key(file, &error_first, "description") != 0 ||
+          openapi_json_string(file, "Typed Service error") != 0 ||
+          openapi_emit_key(file, &error_first, "content") != 0 ||
+          fputs("{\"application/json\":{\"schema\":", file) == EOF ||
           openapi_emit_error_schema_for_status(
               file, root, config, operation, error_status) != 0 ||
-          fputs("}}}}", file) == EOF)
+          fputs("}}}", file) == EOF)
         return -1;
     }
   }
 
-  if (fputs("}}", file) == EOF) return -1;
-  return 0;
+  return fputs("}}", file) == EOF ? -1 : 0;
 }
 
 static int openapi_emit_paths(
