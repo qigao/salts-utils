@@ -5,19 +5,19 @@
 #include <string.h>
 
 int main(void) {
-  return installed_device_socket_plan.abi_version ==
+  return databind_installed_device_socket_plan.abi_version ==
              DATA_BIND_SOCKET_PLAN_ABI_VERSION &&
-         installed_device_socket_plan.channel_name != NULL &&
-         strcmp(installed_device_socket_plan.channel_name,
+         databind_installed_device_socket_plan.channel_name != NULL &&
+         strcmp(databind_installed_device_socket_plan.channel_name,
                 "Device.Telemetry") == 0 &&
-         installed_device_socket_plan.message_type != NULL &&
-         strcmp(installed_device_socket_plan.message_type,
+         databind_installed_device_socket_plan.message_type != NULL &&
+         strcmp(databind_installed_device_socket_plan.message_type,
                 "TelemetryEvent") == 0 &&
-         installed_device_socket_plan.format == DATA_BIND_FORMAT_BINARY &&
-         installed_device_socket_plan.mode == DATA_BIND_SOCKET_MODE_STREAM &&
-         installed_device_socket_plan.framing ==
+         databind_installed_device_socket_plan.format == DATA_BIND_FORMAT_BINARY &&
+         databind_installed_device_socket_plan.mode == DATA_BIND_SOCKET_MODE_STREAM &&
+         databind_installed_device_socket_plan.framing ==
              DATA_BIND_SOCKET_FRAMING_LENGTH32_BE &&
-         installed_device_socket_plan.max_frame_bytes == (size_t)65536u
+         databind_installed_device_socket_plan.max_frame_bytes == (size_t)65536u
              ? 0
              : 1;
 }
