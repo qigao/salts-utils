@@ -732,7 +732,7 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
             "typed_cmeta_runtime_supported"));
-        check_not_null(field_projection_child(
+        check_null(field_projection_child(
             field_projection_record(root, "messages", "FixedBytesStorage"),
             "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
