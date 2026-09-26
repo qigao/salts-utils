@@ -4,6 +4,7 @@
 #include <cmeta/method.h>
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
+#include <tstr.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -292,6 +293,25 @@ spec("generated native CMeta graph") {
             int_args, 1u, &resolution),
         CMETA_RECEIVER_RESOLVE_OK);
 
+    {
+      const cmeta_type_desc *string_args[] = {SALTS_TSTR_CMETA_TYPE_REF};
+      set = StringListStorage_value_vec_t_receiver_method_set();
+      check_true(cmeta_receiver_method_set_valid(set));
+      check_equal(set->owner_name, "Vec");
+      method = cmeta_receiver_method_find(set, "push");
+      check_not_null(method);
+      check_true(
+          method->function == StringListStorage_value_vec_t_push_function());
+      check_true(
+          method->abi == StringListStorage_value_vec_t_push_function_abi());
+      resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+      check_equal(
+          cmeta_receiver_method_resolve(
+              set, &StringListStorage_value_vec_t_cmeta_type,
+              "Vec", "push", string_args, 1u, &resolution),
+          CMETA_RECEIVER_RESOLVE_OK);
+    }
+
     set = SetStorage_value_vec_t_receiver_method_set();
     check_true(cmeta_receiver_method_set_valid(set));
     check_equal(set->owner_name, "Set");
@@ -350,6 +370,57 @@ spec("generated native CMeta graph") {
 
     tbe_typed_serialized_free(serialized);
     ListStorage_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("routes generated list<string> through import-safe typed Vec metadata") {
+    static const char json[] = "{\"value\":[\"alpha\",\"beta\"]}";
+    const TbeTypedDescriptor *descriptor = StringListStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    StringListStorage_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    const tstr *item;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL || descriptor == NULL) return;
+
+    StringListStorage_init(&value);
+    check_equal(tbe_typed_descriptor_parse(
+                    codec, "StringListStorage", descriptor,
+                    DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+                    &value, &error),
+                DATA_BIND_OK);
+    check_equal(StringListStorage_value_vec_t_size(&value.value), (size_t)2u);
+    item = StringListStorage_value_vec_t_at_const(&value.value, 0u);
+    check_not_null(item);
+    if (item != NULL) {
+      check_equal(tstr_len(*item), (size_t)5u);
+      check_equal(memcmp(*item, "alpha", 5u), 0);
+    }
+    item = StringListStorage_value_vec_t_at_const(&value.value, 1u);
+    check_not_null(item);
+    if (item != NULL) {
+      check_equal(tstr_len(*item), (size_t)4u);
+      check_equal(memcmp(*item, "beta", 4u), 0);
+    }
+
+    check_equal(tbe_typed_descriptor_serialize(
+                    codec, "StringListStorage", descriptor, &value,
+                    DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                    &error),
+                DATA_BIND_OK);
+    check_not_null(serialized);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"alpha\""));
+      check_not_null(strstr(serialized, "\"beta\""));
+    }
+
+    tbe_typed_serialized_free(serialized);
+    StringListStorage_clear(&value);
     data_bind_free(codec);
   }
 
