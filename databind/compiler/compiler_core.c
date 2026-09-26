@@ -992,6 +992,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     } else {
       const tbe_compiler_scalar_projection_t *container_scalar =
           tbe_compiler_scalar_projection(storage_element);
+      const int import_safe_string_sequence =
+          semantic->kind == CMETA_DATA_SEQUENCE &&
+          storage_element != NULL && strcmp(storage_element, "string") == 0;
       char native_symbol[320];
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
@@ -1000,9 +1003,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                                               : "TBE_TYPED_LIST");
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
-      if (container_scalar != NULL &&
+      if ((container_scalar != NULL || import_safe_string_sequence) &&
           !tbe_compiler_has_child(field, "is_fixed_size")) {
         tbe_compiler_set_string(field, "native_cstl_container", "1");
+        if (import_safe_string_sequence)
+          tbe_compiler_set_string(field, "native_cstl_explicit_metadata", "1");
         tbe_compiler_set_string(
             field, "native_cstl_kind",
             semantic->kind == CMETA_DATA_SET ? "Set" : "Vec");
