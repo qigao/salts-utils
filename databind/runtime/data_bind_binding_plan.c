@@ -1,6 +1,5 @@
 #include "data_bind_binding_plan.h"
-#include "data_bind_validation_plan.h"
-#include "data_bind_validation_plan_internal.h"
+#include "data_bind_message_plan_internal.h"
 
 #include <cmeta/type_traits.h>
 
@@ -20,8 +19,6 @@ typedef struct DataBindBindingPlanEntryOwned {
   char *format;
   cserde_token default_token;
   int has_default_token;
-  size_t validation_rule_start;
-  size_t validation_rule_count;
 } DataBindBindingPlanEntryOwned;
 
 struct DataBindBindingPlan {
@@ -33,10 +30,10 @@ struct DataBindBindingPlan {
 
   DataBindBindingPlanEntryOwned *ingress;
   size_t ingress_count;
-  DataBindValidationPlan *request_validation;
+  DataBindMessagePlan *request_message;
   DataBindBindingPlanEntryOwned *egress;
   size_t egress_count;
-  DataBindValidationPlan *response_validation;
+  DataBindMessagePlan *response_message;
 
   DataBindBindingPlanEntryOwned *errors;
   size_t error_count;
@@ -187,203 +184,6 @@ static const DataBindNativeStateBinding *plan_null(
   return binding != NULL
              ? plan_state_binding(binding->nulls, binding->null_count, name)
              : NULL;
-}
-
-static int plan_data_semantically_equal(const cmeta_data_desc *left,
-                                        const cmeta_data_desc *right) {
-  if (left == right) return left != NULL && cmeta_data_desc_valid(left);
-  if (!cmeta_data_desc_valid(left) || !cmeta_data_desc_valid(right) ||
-      left->kind != right->kind || left->storage_type == NULL ||
-      right->storage_type == NULL ||
-      !cmeta_type_equal(left->storage_type, right->storage_type))
-    return 0;
-  if (left->stable_id != NULL && right->stable_id != NULL)
-    return strcmp(left->stable_id, right->stable_id) == 0;
-  return 1;
-}
-
-static DataBindStatus plan_validate_native_type(
-    DataBind *codec, const DataBindNativeTypeBinding *binding,
-    const char *expected_name, DataBindBindingPlanDiagnostic *diagnostic) {
-  const cmeta_data_struct_shape *shape;
-  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
-  size_t i;
-
-  if (binding == NULL ||
-      binding->size <
-          offsetof(DataBindNativeTypeBinding, null_count) +
-              sizeof(binding->null_count) ||
-      binding->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION ||
-      binding->idl_type_name == NULL ||
-      strcmp(binding->idl_type_name, expected_name) != 0 ||
-      !cmeta_data_desc_valid(binding->data) ||
-      binding->data->kind != CMETA_DATA_STRUCT ||
-      binding->data->storage_type == NULL ||
-      binding->data->shape == NULL)
-    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-                          "Invalid native binding for DataBind IDL type '%s'",
-                          expected_name != NULL ? expected_name : "");
-
-  if (!data_bind_schema_find_type(codec, expected_name, &schema_type) ||
-      schema_type.field_count !=
-          data_bind_schema_field_count(codec, expected_name))
-    return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-                          "IDL type '%s' is not a reflected record",
-                          expected_name);
-
-  shape = plan_struct_shape(binding);
-  if (shape == NULL || shape->field_count != schema_type.field_count)
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, expected_name, NULL,
-        "Native field count does not match DataBind IDL type '%s'",
-        expected_name);
-
-  if ((binding->presence_count != 0u && binding->presence == NULL) ||
-      (binding->null_count != 0u && binding->nulls == NULL))
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-        "Native state metadata count is nonzero without its binding array");
-
-  {
-    const DataBindNativeStateBinding *sets[2] = {
-        binding->presence, binding->nulls};
-    const size_t counts[2] = {
-        binding->presence_count, binding->null_count};
-    const char *const labels[2] = {"presence", "null"};
-    size_t set_index;
-
-    for (set_index = 0u; set_index < 2u; ++set_index) {
-      size_t state_index;
-      for (state_index = 0u; state_index < counts[set_index]; ++state_index) {
-        const DataBindNativeStateBinding *left =
-            &sets[set_index][state_index];
-        DataBindSchemaField reflected = DATA_BIND_SCHEMA_FIELD_INIT;
-        int found = 0;
-        size_t j;
-
-        if (left->size < sizeof(*left) || left->field_name == NULL ||
-            left->field_name[0] == '\0' || left->bit > 7u ||
-            left->byte_offset >= binding->data->storage_type->size)
-          return plan_diag_fail(
-              diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-              "Invalid native %s-state metadata", labels[set_index]);
-
-        for (j = 0u; j < shape->field_count; ++j) {
-          const cmeta_data_field_desc *native_field = &shape->fields[j];
-          size_t field_size;
-          if (native_field->value == NULL ||
-              native_field->value->storage_type == NULL)
-            return plan_diag_fail(
-                diagnostic, DATA_BIND_ERR_SCHEMA, expected_name, NULL,
-                "Native field metadata is incomplete while validating %s state",
-                labels[set_index]);
-          field_size = native_field->value->storage_type->size;
-          if (left->byte_offset >= native_field->offset &&
-              left->byte_offset - native_field->offset < field_size)
-            return plan_diag_fail(
-                diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-                "Native %s state storage overlaps field '%s'",
-                labels[set_index],
-                native_field->name != NULL ? native_field->name : "<unnamed>");
-        }
-
-        for (j = 0u; j < schema_type.field_count; ++j) {
-          reflected = (DataBindSchemaField)DATA_BIND_SCHEMA_FIELD_INIT;
-          if (data_bind_schema_field_at(codec, expected_name, j, &reflected) &&
-              reflected.name != NULL &&
-              strcmp(reflected.name, left->field_name) == 0) {
-            found = set_index == 0u ? reflected.is_optional != 0
-                                    : reflected.is_nullable != 0;
-            break;
-          }
-        }
-        if (!found)
-          return plan_diag_fail(
-              diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-              "%s metadata references a non-%s IDL field",
-              labels[set_index],
-              set_index == 0u ? "optional" : "nullable");
-
-        for (j = 0u; j < state_index; ++j) {
-          const DataBindNativeStateBinding *right = &sets[set_index][j];
-          if (strcmp(left->field_name, right->field_name) == 0 ||
-              (left->byte_offset == right->byte_offset &&
-               left->bit == right->bit))
-            return plan_diag_fail(
-                diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-                "Duplicate native %s-state metadata", labels[set_index]);
-        }
-
-        if (set_index == 1u) {
-          for (j = 0u; j < binding->presence_count; ++j) {
-            const DataBindNativeStateBinding *right = &binding->presence[j];
-            if (left->byte_offset == right->byte_offset &&
-                left->bit == right->bit)
-              return plan_diag_fail(
-                  diagnostic, DATA_BIND_ERR_SCHEMA, left->field_name, NULL,
-                  "Native presence and null state must not share one bit");
-          }
-        }
-      }
-    }
-  }
-
-  for (i = 0u; i < schema_type.field_count; ++i) {
-    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
-    const cmeta_data_field_desc *native_field;
-    const cmeta_data_desc *schema_data = NULL;
-    DataBindError error = DATA_BIND_ERROR_INIT;
-
-    if (!data_bind_schema_field_at(codec, expected_name, i, &schema_field))
-      return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA, expected_name,
-                            NULL, "Could not reflect field %zu of '%s'", i,
-                            expected_name);
-
-    native_field = plan_native_field(binding, schema_field.name);
-    if (native_field == NULL || native_field->value == NULL)
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
-          "Native type '%s' is missing field '%s'", expected_name,
-          schema_field.name != NULL ? schema_field.name : "");
-
-    schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL &&
-        data_bind_schema_field_cmeta_data(codec, expected_name, i,
-                                          &schema_data, &error) != DATA_BIND_OK)
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-          "IDL field '%s.%s' has no canonical CMeta data mapping",
-          expected_name,
-          schema_field.name != NULL ? schema_field.name : "");
-
-    if (!plan_data_semantically_equal(schema_data, native_field->value))
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
-          "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
-          expected_name,
-          schema_field.name != NULL ? schema_field.name : "");
-
-    if (schema_field.is_optional) {
-      const DataBindNativeStateBinding *presence =
-          plan_presence(binding, schema_field.name);
-      if (presence == NULL)
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-            "Optional field '%s.%s' lacks native presence state",
-            expected_name, schema_field.name);
-    }
-    if (schema_field.is_nullable) {
-      const DataBindNativeStateBinding *null_state =
-          plan_null(binding, schema_field.name);
-      if (null_state == NULL)
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-            "Nullable field '%s.%s' lacks native null state",
-            expected_name, schema_field.name);
-    }
-  }
-
-  return DATA_BIND_OK;
 }
 
 static const cmeta_type_desc *plan_param_value_type(
@@ -798,148 +598,6 @@ static DataBindStatus plan_compile_ingress(
   return DATA_BIND_OK;
 }
 
-static DataBindBindingPlanEntryOwned *plan_ingress_by_field(
-    DataBindBindingPlan *plan, const char *field_name) {
-  size_t i;
-  if (plan == NULL || field_name == NULL) return NULL;
-  for (i = 0u; i < plan->ingress_count; ++i) {
-    DataBindBindingPlanEntryOwned *owned = &plan->ingress[i];
-    if (owned->view.schema_field != NULL &&
-        strcmp(owned->view.schema_field, field_name) == 0)
-      return owned;
-  }
-  return NULL;
-}
-
-static DataBindStatus plan_compile_ingress_validation(
-    DataBind *codec, const char *request_type, DataBindBindingPlan *plan,
-    DataBindBindingPlanDiagnostic *diagnostic) {
-  DataBindValidationPlan *validation = NULL;
-  DataBindError error = DATA_BIND_ERROR_INIT;
-  size_t rule_count;
-  size_t rule_index;
-  DataBindStatus status;
-
-  if (codec == NULL || request_type == NULL || plan == NULL)
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
-        "Invalid BindingPlan ValidationPlan compile arguments");
-
-  status = data_bind_validation_plan_compile(
-      codec, request_type, &validation, &error);
-  if (status != DATA_BIND_OK)
-    return plan_diag_fail(
-        diagnostic, status, error.path[0] != '\0' ? error.path : request_type,
-        NULL, "%s",
-        error.message[0] != '\0'
-            ? error.message
-            : "Could not compile request ValidationPlan");
-
-  rule_count = data_bind_validation_plan_rule_count(validation);
-  if (data_bind_validation_plan_internal_child_count(validation) != 0u) {
-    data_bind_validation_plan_free(validation);
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, request_type, NULL,
-        "Nested native ValidationPlan execution is not admitted by this "
-        "BindingPlan slice");
-  }
-
-  if (rule_count == 0u) {
-    data_bind_validation_plan_free(validation);
-    return DATA_BIND_OK;
-  }
-
-  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
-    DataBindValidationRuleInfo info = {0};
-    DataBindBindingPlanEntryOwned *owned;
-    const cmeta_data_buffer_ops *buffer_ops = NULL;
-
-    if (!data_bind_validation_plan_internal_rule_info(
-            validation, rule_index, &info) ||
-        info.field_name == NULL) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, request_type, NULL,
-          "Compiled ValidationPlan rule has no field identity");
-    }
-
-    owned = plan_ingress_by_field(plan, info.field_name);
-    if (owned == NULL || owned->view.data == NULL) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
-          "ValidationPlan field has no compiled ingress entry");
-    }
-
-    if (owned->view.data->kind != info.field_kind) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, info.field_name,
-          owned->view.function_param,
-          "ValidationPlan field kind does not match admitted native ingress");
-    }
-
-    if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
-      if (info.field_kind != CMETA_DATA_STRING &&
-          info.field_kind != CMETA_DATA_BYTES) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native @Size currently requires canonical string/bytes storage; "
-            "container size validation awaits a canonical range provider");
-      }
-      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native @Size requires a canonical readable buffer provider");
-      }
-    } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
-      if (info.field_kind != CMETA_DATA_STRING) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native @Pattern requires canonical string storage");
-      }
-      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native @Pattern requires a canonical readable string provider");
-      }
-    } else if (info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
-               info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-          owned->view.function_param,
-          "ValidationPlan contains an unsupported native constraint kind");
-    }
-
-    if (owned->validation_rule_count == 0u) {
-      owned->validation_rule_start = rule_index;
-    } else if (owned->validation_rule_start +
-                   owned->validation_rule_count !=
-               rule_index) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-          owned->view.function_param,
-          "ValidationPlan rules for one ingress field are not contiguous");
-    }
-    ++owned->validation_rule_count;
-  }
-
-  plan->request_validation = validation;
-  return DATA_BIND_OK;
-}
-
 static DataBindStatus plan_compile_egress(
     DataBind *codec, const DataBindServiceOperation *operation,
     const DataBindBindingProjection *projection,
@@ -1153,154 +811,6 @@ static DataBindStatus plan_compile_egress(
 }
 
 
-static DataBindBindingPlanEntryOwned *plan_egress_by_field(
-    DataBindBindingPlan *plan, const char *field_name) {
-  size_t i;
-  if (plan == NULL || field_name == NULL) return NULL;
-  for (i = 0u; i < plan->egress_count; ++i) {
-    DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
-    if (owned->view.schema_field != NULL &&
-        strcmp(owned->view.schema_field, field_name) == 0)
-      return owned;
-  }
-  return NULL;
-}
-
-static DataBindStatus plan_compile_egress_validation(
-    DataBind *codec, const char *response_type, DataBindBindingPlan *plan,
-    DataBindBindingPlanDiagnostic *diagnostic) {
-  DataBindValidationPlan *validation = NULL;
-  DataBindError error = DATA_BIND_ERROR_INIT;
-  size_t rule_count;
-  size_t rule_index;
-  DataBindStatus status;
-
-  if (codec == NULL || response_type == NULL || plan == NULL)
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
-        "Invalid response ValidationPlan compile arguments");
-  if (strcmp(response_type, "void") == 0) return DATA_BIND_OK;
-
-  status = data_bind_validation_plan_compile(
-      codec, response_type, &validation, &error);
-  if (status != DATA_BIND_OK)
-    return plan_diag_fail(
-        diagnostic, status,
-        error.path[0] != '\0' ? error.path : response_type,
-        NULL, "%s",
-        error.message[0] != '\0'
-            ? error.message
-            : "Could not compile response ValidationPlan");
-
-  rule_count = data_bind_validation_plan_rule_count(validation);
-  if (data_bind_validation_plan_internal_child_count(validation) != 0u) {
-    data_bind_validation_plan_free(validation);
-    return plan_diag_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, response_type, NULL,
-        "Nested native response ValidationPlan execution is not admitted by "
-        "this BindingPlan slice");
-  }
-
-  if (rule_count == 0u) {
-    data_bind_validation_plan_free(validation);
-    return DATA_BIND_OK;
-  }
-
-  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
-    DataBindValidationRuleInfo info = {0};
-    DataBindBindingPlanEntryOwned *owned;
-    const cmeta_data_buffer_ops *buffer_ops = NULL;
-
-    if (!data_bind_validation_plan_internal_rule_info(
-            validation, rule_index, &info) ||
-        info.field_name == NULL) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, response_type, NULL,
-          "Compiled response ValidationPlan rule has no field identity");
-    }
-
-    owned = plan_egress_by_field(plan, info.field_name);
-    if (owned == NULL || owned->view.data == NULL) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
-          "ValidationPlan field has no compiled egress entry");
-    }
-
-    if (owned->view.data->kind != info.field_kind) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, info.field_name,
-          owned->view.function_param,
-          "ValidationPlan field kind does not match admitted native egress");
-    }
-
-    if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
-      if (info.field_kind != CMETA_DATA_STRING &&
-          info.field_kind != CMETA_DATA_BYTES) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native response @Size currently requires canonical string/bytes "
-            "storage; container size validation awaits a canonical range "
-            "provider");
-      }
-      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native response @Size requires a canonical readable buffer "
-            "provider");
-      }
-    } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
-      if (info.field_kind != CMETA_DATA_STRING) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native response @Pattern requires canonical string storage");
-      }
-      buffer_ops = cmeta_data_buffer_ops_of(owned->view.data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL) {
-        data_bind_validation_plan_free(validation);
-        return plan_diag_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            owned->view.function_param,
-            "Native response @Pattern requires a canonical readable string "
-            "provider");
-      }
-    } else if (info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
-               info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-          owned->view.function_param,
-          "Response ValidationPlan contains an unsupported native constraint "
-          "kind");
-    }
-
-    if (owned->validation_rule_count == 0u) {
-      owned->validation_rule_start = rule_index;
-    } else if (owned->validation_rule_start +
-                   owned->validation_rule_count !=
-               rule_index) {
-      data_bind_validation_plan_free(validation);
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-          owned->view.function_param,
-          "ValidationPlan rules for one egress field are not contiguous");
-    }
-    ++owned->validation_rule_count;
-  }
-
-  plan->response_validation = validation;
-  return DATA_BIND_OK;
-}
-
 static DataBindStatus plan_compile_errors(
     DataBind *codec, const char *service_name, const char *operation_name,
     const DataBindServiceOperation *operation,
@@ -1444,8 +954,8 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
   for (i = 0u; i < plan->error_count; ++i)
     plan_entry_owned_clear(&plan->errors[i]);
   free(plan->errors);
-  data_bind_validation_plan_free(plan->request_validation);
-  data_bind_validation_plan_free(plan->response_validation);
+  data_bind_message_plan_free(plan->request_message);
+  data_bind_message_plan_free(plan->response_message);
   free(plan->param_data);
   free(plan->param_ingress);
   free(plan->param_egress);
@@ -1865,33 +1375,25 @@ static DataBindStatus plan_validate_ingress_value(
     const DataBindBindingPlanEntryOwned *owned,
     const void *destination,
     DataBindBindingPlanDiagnostic *diagnostic) {
-  const DataBindBindingPlanEntry *entry;
-  size_t i;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
 
   if (plan == NULL || owned == NULL || destination == NULL)
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
         "Invalid native validation runtime arguments");
-  if (owned->validation_rule_count == 0u) return DATA_BIND_OK;
-  if (plan->request_validation == NULL)
+  if (plan->request_message == NULL)
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_RUNTIME, owned->view.schema_field,
         owned->view.function_param,
-        "Ingress validation binding has no ValidationPlan");
+        "Ingress validation binding has no MessagePlan");
 
-  entry = &owned->view;
-  for (i = 0u; i < owned->validation_rule_count; ++i) {
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    size_t rule_index = owned->validation_rule_start + i;
-    DataBindStatus status =
-        data_bind_validation_plan_internal_validate_native_rule(
-            plan->request_validation, rule_index, entry->data,
-            destination, &error);
-    if (status != DATA_BIND_OK)
-      return plan_runtime_fail_error(
-          diagnostic, status, entry, &error,
-          "Native input validation failed");
-  }
+  status = data_bind_message_plan_internal_validate_field(
+      plan->request_message, owned->view.schema_field, destination, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, &owned->view, &error,
+        "Native input validation failed");
   return DATA_BIND_OK;
 }
 
@@ -2191,33 +1693,25 @@ static DataBindStatus plan_validate_egress_value(
     const DataBindBindingPlanEntryOwned *owned,
     const void *source,
     DataBindBindingPlanDiagnostic *diagnostic) {
-  const DataBindBindingPlanEntry *entry;
-  size_t i;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
 
   if (plan == NULL || owned == NULL || source == NULL)
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
         "Invalid response validation runtime arguments");
-  if (owned->validation_rule_count == 0u) return DATA_BIND_OK;
-  if (plan->response_validation == NULL)
+  if (plan->response_message == NULL)
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_RUNTIME, owned->view.schema_field,
         owned->view.function_param,
-        "Egress validation binding has no ValidationPlan");
+        "Egress validation binding has no MessagePlan");
 
-  entry = &owned->view;
-  for (i = 0u; i < owned->validation_rule_count; ++i) {
-    DataBindError error = DATA_BIND_ERROR_INIT;
-    size_t rule_index = owned->validation_rule_start + i;
-    DataBindStatus status =
-        data_bind_validation_plan_internal_validate_native_rule(
-            plan->response_validation, rule_index, entry->data,
-            source, &error);
-    if (status != DATA_BIND_OK)
-      return plan_runtime_fail_error(
-          diagnostic, status, entry, &error,
-          "Native response validation failed");
-  }
+  status = data_bind_message_plan_internal_validate_field(
+      plan->response_message, owned->view.schema_field, source, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, &owned->view, &error,
+        "Native response validation failed");
   return DATA_BIND_OK;
 }
 
