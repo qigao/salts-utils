@@ -1144,7 +1144,9 @@ DataBindStatus data_bind_message_plan_clear_native(
 
   if (plan == NULL || plan->native == NULL ||
       plan->native->data == NULL ||
-      native_options == NULL || destination == NULL)
+      plan->native->data->storage_type == NULL ||
+      native_options == NULL || destination == NULL ||
+      destination_bytes < plan->native->data->storage_type->size)
     return message_decode_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
         plan != NULL ? plan->type_name : NULL,
