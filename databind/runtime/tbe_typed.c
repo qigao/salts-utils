@@ -1,6 +1,11 @@
 #include "tbe_typed_internal.h"
 
 #include "data_bind_internal.h"
+#include "data_bind_format_provider.h"
+#include "data_bind_json_provider.h"
+#include "data_bind_yaml_provider.h"
+#include "data_bind_xml_provider.h"
+#include "data_bind_native.h"
 #include "fmt.h"
 #include "tbe_wire.h"
 #include <csv_parser.h>
