@@ -3,6 +3,8 @@ schema Device [version(1)];
 message TelemetryEvent {
   uint32 sequence;
   string source;
+  optional uint32 quality;
+  nullable uint32 error_code;
 }
 
 channel Telemetry: TelemetryEvent;
