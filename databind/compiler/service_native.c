@@ -273,7 +273,38 @@ static void native_errors_clear(
   free(errors);
 }
 
-static int native_error_message_trivially_owned(
+static int native_error_owned_field_admitted(const Node *field) {
+  const char *requirement;
+  const char *data_symbol;
+  const char *type_symbol;
+  const char *c_type;
+
+  if (field == NULL) return 0;
+  requirement = native_string(field, "cmeta_native_requirement");
+  if (requirement == NULL) return 0;
+  if (strcmp(requirement, "fixed_value") == 0 ||
+      strcmp(requirement, "enum_domain") == 0)
+    return 1;
+  if (strcmp(requirement, "owned_lifecycle") != 0)
+    return 0;
+
+  data_symbol = native_string(field, "native_data_symbol");
+  type_symbol = native_string(field, "native_type_symbol");
+  c_type = native_string(field, "native_c_type");
+  if (data_symbol == NULL || type_symbol == NULL || c_type == NULL)
+    return 0;
+
+  if (strcmp(data_symbol, "salts_tstr_cmeta_data") == 0 &&
+      strcmp(type_symbol, "salts_tstr_cmeta_type") == 0 &&
+      strcmp(c_type, "tstr") == 0)
+    return 1;
+
+  return strcmp(data_symbol, "stl_byte_buffer_cmeta_data") == 0 &&
+         strcmp(type_symbol, "stl_byte_buffer_cmeta_type") == 0 &&
+         strcmp(c_type, "stl_byte_buffer") == 0;
+}
+
+static int native_error_message_lifecycle_admitted(
     const Node *root, const char *type_name) {
   const Node *message = native_message(root, type_name);
   const Node *fields;
@@ -286,15 +317,10 @@ static int native_error_message_trivially_owned(
   fields = native_list(message, "fields");
   if (fields == NULL) return 0;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const char *requirement =
-        native_string(fields->data.list.items[i],
-                      "cmeta_native_requirement");
-    if (requirement == NULL ||
-        (strcmp(requirement, "fixed_value") != 0 &&
-         strcmp(requirement, "enum_domain") != 0))
+  for (i = 0u; i < fields->data.list.count; ++i)
+    if (!native_error_owned_field_admitted(fields->data.list.items[i]))
       return 0;
-  }
+
   return 1;
 }
 
@@ -330,7 +356,7 @@ static int native_errors_build(
             : NULL;
 
     if (type_name == NULL ||
-        !native_error_message_trivially_owned(root, type_name)) {
+        !native_error_message_lifecycle_admitted(root, type_name)) {
       native_errors_clear(result, errors->data.list.count);
       return 0;
     }
