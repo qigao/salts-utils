@@ -334,13 +334,26 @@ suite("real generated and runtime CMeta acceptance") {
       check_not_null(out);
       if (out == NULL) continue;
       check_true(cmeta_data_desc_valid(out));
-      check_equal(out->kind, cases[i].kind);
+      check_equal(out->kind, CMETA_DATA_STRUCT);
       check_not_null(out->storage_type);
-      element = cmeta_data_collection_element_data(out);
-      check_not_null(element);
-      if (element != NULL) {
-        check_not_null(element->storage_type);
-        check_true(cmeta_type_desc_valid(element->storage_type));
+      {
+        const cmeta_data_struct_shape *shape =
+            (const cmeta_data_struct_shape *)out->shape;
+        const cmeta_data_desc *collection;
+        check_not_null(shape);
+        if (shape == NULL) continue;
+        check_equal(shape->field_count, (size_t)1u);
+        collection = shape->fields[0].value;
+        check_not_null(collection);
+        if (collection == NULL) continue;
+        check_true(cmeta_data_desc_valid(collection));
+        check_equal(collection->kind, cases[i].kind);
+        element = cmeta_data_collection_element_data(collection);
+        check_not_null(element);
+        if (element != NULL) {
+          check_not_null(element->storage_type);
+          check_true(cmeta_type_desc_valid(element->storage_type));
+        }
       }
     }
 
