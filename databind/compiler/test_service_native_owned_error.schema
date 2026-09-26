@@ -9,7 +9,7 @@ message Response {
 }
 
 message DynamicError {
-    string detail;
+    optional string detail;
 }
 
 service Store {

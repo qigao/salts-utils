@@ -342,6 +342,8 @@ function(databind_target)
       "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.databind")
   set(_native_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.h")
+  set(_native_source
+      "${_generated_dir}/${DB_ARTIFACT_NAME}_native.c")
   set(_plugin_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin.h")
   set(_plugin_source
@@ -360,6 +362,7 @@ function(databind_target)
   set(_generated_outputs "${_native_header}")
   if(_has_plugin)
     list(APPEND _generated_outputs
+      "${_native_source}"
       "${_plugin_header}"
       "${_plugin_source}"
       "${_plugin_client_header}"
@@ -390,6 +393,7 @@ function(databind_target)
   endif()
   if(_has_plugin)
     list(APPEND _compiler_args
+      --source-output "${_native_source}"
       --component "${DB_COMPONENT}"
       --artifact-version "${DB_VERSION}")
   endif()
@@ -426,6 +430,7 @@ function(databind_target)
       "${_plugin_source}"
       "${_plugin_header}"
       "${_native_header}"
+      "${_native_source}"
       ${DB_SOURCES})
     add_dependencies("${DB_TARGET}_plugin"
       "${DB_TARGET}_databind_codegen")
@@ -443,7 +448,8 @@ function(databind_target)
     add_library("${DB_TARGET}_plugin_client" STATIC
       "${_plugin_client_source}"
       "${_plugin_client_header}"
-      "${_native_header}")
+      "${_native_header}"
+      "${_native_source}")
     add_dependencies("${DB_TARGET}_plugin_client"
       "${DB_TARGET}_databind_codegen")
     target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
