@@ -266,6 +266,33 @@ set_target_properties(test_databind_socket_plan_projection PROPERTIES
 set_tests_properties(test_databind_socket_plan_projection PROPERTIES
   LABELS "databind;compiler;socket-plan;transport")
 
+cmake_add_test(test_databind_message_native
+  SOURCES
+    test_message_native.c
+    message_native.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    MESSAGE_NATIVE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_message_native PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_message_native PROPERTIES
+  LABELS "databind;compiler;message-native;channel")
+
 # Canonical Service -> native FunctionMeta/FunctionAbi lowering qualification.
 set(DATABIND_SERVICE_NATIVE_TEST_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/generated-service-native")
