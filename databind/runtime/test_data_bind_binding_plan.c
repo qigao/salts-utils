@@ -889,6 +889,7 @@ spec("DataBind canonical Service BindingPlan") {
     DataBindNativeOptions options =
         native_options(workspace, sizeof(workspace));
     StateRequest value = {0};
+    StateRequest explicit_null = {0};
     MessageTokenReader source = {0};
     cserde_reader reader = {0};
     const cserde_token tokens[] = {
@@ -899,6 +900,16 @@ spec("DataBind canonical Service BindingPlan") {
         {.kind = CSERDE_NULL},
         {.kind = CSERDE_MAP_END},
         {.kind = CSERDE_UINT, .value.uint = 99u},
+    };
+    const cserde_token explicit_null_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("required_value"),
+        {.kind = CSERDE_UINT, .value.uint = 8u},
+        message_key("nullable_value"),
+        {.kind = CSERDE_UINT, .value.uint = 5u},
+        message_key("defaulted_value"),
+        {.kind = CSERDE_NULL},
+        {.kind = CSERDE_MAP_END},
     };
 
     check_not_null(codec);
@@ -928,6 +939,23 @@ spec("DataBind canonical Service BindingPlan") {
     /* One message is consumed; the next token is deliberately untouched. */
     check_equal(source.index, (size_t)6u);
 
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, explicit_null_tokens,
+        sizeof(explicit_null_tokens) / sizeof(explicit_null_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &explicit_null, sizeof(explicit_null), &diagnostic),
+        DATA_BIND_OK);
+    check_equal(explicit_null.required_value, (uint32_t)8u);
+    check_equal(explicit_null.optional_value, (uint32_t)0u);
+    check_equal(explicit_null.nullable_value, (uint32_t)5u);
+    check_equal(explicit_null.defaulted_value, (uint32_t)0u);
+    check_equal(explicit_null.presence, (uint8_t)(1u << 1u));
+    check_equal(explicit_null.nulls, (uint8_t)(1u << 1u));
+
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
   }
@@ -943,6 +971,7 @@ spec("DataBind canonical Service BindingPlan") {
     AddRequest valid = {0};
     AddRequest invalid = {0};
     AddRequest duplicate = {0};
+    AddRequest unknown = {0};
     AddRequest missing = {0};
     AddRequest invalid_null = {0};
     MessageTokenReader source = {0};
@@ -969,6 +998,14 @@ spec("DataBind canonical Service BindingPlan") {
         message_key("left"),
         {.kind = CSERDE_UINT, .value.uint = 3u},
         message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token unknown_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        message_key("vendor"),
         {.kind = CSERDE_UINT, .value.uint = 4u},
         {.kind = CSERDE_MAP_END},
     };
@@ -1042,6 +1079,22 @@ spec("DataBind canonical Service BindingPlan") {
     check_equal(duplicate.scale, (uint32_t)0u);
     check_equal(duplicate.presence, (uint8_t)0u);
     check_contains(diagnostic.message, "Duplicate");
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, unknown_tokens,
+        sizeof(unknown_tokens) / sizeof(unknown_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &unknown, sizeof(unknown), &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unknown.left, (uint32_t)0u);
+    check_equal(unknown.right, (uint32_t)0u);
+    check_equal(unknown.scale, (uint32_t)0u);
+    check_equal(unknown.presence, (uint8_t)0u);
+    check_contains(diagnostic.message, "Unknown");
 
     diagnostic =
         (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
