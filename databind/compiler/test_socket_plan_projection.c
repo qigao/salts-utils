@@ -26,12 +26,13 @@ spec("DataBind generated SocketPlan") {
     Node *root = NULL;
     char *schema_data = NULL;
     databind_compiler_socket_projection_config config = {
-        "databind_device",
-        "Device.Telemetry",
-        DATA_BIND_FORMAT_BINARY,
-        DATA_BIND_SOCKET_MODE_STREAM,
-        DATA_BIND_SOCKET_FRAMING_LENGTH32_BE,
-        65536u};
+        .symbol_prefix = "databind_device",
+        .native_header_include = "device.h",
+        .channel_name = "Device.Telemetry",
+        .format = DATA_BIND_FORMAT_BINARY,
+        .mode = DATA_BIND_SOCKET_MODE_STREAM,
+        .framing = DATA_BIND_SOCKET_FRAMING_LENGTH32_BE,
+        .max_frame_bytes = 65536u};
     databind_compiler_projection_request request = {
         {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
          DATABIND_COMPILER_TRANSPORT_SOCKET},
@@ -62,6 +63,10 @@ spec("DataBind generated SocketPlan") {
     check(file_contains(output, "DATA_BIND_FORMAT_BINARY"));
     check(file_contains(output, "DATA_BIND_SOCKET_MODE_STREAM"));
     check(file_contains(output, "DATA_BIND_SOCKET_FRAMING_LENGTH32_BE"));
+    check(file_contains(output, "#include \"device.h\""));
+    check(file_contains(output, "TelemetryEvent_cmeta_data(&data, error)"));
+    check(file_contains(
+        output, "databind_device__databind_message_native_binding"));
     check_false(file_contains(output, "endpoint"));
     check_false(file_contains(output, "tls"));
     check_false(file_contains(output, "reconnect"));
@@ -97,6 +102,14 @@ spec("DataBind generated SocketPlan") {
 
     config.framing = DATA_BIND_SOCKET_FRAMING_LENGTH32_BE;
     config.channel_name = "Device.ChoiceEvents";
+    check_equal(
+        databind_compiler_projection_run(
+            root, &request, 1u, &backend, 1u),
+        -1);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+
+    config.channel_name = "Device.Telemetry";
+    config.native_header_include = "../device.h";
     check_equal(
         databind_compiler_projection_run(
             root, &request, 1u, &backend, 1u),
