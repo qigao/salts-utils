@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 #include "data_bind_native.h"
+#include "data_bind_native_binding.h"
 
 #include <cmeta/function.h>
 #include <cserde/reader.h>
@@ -69,39 +70,6 @@ typedef struct DataBindBindingProjection {
 #define DATA_BIND_BINDING_PROJECTION_INIT \
   { sizeof(DataBindBindingProjection), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     NULL, NULL, NULL }
-
-/** One generated DataBind state bit outside the canonical CMeta value graph. */
-typedef struct DataBindNativeStateBinding {
-  size_t size;
-  const char *field_name;
-  size_t byte_offset;
-  unsigned bit;
-} DataBindNativeStateBinding;
-
-#define DATA_BIND_NATIVE_STATE_BINDING_INIT \
-  { sizeof(DataBindNativeStateBinding), NULL, 0u, 0u }
-
-/**
- * Format-neutral native representation of one DataBind IDL type.
- *
- * data is the canonical CMeta native value descriptor.
- * presence and nulls are DataBind-owned state overlays and are intentionally
- * outside the CMeta field graph.
- */
-typedef struct DataBindNativeTypeBinding {
-  size_t size;
-  uint32_t abi_version;
-  const char *idl_type_name;
-  const cmeta_data_desc *data;
-  const DataBindNativeStateBinding *presence;
-  size_t presence_count;
-  const DataBindNativeStateBinding *nulls;
-  size_t null_count;
-} DataBindNativeTypeBinding;
-
-#define DATA_BIND_NATIVE_TYPE_BINDING_INIT(TYPE_NAME, DATA) \
-  { sizeof(DataBindNativeTypeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
-    (TYPE_NAME), (DATA), NULL, 0u, NULL, 0u }
 
 typedef DataBindStatus (*DataBindNativeDataResolverFn)(
     const cmeta_data_desc **out, DataBindError *error);
