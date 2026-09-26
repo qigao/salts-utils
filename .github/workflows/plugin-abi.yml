@@ -77,6 +77,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
           test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${VCPKG_BINARY_SOURCES:-}"
           case "$VCPKG_BINARY_SOURCES" in
             *nugetconfig*) ;;
@@ -246,10 +249,14 @@ jobs:
           choco install nasm ninja -y --no-progress
           $vcpkgRoot = $env:VCPKG_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+            throw "canonical VCPKG_ROOT is unavailable"
           }
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            throw "VCPKG_ROOT is unavailable"
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe") -PathType Leaf)) {
+            throw "canonical vcpkg executable is unavailable"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE) -or
+              -not (Test-Path -LiteralPath $env:QIGAO_VCPKG_TOOLCHAIN_FILE -PathType Leaf)) {
+            throw "canonical qigao vcpkg toolchain is unavailable"
           }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
             throw "Windows shared vcpkg NuGet cache is unavailable"
