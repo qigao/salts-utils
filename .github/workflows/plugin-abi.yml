@@ -60,6 +60,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Configure shared vcpkg binary cache
+        id: vcpkg-cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -82,6 +83,10 @@ jobs:
             *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
+          test -n "${{ steps.vcpkg-cache.outputs.contract-version }}"
+          test -n "${{ steps.vcpkg-cache.outputs.cache-revision }}"
+          test "${{ steps.vcpkg-cache.outputs.contract-version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
+          test "${{ steps.vcpkg-cache.outputs.cache-revision }}" = "$VCPKG_CACHE_REVISION"
 
       - name: Restore published Salts 1.7.2 and re2c 4.6.3
         shell: bash
@@ -245,6 +250,12 @@ jobs:
           }
           if ($env:VCPKG_NUGET_REPOSITORY -ne "https://github.com/qigao/vcpkg-cache") {
             throw "unexpected Windows vcpkg cache repository: $env:VCPKG_NUGET_REPOSITORY"
+          }
+          if ("${{ steps.vcpkg-cache.outputs.contract-version }}" -ne $env:VCPKG_CACHE_CONTRACT_VERSION) {
+            throw "shared cache contract output/env mismatch"
+          }
+          if ("${{ steps.vcpkg-cache.outputs.cache-revision }}" -ne $env:VCPKG_CACHE_REVISION) {
+            throw "shared cache revision output/env mismatch"
           }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
