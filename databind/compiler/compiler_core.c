@@ -704,11 +704,91 @@ static int databind_compiler_annotate_named_native_semantic(
   return 0;
 }
 
+static int databind_compiler_annotate_named_native_refs(
+    Node *root, Node *target_node, const char *type_name,
+    const char *type_ref_key, const char *data_ref_key) {
+  const tbe_compiler_scalar_projection_t *scalar;
+  Node *target;
+  char symbol[288];
+
+  if (!root || !target_node || !type_name || !type_ref_key || !data_ref_key)
+    return -1;
+
+  if (strcmp(type_name, "string") == 0)
+    return tbe_compiler_set_string(target_node, type_ref_key,
+                                   "SALTS_TSTR_CMETA_TYPE_REF") == 0 &&
+                   tbe_compiler_set_string(target_node, data_ref_key,
+                                           "SALTS_TSTR_CMETA_DATA_REF") == 0
+               ? 0
+               : -1;
+
+  scalar = tbe_compiler_scalar_projection(type_name);
+  if (scalar && scalar->native_data_symbol && scalar->native_type_symbol) {
+    if (snprintf(symbol, sizeof(symbol), "&%s", scalar->native_type_symbol) < 0 ||
+        strlen(scalar->native_type_symbol) + 2u >= sizeof(symbol) ||
+        tbe_compiler_set_string(target_node, type_ref_key, symbol) != 0)
+      return -1;
+    if (snprintf(symbol, sizeof(symbol), "&%s", scalar->native_data_symbol) < 0 ||
+        strlen(scalar->native_data_symbol) + 2u >= sizeof(symbol) ||
+        tbe_compiler_set_string(target_node, data_ref_key, symbol) != 0)
+      return -1;
+    return 0;
+  }
+
+  if (strcmp(type_name, "uuid") == 0)
+    return tbe_compiler_set_string(target_node, type_ref_key,
+                                   "&salts_uuid_cmeta_type") == 0 &&
+                   tbe_compiler_set_string(target_node, data_ref_key,
+                                           "&salts_uuid_cmeta_data") == 0
+               ? 0
+               : -1;
+
+  target = tbe_compiler_find_record(root, "enums", type_name);
+  if (target) {
+    char type_symbol[256];
+    char data_symbol[256];
+    Node scratch = {0};
+    if (tbe_compiler_set_enum_symbol(&scratch, "type", type_name, "Type") != 0 ||
+        tbe_compiler_set_enum_symbol(&scratch, "data", type_name, "Data") != 0)
+      return -1;
+    {
+      const char *type_value = tbe_compiler_string_value(&scratch, "type");
+      const char *data_value = tbe_compiler_string_value(&scratch, "data");
+      int ok = type_value != NULL && data_value != NULL &&
+          snprintf(type_symbol, sizeof(type_symbol), "&%s", type_value) > 0 &&
+          snprintf(data_symbol, sizeof(data_symbol), "&%s", data_value) > 0 &&
+          tbe_compiler_set_string(target_node, type_ref_key, type_symbol) == 0 &&
+          tbe_compiler_set_string(target_node, data_ref_key, data_symbol) == 0;
+      node_clear(&scratch);
+      return ok ? 0 : -1;
+    }
+  }
+
+  target = tbe_compiler_find_record(root, "composites", type_name);
+  if (!target) target = tbe_compiler_find_record(root, "groups", type_name);
+  if (!target) target = tbe_compiler_find_record(root, "messages", type_name);
+  if (!target) return -1;
+
+  if (snprintf(symbol, sizeof(symbol), "&%s_CMETA_TYPE", type_name) < 0 ||
+      strlen(type_name) + strlen("&_CMETA_TYPE") >= sizeof(symbol) ||
+      tbe_compiler_set_string(target_node, type_ref_key, symbol) != 0)
+    return -1;
+  if (snprintf(symbol, sizeof(symbol), "&%s_CMETA_DATA", type_name) < 0 ||
+      strlen(type_name) + strlen("&_CMETA_DATA") >= sizeof(symbol) ||
+      tbe_compiler_set_string(target_node, data_ref_key, symbol) != 0)
+    return -1;
+  return 0;
+}
+
 static int databind_compiler_annotate_map_value_provider(
     Node *root, Node *field, const char *value_type) {
-  return databind_compiler_annotate_named_native_semantic(
-      root, field, value_type, "native_map_value_type_symbol",
-      "native_map_value_data_symbol");
+  if (databind_compiler_annotate_named_native_semantic(
+          root, field, value_type, "native_map_value_type_symbol",
+          "native_map_value_data_symbol") != 0)
+    return -1;
+  return databind_compiler_annotate_named_native_refs(
+      root, field, value_type, "native_map_value_type_ref",
+      "native_map_value_data_ref");
 }
 
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
@@ -809,6 +889,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     (void)databind_compiler_annotate_named_native_semantic(
         root, field, storage_element ? storage_element : inner,
         "native_element_type_symbol", "native_element_data_symbol");
+    (void)databind_compiler_annotate_named_native_refs(
+        root, field, storage_element ? storage_element : inner,
+        "native_element_type_ref", "native_element_data_ref");
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "length_field");
       snprintf(declaration, sizeof(declaration), "%s %s[%s];", c_type, c_name,
@@ -824,6 +907,10 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           root, value_type ? value_type : inner, value_c_type, sizeof(value_c_type),
           value_descriptor, sizeof(value_descriptor));
       char entry_type[256];
+      if (key_type != NULL)
+        (void)databind_compiler_annotate_named_native_refs(
+            root, field, key_type, "native_map_key_type_ref",
+            "native_map_key_data_ref");
       if (!value_kind || !key_type || strcmp(key_type, "string") != 0) {
         snprintf(declaration, sizeof(declaration), "/* unsupported map field %s */ uint8_t %s;",
                  name, c_name);
