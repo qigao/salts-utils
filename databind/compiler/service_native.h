@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_SERVICE_NATIVE_H
 
 #include "node_tree.h"
+#include "message_native.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -14,10 +15,8 @@ extern "C" {
  * Canonical compiler-private lowering of one DataBind Service operation to the
  * ordinary native C function shape shared by PLUGIN/WASM/native backends.
  */
-typedef struct databind_compiler_service_native_state {
-  char *field_name;
-  unsigned bit;
-} databind_compiler_service_native_state;
+typedef databind_compiler_message_native_state
+    databind_compiler_service_native_state;
 
 typedef struct databind_compiler_service_native_error {
   char *type_name;
