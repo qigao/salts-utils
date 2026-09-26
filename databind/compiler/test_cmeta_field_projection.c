@@ -187,10 +187,26 @@ suite("compiler_cmeta_field_projection") {
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
+                check_equal(field_projection_text(field, "native_element_type_ref"),
+                            "&cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_element_data_ref"),
+                            "&cmeta_data_int32");
+                check_equal(field_projection_text(field, "native_element_type_ref"),
+                            "&cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_element_data_ref"),
+                            "&cmeta_data_int32");
+                check_equal(field_projection_text(field, "native_map_key_type_ref"),
+                            "SALTS_TSTR_CMETA_TYPE_REF");
+                check_equal(field_projection_text(field, "native_map_key_data_ref"),
+                            "SALTS_TSTR_CMETA_DATA_REF");
                 check_equal(field_projection_text(field, "native_map_value_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_map_value_data_symbol"),
                             "cmeta_data_int32");
+                check_equal(field_projection_text(field, "native_map_value_type_ref"),
+                            "&cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_map_value_data_ref"),
+                            "&cmeta_data_int32");
             } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
                        cases[i].kind == CMETA_DATA_SET) {
                 check_null(field_projection_text(field, "native_data_symbol"));
@@ -257,12 +273,26 @@ suite("compiler_cmeta_field_projection") {
                         "Item_CMETA_TYPE");
             check_equal(field_projection_text(items, "native_element_data_symbol"),
                         "Item_CMETA_DATA");
+            check_equal(field_projection_text(items, "native_element_type_ref"),
+                        "&Item_CMETA_TYPE");
+            check_equal(field_projection_text(items, "native_element_data_ref"),
+                        "&Item_CMETA_DATA");
             check_not_null(field_projection_text(states, "native_element_type_symbol"));
             check_not_null(field_projection_text(states, "native_element_data_symbol"));
+            check_not_null(field_projection_text(states, "native_element_type_ref"));
+            check_not_null(field_projection_text(states, "native_element_data_ref"));
+            check_equal(field_projection_text(map, "native_map_key_type_ref"),
+                        "SALTS_TSTR_CMETA_TYPE_REF");
+            check_equal(field_projection_text(map, "native_map_key_data_ref"),
+                        "SALTS_TSTR_CMETA_DATA_REF");
             check_equal(field_projection_text(map, "native_map_value_type_symbol"),
                         "Item_CMETA_TYPE");
             check_equal(field_projection_text(map, "native_map_value_data_symbol"),
                         "Item_CMETA_DATA");
+            check_equal(field_projection_text(map, "native_map_value_type_ref"),
+                        "&Item_CMETA_TYPE");
+            check_equal(field_projection_text(map, "native_map_value_data_ref"),
+                        "&Item_CMETA_DATA");
         }
 
         node_free(root);
