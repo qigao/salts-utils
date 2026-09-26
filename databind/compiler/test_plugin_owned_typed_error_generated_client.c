@@ -127,10 +127,23 @@ spec("generated owned typed-error Plugin client") {
     check_equal(
         databind_16_OwnedErrorPlugin_5_Store_4_Read__error_clear(&typed_error),
         DATA_BIND_OK);
+
+    check_equal(salts_plugin_registry_request_stop(&registry, ref),
+                SALTS_PLUGIN_OK);
+    check_equal(salts_plugin_registry_unload(&registry, ref),
+                SALTS_PLUGIN_BUSY);
+
     check_equal(
         databind_plugin_client_16_OwnedErrorPlugin_11_StorePlugin_close(
             &client),
         SALTS_PLUGIN_OK);
+    {
+      bool quiescent = false;
+      check_equal(salts_plugin_registry_poll_quiescent(
+                      &registry, ref, &quiescent),
+                  SALTS_PLUGIN_OK);
+      check_true(quiescent);
+    }
     check_equal(salts_plugin_registry_unload(&registry, ref),
                 SALTS_PLUGIN_OK);
     check_equal(salts_plugin_registry_destroy(&registry),
