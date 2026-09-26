@@ -148,6 +148,7 @@ spec("DataBind public typed generation frontend") {
         .artifact_name = "device",
         .projection_config_path = DATABIND_SOCKET_PROJECTION_CONFIG_FILE,
         .output_path = "generated/device_native.h",
+        .source_output_path = "generated/device_native.c",
     };
     databind_compiler_projection_frontend_plan plan;
     char error[256];
@@ -169,6 +170,7 @@ spec("DataBind public typed generation frontend") {
 
     check_true(plan.external_config.has_socket);
     check_equal(plan.socket.symbol_prefix, "databind_device");
+    check_equal(plan.socket.native_header_include, "device_native.h");
     check_equal(plan.socket.channel_name, "Device.Telemetry");
     check_equal(plan.socket.format, DATA_BIND_FORMAT_BINARY);
     check_equal(plan.socket.mode, DATA_BIND_SOCKET_MODE_STREAM);
@@ -177,6 +179,12 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.socket.max_frame_bytes, (size_t)65536u);
 
     databind_compiler_projection_frontend_dispose(&plan);
+
+    input.source_output_path = NULL;
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "source-output"));
   }
 
   it("rejects config sections for an unselected transport") {

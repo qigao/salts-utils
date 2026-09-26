@@ -76,7 +76,9 @@ databind_target(
 
 add_executable(installed_socket_consumer socket_consumer.c)
 target_compile_features(installed_socket_consumer PRIVATE c_std_11)
-target_link_libraries(installed_socket_consumer PRIVATE Salts::DataBind)
+target_link_libraries(installed_socket_consumer PRIVATE
+  Salts::DataBind
+  ${installed_socket_NATIVE_TARGET})
 target_include_directories(installed_socket_consumer PRIVATE
   "${installed_socket_GENERATED_DIR}")
 add_dependencies(installed_socket_consumer

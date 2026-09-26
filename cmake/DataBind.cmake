@@ -342,6 +342,8 @@ function(databind_target)
       "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.databind")
   set(_native_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.h")
+  set(_native_source
+      "${_generated_dir}/${DB_ARTIFACT_NAME}_native.c")
   set(_plugin_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin.h")
   set(_plugin_source
@@ -358,6 +360,9 @@ function(databind_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.socket.h")
 
   set(_generated_outputs "${_native_header}")
+  if(_has_socket)
+    list(APPEND _generated_outputs "${_native_source}")
+  endif()
   if(_has_plugin)
     list(APPEND _generated_outputs
       "${_plugin_header}"
@@ -387,6 +392,10 @@ function(databind_target)
   if(_normalized_transports)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
+  endif()
+  if(_has_socket)
+    list(APPEND _compiler_args
+      --source-output "${_native_source}")
   endif()
   if(_has_plugin)
     list(APPEND _compiler_args
@@ -420,6 +429,20 @@ function(databind_target)
 
   add_custom_target("${DB_TARGET}_databind_codegen"
     DEPENDS ${_generated_outputs})
+
+  if(_has_socket)
+    add_library("${DB_TARGET}_native" STATIC
+      "${_native_source}"
+      "${_native_header}")
+    add_dependencies("${DB_TARGET}_native"
+      "${DB_TARGET}_databind_codegen")
+    target_compile_features("${DB_TARGET}_native" PRIVATE c_std_11)
+    target_include_directories("${DB_TARGET}_native" PUBLIC
+      "${_generated_dir}")
+    target_link_libraries("${DB_TARGET}_native" PUBLIC
+      Salts::DataBind
+      ${DB_LIBRARIES})
+  endif()
 
   if(_has_plugin)
     add_library("${DB_TARGET}_plugin" SHARED
@@ -456,6 +479,9 @@ function(databind_target)
 
   add_custom_target("${DB_TARGET}")
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_databind_codegen")
+  if(_has_socket)
+    add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
+  endif()
   if(_has_plugin)
     add_dependencies("${DB_TARGET}"
       "${DB_TARGET}_plugin"
@@ -500,8 +526,12 @@ function(databind_target)
   if(_has_socket)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_SOCKET_PROJECTION "${_socket_header}")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_TARGET "${DB_TARGET}_native")
     set(${DB_TARGET}_SOCKET_PROJECTION
         "${_socket_header}" PARENT_SCOPE)
+    set(${DB_TARGET}_NATIVE_TARGET
+        "${DB_TARGET}_native" PARENT_SCOPE)
   endif()
 
   set(${DB_TARGET}_GENERATED_DIR
