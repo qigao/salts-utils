@@ -87,7 +87,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure shared vcpkg binary cache
-        id: vcpkg-cache
+        id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -157,7 +157,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure shared vcpkg binary cache
-        id: vcpkg-cache
+        id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -226,7 +226,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - id: vcpkg-cache
+      - id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -310,8 +310,8 @@ jobs:
           os=linux
           arch=x64
           profile=release
-          vcpkg_cache_contract=${{ steps.vcpkg-cache.outputs.contract-version }}
-          vcpkg_cache_revision=${{ steps.vcpkg-cache.outputs.cache-revision }}
+          vcpkg_cache_contract=${{ steps.vcpkg_cache.outputs.contract-version }}
+          vcpkg_cache_revision=${{ steps.vcpkg_cache.outputs.cache-revision }}
           EOF
       - uses: actions/upload-artifact@v4
         with:
@@ -326,7 +326,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - id: vcpkg-cache
+      - id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -397,8 +397,8 @@ jobs:
           os=macos
           arch=$RUNNER_ARCH
           profile=release
-          vcpkg_cache_contract=${{ steps.vcpkg-cache.outputs.contract-version }}
-          vcpkg_cache_revision=${{ steps.vcpkg-cache.outputs.cache-revision }}
+          vcpkg_cache_contract=${{ steps.vcpkg_cache.outputs.contract-version }}
+          vcpkg_cache_revision=${{ steps.vcpkg_cache.outputs.cache-revision }}
           EOF
       - uses: actions/upload-artifact@v4
         with:
@@ -448,7 +448,7 @@ jobs:
           $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $env:RUNNER_TEMP "ccache.exe") --version
 
-      - id: vcpkg-cache
+      - id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -563,8 +563,8 @@ jobs:
             "os=windows"
             "arch=x64"
             "profile=release"
-            "vcpkg_cache_contract=${{ steps.vcpkg-cache.outputs.contract-version }}"
-            "vcpkg_cache_revision=${{ steps.vcpkg-cache.outputs.cache-revision }}"
+            "vcpkg_cache_contract=${{ steps.vcpkg_cache.outputs.contract-version }}"
+            "vcpkg_cache_revision=${{ steps.vcpkg_cache.outputs.cache-revision }}"
           )
           $manifest | Set-Content -LiteralPath (Join-Path $prefix "salts-utils-sdk-manifest.txt")
 
@@ -581,7 +581,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - id: vcpkg-cache
+      - id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -665,8 +665,8 @@ jobs:
           abi=arm64-v8a
           api=android-26
           profile=release
-          vcpkg_cache_contract=${{ steps.vcpkg-cache.outputs.contract-version }}
-          vcpkg_cache_revision=${{ steps.vcpkg-cache.outputs.cache-revision }}
+          vcpkg_cache_contract=${{ steps.vcpkg_cache.outputs.contract-version }}
+          vcpkg_cache_revision=${{ steps.vcpkg_cache.outputs.cache-revision }}
           EOF
       - uses: actions/upload-artifact@v4
         with:
