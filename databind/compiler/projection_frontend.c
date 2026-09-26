@@ -264,6 +264,11 @@ static int add_socket_plan(
     return frontend_error(
         error, error_size,
         "SOCKET transport requires a socket section in --projection-config");
+  if (input->source_output_path == NULL ||
+      input->source_output_path[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "SOCKET transport requires --source-output for native execution metadata");
 
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
