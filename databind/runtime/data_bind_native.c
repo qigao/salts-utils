@@ -1589,6 +1589,7 @@ static DataBindStatus native_lifecycle_preflight(
   DataBindStatus status;
 
   if (out_path != NULL) *out_path = NULL;
+  if (usage != NULL) memset(usage, 0, sizeof(*usage));
   if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
   if (options == NULL ||
       options->size < offsetof(DataBindNativeOptions, abi_version) +
@@ -1701,8 +1702,10 @@ DataBindStatus data_bind_native_clear(
 
 static DataBindStatus native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
-    cserde_reader *reader, void *destination, size_t destination_bytes,
-    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
+    cserde_reader *reader, const cserde_token *first_token,
+    void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic) {
   NativeArena arena;
   NativeArena scratch;
   NativePlan plan;
@@ -1759,7 +1762,17 @@ static DataBindStatus native_decode_bounded(
       native_ranges_overlap(options, sizeof(*options), destination, destination_bytes) ||
       native_ranges_overlap(reader, sizeof(*reader),
                             options->workspace, options->workspace_bytes) ||
-      native_ranges_overlap(reader, sizeof(*reader), destination, destination_bytes))
+      native_ranges_overlap(reader, sizeof(*reader), destination, destination_bytes) ||
+      (first_token != NULL &&
+       (native_ranges_overlap(first_token, sizeof(*first_token),
+                              options->workspace, options->workspace_bytes) ||
+        native_ranges_overlap(first_token, sizeof(*first_token),
+                              destination, destination_bytes))) ||
+      (usage != NULL &&
+       (native_ranges_overlap(usage, sizeof(*usage),
+                              options->workspace, options->workspace_bytes) ||
+        native_ranges_overlap(usage, sizeof(*usage),
+                              destination, destination_bytes))))
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, root_path,
                        "Native control records alias mutable decode storage");
 
@@ -1814,7 +1827,13 @@ static DataBindStatus native_decode_bounded(
   decode.diagnostic = diagnostic;
   decode.reader = reader;
   decode.max_buffer_bytes = max_buffer_bytes;
-  status = native_decode_value(&decode, shape, temporary, 1u, root_path, &scratch);
+  status =
+      first_token != NULL
+          ? native_decode_value_from_token(
+                &decode, shape, temporary, 1u, root_path, &scratch,
+                first_token)
+          : native_decode_value(
+                &decode, shape, temporary, 1u, root_path, &scratch);
   if (status == DATA_BIND_OK) {
     status = native_publish_value(diagnostic, shape, destination, temporary, root_path);
     if (status != DATA_BIND_OK &&
@@ -1826,7 +1845,13 @@ static DataBindStatus native_decode_bounded(
   if (native_restore_value(shape, temporary) != DATA_BIND_OK && status == DATA_BIND_OK)
     status = native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
                          "Temporary native storage did not restore semantic zero");
-  if (status == DATA_BIND_OK) native_reset_diagnostic(diagnostic);
+  if (status == DATA_BIND_OK) {
+    if (usage != NULL) {
+      usage->items = decode.items;
+      usage->owned_bytes = decode.owned_bytes;
+    }
+    native_reset_diagnostic(diagnostic);
+  }
   return status;
 }
 
@@ -1836,16 +1861,37 @@ DataBindStatus data_bind_native_decode(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
     DataBindNativeDiagnostic *diagnostic) {
-  return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, SIZE_MAX, diagnostic);
+  return native_decode_bounded(options, shape, reader, NULL, destination,
+                               destination_bytes, SIZE_MAX, NULL, diagnostic);
 }
 
 DataBindStatus data_bind_native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
     size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
-  return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, max_buffer_bytes, diagnostic);
+  return native_decode_bounded(options, shape, reader, NULL, destination,
+                               destination_bytes, max_buffer_bytes, NULL,
+                               diagnostic);
+}
+
+
+DataBindStatus data_bind_native_decode_from_token_internal(
+    const DataBindNativeOptions *options,
+    const cmeta_data_desc *shape,
+    cserde_reader *reader,
+    const cserde_token *first_token,
+    void *destination,
+    size_t destination_bytes,
+    size_t max_buffer_bytes,
+    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic) {
+  if (first_token == NULL) {
+    if (usage != NULL) memset(usage, 0, sizeof(*usage));
+    return DATA_BIND_ERR_INVALID_ARG;
+  }
+  return native_decode_bounded(
+      options, shape, reader, first_token, destination, destination_bytes,
+      max_buffer_bytes, usage, diagnostic);
 }
 
 
