@@ -704,6 +704,41 @@ static int databind_compiler_annotate_named_native_semantic(
   return 0;
 }
 
+static char *databind_compiler_enum_symbol_alloc(
+    const char *name, const char *role) {
+  static const char prefix[] = "tbeCmetaEnum";
+  static const char hex[] = "0123456789abcdef";
+  size_t length;
+  size_t role_length;
+  size_t capacity;
+  size_t offset;
+  size_t i;
+  int written;
+  char *symbol;
+
+  if (name == NULL || role == NULL) return NULL;
+  length = strlen(name);
+  role_length = strlen(role);
+  if (length > (SIZE_MAX - sizeof(prefix) - role_length - 48u) / 2u)
+    return NULL;
+  capacity = sizeof(prefix) + role_length + 48u + 2u * length;
+  symbol = (char *)malloc(capacity);
+  if (symbol == NULL) return NULL;
+  written = snprintf(symbol, capacity, "%s%zux", prefix, length);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return NULL;
+  }
+  offset = (size_t)written;
+  for (i = 0u; i < length; ++i) {
+    unsigned char byte = (unsigned char)name[i];
+    symbol[offset++] = hex[byte >> 4u];
+    symbol[offset++] = hex[byte & 15u];
+  }
+  memcpy(symbol + offset, role, role_length + 1u);
+  return symbol;
+}
+
 static int databind_compiler_annotate_named_native_refs(
     Node *root, Node *target_node, const char *type_name,
     const char *type_ref_key, const char *data_ref_key) {
@@ -745,23 +780,32 @@ static int databind_compiler_annotate_named_native_refs(
 
   target = tbe_compiler_find_record(root, "enums", type_name);
   if (target) {
-    char type_symbol[256];
-    char data_symbol[256];
-    Node scratch = {0};
-    if (tbe_compiler_set_enum_symbol(&scratch, "type", type_name, "Type") != 0 ||
-        tbe_compiler_set_enum_symbol(&scratch, "data", type_name, "Data") != 0)
-      return -1;
-    {
-      const char *type_value = tbe_compiler_string_value(&scratch, "type");
-      const char *data_value = tbe_compiler_string_value(&scratch, "data");
-      int ok = type_value != NULL && data_value != NULL &&
-          snprintf(type_symbol, sizeof(type_symbol), "&%s", type_value) > 0 &&
-          snprintf(data_symbol, sizeof(data_symbol), "&%s", data_value) > 0 &&
-          tbe_compiler_set_string(target_node, type_ref_key, type_symbol) == 0 &&
-          tbe_compiler_set_string(target_node, data_ref_key, data_symbol) == 0;
-      node_clear(&scratch);
-      return ok ? 0 : -1;
-    }
+    char *type_symbol = databind_compiler_enum_symbol_alloc(type_name, "Type");
+    char *data_symbol = databind_compiler_enum_symbol_alloc(type_name, "Data");
+    char *type_ref = NULL;
+    char *data_ref = NULL;
+    size_t type_ref_size;
+    size_t data_ref_size;
+    int ok = 0;
+
+    if (type_symbol == NULL || data_symbol == NULL) goto enum_refs_done;
+    type_ref_size = strlen(type_symbol) + 2u;
+    data_ref_size = strlen(data_symbol) + 2u;
+    type_ref = (char *)malloc(type_ref_size);
+    data_ref = (char *)malloc(data_ref_size);
+    if (type_ref == NULL || data_ref == NULL) goto enum_refs_done;
+    if (snprintf(type_ref, type_ref_size, "&%s", type_symbol) < 0 ||
+        snprintf(data_ref, data_ref_size, "&%s", data_symbol) < 0)
+      goto enum_refs_done;
+    ok = tbe_compiler_set_string(target_node, type_ref_key, type_ref) == 0 &&
+         tbe_compiler_set_string(target_node, data_ref_key, data_ref) == 0;
+
+enum_refs_done:
+    free(type_symbol);
+    free(data_symbol);
+    free(type_ref);
+    free(data_ref);
+    return ok ? 0 : -1;
   }
 
   target = tbe_compiler_find_record(root, "composites", type_name);
