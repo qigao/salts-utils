@@ -1,5 +1,6 @@
 #include "data_bind_binding_plan.h"
 #include "data_bind_message_plan.h"
+#include "data_bind_message_executor.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -430,6 +431,49 @@ static DataBindBindingProjection projection(
   return result;
 }
 
+typedef struct TokenArrayReader {
+  const cserde_token *tokens;
+  size_t count;
+  size_t index;
+} TokenArrayReader;
+
+static cserde_status token_array_next(void *context, cserde_token *out) {
+  TokenArrayReader *state = (TokenArrayReader *)context;
+  if (state == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
+  if (state->index >= state->count) return CSERDE_DONE;
+  *out = state->tokens[state->index++];
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops TOKEN_ARRAY_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION,
+    token_array_next};
+
+static cserde_token test_key(const char *text) {
+  cserde_token token = {0};
+  token.kind = CSERDE_STRING;
+  token.value.slice.data = (const unsigned char *)text;
+  token.value.slice.size = strlen(text);
+  token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+  return token;
+}
+
+static cserde_token test_uint(uint64_t value) {
+  cserde_token token = {0};
+  token.kind = CSERDE_UINT;
+  token.value.uint = value;
+  return token;
+}
+
+static cserde_reader token_array_reader(TokenArrayReader *state) {
+  cserde_reader reader = {0};
+  check_equal(
+      cserde_reader_init(&reader, &TOKEN_ARRAY_OPS, state),
+      CSERDE_OK);
+  return reader;
+}
+
 typedef struct OneTokenReader {
   cserde_token token;
   int emitted;
@@ -837,6 +881,283 @@ static DataBindNativeOptions native_options(
 }
 
 spec("DataBind canonical Service BindingPlan") {
+  it("decodes one complete Channel message with defaults through MessagePlan") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic compile_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindMessageDecodeDiagnostic decode_diagnostic =
+        DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    DataBindMessageDecodeRequirements requirements =
+        DATA_BIND_MESSAGE_DECODE_REQUIREMENTS_INIT;
+    cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        test_key("left"),
+        test_uint(2u),
+        test_key("right"),
+        test_uint(3u),
+        {.kind = CSERDE_MAP_END}};
+    TokenArrayReader state = {tokens, sizeof(tokens) / sizeof(tokens[0]), 0u};
+    cserde_reader reader = token_array_reader(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest value = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE,
+            &plan, &compile_diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    check_equal(
+        data_bind_message_plan_measure_decode(
+            plan, &options, &requirements, &decode_diagnostic),
+        DATA_BIND_OK);
+    check(requirements.destination_bytes == sizeof(value));
+    check(requirements.field_tracking_bytes != 0u);
+    check(requirements.workspace_bytes <= sizeof(workspace));
+
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.left, UINT32_C(2));
+    check_equal(value.right, UINT32_C(3));
+    check_equal(value.scale, UINT32_C(1));
+    check_equal(value.presence, (uint8_t)(1u << 0));
+    check_equal(state.index, state.count);
+
+    check_equal(
+        data_bind_message_plan_clear_native(
+            plan, &options, &value, sizeof(value),
+            &decode_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.left, 0u);
+    check_equal(value.right, 0u);
+    check_equal(value.scale, 0u);
+    check_equal(value.presence, 0u);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("normalizes nullable and defaulted MessagePlan states") {
+    DataBind *codec = create_state_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic compile_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindMessageDecodeDiagnostic decode_diagnostic =
+        DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        test_key("required_value"),
+        test_uint(11u),
+        test_key("nullable_value"),
+        {.kind = CSERDE_NULL},
+        {.kind = CSERDE_MAP_END}};
+    TokenArrayReader state = {tokens, sizeof(tokens) / sizeof(tokens[0]), 0u};
+    cserde_reader reader = token_array_reader(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    StateRequest value = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "StateRequest", &STATE_REQUEST_NATIVE,
+            &plan, &compile_diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.required_value, UINT32_C(11));
+    check_equal(value.optional_value, 0u);
+    check_equal(value.nullable_value, 0u);
+    check_equal(value.defaulted_value, UINT32_C(7));
+    check_equal(value.presence, (uint8_t)(1u << 1));
+    check_equal(value.nulls, (uint8_t)(1u << 0));
+
+    check_equal(
+        data_bind_message_plan_clear_native(
+            plan, &options, &value, sizeof(value),
+            &decode_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.required_value, 0u);
+    check_equal(value.optional_value, 0u);
+    check_equal(value.nullable_value, 0u);
+    check_equal(value.defaulted_value, 0u);
+    check_equal(value.presence, 0u);
+    check_equal(value.nulls, 0u);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rolls back whole-message native state after validation failure") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic compile_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindMessageDecodeDiagnostic decode_diagnostic =
+        DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        test_key("left"),
+        test_uint(0u),
+        test_key("right"),
+        test_uint(3u),
+        {.kind = CSERDE_MAP_END}};
+    TokenArrayReader state = {tokens, sizeof(tokens) / sizeof(tokens[0]), 0u};
+    cserde_reader reader = token_array_reader(&state);
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest value = {
+        .left = 91u, .right = 92u, .scale = 93u, .presence = 0xffu};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE,
+            &plan, &compile_diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    /*
+     * decode owns staging initialization; live/non-zero input is rejected
+     * rather than overwritten.
+     */
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_ERR_INVALID_ARG);
+
+    memset(&value, 0, sizeof(value));
+    state.index = 0u;
+    reader = token_array_reader(&state);
+    decode_diagnostic =
+        (DataBindMessageDecodeDiagnostic)
+            DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_ERR_VALIDATION);
+    check_contains(decode_diagnostic.error.path, "left");
+    check_equal(value.left, 0u);
+    check_equal(value.right, 0u);
+    check_equal(value.scale, 0u);
+    check_equal(value.presence, 0u);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("rejects duplicate and unknown whole-message fields without publication") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic compile_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindMessageDecodeDiagnostic decode_diagnostic =
+        DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    cserde_token duplicate_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        test_key("left"),
+        test_uint(2u),
+        test_key("left"),
+        test_uint(3u),
+        test_key("right"),
+        test_uint(3u),
+        {.kind = CSERDE_MAP_END}};
+    cserde_token unknown_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        test_key("left"),
+        test_uint(2u),
+        test_key("mystery"),
+        test_uint(9u),
+        test_key("right"),
+        test_uint(3u),
+        {.kind = CSERDE_MAP_END}};
+    TokenArrayReader duplicate = {
+        duplicate_tokens,
+        sizeof(duplicate_tokens) / sizeof(duplicate_tokens[0]), 0u};
+    TokenArrayReader unknown = {
+        unknown_tokens,
+        sizeof(unknown_tokens) / sizeof(unknown_tokens[0]), 0u};
+    cserde_reader reader;
+    unsigned char workspace[4096];
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest value = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE,
+            &plan, &compile_diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    reader = token_array_reader(&duplicate);
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_ERR_PARSE);
+    check_contains(decode_diagnostic.error.path, "left");
+    check_equal(value.left, 0u);
+    check_equal(value.right, 0u);
+    check_equal(value.scale, 0u);
+    check_equal(value.presence, 0u);
+
+    decode_diagnostic =
+        (DataBindMessageDecodeDiagnostic)
+            DATA_BIND_MESSAGE_DECODE_DIAGNOSTIC_INIT;
+    reader = token_array_reader(&unknown);
+    check_equal(
+        data_bind_message_plan_decode(
+            plan, &options, &reader, &value, sizeof(value),
+            SIZE_MAX, &decode_diagnostic),
+        DATA_BIND_ERR_SCHEMA);
+    check_equal(value.left, 0u);
+    check_equal(value.right, 0u);
+    check_equal(value.scale, 0u);
+    check_equal(value.presence, 0u);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("compiles and validates one Channel message without FunctionDesc") {
     DataBind *codec = create_codec();
     DataBindMessagePlan *plan = NULL;
