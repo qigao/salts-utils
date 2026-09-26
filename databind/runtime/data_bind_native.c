@@ -24,6 +24,8 @@ typedef struct NativePlan {
   size_t depth_peak;
   size_t container_depth;
   size_t seen_peak;
+  size_t scratch_peak;
+  size_t scratch_alignment;
 } NativePlan;
 
 typedef struct NativeDecode {
@@ -76,6 +78,27 @@ static int native_size_mul(size_t left, size_t right, size_t *out) {
   if (out == NULL || (left != 0u && right > SIZE_MAX / left)) return 0;
   *out = left * right;
   return 1;
+}
+
+static int native_align_size(size_t offset, size_t alignment, size_t *out) {
+  size_t remainder;
+  size_t padding;
+  if (out == NULL || alignment == 0u) return 0;
+  remainder = offset % alignment;
+  padding = remainder == 0u ? 0u : alignment - remainder;
+  return native_size_add(offset, padding, out);
+}
+
+static int native_alignment_lcm(size_t left, size_t right, size_t *out) {
+  size_t a = left;
+  size_t b = right;
+  if (out == NULL || a == 0u || b == 0u) return 0;
+  while (b != 0u) {
+    size_t remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return native_size_mul(left / a, right, out);
 }
 
 static int native_range_valid(const void *pointer, size_t size,
@@ -393,10 +416,97 @@ static size_t native_bitmap_bytes(size_t fields) {
   return fields / 8u + (fields % 8u != 0u);
 }
 
+static int native_collection_contract(
+    const cmeta_data_desc *data, const cmeta_data_desc **out_element) {
+  const cmeta_data_collection_ops *ops = cmeta_data_collection_ops_of(data);
+  const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+  const cmeta_data_collection_borrow_ops *borrow;
+
+  if (out_element != NULL) *out_element = NULL;
+  if (ops == NULL || element == NULL || element->storage_type == NULL ||
+      !cmeta_type_desc_valid(element->storage_type) ||
+      ops->struct_size <
+          offsetof(cmeta_data_collection_ops, borrow) +
+              sizeof(((cmeta_data_collection_ops *)0)->borrow) ||
+      ops->struct_size <
+          offsetof(cmeta_data_collection_ops, collector) +
+              sizeof(((cmeta_data_collection_ops *)0)->collector) ||
+      ops->collector == NULL || ops->borrow == NULL)
+    return 0;
+
+  borrow = ops->borrow;
+  if (borrow->struct_size <
+          offsetof(cmeta_data_collection_borrow_ops, next) +
+              sizeof(((cmeta_data_collection_borrow_ops *)0)->next) ||
+      borrow->abi_version != CMETA_DATA_COLLECTION_BORROW_OPS_ABI_VERSION ||
+      borrow->size == NULL || borrow->next == NULL)
+    return 0;
+
+  if (cmeta_type_require_traits(
+          element->storage_type,
+          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY) !=
+      CMETA_OK)
+    return 0;
+
+  if (out_element != NULL) *out_element = element;
+  return 1;
+}
+
+static int native_map_contract(
+    const cmeta_data_desc *data, const cmeta_data_desc **out_key,
+    const cmeta_data_desc **out_value) {
+  const cmeta_data_map_ops *ops = cmeta_data_map_ops_of(data);
+  const cmeta_data_desc *key = cmeta_data_map_key_data(data);
+  const cmeta_data_desc *value = cmeta_data_map_value_data(data);
+  const cmeta_data_map_borrow_ops *borrow;
+
+  if (out_key != NULL) *out_key = NULL;
+  if (out_value != NULL) *out_value = NULL;
+  if (ops == NULL || key == NULL || value == NULL ||
+      key->storage_type == NULL || value->storage_type == NULL ||
+      !cmeta_type_desc_valid(key->storage_type) ||
+      !cmeta_type_desc_valid(value->storage_type) ||
+      ops->struct_size <
+          offsetof(cmeta_data_map_ops, borrow) +
+              sizeof(((cmeta_data_map_ops *)0)->borrow) ||
+      ops->struct_size <
+          offsetof(cmeta_data_map_ops, accept) +
+              sizeof(((cmeta_data_map_ops *)0)->accept) ||
+      ops->struct_size <
+          offsetof(cmeta_data_map_ops, collector) +
+              sizeof(((cmeta_data_map_ops *)0)->collector) ||
+      ops->collector == NULL || ops->accept == NULL || ops->borrow == NULL)
+    return 0;
+
+  borrow = ops->borrow;
+  if (borrow->struct_size <
+          offsetof(cmeta_data_map_borrow_ops, next) +
+              sizeof(((cmeta_data_map_borrow_ops *)0)->next) ||
+      borrow->abi_version != CMETA_DATA_MAP_BORROW_OPS_ABI_VERSION ||
+      borrow->size == NULL || borrow->next == NULL)
+    return 0;
+
+  if (cmeta_type_require_traits(
+          key->storage_type,
+          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY) !=
+          CMETA_OK ||
+      cmeta_type_require_traits(
+          value->storage_type,
+          CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY) !=
+          CMETA_OK)
+    return 0;
+
+  if (out_key != NULL) *out_key = key;
+  if (out_value != NULL) *out_value = value;
+  return 1;
+}
+
 static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *data,
                                        size_t depth, size_t active_seen,
                                        const char *path) {
   size_t i;
+  size_t combined_alignment;
+
   if (depth == 0u || depth > plan->options->max_depth)
     return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
                        "Native descriptor depth exceeds configured limit");
@@ -405,9 +515,18 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
                        "Native descriptor node count exceeds configured limit");
   ++plan->nodes;
   if (depth > plan->depth_peak) plan->depth_peak = depth;
-  if (!cmeta_data_desc_valid(data))
+  if (!cmeta_data_desc_valid(data) || data->storage_type == NULL ||
+      !cmeta_type_desc_valid(data->storage_type))
     return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                        "Invalid canonical CMeta descriptor");
+
+  if (plan->scratch_alignment == 0u) plan->scratch_alignment = 1u;
+  if (!native_alignment_lcm(plan->scratch_alignment,
+                            data->storage_type->align,
+                            &combined_alignment))
+    return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                       "Native workspace alignment overflow");
+  plan->scratch_alignment = combined_alignment;
 
   if (!cmeta_data_value_move_supported(data))
     return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
@@ -424,9 +543,10 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
 
   if (data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) {
     const cmeta_data_buffer_ops *ops = cmeta_data_buffer_ops_of(data);
-    if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED)
+    if (ops == NULL || ops->ownership != CMETA_DATA_BUFFER_OWNED ||
+        !cmeta_data_value_traits_supported(data))
       return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                         "Direct native reader requires an owned v2 buffer provider");
+                         "Direct native reader requires managed owned v2 buffer semantics");
     return DATA_BIND_OK;
   }
 
@@ -438,11 +558,12 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
   }
 
   if (data->kind == CMETA_DATA_STRUCT) {
-    const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
     const cmeta_struct_desc *layout = shape == NULL ? NULL : shape->layout;
     size_t seen_here;
     if (depth > plan->container_depth) plan->container_depth = depth;
-    if (shape == NULL || layout == NULL || data->storage_type == NULL ||
+    if (shape == NULL || layout == NULL ||
         layout->size != data->storage_type->size ||
         layout->align != data->storage_type->align ||
         shape->field_count != layout->field_count)
@@ -457,7 +578,7 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
       const cmeta_data_field_desc *field = &shape->fields[i];
       const cmeta_field_desc *layout_field;
       char child_path[sizeof(((DataBindError *)0)->path)];
-      size_t end;
+      size_t field_end;
       size_t j;
       if (!native_path_join(child_path, sizeof(child_path), path, field->name))
         return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
@@ -469,8 +590,9 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
           layout_field->size != field->value->storage_type->size ||
           layout_field->align != field->value->storage_type->align ||
           !cmeta_type_equal(layout_field->type, field->value->storage_type) ||
-          !native_size_add(field->offset, field->value->storage_type->size, &end) ||
-          end > data->storage_type->size ||
+          !native_size_add(field->offset, field->value->storage_type->size,
+                           &field_end) ||
+          field_end > data->storage_type->size ||
           field->value->storage_type->align == 0u ||
           field->offset % field->value->storage_type->align != 0u)
         return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
@@ -486,7 +608,7 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
                              &previous_end))
           return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
                              "Native Struct field range is invalid");
-        if (field->offset < previous_end && previous->offset < end)
+        if (field->offset < previous_end && previous->offset < field_end)
           return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, child_path,
                              "Native Struct fields overlap");
       }
@@ -499,8 +621,135 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     return DATA_BIND_OK;
   }
 
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET) {
+    const cmeta_data_desc *element = NULL;
+    if (depth > plan->container_depth) plan->container_depth = depth;
+    if (!native_collection_contract(data, &element))
+      return native_fail(
+          plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+          "Native collection requires static member data, borrow, collector and managed element traits");
+    return native_preflight(
+        plan, element, depth + 1u, active_seen, path);
+  }
+
+  if (data->kind == CMETA_DATA_MAP) {
+    const cmeta_data_desc *key = NULL;
+    const cmeta_data_desc *value = NULL;
+    DataBindStatus status;
+    if (depth > plan->container_depth) plan->container_depth = depth;
+    if (!native_map_contract(data, &key, &value))
+      return native_fail(
+          plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+          "Native map requires static key/value data, borrow, collector, accept and managed member traits");
+    status = native_preflight(plan, key, depth + 1u, active_seen, path);
+    if (status != DATA_BIND_OK) return status;
+    return native_preflight(plan, value, depth + 1u, active_seen, path);
+  }
+
   return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
-                     "Canonical descriptor kind is outside native reader v1");
+                     "Canonical descriptor kind is outside native reader");
+}
+
+static DataBindStatus native_measure_scratch(
+    NativePlan *plan, const cmeta_data_desc *data, size_t active,
+    const char *path) {
+  size_t i;
+  size_t end = active;
+  if (active > plan->scratch_peak) plan->scratch_peak = active;
+
+  if (native_scalar_supported(data) ||
+      data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES ||
+      data->kind == CMETA_DATA_ENUM)
+    return DATA_BIND_OK;
+
+  if (data->kind == CMETA_DATA_STRUCT) {
+    const cmeta_data_struct_shape *shape =
+        (const cmeta_data_struct_shape *)data->shape;
+    if (!native_size_add(active, native_bitmap_bytes(shape->field_count), &end))
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                         "Struct decode scratch size overflow");
+    if (end > plan->scratch_peak) plan->scratch_peak = end;
+    for (i = 0u; i < shape->field_count; ++i) {
+      DataBindStatus status =
+          native_measure_scratch(plan, shape->fields[i].value, end, path);
+      if (status != DATA_BIND_OK) return status;
+    }
+    return DATA_BIND_OK;
+  }
+
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET) {
+    const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+    size_t aligned;
+    if (element == NULL || element->storage_type == NULL ||
+        !native_align_size(active, element->storage_type->align, &aligned) ||
+        !native_size_add(aligned, element->storage_type->size, &end))
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                         "Collection element scratch size overflow");
+    if (end > plan->scratch_peak) plan->scratch_peak = end;
+    return native_measure_scratch(plan, element, end, path);
+  }
+
+  if (data->kind == CMETA_DATA_MAP) {
+    const cmeta_data_desc *key = cmeta_data_map_key_data(data);
+    const cmeta_data_desc *value = cmeta_data_map_value_data(data);
+    size_t aligned;
+    DataBindStatus status;
+    if (key == NULL || value == NULL ||
+        key->storage_type == NULL || value->storage_type == NULL ||
+        !native_align_size(active, key->storage_type->align, &aligned) ||
+        !native_size_add(aligned, key->storage_type->size, &end))
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                         "Map key scratch size overflow");
+    if (end > plan->scratch_peak) plan->scratch_peak = end;
+    status = native_measure_scratch(plan, key, end, path);
+    if (status != DATA_BIND_OK) return status;
+
+    if (!native_align_size(end, value->storage_type->align, &aligned) ||
+        !native_size_add(aligned, value->storage_type->size, &end))
+      return native_fail(plan->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+                         "Map value scratch size overflow");
+    if (end > plan->scratch_peak) plan->scratch_peak = end;
+    return native_measure_scratch(plan, value, end, path);
+  }
+
+  return DATA_BIND_OK;
+}
+
+static int native_struct_byte_is_reflected(
+    const cmeta_data_struct_shape *shape, size_t offset) {
+  size_t i;
+  if (shape == NULL) return 0;
+  for (i = 0u; i < shape->field_count; ++i) {
+    const cmeta_data_field_desc *field = &shape->fields[i];
+    size_t end;
+    if (field->value == NULL || field->value->storage_type == NULL ||
+        !native_size_add(field->offset, field->value->storage_type->size, &end))
+      continue;
+    if (offset >= field->offset && offset < end) return 1;
+  }
+  return 0;
+}
+
+static void native_zero_unreflected_struct_bytes(
+    const cmeta_data_desc *data, void *storage) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  unsigned char *bytes = (unsigned char *)storage;
+  size_t i;
+  for (i = 0u; i < data->storage_type->size; ++i)
+    if (!native_struct_byte_is_reflected(shape, i)) bytes[i] = 0u;
+}
+
+static int native_unreflect_struct_bytes_are_zero(
+    const cmeta_data_desc *data, const void *storage) {
+  const cmeta_data_struct_shape *shape =
+      (const cmeta_data_struct_shape *)data->shape;
+  const unsigned char *bytes = (const unsigned char *)storage;
+  size_t i;
+  for (i = 0u; i < data->storage_type->size; ++i)
+    if (!native_struct_byte_is_reflected(shape, i) && bytes[i] != 0u)
+      return 0;
+  return 1;
 }
 
 static DataBindStatus native_init_value(DataBindNativeDiagnostic *diagnostic,
@@ -532,7 +781,8 @@ static DataBindStatus native_restore_value(const cmeta_data_desc *data,
                                            void *storage) {
   cmeta_status status = cmeta_data_value_restore_zero(data, storage);
   if (status != CMETA_OK) return DATA_BIND_ERR_RUNTIME;
-  memset(storage, 0, data->storage_type->size);
+  if (data->kind == CMETA_DATA_STRUCT)
+    native_zero_unreflected_struct_bytes(data, storage);
   return DATA_BIND_OK;
 }
 
@@ -549,11 +799,26 @@ static int native_value_is_zero(const cmeta_data_desc *data, const void *storage
   }
   if (data->kind == CMETA_DATA_STRUCT) {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
+    if (!native_unreflect_struct_bytes_are_zero(data, storage)) return 0;
     for (i = 0u; i < shape->field_count; ++i)
       if (!native_value_is_zero(shape->fields[i].value,
                                 (const unsigned char *)storage + shape->fields[i].offset))
         return 0;
     return 1;
+  }
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET) {
+    cmeta_data_collection_borrow_cursor cursor = {0};
+    size_t count = 0u;
+    return cmeta_data_collection_borrow_begin(data, storage, &cursor) == CMETA_OK &&
+           cmeta_data_collection_borrow_size(&cursor, &count) == CMETA_OK &&
+           count == 0u;
+  }
+  if (data->kind == CMETA_DATA_MAP) {
+    cmeta_data_map_borrow_cursor cursor = {0};
+    size_t count = 0u;
+    return cmeta_data_map_borrow_begin(data, storage, &cursor) == CMETA_OK &&
+           cmeta_data_map_borrow_size(&cursor, &count) == CMETA_OK &&
+           count == 0u;
   }
   return 0;
 }
@@ -838,6 +1103,272 @@ static DataBindStatus native_decode_admit(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus native_cmeta_provider_failure(
+    DataBindNativeDiagnostic *diagnostic, cmeta_status status,
+    const char *path, const char *message) {
+  DataBindStatus mapped;
+  switch (status) {
+    case CMETA_OK:
+      return DATA_BIND_OK;
+    case CMETA_OUT_OF_MEMORY:
+      mapped = DATA_BIND_ERR_OOM;
+      break;
+    case CMETA_CAPACITY_EXCEEDED:
+      mapped = DATA_BIND_ERR_LIMIT;
+      break;
+    case CMETA_TYPE_MISMATCH:
+    case CMETA_TRAIT_MISSING:
+    case CMETA_INVALID_ARGUMENT:
+      mapped = DATA_BIND_ERR_SCHEMA;
+      break;
+    case CMETA_CALLBACK_ERROR:
+    default:
+      mapped = DATA_BIND_ERR_RUNTIME;
+      break;
+  }
+  return native_fail(diagnostic, mapped, CSERDE_OK, path, message);
+}
+
+static DataBindStatus native_decode_collection(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *opener) {
+  const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+  cmeta_collector collector = {0};
+  cserde_token token;
+  cmeta_status cmeta_status_value;
+  DataBindStatus status;
+  size_t mark = scratch->offset;
+  int collector_live = 0;
+
+  if (opener == NULL || opener->kind != CSERDE_ARRAY_BEGIN)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                       CSERDE_OK, path,
+                       "Expected array token for canonical native collection");
+  if (element == NULL || element->storage_type == NULL)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                       path, "Canonical collection has no static element data");
+
+  cmeta_status_value = cmeta_data_collection_collector(
+      data, storage, decode->options->max_items, &collector);
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical collection collector is unavailable");
+  cmeta_status_value = cmeta_collector_begin(&collector);
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical collection collector could not begin");
+  collector_live = 1;
+
+  for (;;) {
+    void *temporary;
+    size_t element_mark;
+    DataBindStatus cleanup_status;
+
+    status = native_next(decode, &token, path);
+    if (status != DATA_BIND_OK) goto fail;
+    if (token.kind == CSERDE_ARRAY_END) break;
+
+    element_mark = scratch->offset;
+    temporary = native_arena_alloc(
+        scratch, element->storage_type->size, element->storage_type->align);
+    if (temporary == NULL) {
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+          "Workspace cannot hold canonical collection element temporary");
+      goto fail;
+    }
+
+    status = native_init_value(
+        decode->diagnostic, element, temporary, path);
+    if (status != DATA_BIND_OK) {
+      scratch->offset = element_mark;
+      goto fail;
+    }
+
+    status = native_decode_value_from_token(
+        decode, element, temporary, depth + 1u, path, scratch, &token);
+    if (status == DATA_BIND_OK) {
+      cmeta_status_value = cmeta_data_collection_accept(
+          data, &collector, element, temporary);
+      if (cmeta_status_value != CMETA_OK)
+        status = native_cmeta_provider_failure(
+            decode->diagnostic, cmeta_status_value, path,
+            "Canonical collection rejected decoded element");
+    }
+
+    cleanup_status = native_restore_value(element, temporary);
+    scratch->offset = element_mark;
+    if (cleanup_status != DATA_BIND_OK && status == DATA_BIND_OK)
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Collection element temporary did not restore semantic zero");
+    if (status != DATA_BIND_OK) goto fail;
+  }
+
+  cmeta_status_value = cmeta_collector_finish(&collector);
+  collector_live = 0;
+  scratch->offset = mark;
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical collection collector could not commit");
+  return DATA_BIND_OK;
+
+fail:
+  if (collector_live) cmeta_collector_abort(&collector);
+  scratch->offset = mark;
+  return status;
+}
+
+static DataBindStatus native_decode_map(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *opener) {
+  const cmeta_data_desc *key_data = cmeta_data_map_key_data(data);
+  const cmeta_data_desc *value_data = cmeta_data_map_value_data(data);
+  cmeta_collector collector = {0};
+  cserde_token key_token;
+  cserde_token value_token;
+  cmeta_status cmeta_status_value;
+  DataBindStatus status;
+  size_t mark = scratch->offset;
+  int collector_live = 0;
+
+  if (opener == NULL || opener->kind != CSERDE_MAP_BEGIN)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                       CSERDE_OK, path,
+                       "Expected map token for canonical native map");
+  if (key_data == NULL || value_data == NULL ||
+      key_data->storage_type == NULL || value_data->storage_type == NULL)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                       path, "Canonical map has no static key/value data");
+
+  cmeta_status_value = cmeta_data_map_collector(
+      data, storage, decode->options->max_items, &collector);
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical map collector is unavailable");
+  cmeta_status_value = cmeta_collector_begin(&collector);
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical map collector could not begin");
+  collector_live = 1;
+
+  for (;;) {
+    void *key_storage;
+    void *value_storage;
+    size_t entry_mark;
+    size_t value_mark;
+    DataBindStatus key_cleanup;
+    DataBindStatus value_cleanup;
+
+    status = native_next(decode, &key_token, path);
+    if (status != DATA_BIND_OK) goto fail;
+    if (key_token.kind == CSERDE_MAP_END) break;
+
+    entry_mark = scratch->offset;
+    key_storage = native_arena_alloc(
+        scratch, key_data->storage_type->size, key_data->storage_type->align);
+    if (key_storage == NULL) {
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+          "Workspace cannot hold canonical map key temporary");
+      goto fail;
+    }
+    status = native_init_value(
+        decode->diagnostic, key_data, key_storage, path);
+    if (status != DATA_BIND_OK) {
+      scratch->offset = entry_mark;
+      goto fail;
+    }
+    status = native_decode_value_from_token(
+        decode, key_data, key_storage, depth + 1u, path, scratch, &key_token);
+    if (status != DATA_BIND_OK) {
+      (void)native_restore_value(key_data, key_storage);
+      scratch->offset = entry_mark;
+      goto fail;
+    }
+
+    status = native_next(decode, &value_token, path);
+    if (status != DATA_BIND_OK) {
+      (void)native_restore_value(key_data, key_storage);
+      scratch->offset = entry_mark;
+      goto fail;
+    }
+    if (value_token.kind == CSERDE_MAP_END) {
+      (void)native_restore_value(key_data, key_storage);
+      scratch->offset = entry_mark;
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_PARSE, CSERDE_OK, path,
+          "Canonical map key is missing a value");
+      goto fail;
+    }
+
+    value_mark = scratch->offset;
+    value_storage = native_arena_alloc(
+        scratch, value_data->storage_type->size,
+        value_data->storage_type->align);
+    if (value_storage == NULL) {
+      (void)native_restore_value(key_data, key_storage);
+      scratch->offset = entry_mark;
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+          "Workspace cannot hold canonical map value temporary");
+      goto fail;
+    }
+    status = native_init_value(
+        decode->diagnostic, value_data, value_storage, path);
+    if (status != DATA_BIND_OK) {
+      (void)native_restore_value(key_data, key_storage);
+      scratch->offset = entry_mark;
+      goto fail;
+    }
+
+    status = native_decode_value_from_token(
+        decode, value_data, value_storage, depth + 1u, path, scratch,
+        &value_token);
+    if (status == DATA_BIND_OK) {
+      cmeta_status_value = cmeta_data_map_accept(
+          data, &collector, key_data, key_storage,
+          value_data, value_storage);
+      if (cmeta_status_value != CMETA_OK)
+        status = native_cmeta_provider_failure(
+            decode->diagnostic, cmeta_status_value, path,
+            "Canonical map rejected decoded entry");
+    }
+
+    value_cleanup = native_restore_value(value_data, value_storage);
+    scratch->offset = value_mark;
+    key_cleanup = native_restore_value(key_data, key_storage);
+    scratch->offset = entry_mark;
+    if ((value_cleanup != DATA_BIND_OK || key_cleanup != DATA_BIND_OK) &&
+        status == DATA_BIND_OK)
+      status = native_fail(
+          decode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Map entry temporary did not restore semantic zero");
+    if (status != DATA_BIND_OK) goto fail;
+  }
+
+  cmeta_status_value = cmeta_collector_finish(&collector);
+  collector_live = 0;
+  scratch->offset = mark;
+  if (cmeta_status_value != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, cmeta_status_value, path,
+        "Canonical map collector could not commit");
+  return DATA_BIND_OK;
+
+fail:
+  if (collector_live) cmeta_collector_abort(&collector);
+  scratch->offset = mark;
+  return status;
+}
+
 static DataBindStatus native_decode_value_admitted(
     NativeDecode *decode, const cmeta_data_desc *data, void *storage,
     size_t depth, const char *path, NativeArena *scratch,
@@ -848,6 +1379,14 @@ static DataBindStatus native_decode_value_admitted(
 
   if (data->kind == CMETA_DATA_STRUCT)
     return native_decode_struct(
+        decode, data, storage, depth, path, scratch, token);
+
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
+    return native_decode_collection(
+        decode, data, storage, depth, path, scratch, token);
+
+  if (data->kind == CMETA_DATA_MAP)
+    return native_decode_map(
         decode, data, storage, depth, path, scratch, token);
 
   if (native_scalar_supported(data))
@@ -940,20 +1479,6 @@ DataBindStatus data_bind_native_probe_workspace_size(
   return DATA_BIND_OK;
 }
 
-/* Use an LCM rather than assuming canonical storage alignment is a power of 2.
- * The existing canonical descriptor validator only requires nonzero alignment. */
-static int native_common_alignment(size_t left, size_t right, size_t *out) {
-  size_t a = left;
-  size_t b = right;
-  if (a == 0u || b == 0u) return 0;
-  while (b != 0u) {
-    size_t remainder = a % b;
-    a = b;
-    b = remainder;
-  }
-  return native_size_mul(left / a, right, out);
-}
-
 DataBindStatus data_bind_native_measure(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     DataBindNativeRequirements *requirements,
@@ -961,7 +1486,8 @@ DataBindStatus data_bind_native_measure(
   DataBindNativeRequirements measured = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
   NativeArena arena;
   NativePlan plan;
-  size_t padding;
+  size_t offset;
+  size_t aligned;
   const char *root_path;
   DataBindStatus status;
 
@@ -1021,6 +1547,8 @@ DataBindStatus data_bind_native_measure(
                        "Workspace cannot hold descriptor traversal state");
   status = native_preflight(&plan, shape, 1u, 0u, root_path);
   if (status != DATA_BIND_OK) return status;
+  status = native_measure_scratch(&plan, shape, 0u, root_path);
+  if (status != DATA_BIND_OK) return status;
 
   measured.staging_bytes = shape->storage_type->size;
   measured.field_tracking_bytes = plan.seen_peak;
@@ -1028,16 +1556,18 @@ DataBindStatus data_bind_native_measure(
   measured.descriptor_nodes = plan.nodes;
   measured.container_depth = plan.container_depth;
   measured.lifecycle_bytes = measured.traversal_bytes;
-  padding = measured.staging_bytes % _Alignof(const cmeta_data_desc *);
-  if (padding != 0u) padding = _Alignof(const cmeta_data_desc *) - padding;
-  if (!native_common_alignment(shape->storage_type->align,
-                               _Alignof(const cmeta_data_desc *),
-                               &measured.workspace_alignment) ||
-      !native_size_add(measured.staging_bytes, padding, &measured.decode_bytes) ||
-      !native_size_add(measured.decode_bytes, measured.traversal_bytes,
-                       &measured.decode_bytes) ||
-      !native_size_add(measured.decode_bytes, measured.field_tracking_bytes,
-                       &measured.decode_bytes))
+
+  if (!native_alignment_lcm(plan.scratch_alignment,
+                            _Alignof(const cmeta_data_desc *),
+                            &measured.workspace_alignment))
+    return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+                       "Native workspace alignment overflow");
+
+  offset = measured.staging_bytes;
+  if (!native_align_size(offset, _Alignof(const cmeta_data_desc *), &aligned) ||
+      !native_size_add(aligned, measured.traversal_bytes, &offset) ||
+      !native_align_size(offset, plan.scratch_alignment, &aligned) ||
+      !native_size_add(aligned, plan.scratch_peak, &measured.decode_bytes))
     return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
                        "Native measured workspace size overflow");
   /* Preserve a caller's larger size header for forward-compatible records. */
@@ -1262,9 +1792,12 @@ static DataBindStatus native_decode_bounded(
   plan.ancestors = ancestors;
   status = native_preflight(&plan, shape, 1u, 0u, root_path);
   if (status != DATA_BIND_OK) return status;
-  if (plan.seen_peak > arena.size - arena.offset)
+  status = native_measure_scratch(&plan, shape, 0u, root_path);
+  if (status != DATA_BIND_OK) return status;
+  if (native_arena_alloc(&arena, 0u, plan.scratch_alignment) == NULL ||
+      plan.scratch_peak > arena.size - arena.offset)
     return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
-                       "Workspace cannot hold Struct field tracking");
+                       "Workspace cannot hold recursive native container scratch");
   scratch_offset = arena.offset;
 
   if (!native_value_is_zero(shape, destination))
@@ -1533,6 +2066,118 @@ static DataBindStatus native_encode_value(
     NativeEncode *encode, const cmeta_data_desc *data,
     const void *source, size_t depth, const char *path);
 
+static DataBindStatus native_encode_collection(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path) {
+  const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+  cmeta_data_collection_borrow_cursor cursor = {0};
+  cserde_token token = {.kind = CSERDE_ARRAY_BEGIN};
+  cmeta_status provider_status;
+  DataBindStatus status;
+
+  provider_status = cmeta_data_collection_borrow_begin(
+      data, source, &cursor);
+  if (provider_status != CMETA_OK)
+    return native_cmeta_provider_failure(
+        encode->diagnostic, provider_status, path,
+        "Canonical collection borrow could not begin");
+  if (element == NULL || cursor.element == NULL ||
+      !cmeta_data_desc_equal(element, cursor.element))
+    return native_fail(
+        encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+        "Canonical collection runtime element disagrees with static metadata");
+
+  status = native_write(encode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+
+  for (;;) {
+    const void *value = NULL;
+    cmeta_gen_status generated =
+        cmeta_data_collection_borrow_next(&cursor, &value);
+    if (generated == CMETA_GEN_DONE) break;
+    if (generated == CMETA_GEN_MUTATED)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical collection mutated during encode");
+    if (generated != CMETA_GEN_VALUE &&
+        generated != CMETA_GEN_VALUE_AND_DONE)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical collection borrow cursor failed");
+    if (value == NULL)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical collection returned a null element");
+
+    status = native_encode_value(
+        encode, element, value, depth + 1u, path);
+    if (status != DATA_BIND_OK) return status;
+    if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+  }
+
+  token = (cserde_token){.kind = CSERDE_ARRAY_END};
+  return native_write(encode, &token, path);
+}
+
+static DataBindStatus native_encode_map(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path) {
+  const cmeta_data_desc *key_data = cmeta_data_map_key_data(data);
+  const cmeta_data_desc *value_data = cmeta_data_map_value_data(data);
+  cmeta_data_map_borrow_cursor cursor = {0};
+  cserde_token token = {.kind = CSERDE_MAP_BEGIN};
+  cmeta_status provider_status;
+  DataBindStatus status;
+
+  provider_status = cmeta_data_map_borrow_begin(data, source, &cursor);
+  if (provider_status != CMETA_OK)
+    return native_cmeta_provider_failure(
+        encode->diagnostic, provider_status, path,
+        "Canonical map borrow could not begin");
+  if (key_data == NULL || value_data == NULL ||
+      cursor.key == NULL || cursor.value == NULL ||
+      !cmeta_data_desc_equal(key_data, cursor.key) ||
+      !cmeta_data_desc_equal(value_data, cursor.value))
+    return native_fail(
+        encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+        "Canonical map runtime members disagree with static metadata");
+
+  status = native_write(encode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+
+  for (;;) {
+    const void *key = NULL;
+    const void *value = NULL;
+    cmeta_gen_status generated =
+        cmeta_data_map_borrow_next(&cursor, &key, &value);
+    if (generated == CMETA_GEN_DONE) break;
+    if (generated == CMETA_GEN_MUTATED)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical map mutated during encode");
+    if (generated != CMETA_GEN_VALUE &&
+        generated != CMETA_GEN_VALUE_AND_DONE)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical map borrow cursor failed");
+    if (key == NULL || value == NULL)
+      return native_fail(
+          encode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, path,
+          "Canonical map returned a null key/value");
+
+    status = native_encode_value(
+        encode, key_data, key, depth + 1u, path);
+    if (status != DATA_BIND_OK) return status;
+    status = native_encode_value(
+        encode, value_data, value, depth + 1u, path);
+    if (status != DATA_BIND_OK) return status;
+    if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+  }
+
+  token = (cserde_token){.kind = CSERDE_MAP_END};
+  return native_write(encode, &token, path);
+}
+
 static DataBindStatus native_encode_struct(
     NativeEncode *encode, const cmeta_data_desc *data,
     const void *source, size_t depth, const char *path) {
@@ -1587,6 +2232,12 @@ static DataBindStatus native_encode_value(
 
   if (data->kind == CMETA_DATA_STRUCT)
     return native_encode_struct(encode, data, source, depth, path);
+
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
+    return native_encode_collection(encode, data, source, depth, path);
+
+  if (data->kind == CMETA_DATA_MAP)
+    return native_encode_map(encode, data, source, depth, path);
 
   if (native_scalar_supported(data)) {
     if (!native_scalar_token(data, source, &token))
