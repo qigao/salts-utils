@@ -370,6 +370,43 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("projects list<string> through import-safe Salts 1.7.7 typed Vec metadata") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "StringListStorage");
+        field = field_projection_add_field(
+            record, "StringListStorage", "value", "list");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "string")), 0);
+
+        tbe_compiler_annotate_language_types(root);
+
+        check_not_null(field_projection_child(field, "native_cstl_container"));
+        check_not_null(field_projection_child(
+            field, "native_cstl_explicit_metadata"));
+        check_equal(field_projection_text(field, "native_cstl_kind"), "Vec");
+        check_equal(field_projection_text(field, "native_element_type_ref"),
+                    "SALTS_TSTR_CMETA_TYPE_REF");
+        check_equal(field_projection_text(field, "native_element_data_ref"),
+                    "SALTS_TSTR_CMETA_DATA_REF");
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "collection_provider");
+        check_not_null(field_projection_child(
+            record, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+
+        node_free(root);
+    }
+
     it("keeps optional containers deferred to the container provider boundary") {
         Node *root = create_node_map("root");
         Node *record;
