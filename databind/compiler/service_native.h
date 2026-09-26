@@ -19,10 +19,18 @@ typedef struct databind_compiler_service_native_state {
   unsigned bit;
 } databind_compiler_service_native_state;
 
+typedef struct databind_compiler_service_native_error_field {
+  char *member_name;
+  char *native_data_symbol;
+  int owned_lifecycle;
+} databind_compiler_service_native_error_field;
+
 typedef struct databind_compiler_service_native_error {
   char *type_name;
   char *type_identity;
   unsigned kind_value;
+  databind_compiler_service_native_error_field *fields;
+  size_t field_count;
 } databind_compiler_service_native_error;
 
 
