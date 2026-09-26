@@ -2,7 +2,7 @@
 
 Versioned prebuilt Release SDKs for qigao/salts-utils.
 
-Package version `4.0.0` is built against and depends on `Salts.Native 1.7.7`.
+Package version `4.0.0` is built against and depends on `Salts.Native 1.7.8`.
 The re2c host generator is a build-time tool and is not a runtime dependency of this package.
 
 ## Layout
@@ -15,11 +15,11 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.
 
-Consumers restore `SaltsUtils.Native 4.0.0` and its exact `Salts.Native 1.7.7` dependency,
+Consumers restore `SaltsUtils.Native 4.0.0` and its exact `Salts.Native 1.7.8` dependency,
 then set `SALTS_ROOT` to the matching Salts SDK and point CMake at the matching
 SaltsUtils SDK:
 
-    export SALTS_ROOT=<nuget>/salts.native/1.7.7/sdk/linux-x64
+    export SALTS_ROOT=<nuget>/salts.native/1.7.8/sdk/linux-x64
     export SALTS_UTILS_ROOT=<nuget>/saltsutils.native/4.0.0/sdk/linux-x64
 
     find_package(SaltsUtils CONFIG REQUIRED PATHS "$ENV{SALTS_UTILS_ROOT}" NO_DEFAULT_PATH)
