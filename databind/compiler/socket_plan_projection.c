@@ -1,6 +1,7 @@
 #include "socket_plan_projection.h"
 
 #include "binary_layout_ir.h"
+#include "message_native.h"
 
 #include "salts_fs.h"
 #include "salts_uuid.h"
@@ -60,6 +61,24 @@ static int socket_identifier_valid(const char *text) {
   return 1;
 }
 
+static int socket_include_valid(const char *text) {
+  size_t i;
+  size_t length;
+  if (text == NULL || text[0] == '\0' ||
+      strcmp(text, ".") == 0 || strcmp(text, "..") == 0)
+    return 0;
+  length = strlen(text);
+  for (i = 0u; i < length; ++i) {
+    unsigned char ch = (unsigned char)text[i];
+    if (!((ch >= 'A' && ch <= 'Z') ||
+          (ch >= 'a' && ch <= 'z') ||
+          (ch >= '0' && ch <= '9') ||
+          ch == '_' || ch == '-' || ch == '.'))
+      return 0;
+  }
+  return length > 2u && strcmp(text + length - 2u, ".h") == 0;
+}
+
 static int socket_c_string(FILE *file, const char *text) {
   const unsigned char *p = (const unsigned char *)text;
   if (file == NULL || text == NULL || fputc('"', file) == EOF) return -1;
@@ -114,6 +133,7 @@ static int socket_config_valid(
   if (config == NULL ||
       !socket_identifier_valid(config->symbol_prefix) ||
       config->channel_name == NULL || config->channel_name[0] == '\0' ||
+      !socket_include_valid(config->native_header) ||
       socket_format_name(config->format) == NULL ||
       socket_mode_name(config->mode) == NULL ||
       socket_framing_name(config->framing) == NULL ||
@@ -201,9 +221,12 @@ static int socket_generate(
           : NULL;
   const Node *channel;
   const char *message_type;
+  databind_compiler_message_native_binding native = {0};
+  char message_symbol[640];
   char *temp = NULL;
   FILE *file = NULL;
   int ok = 0;
+  int result = -1;
   (void)context;
 
   if (root == NULL || request == NULL || request->output == NULL ||
@@ -215,40 +238,60 @@ static int socket_generate(
   channel = socket_find_channel(root, config->channel_name);
   if (channel == NULL) return -1;
   message_type = socket_string(channel, "message_type");
-  if (!socket_format_representable(root, message_type, config->format))
-    return -1;
+  if (!socket_format_representable(root, message_type, config->format) ||
+      databind_compiler_message_native_build(
+          root, message_type, &native) != 0 ||
+      snprintf(
+          message_symbol, sizeof(message_symbol),
+          "%s__socket_message", config->symbol_prefix) <= 0 ||
+      strlen(message_symbol) + 1u > sizeof(message_symbol))
+    goto cleanup;
 
   if (socket_open_atomic(request->output, &temp, &file) != 0)
-    return -1;
+    goto cleanup;
 
-  if (fprintf(file,
-              "#ifndef DATABIND_GENERATED_%s_SOCKET_PLAN_H\n"
-              "#define DATABIND_GENERATED_%s_SOCKET_PLAN_H\n\n"
-              "#include <data_bind_socket_plan.h>\n\n"
-              "static const DataBindSocketPlan %s_socket_plan = {\n"
-              "  sizeof(DataBindSocketPlan), DATA_BIND_SOCKET_PLAN_ABI_VERSION,\n"
-              "  ",
-              config->symbol_prefix,
-              config->symbol_prefix,
-              config->symbol_prefix) < 0 ||
+  if (fprintf(
+          file,
+          "#ifndef DATABIND_GENERATED_%s_SOCKET_PLAN_H\n"
+          "#define DATABIND_GENERATED_%s_SOCKET_PLAN_H\n\n"
+          "#include <data_bind_socket_plan.h>\n"
+          "#include \"%s\"\n\n",
+          config->symbol_prefix,
+          config->symbol_prefix,
+          config->native_header) < 0 ||
+      databind_compiler_message_native_emit_binding(
+          file, &native, message_symbol) != 0 ||
+      fprintf(
+          file,
+          "\nstatic const DataBindSocketPlan %s_socket_plan = {\n"
+          "  sizeof(DataBindSocketPlan), DATA_BIND_SOCKET_PLAN_ABI_VERSION,\n"
+          "  ",
+          config->symbol_prefix) < 0 ||
       socket_c_string(file, config->channel_name) != 0 ||
       fputs(",\n  ", file) == EOF ||
       socket_c_string(file, message_type) != 0 ||
-      fprintf(file,
-              ",\n  %s, %s, %s, %zuu\n"
-              "};\n\n"
-              "#endif /* DATABIND_GENERATED_%s_SOCKET_PLAN_H */\n",
-              socket_format_name(config->format),
-              socket_mode_name(config->mode),
-              socket_framing_name(config->framing),
-              config->max_frame_bytes,
-              config->symbol_prefix) < 0)
+      fprintf(
+          file,
+          ",\n  %s, %s, %s, %zuu,\n"
+          "  %s__databind_message_native_binding\n"
+          "};\n\n"
+          "#endif /* DATABIND_GENERATED_%s_SOCKET_PLAN_H */\n",
+          socket_format_name(config->format),
+          socket_mode_name(config->mode),
+          socket_framing_name(config->framing),
+          config->max_frame_bytes,
+          message_symbol,
+          config->symbol_prefix) < 0)
     goto cleanup;
 
   ok = 1;
 
 cleanup:
-  return socket_commit_atomic(request->output, temp, file, ok);
+  if (file != NULL || temp != NULL)
+    result = socket_commit_atomic(
+        request->output, temp, file, ok);
+  databind_compiler_message_native_destroy(&native);
+  return ok ? result : -1;
 }
 
 databind_compiler_projection_backend
