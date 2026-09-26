@@ -34,6 +34,9 @@ static const cmeta_type_desc ADD_RESPONSE_TYPE = {
 static const cmeta_type_desc ADD_REQUEST_PTR_TYPE = {
     "const AddRequest *", sizeof(AddRequest *), _Alignof(AddRequest *),
     CMETA_T_POINTER, &ADD_REQUEST_TYPE, NULL, NULL};
+static const cmeta_type_desc ADD_REQUEST_RECEIVER_PTR_TYPE = {
+    "AddRequest *", sizeof(AddRequest *), _Alignof(AddRequest *),
+    CMETA_T_POINTER, &ADD_REQUEST_TYPE, NULL, NULL};
 static const cmeta_type_desc ADD_RESPONSE_PTR_TYPE = {
     "AddResponse *", sizeof(AddResponse *), _Alignof(AddResponse *),
     CMETA_T_POINTER, &ADD_RESPONSE_TYPE, NULL, NULL};
@@ -115,6 +118,15 @@ static const DataBindNativeTypeBinding ADD_RESPONSE_NATIVE = {
 
 FunctionDeclAs(
     value, int, &cmeta_type_int, calc_add_root,
+    (const AddRequest *, request,
+     CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE),
+    (AddResponse *, response, CMETA_PARAM_OUT, &ADD_RESPONSE_PTR_TYPE));
+
+FunctionDeclAs(
+    value, int, &cmeta_type_int, calc_add_receiver_root,
+    (AddRequest *, self,
+     CMETA_PARAM_IN | CMETA_PARAM_BORROWED | CMETA_PARAM_RECEIVER,
+     &ADD_REQUEST_RECEIVER_PTR_TYPE),
     (const AddRequest *, request,
      CMETA_PARAM_IN | CMETA_PARAM_BORROWED, &ADD_REQUEST_PTR_TYPE),
     (AddResponse *, response, CMETA_PARAM_OUT, &ADD_RESPONSE_PTR_TYPE));
@@ -879,6 +891,56 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_binding_plan_free(mqtt_plan);
     data_bind_binding_plan_free(rpc_plan);
     data_bind_binding_plan_free(http_plan);
+    data_bind_free(codec);
+  }
+
+  it("treats a reflected receiver as invocation context, not schema storage") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection http =
+        projection("http-receiver-v1", &scratch, http_project);
+    const cmeta_function_desc *function = FunctionMeta(calc_add_receiver_root);
+    DataBindServiceNativeBinding native = native_binding(function);
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    DataBindBindingPlanEntry entry = DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    const cmeta_param_desc *receiver = cmeta_function_receiver(function);
+    size_t i;
+
+    check_not_null(receiver);
+    check_true(receiver == cmeta_function_param(function, 0u));
+    check_equal(receiver->name, "self");
+    check_true((receiver->flags & CMETA_PARAM_RECEIVER) != 0u);
+    check_true(cmeta_type_equal(
+        receiver->type->pointee, &ADD_REQUEST_TYPE));
+
+    /*
+     * Receiver and request deliberately share AddRequest as their pointee.
+     * Without receiver exclusion, root-type inference is ambiguous.
+     */
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &http, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    check_true(data_bind_binding_plan_function(plan) == function);
+    check_equal(data_bind_binding_plan_ingress_count(plan), (size_t)3u);
+    check_equal(data_bind_binding_plan_egress_count(plan), (size_t)1u);
+
+    for (i = 0u; i < data_bind_binding_plan_ingress_count(plan); ++i) {
+      entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+      check_true(data_bind_binding_plan_ingress_at(plan, i, &entry) == 1);
+      check_equal(entry.function_param_index, (size_t)1u);
+      check_true(entry.function_param_index != 0u);
+    }
+
+    entry = (DataBindBindingPlanEntry)DATA_BIND_BINDING_PLAN_ENTRY_INIT;
+    check_true(data_bind_binding_plan_egress_at(plan, 0u, &entry) == 1);
+    check_equal(entry.function_param_index, (size_t)2u);
+    check_true(entry.function_param_index != 0u);
+
+    data_bind_binding_plan_free(plan);
     data_bind_free(codec);
   }
 
