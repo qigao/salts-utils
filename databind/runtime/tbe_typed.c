@@ -1112,6 +1112,40 @@ static int typed_native_scalar_supported(const cmeta_data_desc *data) {
          salts_uuid_cmeta_data_valid(data) || data->kind == CMETA_DATA_BYTES;
 }
 
+static int typed_native_collection_supported(
+    const cmeta_data_desc *data, const TbeTypedField *wire) {
+  const cmeta_data_collection_ops *ops;
+  const cmeta_data_collection_borrow_ops *borrow;
+  const cmeta_data_desc *element;
+
+  if (data == NULL || wire == NULL ||
+      (data->kind != CMETA_DATA_SEQUENCE && data->kind != CMETA_DATA_SET) ||
+      (wire->kind != TBE_TYPED_LIST && wire->kind != TBE_TYPED_SET) ||
+      (data->kind == CMETA_DATA_SEQUENCE && wire->kind != TBE_TYPED_LIST) ||
+      (data->kind == CMETA_DATA_SET && wire->kind != TBE_TYPED_SET))
+    return 0;
+
+  ops = cmeta_data_collection_ops_of(data);
+  element = cmeta_data_collection_element_data(data);
+  if (ops == NULL || element == NULL || element->storage_type == NULL ||
+      !cmeta_data_desc_valid(element) ||
+      !cmeta_type_desc_valid(element->storage_type) ||
+      cmeta_data_construct_ops_of(data) == NULL ||
+      !cmeta_data_value_move_supported(data) ||
+      wire->element_size != element->storage_type->size ||
+      !typed_native_scalar_supported(element))
+    return 0;
+
+  if (ops->collector == NULL || ops->borrow == NULL)
+    return 0;
+  borrow = ops->borrow;
+  return borrow->struct_size >=
+             offsetof(cmeta_data_collection_borrow_ops, next) +
+                 sizeof(borrow->next) &&
+         borrow->abi_version == CMETA_DATA_COLLECTION_BORROW_OPS_ABI_VERSION &&
+         borrow->next != NULL;
+}
+
 static DataBindStatus typed_native_path(char *out, size_t capacity, const char *parent,
                                         const char *field, DataBindError *error) {
   int written;
@@ -1202,6 +1236,11 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
       status = typed_native_record_preflight(value, wire_field->nested_overlay, ancestors,
                                              depth + 1u, field_path, NULL, error);
       if (status != DATA_BIND_OK) return status;
+    } else if (value->kind == CMETA_DATA_SEQUENCE ||
+               value->kind == CMETA_DATA_SET) {
+      if (!typed_native_collection_supported(value, wire_field))
+        return typed_error(error, DATA_BIND_ERR_SCHEMA, field_path,
+                           "Canonical collection provider is incomplete");
     } else {
       size_t fixed_extent;
       if (!cmeta_data_desc_valid(value) || !typed_native_scalar_supported(value))
