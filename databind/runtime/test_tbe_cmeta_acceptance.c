@@ -272,9 +272,7 @@ suite("real generated and runtime CMeta acceptance") {
     typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
     static const struct { const char *record; size_t index; cmeta_data_kind kind; const char *path; const char *id; Getter get; } cases[] = {
       {"Unsupported", 1, CMETA_DATA_STRING, "Unsupported.bad", NULL, Unsupported_cmeta_data},
-      {"BytesStorage", 0, CMETA_DATA_BYTES, "BytesStorage.value", NULL, BytesStorage_cmeta_data},
-      {"ListStorage", 0, CMETA_DATA_SEQUENCE, "ListStorage.value", "cmeta.data.sequence", ListStorage_cmeta_data},
-      {"SetStorage", 0, CMETA_DATA_SET, "SetStorage.value", "cmeta.data.set", SetStorage_cmeta_data}
+      {"BytesStorage", 0, CMETA_DATA_BYTES, "BytesStorage.value", NULL, BytesStorage_cmeta_data}
     };
     DataBind *codec = acceptance_codec();
     size_t i;
@@ -305,6 +303,47 @@ suite("real generated and runtime CMeta acceptance") {
       check_equal(again.path, error.path);
       check_equal(again.message, error.message);
     }
+    data_bind_free(codec);
+  }
+
+  it("publishes generated list and set through canonical CSTL CMeta providers") {
+    static const struct {
+      const char *record;
+      cmeta_data_kind kind;
+      DataBindStatus (*get)(const cmeta_data_desc **, DataBindError *);
+    } cases[] = {
+      {"ListStorage", CMETA_DATA_SEQUENCE, ListStorage_cmeta_data},
+      {"SetStorage", CMETA_DATA_SET, SetStorage_cmeta_data},
+      {"StringListStorage", CMETA_DATA_SEQUENCE, StringListStorage_cmeta_data}
+    };
+    DataBind *codec = acceptance_codec();
+    size_t i;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      const cmeta_data_desc *out = NULL;
+      const cmeta_data_desc *element;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
+
+      check(data_bind_schema_field_at(codec, cases[i].record, 0u, &field));
+      check_equal(field.cmeta_kind, cases[i].kind);
+      check_equal(cases[i].get(&out, &error), DATA_BIND_OK);
+      check_not_null(out);
+      if (out == NULL) continue;
+      check_true(cmeta_data_desc_valid(out));
+      check_equal(out->kind, cases[i].kind);
+      check_not_null(out->storage_type);
+      element = cmeta_data_collection_element_data(out);
+      check_not_null(element);
+      if (element != NULL) {
+        check_not_null(element->storage_type);
+        check_true(cmeta_type_desc_valid(element->storage_type));
+      }
+    }
+
     data_bind_free(codec);
   }
 
