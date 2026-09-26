@@ -824,12 +824,18 @@ static int plugin_write_client_source(
               "    return SALTS_PLUGIN_INVALID_STATE;\n"
               "  params[0] = (void *)request;\n"
               "  params[1] = response;\n"
+              "  %s__error_init(&local_error);\n"
               "  params[2] = &local_error;\n"
               "  if (!entry->value.function.invoke(\n"
               "          entry->value.function.context, &result,\n"
-              "          params, 3u))\n"
+              "          params, 3u)) {\n"
+              "    (void)%s__error_clear(&local_error);\n"
               "    return SALTS_PLUGIN_INVALID_STATE;\n"
-              "  *typed_error = local_error;\n"
+              "  }\n"
+              "  if (%s__error_move(typed_error, &local_error) != DATA_BIND_OK) {\n"
+              "    (void)%s__error_clear(&local_error);\n"
+              "    return SALTS_PLUGIN_INVALID_STATE;\n"
+              "  }\n"
               "  *native_status = result;\n"
               "  return SALTS_PLUGIN_OK;\n"
               "}\n\n",
@@ -837,6 +843,10 @@ static int plugin_write_client_source(
               client_symbol,
               operation->request_type,
               operation->response_type,
+              operation->symbol,
+              operation->symbol,
+              operation->symbol,
+              operation->symbol,
               operation->symbol,
               operation->symbol,
               operation->symbol,
