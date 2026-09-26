@@ -175,14 +175,14 @@ int main(void) {
     if (failed) return 29;
   }
   {
-    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
-    const cmeta_data_desc *fixed = descriptor ? descriptor->native_data : NULL;
-    const cmeta_data_struct_shape *shape =
-        fixed ? (const cmeta_data_struct_shape *)fixed->shape : NULL;
+    const cmeta_data_desc *fixed = NULL;
+    const cmeta_data_struct_shape *shape;
     size_t extent = 0u;
-    if (descriptor == NULL ||
-        tbe_typed_descriptor_validate(descriptor, &error) != DATA_BIND_OK ||
-        shape == NULL || shape->field_count != 3u)
+    if (FixedValues_cmeta_data(&fixed, &error) != DATA_BIND_OK ||
+        fixed == NULL)
+      return 26;
+    shape = (const cmeta_data_struct_shape *)fixed->shape;
+    if (shape == NULL || shape->field_count != 3u)
       return 26;
     if (shape->fields[0].value->kind != CMETA_DATA_BOOL ||
         shape->fields[0].value->storage_type->size !=
@@ -192,7 +192,9 @@ int main(void) {
         shape->fields[2].value->storage_type->size !=
             sizeof(((FixedValues_t *)0)->digest) ||
         cmeta_data_fixed_extent(shape->fields[2].value, &extent) != CMETA_OK ||
-        extent != sizeof(((FixedValues_t *)0)->digest))
+        extent != sizeof(((FixedValues_t *)0)->digest) ||
+        cmeta_data_value_move_supported(shape->fields[2].value) ||
+        cmeta_data_struct_constructible(fixed))
       return 27;
   }
   {
