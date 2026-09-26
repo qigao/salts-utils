@@ -300,6 +300,31 @@ static DataBindStatus message_compile_default_token(
     DataBindMessageFieldPlan *field,
     DataBindMessagePlanDiagnostic *diagnostic);
 
+static int message_logical_buffer_matches_native(
+    const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data) {
+  const cmeta_data_buffer_ops *ops;
+  const cmeta_data_buffer_shape *shape;
+
+  if (schema_field == NULL || native_data == NULL ||
+      !schema_field->has_cmeta_kind ||
+      (schema_field->cmeta_kind != CMETA_DATA_STRING &&
+       schema_field->cmeta_kind != CMETA_DATA_BYTES) ||
+      native_data->kind != schema_field->cmeta_kind ||
+      native_data->storage_type == NULL ||
+      !cmeta_data_value_move_supported(native_data))
+    return 0;
+
+  ops = cmeta_data_buffer_ops_of(native_data);
+  shape = (const cmeta_data_buffer_shape *)native_data->shape;
+  return ops != NULL && shape != NULL &&
+         shape->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->init_zero != NULL &&
+         ops->restore_zero != NULL &&
+         ops->move != NULL;
+}
+
 static DataBindStatus message_compile_fields(
     DataBind *codec,
     const char *type_name,
@@ -358,19 +383,23 @@ static DataBindStatus message_compile_fields(
           schema_field.name != NULL ? schema_field.name : "");
 
     schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL &&
-        data_bind_schema_field_cmeta_data(
-            codec, type_name, i, &schema_data, &error) != DATA_BIND_OK)
+    if (schema_data == NULL)
+      (void)data_bind_schema_field_cmeta_data(
+          codec, type_name, i, &schema_data, &error);
+
+    if (schema_data != NULL) {
+      if (!message_data_semantically_equal(schema_data, native_field->value))
+        return message_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+            "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
+            type_name, schema_field.name != NULL ? schema_field.name : "");
+    } else if (!message_logical_buffer_matches_native(
+                   &schema_field, native_field->value)) {
       return message_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name,
-          "IDL field '%s.%s' has no canonical CMeta data mapping",
+          "IDL field '%s.%s' has no admitted canonical native mapping",
           type_name, schema_field.name != NULL ? schema_field.name : "");
-
-    if (!message_data_semantically_equal(schema_data, native_field->value))
-      return message_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
-          "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
-          type_name, schema_field.name != NULL ? schema_field.name : "");
+    }
 
     field->name = message_strdup(schema_field.name);
     field->data = native_field->value;
