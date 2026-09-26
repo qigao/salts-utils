@@ -38,12 +38,14 @@ add_executable(test_data_bind_native_reader_cpp native_reader_cpp_contract.cpp)
 add_executable(test_data_bind_native_lifecycle native_lifecycle_contract_test.c)
 add_executable(test_data_bind_native_enum native_enum_contract_test.c)
 add_executable(test_data_bind_native_writer native_writer_contract_test.c)
+add_executable(test_data_bind_native_container native_container_contract_test.c)
 foreach(target IN ITEMS
     test_data_bind_native_reader
     test_data_bind_native_reader_cpp
     test_data_bind_native_lifecycle
     test_data_bind_native_enum
-    test_data_bind_native_writer)
+    test_data_bind_native_writer
+    test_data_bind_native_container)
   target_link_libraries(${target} PRIVATE Salts::DataBindCore Salts::Core)
   set_target_properties(${target} PROPERTIES
     C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF
@@ -61,3 +63,5 @@ target_link_libraries(test_data_bind_native_reader PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_lifecycle PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_writer PRIVATE Salts::TinyTest)
+target_link_libraries(test_data_bind_native_container
+  PRIVATE Salts::TinyTest Salts::CSTL)
