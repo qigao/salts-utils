@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -218,6 +218,7 @@ cmake_add_test(test_databind_projection_frontend
     service_native.c
     plugin_projection.c
     method_plan_projection.c
+    socket_plan_projection.c
     binary_layout_ir.c
   LIBS
     Salts::DataBindSchema
