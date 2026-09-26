@@ -226,8 +226,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      id: vcpkg_cache
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - id: vcpkg_cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -326,8 +326,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      id: vcpkg_cache
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - id: vcpkg_cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -448,8 +448,8 @@ jobs:
           $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $env:RUNNER_TEMP "ccache.exe") --version
 
-      id: vcpkg_cache
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - id: vcpkg_cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
 
@@ -581,8 +581,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      id: vcpkg_cache
-      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+      - id: vcpkg_cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
       - uses: actions/setup-dotnet@v4
@@ -704,7 +704,88 @@ jobs:
             echo "==> $manifest"
             cat "$manifest"
             grep -Fx 'vcpkg_cache_contract=2' "$manifest"
-            grep -Eq '^vcpkg_cache_revision=[0-9a-f]{64}$' "$manifest"
+            grep -Eq '^vcpkg_cache_revision=[0-9a-f]{64}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Configure GitHub Packages source
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/nuget.config"
+          printf '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /></packageSources></configuration>\n' > "$config"
+          dotnet nuget add source https://nuget.pkg.github.com/qigao/index.json --name github --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --configfile "$config"
+          echo "NUGET_CONFIG=$config" >> "$GITHUB_ENV"
+      - name: Create NuGet package
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore packaging/nuget/SaltsUtils.Native.csproj --configfile "$NUGET_CONFIG" --packages "$RUNNER_TEMP/pack-nuget"
+          dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ needs.metadata.outputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
+          nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
+          test -f "$nupkg"
+          unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/bin/databindc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/DataBind.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          if grep -Fxq "sdk/macos-arm64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+            :
+          else
+            grep -Fx "sdk/macos-x64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-native-nuget
+          path: dist/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    name: Publish package and GitHub Release
+    if: needs.metadata.outputs.release == 'true'
+    needs: [metadata, pack]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: salts-utils-native-nuget
+          path: dist
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Publish to GitHub Packages
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          dotnet nuget add source --username qigao --password "$GITHUB_TOKEN" --store-password-in-clear-text --name github https://nuget.pkg.github.com/qigao/index.json
+          dotnet nuget push "dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg" --api-key "$GITHUB_TOKEN" --source github --skip-duplicate
+      - name: Create GitHub Release from version tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "$TAG"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists"
+            exit 0
+          fi
+          gh release create "$TAG" dist/*.nupkg --repo "$GITHUB_REPOSITORY" --verify-tag --title "SaltsUtils $VERSION" --generate-notes
+ "$manifest"
           done
           test "$(grep -h '^vcpkg_cache_contract=' "${manifests[@]}" | sort -u | wc -l)" -eq 1
           test "$(grep -h '^vcpkg_cache_revision=' "${manifests[@]}" | sort -u | wc -l)" -eq 1
