@@ -13,6 +13,7 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_OVERLAY_NULL,
     EXPECT_OVERLAY_PRESENCE_NULL,
     EXPECT_MAP_PROVIDER,
+    EXPECT_COLLECTION_PROVIDER,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -35,7 +36,8 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
       EXPECT_OVERLAY_PRESENCE_NULL },
     { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
       EXPECT_MAP_PROVIDER },
-    { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
+    { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE,
+      EXPECT_COLLECTION_PROVIDER },
 };
 
 static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
@@ -53,6 +55,8 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "overlay_presence_null";
         case EXPECT_MAP_PROVIDER:
             return "map_provider";
+        case EXPECT_COLLECTION_PROVIDER:
+            return "collection_provider";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -529,9 +533,8 @@ suite("compiler_cmeta_field_projection") {
 
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
-            "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
-            "OptionalStorage",
-            "UnsupportedNested", "Cycle"
+            "TextStorage", "BytesStorage", "FixedArrayStorage",
+            "OptionalStorage", "UnsupportedNested", "Cycle"
         };
         Node *root = create_node_map("root");
         Node *record;
@@ -694,6 +697,18 @@ suite("compiler_cmeta_field_projection") {
             "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "ListStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "SetStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "ListStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "SetStorage"),
             "cmeta_graph_supported"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "MapStorage"),

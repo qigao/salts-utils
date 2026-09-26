@@ -1577,6 +1577,214 @@ static json_value_t *typed_native_default_json(const cmeta_data_desc *data,
   return json_create_string(default_value);
 }
 
+static DataBindStatus typed_native_from_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *overlay, const json_value_t *value,
+    void *storage, const char *path,
+    int invalid_scalar_uses_default, DataBindError *error);
+
+static DataBindStatus typed_native_cmeta_status(
+    cmeta_status status, const char *path, const char *message,
+    DataBindError *error) {
+  if (status == CMETA_OK) return DATA_BIND_OK;
+  if (status == CMETA_OUT_OF_MEMORY)
+    return typed_error(error, DATA_BIND_ERR_OOM, path, message);
+  if (status == CMETA_CAPACITY_EXCEEDED)
+    return typed_error(error, DATA_BIND_ERR_LIMIT, path, message);
+  if (status == CMETA_TYPE_MISMATCH || status == CMETA_TRAIT_MISSING ||
+      status == CMETA_INVALID_ARGUMENT)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path, message);
+  return typed_error(error, DATA_BIND_ERR_RUNTIME, path, message);
+}
+
+static DataBindStatus typed_native_collection_from_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *element_overlay, const json_value_t *value,
+    void *storage, const char *path, int invalid_scalar_uses_default,
+    DataBindError *error) {
+  const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+  cmeta_collector collector = {0};
+  cmeta_status cmeta_status_value;
+  size_t i;
+  int collector_live = 0;
+  DataBindStatus status = DATA_BIND_OK;
+
+  if (json_type(value) != JSON_ARRAY)
+    return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                       "Expected schema collection array");
+  if (element == NULL || element->storage_type == NULL)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical collection has no static element metadata");
+
+  cmeta_status_value = cmeta_data_collection_collector(
+      data, storage, SIZE_MAX, &collector);
+  if (cmeta_status_value != CMETA_OK)
+    return typed_native_cmeta_status(
+        cmeta_status_value, path,
+        "Canonical collection collector is unavailable", error);
+  cmeta_status_value = cmeta_collector_begin(&collector);
+  if (cmeta_status_value != CMETA_OK)
+    return typed_native_cmeta_status(
+        cmeta_status_value, path,
+        "Canonical collection collector could not begin", error);
+  collector_live = 1;
+
+  for (i = 0u; i < json_array_size(value); ++i) {
+    void *temporary = calloc(1u, element->storage_type->size);
+    char item_path[sizeof(((DataBindError *)0)->path)];
+    int written;
+
+    if (temporary == NULL) {
+      status = typed_error(error, DATA_BIND_ERR_OOM, path,
+                           "Out of memory creating collection element");
+      goto done;
+    }
+    written = snprintf(item_path, sizeof(item_path), "%s[%zu]",
+                       path != NULL ? path : "", i);
+    if (written < 0 || (size_t)written >= sizeof(item_path)) {
+      free(temporary);
+      status = typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                           "Collection element path exceeds diagnostic capacity");
+      goto done;
+    }
+
+    status = typed_native_init_value(element, temporary, item_path, error);
+    if (status == DATA_BIND_OK)
+      status = typed_native_from_json(
+          codec, element, element_overlay, json_array_get(value, i),
+          temporary, item_path, invalid_scalar_uses_default, error);
+    if (status == DATA_BIND_OK) {
+      cmeta_status_value = cmeta_data_collection_accept(
+          data, &collector, element, temporary);
+      if (cmeta_status_value != CMETA_OK)
+        status = typed_native_cmeta_status(
+            cmeta_status_value, item_path,
+            "Canonical collection rejected decoded element", error);
+    }
+
+    (void)typed_native_clear_value(element, temporary, item_path, NULL);
+    free(temporary);
+    if (status != DATA_BIND_OK) goto done;
+  }
+
+  cmeta_status_value = cmeta_collector_finish(&collector);
+  collector_live = 0;
+  status = typed_native_cmeta_status(
+      cmeta_status_value, path,
+      "Canonical collection collector could not commit", error);
+
+done:
+  if (collector_live) cmeta_collector_abort(&collector);
+  return status;
+}
+
+static DataBindStatus typed_native_map_from_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *value_overlay, const json_value_t *value,
+    void *storage, const char *path, int invalid_scalar_uses_default,
+    DataBindError *error) {
+  const cmeta_data_desc *key_data = cmeta_data_map_key_data(data);
+  const cmeta_data_desc *value_data = cmeta_data_map_value_data(data);
+  cmeta_collector collector = {0};
+  cmeta_status cmeta_status_value;
+  size_t i;
+  int collector_live = 0;
+  DataBindStatus status = DATA_BIND_OK;
+
+  if (json_type(value) != JSON_OBJECT)
+    return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                       "Expected schema map object");
+  if (key_data == NULL || value_data == NULL ||
+      key_data->storage_type == NULL || value_data->storage_type == NULL ||
+      key_data->kind != CMETA_DATA_STRING)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical map has unsupported key/value metadata");
+
+  cmeta_status_value = cmeta_data_map_collector(
+      data, storage, SIZE_MAX, &collector);
+  if (cmeta_status_value != CMETA_OK)
+    return typed_native_cmeta_status(
+        cmeta_status_value, path,
+        "Canonical map collector is unavailable", error);
+  cmeta_status_value = cmeta_collector_begin(&collector);
+  if (cmeta_status_value != CMETA_OK)
+    return typed_native_cmeta_status(
+        cmeta_status_value, path,
+        "Canonical map collector could not begin", error);
+  collector_live = 1;
+
+  for (i = 0u; i < json_object_size(value); ++i) {
+    const char *key_text = json_object_key(value, i);
+    size_t key_length = json_object_key_len(value, i);
+    void *key_storage = calloc(1u, key_data->storage_type->size);
+    void *value_storage = calloc(1u, value_data->storage_type->size);
+    char item_path[sizeof(((DataBindError *)0)->path)];
+    int written;
+
+    if (key_storage == NULL || value_storage == NULL) {
+      free(key_storage);
+      free(value_storage);
+      status = typed_error(error, DATA_BIND_ERR_OOM, path,
+                           "Out of memory creating map entry");
+      goto done;
+    }
+    written = snprintf(item_path, sizeof(item_path), "%s.%.*s",
+                       path != NULL ? path : "", (int)key_length,
+                       key_text != NULL ? key_text : "");
+    if (written < 0 || (size_t)written >= sizeof(item_path)) {
+      free(key_storage);
+      free(value_storage);
+      status = typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                           "Map entry path exceeds diagnostic capacity");
+      goto done;
+    }
+
+    status = typed_native_init_value(key_data, key_storage, item_path, error);
+    if (status == DATA_BIND_OK)
+      status = typed_native_init_value(
+          value_data, value_storage, item_path, error);
+    if (status == DATA_BIND_OK) {
+      cmeta_status_value = cmeta_data_buffer_assign(
+          key_data, key_storage, (const unsigned char *)key_text,
+          key_length, key_length);
+      if (cmeta_status_value != CMETA_OK)
+        status = typed_native_cmeta_status(
+            cmeta_status_value, item_path,
+            "Canonical map key could not be assigned", error);
+    }
+    if (status == DATA_BIND_OK)
+      status = typed_native_from_json(
+          codec, value_data, value_overlay,
+          json_object_value(value, i), value_storage, item_path,
+          invalid_scalar_uses_default, error);
+    if (status == DATA_BIND_OK) {
+      cmeta_status_value = cmeta_data_map_accept(
+          data, &collector, key_data, key_storage,
+          value_data, value_storage);
+      if (cmeta_status_value != CMETA_OK)
+        status = typed_native_cmeta_status(
+            cmeta_status_value, item_path,
+            "Canonical map rejected decoded entry", error);
+    }
+
+    (void)typed_native_clear_value(value_data, value_storage, item_path, NULL);
+    (void)typed_native_clear_value(key_data, key_storage, item_path, NULL);
+    free(value_storage);
+    free(key_storage);
+    if (status != DATA_BIND_OK) goto done;
+  }
+
+  cmeta_status_value = cmeta_collector_finish(&collector);
+  collector_live = 0;
+  status = typed_native_cmeta_status(
+      cmeta_status_value, path,
+      "Canonical map collector could not commit", error);
+
+done:
+  if (collector_live) cmeta_collector_abort(&collector);
+  return status;
+}
+
 static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_desc *data,
                                              const TbeTypedType *overlay, const json_value_t *value,
                                              void *storage, const char *path,
@@ -1587,6 +1795,14 @@ static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_d
   if (codec == NULL || data == NULL || value == NULL || storage == NULL)
     return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
                        "Invalid canonical native JSON conversion");
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
+    return typed_native_collection_from_json(
+        codec, data, overlay, value, storage, path,
+        invalid_scalar_uses_default, error);
+  if (data->kind == CMETA_DATA_MAP)
+    return typed_native_map_from_json(
+        codec, data, overlay, value, storage, path,
+        invalid_scalar_uses_default, error);
   if (data->kind != CMETA_DATA_STRUCT)
     return typed_native_from_json_scalar(data, value, storage, path, error);
   if (overlay == NULL || json_type(value) != JSON_OBJECT)
@@ -1635,12 +1851,22 @@ static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_d
     }
     typed_nullable_clear(overlay, storage, wire_field);
 
-    status = typed_native_from_json(
-        codec, native_field->value,
-        native_field->value->kind == CMETA_DATA_STRUCT ? wire_field->nested_overlay : NULL, child,
-        (uint8_t *)storage + native_field->offset, field_path, invalid_scalar_uses_default, error);
+    {
+      const TbeTypedType *child_overlay = NULL;
+      if (native_field->value->kind == CMETA_DATA_STRUCT)
+        child_overlay = wire_field->nested_overlay;
+      else if (native_field->value->kind == CMETA_DATA_SEQUENCE ||
+               native_field->value->kind == CMETA_DATA_SET)
+        child_overlay = wire_field->object_type;
+      else if (native_field->value->kind == CMETA_DATA_MAP)
+        child_overlay = wire_field->map_value_type;
+      status = typed_native_from_json(
+          codec, native_field->value, child_overlay, child,
+          (uint8_t *)storage + native_field->offset, field_path,
+          invalid_scalar_uses_default, error);
+    }
     if (status == DATA_BIND_ERR_TYPE_MISMATCH && child_from_input && invalid_scalar_uses_default &&
-        native_field->value->kind != CMETA_DATA_STRUCT && has_default) {
+        typed_native_scalar_supported(native_field->value) && has_default) {
       default_value = typed_native_default_json(native_field->value, schema_field.default_value);
       if (default_value == NULL)
         return typed_error(error, DATA_BIND_ERR_OOM, field_path,
@@ -1656,6 +1882,172 @@ static DataBindStatus typed_native_from_json(DataBind *codec, const cmeta_data_d
   return DATA_BIND_OK;
 }
 
+static json_value_t *typed_native_to_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *overlay, const void *storage,
+    const char *path, DataBindError *error);
+
+static json_value_t *typed_native_collection_to_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *element_overlay, const void *storage,
+    const char *path, DataBindError *error) {
+  const cmeta_data_desc *element = cmeta_data_collection_element_data(data);
+  cmeta_data_collection_borrow_cursor cursor = {0};
+  json_value_t *array = NULL;
+  cmeta_status status;
+  size_t index = 0u;
+
+  status = cmeta_data_collection_borrow_begin(data, storage, &cursor);
+  if (status != CMETA_OK || element == NULL || cursor.element == NULL ||
+      !cmeta_data_desc_equal(element, cursor.element)) {
+    typed_error(error, DATA_BIND_ERR_RUNTIME, path,
+                "Canonical collection borrow metadata is inconsistent");
+    return NULL;
+  }
+
+  array = json_create_array();
+  if (array == NULL) {
+    typed_error(error, DATA_BIND_ERR_OOM, path,
+                "Out of memory creating canonical collection JSON");
+    return NULL;
+  }
+
+  for (;;) {
+    const void *value = NULL;
+    cmeta_gen_status generated =
+        cmeta_data_collection_borrow_next(&cursor, &value);
+    json_value_t *child;
+    char item_path[sizeof(((DataBindError *)0)->path)];
+    int written;
+
+    if (generated == CMETA_GEN_DONE) break;
+    if ((generated != CMETA_GEN_VALUE &&
+         generated != CMETA_GEN_VALUE_AND_DONE) ||
+        value == NULL) {
+      json_free(array);
+      typed_error(error, DATA_BIND_ERR_RUNTIME, path,
+                  "Canonical collection borrow cursor failed");
+      return NULL;
+    }
+
+    written = snprintf(item_path, sizeof(item_path), "%s[%zu]",
+                       path != NULL ? path : "", index++);
+    if (written < 0 || (size_t)written >= sizeof(item_path)) {
+      json_free(array);
+      typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                  "Collection element path exceeds diagnostic capacity");
+      return NULL;
+    }
+
+    child = typed_native_to_json(
+        codec, element, element_overlay, value, item_path, error);
+    if (child == NULL || !json_array_add_checked(array, child)) {
+      json_free(child);
+      json_free(array);
+      if (child != NULL)
+        typed_error(error, DATA_BIND_ERR_OOM, item_path,
+                    "Out of memory adding canonical collection item");
+      return NULL;
+    }
+    if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+  }
+
+  return array;
+}
+
+static json_value_t *typed_native_map_to_json(
+    DataBind *codec, const cmeta_data_desc *data,
+    const TbeTypedType *value_overlay, const void *storage,
+    const char *path, DataBindError *error) {
+  const cmeta_data_desc *key_data = cmeta_data_map_key_data(data);
+  const cmeta_data_desc *value_data = cmeta_data_map_value_data(data);
+  cmeta_data_map_borrow_cursor cursor = {0};
+  json_value_t *object = NULL;
+  cmeta_status status;
+
+  status = cmeta_data_map_borrow_begin(data, storage, &cursor);
+  if (status != CMETA_OK || key_data == NULL || value_data == NULL ||
+      cursor.key == NULL || cursor.value == NULL ||
+      !cmeta_data_desc_equal(key_data, cursor.key) ||
+      !cmeta_data_desc_equal(value_data, cursor.value) ||
+      key_data->kind != CMETA_DATA_STRING) {
+    typed_error(error, DATA_BIND_ERR_RUNTIME, path,
+                "Canonical map borrow metadata is inconsistent");
+    return NULL;
+  }
+
+  object = json_create_object();
+  if (object == NULL) {
+    typed_error(error, DATA_BIND_ERR_OOM, path,
+                "Out of memory creating canonical map JSON");
+    return NULL;
+  }
+
+  for (;;) {
+    const void *key = NULL;
+    const void *value = NULL;
+    const unsigned char *key_bytes = NULL;
+    size_t key_size = 0u;
+    cmeta_gen_status generated =
+        cmeta_data_map_borrow_next(&cursor, &key, &value);
+    json_value_t *child;
+    char item_path[sizeof(((DataBindError *)0)->path)];
+    int written;
+
+    if (generated == CMETA_GEN_DONE) break;
+    if ((generated != CMETA_GEN_VALUE &&
+         generated != CMETA_GEN_VALUE_AND_DONE) ||
+        key == NULL || value == NULL) {
+      json_free(object);
+      typed_error(error, DATA_BIND_ERR_RUNTIME, path,
+                  "Canonical map borrow cursor failed");
+      return NULL;
+    }
+
+    status = cmeta_data_buffer_read(
+        key_data, key, SIZE_MAX, &key_bytes, &key_size);
+    if (status != CMETA_OK || (key_size != 0u && key_bytes == NULL) ||
+        memchr(key_bytes, '\0', key_size) != NULL ||
+        !vstr_utf8_valid(vstr_from_buf(
+            key_bytes != NULL ? key_bytes : (const unsigned char *)"",
+            key_size))) {
+      json_free(object);
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Canonical map key is not valid UTF-8 JSON text");
+      return NULL;
+    }
+
+    written = snprintf(item_path, sizeof(item_path), "%s.%.*s",
+                       path != NULL ? path : "", (int)key_size,
+                       key_bytes != NULL ? (const char *)key_bytes : "");
+    if (written < 0 || (size_t)written >= sizeof(item_path)) {
+      json_free(object);
+      typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                  "Map entry path exceeds diagnostic capacity");
+      return NULL;
+    }
+
+    child = typed_native_to_json(
+        codec, value_data, value_overlay, value, item_path, error);
+    if (child == NULL ||
+        !json_object_add_n(
+            object,
+            key_bytes != NULL ? (const char *)key_bytes : "",
+            key_size, child)) {
+      json_free(child);
+      json_free(object);
+      if (child != NULL)
+        typed_error(error, DATA_BIND_ERR_OOM, item_path,
+                    "Out of memory adding canonical map entry");
+      return NULL;
+    }
+
+    if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+  }
+
+  return object;
+}
+
 static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc *data,
                                           const TbeTypedType *overlay, const void *storage,
                                           const char *path, DataBindError *error) {
@@ -1663,6 +2055,12 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
     typed_error(error, DATA_BIND_ERR_INVALID_ARG, path, "Invalid canonical native object");
     return NULL;
   }
+  if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
+    return typed_native_collection_to_json(
+        codec, data, overlay, storage, path, error);
+  if (data->kind == CMETA_DATA_MAP)
+    return typed_native_map_to_json(
+        codec, data, overlay, storage, path, error);
   if (data->kind == CMETA_DATA_STRUCT) {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
     json_value_t *root = json_create_object();
@@ -1703,10 +2101,20 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
       if (is_null) {
         child = typed_json_created(json_create_null(), field_path, error);
       } else {
-        child = typed_native_to_json(
-            codec, native_field->value,
-            native_field->value->kind == CMETA_DATA_STRUCT ? wire_field->nested_overlay : NULL,
-            (const uint8_t *)storage + native_field->offset, field_path, error);
+        {
+          const TbeTypedType *child_overlay = NULL;
+          if (native_field->value->kind == CMETA_DATA_STRUCT)
+            child_overlay = wire_field->nested_overlay;
+          else if (native_field->value->kind == CMETA_DATA_SEQUENCE ||
+                   native_field->value->kind == CMETA_DATA_SET)
+            child_overlay = wire_field->object_type;
+          else if (native_field->value->kind == CMETA_DATA_MAP)
+            child_overlay = wire_field->map_value_type;
+          child = typed_native_to_json(
+              codec, native_field->value, child_overlay,
+              (const uint8_t *)storage + native_field->offset,
+              field_path, error);
+        }
       }
       if (child == NULL) {
         json_free(root);
@@ -2610,6 +3018,38 @@ static int typed_native_schema_field_matches(DataBind *codec, const cmeta_data_d
            wire->nested_overlay != NULL && typed_nonempty(schema->type) &&
            typed_nonempty(wire->nested_overlay->name) &&
            strcmp(wire->nested_overlay->name, schema->type) == 0;
+  }
+  if (native->kind == CMETA_DATA_SEQUENCE ||
+      native->kind == CMETA_DATA_SET) {
+    const cmeta_data_desc *element =
+        cmeta_data_collection_element_data(native);
+    const char *expected =
+        native->kind == CMETA_DATA_SET ? "set" : "list";
+    return schema->is_collection && !schema->is_map &&
+           schema->collection_kind != NULL &&
+           strcmp(schema->collection_kind, expected) == 0 &&
+           schema->inner_type != NULL &&
+           wire->kind ==
+               (native->kind == CMETA_DATA_SET ? TBE_TYPED_SET
+                                               : TBE_TYPED_LIST) &&
+           element != NULL && element->storage_type != NULL &&
+           wire->element_size == element->storage_type->size &&
+           typed_named_kind_matches(
+               codec, schema->inner_type, wire->element_kind,
+               wire->element_wire_kind, wire->object_type);
+  }
+  if (native->kind == CMETA_DATA_MAP) {
+    const cmeta_data_desc *key = cmeta_data_map_key_data(native);
+    const cmeta_data_desc *value = cmeta_data_map_value_data(native);
+    return schema->is_map && schema->key_type != NULL &&
+           schema->value_type != NULL &&
+           strcmp(schema->key_type, "string") == 0 &&
+           wire->kind == TBE_TYPED_MAP &&
+           key != NULL && key->kind == CMETA_DATA_STRING &&
+           value != NULL && value->storage_type != NULL &&
+           typed_named_kind_matches(
+               codec, schema->value_type, wire->map_value_kind,
+               wire->map_value_wire_kind, wire->map_value_type);
   }
   if (native->kind == CMETA_DATA_ENUM) {
     DataBindSchemaType enum_type = DATA_BIND_SCHEMA_TYPE_INIT;
