@@ -320,7 +320,8 @@ static DataBind *create_state_codec(void) {
       " nullable uint32 nullable_result;"
       " optional nullable uint32 tri_result;"
       "}"
-      "service State { Run: StateRequest -> StateResponse; }";
+      "service State { Run: StateRequest -> StateResponse; }"
+      "channel StateInput: StateRequest;";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
   check_equal(data_bind_create_from_text(
@@ -836,7 +837,307 @@ static DataBindNativeOptions native_options(
   return options;
 }
 
+typedef struct MessageTokenReader {
+  const cserde_token *tokens;
+  size_t count;
+  size_t index;
+} MessageTokenReader;
+
+static cserde_status message_token_next(
+    void *context, cserde_token *out) {
+  MessageTokenReader *state = (MessageTokenReader *)context;
+  if (state == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
+  if (state->index >= state->count) return CSERDE_DONE;
+  *out = state->tokens[state->index++];
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops MESSAGE_TOKEN_READER_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION,
+    message_token_next};
+
+static cserde_token message_key(const char *text) {
+  cserde_token token = {0};
+  token.kind = CSERDE_STRING;
+  token.value.slice.data = (const unsigned char *)text;
+  token.value.slice.size = strlen(text);
+  token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+  return token;
+}
+
+static int message_reader_init(
+    cserde_reader *reader,
+    MessageTokenReader *state,
+    const cserde_token *tokens,
+    size_t count) {
+  if (reader == NULL || state == NULL || tokens == NULL) return 0;
+  /*
+   * Each fixture models a fresh format reader. MessagePlan intentionally
+   * consumes one value without probing EOF, so a successfully consumed reader
+   * remains READY and must not be reinitialized in place.
+   */
+  *reader = (cserde_reader){0};
+  state->tokens = tokens;
+  state->count = count;
+  state->index = 0u;
+  return cserde_reader_init(
+             reader, &MESSAGE_TOKEN_READER_OPS, state) == CSERDE_OK;
+}
+
 spec("DataBind canonical Service BindingPlan") {
+  it("decodes one Channel message with optional nullable and default state") {
+    DataBind *codec = create_state_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    StateRequest value = {0};
+    StateRequest explicit_null = {0};
+    MessageTokenReader source = {0};
+    cserde_reader reader = {0};
+    const cserde_token tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("required_value"),
+        {.kind = CSERDE_UINT, .value.uint = 9u},
+        message_key("nullable_value"),
+        {.kind = CSERDE_NULL},
+        {.kind = CSERDE_MAP_END},
+        {.kind = CSERDE_UINT, .value.uint = 99u},
+    };
+    const cserde_token explicit_null_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("required_value"),
+        {.kind = CSERDE_UINT, .value.uint = 8u},
+        message_key("nullable_value"),
+        {.kind = CSERDE_UINT, .value.uint = 5u},
+        message_key("defaulted_value"),
+        {.kind = CSERDE_NULL},
+        {.kind = CSERDE_MAP_END},
+    };
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "StateRequest", &STATE_REQUEST_NATIVE,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    check_true(message_reader_init(
+        &reader, &source, tokens,
+        sizeof(tokens) / sizeof(tokens[0])));
+
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &value, sizeof(value), &diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.required_value, (uint32_t)9u);
+    check_equal(value.optional_value, (uint32_t)0u);
+    check_equal(value.nullable_value, (uint32_t)0u);
+    check_equal(value.defaulted_value, (uint32_t)7u);
+    check_equal(value.presence, (uint8_t)(1u << 1u));
+    check_equal(value.nulls, (uint8_t)(1u << 0u));
+
+    /* One message is consumed; the next token is deliberately untouched. */
+    check_equal(source.index, (size_t)6u);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, explicit_null_tokens,
+        sizeof(explicit_null_tokens) / sizeof(explicit_null_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &explicit_null, sizeof(explicit_null), &diagnostic),
+        DATA_BIND_OK);
+    check_equal(explicit_null.required_value, (uint32_t)8u);
+    check_equal(explicit_null.optional_value, (uint32_t)0u);
+    check_equal(explicit_null.nullable_value, (uint32_t)5u);
+    check_equal(explicit_null.defaulted_value, (uint32_t)0u);
+    check_equal(explicit_null.presence, (uint8_t)(1u << 1u));
+    check_equal(explicit_null.nulls, (uint8_t)(1u << 1u));
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("applies defaults validates values and rolls failed messages to zero") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest valid = {0};
+    AddRequest invalid = {0};
+    AddRequest duplicate = {0};
+    AddRequest unknown = {0};
+    AddRequest missing = {0};
+    AddRequest invalid_null = {0};
+    MessageTokenReader source = {0};
+    cserde_reader reader = {0};
+
+    const cserde_token valid_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        message_key("right"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token invalid_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 0u},
+        message_key("right"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token duplicate_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token unknown_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        message_key("vendor"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token missing_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        {.kind = CSERDE_MAP_END},
+    };
+    const cserde_token null_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("left"),
+        {.kind = CSERDE_UINT, .value.uint = 3u},
+        message_key("right"),
+        {.kind = CSERDE_UINT, .value.uint = 4u},
+        message_key("scale"),
+        {.kind = CSERDE_NULL},
+        {.kind = CSERDE_MAP_END},
+    };
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+
+    check_true(message_reader_init(
+        &reader, &source, valid_tokens,
+        sizeof(valid_tokens) / sizeof(valid_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &valid, sizeof(valid), &diagnostic),
+        DATA_BIND_OK);
+    check_equal(valid.left, (uint32_t)3u);
+    check_equal(valid.right, (uint32_t)4u);
+    check_equal(valid.scale, (uint32_t)1u);
+    check_equal(valid.presence, (uint8_t)1u);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, invalid_tokens,
+        sizeof(invalid_tokens) / sizeof(invalid_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &invalid, sizeof(invalid), &diagnostic),
+        DATA_BIND_ERR_VALIDATION);
+    check_equal(invalid.left, (uint32_t)0u);
+    check_equal(invalid.right, (uint32_t)0u);
+    check_equal(invalid.scale, (uint32_t)0u);
+    check_equal(invalid.presence, (uint8_t)0u);
+    check_equal(diagnostic.schema_field, "left");
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, duplicate_tokens,
+        sizeof(duplicate_tokens) / sizeof(duplicate_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &duplicate, sizeof(duplicate), &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(duplicate.left, (uint32_t)0u);
+    check_equal(duplicate.right, (uint32_t)0u);
+    check_equal(duplicate.scale, (uint32_t)0u);
+    check_equal(duplicate.presence, (uint8_t)0u);
+    check_contains(diagnostic.message, "Duplicate");
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, unknown_tokens,
+        sizeof(unknown_tokens) / sizeof(unknown_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &unknown, sizeof(unknown), &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unknown.left, (uint32_t)0u);
+    check_equal(unknown.right, (uint32_t)0u);
+    check_equal(unknown.scale, (uint32_t)0u);
+    check_equal(unknown.presence, (uint8_t)0u);
+    check_contains(diagnostic.message, "Unknown");
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, missing_tokens,
+        sizeof(missing_tokens) / sizeof(missing_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &missing, sizeof(missing), &diagnostic),
+        DATA_BIND_ERR_TYPE_NOT_FOUND);
+    check_equal(missing.left, (uint32_t)0u);
+    check_equal(missing.right, (uint32_t)0u);
+    check_equal(missing.scale, (uint32_t)0u);
+    check_equal(missing.presence, (uint8_t)0u);
+    check_equal(diagnostic.schema_field, "right");
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, null_tokens,
+        sizeof(null_tokens) / sizeof(null_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &invalid_null, sizeof(invalid_null), &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(invalid_null.left, (uint32_t)0u);
+    check_equal(invalid_null.right, (uint32_t)0u);
+    check_equal(invalid_null.scale, (uint32_t)0u);
+    check_equal(invalid_null.presence, (uint8_t)0u);
+    check_equal(diagnostic.schema_field, "scale");
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("compiles and validates one Channel message without FunctionDesc") {
     DataBind *codec = create_codec();
     DataBindMessagePlan *plan = NULL;

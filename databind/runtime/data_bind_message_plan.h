@@ -3,6 +3,9 @@
 
 #include "data_bind.h"
 #include "data_bind_native_binding.h"
+#include "data_bind_native.h"
+
+#include <cserde/reader.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -69,6 +72,36 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_validate_native(
     const void *source,
     size_t source_bytes,
     DataBindError *error);
+
+/**
+ * Decode exactly one canonical CSerde MAP into caller-owned native staging.
+ *
+ * The reader is expected to expose canonical DataBind field names after any
+ * format-specific external-name mapping. MessagePlan owns required/optional,
+ * nullable, default and validation semantics; it performs no schema/reflection
+ * lookup on this runtime path.
+ *
+ * destination is fresh caller-owned staging/raw storage and must not contain a
+ * live native value with provider-owned resources. Reused storage must first be
+ * returned to canonical semantic zero through its normal lifecycle. The call
+ * initializes staging to semantic zero before decode. On every failure after
+ * initialization, the complete native value and DataBind state-overlay bytes
+ * are restored to semantic zero. The caller publishes the destination only
+ * after DATA_BIND_OK.
+ *
+ * The function consumes one MAP value and does not probe for a following value
+ * or EOF. It uses only the caller-provided DataBindNativeOptions workspace:
+ * a bounded field-seen bitmap is reserved from the front, and exact field
+ * native decoders use the remaining workspace. No runtime heap allocation is
+ * performed by MessagePlan.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic);
 
 #ifdef __cplusplus
 }

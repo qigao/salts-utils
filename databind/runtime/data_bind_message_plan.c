@@ -775,3 +775,464 @@ DataBindStatus data_bind_message_plan_validate_native(
 
   return DATA_BIND_OK;
 }
+
+
+typedef struct MessagePrefixedReaderContext {
+  cserde_reader *source;
+  cserde_token first;
+  int emitted_first;
+} MessagePrefixedReaderContext;
+
+static cserde_status message_prefixed_reader_next(
+    void *context, cserde_token *out) {
+  MessagePrefixedReaderContext *state =
+      (MessagePrefixedReaderContext *)context;
+  if (state == NULL || out == NULL || state->source == NULL)
+    return CSERDE_INVALID_ARGUMENT;
+  if (!state->emitted_first) {
+    *out = state->first;
+    state->emitted_first = 1;
+    return CSERDE_OK;
+  }
+  return cserde_reader_next(state->source, out);
+}
+
+static const cserde_reader_ops MESSAGE_PREFIXED_READER_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION,
+    message_prefixed_reader_next};
+
+typedef struct MessageSingleReaderContext {
+  const cserde_token *token;
+  int emitted;
+} MessageSingleReaderContext;
+
+static cserde_status message_single_reader_next(
+    void *context, cserde_token *out) {
+  MessageSingleReaderContext *state =
+      (MessageSingleReaderContext *)context;
+  if (state == NULL || out == NULL || state->token == NULL)
+    return CSERDE_INVALID_ARGUMENT;
+  if (state->emitted) return CSERDE_DONE;
+  *out = *state->token;
+  state->emitted = 1;
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops MESSAGE_SINGLE_READER_OPS = {
+    offsetof(cserde_reader_ops, next) + sizeof(cserde_reader_next_fn),
+    CSERDE_READER_OPS_ABI_VERSION,
+    message_single_reader_next};
+
+static size_t message_bitmap_bytes(size_t field_count) {
+  return field_count / 8u + (field_count % 8u != 0u ? 1u : 0u);
+}
+
+static int message_field_seen(const unsigned char *bitmap, size_t index) {
+  return bitmap != NULL &&
+         (bitmap[index / 8u] &
+          (unsigned char)(1u << (index % 8u))) != 0u;
+}
+
+static void message_mark_field_seen(unsigned char *bitmap, size_t index) {
+  bitmap[index / 8u] |=
+      (unsigned char)(1u << (index % 8u));
+}
+
+static const DataBindMessageFieldPlan *message_field_slice(
+    const DataBindMessagePlan *plan,
+    const cserde_slice *name,
+    size_t *out_index) {
+  size_t i;
+  if (plan == NULL || name == NULL ||
+      (!cserde_view_lifetime_valid(name->lifetime)) ||
+      (name->size != 0u && name->data == NULL))
+    return NULL;
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    size_t length;
+    if (field->name == NULL) continue;
+    length = strlen(field->name);
+    if (length == name->size &&
+        (length == 0u ||
+         memcmp(field->name, name->data, length) == 0)) {
+      if (out_index != NULL) *out_index = i;
+      return field;
+    }
+  }
+  return NULL;
+}
+
+static DataBindStatus message_reader_failure(
+    DataBindMessagePlanDiagnostic *diagnostic,
+    cserde_status source_status,
+    const char *field,
+    const char *context) {
+  DataBindStatus status;
+  const char *message;
+
+  switch (source_status) {
+  case CSERDE_DONE:
+  case CSERDE_UNEXPECTED_END:
+    status = DATA_BIND_ERR_PARSE;
+    message = "Reader ended before one complete DataBind message";
+    break;
+  case CSERDE_INVALID_TOKEN:
+    status = DATA_BIND_ERR_PARSE;
+    message = "Reader produced an invalid CSerde token";
+    break;
+  case CSERDE_VALUE_OUT_OF_RANGE:
+    status = DATA_BIND_ERR_TYPE_MISMATCH;
+    message = "Reader value is outside the admitted source range";
+    break;
+  case CSERDE_LIMIT_EXCEEDED:
+    status = DATA_BIND_ERR_LIMIT;
+    message = "Reader source limit was exceeded";
+    break;
+  case CSERDE_UNSUPPORTED:
+    status = DATA_BIND_ERR_SCHEMA;
+    message = "Reader cannot represent the selected DataBind message";
+    break;
+  case CSERDE_SOURCE_ERROR:
+  case CSERDE_SINK_ERROR:
+    status = DATA_BIND_ERR_IO;
+    message = "Reader source reported an I/O failure";
+    break;
+  case CSERDE_INVALID_ARGUMENT:
+  case CSERDE_INVALID_STATE:
+  case CSERDE_CALLBACK_ERROR:
+  default:
+    status = DATA_BIND_ERR_RUNTIME;
+    message = "Reader entered an invalid runtime state";
+    break;
+  }
+
+  return message_fail(
+      diagnostic, status, field, "%s%s%s",
+      context != NULL ? context : "",
+      context != NULL && context[0] != '\0' ? ": " : "",
+      message);
+}
+
+static DataBindStatus message_native_failure(
+    DataBindMessagePlanDiagnostic *diagnostic,
+    DataBindStatus status,
+    const char *field,
+    const DataBindNativeDiagnostic *native,
+    const char *fallback) {
+  return message_fail(
+      diagnostic, status, field, "%s",
+      native != NULL && native->error.message[0] != '\0'
+          ? native->error.message
+          : fallback);
+}
+
+static void message_set_presence(
+    unsigned char *base,
+    const DataBindMessageFieldPlan *field,
+    int present) {
+  unsigned char *state;
+  if (base == NULL || field == NULL || !field->has_presence) return;
+  state = base + field->presence_offset;
+  if (present)
+    *state |= (unsigned char)(1u << field->presence_bit);
+  else
+    *state &= (unsigned char)~(1u << field->presence_bit);
+}
+
+static void message_set_null(
+    unsigned char *base,
+    const DataBindMessageFieldPlan *field,
+    int is_null) {
+  unsigned char *state;
+  if (base == NULL || field == NULL || !field->has_null) return;
+  state = base + field->null_offset;
+  if (is_null)
+    *state |= (unsigned char)(1u << field->null_bit);
+  else
+    *state &= (unsigned char)~(1u << field->null_bit);
+}
+
+static DataBindStatus message_decode_value(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    unsigned char *destination,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindError validation = DATA_BIND_ERROR_INIT;
+  void *field_destination;
+  DataBindStatus status;
+
+  if (plan == NULL || field == NULL || native_options == NULL ||
+      reader == NULL || destination == NULL ||
+      field->data == NULL || field->data->storage_type == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid MessagePlan field decode arguments");
+
+  field_destination = destination + field->native_offset;
+  status = data_bind_native_decode(
+      native_options, field->data, reader,
+      field_destination, field->data->storage_type->size, &native);
+  if (status != DATA_BIND_OK)
+    return message_native_failure(
+        diagnostic, status, field->name, &native,
+        "Native field decode failed");
+
+  status = data_bind_message_plan_internal_validate_field(
+      plan, field->name, field_destination, &validation);
+  if (status != DATA_BIND_OK)
+    return message_fail(
+        diagnostic, status, field->name, "%s",
+        validation.message[0] != '\0'
+            ? validation.message
+            : "Native field validation failed");
+
+  message_set_presence(destination, field, 1);
+  message_set_null(destination, field, 0);
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_decode_prefixed_value(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *source,
+    const cserde_token *first,
+    unsigned char *destination,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  MessagePrefixedReaderContext context;
+  cserde_reader reader = {0};
+
+  if (source == NULL || first == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid prefixed MessagePlan reader");
+
+  context.source = source;
+  context.first = *first;
+  context.emitted_first = 0;
+  if (cserde_reader_init(
+          &reader, &MESSAGE_PREFIXED_READER_OPS, &context) != CSERDE_OK)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME,
+        field != NULL ? field->name : NULL,
+        "Could not initialize prefixed MessagePlan reader");
+
+  return message_decode_value(
+      plan, field, native_options, &reader,
+      destination, diagnostic);
+}
+
+static DataBindStatus message_decode_default(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    unsigned char *destination,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  MessageSingleReaderContext context;
+  cserde_reader reader = {0};
+
+  if (field == NULL || !field->has_default_token)
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+
+  context.token = &field->default_token;
+  context.emitted = 0;
+  if (cserde_reader_init(
+          &reader, &MESSAGE_SINGLE_READER_OPS, &context) != CSERDE_OK)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, field->name,
+        "Could not initialize compiled MessagePlan default reader");
+
+  return message_decode_value(
+      plan, field, native_options, &reader,
+      destination, diagnostic);
+}
+
+static DataBindStatus message_rollback(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic,
+    DataBindStatus original_status) {
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus cleanup;
+
+  cleanup = data_bind_native_clear(
+      native_options, plan->native->data,
+      destination, destination_bytes, &native);
+  if (cleanup != DATA_BIND_OK)
+    return message_native_failure(
+        diagnostic, DATA_BIND_ERR_RUNTIME, NULL, &native,
+        "MessagePlan rollback could not restore semantic zero");
+  return original_status;
+}
+
+DataBindStatus data_bind_message_plan_decode_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativeOptions field_options;
+  unsigned char *base = (unsigned char *)destination;
+  unsigned char *bitmap;
+  size_t bitmap_bytes;
+  cserde_token token = {0};
+  cserde_status reader_status;
+  DataBindStatus status;
+  size_t i;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+
+  if (plan == NULL || plan->native == NULL ||
+      plan->native->data == NULL ||
+      native_options == NULL || reader == NULL ||
+      destination == NULL ||
+      native_options->size < sizeof(*native_options) ||
+      native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
+      native_options->workspace == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid whole-message MessagePlan decode arguments");
+
+  bitmap_bytes = message_bitmap_bytes(plan->field_count);
+  if (bitmap_bytes > native_options->workspace_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, NULL,
+        "Native workspace cannot hold MessagePlan field-state bitmap");
+
+  status = data_bind_native_init(
+      native_options, plan->native->data,
+      destination, destination_bytes, &native);
+  if (status != DATA_BIND_OK)
+    return message_native_failure(
+        diagnostic, status, NULL, &native,
+        "MessagePlan native staging initialization failed");
+
+  bitmap = (unsigned char *)native_options->workspace;
+  if (bitmap_bytes != 0u) memset(bitmap, 0, bitmap_bytes);
+
+  field_options = *native_options;
+  field_options.workspace =
+      (unsigned char *)native_options->workspace + bitmap_bytes;
+  field_options.workspace_bytes =
+      native_options->workspace_bytes - bitmap_bytes;
+
+  reader_status = cserde_reader_next(reader, &token);
+  if (reader_status != CSERDE_OK) {
+    status = message_reader_failure(
+        diagnostic, reader_status, NULL, "Message root");
+    goto fail;
+  }
+  if (token.kind != CSERDE_MAP_BEGIN) {
+    status = message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+        "MessagePlan requires a canonical CSerde MAP root");
+    goto fail;
+  }
+
+  for (;;) {
+    const DataBindMessageFieldPlan *field;
+    size_t field_index = 0u;
+
+    reader_status = cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK) {
+      status = message_reader_failure(
+          diagnostic, reader_status, NULL, "Message field");
+      goto fail;
+    }
+    if (token.kind == CSERDE_MAP_END) break;
+    if (token.kind != CSERDE_STRING) {
+      status = message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+          "Message field name must be a canonical CSerde STRING");
+      goto fail;
+    }
+
+    field = message_field_slice(
+        plan, &token.value.slice, &field_index);
+    if (field == NULL) {
+      status = message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+          "Unknown canonical DataBind message field");
+      goto fail;
+    }
+    if (message_field_seen(bitmap, field_index)) {
+      status = message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+          "Duplicate canonical DataBind message field");
+      goto fail;
+    }
+
+    reader_status = cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK) {
+      status = message_reader_failure(
+          diagnostic, reader_status, field->name,
+          "Message field value");
+      goto fail;
+    }
+
+    if (token.kind == CSERDE_NULL) {
+      if (!field->nullable || !field->has_null) {
+        status = message_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+            "Explicit NULL is not admitted by the DataBind contract");
+        goto fail;
+      }
+      message_set_presence(base, field, 1);
+      message_set_null(base, field, 1);
+    } else {
+      status = message_decode_prefixed_value(
+          plan, field, &field_options, reader, &token,
+          base, diagnostic);
+      if (status != DATA_BIND_OK) goto fail;
+    }
+
+    message_mark_field_seen(bitmap, field_index);
+  }
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    if (message_field_seen(bitmap, i)) continue;
+
+    if (field->has_default_token) {
+      status = message_decode_default(
+          plan, field, &field_options, base, diagnostic);
+      if (status != DATA_BIND_OK) goto fail;
+      continue;
+    }
+
+    if (field->optional) {
+      message_set_presence(base, field, 0);
+      message_set_null(base, field, 0);
+      continue;
+    }
+
+    status = message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND, field->name,
+        "Required logical input is absent");
+    goto fail;
+  }
+
+  message_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+
+fail:
+  return message_rollback(
+      plan, native_options, destination, destination_bytes,
+      diagnostic, status);
+}
