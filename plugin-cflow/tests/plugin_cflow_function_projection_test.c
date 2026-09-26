@@ -26,7 +26,7 @@ static void stop_unload_destroy(
 }
 
 spec("Salts PluginCFlow reflected Function projection") {
-  it("admits a plugin Function through the Salts 1.6 projection and retains its lease") {
+  it("admits a plugin Function through the canonical Salts projection and retains its lease") {
     salts_plugin_registry registry = make_registry();
     salts_plugin_ref ref = {0};
     salts_plugin_cflow_function_handle handle = {0};
