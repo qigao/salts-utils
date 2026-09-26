@@ -178,7 +178,7 @@ static int method_plan_symbol_prefix(
 static int add_method_plan(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
-    databind_compiler_projection_kind kind,
+    databind_compiler_transport_kind kind,
     char *error,
     size_t error_size) {
   char *path;
@@ -195,11 +195,11 @@ static int add_method_plan(
         error, error_size,
         "Artifact name cannot form a MethodPlan C symbol prefix");
 
-  if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
+  if (kind == DATABIND_COMPILER_TRANSPORT_HTTP) {
     path = out->http_projection_header;
     suffix = ".http.h";
     backend = databind_compiler_http_method_plan_backend();
-  } else if (kind == DATABIND_COMPILER_PROJECTION_RPC) {
+  } else if (kind == DATABIND_COMPILER_TRANSPORT_RPC) {
     path = out->rpc_projection_header;
     suffix = ".rpc.h";
     backend = databind_compiler_rpc_method_plan_backend();
@@ -220,7 +220,7 @@ static int add_method_plan(
         error, error_size,
         "Derived projection outputs collide with another compiler output");
 
-  if (kind == DATABIND_COMPILER_PROJECTION_HTTP) {
+  if (kind == DATABIND_COMPILER_TRANSPORT_HTTP) {
     if (out->external_config.has_http)
       out->http = out->external_config.http;
     else
@@ -228,7 +228,8 @@ static int add_method_plan(
     out->http.symbol_prefix = out->method_plan_symbol_prefix;
     out->requests[out->request_count++] =
         (databind_compiler_projection_request){
-            .kind = kind, .output = path, .config = &out->http};
+            .id = {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT, (uint32_t)kind},
+            .output = path, .config = &out->http};
   } else {
     if (out->external_config.has_rpc)
       out->rpc = out->external_config.rpc;
@@ -237,7 +238,8 @@ static int add_method_plan(
     out->rpc.symbol_prefix = out->method_plan_symbol_prefix;
     out->requests[out->request_count++] =
         (databind_compiler_projection_request){
-            .kind = kind, .output = path, .config = &out->rpc};
+            .id = {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT, (uint32_t)kind},
+            .output = path, .config = &out->rpc};
   }
   out->backends[out->backend_count++] = backend;
   return 0;
@@ -272,12 +274,12 @@ static int add_plugin(
   if (input->component_id == NULL || input->component_id[0] == '\0')
     return frontend_error(
         error, error_size,
-        "--projections plugin requires --component <Schema.Component>");
+        "--artifacts plugin requires --component <Schema.Component>");
   if (!parse_version(
           input->artifact_version, &major, &minor, &patch))
     return frontend_error(
         error, error_size,
-        "--projections plugin requires --artifact-version MAJOR.MINOR.PATCH");
+        "--artifacts plugin requires --artifact-version MAJOR.MINOR.PATCH");
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
           ".plugin.c",
@@ -333,7 +335,8 @@ static int add_plugin(
 
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){
-          .kind = DATABIND_COMPILER_PROJECTION_PLUGIN,
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+                 DATABIND_COMPILER_ARTIFACT_PLUGIN},
           .output = out->plugin_source,
           .config = &out->plugin,
       };
@@ -347,9 +350,12 @@ int databind_compiler_projection_frontend_build(
     databind_compiler_projection_frontend_plan *out,
     char *error,
     size_t error_size) {
-  databind_compiler_projection_kind
-      kinds[DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS];
-  size_t kind_count = 0u;
+  databind_compiler_artifact_kind
+      artifacts[DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS];
+  databind_compiler_transport_kind
+      transports[DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS];
+  size_t artifact_count = 0u;
+  size_t transport_count = 0u;
   const char *cursor;
   size_t i;
   int selected_http = 0;
@@ -361,53 +367,83 @@ int databind_compiler_projection_frontend_build(
 
   memset(out, 0, sizeof(*out));
 
-  if (input->projections == NULL || input->projections[0] == '\0') {
+  if ((input->artifacts == NULL || input->artifacts[0] == '\0') &&
+      (input->transports == NULL || input->transports[0] == '\0')) {
     if (input->projection_config_path != NULL &&
         input->projection_config_path[0] != '\0')
       return frontend_error(
           error, error_size,
-          "--projection-config requires --projections http and/or rpc");
+          "--projection-config requires --transports http and/or rpc");
     return 0;
   }
 
-  cursor = input->projections;
-  while (*cursor != '\0') {
+  cursor = input->artifacts;
+  while (cursor != NULL && *cursor != '\0') {
     const char *end = strchr(cursor, ',');
     char name[64];
-    databind_compiler_projection_kind kind;
+    databind_compiler_artifact_kind kind;
     size_t j;
 
     if (end == NULL) end = cursor + strlen(cursor);
     if (!token_copy_trimmed(cursor, end, name, sizeof(name)))
       return frontend_error(
           error, error_size,
-          "Projection list contains an empty/invalid name");
+          "Artifact list contains an empty/invalid name");
 
-    if (databind_compiler_projection_parse(name, &kind) != 0)
+    if (databind_compiler_artifact_parse(name, &kind) != 0)
       return frontend_errorf(
-          error, error_size,
-          "Unknown projection '%s'", name);
+          error, error_size, "Unknown artifact '%s'", name);
 
-    for (j = 0u; j < kind_count; ++j)
-      if (kinds[j] == kind)
+    for (j = 0u; j < artifact_count; ++j)
+      if (artifacts[j] == kind)
         return frontend_errorf(
             error, error_size,
-            "Projection '%s' was selected more than once", name);
+            "Artifact '%s' was selected more than once", name);
 
-    if (kind_count >= DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS)
-      return frontend_error(
-          error, error_size,
-          "Too many projections selected");
+    if (artifact_count + transport_count >=
+        DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS)
+      return frontend_error(error, error_size, "Too many selections");
 
-    kinds[kind_count++] = kind;
-    if (kind == DATABIND_COMPILER_PROJECTION_HTTP) selected_http = 1;
-    if (kind == DATABIND_COMPILER_PROJECTION_RPC) selected_rpc = 1;
-
+    artifacts[artifact_count++] = kind;
     if (*end == ',' && end[1] == '\0')
       return frontend_error(
-          error, error_size,
-          "Projection list must not end with a comma");
+          error, error_size, "Artifact list must not end with a comma");
+    cursor = *end == ',' ? end + 1 : end;
+  }
 
+  cursor = input->transports;
+  while (cursor != NULL && *cursor != '\0') {
+    const char *end = strchr(cursor, ',');
+    char name[64];
+    databind_compiler_transport_kind kind;
+    size_t j;
+
+    if (end == NULL) end = cursor + strlen(cursor);
+    if (!token_copy_trimmed(cursor, end, name, sizeof(name)))
+      return frontend_error(
+          error, error_size,
+          "Transport list contains an empty/invalid name");
+
+    if (databind_compiler_transport_parse(name, &kind) != 0)
+      return frontend_errorf(
+          error, error_size, "Unknown transport '%s'", name);
+
+    for (j = 0u; j < transport_count; ++j)
+      if (transports[j] == kind)
+        return frontend_errorf(
+            error, error_size,
+            "Transport '%s' was selected more than once", name);
+
+    if (artifact_count + transport_count >=
+        DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS)
+      return frontend_error(error, error_size, "Too many selections");
+
+    transports[transport_count++] = kind;
+    if (kind == DATABIND_COMPILER_TRANSPORT_HTTP) selected_http = 1;
+    if (kind == DATABIND_COMPILER_TRANSPORT_RPC) selected_rpc = 1;
+    if (*end == ',' && end[1] == '\0')
+      return frontend_error(
+          error, error_size, "Transport list must not end with a comma");
     cursor = *end == ',' ? end + 1 : end;
   }
 
@@ -416,7 +452,7 @@ int databind_compiler_projection_frontend_build(
     if (!selected_http && !selected_rpc)
       return frontend_error(
           error, error_size,
-          "--projection-config is consumed only by HTTP/RPC projections");
+          "--projection-config is consumed only by HTTP/RPC transports");
     if (databind_compiler_projection_config_load(
             input->projection_config_path, &out->external_config,
             error, error_size) != 0)
@@ -424,40 +460,51 @@ int databind_compiler_projection_frontend_build(
     if (out->external_config.has_http && !selected_http) {
       frontend_error(
           error, error_size,
-          "Projection config contains http but HTTP is not selected");
+          "Projection config contains http but HTTP transport is not selected");
       goto fail;
     }
     if (out->external_config.has_rpc && !selected_rpc) {
       frontend_error(
           error, error_size,
-          "Projection config contains rpc but RPC is not selected");
+          "Projection config contains rpc but RPC transport is not selected");
       goto fail;
     }
   }
 
-  for (i = 0u; i < kind_count; ++i) {
-    switch (kinds[i]) {
-    case DATABIND_COMPILER_PROJECTION_PLUGIN:
+  for (i = 0u; i < artifact_count; ++i) {
+    switch (artifacts[i]) {
+    case DATABIND_COMPILER_ARTIFACT_PLUGIN:
       if (add_plugin(input, out, error, error_size) != 0)
-        goto fail;
-      break;
-    case DATABIND_COMPILER_PROJECTION_HTTP:
-    case DATABIND_COMPILER_PROJECTION_RPC:
-      if (add_method_plan(input, out, kinds[i], error, error_size) != 0)
         goto fail;
       break;
     default:
       frontend_errorf(
           error, error_size,
-          "Projection '%s' is known but not available from the public frontend yet",
-          databind_compiler_projection_name(kinds[i]));
+          "Artifact '%s' is known but not available from the public frontend yet",
+          databind_compiler_artifact_name(artifacts[i]));
+      goto fail;
+    }
+  }
+
+  for (i = 0u; i < transport_count; ++i) {
+    switch (transports[i]) {
+    case DATABIND_COMPILER_TRANSPORT_HTTP:
+    case DATABIND_COMPILER_TRANSPORT_RPC:
+      if (add_method_plan(input, out, transports[i], error, error_size) != 0)
+        goto fail;
+      break;
+    default:
+      frontend_errorf(
+          error, error_size,
+          "Transport '%s' is known but not available from the public frontend yet",
+          databind_compiler_transport_name(transports[i]));
       goto fail;
     }
   }
 
   if (!databind_compiler_projection_requests_valid(
           out->requests, out->request_count)) {
-    frontend_error(error, error_size, "Invalid projection selection");
+    frontend_error(error, error_size, "Invalid typed generation selection");
     goto fail;
   }
   return 0;

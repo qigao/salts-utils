@@ -11,7 +11,7 @@
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>]
  *              [--dsl-output <file>]
- *              [--projections plugin,http,rpc]
+ *              [--artifacts plugin] [--transports http,rpc]
  *              [--projection-config <file.json>]
  *              [--component <Schema.Component>]
  *              [--artifact-name <name>] [--artifact-version M.m.p]
@@ -82,7 +82,8 @@ int main(int argc, char **argv) {
     char    *source_output_path = NULL;
     char    *guest_output_path = NULL;
     char    *dsl_output_path = NULL;
-    char    *projection_names = NULL;
+    char    *artifact_names = NULL;
+    char    *transport_names = NULL;
     char    *projection_config_path = NULL;
     char    *component_id = NULL;
     char    *artifact_name = NULL;
@@ -117,8 +118,11 @@ int main(int argc, char **argv) {
         cmd_arger_desc_string_sh(&dsl_output_path, "dsl-output", "d",
                                  "Generate DSL type declarations (.rfl file)"),
         cmd_arger_desc_string(
-            &projection_names, "projections",
-            "Comma-separated artifact projections (plugin,http,rpc)"),
+            &artifact_names, "artifacts",
+            "Comma-separated artifact selections (plugin,wasm,openapi,mock)"),
+        cmd_arger_desc_string(
+            &transport_names, "transports",
+            "Comma-separated transport selections (http,rpc,socket,flowmq,mqtt,websocket)"),
         cmd_arger_desc_string(
             &projection_config_path, "projection-config",
             "External JSON transport projection config"),
@@ -146,18 +150,19 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (projection_names == NULL &&
+    if (artifact_names == NULL && transport_names == NULL &&
         (component_id != NULL || artifact_name != NULL ||
          artifact_version != NULL || projection_config_path != NULL)) {
         fprintf(stderr,
                 "--component/--artifact-name/--artifact-version/"
-                "--projection-config require --projections\n");
+                "--projection-config require --artifacts and/or --transports\n");
         return 1;
     }
 
-    if (projection_names != NULL) {
+    if (artifact_names != NULL || transport_names != NULL) {
         databind_compiler_projection_frontend_input projection_input = {
-            .projections = projection_names,
+            .artifacts = artifact_names,
+            .transports = transport_names,
             .component_id = component_id,
             .artifact_name = artifact_name,
             .artifact_version = artifact_version,
@@ -170,15 +175,15 @@ int main(int argc, char **argv) {
 
         if (lang_enum != TBE_COMPILER_LANG_C || template_path != NULL) {
             fprintf(stderr,
-                    "Artifact projections currently require the built-in C "
-                    "renderer\n");
+                    "Selected artifact/transport generation currently requires "
+                    "the built-in C renderer\n");
             return 1;
         }
 
         if (databind_compiler_projection_frontend_build(
                 &projection_input, &projection_plan,
                 projection_error, sizeof(projection_error)) != 0) {
-            fprintf(stderr, "Invalid projection selection: %s\n",
+            fprintf(stderr, "Invalid generation selection: %s\n",
                     projection_error[0] != '\0'
                         ? projection_error
                         : "unknown projection error");

@@ -23,11 +23,16 @@ static DataBind *projection_plan_codec(void) {
       "composite CsvPoint { int32 x; int32 y; }"
       "message CsvNested { CsvPoint point; }"
       "message CsvList { list<uint32> values; }"
+      "message CsvSet { set<uint32> values; }"
       "message CsvMap { map<string,int32> attrs; }"
       "union CsvChoice { CsvPoint point; }"
       "message CsvUnion { CsvChoice choice; }"
       "service Store {"
       " Read: Request -> Response;"
+      "}"
+      "service ShapeStore {"
+      " Nested: CsvNested -> Response;"
+      " List: CsvList -> Response;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -110,7 +115,7 @@ spec("DataBind FormatPlan and TransportPlan") {
     DataBindFormatPlan *plan = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     static const char *const rejected[] = {
-        "CsvNested", "CsvList", "CsvMap", "CsvUnion", "CsvChoice"};
+        "CsvNested", "CsvList", "CsvSet", "CsvMap", "CsvUnion", "CsvChoice"};
     size_t i;
 
     check_not_null(codec);
@@ -140,6 +145,67 @@ spec("DataBind FormatPlan and TransportPlan") {
         DATA_BIND_OK);
     check_not_null(plan);
     data_bind_format_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("admits nested XML objects but rejects collection and variant shapes") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindTransportPlan *transport = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    static const char *const rejected[] = {
+        "CsvList", "CsvSet", "CsvMap", "CsvUnion", "CsvChoice"};
+    size_t i;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    check_equal(
+        data_bind_format_plan_compile(
+            codec, "CsvNested", DATA_BIND_FORMAT_XML, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_format_plan_free(plan);
+    plan = NULL;
+
+    for (i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(
+          data_bind_format_plan_compile(
+              codec, rejected[i], DATA_BIND_FORMAT_XML, &plan, &error),
+          DATA_BIND_ERR_SCHEMA);
+      check_null(plan);
+      check_contains(error.message, "XML FormatPlan");
+    }
+
+    check_equal(
+        data_bind_format_plan_compile(
+            codec, "CsvList", DATA_BIND_FORMAT_JSON, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_format_plan_free(plan);
+    plan = NULL;
+
+    check_equal(
+        data_bind_transport_plan_compile_service(
+            codec, "ShapeStore", "Nested", DATA_BIND_TRANSPORT_HTTP,
+            DATA_BIND_FORMAT_XML, DATA_BIND_FORMAT_XML,
+            &transport, &error),
+        DATA_BIND_OK);
+    check_not_null(transport);
+    data_bind_transport_plan_free(transport);
+    transport = NULL;
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_transport_plan_compile_service(
+            codec, "ShapeStore", "List", DATA_BIND_TRANSPORT_RPC,
+            DATA_BIND_FORMAT_XML, DATA_BIND_FORMAT_XML,
+            &transport, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(transport);
+    check_contains(error.message, "XML FormatPlan");
+
     data_bind_free(codec);
   }
 

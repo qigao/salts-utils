@@ -12,7 +12,7 @@
 
 typedef struct projection_probe {
   const Node *seen_root;
-  databind_compiler_projection_kind seen_kind;
+  databind_compiler_projection_id seen_id;
   size_t calls;
   int fail;
 } projection_probe;
@@ -24,7 +24,7 @@ static int probe_generate(
   projection_probe *probe = (projection_probe *)context;
   if (probe == NULL || request == NULL) return -1;
   probe->seen_root = canonical_ir;
-  probe->seen_kind = request->kind;
+  probe->seen_id = request->id;
   ++probe->calls;
   return probe->fail ? -1 : 0;
 }
@@ -36,59 +36,79 @@ static int file_exists(const char *path) {
   return 1;
 }
 
-spec("DataBind compiler projection registry") {
-describe("projection identity") {
-  it("parses only canonical backend names") {
-    databind_compiler_projection_kind kind = 0;
+#define ARTIFACT_ID(kind_) \
+  { DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT, (uint32_t)(kind_) }
+#define TRANSPORT_ID(kind_) \
+  { DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT, (uint32_t)(kind_) }
 
-    check_equal(databind_compiler_projection_parse(
-                    "native", &kind), 0);
-    check_equal(kind, DATABIND_COMPILER_PROJECTION_NATIVE);
-    check_equal(strcmp(databind_compiler_projection_name(kind), "native"), 0);
+spec("DataBind compiler typed generation registry") {
+describe("typed selection identity") {
+  it("parses artifact and transport namespaces independently") {
+    databind_compiler_artifact_kind artifact = 0;
+    databind_compiler_transport_kind transport = 0;
 
-    check_equal(databind_compiler_projection_parse(
-                    "plugin", &kind), 0);
-    check_equal(kind, DATABIND_COMPILER_PROJECTION_PLUGIN);
-    check_equal(strcmp(databind_compiler_projection_name(kind), "plugin"), 0);
+    check_equal(databind_compiler_artifact_parse("native", &artifact), 0);
+    check_equal(artifact, DATABIND_COMPILER_ARTIFACT_NATIVE);
+    check_equal(strcmp(databind_compiler_artifact_name(artifact), "native"), 0);
 
-    check_equal(databind_compiler_projection_parse(
-                    "wasm", &kind), 0);
-    check_equal(kind, DATABIND_COMPILER_PROJECTION_WASM);
+    check_equal(databind_compiler_artifact_parse("plugin", &artifact), 0);
+    check_equal(artifact, DATABIND_COMPILER_ARTIFACT_PLUGIN);
+    check_equal(strcmp(databind_compiler_artifact_name(artifact), "plugin"), 0);
 
-    check_equal(databind_compiler_projection_parse(
-                    "PLUGIN", &kind), -1);
-    check_equal(databind_compiler_projection_parse(
-                    "unknown", &kind), -1);
-    check_null(databind_compiler_projection_name(
-        (databind_compiler_projection_kind)999));
+    check_equal(databind_compiler_artifact_parse("wasm", &artifact), 0);
+    check_equal(artifact, DATABIND_COMPILER_ARTIFACT_WASM);
+
+    check_equal(databind_compiler_transport_parse("http", &transport), 0);
+    check_equal(transport, DATABIND_COMPILER_TRANSPORT_HTTP);
+    check_equal(strcmp(databind_compiler_transport_name(transport), "http"), 0);
+
+    check_equal(databind_compiler_transport_parse("rpc", &transport), 0);
+    check_equal(transport, DATABIND_COMPILER_TRANSPORT_RPC);
+
+    check_equal(databind_compiler_artifact_parse("http", &artifact), -1);
+    check_equal(databind_compiler_transport_parse("plugin", &transport), -1);
+    check_equal(databind_compiler_artifact_parse("PLUGIN", &artifact), -1);
+    check_equal(databind_compiler_transport_parse("HTTP", &transport), -1);
+    check_null(databind_compiler_artifact_name(
+        (databind_compiler_artifact_kind)999));
+    check_null(databind_compiler_transport_name(
+        (databind_compiler_transport_kind)999));
   }
 
-  it("rejects duplicate projection selection before generation") {
+  it("rejects duplicate selection only within the same typed ID") {
     const databind_compiler_projection_request duplicate[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "one", NULL},
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "two", NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "one", NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "two", NULL},
+    };
+    const databind_compiler_projection_request cross_axis[] = {
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "artifact", NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "transport", NULL},
     };
 
     check_false(databind_compiler_projection_requests_valid(
         duplicate, sizeof(duplicate) / sizeof(duplicate[0])));
+    check_true(databind_compiler_projection_requests_valid(
+        cross_axis, sizeof(cross_axis) / sizeof(cross_axis[0])));
   }
 }
 
 describe("shared canonical IR") {
-  it("runs multiple selected backends against one parsed root") {
+  it("runs artifact and transport generators against one parsed root") {
     Node *root = NULL;
     char *schema_data = NULL;
     projection_probe plugin = {0};
-    projection_probe wasm = {0};
+    projection_probe http = {0};
     const databind_compiler_projection_request requests[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "image.plugin.c", NULL},
-        {DATABIND_COMPILER_PROJECTION_WASM, "image.wasm", NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN),
+         "image.plugin.c", NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP),
+         "image.http.h", NULL},
     };
     databind_compiler_projection_backend backends[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
          probe_generate, &plugin},
-        {DATABIND_COMPILER_PROJECTION_WASM, "wasm",
-         probe_generate, &wasm},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         probe_generate, &http},
     };
 
     check_equal(tbe_compiler_parse_schema_file(
@@ -103,26 +123,32 @@ describe("shared canonical IR") {
                 0);
 
     check_equal(plugin.calls, (size_t)1u);
-    check_equal(wasm.calls, (size_t)1u);
+    check_equal(http.calls, (size_t)1u);
     check_true(plugin.seen_root == root);
-    check_true(wasm.seen_root == root);
-    check_true(plugin.seen_root == wasm.seen_root);
-    check_equal(plugin.seen_kind, DATABIND_COMPILER_PROJECTION_PLUGIN);
-    check_equal(wasm.seen_kind, DATABIND_COMPILER_PROJECTION_WASM);
+    check_true(http.seen_root == root);
+    check_true(plugin.seen_root == http.seen_root);
+    check_true(databind_compiler_projection_id_equal(
+        plugin.seen_id,
+        (databind_compiler_projection_id)
+            ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN)));
+    check_true(databind_compiler_projection_id_equal(
+        http.seen_id,
+        (databind_compiler_projection_id)
+            TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP)));
 
     node_free(root);
     free(schema_data);
   }
 
-  it("admits every backend before the first callback") {
+  it("admits every typed backend before the first callback") {
     Node *root = create_node_map(NULL);
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, NULL, NULL},
-        {DATABIND_COMPILER_PROJECTION_WASM, NULL, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), NULL, NULL},
     };
     databind_compiler_projection_backend backends[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
          probe_generate, &plugin},
     };
 
@@ -136,19 +162,19 @@ describe("shared canonical IR") {
     node_free(root);
   }
 
-  it("stops after a backend generation failure") {
+  it("stops after one typed generator fails") {
     Node *root = create_node_map(NULL);
     projection_probe plugin = {0};
-    projection_probe wasm = {0};
+    projection_probe http = {0};
     const databind_compiler_projection_request requests[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, NULL, NULL},
-        {DATABIND_COMPILER_PROJECTION_WASM, NULL, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), NULL, NULL},
     };
     databind_compiler_projection_backend backends[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
          probe_generate, &plugin},
-        {DATABIND_COMPILER_PROJECTION_WASM, "wasm",
-         probe_generate, &wasm},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         probe_generate, &http},
     };
 
     check_not_null(root);
@@ -159,25 +185,27 @@ describe("shared canonical IR") {
                     backends, sizeof(backends) / sizeof(backends[0])),
                 -1);
     check_equal(plugin.calls, (size_t)1u);
-    check_equal(wasm.calls, (size_t)0u);
+    check_equal(http.calls, (size_t)0u);
     node_free(root);
   }
 }
 
 describe("compiler integration") {
-  it("dispatches selected projections through the one parse pipeline") {
+  it("dispatches typed axes through the one parse pipeline") {
     static const char output[] = "databind_projection_registry_output.h";
     projection_probe plugin = {0};
-    projection_probe wasm = {0};
+    projection_probe http = {0};
     const databind_compiler_projection_request requests[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "image.plugin.c", NULL},
-        {DATABIND_COMPILER_PROJECTION_WASM, "image.wasm", NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN),
+         "image.plugin.c", NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP),
+         "image.http.h", NULL},
     };
     databind_compiler_projection_backend backends[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
          probe_generate, &plugin},
-        {DATABIND_COMPILER_PROJECTION_WASM, "wasm",
-         probe_generate, &wasm},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), "http",
+         probe_generate, &http},
     };
     tbe_compiler_options_t options = {
         .schema_path = SCHEMA_EXAMPLE_FILE,
@@ -193,22 +221,22 @@ describe("compiler integration") {
     (void)remove(output);
     check_equal(tbe_compiler_run(&options), 0);
     check_equal(plugin.calls, (size_t)1u);
-    check_equal(wasm.calls, (size_t)1u);
+    check_equal(http.calls, (size_t)1u);
     check_not_null(plugin.seen_root);
-    check_true(plugin.seen_root == wasm.seen_root);
+    check_true(plugin.seen_root == http.seen_root);
     check_true(file_exists(output));
     (void)remove(output);
   }
 
-  it("rejects an incomplete projection set after prerequisite output without backend callbacks") {
+  it("rejects an incomplete typed set without backend callbacks") {
     static const char output[] = "databind_projection_registry_rejected.h";
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, NULL, NULL},
-        {DATABIND_COMPILER_PROJECTION_WASM, NULL, NULL},
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
+        {TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP), NULL, NULL},
     };
     databind_compiler_projection_backend backends[] = {
-        {DATABIND_COMPILER_PROJECTION_PLUGIN, "plugin",
+        {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), "plugin",
          probe_generate, &plugin},
     };
     tbe_compiler_options_t options = {

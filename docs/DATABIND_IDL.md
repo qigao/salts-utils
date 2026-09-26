@@ -45,11 +45,36 @@ Composition
   component
 ```
 
-Artifact projections such as NATIVE, PLUGIN, WASM, OPENAPI and MOCK are compiler/build selections rather than new IDL languages.
+DataBind generation is selected along **orthogonal axes** rather than one
+format×transport×artifact backend namespace:
 
-Transport runtimes such as CHTTP, CRPC, Flowie, FlowMQ and CNet retain connection/session/protocol ownership. DataBind compiles contracts and bindings; it does not become a network framework.
+```text
+FORMAT
+  DataBindFormat / FormatPlan
+  JSON | YAML | XML | CSV | BINARY | ...
 
-The canonical architecture decision is tracked by salts-utils issue #141.
+TRANSPORT
+  HTTP | RPC | SOCKET | FLOWMQ | MQTT | WEBSOCKET
+
+ARTIFACT
+  NATIVE | PLUGIN | WASM | OPENAPI | MOCK
+```
+
+The public compiler keeps one entry point. Artifact generation is selected with
+`databindc --artifacts ...`; transport plan generation is selected with
+`databindc --transports ...`. The CMake equivalent remains one
+`databind_target()` call with independent `ARTIFACTS` and `TRANSPORTS`
+arguments. Format choice stays in canonical `DataBindFormat` /
+`FormatPlan` configuration; the compiler does not invent a second format enum
+or a `HTTP_JSON`/ `FLOWMQ_BINARY` Cartesian backend identity.
+
+Transport runtimes such as CHTTP, CRPC, Flowie, FlowMQ and CNet retain
+connection/session/protocol ownership. DataBind compiles contracts and immutable
+plans; it does not become a network framework. Artifact choices such as PLUGIN
+or WASM do not become transport identities.
+
+The canonical architecture decision is tracked by salts-utils issue #141 and
+the composable plan implementation by #188.
 
 
 ## Native egress through CSerde

@@ -148,7 +148,8 @@ function(databind_target)
       ARTIFACT_NAME
       PROJECTION_CONFIG)
   set(multi_value_args
-      PROJECTIONS
+      ARTIFACTS
+      TRANSPORTS
       SOURCES
       LIBRARIES)
   cmake_parse_arguments(DB
@@ -161,9 +162,9 @@ function(databind_target)
     endif()
   endforeach()
 
-  if(NOT DB_PROJECTIONS)
+  if(NOT DB_ARTIFACTS AND NOT DB_TRANSPORTS)
     message(FATAL_ERROR
-            "databind_target() requires at least one PROJECTIONS entry")
+            "databind_target() requires at least one ARTIFACTS or TRANSPORTS entry")
   endif()
 
   if(NOT DB_ARTIFACT_NAME)
@@ -177,33 +178,54 @@ function(databind_target)
             "${DB_ARTIFACT_NAME}")
   endif()
 
-  set(_normalized_projections)
+  set(_normalized_artifacts)
+  set(_normalized_transports)
   set(_has_plugin FALSE)
   set(_has_http FALSE)
   set(_has_rpc FALSE)
-  foreach(projection IN LISTS DB_PROJECTIONS)
-    string(TOUPPER "${projection}" projection_upper)
-    if(projection_upper STREQUAL "PLUGIN")
+
+  foreach(artifact IN LISTS DB_ARTIFACTS)
+    string(TOUPPER "${artifact}" artifact_upper)
+    if(artifact_upper STREQUAL "PLUGIN")
       set(_has_plugin TRUE)
-    elseif(projection_upper STREQUAL "HTTP")
+    else()
+      message(FATAL_ERROR
+              "databind_target artifact is not publicly available yet: "
+              "${artifact}")
+    endif()
+    list(APPEND _normalized_artifacts "${artifact_upper}")
+  endforeach()
+
+  foreach(transport IN LISTS DB_TRANSPORTS)
+    string(TOUPPER "${transport}" transport_upper)
+    if(transport_upper STREQUAL "HTTP")
       set(_has_http TRUE)
-    elseif(projection_upper STREQUAL "RPC")
+    elseif(transport_upper STREQUAL "RPC")
       set(_has_rpc TRUE)
     else()
       message(FATAL_ERROR
-              "databind_target projection is not publicly available yet: "
-              "${projection}")
+              "databind_target transport is not publicly available yet: "
+              "${transport}")
     endif()
-    list(APPEND _normalized_projections "${projection_upper}")
+    list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
 
-  set(_unique_projections ${_normalized_projections})
-  list(REMOVE_DUPLICATES _unique_projections)
-  list(LENGTH _normalized_projections _projection_count)
-  list(LENGTH _unique_projections _unique_projection_count)
-  if(NOT _projection_count EQUAL _unique_projection_count)
+  set(_unique_artifacts ${_normalized_artifacts})
+  list(REMOVE_DUPLICATES _unique_artifacts)
+  list(LENGTH _normalized_artifacts _artifact_count)
+  list(LENGTH _unique_artifacts _unique_artifact_count)
+  if(NOT _artifact_count EQUAL _unique_artifact_count)
     message(FATAL_ERROR
-            "databind_target PROJECTIONS contains a duplicate backend")
+            "databind_target ARTIFACTS contains a duplicate selection")
+  endif()
+
+  set(_unique_transports ${_normalized_transports})
+  list(REMOVE_DUPLICATES _unique_transports)
+  list(LENGTH _normalized_transports _transport_count)
+  list(LENGTH _unique_transports _unique_transport_count)
+  if(NOT _transport_count EQUAL _unique_transport_count)
+    message(FATAL_ERROR
+            "databind_target TRANSPORTS contains a duplicate selection")
   endif()
 
   foreach(reserved_target IN ITEMS
@@ -286,8 +308,10 @@ function(databind_target)
     endif()
   endif()
 
-  list(JOIN _normalized_projections "," _projection_csv)
-  string(TOLOWER "${_projection_csv}" _projection_csv)
+  list(JOIN _normalized_artifacts "," _artifact_csv)
+  string(TOLOWER "${_artifact_csv}" _artifact_csv)
+  list(JOIN _normalized_transports "," _transport_csv)
+  string(TOLOWER "${_transport_csv}" _transport_csv)
 
   get_filename_component(_idl
     "${DB_IDL}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -343,8 +367,15 @@ function(databind_target)
       "${_idl}"
       --lang c
       --output "${_native_header}"
-      --projections "${_projection_csv}"
       --artifact-name "${DB_ARTIFACT_NAME}")
+  if(_normalized_artifacts)
+    list(APPEND _compiler_args
+      --artifacts "${_artifact_csv}")
+  endif()
+  if(_normalized_transports)
+    list(APPEND _compiler_args
+      --transports "${_transport_csv}")
+  endif()
   if(_has_plugin)
     list(APPEND _compiler_args
       --component "${DB_COMPONENT}"
@@ -370,7 +401,7 @@ function(databind_target)
     DEPENDS ${_generate_dependencies}
     VERBATIM
     COMMENT
-      "Generating DataBind ${DB_TARGET} projections: ${_projection_csv}")
+      "Generating DataBind ${DB_TARGET} artifacts=[${_artifact_csv}] transports=[${_transport_csv}]")
 
   set_source_files_properties(${_generated_outputs}
     PROPERTIES GENERATED TRUE)
@@ -422,7 +453,9 @@ function(databind_target)
   set_property(TARGET "${DB_TARGET}" PROPERTY
     DATABIND_GENERATED_DIR "${_generated_dir}")
   set_property(TARGET "${DB_TARGET}" PROPERTY
-    DATABIND_PROJECTIONS "${_normalized_projections}")
+    DATABIND_ARTIFACTS "${_normalized_artifacts}")
+  set_property(TARGET "${DB_TARGET}" PROPERTY
+    DATABIND_TRANSPORTS "${_normalized_transports}")
   if(_projection_config)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_PROJECTION_CONFIG "${_projection_config}")

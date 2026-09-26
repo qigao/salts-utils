@@ -17,7 +17,7 @@ databind_target(
   COMPONENT "Image.ImageProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "image"
-  PROJECTIONS PLUGIN
+  ARTIFACTS PLUGIN
   SOURCES business.c)
 
 get_target_property(
