@@ -140,6 +140,10 @@ add_library(
   data_bind_record.c
   data_bind_binding_plan.c
   data_bind_binding_plan.h
+  data_bind_message_plan.c
+  data_bind_message_plan.h
+  data_bind_message_plan_internal.h
+  data_bind_native_binding.h
   data_bind_method_plan.c
   data_bind_method_plan.h
   data_bind_projection_plan.c
@@ -240,6 +244,8 @@ install(
     data_bind_format_provider.h
     data_bind_native.h
     data_bind_binding_plan.h
+    data_bind_message_plan.h
+    data_bind_native_binding.h
     data_bind_method_plan.h
     data_bind_projection_plan.h
     data_bind_socket_plan.h

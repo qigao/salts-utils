@@ -1,4 +1,5 @@
 #include "data_bind_binding_plan.h"
+#include "data_bind_message_plan.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -98,7 +99,7 @@ static const DataBindNativeStateBinding ADD_REQUEST_PRESENCE[] = {
 
 static const DataBindNativeTypeBinding ADD_REQUEST_NATIVE = {
     sizeof(DataBindNativeTypeBinding),
-    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
     "AddRequest",
     &ADD_REQUEST_DATA,
     ADD_REQUEST_PRESENCE,
@@ -108,7 +109,7 @@ static const DataBindNativeTypeBinding ADD_REQUEST_NATIVE = {
 
 static const DataBindNativeTypeBinding ADD_RESPONSE_NATIVE = {
     sizeof(DataBindNativeTypeBinding),
-    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
     "AddResponse",
     &ADD_RESPONSE_DATA,
     NULL,
@@ -153,7 +154,8 @@ static DataBind *create_codec(void) {
       "message AddResponse { @Min(1) @Max(100) uint32 sum; }"
       "service Calc {"
       " Add: AddRequest -> AddResponse;"
-      "}";
+      "}"
+      "channel AddInput: AddRequest;";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
 
@@ -282,7 +284,7 @@ static const DataBindNativeStateBinding STATE_RESPONSE_NULLS[] = {
 
 static const DataBindNativeTypeBinding STATE_REQUEST_NATIVE = {
     sizeof(DataBindNativeTypeBinding),
-    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
     "StateRequest",
     &STATE_REQUEST_DATA,
     STATE_REQUEST_PRESENCE,
@@ -291,7 +293,7 @@ static const DataBindNativeTypeBinding STATE_REQUEST_NATIVE = {
     2u};
 static const DataBindNativeTypeBinding STATE_RESPONSE_NATIVE = {
     sizeof(DataBindNativeTypeBinding),
-    DATA_BIND_BINDING_PLAN_ABI_VERSION,
+    DATA_BIND_NATIVE_BINDING_ABI_VERSION,
     "StateResponse",
     &STATE_RESPONSE_DATA,
     STATE_RESPONSE_PRESENCE,
@@ -835,6 +837,65 @@ static DataBindNativeOptions native_options(
 }
 
 spec("DataBind canonical Service BindingPlan") {
+  it("compiles and validates one Channel message without FunctionDesc") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    AddRequest value = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    check_equal(data_bind_message_plan_type_name(plan), "AddRequest");
+    check_true(data_bind_message_plan_native_binding(plan) ==
+               &ADD_REQUEST_NATIVE);
+    check_equal(data_bind_message_plan_field_count(plan), (size_t)3u);
+
+    value.left = 2u;
+    value.right = 3u;
+    value.scale = 0u;
+    value.presence = 0u;
+    check_equal(
+        data_bind_message_plan_validate_native(
+            plan, &value, sizeof(value), &error),
+        DATA_BIND_OK);
+
+    value.left = 0u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_message_plan_validate_native(
+            plan, &value, sizeof(value), &error),
+        DATA_BIND_ERR_VALIDATION);
+    check_contains(error.path, "left");
+
+    value.left = 2u;
+    value.scale = 4u;
+    value.presence = 1u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_message_plan_validate_native(
+            plan, &value, sizeof(value), &error),
+        DATA_BIND_ERR_VALIDATION);
+    check_contains(error.path, "scale");
+
+    value.presence = 0u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_message_plan_validate_native(
+            plan, &value, sizeof(value), &error),
+        DATA_BIND_OK);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("compiles HTTP RPC and MQTT through the same generic provider ABI") {
     DataBind *codec = create_codec();
     ProjectionScratch http_scratch = {{0}, {0}};
