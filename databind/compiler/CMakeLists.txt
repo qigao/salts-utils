@@ -244,6 +244,7 @@ cmake_add_test(test_databind_socket_plan_projection
     test_socket_plan_projection.c
     projection.c
     socket_plan_projection.c
+    message_native.c
     binary_layout_ir.c
     compiler_core.c
     database_schema.c
