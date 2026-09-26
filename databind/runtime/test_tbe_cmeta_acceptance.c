@@ -2,6 +2,7 @@
 #include "schema_cmeta.h"
 #include "tinytest.h"
 #include <salts_cmeta_data.h>
+#include <cstl/byte_buffer.h>
 #include <string.h>
 
 /* This consumer links the separately C-compiled, real CLI-generated fixture.
@@ -268,34 +269,92 @@ suite("real generated and runtime CMeta acceptance") {
     data_bind_free(codec);
   }
 
-  it("rejects buffer and deferred container native queries with repeatable atomic diagnostics") {
+  it("publishes generated owned-buffer graphs without changing schema storage authority") {
     typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
-    static const struct { const char *record; size_t index; cmeta_data_kind kind; const char *path; const char *id; Getter get; } cases[] = {
-      {"Unsupported", 1, CMETA_DATA_STRING, "Unsupported.bad", NULL, Unsupported_cmeta_data},
-      {"BytesStorage", 0, CMETA_DATA_BYTES, "BytesStorage.value", NULL, BytesStorage_cmeta_data},
-      {"ListStorage", 0, CMETA_DATA_SEQUENCE, "ListStorage.value", "cmeta.data.sequence", ListStorage_cmeta_data},
-      {"SetStorage", 0, CMETA_DATA_SET, "SetStorage.value", "cmeta.data.set", SetStorage_cmeta_data}
+    static const struct {
+      const char *record;
+      size_t index;
+      cmeta_data_kind kind;
+      const char *path;
+      Getter get;
+      const cmeta_data_desc *expected;
+    } cases[] = {
+      {"Unsupported", 1u, CMETA_DATA_STRING, "Unsupported.bad",
+       Unsupported_cmeta_data, &salts_tstr_cmeta_data},
+      {"BytesStorage", 0u, CMETA_DATA_BYTES, "BytesStorage.value",
+       BytesStorage_cmeta_data, &stl_byte_buffer_cmeta_data}
     };
     DataBind *codec = acceptance_codec();
     size_t i;
     check_not_null(codec);
     if (!codec) return;
-    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+
+    for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
       DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
-      DataBindError error = DATA_BIND_ERROR_INIT, again = DATA_BIND_ERROR_INIT;
-      const cmeta_data_desc *out = &cmeta_data_int32;
-      check(data_bind_schema_field_at(codec, cases[i].record, cases[i].index, &field));
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      const cmeta_data_desc *record_data = NULL;
+      const cmeta_data_struct_shape *shape;
+
+      check(data_bind_schema_field_at(
+          codec, cases[i].record, cases[i].index, &field));
       check_equal(field.cmeta_kind, cases[i].kind);
-      if (cases[i].id) {
-        check_not_null(field.cmeta_data);
-        if (field.cmeta_data) {
-          check(cmeta_data_desc_valid(field.cmeta_data));
-          check_equal(field.cmeta_data->stable_id, cases[i].id);
-          check_null(field.cmeta_data->storage_type);
-          check_null(field.cmeta_data->shape);
-        }
-      } else check_null(field.cmeta_data);
-      unresolved_field(codec, cases[i].record, cases[i].index, cases[i].path);
+      check_null(field.cmeta_data);
+      unresolved_field(
+          codec, cases[i].record, cases[i].index, cases[i].path);
+
+      check_equal(cases[i].get(&record_data, &error), DATA_BIND_OK);
+      check_not_null(record_data);
+      if (record_data == NULL) continue;
+      check_equal(record_data->kind, CMETA_DATA_STRUCT);
+      shape = (const cmeta_data_struct_shape *)record_data->shape;
+      check_not_null(shape);
+      if (shape == NULL || cases[i].index >= shape->field_count) continue;
+      same_value_type(shape->fields[cases[i].index].value,
+                      cases[i].expected);
+    }
+
+    data_bind_free(codec);
+  }
+
+  it("keeps deferred container native queries repeatably fail-closed") {
+    typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
+    static const struct {
+      const char *record;
+      size_t index;
+      cmeta_data_kind kind;
+      const char *path;
+      const char *id;
+      Getter get;
+    } cases[] = {
+      {"ListStorage", 0u, CMETA_DATA_SEQUENCE, "ListStorage.value",
+       "cmeta.data.sequence", ListStorage_cmeta_data},
+      {"SetStorage", 0u, CMETA_DATA_SET, "SetStorage.value",
+       "cmeta.data.set", SetStorage_cmeta_data}
+    };
+    DataBind *codec = acceptance_codec();
+    size_t i;
+    check_not_null(codec);
+    if (!codec) return;
+
+    for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      DataBindSchemaField field = DATA_BIND_SCHEMA_FIELD_INIT;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+      DataBindError again = DATA_BIND_ERROR_INIT;
+      const cmeta_data_desc *out = &cmeta_data_int32;
+
+      check(data_bind_schema_field_at(
+          codec, cases[i].record, cases[i].index, &field));
+      check_equal(field.cmeta_kind, cases[i].kind);
+      check_not_null(field.cmeta_data);
+      if (field.cmeta_data) {
+        check(cmeta_data_desc_valid(field.cmeta_data));
+        check_equal(field.cmeta_data->stable_id, cases[i].id);
+        check_null(field.cmeta_data->storage_type);
+        check_null(field.cmeta_data->shape);
+      }
+      unresolved_field(
+          codec, cases[i].record, cases[i].index, cases[i].path);
+
       check_equal(cases[i].get(&out, &error), DATA_BIND_ERR_SCHEMA);
       check(out == &cmeta_data_int32);
       check_equal(error.path, cases[i].record);
@@ -305,6 +364,7 @@ suite("real generated and runtime CMeta acceptance") {
       check_equal(again.path, error.path);
       check_equal(again.message, error.message);
     }
+
     data_bind_free(codec);
   }
 
