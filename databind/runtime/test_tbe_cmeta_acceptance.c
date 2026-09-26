@@ -271,7 +271,7 @@ suite("real generated and runtime CMeta acceptance") {
 
   it("publishes generated owned-buffer graphs without changing schema storage authority") {
     typedef DataBindStatus (*Getter)(const cmeta_data_desc **, DataBindError *);
-    static const struct {
+    const struct {
       const char *record;
       size_t index;
       cmeta_data_kind kind;
