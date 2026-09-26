@@ -1207,6 +1207,21 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
       status = typed_native_record_preflight(value, wire_field->nested_overlay, ancestors,
                                              depth + 1u, field_path, NULL, error);
       if (status != DATA_BIND_OK) return status;
+    } else if (value->kind == CMETA_DATA_SEQUENCE ||
+               value->kind == CMETA_DATA_SET ||
+               value->kind == CMETA_DATA_MAP) {
+      const int kind_matches =
+          (value->kind == CMETA_DATA_SEQUENCE &&
+           wire_field->kind == TBE_TYPED_LIST) ||
+          (value->kind == CMETA_DATA_SET &&
+           wire_field->kind == TBE_TYPED_SET) ||
+          (value->kind == CMETA_DATA_MAP &&
+           wire_field->kind == TBE_TYPED_MAP);
+      if (!kind_matches || !cmeta_data_desc_valid(value) ||
+          !cmeta_data_value_move_supported(value))
+        return typed_error(
+            error, DATA_BIND_ERR_SCHEMA, field_path,
+            "Canonical container disagrees with the schema overlay");
     } else {
       size_t fixed_extent;
       if (!cmeta_data_desc_valid(value) || !typed_native_scalar_supported(value))
