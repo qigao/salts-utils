@@ -926,7 +926,7 @@ int databind_compiler_service_native_emit_prototype(
           operation->symbol,
           operation->symbol, operation->symbol, operation->symbol,
           operation->symbol,
-          operation->symbol, operation->symbol) < 0)
+          operation->symbol) < 0)
     return -1;
 
   for (i = 0u; i < operation->error_count; ++i)
