@@ -169,6 +169,7 @@ spec("DataBind public typed generation frontend") {
 
     check_true(plan.external_config.has_socket);
     check_equal(plan.socket.symbol_prefix, "databind_device");
+    check_equal(plan.socket.native_header_include, "device_native.h");
     check_equal(plan.socket.channel_name, "Device.Telemetry");
     check_equal(plan.socket.format, DATA_BIND_FORMAT_BINARY);
     check_equal(plan.socket.mode, DATA_BIND_SOCKET_MODE_STREAM);
