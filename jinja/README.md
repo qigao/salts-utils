@@ -599,7 +599,7 @@ The root value is described by `cmeta_data_desc`. Struct fields use
 CMeta's semantic descriptors.
 
 Collections and mappings are consumed through the canonical CMeta provider
-contract exported by Salts 1.7.7. Typed CSTL `Vec`, `Deque`, `List`,
+contract exported by Salts 1.7.8. Typed CSTL `Vec`, `Deque`, `List`,
 `Set`, `HashSet`, `Map`, `HashMap`, `MultiMap`, `BTree`, and
 `BPlusTree` publish `*_collection_data` / `*_map_data` descriptors that
 Jinja reads without knowing their storage layout. A caller may still use
