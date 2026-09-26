@@ -205,16 +205,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          if [ -n "${VCPKG_ROOT:-}" ] &&
-             [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] &&
-               [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          else
-            vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
-            echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
 
       - name: Restore versioned Salts and re2c SDKs
         shell: bash
@@ -301,15 +295,10 @@ jobs:
         run: |
           set -euo pipefail
           brew install nasm ninja
-          if [ -n "${VCPKG_ROOT:-}" ] && [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] && [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          elif [ -f "$(brew --prefix)/share/vcpkg/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$(brew --prefix)/share/vcpkg" >> "$GITHUB_ENV"
-          else
-            echo "vcpkg unavailable" >&2; exit 1
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           case "$RUNNER_ARCH" in
             X64) rid=macos-x64; triplet=x64-osx ;;
             ARM64) rid=macos-arm64; triplet=arm64-osx ;;
@@ -424,10 +413,14 @@ jobs:
           choco install nasm ninja -y --no-progress
           $vcpkgRoot = $env:VCPKG_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+            throw "canonical VCPKG_ROOT is unavailable"
           }
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            throw "VCPKG_ROOT is unavailable"
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe") -PathType Leaf)) {
+            throw "canonical vcpkg executable is unavailable"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE) -or
+              -not (Test-Path -LiteralPath $env:QIGAO_VCPKG_TOOLCHAIN_FILE -PathType Leaf)) {
+            throw "canonical qigao vcpkg toolchain is unavailable"
           }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
             throw "Windows shared vcpkg NuGet cache is unavailable"
