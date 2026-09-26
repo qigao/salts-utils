@@ -230,10 +230,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
       - name: Prepare native toolchain
         id: env
         shell: bash
@@ -331,10 +327,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
       - name: Prepare native toolchain
         id: env
         shell: bash
@@ -456,10 +448,6 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
 
       - name: Prepare native toolchain
         shell: pwsh
@@ -588,10 +576,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
       - name: Prepare Android toolchain
         shell: bash
         run: |
