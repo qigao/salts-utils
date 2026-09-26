@@ -213,7 +213,9 @@ suite("compiler_cmeta_field_projection") {
                             "&cmeta_data_int32");
             } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
                        cases[i].kind == CMETA_DATA_SET) {
-                check_null(field_projection_text(field, "native_data_symbol"));
+                check_not_null(field_projection_text(field, "native_data_symbol"));
+                check_not_null(field_projection_text(field, "native_type_symbol"));
+                check_not_null(field_projection_child(field, "native_cstl_container"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
@@ -334,6 +336,9 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(map_add(field, create_node_string("is_map", "1")), 0);
                 check_equal(map_add(field, create_node_string("key_type", "string")), 0);
                 check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_COLLECTION_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
             } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
@@ -356,7 +361,8 @@ suite("compiler_cmeta_field_projection") {
             if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
             check_equal(field_projection_text(field, "cmeta_native_requirement"),
                         expected_native_requirement(EXPECTED[i].requirement));
-            if (i < 3u)
+            if (i < 3u ||
+                EXPECTED[i].requirement == EXPECT_COLLECTION_PROVIDER)
                 check_not_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
             else
