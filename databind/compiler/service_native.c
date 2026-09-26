@@ -777,6 +777,8 @@ int databind_compiler_service_native_emit_prototype(
           operation->symbol,
           operation->symbol,
           operation->symbol,
+          operation->symbol,
+          operation->symbol,
           operation->request_type,
           operation->response_type,
           operation->symbol) < 0)
