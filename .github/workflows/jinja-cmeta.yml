@@ -64,6 +64,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
           test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${VCPKG_BINARY_SOURCES:-}"
           case "$VCPKG_BINARY_SOURCES" in
             *nugetconfig*) ;;
@@ -87,7 +90,7 @@ jobs:
           set -euxo pipefail
           cmake -S . -B build/jinja-cmeta -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \

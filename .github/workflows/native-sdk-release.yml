@@ -89,7 +89,7 @@ jobs:
           set -euxo pipefail
           cmake -S . -B build/binding-plan -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
@@ -158,7 +158,7 @@ jobs:
           set -euxo pipefail
           cmake -S . -B build/jinja-cmeta -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
@@ -205,16 +205,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          if [ -n "${VCPKG_ROOT:-}" ] &&
-             [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] &&
-               [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          else
-            vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
-            echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
 
       - name: Restore versioned Salts and re2c SDKs
         shell: bash
@@ -228,7 +222,7 @@ jobs:
           prefix="$GITHUB_WORKSPACE/stage/sdk/linux-x64"
           cmake -S . -B build/native-sdk -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
@@ -242,7 +236,7 @@ jobs:
 
           cmake -S plugin/tests/package_config/plugin_abi \
             -B build/plugin-abi-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix"
@@ -251,7 +245,7 @@ jobs:
 
           cmake -S plugin-cflow/tests/package_config \
             -B build/plugin-cflow-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix"
@@ -260,7 +254,7 @@ jobs:
 
           cmake -S databind/compiler/package_config/databind_target \
             -B build/databind-target-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix"
@@ -301,15 +295,10 @@ jobs:
         run: |
           set -euo pipefail
           brew install nasm ninja
-          if [ -n "${VCPKG_ROOT:-}" ] && [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] && [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          elif [ -f "$(brew --prefix)/share/vcpkg/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$(brew --prefix)/share/vcpkg" >> "$GITHUB_ENV"
-          else
-            echo "vcpkg unavailable" >&2; exit 1
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           case "$RUNNER_ARCH" in
             X64) rid=macos-x64; triplet=x64-osx ;;
             ARM64) rid=macos-arm64; triplet=arm64-osx ;;
@@ -330,7 +319,7 @@ jobs:
           prefix="$GITHUB_WORKSPACE/stage/sdk/${{ steps.env.outputs.rid }}"
           cmake -S . -B build/native-sdk -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
@@ -344,7 +333,7 @@ jobs:
 
           cmake -S databind/compiler/package_config/databind_public \
             -B build/databind-public-installed -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix"
@@ -424,10 +413,14 @@ jobs:
           choco install nasm ninja -y --no-progress
           $vcpkgRoot = $env:VCPKG_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+            throw "canonical VCPKG_ROOT is unavailable"
           }
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            throw "VCPKG_ROOT is unavailable"
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe") -PathType Leaf)) {
+            throw "canonical vcpkg executable is unavailable"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE) -or
+              -not (Test-Path -LiteralPath $env:QIGAO_VCPKG_TOOLCHAIN_FILE -PathType Leaf)) {
+            throw "canonical qigao vcpkg toolchain is unavailable"
           }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_BINARY_SOURCES) -or $env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
             throw "Windows shared vcpkg NuGet cache is unavailable"
@@ -459,7 +452,7 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
           if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
@@ -472,21 +465,21 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          cmake -S plugin\tests\package_config\plugin_abi -B build\plugin-abi-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S plugin\tests\package_config\plugin_abi -B build\plugin-abi-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\plugin-abi-installed --parallel 2
           if errorlevel 1 exit /b 1
           build\plugin-abi-installed\plugin_abi_installed_consumer.exe
           if errorlevel 1 exit /b 1
 
-          cmake -S plugin-cflow\tests\package_config -B build\plugin-cflow-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S plugin-cflow\tests\package_config -B build\plugin-cflow-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\plugin-cflow-installed --parallel 2
           if errorlevel 1 exit /b 1
           build\plugin-cflow-installed\plugin_cflow_installed_consumer.exe
           if errorlevel 1 exit /b 1
 
-          cmake -S databind\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S databind\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\databind-target-installed --target installed_image --parallel 2
           if errorlevel 1 exit /b 1
@@ -550,16 +543,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          if [ -n "${VCPKG_ROOT:-}" ] &&
-             [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] &&
-               [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          else
-            vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
-            echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${ANDROID_NDK_HOME:-}"
 
       - name: Restore versioned target Salts and host re2c SDKs
@@ -581,7 +568,7 @@ jobs:
           cmake -S . -B build/android-native-sdk -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
@@ -600,7 +587,7 @@ jobs:
           cmake -S databind/compiler/package_config/databind_public \
             -B build/databind-public-android -G Ninja \
             -DCMAKE_SYSTEM_NAME=Android \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
