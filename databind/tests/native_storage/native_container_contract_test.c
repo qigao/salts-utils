@@ -225,6 +225,7 @@ spec("DataBind canonical CSTL native containers") {
                 DATA_BIND_OK);
     check_equal(native_init(&NativeIntVec_collection_data, &destination),
                 DATA_BIND_OK);
+    check_equal(NativeIntVec_init(&source, CONTAINER_MAX_ITEMS), STL_OK);
     check_equal(NativeIntVec_push(&source, 3), STL_OK);
     check_equal(NativeIntVec_push(&source, 5), STL_OK);
 
@@ -263,6 +264,7 @@ spec("DataBind canonical CSTL native containers") {
                 DATA_BIND_OK);
     check_equal(native_init(&NativeIntSet_collection_data, &destination),
                 DATA_BIND_OK);
+    check_equal(NativeIntSet_init(&source, CONTAINER_MAX_ITEMS), STL_OK);
     check_equal(NativeIntSet_add(&source, 5), STL_OK);
     check_equal(NativeIntSet_add(&source, 3), STL_OK);
 
@@ -291,6 +293,7 @@ spec("DataBind canonical CSTL native containers") {
                 DATA_BIND_OK);
     check_equal(native_init(&NativeIntLongMap_map_data, &destination),
                 DATA_BIND_OK);
+    check_equal(NativeIntLongMap_init(&source, CONTAINER_MAX_ITEMS), STL_OK);
     check_equal(NativeIntLongMap_put(&source, 2, 20L), STL_OK);
     check_equal(NativeIntLongMap_put(&source, 1, 10L), STL_OK);
 
@@ -332,6 +335,7 @@ spec("DataBind canonical CSTL native containers") {
                 CMETA_OK);
     check_equal(cmeta_data_value_init_zero(&NATIVE_TEXT_RECORD_DATA, &second),
                 CMETA_OK);
+    check_equal(NativeTextRecordVec_init(&source, CONTAINER_MAX_ITEMS), STL_OK);
     check_equal(cmeta_data_buffer_assign(
                     &salts_tstr_cmeta_data, &first.text,
                     (const unsigned char *)"alpha", 5u, 5u),
