@@ -1262,6 +1262,126 @@ static DataBindStatus typed_descriptor_native_record(const TbeTypedDescriptor *d
                                        path, out, error);
 }
 
+static const DataBindFormatProvider *typed_native_format_provider(
+    DataBindFormat format) {
+  if (format == DATA_BIND_FORMAT_JSON) return data_bind_json_format_provider();
+  if (format == DATA_BIND_FORMAT_YAML) return data_bind_yaml_format_provider();
+  if (format == DATA_BIND_FORMAT_XML) return data_bind_xml_format_provider();
+  return NULL;
+}
+
+static DataBindStatus typed_native_copy_diagnostic(
+    DataBindError *error, DataBindStatus status,
+    const DataBindNativeDiagnostic *diagnostic,
+    const char *fallback_path, const char *fallback_message) {
+  const char *path = fallback_path;
+  const char *message = fallback_message;
+  int line = -1;
+  int column = -1;
+
+  if (diagnostic != NULL &&
+      diagnostic->size >= sizeof(DataBindNativeDiagnostic)) {
+    if (diagnostic->error.path[0] != '\0') path = diagnostic->error.path;
+    if (diagnostic->error.message[0] != '\0') message = diagnostic->error.message;
+    line = diagnostic->error.line;
+    column = diagnostic->error.column;
+  }
+  (void)typed_error(error, status, path, message);
+  if (error != NULL && error->size >= sizeof(error->size)) {
+    if (error->size >= offsetof(DataBindError, line) + sizeof(error->line))
+      error->line = line;
+    if (error->size >= offsetof(DataBindError, column) + sizeof(error->column))
+      error->column = column;
+  }
+  return status;
+}
+
+static DataBindStatus typed_native_decode_text(
+    DataBindFormat format, const char *text, size_t length,
+    const cmeta_data_desc *data, void *destination,
+    const char *path, DataBindError *error) {
+  const DataBindFormatProvider *provider = typed_native_format_provider(format);
+  DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+  DataBindNativeRequirements requirements = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindFormatReader lease = DATA_BIND_FORMAT_READER_INIT;
+  unsigned char *probe = NULL;
+  unsigned char *raw_workspace = NULL;
+  unsigned char *aligned_workspace;
+  size_t probe_bytes = 0u;
+  size_t reserve_bytes;
+  uintptr_t address;
+  size_t remainder;
+  DataBindStatus status;
+
+  if (provider == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Format has no canonical CSerde provider");
+  if (data == NULL || data->storage_type == NULL || destination == NULL)
+    return typed_error(error, DATA_BIND_ERR_INVALID_ARG, path,
+                       "Invalid canonical native text decode target");
+
+  options.max_depth = TBE_TYPED_NATIVE_MAX_DEPTH;
+  options.max_items = SIZE_MAX;
+  options.max_owned_bytes = SIZE_MAX;
+
+  status = data_bind_native_probe_workspace_size(
+      options.max_depth, &probe_bytes);
+  if (status != DATA_BIND_OK)
+    return typed_error(error, status, path,
+                       "Unable to size canonical descriptor traversal");
+  probe = (unsigned char *)malloc(probe_bytes);
+  if (probe == NULL)
+    return typed_error(error, DATA_BIND_ERR_OOM, path,
+                       "Out of memory allocating descriptor traversal");
+  options.workspace = probe;
+  options.workspace_bytes = probe_bytes;
+
+  status = data_bind_native_measure(
+      &options, data, &requirements, &diagnostic);
+  free(probe);
+  probe = NULL;
+  if (status != DATA_BIND_OK)
+    return typed_native_copy_diagnostic(
+        error, status, &diagnostic, path,
+        "Canonical native graph measurement failed");
+
+  if (requirements.workspace_alignment == 0u ||
+      requirements.decode_bytes >
+          SIZE_MAX - (requirements.workspace_alignment - 1u))
+    return typed_error(error, DATA_BIND_ERR_LIMIT, path,
+                       "Canonical native decode workspace overflow");
+  reserve_bytes = requirements.decode_bytes +
+                  requirements.workspace_alignment - 1u;
+  raw_workspace = (unsigned char *)malloc(reserve_bytes != 0u ? reserve_bytes : 1u);
+  if (raw_workspace == NULL)
+    return typed_error(error, DATA_BIND_ERR_OOM, path,
+                       "Out of memory allocating canonical native decode workspace");
+
+  address = (uintptr_t)raw_workspace;
+  remainder = (size_t)(address % requirements.workspace_alignment);
+  aligned_workspace = raw_workspace +
+      (remainder == 0u ? 0u : requirements.workspace_alignment - remainder);
+  options.workspace = aligned_workspace;
+  options.workspace_bytes = requirements.decode_bytes;
+
+  status = data_bind_format_reader_open(
+      provider, text, length, options.max_depth, &lease, error);
+  if (status == DATA_BIND_OK) {
+    status = data_bind_native_decode(
+        &options, data, lease.reader, destination,
+        data->storage_type->size, &diagnostic);
+    if (status != DATA_BIND_OK)
+      status = typed_native_copy_diagnostic(
+          error, status, &diagnostic, path,
+          "Canonical native text decode failed");
+  }
+
+  (void)data_bind_format_reader_close(&lease);
+  free(raw_workspace);
+  return status;
+}
+
 static DataBindStatus typed_native_init_value(const cmeta_data_desc *data, void *storage,
                                               const char *path, DataBindError *error) {
   cmeta_status status;
