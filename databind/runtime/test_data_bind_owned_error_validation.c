@@ -265,7 +265,9 @@ static DataBindBindingPlan *compile_plan(DataBind *codec) {
       DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
           FunctionMeta(owned_call), &REQUEST_NATIVE, &RESPONSE_NATIVE);
   DataBindBindingProjection projection =
-      DATA_BIND_BINDING_PROJECTION_INIT("test-owned", NULL, project_field);
+      DATA_BIND_BINDING_PROJECTION_INIT;
+  projection.id = "test-owned";
+  projection.project_field = project_field;
   DataBindBindingPlanDiagnostic diagnostic =
       DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
   DataBindBindingPlan *plan = NULL;
