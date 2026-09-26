@@ -2,6 +2,7 @@
 
 #include "data_bind_binding_plan.h"
 #include "data_bind_message_plan.h"
+#include "data_bind_message_executor.h"
 #include "data_bind_native_binding.h"
 #include "data_bind_method_plan.h"
 #include "data_bind_projection_plan.h"
@@ -11,6 +12,8 @@
 static_assert(std::is_standard_layout_v<DataBindSchemaConstraint>);
 static_assert(std::is_standard_layout_v<DataBindBindingAddress>);
 static_assert(std::is_standard_layout_v<DataBindMessagePlanDiagnostic>);
+static_assert(std::is_standard_layout_v<DataBindMessageDecodeRequirements>);
+static_assert(std::is_standard_layout_v<DataBindMessageDecodeDiagnostic>);
 static_assert(std::is_standard_layout_v<DataBindNativeTypeBinding>);
 static_assert(std::is_standard_layout_v<DataBindNativeErrorBinding>);
 static_assert(std::is_standard_layout_v<DataBindServiceNativeBinding>);
