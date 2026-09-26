@@ -144,6 +144,7 @@ add_library(
   data_bind_method_plan.h
   data_bind_projection_plan.c
   data_bind_projection_plan.h
+  data_bind_socket_plan.h
   data_bind_validation_plan.c
   data_bind_validation_plan.h
   data_bind_stream_format_state.c
@@ -241,6 +242,7 @@ install(
     data_bind_binding_plan.h
     data_bind_method_plan.h
     data_bind_projection_plan.h
+    data_bind_socket_plan.h
     data_bind_validation_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
