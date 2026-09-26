@@ -264,8 +264,7 @@ static databind_binary_layout_status binary_build_field(
     field->nullable_bit = (unsigned)bit;
   }
 
-  if (binary_has_child(field_node, "is_group_field") ||
-      binary_has_child(field_node, "typed_is_group")) {
+  if (binary_has_child(field_node, "is_group_field")) {
     const char *group_type = binary_string_value(field_node, "group_type");
     const Node *group = group_type != NULL
                             ? binary_find_record(root, group_type)
@@ -281,7 +280,7 @@ static databind_binary_layout_status binary_build_field(
     return DATABIND_BINARY_LAYOUT_OK;
   }
 
-  if (binary_has_child(field_node, "typed_is_var_data")) {
+  if (binary_has_child(field_node, "is_var_data")) {
     field->kind = DATABIND_BINARY_FIELD_VAR_DATA;
     field->tail_prefix_bytes = 4u;
     return DATABIND_BINARY_LAYOUT_OK;
