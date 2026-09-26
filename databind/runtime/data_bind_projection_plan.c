@@ -25,8 +25,11 @@ struct DataBindTransportPlan {
 typedef struct DataBindPlanScan {
   const char *visited[DATA_BIND_PLAN_MAX_TYPES];
   size_t visited_count;
+  DataBindSchemaKind root_kind;
   int has_optional;
   int has_nullable;
+  int has_csv_unsupported_shape;
+  const char *csv_unsupported_field;
 } DataBindPlanScan;
 
 static size_t plan_out_size(size_t requested, size_t full) {
@@ -85,6 +88,26 @@ static uint32_t plan_format_states(DataBindFormat format) {
   return 0u;
 }
 
+static int plan_csv_root_kind_supported(DataBindSchemaKind kind) {
+  return kind == DATA_BIND_SCHEMA_MESSAGE ||
+         kind == DATA_BIND_SCHEMA_COMPOSITE;
+}
+
+static int plan_csv_nested_kind_supported(DataBindSchemaKind kind) {
+  return kind == DATA_BIND_SCHEMA_ENUM ||
+         kind == DATA_BIND_SCHEMA_FLAGS ||
+         kind == DATA_BIND_SCHEMA_SCALAR;
+}
+
+static void plan_scan_reject_csv_field(
+    DataBindPlanScan *scan,
+    const DataBindSchemaField *field) {
+  if (scan == NULL || field == NULL || scan->has_csv_unsupported_shape)
+    return;
+  scan->has_csv_unsupported_shape = 1;
+  scan->csv_unsupported_field = field->name;
+}
+
 static int plan_scan_seen(
     const DataBindPlanScan *scan,
     const char *type_name) {
@@ -117,6 +140,7 @@ static DataBindStatus plan_scan_type(
     return plan_error(error, DATA_BIND_ERR_LIMIT,
                       "FormatPlan schema graph exceeds the bounded type limit");
 
+  if (scan->visited_count == 0u) scan->root_kind = type.kind;
   scan->visited[scan->visited_count++] =
       type.name != NULL ? type.name : type_name;
 
@@ -130,6 +154,16 @@ static DataBindStatus plan_scan_type(
 
     if (field.is_optional) scan->has_optional = 1;
     if (field.is_nullable) scan->has_nullable = 1;
+
+    if (field.is_collection || field.is_composite ||
+        field.is_group || field.is_map) {
+      plan_scan_reject_csv_field(scan, &field);
+    } else if (field.type != NULL && field.type[0] != '\0') {
+      DataBindSchemaType field_type = DATA_BIND_SCHEMA_TYPE_INIT;
+      if (data_bind_schema_find_type(codec, field.type, &field_type) &&
+          !plan_csv_nested_kind_supported(field_type.kind))
+        plan_scan_reject_csv_field(scan, &field);
+    }
 
     candidates[0] = field.type;
     candidates[1] = field.inner_type;
@@ -174,6 +208,26 @@ DataBindStatus data_bind_format_plan_compile(
   states = plan_format_states(format);
   status = plan_scan_type(codec, type_name, &scan, error);
   if (status != DATA_BIND_OK) return status;
+
+  if (format == DATA_BIND_FORMAT_CSV) {
+    char message[sizeof(((DataBindError *)0)->message)];
+    if (!plan_csv_root_kind_supported(scan.root_kind))
+      return plan_error(
+          error, DATA_BIND_ERR_SCHEMA,
+          "CSV FormatPlan requires a flat message/composite root");
+    if (scan.has_csv_unsupported_shape) {
+      if (scan.csv_unsupported_field != NULL)
+        snprintf(message, sizeof(message),
+                 "CSV FormatPlan field '%s' is not flat scalar/enum data; "
+                 "explicit projection mapping is required",
+                 scan.csv_unsupported_field);
+      else
+        snprintf(message, sizeof(message),
+                 "CSV FormatPlan contains non-flat data; "
+                 "explicit projection mapping is required");
+      return plan_error(error, DATA_BIND_ERR_SCHEMA, message);
+    }
+  }
 
   if (scan.has_nullable &&
       (states & DATA_BIND_FORMAT_STATE_NULL) == 0u)

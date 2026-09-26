@@ -66,10 +66,15 @@ typedef struct DataBindTransportPlanInfo {
  * semantics. The resulting plan owns all execution facts it needs and performs
  * no schema lookup when queried.
  *
- * JSON/YAML/TBE-binary preserve ABSENT/NULL/VALUE. The current CSV/XML 4.0
+ * JSON/YAML/Binary preserve ABSENT/NULL/VALUE. The current CSV/XML 4.0
  * profiles preserve ABSENT/VALUE but cannot represent explicit logical NULL;
  * a contract containing nullable fields therefore fails admission instead of
  * collapsing NULL into ABSENT or VALUE.
+ *
+ * CSV additionally admits only a flat message/composite whose fields are
+ * scalar-like (including enum/flags). Nested records, unions, groups and
+ * list/set/map fields fail closed until an explicit projection mapping is
+ * compiled. No implicit flattening or transport-local fallback is performed.
  */
 DATA_BIND_API DataBindStatus data_bind_format_plan_compile(
     DataBind *codec,

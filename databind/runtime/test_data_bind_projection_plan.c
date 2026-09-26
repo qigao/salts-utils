@@ -14,6 +14,18 @@ static DataBind *projection_plan_codec(void) {
       "message Response {"
       " uint32 value;"
       "}"
+      "enum CsvState <uint8> { Ready = 1; Busy = 2; }"
+      "message CsvFlat {"
+      " uint32 id;"
+      " CsvState state;"
+      " optional string note;"
+      "}"
+      "composite CsvPoint { int32 x; int32 y; }"
+      "message CsvNested { CsvPoint point; }"
+      "message CsvList { list<uint32> values; }"
+      "message CsvMap { map<string,int32> attrs; }"
+      "union CsvChoice { CsvPoint point; }"
+      "message CsvUnion { CsvChoice choice; }"
       "service Store {"
       " Read: Request -> Response;"
       "}";
@@ -89,6 +101,44 @@ spec("DataBind FormatPlan and TransportPlan") {
         data_bind_format_plan_compile(
             codec, "Request", DATA_BIND_FORMAT_YAML, &plan, &error),
         DATA_BIND_OK);
+    data_bind_format_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("admits only flat scalar/enum CSV record shapes") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    static const char *const rejected[] = {
+        "CsvNested", "CsvList", "CsvMap", "CsvUnion", "CsvChoice"};
+    size_t i;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    check_equal(
+        data_bind_format_plan_compile(
+            codec, "CsvFlat", DATA_BIND_FORMAT_CSV, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_format_plan_free(plan);
+    plan = NULL;
+
+    for (i = 0u; i < sizeof(rejected) / sizeof(rejected[0]); ++i) {
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(
+          data_bind_format_plan_compile(
+              codec, rejected[i], DATA_BIND_FORMAT_CSV, &plan, &error),
+          DATA_BIND_ERR_SCHEMA);
+      check_null(plan);
+      check_contains(error.message, "CSV FormatPlan");
+    }
+
+    check_equal(
+        data_bind_format_plan_compile(
+            codec, "CsvNested", DATA_BIND_FORMAT_JSON, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
     data_bind_format_plan_free(plan);
     data_bind_free(codec);
   }
