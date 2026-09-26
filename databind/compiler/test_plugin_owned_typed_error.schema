@@ -12,10 +12,14 @@ message Response {
     uint32 value;
 }
 
-message DynamicError {
-    string detail;
+message TextError {
+    @Size(max = 32) string detail;
+}
+
+message BytesError {
+    @Size(max = 8) bytes payload;
 }
 
 service Store {
-    Read: Request -> Response throws DynamicError;
+    Read: Request -> Response throws TextError, BytesError;
 }
