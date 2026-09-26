@@ -14,11 +14,12 @@
 extern "C" {
 #endif
 
-#define DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS 7u
+#define DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS 11u
 #define DATABIND_COMPILER_ARTIFACT_NAME_MAX 127u
 
 typedef struct databind_compiler_projection_frontend_input {
-  const char *projections;
+  const char *artifacts;
+  const char *transports;
   const char *component_id;
   const char *artifact_name;
   const char *artifact_version;
@@ -27,7 +28,7 @@ typedef struct databind_compiler_projection_frontend_input {
   /* Native/source-language output selected by the ordinary --output option. */
   const char *output_path;
 
-  /* Other active renderer outputs reserved against artifact collisions. */
+  /* Other active renderer outputs reserved against generated output collisions. */
   const char *source_output_path;
   const char *guest_output_path;
   const char *dsl_output_path;
@@ -35,9 +36,9 @@ typedef struct databind_compiler_projection_frontend_input {
 
 typedef struct databind_compiler_projection_frontend_plan {
   databind_compiler_projection_request
-      requests[DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS];
+      requests[DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS];
   databind_compiler_projection_backend
-      backends[DATABIND_COMPILER_FRONTEND_MAX_PROJECTIONS];
+      backends[DATABIND_COMPILER_FRONTEND_MAX_SELECTIONS];
   size_t request_count;
   size_t backend_count;
 
@@ -58,13 +59,12 @@ typedef struct databind_compiler_projection_frontend_plan {
 } databind_compiler_projection_frontend_plan;
 
 /*
- * Lower public artifact-selection inputs into the compiler-private projection
- * registry.
+ * Lower public selection inputs into one compiler-private generation request
+ * set over one canonical IR.
  *
- * projections is a comma-separated canonical projection-name list.
- * Public backends include PLUGIN plus convention-based HTTP/RPC MethodPlan
- * projections. Known but not-yet-public backends fail explicitly rather than
- * silently falling back.
+ * artifacts and transports are independent comma-separated canonical name
+ * lists. Known but not-yet-public selections fail explicitly. Format selection
+ * remains owned by DataBindFormat/FormatPlan and transport projection config.
  */
 int databind_compiler_projection_frontend_build(
     const databind_compiler_projection_frontend_input *input,
