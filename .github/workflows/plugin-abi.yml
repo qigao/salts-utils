@@ -83,7 +83,7 @@ jobs:
             *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
-          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "2"
+          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "3"
           printf '%s\n' "${{ steps.vcpkg_cache.outputs.cache_revision }}" | grep -Eq '^[0-9a-f]{64}$'
           test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
           test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
@@ -254,7 +254,7 @@ jobs:
           }
           $contractVersion = "${{ steps.vcpkg_cache.outputs.contract_version }}"
           $cacheRevision = "${{ steps.vcpkg_cache.outputs.cache_revision }}"
-          if ($contractVersion -ne "2") { throw "unexpected shared cache contract version: '$contractVersion'" }
+          if ($contractVersion -ne "3") { throw "unexpected shared cache contract version: '$contractVersion'" }
           if ($cacheRevision -notmatch '^[0-9a-f]{64}$') { throw "invalid shared cache revision: '$cacheRevision'" }
           if ($contractVersion -ne $env:VCPKG_CACHE_CONTRACT_VERSION) { throw "shared cache contract output/env mismatch" }
           if ($cacheRevision -ne $env:VCPKG_CACHE_REVISION) { throw "shared cache revision output/env mismatch" }
