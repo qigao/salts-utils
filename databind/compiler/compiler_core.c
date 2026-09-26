@@ -1387,8 +1387,7 @@ static int tbe_compiler_cmeta_classify_record(
                "fixed_value") == 0 &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
-         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+        strcmp(kind, "TBE_TYPED_UUID") == 0)
       continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);
