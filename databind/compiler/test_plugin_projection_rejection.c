@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef PLUGIN_OWNED_TYPED_ERROR_SCHEMA
-#error "PLUGIN_OWNED_TYPED_ERROR_SCHEMA is required"
+#ifndef PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA
+#error "PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA is required"
 #endif
 #ifndef PLUGIN_MULTI_SERVICE_SCHEMA
 #error "PLUGIN_MULTI_SERVICE_SCHEMA is required"
@@ -57,7 +57,7 @@ static int plugin_test_set_schema_version(Node *root, const char *value) {
 }
 
 spec("DataBind Plugin projection semantic rejection") {
-  it("rejects dynamic-owned typed Service errors before creating outputs") {
+  it("rejects optional owned typed Service errors before creating outputs") {
     static const char source_output[] =
         "databind_plugin_owned_typed_error_should_not_exist.c";
     static const char header_output[] =
@@ -93,7 +93,7 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_source_output);
 
     check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_OWNED_TYPED_ERROR_SCHEMA,
+                    PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA,
                     &root, &schema_data),
                 0);
     check_not_null(root);
