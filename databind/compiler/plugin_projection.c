@@ -466,7 +466,7 @@ static int plugin_write_header(
     return 0;
 
   if (fprintf(file, "#ifndef %s\n#define %s\n\n", guard, guard) < 0 ||
-      fputs("#include ", file) == EOF ||
+      fputs("#include \"data_bind.h\"\n#include ", file) == EOF ||
       !plugin_write_c_string(file, config->native_header) ||
       fputs(
           "\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
