@@ -359,7 +359,7 @@ databind_target(
   COMPONENT "Image.ImageProcessor"
   VERSION "1.0.0"
   ARTIFACT_NAME "image"
-  PROJECTIONS PLUGIN
+  ARTIFACTS PLUGIN
   SOURCES test_plugin_business_fixture.c)
 
 
@@ -367,14 +367,14 @@ databind_target(
   TARGET databind_method_plan_public_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
   ARTIFACT_NAME "public_calc"
-  PROJECTIONS HTTP RPC)
+  TRANSPORTS HTTP RPC)
 
 
 databind_target(
   TARGET databind_method_plan_configured_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
   ARTIFACT_NAME "configured_calc"
-  PROJECTIONS HTTP RPC
+  TRANSPORTS HTTP RPC
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
 
@@ -472,7 +472,7 @@ databind_target(
   COMPONENT "ErrorPlugin.StorePlugin"
   VERSION "1.0.0"
   ARTIFACT_NAME "error"
-  PROJECTIONS PLUGIN
+  ARTIFACTS PLUGIN
   SOURCES test_plugin_typed_error_business_fixture.c)
 
 cmake_add_test(test_databind_plugin_typed_error_client
