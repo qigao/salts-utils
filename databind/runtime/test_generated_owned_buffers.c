@@ -4,6 +4,7 @@
 
 #include <cmeta/data.h>
 #include <cstl/byte_buffer.h>
+#include <salts_cmeta_data.h>
 #include <tstr.h>
 
 #include <stdlib.h>
