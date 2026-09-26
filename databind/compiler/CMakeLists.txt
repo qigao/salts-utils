@@ -243,6 +243,7 @@ cmake_add_test(test_databind_socket_plan_projection
   SOURCES
     test_socket_plan_projection.c
     projection.c
+    message_native.c
     socket_plan_projection.c
     binary_layout_ir.c
     compiler_core.c
