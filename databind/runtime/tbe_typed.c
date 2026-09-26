@@ -1174,11 +1174,11 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
       data->abi_version != CMETA_DATA_DESC_ABI_VERSION || data->kind != CMETA_DATA_STRUCT)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Canonical native CMeta record is unavailable");
-  {
-    DataBindStatus overlay_status =
-        typed_validate_descriptor_at(overlay, depth, error);
-    if (overlay_status != DATA_BIND_OK) return overlay_status;
-  }
+  if (!typed_nonempty(overlay->name) || overlay->size == 0u ||
+      (overlay->field_count != 0u && overlay->fields == NULL) ||
+      overlay->size != data->storage_type->size)
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical schema overlay header is invalid");
   if (depth > TBE_TYPED_NATIVE_MAX_DEPTH)
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Canonical native CMeta record depth exceeds 32");
@@ -1539,6 +1539,35 @@ static DataBindStatus typed_native_from_json_scalar(const cmeta_data_desc *data,
       return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                          "UUID provider could not copy canonical storage");
     return DATA_BIND_OK;
+  }
+  if ((data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) &&
+      cmeta_data_buffer_ops_of(data) != NULL) {
+    cmeta_status buffer_status;
+    const char *text;
+    size_t length;
+    if (json_type(value) != JSON_STRING)
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         data->kind == CMETA_DATA_STRING
+                             ? "Expected String value"
+                             : "Expected byte-string value");
+    text = json_string(value);
+    length = json_string_len(value);
+    if (data->kind == CMETA_DATA_STRING &&
+        !vstr_utf8_valid(vstr_from_buf(text != NULL ? text : "", length)))
+      return typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                         "String value is not valid UTF-8");
+    buffer_status = cmeta_data_buffer_assign(
+        data, storage, (const unsigned char *)(text != NULL ? text : ""),
+        length, length);
+    if (buffer_status == CMETA_OK) return DATA_BIND_OK;
+    if (buffer_status == CMETA_OUT_OF_MEMORY)
+      return typed_error(error, DATA_BIND_ERR_OOM, path,
+                         "Canonical buffer provider could not allocate value");
+    if (buffer_status == CMETA_CAPACITY_EXCEEDED)
+      return typed_error(error, DATA_BIND_ERR_LIMIT, path,
+                         "Canonical buffer value exceeds its bound");
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical buffer provider rejected storage");
   }
   if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
     size_t extent;
@@ -2204,6 +2233,20 @@ static json_value_t *typed_native_to_json(DataBind *codec, const cmeta_data_desc
       return NULL;
     }
     return typed_json_created(json_create_string(text), path, error);
+  }
+  if ((data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES) &&
+      cmeta_data_buffer_ops_of(data) != NULL) {
+    const unsigned char *bytes = NULL;
+    size_t length = 0u;
+    cmeta_status buffer_status =
+        cmeta_data_buffer_read(data, storage, SIZE_MAX, &bytes, &length);
+    if (buffer_status != CMETA_OK ||
+        (length != 0u && bytes == NULL)) {
+      typed_error(error, DATA_BIND_ERR_TYPE_MISMATCH, path,
+                  "Canonical buffer provider could not read storage");
+      return NULL;
+    }
+    return typed_bytes_json(bytes, length, path, error);
   }
   if (data->kind == CMETA_DATA_BYTES && cmeta_data_fixed_ops_of(data) != NULL) {
     size_t extent;
