@@ -109,6 +109,28 @@ static DataBindStatus plan_diag_fail(
   return status;
 }
 
+static DataBindStatus plan_message_fail(
+    DataBindBindingPlanDiagnostic *diagnostic,
+    const DataBindMessagePlanDiagnostic *message,
+    const char *fallback_field,
+    const char *fallback_text) {
+  DataBindStatus status =
+      message != NULL && message->status != DATA_BIND_OK
+          ? message->status
+          : DATA_BIND_ERR_SCHEMA;
+  const char *field =
+      message != NULL && message->schema_field[0] != '\0'
+          ? message->schema_field
+          : fallback_field;
+  const char *text =
+      message != NULL && message->message[0] != '\0'
+          ? message->message
+          : fallback_text;
+  return plan_diag_fail(
+      diagnostic, status, field, NULL, "%s",
+      text != NULL ? text : "MessagePlan compilation failed");
+}
+
 static char *plan_strdup(const char *text) {
   size_t length;
   char *copy;
@@ -904,11 +926,20 @@ static DataBindStatus plan_compile_errors(
               ? error.message
               : "Typed-error payload CMeta descriptor is unavailable");
 
-    payload_binding = (DataBindNativeTypeBinding)
-        DATA_BIND_NATIVE_TYPE_BINDING_INIT(name, data);
-    status = plan_validate_native_type(
-        codec, &payload_binding, name, diagnostic);
-    if (status != DATA_BIND_OK) return status;
+    {
+      DataBindMessagePlan *payload_plan = NULL;
+      DataBindMessagePlanDiagnostic message_diagnostic =
+          DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+      payload_binding = (DataBindNativeTypeBinding)
+          DATA_BIND_NATIVE_TYPE_BINDING_INIT(name, data);
+      status = data_bind_message_plan_compile(
+          codec, name, &payload_binding, &payload_plan, &message_diagnostic);
+      data_bind_message_plan_free(payload_plan);
+      if (status != DATA_BIND_OK)
+        return plan_message_fail(
+            diagnostic, &message_diagnostic, name,
+            "Typed-error MessagePlan compilation failed");
+    }
 
     if (binding->payload_offset > native->error_envelope_bytes ||
         data->storage_type->size >
@@ -1005,18 +1036,11 @@ DataBindStatus data_bind_binding_plan_compile_service(
         "DataBind Service operation '%s.%s' was not found",
         service_name, operation_name);
 
-  status = plan_validate_native_type(
-      codec, native->request, operation.request_type, diagnostic);
-  if (status != DATA_BIND_OK) return status;
-
   if (strcmp(operation.response_type, "void") != 0) {
     if (native->response == NULL)
       return plan_diag_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
                             operation.response_type, NULL,
                             "Response native binding is required");
-    status = plan_validate_native_type(
-        codec, native->response, operation.response_type, diagnostic);
-    if (status != DATA_BIND_OK) return status;
   } else if (native->response != NULL) {
     return plan_diag_fail(
         diagnostic, DATA_BIND_ERR_SCHEMA, operation.response_type, NULL,
@@ -1037,6 +1061,34 @@ DataBindStatus data_bind_binding_plan_compile_service(
     status = plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, NULL,
                             "Could not copy BindingPlan identity");
     goto fail;
+  }
+
+  {
+    DataBindMessagePlanDiagnostic message_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    status = data_bind_message_plan_compile(
+        codec, operation.request_type, native->request,
+        &plan->request_message, &message_diagnostic);
+    if (status != DATA_BIND_OK) {
+      status = plan_message_fail(
+          diagnostic, &message_diagnostic, operation.request_type,
+          "Request MessagePlan compilation failed");
+      goto fail;
+    }
+  }
+
+  if (strcmp(operation.response_type, "void") != 0) {
+    DataBindMessagePlanDiagnostic message_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    status = data_bind_message_plan_compile(
+        codec, operation.response_type, native->response,
+        &plan->response_message, &message_diagnostic);
+    if (status != DATA_BIND_OK) {
+      status = plan_message_fail(
+          diagnostic, &message_diagnostic, operation.response_type,
+          "Response MessagePlan compilation failed");
+      goto fail;
+    }
   }
 
   plan->param_count = native->function->param_count;
@@ -1077,16 +1129,8 @@ DataBindStatus data_bind_binding_plan_compile_service(
                                 plan, param_used, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
-  status = plan_compile_ingress_validation(
-      codec, operation.request_type, plan, diagnostic);
-  if (status != DATA_BIND_OK) goto fail;
-
   status = plan_compile_egress(codec, &operation, projection, native,
                                plan, param_used, diagnostic);
-  if (status != DATA_BIND_OK) goto fail;
-
-  status = plan_compile_egress_validation(
-      codec, operation.response_type, plan, diagnostic);
   if (status != DATA_BIND_OK) goto fail;
 
   status = plan_compile_errors(
