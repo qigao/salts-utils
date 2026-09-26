@@ -90,6 +90,17 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode(
     size_t max_buffer_bytes,
     DataBindMessageDecodeDiagnostic *diagnostic);
 
+/**
+ * Release one live MessagePlan native value and clear every compiled DataBind
+ * presence/null state bit. On success destination is complete semantic-zero.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_clear_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessageDecodeDiagnostic *diagnostic);
+
 #ifdef __cplusplus
 }
 #endif
