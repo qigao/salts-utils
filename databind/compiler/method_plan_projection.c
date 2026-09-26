@@ -1,4 +1,5 @@
 #include "method_plan_projection.h"
+#include "binary_layout_ir.h"
 
 #include "salts_fs.h"
 #include "salts_uuid.h"
@@ -228,6 +229,38 @@ static int compiler_format_valid(DataBindFormat format) {
   return runtime_format_name(format) != NULL;
 }
 
+static int projection_format_type_representable(
+    const Node *root,
+    const char *type_name,
+    DataBindFormat format) {
+  databind_binary_type_layout layout = {0};
+  databind_binary_layout_diagnostic diagnostic = {0};
+  databind_binary_layout_status status;
+
+  if (format != DATA_BIND_FORMAT_BINARY ||
+      type_name == NULL || strcmp(type_name, "void") == 0)
+    return 1;
+
+  status = databind_binary_layout_build(
+      root, type_name, &layout, &diagnostic);
+  databind_binary_layout_destroy(&layout);
+  return status == DATABIND_BINARY_LAYOUT_OK;
+}
+
+static int projection_operation_formats_representable(
+    const Node *root,
+    const Node *operation,
+    DataBindFormat ingress_format,
+    DataBindFormat egress_format) {
+  const char *request_type = projection_string(operation, "request_type");
+  const char *response_type = projection_string(operation, "response_type");
+
+  return projection_format_type_representable(
+             root, request_type, ingress_format) &&
+         projection_format_type_representable(
+             root, response_type, egress_format);
+}
+
 static int http_method_valid(const char *method) {
   static const char *const methods[] = {
       "GET", "HEAD", "POST", "PUT", "DELETE",
@@ -440,7 +473,15 @@ static int http_operation_config_valid(
       http_operation_config(config, service_name, operation_name, NULL);
   const char *request_type = projection_string(operation, "request_type");
   const char *response_type = projection_string(operation, "response_type");
+  const DataBindFormat ingress_format =
+      op_config != NULL ? op_config->ingress_format : DATA_BIND_FORMAT_JSON;
+  const DataBindFormat egress_format =
+      op_config != NULL ? op_config->egress_format : DATA_BIND_FORMAT_JSON;
   size_t i;
+
+  if (!projection_operation_formats_representable(
+          root, operation, ingress_format, egress_format))
+    return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_http_field_config *field = &config->fields[i];
     const char *type_name;
@@ -501,9 +542,19 @@ static int rpc_operation_config_valid(
     const Node *root, const Node *operation,
     const databind_compiler_rpc_projection_config *config,
     const char *service_name, const char *operation_name) {
+  const databind_compiler_rpc_operation_config *op_config =
+      rpc_operation_config(config, service_name, operation_name, NULL);
   const char *request_type = projection_string(operation, "request_type");
   const char *response_type = projection_string(operation, "response_type");
+  const DataBindFormat ingress_format =
+      op_config != NULL ? op_config->ingress_format : DATA_BIND_FORMAT_JSON;
+  const DataBindFormat egress_format =
+      op_config != NULL ? op_config->egress_format : DATA_BIND_FORMAT_JSON;
   size_t i;
+
+  if (!projection_operation_formats_representable(
+          root, operation, ingress_format, egress_format))
+    return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_rpc_field_config *field = &config->fields[i];
     const char *type_name;
