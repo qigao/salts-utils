@@ -28,7 +28,7 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
     { "uuid", "salts_uuid_t", CMETA_DATA_CUSTOM, EXPECT_EXPLICIT_ADAPTER },
     { "bytes[16]", "uint8_t[16]", CMETA_DATA_BYTES, EXPECT_BOUNDED_ADAPTER },
     { "string", "tstr", CMETA_DATA_STRING, EXPECT_LIFECYCLE },
-    { "bytes", "tbe_bytes_t", CMETA_DATA_BYTES, EXPECT_LIFECYCLE },
+    { "bytes", "stl_byte_buffer", CMETA_DATA_BYTES, EXPECT_LIFECYCLE },
     { "optional int32", "presence + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_PRESENCE },
     { "nullable int32", "null + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_NULL },
     { "optional nullable int32", "presence + null + int32_t", CMETA_DATA_SINT,
@@ -180,6 +180,23 @@ suite("compiler_cmeta_field_projection") {
             if (cases[i].id) check_equal(field_projection_text(field, "cmeta_data_id"), cases[i].id);
             else check_null(field_projection_text(field, "cmeta_data_id"));
             check_equal(field_projection_text(field, "type"), cases[i].type);
+            if (strcmp(cases[i].type, "string") == 0) {
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "salts_tstr_cmeta_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "salts_tstr_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"), "tstr");
+                check_not_null(field_projection_child(field, "native_external"));
+            } else if (strcmp(cases[i].type, "bytes") == 0 &&
+                       !field_projection_child(field, "is_fixed_size")) {
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "stl_byte_buffer_cmeta_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "stl_byte_buffer_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"),
+                            "stl_byte_buffer");
+                check_not_null(field_projection_child(field, "native_external"));
+            }
             if (cases[i].kind == CMETA_DATA_MAP) {
                 check_not_null(field_projection_text(field, "native_data_symbol"));
                 check_not_null(field_projection_text(field, "native_type_symbol"));
@@ -358,6 +375,24 @@ suite("compiler_cmeta_field_projection") {
             else
                 check_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
+            if (EXPECTED[i].requirement == EXPECT_LIFECYCLE) {
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_graph_supported"));
+                if (strcmp(EXPECTED[i].schema, "string") == 0) {
+                    check_equal(field_projection_text(field, "native_data_symbol"),
+                                "salts_tstr_cmeta_data");
+                    check_equal(field_projection_text(field, "native_type_symbol"),
+                                "salts_tstr_cmeta_type");
+                    check_equal(field_projection_text(field, "native_c_type"), "tstr");
+                } else {
+                    check_equal(field_projection_text(field, "native_data_symbol"),
+                                "stl_byte_buffer_cmeta_data");
+                    check_equal(field_projection_text(field, "native_type_symbol"),
+                                "stl_byte_buffer_cmeta_type");
+                    check_equal(field_projection_text(field, "native_c_type"),
+                                "stl_byte_buffer");
+                }
+            }
             if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
