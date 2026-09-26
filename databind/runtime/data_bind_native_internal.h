@@ -18,10 +18,16 @@ typedef struct DataBindNativeDecodeUsage {
  * decoder.
  *
  * first_token is the already-read first token of exactly one value. reader is
- * left positioned immediately after that token. On success, usage publishes
- * this decode call's exact semantic item and owned-payload counters. On
- * failure, usage is zeroed. Public data_bind_native_decode* semantics are
- * unchanged and route through the same implementation without a first token.
+ * left positioned immediately after that token.
+ *
+ * usage is an optional cumulative input/output counter. Its incoming values
+ * are charged before this value; successful decode publishes the new cumulative
+ * totals. Failure leaves usage unchanged. This lets MessagePlan preserve one
+ * whole-message max_items/max_owned_bytes budget across multiple exact field
+ * decodes without weakening native descriptor preflight.
+ *
+ * Public data_bind_native_decode* semantics are unchanged and route through the
+ * same implementation with zero initial usage and no first token.
  */
 DataBindStatus data_bind_native_decode_from_token_internal(
     const DataBindNativeOptions *options,
