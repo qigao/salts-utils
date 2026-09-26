@@ -110,7 +110,7 @@ jobs:
           set -euxo pipefail
           cmake -S . -B build/plugin-abi -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_MANIFEST_INSTALL=OFF \
@@ -175,7 +175,7 @@ jobs:
           test -x "$host_lemon"
           cmake -S . -B build/binding-plan-sanitized -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_MANIFEST_INSTALL=OFF \
@@ -289,7 +289,7 @@ jobs:
           "%QIGAO_VCPKG_ROOT%\vcpkg.exe" install --x-manifest-root="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind" --x-install-root="%GITHUB_WORKSPACE%\vcpkg_installed" --triplet=x64-windows --only-binarycaching
           if errorlevel 1 exit /b 1
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_INSTALL=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake -S . -B build\plugin-abi -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_INSTALL=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           if errorlevel 1 exit /b 1
           cmake --build build\plugin-abi --target salts_plugin_contract_test salts_plugin_header_cpp_test salts_plugin_loader_test plugin_cflow_publisher_provider_test plugin_cflow_function_projection_test test_databind_projection_registry test_databind_projection_frontend test_tbe_compiler_cmeta_fields test_databind_method_plan_binary_admission test_databind_binary_layout_ir test_databind_socket_plan_projection test_databind_socket_plan_public_frontend test_tbe_cmeta_acceptance test_databind_generated_method_plan_projection test_databind_method_plan_public_frontend test_component_contract test_channel_contract test_data_bind_channel test_data_bind_channel_public_cpp test_data_bind_socket_plan_public_cpp test_data_bind_component test_data_bind_component_public_cpp test_databind_service_native_lowering test_databind_service_native_public_cpp test_databind_plugin_generated_dso test_databind_plugin_generated_client test_databind_plugin_generated_client_cpp test_databind_plugin_typed_error_client test_databind_plugin_typed_error_client_cpp test_databind_plugin_projection_rejection test_data_bind_binding_plan test_data_bind_projection_plan test_data_bind_native_writer test_data_bind_native_container test_data_bind_validation_plan test_data_bind_cmeta_public_cpp --parallel 2
           if errorlevel 1 exit /b 1
