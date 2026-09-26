@@ -3533,7 +3533,7 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
     if (len != native.overlay->fixed_block_size)
       return typed_error(error, DATA_BIND_ERR_PARSE, type_name,
                          "Binary input size does not match the fixed wire block");
-  } else {
+  } else if (format == DATA_BIND_FORMAT_CSV) {
     status = typed_text_parse_json(codec, native.data, native.overlay, format, (const char *)data,
                                    len, row, &json, type_name, error);
   }
@@ -3550,10 +3550,16 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
     if (format == DATA_BIND_FORMAT_BINARY)
       status = typed_native_read_fixed(native.data, native.overlay, (const uint8_t *)data,
                                        temporary, type_name, error);
+    else if (format == DATA_BIND_FORMAT_JSON ||
+             format == DATA_BIND_FORMAT_YAML ||
+             format == DATA_BIND_FORMAT_XML)
+      status = typed_native_decode_text(
+          format, (const char *)data, len, native.data, temporary,
+          type_name, error);
     else
       status = typed_native_from_json(
           codec, native.data, native.overlay, json, temporary, type_name,
-          format == DATA_BIND_FORMAT_CSV || format == DATA_BIND_FORMAT_XML, error);
+          format == DATA_BIND_FORMAT_CSV, error);
   }
   json_free(json);
   if (status == DATA_BIND_OK) {
