@@ -1,5 +1,7 @@
 #include "data_bind_message_plan.h"
+#include "data_bind_message_executor.h"
 #include "data_bind_message_plan_internal.h"
+#include "data_bind_native_internal.h"
 #include "data_bind_validation_plan.h"
 #include "data_bind_validation_plan_internal.h"
 
@@ -774,4 +776,631 @@ DataBindStatus data_bind_message_plan_validate_native(
   }
 
   return DATA_BIND_OK;
+}
+
+
+static int message_decode_diag_valid(
+    const DataBindMessageDecodeDiagnostic *diagnostic) {
+  return diagnostic == NULL ||
+         (diagnostic->size >= sizeof(*diagnostic) &&
+          diagnostic->abi_version == DATA_BIND_MESSAGE_EXECUTOR_ABI_VERSION);
+}
+
+static void message_decode_diag_clear(
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  if (diagnostic == NULL) return;
+  diagnostic->error = (DataBindError)DATA_BIND_ERROR_INIT;
+  diagnostic->source_status = CSERDE_OK;
+}
+
+static DataBindStatus message_decode_fail(
+    DataBindMessageDecodeDiagnostic *diagnostic,
+    DataBindStatus status,
+    cserde_status source_status,
+    const char *path,
+    const char *fmt,
+    ...) {
+  va_list ap;
+  if (diagnostic == NULL) return status;
+  diagnostic->error = (DataBindError)DATA_BIND_ERROR_INIT;
+  diagnostic->source_status = source_status;
+  diagnostic->error.code = status;
+  if (path != NULL)
+    snprintf(diagnostic->error.path, sizeof(diagnostic->error.path),
+             "%s", path);
+  va_start(ap, fmt);
+  vsnprintf(diagnostic->error.message, sizeof(diagnostic->error.message),
+            fmt, ap);
+  va_end(ap);
+  return status;
+}
+
+static DataBindStatus message_decode_native_fail(
+    DataBindMessageDecodeDiagnostic *diagnostic,
+    DataBindStatus status,
+    const DataBindNativeDiagnostic *native,
+    const char *fallback_path,
+    const char *fallback_message) {
+  if (diagnostic == NULL) return status;
+  diagnostic->error = (DataBindError)DATA_BIND_ERROR_INIT;
+  diagnostic->source_status =
+      native != NULL ? native->source_status : CSERDE_OK;
+  if (native != NULL)
+    diagnostic->error = native->error;
+  diagnostic->error.code = status;
+  if (diagnostic->error.path[0] == '\0' && fallback_path != NULL)
+    snprintf(diagnostic->error.path, sizeof(diagnostic->error.path),
+             "%s", fallback_path);
+  if (diagnostic->error.message[0] == '\0' && fallback_message != NULL)
+    snprintf(diagnostic->error.message, sizeof(diagnostic->error.message),
+             "%s", fallback_message);
+  return status;
+}
+
+static DataBindStatus message_decode_reader_fail(
+    DataBindMessageDecodeDiagnostic *diagnostic,
+    cserde_status source_status,
+    const char *path,
+    const char *context) {
+  DataBindStatus status;
+  const char *reason;
+  switch (source_status) {
+  case CSERDE_LIMIT_EXCEEDED:
+    status = DATA_BIND_ERR_LIMIT;
+    reason = "CSerde source limit was exceeded";
+    break;
+  case CSERDE_VALUE_OUT_OF_RANGE:
+    status = DATA_BIND_ERR_TYPE_MISMATCH;
+    reason = "CSerde source value is outside the admitted range";
+    break;
+  case CSERDE_UNSUPPORTED:
+    status = DATA_BIND_ERR_SCHEMA;
+    reason = "CSerde source value is unsupported by this message contract";
+    break;
+  case CSERDE_SOURCE_ERROR:
+    status = DATA_BIND_ERR_IO;
+    reason = "CSerde source reported an I/O failure";
+    break;
+  case CSERDE_DONE:
+  case CSERDE_UNEXPECTED_END:
+  case CSERDE_INVALID_TOKEN:
+    status = DATA_BIND_ERR_PARSE;
+    reason = "CSerde source ended or produced an invalid message token";
+    break;
+  case CSERDE_INVALID_ARGUMENT:
+  case CSERDE_INVALID_STATE:
+  case CSERDE_CALLBACK_ERROR:
+  case CSERDE_SINK_ERROR:
+  default:
+    status = DATA_BIND_ERR_RUNTIME;
+    reason = "CSerde source entered an invalid runtime state";
+    break;
+  }
+  return message_decode_fail(
+      diagnostic, status, source_status, path, "%s: %s",
+      context != NULL ? context : "Message decode failed", reason);
+}
+
+static int message_size_add(size_t left, size_t right, size_t *out) {
+  if (out == NULL || right > SIZE_MAX - left) return 0;
+  *out = left + right;
+  return 1;
+}
+
+static size_t message_seen_bytes(const DataBindMessagePlan *plan) {
+  if (plan == NULL || plan->field_count == 0u) return 0u;
+  if (plan->field_count > SIZE_MAX - 7u) return SIZE_MAX;
+  return (plan->field_count + 7u) / 8u;
+}
+
+static int message_seen_test(const unsigned char *seen, size_t index) {
+  return seen != NULL &&
+         (seen[index / 8u] &
+          (unsigned char)(1u << (unsigned)(index % 8u))) != 0u;
+}
+
+static void message_seen_set(unsigned char *seen, size_t index) {
+  seen[index / 8u] |=
+      (unsigned char)(1u << (unsigned)(index % 8u));
+}
+
+static DataBindMessageFieldPlan *message_field_slice(
+    const DataBindMessagePlan *plan,
+    const unsigned char *data,
+    size_t size,
+    size_t *out_index) {
+  size_t i;
+  if (out_index != NULL) *out_index = SIZE_MAX;
+  if (plan == NULL || (data == NULL && size != 0u)) return NULL;
+  for (i = 0u; i < plan->field_count; ++i) {
+    DataBindMessageFieldPlan *field =
+        &((DataBindMessagePlan *)plan)->fields[i];
+    size_t name_size =
+        field->name != NULL ? strlen(field->name) : 0u;
+    if (name_size == size &&
+        (size == 0u || memcmp(field->name, data, size) == 0)) {
+      if (out_index != NULL) *out_index = i;
+      return field;
+    }
+  }
+  return NULL;
+}
+
+static void message_state_clear_all(
+    const DataBindMessagePlan *plan,
+    void *destination) {
+  unsigned char *base = (unsigned char *)destination;
+  size_t i;
+  if (plan == NULL || destination == NULL) return;
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    if (field->has_presence)
+      base[field->presence_offset] &=
+          (unsigned char)~(1u << field->presence_bit);
+    if (field->has_null)
+      base[field->null_offset] &=
+          (unsigned char)~(1u << field->null_bit);
+  }
+}
+
+static void message_state_publish_value(
+    const DataBindMessageFieldPlan *field,
+    void *destination) {
+  unsigned char *base = (unsigned char *)destination;
+  if (field->has_presence)
+    base[field->presence_offset] |=
+        (unsigned char)(1u << field->presence_bit);
+  if (field->has_null)
+    base[field->null_offset] &=
+        (unsigned char)~(1u << field->null_bit);
+}
+
+static void message_state_publish_null(
+    const DataBindMessageFieldPlan *field,
+    void *destination) {
+  unsigned char *base = (unsigned char *)destination;
+  if (field->has_presence)
+    base[field->presence_offset] |=
+        (unsigned char)(1u << field->presence_bit);
+  if (field->has_null)
+    base[field->null_offset] |=
+        (unsigned char)(1u << field->null_bit);
+}
+
+static int message_workspace_partition(
+    const DataBindNativeOptions *options,
+    const DataBindMessageDecodeRequirements *requirements,
+    unsigned char **out_seen,
+    void **out_native_workspace,
+    size_t *out_native_workspace_bytes) {
+  uintptr_t address;
+  size_t padding;
+  size_t offset;
+  size_t alignment;
+
+  if (options == NULL || requirements == NULL ||
+      out_seen == NULL || out_native_workspace == NULL ||
+      out_native_workspace_bytes == NULL ||
+      options->workspace == NULL)
+    return 0;
+
+  alignment = requirements->workspace_alignment;
+  if (alignment == 0u) return 0;
+  if (requirements->field_tracking_bytes > options->workspace_bytes)
+    return 0;
+
+  offset = requirements->field_tracking_bytes;
+  address = (uintptr_t)((unsigned char *)options->workspace + offset);
+  padding = (size_t)(address % alignment);
+  if (padding != 0u) padding = alignment - padding;
+  if (padding > options->workspace_bytes - offset)
+    return 0;
+  offset += padding;
+  if (requirements->native_decode_bytes >
+      options->workspace_bytes - offset)
+    return 0;
+
+  *out_seen = (unsigned char *)options->workspace;
+  *out_native_workspace =
+      (unsigned char *)options->workspace + offset;
+  *out_native_workspace_bytes =
+      options->workspace_bytes - offset;
+  return 1;
+}
+
+DataBindStatus data_bind_message_plan_measure_decode(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindMessageDecodeRequirements *requirements,
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  DataBindNativeRequirements native =
+      DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  DataBindNativeDiagnostic native_diagnostic =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindMessageDecodeRequirements candidate =
+      DATA_BIND_MESSAGE_DECODE_REQUIREMENTS_INIT;
+  size_t seen;
+  size_t total;
+  size_t padding;
+  DataBindStatus status;
+
+  if (!message_decode_diag_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_decode_diag_clear(diagnostic);
+
+  if (plan == NULL || plan->native == NULL ||
+      plan->native->data == NULL ||
+      plan->native->data->storage_type == NULL ||
+      native_options == NULL ||
+      requirements == NULL ||
+      requirements->size < sizeof(*requirements) ||
+      requirements->abi_version != DATA_BIND_MESSAGE_EXECUTOR_ABI_VERSION)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+        plan != NULL ? plan->type_name : NULL,
+        "Invalid MessagePlan decode measurement arguments");
+
+  status = data_bind_native_measure(
+      native_options, plan->native->data,
+      &native, &native_diagnostic);
+  if (status != DATA_BIND_OK)
+    return message_decode_native_fail(
+        diagnostic, status, &native_diagnostic,
+        plan->type_name, "Native message measurement failed");
+
+  seen = message_seen_bytes(plan);
+  if (seen == SIZE_MAX ||
+      native.workspace_alignment == 0u) {
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+        plan->type_name,
+        "MessagePlan decode workspace size overflow");
+  }
+
+  padding = native.workspace_alignment - 1u;
+  if (!message_size_add(seen, padding, &total) ||
+      !message_size_add(total, native.decode_bytes, &total))
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+        plan->type_name,
+        "MessagePlan decode workspace size overflow");
+
+  candidate.destination_bytes =
+      plan->native->data->storage_type->size;
+  candidate.field_tracking_bytes = seen;
+  candidate.native_decode_bytes = native.decode_bytes;
+  candidate.workspace_alignment = native.workspace_alignment;
+  candidate.workspace_bytes = total;
+
+  *requirements = candidate;
+  message_decode_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_decode_native_value(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *child_options,
+    cserde_reader *reader,
+    const cserde_token *first_token,
+    void *destination,
+    size_t max_buffer_bytes,
+    DataBindNativeDecodeUsage *usage,
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+  void *field_destination;
+
+  if (plan == NULL || field == NULL ||
+      child_options == NULL || reader == NULL ||
+      first_token == NULL || destination == NULL || usage == NULL)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+        field != NULL ? field->name : NULL,
+        "Invalid MessagePlan native field decode arguments");
+
+  field_destination =
+      (unsigned char *)destination + field->native_offset;
+  status = data_bind_native_decode_from_token_internal(
+      child_options, field->data, reader, first_token,
+      field_destination, field->data->storage_type->size,
+      max_buffer_bytes, usage, &native);
+  if (status != DATA_BIND_OK)
+    return message_decode_native_fail(
+        diagnostic, status, &native, field->name,
+        "Native MessagePlan field decode failed");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_admit_logical_item(
+    const DataBindNativeOptions *options,
+    DataBindNativeDecodeUsage *usage,
+    const char *path,
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  if (options == NULL || usage == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (usage->items >= options->max_items)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, path,
+        "Decoded message item count exceeds configured limit");
+  ++usage->items;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_message_plan_clear_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+
+  if (!message_decode_diag_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_decode_diag_clear(diagnostic);
+
+  if (plan == NULL || plan->native == NULL ||
+      plan->native->data == NULL ||
+      native_options == NULL || destination == NULL)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+        plan != NULL ? plan->type_name : NULL,
+        "Invalid MessagePlan clear arguments");
+
+  status = data_bind_native_clear(
+      native_options, plan->native->data,
+      destination, destination_bytes, &native);
+  message_state_clear_all(plan, destination);
+  if (status != DATA_BIND_OK)
+    return message_decode_native_fail(
+        diagnostic, status, &native, plan->type_name,
+        "MessagePlan native clear failed");
+
+  message_decode_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_message_plan_decode(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    size_t max_buffer_bytes,
+    DataBindMessageDecodeDiagnostic *diagnostic) {
+  DataBindMessageDecodeRequirements requirements =
+      DATA_BIND_MESSAGE_DECODE_REQUIREMENTS_INIT;
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativeOptions child_options;
+  DataBindNativeDecodeUsage usage = {1u, 0u};
+  unsigned char *seen = NULL;
+  void *child_workspace = NULL;
+  size_t child_workspace_bytes = 0u;
+  cserde_token token = {0};
+  DataBindError validation_error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  int initialized = 0;
+  size_t i;
+
+  if (!message_decode_diag_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_decode_diag_clear(diagnostic);
+
+  if (plan == NULL || native_options == NULL ||
+      reader == NULL || destination == NULL ||
+      plan->native == NULL || plan->native->data == NULL ||
+      plan->native->data->storage_type == NULL)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+        plan != NULL ? plan->type_name : NULL,
+        "Invalid MessagePlan decode arguments");
+
+  status = data_bind_message_plan_measure_decode(
+      plan, native_options, &requirements, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  if (destination_bytes < requirements.destination_bytes)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+        plan->type_name, "MessagePlan destination storage is too small");
+  if (native_options->workspace == NULL ||
+      native_options->workspace_bytes < requirements.workspace_bytes)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+        plan->type_name, "MessagePlan workspace is too small");
+  if (native_options->max_items == 0u)
+    return message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+        plan->type_name, "MessagePlan item budget must be nonzero");
+
+  status = data_bind_native_init(
+      native_options, plan->native->data,
+      destination, destination_bytes, &native);
+  if (status != DATA_BIND_OK)
+    return message_decode_native_fail(
+        diagnostic, status, &native, plan->type_name,
+        "MessagePlan native initialization failed");
+  initialized = 1;
+  message_state_clear_all(plan, destination);
+
+  if (!message_workspace_partition(
+          native_options, &requirements, &seen,
+          &child_workspace, &child_workspace_bytes)) {
+    status = message_decode_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+        plan->type_name, "MessagePlan workspace partition failed");
+    goto fail;
+  }
+  if (requirements.field_tracking_bytes != 0u)
+    memset(seen, 0, requirements.field_tracking_bytes);
+
+  child_options = *native_options;
+  child_options.workspace = child_workspace;
+  child_options.workspace_bytes = child_workspace_bytes;
+  child_options.max_depth =
+      native_options->max_depth != 0u
+          ? native_options->max_depth - 1u
+          : 0u;
+
+  {
+    cserde_status reader_status =
+        cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK) {
+      status = message_decode_reader_fail(
+          diagnostic, reader_status, plan->type_name,
+          "Could not read MessagePlan object opener");
+      goto fail;
+    }
+  }
+  if (token.kind != CSERDE_MAP_BEGIN) {
+    status = message_decode_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
+        plan->type_name,
+        "MessagePlan requires a CSerde map/object root");
+    goto fail;
+  }
+
+  for (;;) {
+    DataBindMessageFieldPlan *field;
+    size_t field_index = SIZE_MAX;
+    cserde_status reader_status =
+        cserde_reader_next(reader, &token);
+
+    if (reader_status != CSERDE_OK) {
+      status = message_decode_reader_fail(
+          diagnostic, reader_status, plan->type_name,
+          "Could not read MessagePlan field key");
+      goto fail;
+    }
+    if (token.kind == CSERDE_MAP_END) break;
+    if (token.kind != CSERDE_STRING) {
+      status = message_decode_fail(
+          diagnostic, DATA_BIND_ERR_PARSE, CSERDE_OK,
+          plan->type_name,
+          "MessagePlan object field key must be a string");
+      goto fail;
+    }
+
+    field = message_field_slice(
+        plan, token.value.slice.data,
+        token.value.slice.size, &field_index);
+    if (field == NULL) {
+      status = message_decode_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+          plan->type_name,
+          "MessagePlan input contains an unknown field");
+      goto fail;
+    }
+    if (message_seen_test(seen, field_index)) {
+      status = message_decode_fail(
+          diagnostic, DATA_BIND_ERR_PARSE, CSERDE_OK,
+          field->name,
+          "MessagePlan input repeats field '%s'", field->name);
+      goto fail;
+    }
+
+    reader_status = cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK) {
+      status = message_decode_reader_fail(
+          diagnostic, reader_status, field->name,
+          "Could not read MessagePlan field value");
+      goto fail;
+    }
+
+    if (native_options->max_depth <= 1u) {
+      status = message_decode_fail(
+          diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+          field->name,
+          "MessagePlan field exceeds configured depth limit");
+      goto fail;
+    }
+
+    if (token.kind == CSERDE_NULL) {
+      if (!field->nullable || !field->has_null) {
+        status = message_decode_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
+            field->name,
+            "Explicit NULL is not admitted by the DataBind contract");
+        goto fail;
+      }
+      status = message_admit_logical_item(
+          native_options, &usage, field->name, diagnostic);
+      if (status != DATA_BIND_OK) goto fail;
+      message_state_publish_null(field, destination);
+    } else {
+      status = message_decode_native_value(
+          plan, field, &child_options, reader, &token,
+          destination, max_buffer_bytes, &usage, diagnostic);
+      if (status != DATA_BIND_OK) goto fail;
+      message_state_publish_value(field, destination);
+    }
+
+    message_seen_set(seen, field_index);
+  }
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    DataBindMessageFieldPlan *field = &plan->fields[i];
+    if (message_seen_test(seen, i)) continue;
+
+    if (field->has_default_token) {
+      if (native_options->max_depth <= 1u) {
+        status = message_decode_fail(
+            diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK,
+            field->name,
+            "MessagePlan default exceeds configured depth limit");
+        goto fail;
+      }
+      status = message_decode_native_value(
+          plan, field, &child_options, reader,
+          &field->default_token, destination,
+          max_buffer_bytes, &usage, diagnostic);
+      if (status != DATA_BIND_OK) goto fail;
+      message_state_publish_value(field, destination);
+      message_seen_set(seen, i);
+    } else if (field->optional) {
+      /* ABSENT: semantic-zero native value with state bits already clear. */
+      continue;
+    } else {
+      status = message_decode_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND, CSERDE_OK,
+          field->name,
+          "Required MessagePlan field '%s' is absent", field->name);
+      goto fail;
+    }
+  }
+
+  status = data_bind_message_plan_validate_native(
+      plan, destination, destination_bytes, &validation_error);
+  if (status != DATA_BIND_OK) {
+    if (diagnostic != NULL) {
+      diagnostic->error = validation_error;
+      diagnostic->error.code = status;
+      diagnostic->source_status = CSERDE_OK;
+    }
+    goto fail;
+  }
+
+  message_decode_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+
+fail:
+  if (initialized) {
+    DataBindNativeDiagnostic cleanup =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindStatus cleanup_status =
+        data_bind_native_clear(
+            native_options, plan->native->data,
+            destination, destination_bytes, &cleanup);
+    message_state_clear_all(plan, destination);
+    if (cleanup_status != DATA_BIND_OK)
+      return message_decode_native_fail(
+          diagnostic, DATA_BIND_ERR_RUNTIME, &cleanup,
+          plan->type_name,
+          "MessagePlan rollback did not restore semantic-zero");
+  }
+  return status;
 }
