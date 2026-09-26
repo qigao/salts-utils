@@ -1,0 +1,12 @@
+composite Payload {
+  uint32 value;
+}
+union Choice {
+  Payload payload;
+}
+message Result {
+  uint32 ok;
+}
+service BinaryGate {
+  Use: Choice -> Result;
+}

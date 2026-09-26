@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -125,6 +125,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   test_method_plan_projection_generate.c
   projection.c
   method_plan_projection.c
+  binary_layout_ir.c
   compiler_core.c
   database_schema.c
   mustache_helpers.c)
@@ -217,6 +218,7 @@ cmake_add_test(test_databind_projection_frontend
     service_native.c
     plugin_projection.c
     method_plan_projection.c
+    binary_layout_ir.c
   LIBS
     Salts::DataBindSchema
     Salts::PluginABI
@@ -607,6 +609,33 @@ cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
+cmake_add_test(test_databind_method_plan_binary_admission
+  SOURCES
+    test_method_plan_binary_admission.c
+    projection.c
+    method_plan_projection.c
+    binary_layout_ir.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    BINARY_ADMISSION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_binary_admission.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_method_plan_binary_admission PROPERTIES
+  LABELS "databind;compiler;binary-layout;transport")
+
 cmake_add_test(test_databind_binary_layout_ir
   SOURCES
     test_binary_layout_ir.c
