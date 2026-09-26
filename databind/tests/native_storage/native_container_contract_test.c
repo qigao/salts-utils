@@ -1,5 +1,6 @@
 #include "data_bind_native.h"
 
+#include <cmeta/method.h>
 #include <cstl/typed.h>
 #include <salts_cmeta_data.h>
 #include <tstr.h>
@@ -213,6 +214,67 @@ spec("DataBind canonical CSTL native containers") {
     check_equal(requirements.field_tracking_bytes, (size_t)0u);
     check_true(requirements.decode_bytes > requirements.staging_bytes);
     check_true(requirements.decode_bytes <= sizeof(workspace.bytes));
+  }
+
+  it("consumes canonical typed receiver method reflection from Salts 1.7.7") {
+    const cmeta_receiver_method_set *set;
+    const cmeta_receiver_method *method;
+    const cmeta_param_desc *receiver;
+    const cmeta_type_desc *one_int[] = {&cmeta_type_int};
+    const cmeta_type_desc *map_args[] = {&cmeta_type_int, &cmeta_type_long};
+    cmeta_receiver_resolution resolution = CMETA_RECEIVER_RESOLUTION_INIT;
+
+    set = NativeIntVec_receiver_method_set();
+    check_true(cmeta_receiver_method_set_valid(set));
+    check_equal(set->owner_name, "Vec");
+    method = cmeta_receiver_method_find(set, "push");
+    check_not_null(method);
+    check_true(method->function == NativeIntVec_push_function());
+    check_true(method->abi == NativeIntVec_push_function_abi());
+    receiver = cmeta_function_receiver(method->function);
+    check_not_null(receiver);
+    check_true((receiver->flags & CMETA_PARAM_RECEIVER) != 0u);
+    check_true(cmeta_type_equal(receiver->type->pointee, &NativeIntVec_cmeta_type));
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &NativeIntVec_cmeta_type, "Vec", "push",
+            one_int, 1u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OK);
+
+    set = NativeIntSet_receiver_method_set();
+    check_true(cmeta_receiver_method_set_valid(set));
+    check_equal(set->owner_name, "Set");
+    method = cmeta_receiver_method_find(set, "add");
+    check_not_null(method);
+    check_true(method->function == NativeIntSet_add_function());
+    check_true(method->abi == NativeIntSet_add_function_abi());
+    resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &NativeIntSet_cmeta_type, "Set", "add",
+            one_int, 1u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OK);
+
+    set = NativeIntLongMap_receiver_method_set();
+    check_true(cmeta_receiver_method_set_valid(set));
+    check_equal(set->owner_name, "Map");
+    method = cmeta_receiver_method_find(set, "put");
+    check_not_null(method);
+    check_true(method->function == NativeIntLongMap_put_function());
+    check_true(method->abi == NativeIntLongMap_put_function_abi());
+    resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &NativeIntLongMap_cmeta_type, "Map", "put",
+            map_args, 2u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OK);
+
+    resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &NativeIntLongMap_cmeta_type, "HashMap", "put",
+            map_args, 2u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OWNER_MISMATCH);
   }
 
   it("round-trips typed Vec<int> through array tokens") {
