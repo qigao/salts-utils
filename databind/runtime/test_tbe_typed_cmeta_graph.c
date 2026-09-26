@@ -345,11 +345,16 @@ spec("generated native CMeta graph") {
     if (codec == NULL || descriptor == NULL) return;
 
     ListStorage_init(&value);
-    check_equal(tbe_typed_descriptor_parse(
-                    codec, "ListStorage", descriptor,
-                    DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
-                    &value, &error),
-                DATA_BIND_OK);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "ListStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("ListStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
     check_equal(ListStorage_value_vec_t_size(&value.value), (size_t)2u);
     item = ListStorage_value_vec_t_at_const(&value.value, 0u);
     check_not_null(item);
@@ -391,11 +396,16 @@ spec("generated native CMeta graph") {
     if (codec == NULL || descriptor == NULL) return;
 
     StringListStorage_init(&value);
-    check_equal(tbe_typed_descriptor_parse(
-                    codec, "StringListStorage", descriptor,
-                    DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
-                    &value, &error),
-                DATA_BIND_OK);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "StringListStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("StringListStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
     check_equal(StringListStorage_value_vec_t_size(&value.value), (size_t)2u);
     item = StringListStorage_value_vec_t_at_const(&value.value, 0u);
     check_not_null(item);
@@ -441,11 +451,16 @@ spec("generated native CMeta graph") {
     if (codec == NULL || descriptor == NULL) return;
 
     SetStorage_init(&value);
-    check_equal(tbe_typed_descriptor_parse(
-                    codec, "SetStorage", descriptor,
-                    DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
-                    &value, &error),
-                DATA_BIND_OK);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "SetStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("SetStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
     check_equal(SetStorage_value_vec_t_size(&value.value), (size_t)2u);
     check_true(SetStorage_value_vec_t_contains(&value.value, 3));
     check_true(SetStorage_value_vec_t_contains(&value.value, 5));
