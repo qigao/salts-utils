@@ -227,6 +227,7 @@ static int socket_generate(
   FILE *file = NULL;
   int ok = 0;
   int result = -1;
+  int symbol_length;
   (void)context;
 
   if (root == NULL || request == NULL || request->output == NULL ||
@@ -240,11 +241,14 @@ static int socket_generate(
   message_type = socket_string(channel, "message_type");
   if (!socket_format_representable(root, message_type, config->format) ||
       databind_compiler_message_native_build(
-          root, message_type, &native) != 0 ||
-      snprintf(
-          message_symbol, sizeof(message_symbol),
-          "%s__socket_message", config->symbol_prefix) <= 0 ||
-      strlen(message_symbol) + 1u > sizeof(message_symbol))
+          root, message_type, &native) != 0)
+    goto cleanup;
+
+  symbol_length = snprintf(
+      message_symbol, sizeof(message_symbol),
+      "%s__socket_message", config->symbol_prefix);
+  if (symbol_length <= 0 ||
+      (size_t)symbol_length >= sizeof(message_symbol))
     goto cleanup;
 
   if (socket_open_atomic(request->output, &temp, &file) != 0)
