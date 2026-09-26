@@ -74,7 +74,15 @@ typedef struct DataBindTransportPlanInfo {
  * CSV additionally admits only a flat message/composite whose fields are
  * scalar-like (including enum/flags). Nested records, unions, groups and
  * list/set/map fields fail closed until an explicit projection mapping is
- * compiled. No implicit flattening or transport-local fallback is performed.
+ * compiled.
+ *
+ * XML admits nested object/scalar structure but has no implicit collection or
+ * variant encoding. list/set/map/group fields and union/variant shapes fail
+ * closed until an explicit XML projection policy is compiled. Element versus
+ * attribute placement, namespaces and nil semantics are projection concerns;
+ * none are inferred from canonical IDL.
+ *
+ * No implicit flattening or transport-local fallback is performed.
  */
 DATA_BIND_API DataBindStatus data_bind_format_plan_compile(
     DataBind *codec,
