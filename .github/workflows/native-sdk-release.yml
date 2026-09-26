@@ -543,16 +543,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config nasm
-          if [ -n "${VCPKG_ROOT:-}" ] &&
-             [ -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            true
-          elif [ -n "${VCPKG_INSTALLATION_ROOT:-}" ] &&
-               [ -f "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
-            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          else
-            vcpkg_bin="$(readlink -f "$(command -v vcpkg)")"
-            echo "VCPKG_ROOT=$(dirname "$vcpkg_bin")" >> "$GITHUB_ENV"
-          fi
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${ANDROID_NDK_HOME:-}"
 
       - name: Restore versioned target Salts and host re2c SDKs
