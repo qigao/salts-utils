@@ -1024,7 +1024,8 @@ int databind_compiler_plugin_generate(
   (void)context;
 
   if (canonical_ir == NULL || request == NULL ||
-      request->kind != DATABIND_COMPILER_PROJECTION_PLUGIN ||
+      request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
+      request->id.kind != DATABIND_COMPILER_ARTIFACT_PLUGIN ||
       config == NULL ||
       !plugin_text_valid(request->output) ||
       !plugin_text_valid(config->component_id) ||
@@ -1148,7 +1149,8 @@ cleanup:
 
 const databind_compiler_projection_backend
     DATABIND_COMPILER_PLUGIN_BACKEND = {
-        DATABIND_COMPILER_PROJECTION_PLUGIN,
+        {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+         DATABIND_COMPILER_ARTIFACT_PLUGIN},
         "plugin",
         databind_compiler_plugin_generate,
         NULL,
