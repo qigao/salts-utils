@@ -1004,7 +1004,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
       if ((container_scalar != NULL || import_safe_string_sequence) &&
-          !tbe_compiler_has_child(field, "is_fixed_size")) {
+          !tbe_compiler_has_child(field, "is_fixed_size") &&
+          !tbe_compiler_has_child(field, "is_optional") &&
+          !tbe_compiler_has_child(field, "is_nullable")) {
         tbe_compiler_set_string(field, "native_cstl_container", "1");
         if (import_safe_string_sequence)
           tbe_compiler_set_string(field, "native_cstl_explicit_metadata", "1");
