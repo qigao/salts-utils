@@ -10,6 +10,9 @@
 #define GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH ""
 #endif
 
+typedef databind_plugin_client_16_OwnedErrorPlugin_11_StorePlugin
+    StorePluginClient;
+
 spec("generated owned typed-error Plugin client") {
   it("moves string and bytes errors through one lease-safe envelope") {
     static const unsigned char expected[] = {0xdeu, 0xadu, 0xbeu, 0xefu};
