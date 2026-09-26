@@ -41,13 +41,13 @@ static const cmeta_type_desc REQUEST_TYPE = {
     CMETA_T_OBJECT, NULL, NULL, &REQUEST_ID};
 static const cmeta_field_desc REQUEST_LAYOUT_FIELDS[] = {
     {"id", "uint32_t", offsetof(OwnedRequest, id), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc REQUEST_LAYOUT = {
     "OwnedRequest", sizeof(OwnedRequest), _Alignof(OwnedRequest),
     REQUEST_LAYOUT_FIELDS, 1u};
 static const cmeta_data_field_desc REQUEST_FIELDS[] = {
     {"test.owned.Request.id", "id", offsetof(OwnedRequest, id),
-     &salts_uint32_cmeta_data}};
+     &cmeta_data_uint32}};
 static const cmeta_data_struct_shape REQUEST_SHAPE = {
     &REQUEST_LAYOUT, REQUEST_FIELDS, 1u};
 static const cmeta_data_desc REQUEST_DATA = {
@@ -66,13 +66,13 @@ static const cmeta_type_desc RESPONSE_TYPE = {
     CMETA_T_OBJECT, NULL, NULL, &RESPONSE_ID};
 static const cmeta_field_desc RESPONSE_LAYOUT_FIELDS[] = {
     {"value", "uint32_t", offsetof(OwnedResponse, value), sizeof(uint32_t),
-     _Alignof(uint32_t), &salts_uint32_cmeta_type, NULL}};
+     _Alignof(uint32_t), &cmeta_type_uint32, NULL}};
 static const cmeta_struct_desc RESPONSE_LAYOUT = {
     "OwnedResponse", sizeof(OwnedResponse), _Alignof(OwnedResponse),
     RESPONSE_LAYOUT_FIELDS, 1u};
 static const cmeta_data_field_desc RESPONSE_FIELDS[] = {
     {"test.owned.Response.value", "value", offsetof(OwnedResponse, value),
-     &salts_uint32_cmeta_data}};
+     &cmeta_data_uint32}};
 static const cmeta_data_struct_shape RESPONSE_SHAPE = {
     &RESPONSE_LAYOUT, RESPONSE_FIELDS, 1u};
 static const cmeta_data_desc RESPONSE_DATA = {
