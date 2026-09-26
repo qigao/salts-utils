@@ -29,6 +29,7 @@ message WideEnumStorage { WideDomain value; }
 message UuidStorage { uuid value; }
 message BytesStorage { bytes value; }
 message ListStorage { list<int32> value; }
+message StringListStorage { list<string> value; }
 message SetStorage { set<int32> value; }
 message MapStorage { map<string,int32> value; }
 message Scalars {
