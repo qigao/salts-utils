@@ -175,6 +175,7 @@ spec("DataBind public typed generation frontend") {
     check_equal(plan.socket.framing,
                 DATA_BIND_SOCKET_FRAMING_LENGTH32_BE);
     check_equal(plan.socket.max_frame_bytes, (size_t)65536u);
+    check_equal(plan.socket.native_header, "device_native.h");
 
     databind_compiler_projection_frontend_dispose(&plan);
   }
