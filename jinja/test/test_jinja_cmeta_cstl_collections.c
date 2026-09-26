@@ -211,7 +211,7 @@ static const cmeta_data_field_desc jinja_cstl_root_fields[] = {
 static const cmeta_data_struct_shape jinja_cstl_root_shape = {
     .layout = &jinja_cstl_root_layout,
     .fields = jinja_cstl_root_fields,
-    .field_count = 5u
+    .field_count = 10u
 };
 
 static const cmeta_data_desc jinja_cstl_root_data = {
