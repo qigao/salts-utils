@@ -62,6 +62,58 @@ spec("DataBind public typed generation frontend") {
                plan.plugin_client_source);
   }
 
+  it("lowers OpenAPI as an artifact over the shared HTTP projection") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "openapi",
+        .transports = "http",
+        .artifact_name = "users",
+        .output_path = "generated/users_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)2u);
+    check_equal(plan.backend_count, (size_t)2u);
+
+    check_equal(plan.requests[0].id.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT);
+    check_equal(plan.requests[0].id.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_OPENAPI);
+    check_true(plan.requests[0].config == &plan.openapi);
+    check_true(plan.openapi.http == &plan.http);
+    check_equal(plan.backends[0].name, "openapi");
+    check_equal(path_base(plan.requests[0].output, base),
+                "users.openapi.json");
+
+    check_equal(plan.requests[1].id.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT);
+    check_equal(plan.requests[1].id.kind,
+                (uint32_t)DATABIND_COMPILER_TRANSPORT_HTTP);
+    check_true(plan.requests[1].config == &plan.http);
+    check_equal(plan.backends[1].name, "http");
+    check_equal(path_base(plan.requests[1].output, base),
+                "users.http.h");
+  }
+
+  it("rejects OpenAPI without the HTTP transport authority") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "openapi",
+        .artifact_name = "users",
+        .output_path = "generated/users_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "HTTP"));
+  }
+
   it("lowers convention HTTP and RPC selections without Plugin inputs") {
     databind_compiler_projection_frontend_input input = {
         .transports = "http,rpc",
