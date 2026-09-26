@@ -16,7 +16,7 @@ execute_process(
           "${SCHEMA}"
           --lang c
           --output "${NATIVE}"
-          --projections http
+          --transports http
           --artifact-name stale
           --projection-config "${CONFIG}"
   RESULT_VARIABLE RESULT

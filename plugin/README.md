@@ -307,7 +307,7 @@ Example:
 databindc image.schema \
   --lang c \
   --output out/image_native.h \
-  --projections plugin \
+  --artifacts plugin \
   --component Image.ImageProcessor \
   --artifact-name image_processor \
   --artifact-version 1.0.0
@@ -319,7 +319,7 @@ The source-language and artifact dimensions remain orthogonal:
 --lang c
     -> native/source rendering
 
---projections plugin
+--artifacts plugin
     -> artifact backend selection
 ```
 
@@ -340,9 +340,9 @@ the Plugin artifact identity through `Component.qualified_name`.
 There is no `--plugin-output`, no Plugin-specific parser frontend, and no
 schema-wide fallback when Component selection is missing.
 
-## CMake projection frontend
+## CMake typed generation frontend
 
-Installed SaltsUtils exposes the same artifact frontend through
+Installed SaltsUtils exposes the same typed generation frontend through
 `databind_target()`:
 
 ```cmake
@@ -353,7 +353,7 @@ databind_target(
     IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
     COMPONENT Image.ImageProcessor
     VERSION 1.0.0
-    PROJECTIONS PLUGIN
+    ARTIFACTS PLUGIN
     SOURCES image.c)
 ```
 
@@ -371,7 +371,7 @@ image_plugin_client
 ```
 
 The generated source/header path lives under the target build directory and the
-helper invokes the same public `databindc --projections plugin` CLI. It does
+helper invokes the same public `databindc --artifacts plugin` CLI. It does
 not contain a second parser or Plugin generator.
 
 `ARTIFACT_NAME` may override the artifact basename without changing the CMake
@@ -411,7 +411,7 @@ does not leak back into the provider DSO.
 
 `Salts::Plugin` depends on CMeta but not DataBind or CFlow.
 
-DataBind generates Plugin publication glue through `PROJECTIONS PLUGIN`.
+DataBind generates Plugin publication glue through `ARTIFACTS PLUGIN`.
 
 CFlow integration remains a separate optional target:
 
