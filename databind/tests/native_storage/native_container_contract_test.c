@@ -165,12 +165,20 @@ static DataBindStatus roundtrip(
   status = data_bind_native_encode(
       &options, data, source, data->storage_type->size,
       &writer, &diagnostic);
-  if (status != DATA_BIND_OK) return status;
+  if (status != DATA_BIND_OK) {
+    (void)printf("native container encode failed: status=%d path=%s message=%s\\n",
+                 (int)status, diagnostic.error.path, diagnostic.error.message);
+    return status;
+  }
 
   open_reader(sink, &token_source, &reader);
-  return data_bind_native_decode(
+  status = data_bind_native_decode(
       &options, data, &reader, destination, data->storage_type->size,
       &diagnostic);
+  if (status != DATA_BIND_OK)
+    (void)printf("native container decode failed: status=%d path=%s message=%s\\n",
+                 (int)status, diagnostic.error.path, diagnostic.error.message);
+  return status;
 }
 
 static const cmeta_data_desc *counting_element(const void *object) {
