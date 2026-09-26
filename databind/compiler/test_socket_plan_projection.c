@@ -65,6 +65,8 @@ spec("DataBind generated SocketPlan") {
     check(file_contains(output, "DATA_BIND_SOCKET_FRAMING_LENGTH32_BE"));
     check(file_contains(output, "#include \"device.h\""));
     check(file_contains(output, "TelemetryEvent_cmeta_data(&data, error)"));
+    check(file_contains(output, "offsetof(TelemetryEvent_t, _presence)"));
+    check(file_contains(output, "offsetof(TelemetryEvent_t, _nulls)"));
     check(file_contains(
         output, "databind_device__databind_message_native_binding"));
     check_false(file_contains(output, "endpoint"));
