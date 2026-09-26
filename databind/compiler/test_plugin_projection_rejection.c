@@ -79,7 +79,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
-        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,\n               DATABIND_COMPILER_ARTIFACT_PLUGIN},
+        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+               DATABIND_COMPILER_ARTIFACT_PLUGIN},
         .output = source_output,
         .config = &config,
     };
@@ -136,7 +137,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
-        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,\n               DATABIND_COMPILER_ARTIFACT_PLUGIN},
+        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+               DATABIND_COMPILER_ARTIFACT_PLUGIN},
         .output = source_output,
         .config = &config,
     };
@@ -198,7 +200,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
-        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,\n               DATABIND_COMPILER_ARTIFACT_PLUGIN},
+        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+               DATABIND_COMPILER_ARTIFACT_PLUGIN},
         .output = source_output,
         .config = &config,
     };
@@ -284,7 +287,8 @@ spec("DataBind Plugin projection semantic rejection") {
         .client_source_output = client_source_output,
     };
     databind_compiler_projection_request request = {
-        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,\n               DATABIND_COMPILER_ARTIFACT_PLUGIN},
+        .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+               DATABIND_COMPILER_ARTIFACT_PLUGIN},
         .output = source_output,
         .config = &config,
     };
