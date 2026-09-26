@@ -34,6 +34,7 @@ struct DataBindBindingPlan {
   DataBindMessagePlan *response_message;
 
   DataBindBindingPlanEntryOwned *errors;
+  DataBindNativeTypeBinding *error_native_bindings;
   DataBindMessagePlan **error_messages;
   size_t error_count;
   size_t error_param_index;
@@ -786,9 +787,12 @@ static DataBindStatus plan_compile_errors(
 
   plan->errors = (DataBindBindingPlanEntryOwned *)calloc(
       operation->error_count, sizeof(*plan->errors));
+  plan->error_native_bindings = (DataBindNativeTypeBinding *)calloc(
+      operation->error_count, sizeof(*plan->error_native_bindings));
   plan->error_messages = (DataBindMessagePlan **)calloc(
       operation->error_count, sizeof(*plan->error_messages));
-  if (plan->errors == NULL || plan->error_messages == NULL)
+  if (plan->errors == NULL || plan->error_native_bindings == NULL ||
+      plan->error_messages == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, param->name,
                           "Could not allocate typed-error BindingPlan entries");
   plan->error_count = operation->error_count;
@@ -797,7 +801,7 @@ static DataBindStatus plan_compile_errors(
     const DataBindNativeErrorBinding *binding = &native->errors[i];
     DataBindBindingPlanEntryOwned *owned = &plan->errors[i];
     DataBindBindingPlanEntry *entry = &owned->view;
-    DataBindNativeTypeBinding payload_binding;
+    DataBindNativeTypeBinding *payload_binding;
     const cmeta_data_desc *data = NULL;
     const char *name = data_bind_service_operation_error_at(
         codec, service_name, operation_name, i);
@@ -829,10 +833,11 @@ static DataBindStatus plan_compile_errors(
     {
       DataBindMessagePlanDiagnostic message_diagnostic =
           DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
-      payload_binding = (DataBindNativeTypeBinding)
+      plan->error_native_bindings[i] = (DataBindNativeTypeBinding)
           DATA_BIND_NATIVE_TYPE_BINDING_INIT(name, data);
+      payload_binding = &plan->error_native_bindings[i];
       status = data_bind_message_plan_compile(
-          codec, name, &payload_binding,
+          codec, name, payload_binding,
           &plan->error_messages[i], &message_diagnostic);
       if (status != DATA_BIND_OK)
         return plan_message_fail(
@@ -887,6 +892,7 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
       data_bind_message_plan_free(plan->error_messages[i]);
   }
   free(plan->error_messages);
+  free(plan->error_native_bindings);
   free(plan->errors);
   data_bind_message_plan_free(plan->request_message);
   data_bind_message_plan_free(plan->response_message);
