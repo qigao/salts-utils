@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -215,7 +215,7 @@ cmake_add_test(test_databind_projection_frontend
     projection_frontend.c
     projection_config.c
     projection.c
-    service_native.c
+    message_native.c service_native.c
     plugin_projection.c
     method_plan_projection.c
     socket_plan_projection.c
@@ -266,6 +266,33 @@ set_target_properties(test_databind_socket_plan_projection PROPERTIES
 set_tests_properties(test_databind_socket_plan_projection PROPERTIES
   LABELS "databind;compiler;socket-plan;transport")
 
+cmake_add_test(test_databind_message_native
+  SOURCES
+    test_message_native.c
+    message_native.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    MESSAGE_NATIVE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_message_native PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_message_native PROPERTIES
+  LABELS "databind;compiler;message-native;channel")
+
 # Canonical Service -> native FunctionMeta/FunctionAbi lowering qualification.
 set(DATABIND_SERVICE_NATIVE_TEST_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/generated-service-native")
@@ -285,7 +312,7 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
     test_service_native_codegen_tool.c
     compiler_core.c
     projection.c
-    service_native.c
+    message_native.c service_native.c
     database_schema.c
     mustache_helpers.c
   LIBS
@@ -617,7 +644,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     test_plugin_projection_rejection.c
     compiler_core.c
     projection.c
-    service_native.c
+    message_native.c service_native.c
     plugin_projection.c
     database_schema.c
     mustache_helpers.c
