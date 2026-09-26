@@ -261,6 +261,18 @@ static char *native_type_identity(
   return out;
 }
 
+static void native_error_fields_clear(
+    databind_compiler_service_native_error_field *fields,
+    size_t count) {
+  size_t i;
+  if (fields == NULL) return;
+  for (i = 0u; i < count; ++i) {
+    free(fields[i].member_name);
+    free(fields[i].native_data_symbol);
+  }
+  free(fields);
+}
+
 static void native_errors_clear(
     databind_compiler_service_native_error *errors,
     size_t count) {
@@ -269,6 +281,7 @@ static void native_errors_clear(
   for (i = 0u; i < count; ++i) {
     free(errors[i].type_name);
     free(errors[i].type_identity);
+    native_error_fields_clear(errors[i].fields, errors[i].field_count);
   }
   free(errors);
 }
@@ -304,23 +317,67 @@ static int native_error_owned_field_admitted(const Node *field) {
          strcmp(c_type, "stl_byte_buffer") == 0;
 }
 
-static int native_error_message_lifecycle_admitted(
-    const Node *root, const char *type_name) {
+static int native_error_fields_build(
+    const Node *root, const char *type_name,
+    databind_compiler_service_native_error_field **out_fields,
+    size_t *out_count) {
   const Node *message = native_message(root, type_name);
   const Node *fields;
+  databind_compiler_service_native_error_field *result = NULL;
   size_t i;
+
+  if (out_fields == NULL || out_count == NULL) return 0;
+  *out_fields = NULL;
+  *out_count = 0u;
 
   if (message == NULL ||
       native_child(message, "cmeta_graph_supported") == NULL)
     return 0;
-
   fields = native_list(message, "fields");
   if (fields == NULL) return 0;
+  if (fields->data.list.count == 0u) return 1;
 
-  for (i = 0u; i < fields->data.list.count; ++i)
-    if (!native_error_owned_field_admitted(fields->data.list.items[i]))
+  result = (databind_compiler_service_native_error_field *)calloc(
+      fields->data.list.count, sizeof(*result));
+  if (result == NULL) return 0;
+
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *member = native_string(field, "c_name");
+    const char *requirement = native_string(field, "cmeta_native_requirement");
+    const char *data_symbol = native_string(field, "native_data_symbol");
+
+    if (!native_error_owned_field_admitted(field)) {
+      native_error_fields_clear(result, fields->data.list.count);
       return 0;
+    }
+    if (member == NULL || member[0] == '\0')
+      member = native_string(field, "name");
+    if (member == NULL || member[0] == '\0' || requirement == NULL) {
+      native_error_fields_clear(result, fields->data.list.count);
+      return 0;
+    }
 
+    result[i].member_name = native_strdup(member);
+    result[i].owned_lifecycle =
+        strcmp(requirement, "owned_lifecycle") == 0;
+    if (result[i].owned_lifecycle) {
+      if (data_symbol == NULL) {
+        native_error_fields_clear(result, fields->data.list.count);
+        return 0;
+      }
+      result[i].native_data_symbol = native_strdup(data_symbol);
+    }
+    if (result[i].member_name == NULL ||
+        (result[i].owned_lifecycle &&
+         result[i].native_data_symbol == NULL)) {
+      native_error_fields_clear(result, fields->data.list.count);
+      return 0;
+    }
+  }
+
+  *out_fields = result;
+  *out_count = fields->data.list.count;
   return 1;
 }
 
@@ -356,7 +413,8 @@ static int native_errors_build(
             : NULL;
 
     if (type_name == NULL ||
-        !native_error_message_lifecycle_admitted(root, type_name)) {
+        !native_error_fields_build(
+            root, type_name, &result[i].fields, &result[i].field_count)) {
       native_errors_clear(result, errors->data.list.count);
       return 0;
     }
