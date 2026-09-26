@@ -261,6 +261,18 @@ static char *native_type_identity(
   return out;
 }
 
+static void native_error_fields_clear(
+    databind_compiler_service_native_error_field *fields,
+    size_t count) {
+  size_t i;
+  if (fields == NULL) return;
+  for (i = 0u; i < count; ++i) {
+    free(fields[i].member_name);
+    free(fields[i].native_data_symbol);
+  }
+  free(fields);
+}
+
 static void native_errors_clear(
     databind_compiler_service_native_error *errors,
     size_t count) {
@@ -269,32 +281,103 @@ static void native_errors_clear(
   for (i = 0u; i < count; ++i) {
     free(errors[i].type_name);
     free(errors[i].type_identity);
+    native_error_fields_clear(errors[i].fields, errors[i].field_count);
   }
   free(errors);
 }
 
-static int native_error_message_trivially_owned(
-    const Node *root, const char *type_name) {
+static int native_error_owned_field_admitted(const Node *field) {
+  const char *requirement;
+  const char *data_symbol;
+  const char *type_symbol;
+  const char *c_type;
+
+  if (field == NULL) return 0;
+  requirement = native_string(field, "cmeta_native_requirement");
+  if (requirement == NULL) return 0;
+  if (strcmp(requirement, "fixed_value") == 0 ||
+      strcmp(requirement, "enum_domain") == 0)
+    return 1;
+  if (strcmp(requirement, "owned_lifecycle") != 0)
+    return 0;
+
+  data_symbol = native_string(field, "native_data_symbol");
+  type_symbol = native_string(field, "native_type_symbol");
+  c_type = native_string(field, "native_c_type");
+  if (data_symbol == NULL || type_symbol == NULL || c_type == NULL)
+    return 0;
+
+  if (strcmp(data_symbol, "salts_tstr_cmeta_data") == 0 &&
+      strcmp(type_symbol, "salts_tstr_cmeta_type") == 0 &&
+      strcmp(c_type, "tstr") == 0)
+    return 1;
+
+  return strcmp(data_symbol, "stl_byte_buffer_cmeta_data") == 0 &&
+         strcmp(type_symbol, "stl_byte_buffer_cmeta_type") == 0 &&
+         strcmp(c_type, "stl_byte_buffer") == 0;
+}
+
+static int native_error_fields_build(
+    const Node *root, const char *type_name,
+    databind_compiler_service_native_error_field **out_fields,
+    size_t *out_count) {
   const Node *message = native_message(root, type_name);
   const Node *fields;
+  databind_compiler_service_native_error_field *result = NULL;
   size_t i;
+
+  if (out_fields == NULL || out_count == NULL) return 0;
+  *out_fields = NULL;
+  *out_count = 0u;
 
   if (message == NULL ||
       native_child(message, "cmeta_graph_supported") == NULL)
     return 0;
-
   fields = native_list(message, "fields");
   if (fields == NULL) return 0;
+  if (fields->data.list.count == 0u) return 1;
+
+  result = (databind_compiler_service_native_error_field *)calloc(
+      fields->data.list.count, sizeof(*result));
+  if (result == NULL) return 0;
 
   for (i = 0u; i < fields->data.list.count; ++i) {
-    const char *requirement =
-        native_string(fields->data.list.items[i],
-                      "cmeta_native_requirement");
-    if (requirement == NULL ||
-        (strcmp(requirement, "fixed_value") != 0 &&
-         strcmp(requirement, "enum_domain") != 0))
+    const Node *field = fields->data.list.items[i];
+    const char *member = native_string(field, "c_name");
+    const char *requirement = native_string(field, "cmeta_native_requirement");
+    const char *data_symbol = native_string(field, "native_data_symbol");
+
+    if (!native_error_owned_field_admitted(field)) {
+      native_error_fields_clear(result, fields->data.list.count);
       return 0;
+    }
+    if (member == NULL || member[0] == '\0')
+      member = native_string(field, "name");
+    if (member == NULL || member[0] == '\0' || requirement == NULL) {
+      native_error_fields_clear(result, fields->data.list.count);
+      return 0;
+    }
+
+    result[i].member_name = native_strdup(member);
+    result[i].owned_lifecycle =
+        strcmp(requirement, "owned_lifecycle") == 0;
+    if (result[i].owned_lifecycle) {
+      if (data_symbol == NULL) {
+        native_error_fields_clear(result, fields->data.list.count);
+        return 0;
+      }
+      result[i].native_data_symbol = native_strdup(data_symbol);
+    }
+    if (result[i].member_name == NULL ||
+        (result[i].owned_lifecycle &&
+         result[i].native_data_symbol == NULL)) {
+      native_error_fields_clear(result, fields->data.list.count);
+      return 0;
+    }
   }
+
+  *out_fields = result;
+  *out_count = fields->data.list.count;
   return 1;
 }
 
@@ -330,7 +413,8 @@ static int native_errors_build(
             : NULL;
 
     if (type_name == NULL ||
-        !native_error_message_trivially_owned(root, type_name)) {
+        !native_error_fields_build(
+            root, type_name, &result[i].fields, &result[i].field_count)) {
       native_errors_clear(result, errors->data.list.count);
       return 0;
     }
@@ -541,6 +625,148 @@ int databind_compiler_service_native_build(
       canonical_ir, NULL, NULL, out);
 }
 
+static int native_emit_error_variant_helpers(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation,
+    const databind_compiler_service_native_error *error,
+    size_t ordinal) {
+  size_t i;
+  size_t j;
+
+  if (file == NULL || operation == NULL || error == NULL ||
+      operation->symbol == NULL || error->type_name == NULL ||
+      ordinal == 0u)
+    return -1;
+
+  if (fprintf(
+          file,
+          "static inline DataBindStatus %s__error_%zu_init(%s_t *payload) {\n"
+          "  if (payload == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  memset(payload, 0, sizeof(*payload));\n",
+          operation->symbol, ordinal, error->type_name) < 0)
+    return -1;
+
+  for (i = 0u; i < error->field_count; ++i) {
+    const databind_compiler_service_native_error_field *field =
+        &error->fields[i];
+    if (!field->owned_lifecycle) continue;
+    if (field->member_name == NULL || field->native_data_symbol == NULL)
+      return -1;
+    if (fprintf(
+            file,
+            "  if (cmeta_data_value_init_zero(&%s, &payload->%s) != CMETA_OK) {\n",
+            field->native_data_symbol, field->member_name) < 0)
+      return -1;
+    for (j = i; j != 0u; --j) {
+      const databind_compiler_service_native_error_field *prior =
+          &error->fields[j - 1u];
+      if (prior->owned_lifecycle &&
+          fprintf(
+              file,
+              "    (void)cmeta_data_value_restore_zero(&%s, &payload->%s);\n",
+              prior->native_data_symbol, prior->member_name) < 0)
+        return -1;
+    }
+    if (fputs(
+            "    memset(payload, 0, sizeof(*payload));\n"
+            "    return DATA_BIND_ERR_RUNTIME;\n"
+            "  }\n",
+            file) == EOF)
+      return -1;
+  }
+
+  if (fputs("  return DATA_BIND_OK;\n}\n", file) == EOF)
+    return -1;
+
+  if (fprintf(
+          file,
+          "static inline DataBindStatus %s__error_%zu_clear(%s_t *payload) {\n"
+          "  if (payload == NULL) return DATA_BIND_ERR_INVALID_ARG;\n",
+          operation->symbol, ordinal, error->type_name) < 0)
+    return -1;
+
+  for (i = error->field_count; i != 0u; --i) {
+    const databind_compiler_service_native_error_field *field =
+        &error->fields[i - 1u];
+    if (!field->owned_lifecycle) continue;
+    if (field->member_name == NULL || field->native_data_symbol == NULL)
+      return -1;
+    if (fprintf(
+            file,
+            "  if (cmeta_data_value_restore_zero(&%s, &payload->%s) != CMETA_OK)\n"
+            "    return DATA_BIND_ERR_RUNTIME;\n",
+            field->native_data_symbol, field->member_name) < 0)
+      return -1;
+  }
+
+  if (fputs(
+          "  memset(payload, 0, sizeof(*payload));\n"
+          "  return DATA_BIND_OK;\n"
+          "}\n",
+          file) == EOF)
+    return -1;
+
+  if (fprintf(
+          file,
+          "static inline DataBindStatus %s__error_%zu_move(\n"
+          "    %s_t *destination, %s_t *source) {\n"
+          "  DataBindStatus status;\n"
+          "  if (destination == NULL || source == NULL)\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  if (destination == source) return DATA_BIND_OK;\n"
+          "  status = %s__error_%zu_init(destination);\n"
+          "  if (status != DATA_BIND_OK) return status;\n",
+          operation->symbol, ordinal,
+          error->type_name, error->type_name,
+          operation->symbol, ordinal) < 0)
+    return -1;
+
+  for (i = 0u; i < error->field_count; ++i) {
+    const databind_compiler_service_native_error_field *field =
+        &error->fields[i];
+    if (field->member_name == NULL) return -1;
+    if (!field->owned_lifecycle) {
+      if (fprintf(
+              file,
+              "  memcpy(&destination->%s, &source->%s, "
+              "sizeof(destination->%s));\n",
+              field->member_name, field->member_name,
+              field->member_name) < 0)
+        return -1;
+      continue;
+    }
+    if (field->native_data_symbol == NULL) return -1;
+    if (fprintf(
+            file,
+            "  if (cmeta_data_value_move(&%s, &destination->%s, "
+            "&source->%s) != CMETA_OK) {\n",
+            field->native_data_symbol, field->member_name,
+            field->member_name) < 0)
+      return -1;
+    for (j = i; j != 0u; --j) {
+      const databind_compiler_service_native_error_field *prior =
+          &error->fields[j - 1u];
+      if (prior->owned_lifecycle &&
+          fprintf(
+              file,
+              "    (void)cmeta_data_value_move(&%s, &source->%s, "
+              "&destination->%s);\n",
+              prior->native_data_symbol, prior->member_name,
+              prior->member_name) < 0)
+        return -1;
+    }
+    if (fprintf(
+            file,
+            "    (void)%s__error_%zu_clear(destination);\n"
+            "    return DATA_BIND_ERR_RUNTIME;\n"
+            "  }\n",
+            operation->symbol, ordinal) < 0)
+      return -1;
+  }
+
+  return fputs("  return DATA_BIND_OK;\n}\n", file) == EOF ? -1 : 0;
+}
+
 int databind_compiler_service_native_emit_prototype(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
@@ -602,19 +828,141 @@ int databind_compiler_service_native_emit_prototype(
             operation->errors[i].type_name, i + 1u) < 0)
       return -1;
 
-  return fprintf(
-             file,
-             "  } payload;\n"
-             "} %s__error;\n"
-             "int %s(const %s_t *request, %s_t *response, "
-             "%s__error *error);\n",
-             operation->symbol,
-             operation->symbol,
-             operation->request_type,
-             operation->response_type,
-             operation->symbol) < 0
-             ? -1
-             : 0;
+  if (fprintf(
+          file,
+          "  } payload;\n"
+          "} %s__error;\n",
+          operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (native_emit_error_variant_helpers(
+            file, operation, &operation->errors[i], i + 1u) != 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "static inline void %s__error_init(%s__error *error) {\n"
+          "  if (error != NULL) memset(error, 0, sizeof(*error));\n"
+          "}\n"
+          "static inline DataBindStatus %s__error_clear(%s__error *error) {\n"
+          "  DataBindStatus status = DATA_BIND_OK;\n"
+          "  if (error == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  switch (error->kind) {\n"
+          "  case %s__ERROR_NONE:\n"
+          "    %s__error_init(error);\n"
+          "    return DATA_BIND_OK;\n",
+          operation->symbol, operation->symbol,
+          operation->symbol, operation->symbol,
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    status = %s__error_%zu_clear(&error->payload.error_%zu);\n"
+            "    break;\n",
+            operation->symbol, i + 1u,
+            operation->symbol, i + 1u, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  }\n"
+          "  if (status == DATA_BIND_OK) %s__error_init(error);\n"
+          "  return status;\n"
+          "}\n"
+          "static inline DataBindStatus %s__error_select(\n"
+          "    %s__error *error, %s__error_kind kind) {\n"
+          "  DataBindStatus status;\n"
+          "  if (error == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  status = %s__error_clear(error);\n"
+          "  if (status != DATA_BIND_OK || kind == %s__ERROR_NONE)\n"
+          "    return status;\n"
+          "  switch (kind) {\n",
+          operation->symbol,
+          operation->symbol, operation->symbol, operation->symbol,
+          operation->symbol, operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    status = %s__error_%zu_init(&error->payload.error_%zu);\n"
+            "    break;\n",
+            operation->symbol, i + 1u,
+            operation->symbol, i + 1u, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  }\n"
+          "  if (status != DATA_BIND_OK) {\n"
+          "    %s__error_init(error);\n"
+          "    return status;\n"
+          "  }\n"
+          "  error->kind = kind;\n"
+          "  return DATA_BIND_OK;\n"
+          "}\n"
+          "static inline DataBindStatus %s__error_move(\n"
+          "    %s__error *destination, %s__error *source) {\n"
+          "  %s__error_kind kind;\n"
+          "  DataBindStatus status;\n"
+          "  if (destination == NULL || source == NULL)\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  if (destination == source) return DATA_BIND_OK;\n"
+          "  kind = source->kind;\n"
+          "  status = %s__error_clear(destination);\n"
+          "  if (status != DATA_BIND_OK || kind == %s__ERROR_NONE)\n"
+          "    return status;\n"
+          "  switch (kind) {\n",
+          operation->symbol,
+          operation->symbol,
+          operation->symbol, operation->symbol, operation->symbol,
+          operation->symbol,
+          operation->symbol) < 0)
+    return -1;
+
+  for (i = 0u; i < operation->error_count; ++i)
+    if (fprintf(
+            file,
+            "  case %s__ERROR_%zu:\n"
+            "    status = %s__error_%zu_move(\n"
+            "        &destination->payload.error_%zu, &source->payload.error_%zu);\n"
+            "    break;\n",
+            operation->symbol, i + 1u,
+            operation->symbol, i + 1u, i + 1u, i + 1u) < 0)
+      return -1;
+
+  if (fprintf(
+          file,
+          "  default:\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  }\n"
+          "  if (status != DATA_BIND_OK) {\n"
+          "    %s__error_init(destination);\n"
+          "    return status;\n"
+          "  }\n"
+          "  destination->kind = kind;\n"
+          "  source->kind = %s__ERROR_NONE;\n"
+          "  return DATA_BIND_OK;\n"
+          "}\n"
+          "int %s(const %s_t *request, %s_t *response, %s__error *error);\n",
+          operation->symbol,
+          operation->symbol,
+          operation->symbol,
+          operation->request_type,
+          operation->response_type,
+          operation->symbol) < 0)
+    return -1;
+
+  return 0;
 }
 
 int databind_compiler_service_native_emit_reflection(
@@ -1003,7 +1351,7 @@ int databind_compiler_service_native_emit_binding(
              "      \"%s\", response_data, %s, %zuu, %s, %zuu};\n"
              "  *service_out = (DataBindServiceNativeBinding){\n"
              "      sizeof(DataBindServiceNativeBinding),\n"
-             "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
+             "      DATA_BIND_NATIVE_BINDING_ABI_VERSION,\n"
              "      &%s__function_meta, request_out, response_out,\n"
              "      %s, %zuu, %s, %s, %s, %s};\n"
              "  return DATA_BIND_OK;\n"
