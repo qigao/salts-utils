@@ -17,7 +17,6 @@ spec("DataBind BinaryLayoutIR") {
         tbe_compiler_parse_schema_file(
             SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
     check_not_null(root);
-    tbe_compiler_annotate_language_types(root);
 
     check_equal(
         databind_binary_layout_build(
