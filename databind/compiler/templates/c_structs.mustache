@@ -53,6 +53,8 @@ typedef struct salts_uuid_s {
 #endif
 #else
 #include <string.h>
+#include <tstr.h>
+#include <cstl/byte_buffer.h>
 #include "salts_uuid.h"
 #define TBE_GENERATED_MEMCPY memcpy
 #define TBE_GENERATED_STRCMP strcmp
@@ -365,7 +367,7 @@ typedef struct {{name}}_s {
     {{^is_group_field}}
     {{#is_bytes}}
     {{#is_fixed_size}}uint8_t {{name}}[{{size_bytes}}];{{/is_fixed_size}}
-    {{^is_fixed_size}}bytes {{name}};{{/is_fixed_size}}
+    {{^is_fixed_size}}stl_byte_buffer {{name}};{{/is_fixed_size}}
     {{/is_bytes}}
     {{#is_collection}}
     {{#is_fixed_size}}{{inner_type}} {{name}}[{{length_field}}];{{/is_fixed_size}}
@@ -378,9 +380,12 @@ typedef struct {{name}}_s {
     {{#is_composite_ref}}
     {{type}}_t {{name}};
     {{/is_composite_ref}}
-    {{^is_enum_ref}}{{^is_composite_ref}}{{^is_var_data}}
+    {{^is_enum_ref}}{{^is_composite_ref}}
+    {{#is_string}}tstr {{name}};{{/is_string}}
+    {{^is_string}}{{^is_var_data}}
     {{#host_type}}{{host_type}}{{/host_type}}{{^host_type}}{{type}}_t{{/host_type}} {{name}};
-    {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
+    {{/is_var_data}}{{/is_string}}
+    {{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
 {{/typed_source_enabled}}
@@ -717,7 +722,7 @@ typedef struct {{name}}_s {
     {{^is_group_field}}
     {{#is_bytes}}
     {{#is_fixed_size}}uint8_t {{name}}[{{size_bytes}}];{{/is_fixed_size}}
-    {{^is_fixed_size}}bytes {{name}};{{/is_fixed_size}}
+    {{^is_fixed_size}}stl_byte_buffer {{name}};{{/is_fixed_size}}
     {{/is_bytes}}
     {{#is_collection}}
     {{#is_fixed_size}}{{inner_type}} {{name}}[{{length_field}}];{{/is_fixed_size}}
@@ -730,9 +735,12 @@ typedef struct {{name}}_s {
     {{#is_composite_ref}}
     {{type}}_t {{name}};
     {{/is_composite_ref}}
-    {{^is_enum_ref}}{{^is_composite_ref}}{{^is_var_data}}
+    {{^is_enum_ref}}{{^is_composite_ref}}
+    {{#is_string}}tstr {{name}};{{/is_string}}
+    {{^is_string}}{{^is_var_data}}
     {{#host_type}}{{host_type}}{{/host_type}}{{^host_type}}{{type}}_t{{/host_type}} {{name}};
-    {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
+    {{/is_var_data}}{{/is_string}}
+    {{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
 {{/typed_source_enabled}}
@@ -1324,7 +1332,7 @@ typedef struct {{name}}_s {
     {{^is_group_field}}
     {{#is_bytes}}
     {{#is_fixed_size}}uint8_t {{name}}[{{size_bytes}}];{{/is_fixed_size}}
-    {{^is_fixed_size}}bytes {{name}};{{/is_fixed_size}}
+    {{^is_fixed_size}}stl_byte_buffer {{name}};{{/is_fixed_size}}
     {{/is_bytes}}
     {{#is_collection}}
     {{#is_fixed_size}}{{inner_type}} {{name}}[{{length_field}}];{{/is_fixed_size}}
@@ -1337,9 +1345,12 @@ typedef struct {{name}}_s {
     {{#is_composite_ref}}
     {{type}}_t {{name}};
     {{/is_composite_ref}}
-    {{^is_enum_ref}}{{^is_composite_ref}}{{^is_var_data}}
+    {{^is_enum_ref}}{{^is_composite_ref}}
+    {{#is_string}}tstr {{name}};{{/is_string}}
+    {{^is_string}}{{^is_var_data}}
     {{#host_type}}{{host_type}}{{/host_type}}{{^host_type}}{{type}}_t{{/host_type}} {{name}};
-    {{/is_var_data}}{{/is_composite_ref}}{{/is_enum_ref}}
+    {{/is_var_data}}{{/is_string}}
+    {{/is_composite_ref}}{{/is_enum_ref}}
     {{/is_collection}}{{/is_bytes}}
     {{/is_group_field}}
 {{/typed_source_enabled}}
