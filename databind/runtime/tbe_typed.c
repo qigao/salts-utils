@@ -1656,7 +1656,7 @@ static DataBindStatus typed_native_collection_from_json(
                        "Canonical collection has no static element metadata");
 
   cmeta_status_value = cmeta_data_collection_collector(
-      data, storage, SIZE_MAX, &collector);
+      data, storage, json_array_size(value), &collector);
   if (cmeta_status_value != CMETA_OK)
     return typed_native_cmeta_status(
         cmeta_status_value, path,
@@ -1740,7 +1740,7 @@ static DataBindStatus typed_native_map_from_json(
                        "Canonical map has unsupported key/value metadata");
 
   cmeta_status_value = cmeta_data_map_collector(
-      data, storage, SIZE_MAX, &collector);
+      data, storage, json_object_size(value), &collector);
   if (cmeta_status_value != CMETA_OK)
     return typed_native_cmeta_status(
         cmeta_status_value, path,
