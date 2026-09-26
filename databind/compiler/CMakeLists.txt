@@ -607,6 +607,32 @@ cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
+cmake_add_test(test_databind_binary_layout_ir
+  SOURCES
+    test_binary_layout_ir.c
+    binary_layout_ir.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_binary_layout_ir PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_layout_ir PROPERTIES
+  LABELS "databind;compiler;binary-layout")
+
 target_include_directories(test_tbe_compiler_cmeta_fields
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 target_include_directories(test_tbe_compiler_schema_boundary
