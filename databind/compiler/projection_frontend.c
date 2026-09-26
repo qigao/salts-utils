@@ -281,6 +281,7 @@ static int add_socket_plan(
 
   out->socket = out->external_config.socket;
   out->socket.symbol_prefix = out->method_plan_symbol_prefix;
+  out->socket.native_header_include = out->native_header;
 
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){
