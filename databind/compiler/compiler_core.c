@@ -1008,8 +1008,13 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           !tbe_compiler_has_child(field, "is_optional") &&
           !tbe_compiler_has_child(field, "is_nullable")) {
         tbe_compiler_set_string(field, "native_cstl_container", "1");
-        if (import_safe_string_sequence)
-          tbe_compiler_set_string(field, "native_cstl_explicit_metadata", "1");
+        /*
+         * Generated schema containers must preserve canonical semantic identity.
+         * C typedef spellings such as int32_t may select the platform int
+         * descriptor through CMETA_TYPEOF; always pass the compiler's exact
+         * type/data refs instead.
+         */
+        tbe_compiler_set_string(field, "native_cstl_explicit_metadata", "1");
         tbe_compiler_set_string(
             field, "native_cstl_kind",
             semantic->kind == CMETA_DATA_SET ? "Set" : "Vec");
