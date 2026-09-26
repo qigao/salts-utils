@@ -397,12 +397,18 @@ static const cmeta_type_desc *plan_param_value_type(
   return param->type;
 }
 
+static int plan_param_is_receiver(const cmeta_param_desc *param) {
+  return param != NULL &&
+         (param->flags & CMETA_PARAM_RECEIVER) != 0u;
+}
+
 static size_t plan_find_param_by_name(
     const cmeta_function_desc *function, const char *name) {
   size_t i;
   if (function == NULL || name == NULL) return SIZE_MAX;
   for (i = 0u; i < function->param_count; ++i)
-    if (function->params[i].name != NULL &&
+    if (!plan_param_is_receiver(&function->params[i]) &&
+        function->params[i].name != NULL &&
         strcmp(function->params[i].name, name) == 0)
       return i;
   return SIZE_MAX;
@@ -424,7 +430,8 @@ static size_t plan_find_root_param(
     const cmeta_type_desc *value_type;
     int param_indirect = 0;
 
-    if ((param->flags & CMETA_PARAM_DIRECTION_MASK) != exact_direction)
+    if (plan_param_is_receiver(param) ||
+        (param->flags & CMETA_PARAM_DIRECTION_MASK) != exact_direction)
       continue;
     value_type = plan_param_value_type(param, &param_indirect);
     if (value_type == NULL || !cmeta_type_equal(value_type, type))
@@ -1546,6 +1553,15 @@ DataBindStatus data_bind_binding_plan_compile_service(
                             "Could not allocate function binding map");
     goto fail;
   }
+
+  /*
+   * A CMeta receiver is invocation context, not Service schema storage.
+   * Preserve its ABI index in the call frame, but never let request/response
+   * name or root-type matching claim it as a DataBind field.
+   */
+  for (i = 0u; i < native->function->param_count; ++i)
+    if (plan_param_is_receiver(&native->function->params[i]))
+      param_used[i] = 1u;
 
   status = plan_compile_ingress(codec, &operation, projection, native,
                                 plan, param_used, diagnostic);
