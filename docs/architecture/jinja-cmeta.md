@@ -269,9 +269,12 @@ source view；它们仅在 `jinja_cmeta_compile()` 调用期间有效，不逃�
 必须保持不可变且地址稳定。`JinjaCMeta` 只借用这些数据，主事实源仍是调用方对象。
 
 普通 struct 通过 `CMETA_DATA_STRUCT` 与 `cmeta_data_struct_shape` 查字段；bool、整数、
-浮点、字符串和 enum 使用 CMeta 既有 descriptor/adapter。序列使用
-`cmeta_data_collection_view`，其 `data/count/stride/element` 都由调用方提供；空序列允许
-`data == NULL`，非空序列要求非空数据、非零 stride 和合法元素 descriptor。
+浮点、字符串和 enum 使用 CMeta 既有 descriptor/adapter。一般 collection/map 统一消费
+Salts 1.7.7 的 canonical CMeta provider contract；typed CSTL 的 Vec/Deque/List/Set/HashSet/
+Map/HashMap/MultiMap/BTree/BPlusTree 直接发布 `*_collection_data` / `*_map_data`，
+Jinja 不读取任何 raw container layout。调用方若只有简单连续借用区间，仍可使用
+`cmeta_data_collection_view` + `cmeta_data_sequence_view`；空 view 允许 `data == NULL`，
+非空 view 要求非空数据、非零 stride 和合法元素 descriptor。
 
 render 内部一次性分配固定数量的 node wrapper。容量单位是 wrapper 个数，由
 `JINJA_CMETA_RENDER_OPTIONS.max_nodes` 提供，零表示默认值。满额立即返回

@@ -1,0 +1,123 @@
+name: Jinja CMeta contract
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "docs/architecture/jinja-cmeta.md"
+      - "CMakeLists.txt"
+      - "cmake/ci/restore-versioned-native-sdk.*"
+      - ".github/workflows/jinja-cmeta.yml"
+  push:
+    branches: [master]
+    paths:
+      - "jinja/**"
+      - "docs/architecture/jinja-cmeta.md"
+      - "CMakeLists.txt"
+      - "cmake/ci/restore-versioned-native-sdk.*"
+      - ".github/workflows/jinja-cmeta.yml"
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: salts-utils-jinja-cmeta-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SALTS_SDK_VERSION: "1.7.7"
+  RE2C_BINARY_VERSION: "4.6.3"
+
+jobs:
+  linux:
+    name: Linux C11/C++17 contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          persist-credentials: false
+
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Configure shared vcpkg binary cache
+        id: vcpkg_cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare focused native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm
+          test -n "${VCPKG_ROOT:-}"
+          test -n "${VCPKG_BINARY_SOURCES:-}"
+          case "$VCPKG_BINARY_SOURCES" in
+            *nugetconfig*) ;;
+            *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
+          esac
+          test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
+          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "3"
+          printf '%s\n' "${{ steps.vcpkg_cache.outputs.cache_revision }}" | grep -Eq '^[0-9a-f]{64}$'
+          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
+          test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
+
+      - name: Restore published Salts 1.7.7 and re2c 4.6.3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+
+      - name: Configure focused Jinja CMeta build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/jinja-cmeta -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
+          cmake --build build/jinja-cmeta \
+            --target test_jinja_cmeta_cstl_collections \
+                     test_jinja_cmeta_iterators \
+                     test_jinja_cmeta_attributes \
+                     test_jinja_cmeta_budgets \
+                     test_jinja_cmeta_identity \
+                     test_jinja_cmeta_templates \
+                     test_jinja_cmeta_header_cpp \
+                     test_jinja_runtime_header_cpp \
+            --parallel 2
+
+      - name: Run canonical Jinja CMeta/CSTL contract
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir build/jinja-cmeta --no-tests=error \
+            -R '^(test_jinja_cmeta_(cstl_collections|iterators|attributes|budgets|identity|templates|header_cpp)|test_jinja_runtime_header_cpp)$' \
+            --output-on-failure
+
+      - name: Verify exact head and clean tracked source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
