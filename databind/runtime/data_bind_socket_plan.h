@@ -2,6 +2,7 @@
 #define DATA_BIND_SOCKET_PLAN_H
 
 #include "data_bind.h"
+#include "data_bind_native_binding.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -10,7 +11,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_SOCKET_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_SOCKET_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindSocketMode {
   DATA_BIND_SOCKET_MODE_STREAM = 1,
@@ -21,6 +22,16 @@ typedef enum DataBindSocketFraming {
   DATA_BIND_SOCKET_FRAMING_NONE = 0,
   DATA_BIND_SOCKET_FRAMING_LENGTH32_BE = 1
 } DataBindSocketFraming;
+
+/*
+ * Generated resolver for the exact Channel payload native binding.
+ *
+ * The resolver fills caller-owned metadata from immutable generated CMeta/state
+ * tables. It performs no allocation and retains no codec or runtime value.
+ */
+typedef DataBindStatus (*DataBindSocketNativeBindingResolverFn)(
+    DataBindNativeTypeBinding *out,
+    DataBindError *error);
 
 /*
  * Immutable generated Channel delivery plan consumed by CNet/application code.
@@ -38,12 +49,13 @@ typedef struct DataBindSocketPlan {
   DataBindSocketMode mode;
   DataBindSocketFraming framing;
   size_t max_frame_bytes;
+  DataBindSocketNativeBindingResolverFn native_binding;
 } DataBindSocketPlan;
 
 #define DATA_BIND_SOCKET_PLAN_INIT \
   { sizeof(DataBindSocketPlan), DATA_BIND_SOCKET_PLAN_ABI_VERSION, \
     NULL, NULL, DATA_BIND_FORMAT_JSON, DATA_BIND_SOCKET_MODE_STREAM, \
-    DATA_BIND_SOCKET_FRAMING_LENGTH32_BE, 0u }
+    DATA_BIND_SOCKET_FRAMING_LENGTH32_BE, 0u, NULL }
 
 #ifdef __cplusplus
 } /* extern "C" */
