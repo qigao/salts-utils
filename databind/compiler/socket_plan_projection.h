@@ -12,6 +12,7 @@ extern "C" {
 
 typedef struct databind_compiler_socket_projection_config {
   const char *symbol_prefix;
+  const char *native_header_include;
   const char *channel_name;
   DataBindFormat format;
   DataBindSocketMode mode;
