@@ -202,6 +202,30 @@ static int plan_data_semantically_equal(const cmeta_data_desc *left,
   return 1;
 }
 
+static int plan_logical_buffer_matches_native(
+    const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data) {
+  const cmeta_data_buffer_ops *ops;
+  const cmeta_data_buffer_shape *shape;
+
+  if (schema_field == NULL || native_data == NULL ||
+      !schema_field->has_cmeta_kind ||
+      (schema_field->cmeta_kind != CMETA_DATA_STRING &&
+       schema_field->cmeta_kind != CMETA_DATA_BYTES) ||
+      native_data->kind != schema_field->cmeta_kind ||
+      native_data->storage_type == NULL ||
+      !cmeta_data_value_move_supported(native_data))
+    return 0;
+
+  ops = cmeta_data_buffer_ops_of(native_data);
+  shape = (const cmeta_data_buffer_shape *)native_data->shape;
+  return ops != NULL && shape != NULL &&
+         shape->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->init_zero != NULL && ops->restore_zero != NULL &&
+         ops->move != NULL;
+}
+
 static DataBindStatus plan_validate_native_type(
     DataBind *codec, const DataBindNativeTypeBinding *binding,
     const char *expected_name, DataBindBindingPlanDiagnostic *diagnostic) {
@@ -347,21 +371,25 @@ static DataBindStatus plan_validate_native_type(
           schema_field.name != NULL ? schema_field.name : "");
 
     schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL &&
-        data_bind_schema_field_cmeta_data(codec, expected_name, i,
-                                          &schema_data, &error) != DATA_BIND_OK)
+    if (schema_data == NULL)
+      (void)data_bind_schema_field_cmeta_data(
+          codec, expected_name, i, &schema_data, &error);
+
+    if (schema_data != NULL) {
+      if (!plan_data_semantically_equal(schema_data, native_field->value))
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
+            "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
+            expected_name,
+            schema_field.name != NULL ? schema_field.name : "");
+    } else if (!plan_logical_buffer_matches_native(
+                   &schema_field, native_field->value)) {
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-          "IDL field '%s.%s' has no canonical CMeta data mapping",
+          "IDL field '%s.%s' has no admitted canonical native mapping",
           expected_name,
           schema_field.name != NULL ? schema_field.name : "");
-
-    if (!plan_data_semantically_equal(schema_data, native_field->value))
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
-          "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
-          expected_name,
-          schema_field.name != NULL ? schema_field.name : "");
+    }
 
     if (schema_field.is_optional) {
       const DataBindNativeStateBinding *presence =
