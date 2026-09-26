@@ -41,7 +41,7 @@ concurrency:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_SDK_VERSION: "1.7.3"
+  SALTS_SDK_VERSION: "1.7.7"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
@@ -60,6 +60,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Configure shared vcpkg binary cache
+        id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -68,10 +69,6 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
 
       - name: Prepare native toolchain
         shell: bash
@@ -86,8 +83,12 @@ jobs:
             *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
+          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "3"
+          printf '%s\n' "${{ steps.vcpkg_cache.outputs.cache_revision }}" | grep -Eq '^[0-9a-f]{64}$'
+          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
+          test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
 
-      - name: Restore published Salts 1.7.3 and re2c 4.6.3
+      - name: Restore published Salts 1.7.7 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -223,6 +224,7 @@ jobs:
           }
 
       - name: Configure shared vcpkg binary cache
+        id: vcpkg_cache
         uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
           mode: read
@@ -231,10 +233,6 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.x"
-          cache: false
 
       - name: Prepare native toolchain
         shell: pwsh
@@ -254,6 +252,12 @@ jobs:
           if ($env:VCPKG_NUGET_REPOSITORY -ne "https://github.com/qigao/vcpkg-cache") {
             throw "unexpected Windows vcpkg cache repository: $env:VCPKG_NUGET_REPOSITORY"
           }
+          $contractVersion = "${{ steps.vcpkg_cache.outputs.contract_version }}"
+          $cacheRevision = "${{ steps.vcpkg_cache.outputs.cache_revision }}"
+          if ($contractVersion -ne "3") { throw "unexpected shared cache contract version: '$contractVersion'" }
+          if ($cacheRevision -notmatch '^[0-9a-f]{64}$') { throw "invalid shared cache revision: '$cacheRevision'" }
+          if ($contractVersion -ne $env:VCPKG_CACHE_CONTRACT_VERSION) { throw "shared cache contract output/env mismatch" }
+          if ($cacheRevision -ne $env:VCPKG_CACHE_REVISION) { throw "shared cache revision output/env mismatch" }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if ([string]::IsNullOrWhiteSpace($vsInstall)) {
@@ -263,7 +267,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.7.3 and re2c 4.6.3
+      - name: Restore published Salts 1.7.7 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
