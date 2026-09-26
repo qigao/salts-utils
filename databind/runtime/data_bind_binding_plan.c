@@ -39,6 +39,7 @@ struct DataBindBindingPlan {
   DataBindValidationPlan *response_validation;
 
   DataBindBindingPlanEntryOwned *errors;
+  DataBindValidationPlan **error_validations;
   size_t error_count;
   size_t error_param_index;
   size_t error_envelope_bytes;
@@ -202,6 +203,30 @@ static int plan_data_semantically_equal(const cmeta_data_desc *left,
   return 1;
 }
 
+static int plan_logical_buffer_matches_native(
+    const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data) {
+  const cmeta_data_buffer_ops *ops;
+  const cmeta_data_buffer_shape *shape;
+
+  if (schema_field == NULL || native_data == NULL ||
+      !schema_field->has_cmeta_kind ||
+      (schema_field->cmeta_kind != CMETA_DATA_STRING &&
+       schema_field->cmeta_kind != CMETA_DATA_BYTES) ||
+      native_data->kind != schema_field->cmeta_kind ||
+      native_data->storage_type == NULL ||
+      !cmeta_data_value_move_supported(native_data))
+    return 0;
+
+  ops = cmeta_data_buffer_ops_of(native_data);
+  shape = (const cmeta_data_buffer_shape *)native_data->shape;
+  return ops != NULL && shape != NULL &&
+         shape->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->ownership == CMETA_DATA_BUFFER_OWNED &&
+         ops->init_zero != NULL && ops->restore_zero != NULL &&
+         ops->move != NULL;
+}
+
 static DataBindStatus plan_validate_native_type(
     DataBind *codec, const DataBindNativeTypeBinding *binding,
     const char *expected_name, DataBindBindingPlanDiagnostic *diagnostic) {
@@ -347,21 +372,25 @@ static DataBindStatus plan_validate_native_type(
           schema_field.name != NULL ? schema_field.name : "");
 
     schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL &&
-        data_bind_schema_field_cmeta_data(codec, expected_name, i,
-                                          &schema_data, &error) != DATA_BIND_OK)
+    if (schema_data == NULL)
+      (void)data_bind_schema_field_cmeta_data(
+          codec, expected_name, i, &schema_data, &error);
+
+    if (schema_data != NULL) {
+      if (!plan_data_semantically_equal(schema_data, native_field->value))
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
+            "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
+            expected_name,
+            schema_field.name != NULL ? schema_field.name : "");
+    } else if (!plan_logical_buffer_matches_native(
+                   &schema_field, native_field->value)) {
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name, NULL,
-          "IDL field '%s.%s' has no canonical CMeta data mapping",
+          "IDL field '%s.%s' has no admitted canonical native mapping",
           expected_name,
           schema_field.name != NULL ? schema_field.name : "");
-
-    if (!plan_data_semantically_equal(schema_data, native_field->value))
-      return plan_diag_fail(
-          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name, NULL,
-          "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
-          expected_name,
-          schema_field.name != NULL ? schema_field.name : "");
+    }
 
     if (schema_field.is_optional) {
       const DataBindNativeStateBinding *presence =
@@ -1301,6 +1330,124 @@ static DataBindStatus plan_compile_egress_validation(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus plan_compile_error_validation(
+    DataBind *codec, const char *error_type,
+    const cmeta_data_desc *payload_data,
+    DataBindValidationPlan **out_validation,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindValidationPlan *validation = NULL;
+  const cmeta_data_struct_shape *shape;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  size_t rule_count;
+  size_t rule_index;
+
+  if (out_validation == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, error_type, NULL,
+        "Typed-error ValidationPlan output is required");
+  *out_validation = NULL;
+
+  if (codec == NULL || error_type == NULL ||
+      !cmeta_data_desc_valid(payload_data) ||
+      payload_data->kind != CMETA_DATA_STRUCT ||
+      payload_data->shape == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, error_type, NULL,
+        "Typed-error payload has no canonical Struct CMeta graph");
+
+  status = data_bind_validation_plan_compile(
+      codec, error_type, &validation, &error);
+  if (status != DATA_BIND_OK)
+    return plan_diag_fail(
+        diagnostic, status,
+        error.path[0] != '\0' ? error.path : error_type, NULL, "%s",
+        error.message[0] != '\0'
+            ? error.message
+            : "Could not compile typed-error ValidationPlan");
+
+  if (data_bind_validation_plan_internal_child_count(validation) != 0u) {
+    data_bind_validation_plan_free(validation);
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, error_type, NULL,
+        "Nested typed-error ValidationPlan execution is not admitted by "
+        "the 4.0 owned-error slice");
+  }
+
+  shape = (const cmeta_data_struct_shape *)payload_data->shape;
+  rule_count = data_bind_validation_plan_rule_count(validation);
+  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
+    DataBindValidationRuleInfo info = {0};
+    const cmeta_data_field_desc *field = NULL;
+    const cmeta_data_buffer_ops *buffer_ops = NULL;
+    size_t i;
+
+    if (!data_bind_validation_plan_internal_rule_info(
+            validation, rule_index, &info) ||
+        info.field_name == NULL) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, error_type, NULL,
+          "Compiled typed-error ValidationPlan rule has no field identity");
+    }
+
+    for (i = 0u; i < shape->field_count; ++i) {
+      if (shape->fields[i].name != NULL &&
+          strcmp(shape->fields[i].name, info.field_name) == 0) {
+        field = &shape->fields[i];
+        break;
+      }
+    }
+    if (field == NULL || field->value == NULL ||
+        field->value->kind != info.field_kind) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, info.field_name, NULL,
+          "Typed-error ValidationPlan field does not match native CMeta");
+    }
+
+    if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
+      if (info.field_kind != CMETA_DATA_STRING &&
+          info.field_kind != CMETA_DATA_BYTES) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+            "Typed-error @Size requires canonical string/bytes storage");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(field->value);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+            "Typed-error @Size requires a readable canonical buffer provider");
+      }
+    } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
+      if (info.field_kind != CMETA_DATA_STRING) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+            "Typed-error @Pattern requires canonical string storage");
+      }
+      buffer_ops = cmeta_data_buffer_ops_of(field->value);
+      if (buffer_ops == NULL || buffer_ops->read == NULL) {
+        data_bind_validation_plan_free(validation);
+        return plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+            "Typed-error @Pattern requires a readable canonical string provider");
+      }
+    } else if (info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
+               info.kind != DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
+      data_bind_validation_plan_free(validation);
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name, NULL,
+          "Typed-error ValidationPlan contains an unsupported native rule");
+    }
+  }
+
+  *out_validation = validation;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_compile_errors(
     DataBind *codec, const char *service_name, const char *operation_name,
     const DataBindServiceOperation *operation,
@@ -1356,7 +1503,9 @@ static DataBindStatus plan_compile_errors(
 
   plan->errors = (DataBindBindingPlanEntryOwned *)calloc(
       operation->error_count, sizeof(*plan->errors));
-  if (plan->errors == NULL)
+  plan->error_validations = (DataBindValidationPlan **)calloc(
+      operation->error_count, sizeof(*plan->error_validations));
+  if (plan->errors == NULL || plan->error_validations == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, param->name,
                           "Could not allocate typed-error BindingPlan entries");
   plan->error_count = operation->error_count;
@@ -1422,6 +1571,10 @@ static DataBindStatus plan_compile_errors(
       return plan_diag_fail(
           diagnostic, DATA_BIND_ERR_OOM, name, param->name,
           "Could not copy typed-error BindingPlan metadata");
+
+    status = plan_compile_error_validation(
+        codec, name, data, &plan->error_validations[i], diagnostic);
+    if (status != DATA_BIND_OK) return status;
   }
 
   plan->error_param_index = native->error_param_index;
@@ -1441,8 +1594,12 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
     plan_entry_owned_clear(&plan->ingress[i]);
   for (i = 0u; i < plan->egress_count; ++i)
     plan_entry_owned_clear(&plan->egress[i]);
-  for (i = 0u; i < plan->error_count; ++i)
+  for (i = 0u; i < plan->error_count; ++i) {
     plan_entry_owned_clear(&plan->errors[i]);
+    if (plan->error_validations != NULL)
+      data_bind_validation_plan_free(plan->error_validations[i]);
+  }
+  free(plan->error_validations);
   free(plan->errors);
   data_bind_validation_plan_free(plan->request_validation);
   data_bind_validation_plan_free(plan->response_validation);
@@ -2386,6 +2543,78 @@ static DataBindStatus plan_read_typed_error_kind(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus plan_validate_typed_error_payload(
+    const DataBindBindingPlan *plan, size_t error_index,
+    const void *source, DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlanEntry *entry;
+  const DataBindValidationPlan *validation;
+  const cmeta_data_struct_shape *shape;
+  size_t rule_count;
+  size_t rule_index;
+
+  if (plan == NULL || error_index >= plan->error_count || source == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid typed-error validation runtime arguments");
+
+  entry = &plan->errors[error_index].view;
+  validation = plan->error_validations != NULL
+                   ? plan->error_validations[error_index]
+                   : NULL;
+  if (validation == NULL) return DATA_BIND_OK;
+  if (entry->data == NULL || entry->data->kind != CMETA_DATA_STRUCT ||
+      entry->data->shape == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, entry->schema_field,
+        entry->function_param,
+        "Typed-error validation has no canonical Struct CMeta graph");
+
+  shape = (const cmeta_data_struct_shape *)entry->data->shape;
+  rule_count = data_bind_validation_plan_rule_count(validation);
+  for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
+    DataBindValidationRuleInfo info = {0};
+    const cmeta_data_field_desc *field = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindStatus status;
+    size_t i;
+
+    if (!data_bind_validation_plan_internal_rule_info(
+            validation, rule_index, &info) ||
+        info.field_name == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_RUNTIME, entry->schema_field,
+          entry->function_param,
+          "Typed-error ValidationPlan rule identity is unavailable");
+
+    for (i = 0u; i < shape->field_count; ++i) {
+      if (shape->fields[i].name != NULL &&
+          strcmp(shape->fields[i].name, info.field_name) == 0) {
+        field = &shape->fields[i];
+        break;
+      }
+    }
+    if (field == NULL || field->value == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+          entry->function_param,
+          "Typed-error ValidationPlan field is absent from native CMeta");
+
+    status = data_bind_validation_plan_internal_validate_native_rule(
+        validation, rule_index, field->value,
+        (const unsigned char *)source + field->offset, &error);
+    if (status != DATA_BIND_OK)
+      return plan_diag_fail(
+          diagnostic, status,
+          error.path[0] != '\0' ? error.path : info.field_name,
+          entry->function_param, "%s",
+          error.message[0] != '\0'
+              ? error.message
+              : "Typed-error payload validation failed");
+  }
+
+  return DATA_BIND_OK;
+}
+
 DataBindStatus data_bind_binding_plan_write_outcome(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
@@ -2455,6 +2684,10 @@ DataBindStatus data_bind_binding_plan_write_outcome(
         diagnostic, DATA_BIND_ERR_INVALID_ARG,
         entry->schema_field, entry->function_param,
         "Compiled typed-error entry has no native source");
+
+  status = plan_validate_typed_error_payload(
+      plan, error_index, source, diagnostic);
+  if (status != DATA_BIND_OK) return status;
 
   status = provider->begin_output(provider->context, &error);
   if (status != DATA_BIND_OK)
