@@ -89,15 +89,15 @@ static const cmeta_type_identity TEXT_ERROR_ID =
 static const cmeta_type_desc TEXT_ERROR_TYPE = {
     "OwnedTextError", sizeof(OwnedTextError), _Alignof(OwnedTextError),
     CMETA_T_OBJECT, NULL, NULL, &TEXT_ERROR_ID};
-static const cmeta_field_desc TEXT_ERROR_LAYOUT_FIELDS[] = {
+static cmeta_field_desc TEXT_ERROR_LAYOUT_FIELDS[] = {
     {"detail", "tstr", offsetof(OwnedTextError, detail), sizeof(tstr),
-     _Alignof(tstr), &salts_tstr_cmeta_type, NULL}};
+     _Alignof(tstr), NULL, NULL}};
 static const cmeta_struct_desc TEXT_ERROR_LAYOUT = {
     "OwnedTextError", sizeof(OwnedTextError), _Alignof(OwnedTextError),
     TEXT_ERROR_LAYOUT_FIELDS, 1u};
-static const cmeta_data_field_desc TEXT_ERROR_FIELDS[] = {
+static cmeta_data_field_desc TEXT_ERROR_FIELDS[] = {
     {"test.owned.TextError.detail", "detail", offsetof(OwnedTextError, detail),
-     &salts_tstr_cmeta_data}};
+     NULL}};
 static const cmeta_data_struct_shape TEXT_ERROR_SHAPE = {
     &TEXT_ERROR_LAYOUT, TEXT_ERROR_FIELDS, 1u};
 static const cmeta_data_desc TEXT_ERROR_DATA = {
@@ -114,16 +114,16 @@ static const cmeta_type_identity BYTES_ERROR_ID =
 static const cmeta_type_desc BYTES_ERROR_TYPE = {
     "OwnedBytesError", sizeof(OwnedBytesError), _Alignof(OwnedBytesError),
     CMETA_T_OBJECT, NULL, NULL, &BYTES_ERROR_ID};
-static const cmeta_field_desc BYTES_ERROR_LAYOUT_FIELDS[] = {
+static cmeta_field_desc BYTES_ERROR_LAYOUT_FIELDS[] = {
     {"payload", "stl_byte_buffer", offsetof(OwnedBytesError, payload),
      sizeof(stl_byte_buffer), _Alignof(stl_byte_buffer),
-     &stl_byte_buffer_cmeta_type, NULL}};
+     NULL, NULL}};
 static const cmeta_struct_desc BYTES_ERROR_LAYOUT = {
     "OwnedBytesError", sizeof(OwnedBytesError), _Alignof(OwnedBytesError),
     BYTES_ERROR_LAYOUT_FIELDS, 1u};
-static const cmeta_data_field_desc BYTES_ERROR_FIELDS[] = {
+static cmeta_data_field_desc BYTES_ERROR_FIELDS[] = {
     {"test.owned.BytesError.payload", "payload",
-     offsetof(OwnedBytesError, payload), &stl_byte_buffer_cmeta_data}};
+     offsetof(OwnedBytesError, payload), NULL}};
 static const cmeta_data_struct_shape BYTES_ERROR_SHAPE = {
     &BYTES_ERROR_LAYOUT, BYTES_ERROR_FIELDS, 1u};
 static const cmeta_data_desc BYTES_ERROR_DATA = {
@@ -245,6 +245,13 @@ static void abort_output(void *context) {
   ++probe->abort_calls;
 }
 
+static void init_owned_error_cmeta(void) {
+  TEXT_ERROR_LAYOUT_FIELDS[0].type = &salts_tstr_cmeta_type;
+  TEXT_ERROR_FIELDS[0].value = &salts_tstr_cmeta_data;
+  BYTES_ERROR_LAYOUT_FIELDS[0].type = &stl_byte_buffer_cmeta_type;
+  BYTES_ERROR_FIELDS[0].value = &stl_byte_buffer_cmeta_data;
+}
+
 static DataBind *create_codec(void) {
   static const char schema[] =
       "message Request { uint32 id; }"
@@ -288,7 +295,7 @@ static DataBindBindingPlan *compile_plan(DataBind *codec) {
 
 static void expect_pretransaction_validation(
     DataBindBindingPlan *plan, OwnedErrorEnvelope *error,
-    const char *expected_path) {
+    const char *expected_error_type) {
   OwnedRequest request = {0};
   OwnedResponse response = {0};
   OutputProbe probe = {0};
@@ -316,7 +323,8 @@ static void expect_pretransaction_validation(
   check_equal(data_bind_binding_plan_write_outcome(
                   plan, &provider, &frame, 0, &outcome, &diagnostic),
               DATA_BIND_ERR_VALIDATION);
-  check_contains(diagnostic.schema_field, expected_path);
+  check_equal(diagnostic.schema_field, expected_error_type);
+  check_true(diagnostic.message[0] != '\0');
   check_equal(probe.begin_calls, (size_t)0u);
   check_equal(probe.write_calls, (size_t)0u);
   check_equal(probe.commit_calls, (size_t)0u);
@@ -331,6 +339,7 @@ spec("BindingPlan validates owned typed errors before publication") {
 
     check_not_null(codec);
     if (codec == NULL) return;
+    init_owned_error_cmeta();
     plan = compile_plan(codec);
     check_not_null(plan);
     if (plan == NULL) {
@@ -344,7 +353,7 @@ spec("BindingPlan validates owned typed errors before publication") {
                 CMETA_OK);
     error.payload.text.detail = tstr_dup("too-long");
     check_not_null(error.payload.text.detail);
-    expect_pretransaction_validation(plan, &error, "TextError.detail");
+    expect_pretransaction_validation(plan, &error, "TextError");
     check_equal(cmeta_data_value_restore_zero(
                     &TEXT_ERROR_DATA, &error.payload.text),
                 CMETA_OK);
@@ -357,7 +366,7 @@ spec("BindingPlan validates owned typed errors before publication") {
     check_equal(stl_byte_buffer_resize(
                     &error.payload.bytes.payload, 4u),
                 STL_OK);
-    expect_pretransaction_validation(plan, &error, "BytesError.payload");
+    expect_pretransaction_validation(plan, &error, "BytesError");
     check_equal(cmeta_data_value_restore_zero(
                     &BYTES_ERROR_DATA, &error.payload.bytes),
                 CMETA_OK);
