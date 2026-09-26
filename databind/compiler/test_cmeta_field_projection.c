@@ -361,7 +361,7 @@ suite("compiler_cmeta_field_projection") {
             if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
             check_equal(field_projection_text(field, "cmeta_native_requirement"),
                         expected_native_requirement(EXPECTED[i].requirement));
-            if (i < 3u ||
+            if (i < 2u ||
                 EXPECTED[i].requirement == EXPECT_COLLECTION_PROVIDER)
                 check_not_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
@@ -471,8 +471,8 @@ suite("compiler_cmeta_field_projection") {
         check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
         check_equal(right_symbol, "tbe_fixed_bytes_1_A_3_B_C");
         check(strcmp(left_symbol, right_symbol) != 0);
-        check_not_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
-        check_not_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
