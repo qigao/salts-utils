@@ -216,7 +216,7 @@ spec("DataBind canonical CSTL native containers") {
     check_true(requirements.decode_bytes <= sizeof(workspace.bytes));
   }
 
-  it("consumes canonical typed receiver method reflection from Salts 1.7.7") {
+  it("consumes canonical typed receiver method reflection from Salts 1.7.8") {
     const cmeta_receiver_method_set *set;
     const cmeta_receiver_method *method;
     const cmeta_param_desc *receiver;
