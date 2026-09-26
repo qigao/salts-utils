@@ -59,9 +59,13 @@ int main(int argc, char **argv) {
     return 3;
 
   requests[0] = (databind_compiler_projection_request){
-      DATABIND_COMPILER_PROJECTION_HTTP, argv[2], &http_config};
+      {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
+       DATABIND_COMPILER_TRANSPORT_HTTP},
+      argv[2], &http_config};
   requests[1] = (databind_compiler_projection_request){
-      DATABIND_COMPILER_PROJECTION_RPC, argv[3], &rpc_config};
+      {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
+       DATABIND_COMPILER_TRANSPORT_RPC},
+      argv[3], &rpc_config};
   backends[0] = databind_compiler_http_method_plan_backend();
   backends[1] = databind_compiler_rpc_method_plan_backend();
 
