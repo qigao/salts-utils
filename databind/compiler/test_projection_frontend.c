@@ -195,9 +195,9 @@ spec("DataBind public typed generation frontend") {
     check(strcmp(plan.requests[1].output, plan.requests[2].output) != 0);
   }
 
-  it("parses whitespace around projection names") {
+  it("parses whitespace around artifact names") {
     databind_compiler_projection_frontend_input input = {
-        .projections = "  plugin  ",
+        .artifacts = "  plugin  ",
         .component_id = "Image.ImageProcessor",
         .artifact_name = "image",
         .artifact_version = "0.0.1",
