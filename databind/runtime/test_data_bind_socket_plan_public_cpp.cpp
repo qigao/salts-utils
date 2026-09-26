@@ -14,5 +14,6 @@ int main() {
   if (plan.format != DATA_BIND_FORMAT_JSON) return 3;
   if (plan.mode != DATA_BIND_SOCKET_MODE_STREAM) return 4;
   if (plan.framing != DATA_BIND_SOCKET_FRAMING_LENGTH32_BE) return 5;
+  if (plan.native_binding != nullptr) return 6;
   return 0;
 }
