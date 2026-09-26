@@ -704,11 +704,135 @@ static int databind_compiler_annotate_named_native_semantic(
   return 0;
 }
 
+static char *databind_compiler_enum_symbol_alloc(
+    const char *name, const char *role) {
+  static const char prefix[] = "tbeCmetaEnum";
+  static const char hex[] = "0123456789abcdef";
+  size_t length;
+  size_t role_length;
+  size_t capacity;
+  size_t offset;
+  size_t i;
+  int written;
+  char *symbol;
+
+  if (name == NULL || role == NULL) return NULL;
+  length = strlen(name);
+  role_length = strlen(role);
+  if (length > (SIZE_MAX - sizeof(prefix) - role_length - 48u) / 2u)
+    return NULL;
+  capacity = sizeof(prefix) + role_length + 48u + 2u * length;
+  symbol = (char *)malloc(capacity);
+  if (symbol == NULL) return NULL;
+  written = snprintf(symbol, capacity, "%s%zux", prefix, length);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return NULL;
+  }
+  offset = (size_t)written;
+  for (i = 0u; i < length; ++i) {
+    unsigned char byte = (unsigned char)name[i];
+    symbol[offset++] = hex[byte >> 4u];
+    symbol[offset++] = hex[byte & 15u];
+  }
+  memcpy(symbol + offset, role, role_length + 1u);
+  return symbol;
+}
+
+static int databind_compiler_annotate_named_native_refs(
+    Node *root, Node *target_node, const char *type_name,
+    const char *type_ref_key, const char *data_ref_key) {
+  const tbe_compiler_scalar_projection_t *scalar;
+  Node *target;
+  char symbol[288];
+
+  if (!root || !target_node || !type_name || !type_ref_key || !data_ref_key)
+    return -1;
+
+  if (strcmp(type_name, "string") == 0)
+    return tbe_compiler_set_string(target_node, type_ref_key,
+                                   "SALTS_TSTR_CMETA_TYPE_REF") == 0 &&
+                   tbe_compiler_set_string(target_node, data_ref_key,
+                                           "SALTS_TSTR_CMETA_DATA_REF") == 0
+               ? 0
+               : -1;
+
+  scalar = tbe_compiler_scalar_projection(type_name);
+  if (scalar && scalar->native_data_symbol && scalar->native_type_symbol) {
+    if (snprintf(symbol, sizeof(symbol), "&%s", scalar->native_type_symbol) < 0 ||
+        strlen(scalar->native_type_symbol) + 2u >= sizeof(symbol) ||
+        tbe_compiler_set_string(target_node, type_ref_key, symbol) != 0)
+      return -1;
+    if (snprintf(symbol, sizeof(symbol), "&%s", scalar->native_data_symbol) < 0 ||
+        strlen(scalar->native_data_symbol) + 2u >= sizeof(symbol) ||
+        tbe_compiler_set_string(target_node, data_ref_key, symbol) != 0)
+      return -1;
+    return 0;
+  }
+
+  if (strcmp(type_name, "uuid") == 0)
+    return tbe_compiler_set_string(target_node, type_ref_key,
+                                   "&salts_uuid_cmeta_type") == 0 &&
+                   tbe_compiler_set_string(target_node, data_ref_key,
+                                           "&salts_uuid_cmeta_data") == 0
+               ? 0
+               : -1;
+
+  target = tbe_compiler_find_record(root, "enums", type_name);
+  if (target) {
+    char *type_symbol = databind_compiler_enum_symbol_alloc(type_name, "Type");
+    char *data_symbol = databind_compiler_enum_symbol_alloc(type_name, "Data");
+    char *type_ref = NULL;
+    char *data_ref = NULL;
+    size_t type_ref_size;
+    size_t data_ref_size;
+    int ok = 0;
+
+    if (type_symbol == NULL || data_symbol == NULL) goto enum_refs_done;
+    type_ref_size = strlen(type_symbol) + 2u;
+    data_ref_size = strlen(data_symbol) + 2u;
+    type_ref = (char *)malloc(type_ref_size);
+    data_ref = (char *)malloc(data_ref_size);
+    if (type_ref == NULL || data_ref == NULL) goto enum_refs_done;
+    if (snprintf(type_ref, type_ref_size, "&%s", type_symbol) < 0 ||
+        snprintf(data_ref, data_ref_size, "&%s", data_symbol) < 0)
+      goto enum_refs_done;
+    ok = tbe_compiler_set_string(target_node, type_ref_key, type_ref) == 0 &&
+         tbe_compiler_set_string(target_node, data_ref_key, data_ref) == 0;
+
+enum_refs_done:
+    free(type_symbol);
+    free(data_symbol);
+    free(type_ref);
+    free(data_ref);
+    return ok ? 0 : -1;
+  }
+
+  target = tbe_compiler_find_record(root, "composites", type_name);
+  if (!target) target = tbe_compiler_find_record(root, "groups", type_name);
+  if (!target) target = tbe_compiler_find_record(root, "messages", type_name);
+  if (!target) return -1;
+
+  if (snprintf(symbol, sizeof(symbol), "&%s_CMETA_TYPE", type_name) < 0 ||
+      strlen(type_name) + strlen("&_CMETA_TYPE") >= sizeof(symbol) ||
+      tbe_compiler_set_string(target_node, type_ref_key, symbol) != 0)
+    return -1;
+  if (snprintf(symbol, sizeof(symbol), "&%s_CMETA_DATA", type_name) < 0 ||
+      strlen(type_name) + strlen("&_CMETA_DATA") >= sizeof(symbol) ||
+      tbe_compiler_set_string(target_node, data_ref_key, symbol) != 0)
+    return -1;
+  return 0;
+}
+
 static int databind_compiler_annotate_map_value_provider(
     Node *root, Node *field, const char *value_type) {
-  return databind_compiler_annotate_named_native_semantic(
-      root, field, value_type, "native_map_value_type_symbol",
-      "native_map_value_data_symbol");
+  if (databind_compiler_annotate_named_native_semantic(
+          root, field, value_type, "native_map_value_type_symbol",
+          "native_map_value_data_symbol") != 0)
+    return -1;
+  return databind_compiler_annotate_named_native_refs(
+      root, field, value_type, "native_map_value_type_ref",
+      "native_map_value_data_ref");
 }
 
 static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
@@ -809,6 +933,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     (void)databind_compiler_annotate_named_native_semantic(
         root, field, storage_element ? storage_element : inner,
         "native_element_type_symbol", "native_element_data_symbol");
+    (void)databind_compiler_annotate_named_native_refs(
+        root, field, storage_element ? storage_element : inner,
+        "native_element_type_ref", "native_element_data_ref");
     if (tbe_compiler_has_child(field, "is_fixed_size")) {
       const char *count = tbe_compiler_string_value(field, "length_field");
       snprintf(declaration, sizeof(declaration), "%s %s[%s];", c_type, c_name,
@@ -824,6 +951,10 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           root, value_type ? value_type : inner, value_c_type, sizeof(value_c_type),
           value_descriptor, sizeof(value_descriptor));
       char entry_type[256];
+      if (key_type != NULL)
+        (void)databind_compiler_annotate_named_native_refs(
+            root, field, key_type, "native_map_key_type_ref",
+            "native_map_key_data_ref");
       if (!value_kind || !key_type || strcmp(key_type, "string") != 0) {
         snprintf(declaration, sizeof(declaration), "/* unsupported map field %s */ uint8_t %s;",
                  name, c_name);
