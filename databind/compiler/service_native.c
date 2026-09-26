@@ -633,8 +633,7 @@ int databind_compiler_service_native_emit_prototype(
           "  } payload;\n"
           "} %s__error;\n"
           "static inline void %s__error_init(%s__error *error) {\n"
-          "  if (error != NULL)\n"
-          "    *error = (%s__error)%s__ERROR_INIT;\n"
+          "  if (error != NULL) memset(error, 0, sizeof(*error));\n"
           "}\n"
           "static inline DataBindStatus %s__error_payload_data(\n"
           "    %s__error_kind kind, const cmeta_data_desc **out) {\n"
@@ -643,7 +642,6 @@ int databind_compiler_service_native_emit_prototype(
           "  *out = NULL;\n"
           "  switch (kind) {\n",
           operation->symbol,
-          operation->symbol, operation->symbol,
           operation->symbol, operation->symbol,
           operation->symbol, operation->symbol) < 0)
     return -1;
