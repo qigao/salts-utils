@@ -286,6 +286,7 @@ typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_FIXED_VALUE,
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
   DATABIND_COMPILER_NATIVE_MAP_PROVIDER,
+  DATABIND_COMPILER_NATIVE_COLLECTION_PROVIDER,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
   TBE_COMPILER_NATIVE_OVERLAY_NULL,
@@ -302,6 +303,8 @@ static const char *tbe_compiler_native_requirement_name(
       return "enum_domain";
     case DATABIND_COMPILER_NATIVE_MAP_PROVIDER:
       return "map_provider";
+    case DATABIND_COMPILER_NATIVE_COLLECTION_PROVIDER:
+      return "collection_provider";
     case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
@@ -987,6 +990,12 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
         tbe_compiler_set_string(field, "native_c_type", vector_type);
       }
     } else {
+      const tbe_compiler_scalar_projection_t *container_scalar =
+          tbe_compiler_scalar_projection(storage_element);
+      const int import_safe_string_sequence =
+          semantic->kind == CMETA_DATA_SEQUENCE &&
+          storage_element != NULL && strcmp(storage_element, "string") == 0;
+      char native_symbol[320];
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
       tbe_compiler_set_string(field, "typed_kind",
@@ -994,6 +1003,30 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                                               : "TBE_TYPED_LIST");
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
+      if ((container_scalar != NULL || import_safe_string_sequence) &&
+          !tbe_compiler_has_child(field, "is_fixed_size") &&
+          !tbe_compiler_has_child(field, "is_optional") &&
+          !tbe_compiler_has_child(field, "is_nullable")) {
+        tbe_compiler_set_string(field, "native_cstl_container", "1");
+        /*
+         * Generated schema containers must preserve canonical semantic identity.
+         * C typedef spellings such as int32_t may select the platform int
+         * descriptor through CMETA_TYPEOF; always pass the compiler's exact
+         * type/data refs instead.
+         */
+        tbe_compiler_set_string(field, "native_cstl_explicit_metadata", "1");
+        tbe_compiler_set_string(
+            field, "native_cstl_kind",
+            semantic->kind == CMETA_DATA_SET ? "Set" : "Vec");
+        tbe_compiler_set_string(
+            field, "native_cstl_raw_type",
+            semantic->kind == CMETA_DATA_SET ? "set_t" : "vec_t");
+        tbe_compiler_set_string(field, "native_c_type", vector_type);
+        snprintf(native_symbol, sizeof(native_symbol), "%s_cmeta_type", vector_type);
+        tbe_compiler_set_string(field, "native_type_symbol", native_symbol);
+        snprintf(native_symbol, sizeof(native_symbol), "%s_collection_data", vector_type);
+        tbe_compiler_set_string(field, "native_data_symbol", native_symbol);
+      }
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -1058,6 +1091,12 @@ static void tbe_compiler_annotate_native_requirement(
       tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
       tbe_compiler_string_value(field, "native_map_value_data_symbol") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_MAP_PROVIDER;
+  } else if ((semantic->kind == CMETA_DATA_SEQUENCE ||
+              semantic->kind == CMETA_DATA_SET) &&
+             tbe_compiler_has_child(field, "native_cstl_container") &&
+             tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+             tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
+    requirement = DATABIND_COMPILER_NATIVE_COLLECTION_PROVIDER;
   } else if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
   } else if (tbe_compiler_has_child(field, "is_optional") &&
@@ -1266,6 +1305,10 @@ static int tbe_compiler_cmeta_classify_record(
     const char *type = tbe_compiler_string_value(field, "type");
     const char *kind = tbe_compiler_string_value(field, "typed_kind");
     const int is_map = tbe_compiler_has_child(field, "is_map");
+    const int is_list = tbe_compiler_has_child(field, "is_list");
+    const int is_set = tbe_compiler_has_child(field, "is_set");
+    const int native_collection =
+        tbe_compiler_has_child(field, "native_cstl_container");
     const tbe_compiler_scalar_projection_t *scalar;
     Node *target;
     size_t target_index;
@@ -1274,11 +1317,21 @@ static int tbe_compiler_cmeta_classify_record(
         (context->runtime &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
-        (tbe_compiler_has_child(field, "is_collection") && !is_map) ||
-        tbe_compiler_has_child(field, "is_list") ||
-        tbe_compiler_has_child(field, "is_set") ||
-        tbe_compiler_has_child(field, "is_group_field"))
+        tbe_compiler_has_child(field, "is_group_field") ||
+        (((tbe_compiler_has_child(field, "is_collection") && !is_map) ||
+          is_list || is_set) && !native_collection))
       goto unsupported;
+
+    if (native_collection) {
+      if ((!is_list && !is_set) ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL)
+        goto unsupported;
+      if (max_depth < 1u) max_depth = 1u;
+      continue;
+    }
 
     if (is_map) {
       const char *key_type = tbe_compiler_string_value(field, "key_type");
@@ -1334,8 +1387,7 @@ static int tbe_compiler_cmeta_classify_record(
                "fixed_value") == 0 &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
-        (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
-         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+        strcmp(kind, "TBE_TYPED_UUID") == 0)
       continue;
 
     target = tbe_compiler_find_record(context->root, "enums", type);

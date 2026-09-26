@@ -13,6 +13,7 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_OVERLAY_NULL,
     EXPECT_OVERLAY_PRESENCE_NULL,
     EXPECT_MAP_PROVIDER,
+    EXPECT_COLLECTION_PROVIDER,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -35,7 +36,8 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
       EXPECT_OVERLAY_PRESENCE_NULL },
     { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
       EXPECT_MAP_PROVIDER },
-    { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
+    { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE,
+      EXPECT_COLLECTION_PROVIDER },
 };
 
 static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
@@ -53,6 +55,8 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "overlay_presence_null";
         case EXPECT_MAP_PROVIDER:
             return "map_provider";
+        case EXPECT_COLLECTION_PROVIDER:
+            return "collection_provider";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -209,7 +213,9 @@ suite("compiler_cmeta_field_projection") {
                             "&cmeta_data_int32");
             } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
                        cases[i].kind == CMETA_DATA_SET) {
-                check_null(field_projection_text(field, "native_data_symbol"));
+                check_not_null(field_projection_text(field, "native_data_symbol"));
+                check_not_null(field_projection_text(field, "native_type_symbol"));
+                check_not_null(field_projection_child(field, "native_cstl_container"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
@@ -330,6 +336,9 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(map_add(field, create_node_string("is_map", "1")), 0);
                 check_equal(map_add(field, create_node_string("key_type", "string")), 0);
                 check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_COLLECTION_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
             } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
@@ -352,7 +361,8 @@ suite("compiler_cmeta_field_projection") {
             if (kind) check_equal(atoi(kind), EXPECTED[i].semantic_kind);
             check_equal(field_projection_text(field, "cmeta_native_requirement"),
                         expected_native_requirement(EXPECTED[i].requirement));
-            if (i < 3u)
+            if (i < 2u ||
+                EXPECTED[i].requirement == EXPECT_COLLECTION_PROVIDER)
                 check_not_null(field_projection_child(
                     record, "typed_cmeta_runtime_supported"));
             else
@@ -362,6 +372,43 @@ suite("compiler_cmeta_field_projection") {
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
         }
+
+        node_free(root);
+    }
+
+    it("projects list<string> through import-safe Salts 1.7.7 typed Vec metadata") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "StringListStorage");
+        field = field_projection_add_field(
+            record, "StringListStorage", "value", "list");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "string")), 0);
+
+        tbe_compiler_annotate_language_types(root);
+
+        check_not_null(field_projection_child(field, "native_cstl_container"));
+        check_not_null(field_projection_child(
+            field, "native_cstl_explicit_metadata"));
+        check_equal(field_projection_text(field, "native_cstl_kind"), "Vec");
+        check_equal(field_projection_text(field, "native_element_type_ref"),
+                    "SALTS_TSTR_CMETA_TYPE_REF");
+        check_equal(field_projection_text(field, "native_element_data_ref"),
+                    "SALTS_TSTR_CMETA_DATA_REF");
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "collection_provider");
+        check_not_null(field_projection_child(
+            record, "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
 
         node_free(root);
     }
@@ -424,8 +471,8 @@ suite("compiler_cmeta_field_projection") {
         check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
         check_equal(right_symbol, "tbe_fixed_bytes_1_A_3_B_C");
         check(strcmp(left_symbol, right_symbol) != 0);
-        check_not_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
-        check_not_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
@@ -529,9 +576,8 @@ suite("compiler_cmeta_field_projection") {
 
     it("classifies only complete native CMeta graphs for descriptor routing") {
         static const char *unsupported_records[] = {
-            "TextStorage", "BytesStorage", "FixedArrayStorage", "ListStorage", "SetStorage",
-            "OptionalStorage",
-            "UnsupportedNested", "Cycle"
+            "TextStorage", "BytesStorage", "FixedArrayStorage",
+            "OptionalStorage", "UnsupportedNested", "Cycle"
         };
         Node *root = create_node_map("root");
         Node *record;
@@ -686,7 +732,7 @@ suite("compiler_cmeta_field_projection") {
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "BoolStorage"),
             "typed_cmeta_runtime_supported"));
-        check_not_null(field_projection_child(
+        check_null(field_projection_child(
             field_projection_record(root, "messages", "FixedBytesStorage"),
             "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
@@ -694,6 +740,18 @@ suite("compiler_cmeta_field_projection") {
             "typed_cmeta_runtime_supported"));
         check_not_null(field_projection_child(
             field_projection_record(root, "messages", "WideStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "ListStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "SetStorage"),
+            "typed_cmeta_runtime_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "ListStorage"),
+            "cmeta_graph_supported"));
+        check_not_null(field_projection_child(
+            field_projection_record(root, "messages", "SetStorage"),
             "cmeta_graph_supported"));
         check_null(field_projection_child(
             field_projection_record(root, "messages", "MapStorage"),

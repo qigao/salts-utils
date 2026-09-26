@@ -61,6 +61,8 @@ typedef struct salts_uuid_s {
 
 {{#typed_source_enabled}}
 #include "tbe_typed.h"
+#include <cstl/typed.h>
+#include <salts_cmeta_data.h>
 
 #ifndef TBE_SCHEMA_CODEC_V1_DEFINED
 #define TBE_SCHEMA_CODEC_V1_DEFINED
@@ -335,7 +337,26 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_cstl_container}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+    cmeta_container_header cmeta;
+    {{native_cstl_raw_type}} raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+#endif
+{{/native_cstl_container}}
+{{^native_cstl_container}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_cstl_container}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -687,7 +708,26 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_cstl_container}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+    cmeta_container_header cmeta;
+    {{native_cstl_raw_type}} raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+#endif
+{{/native_cstl_container}}
+{{^native_cstl_container}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_cstl_container}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -1271,7 +1311,26 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_cstl_container}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+    cmeta_container_header cmeta;
+    {{native_cstl_raw_type}} raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+#endif
+{{/native_cstl_container}}
+{{^native_cstl_container}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_cstl_container}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}

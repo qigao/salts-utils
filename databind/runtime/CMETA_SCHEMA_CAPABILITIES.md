@@ -132,19 +132,21 @@ do not by themselves enable `typed_cmeta_runtime_supported`.
 | --- | --- | --- | --- | --- | --- |
 | `bool` | `uint8_t` | `CMETA_DATA_BOOL` | `fixed_value` | supported | Uses canonical `salts_bool8_cmeta_data`; the `_Bool` descriptor remains invalid for this octet slot. |
 | `uuid` | `salts_uuid_t` | `CMETA_DATA_CUSTOM` | `fixed_value` | supported | Uses the canonical UUID buffer adapter plus its exact fixed-value operations. |
-| `bytes[16]` | `uint8_t[16]` | `CMETA_DATA_BYTES` | `fixed_value` | supported | Compiler emits an extent-specific provider through public `CMETA_DEFINE_FIXED_BYTES`. |
+| `bytes[16]` | `uint8_t[16]` | `CMETA_DATA_BYTES` | `fixed_value` | structural graph supported; typed descriptor deferred | Compiler emits an extent-specific provider through public `CMETA_DEFINE_FIXED_BYTES`, but Salts 1.7.7 fixed-value metadata does not publish a canonical no-fail move authority, so descriptor-runtime lifecycle must fail closed. |
 | `string` | `tstr` | `CMETA_DATA_STRING` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
 | `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred | Requires a separate native-container/CSTL provider contract; #46's dynamic storage migration does not enable generated list, set or map descriptors. |
 
-All non-owned `fixed_value` providers and the currently supported
-`enum_domain` subset are installed at this checkpoint. The executable
-characterization requires a record to be published only when every transitive
-field requirement has an installed canonical CMeta provider. In particular,
-all rows still marked deferred above lack `typed_cmeta_runtime_supported`,
-and sequence, set and map records remain on
-the raw/deferred route.
+Canonical `fixed_value` metadata is sufficient for structural publication,
+but descriptor-runtime admission additionally requires a canonical construction
+and no-fail move authority for every field. Bool8 and UUID satisfy that boundary;
+`CMETA_DEFINE_FIXED_BYTES` in Salts 1.7.7 intentionally exposes fixed copy/zero
+without claiming move, so records containing fixed bytes remain on the raw
+generated lifecycle route. The executable characterization publishes
+`typed_cmeta_runtime_supported` only when every transitive field satisfies that
+stronger lifecycle contract. Canonical CSTL list/set providers are admitted
+separately when their construct/collector/borrow contracts are complete.
 
 For supported rows, native size, alignment, semantic kind, field order, native
 name and native offset come only from CMeta. The overlay supplies external names,

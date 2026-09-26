@@ -1,8 +1,10 @@
 #include "cmeta_graph_generated.h"
 #include "tinytest.h"
 
+#include <cmeta/method.h>
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
+#include <tstr.h>
 
 #include <stddef.h>
 #include <string.h>
@@ -261,9 +263,223 @@ spec("generated native CMeta graph") {
       check(descriptor->overlay->fields[2].flags & TBE_TYPED_FIELD_WIRE_OFFSET);
       check_equal(descriptor->overlay->fields[2].wire_offset, 14u);
       check(descriptor->overlay->fields[2].wire_offset != shape->fields[2].offset);
-      check_null(descriptor->overlay->fields[0].object_type);
+      check_not_null(descriptor->overlay->fields[0].object_type);
       check_not_null(descriptor->overlay->fields[0].nested_overlay);
+      check(descriptor->overlay->fields[0].object_type ==
+            descriptor->overlay->fields[0].nested_overlay);
     }
+  }
+
+  it("publishes Salts 1.7.7 receiver reflection for generated CSTL storage") {
+    const cmeta_receiver_method_set *set;
+    const cmeta_receiver_method *method;
+    const cmeta_type_desc *int_args[] = {&cmeta_type_int32};
+    cmeta_receiver_resolution resolution = CMETA_RECEIVER_RESOLUTION_INIT;
+    const cmeta_param_desc *receiver;
+
+    set = ListStorage_value_vec_t_receiver_method_set();
+    check_true(cmeta_receiver_method_set_valid(set));
+    check_equal(set->owner_name, "Vec");
+    method = cmeta_receiver_method_find(set, "push");
+    check_not_null(method);
+    check_true(method->function == ListStorage_value_vec_t_push_function());
+    check_true(method->abi == ListStorage_value_vec_t_push_function_abi());
+    receiver = cmeta_function_receiver(method->function);
+    check_not_null(receiver);
+    check_true((receiver->flags & CMETA_PARAM_RECEIVER) != 0u);
+    check_true(cmeta_type_equal(
+        receiver->type->pointee, &ListStorage_value_vec_t_cmeta_type));
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &ListStorage_value_vec_t_cmeta_type, "Vec", "push",
+            int_args, 1u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OK);
+
+    {
+      const cmeta_type_desc *string_args[] = {SALTS_TSTR_CMETA_TYPE_REF};
+      set = StringListStorage_value_vec_t_receiver_method_set();
+      check_true(cmeta_receiver_method_set_valid(set));
+      check_equal(set->owner_name, "Vec");
+      method = cmeta_receiver_method_find(set, "push");
+      check_not_null(method);
+      check_true(
+          method->function == StringListStorage_value_vec_t_push_function());
+      check_true(
+          method->abi == StringListStorage_value_vec_t_push_function_abi());
+      resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+      check_equal(
+          cmeta_receiver_method_resolve(
+              set, &StringListStorage_value_vec_t_cmeta_type,
+              "Vec", "push", string_args, 1u, &resolution),
+          CMETA_RECEIVER_RESOLVE_OK);
+    }
+
+    set = SetStorage_value_vec_t_receiver_method_set();
+    check_true(cmeta_receiver_method_set_valid(set));
+    check_equal(set->owner_name, "Set");
+    method = cmeta_receiver_method_find(set, "add");
+    check_not_null(method);
+    check_true(method->function == SetStorage_value_vec_t_add_function());
+    check_true(method->abi == SetStorage_value_vec_t_add_function_abi());
+    resolution = (cmeta_receiver_resolution)CMETA_RECEIVER_RESOLUTION_INIT;
+    check_equal(
+        cmeta_receiver_method_resolve(
+            set, &SetStorage_value_vec_t_cmeta_type, "Set", "add",
+            int_args, 1u, &resolution),
+        CMETA_RECEIVER_RESOLVE_OK);
+  }
+
+  it("routes generated list storage through canonical CSTL descriptor JSON") {
+    static const char json[] = "{\"value\":[3,5]}";
+    const TbeTypedDescriptor *descriptor = ListStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    ListStorage_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    const int32_t *item;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL || descriptor == NULL) return;
+
+    ListStorage_init(&value);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "ListStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("ListStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(ListStorage_value_vec_t_size(&value.value), (size_t)2u);
+    item = ListStorage_value_vec_t_at_const(&value.value, 0u);
+    check_not_null(item);
+    if (item) check_equal(*item, 3);
+    item = ListStorage_value_vec_t_at_const(&value.value, 1u);
+    check_not_null(item);
+    if (item) check_equal(*item, 5);
+
+    check_equal(tbe_typed_descriptor_serialize(
+                    codec, "ListStorage", descriptor, &value,
+                    DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                    &error),
+                DATA_BIND_OK);
+    check_not_null(serialized);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"value\""));
+      check_not_null(strstr(serialized, "3"));
+      check_not_null(strstr(serialized, "5"));
+    }
+
+    tbe_typed_serialized_free(serialized);
+    ListStorage_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("routes generated list<string> through import-safe typed Vec metadata") {
+    static const char json[] = "{\"value\":[\"alpha\",\"beta\"]}";
+    const TbeTypedDescriptor *descriptor = StringListStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    StringListStorage_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+    const tstr *item;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL || descriptor == NULL) return;
+
+    StringListStorage_init(&value);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "StringListStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("StringListStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(StringListStorage_value_vec_t_size(&value.value), (size_t)2u);
+    item = StringListStorage_value_vec_t_at_const(&value.value, 0u);
+    check_not_null(item);
+    if (item != NULL) {
+      check_equal(tstr_len(*item), (size_t)5u);
+      check_equal(memcmp(*item, "alpha", 5u), 0);
+    }
+    item = StringListStorage_value_vec_t_at_const(&value.value, 1u);
+    check_not_null(item);
+    if (item != NULL) {
+      check_equal(tstr_len(*item), (size_t)4u);
+      check_equal(memcmp(*item, "beta", 4u), 0);
+    }
+
+    check_equal(tbe_typed_descriptor_serialize(
+                    codec, "StringListStorage", descriptor, &value,
+                    DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                    &error),
+                DATA_BIND_OK);
+    check_not_null(serialized);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"alpha\""));
+      check_not_null(strstr(serialized, "\"beta\""));
+    }
+
+    tbe_typed_serialized_free(serialized);
+    StringListStorage_clear(&value);
+    data_bind_free(codec);
+  }
+
+  it("routes generated set storage through canonical CSTL descriptor JSON") {
+    static const char json[] = "{\"value\":[5,3,5]}";
+    const TbeTypedDescriptor *descriptor = SetStorage_typed_descriptor();
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    SetStorage_t value = {0};
+    char *serialized = NULL;
+    size_t serialized_len = 0u;
+
+    check_not_null(descriptor);
+    check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL || descriptor == NULL) return;
+
+    SetStorage_init(&value);
+    {
+      DataBindStatus status = tbe_typed_descriptor_parse(
+          codec, "SetStorage", descriptor,
+          DATA_BIND_FORMAT_JSON, json, sizeof(json) - 1u, 0u,
+          &value, &error);
+      if (status != DATA_BIND_OK)
+        info("SetStorage status=%d path=%s message=%s",
+             (int)status, error.path, error.message);
+      check_equal(status, DATA_BIND_OK);
+    }
+    check_equal(SetStorage_value_vec_t_size(&value.value), (size_t)2u);
+    check_true(SetStorage_value_vec_t_contains(&value.value, 3));
+    check_true(SetStorage_value_vec_t_contains(&value.value, 5));
+
+    check_equal(tbe_typed_descriptor_serialize(
+                    codec, "SetStorage", descriptor, &value,
+                    DATA_BIND_FORMAT_JSON, &serialized, &serialized_len,
+                    &error),
+                DATA_BIND_OK);
+    check_not_null(serialized);
+    if (serialized != NULL) {
+      check_not_null(strstr(serialized, "\"value\""));
+      check_not_null(strstr(serialized, "3"));
+      check_not_null(strstr(serialized, "5"));
+    }
+
+    tbe_typed_serialized_free(serialized);
+    SetStorage_clear(&value);
+    data_bind_free(codec);
   }
 
   it("keeps supported native descriptor JSON paths isolated from dynamic values") {
@@ -663,8 +879,15 @@ spec("generated native CMeta graph") {
     check_equal(Unsupported_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
     check(data == sentinel);
     check(error.path[0] != '\0');
-    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
-    check(data == sentinel);
+
+    data = sentinel;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(OptionalStorage_cmeta_data(&data, &error), DATA_BIND_OK);
+    check(data != sentinel);
+    if (data != sentinel) check_equal(data->kind, CMETA_DATA_STRUCT);
+
+    data = sentinel;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
     check_equal(UnsupportedNested_cmeta_data(&data, &error), DATA_BIND_ERR_SCHEMA);
     check(data == sentinel);
   }
@@ -748,14 +971,13 @@ spec("generated native CMeta graph") {
                             cmeta_data_bool.storage_type));
   }
 
-  it("requires exact canonical providers for generated fixed values") {
+  it("keeps generated fixed bytes structural-only while raw APIs stay usable") {
     static const char json[] =
         "{\"enabled\":true,\"id\":\"00000000-0000-0000-0000-000000000000\","
         "\"digest\":\"0123456789abcdef\"}";
-    const TbeTypedDescriptor *descriptor = FixedValues_typed_descriptor();
-    const cmeta_data_desc *native = descriptor ? descriptor->native_data : NULL;
-    const cmeta_data_struct_shape *shape = native ? native->shape : NULL;
-    const cmeta_struct_desc *layout = shape ? shape->layout : NULL;
+    const cmeta_data_desc *native = NULL;
+    const cmeta_data_struct_shape *shape;
+    const cmeta_struct_desc *layout;
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
     FixedValues_t destination;
@@ -767,11 +989,14 @@ spec("generated native CMeta graph") {
     size_t fixed_extent = 0u;
     size_t index;
 
-    check_not_null(descriptor);
-    check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_OK);
+    check_equal(FixedValues_cmeta_data(&native, &error), DATA_BIND_OK);
+    check_not_null(native);
+    if (native == NULL) return;
+    shape = (const cmeta_data_struct_shape *)native->shape;
+    layout = shape ? shape->layout : NULL;
     check_not_null(shape);
     check_not_null(layout);
-    if (!descriptor || !shape || !layout || shape->field_count != 3u) return;
+    if (!shape || !layout || shape->field_count != 3u) return;
 
     check_equal(shape->fields[0].value->kind, CMETA_DATA_BOOL);
     check_equal(shape->fields[0].value->storage_type->size,
@@ -798,6 +1023,8 @@ spec("generated native CMeta graph") {
     check_equal(cmeta_data_fixed_extent(shape->fields[2].value, &fixed_extent),
                 CMETA_OK);
     check_equal(fixed_extent, sizeof(((FixedValues_t *)0)->digest));
+    check_false(cmeta_data_value_move_supported(shape->fields[2].value));
+    check_false(cmeta_data_struct_constructible(native));
 
     check_equal(Graph_codec_create(&codec, &error), DATA_BIND_OK);
     if (!codec) return;
@@ -839,82 +1066,17 @@ spec("generated native CMeta graph") {
     wire = NULL;
 
     memset(&destination, 0xa5, sizeof(destination));
+    FixedValues_init(&destination);
     before = destination;
+    check_equal(FixedValues_from_json(
+                    codec, &destination,
+                    "{\"enabled\":true,\"id\":\"bad\",\"digest\":\"short\"}",
+                    strlen("{\"enabled\":true,\"id\":\"bad\",\"digest\":\"short\"}"),
+                    &error),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(memcmp(&destination, &before, sizeof(destination)), 0);
 
-    for (index = 0u; index < 3u; ++index) {
-      TbeTypedDescriptor altered_descriptor = *descriptor;
-      cmeta_data_desc altered_root = *native;
-      cmeta_data_struct_shape altered_shape = *shape;
-      cmeta_data_field_desc altered_fields[3];
-      cmeta_data_desc altered_value = *shape->fields[index].value;
-      cmeta_type_desc altered_storage = *altered_value.storage_type;
-      DataBindStatus status;
-
-      memcpy(altered_fields, shape->fields, sizeof(altered_fields));
-      if (index == 0u)
-        altered_storage.size += 1u;
-      else if (index == 1u)
-        altered_storage.align += 1u;
-      else
-        altered_storage.size -= 1u;
-      altered_value.storage_type = &altered_storage;
-      altered_fields[index].value = &altered_value;
-      altered_shape.fields = altered_fields;
-      altered_root.shape = &altered_shape;
-      altered_descriptor.native_data = &altered_root;
-
-      status = tbe_typed_descriptor_parse(
-          codec, "FixedValues", &altered_descriptor, DATA_BIND_FORMAT_JSON,
-          json, strlen(json), 0u, &destination, &error);
-      check_equal(status, DATA_BIND_ERR_SCHEMA);
-      check_not_null(strstr(error.path, index == 0u ? "FixedValues.enabled" :
-                                        index == 1u ? "FixedValues.id" :
-                                                      "FixedValues.digest"));
-      check_equal(memcmp(&destination, &before, sizeof(destination)), 0);
-    }
-
-    {
-      TbeTypedDescriptor altered_descriptor = *descriptor;
-      cmeta_data_desc altered_root = *native;
-      cmeta_data_struct_shape altered_shape = *shape;
-      cmeta_data_field_desc altered_fields[3];
-      cmeta_data_desc altered_bytes = *shape->fields[2].value;
-      cmeta_data_fixed_ops altered_ops =
-          *cmeta_data_fixed_ops_of(shape->fields[2].value);
-      uint8_t output[64];
-      uint8_t output_before[64];
-      char *failed_text = (char *)(uintptr_t)1u;
-      size_t failed_len = 19u;
-
-      memcpy(altered_fields, shape->fields, sizeof(altered_fields));
-      altered_ops.copy = reject_fixed_copy;
-      altered_bytes.fixed_ops = &altered_ops;
-      altered_fields[2].value = &altered_bytes;
-      altered_shape.fields = altered_fields;
-      altered_root.shape = &altered_shape;
-      altered_descriptor.native_data = &altered_root;
-      memset(output, 0x5a, sizeof(output));
-      memcpy(output_before, output, sizeof(output));
-      check_equal(FixedValues_from_json(codec, &destination, json, strlen(json),
-                                        &error), DATA_BIND_OK);
-      reject_fixed_copy_hits = 0u;
-
-      check_equal(tbe_typed_descriptor_serialize(
-                      codec, "FixedValues", &altered_descriptor, &destination,
-                      DATA_BIND_FORMAT_JSON, &failed_text, &failed_len, &error),
-                  DATA_BIND_ERR_TYPE_MISMATCH);
-      check_equal(reject_fixed_copy_hits, 1u);
-      check_null(failed_text);
-      check_equal(failed_len, 0u);
-      failed_len = 0u;
-      check_equal(tbe_typed_descriptor_serialize_binary_into(
-                      &altered_descriptor, &destination, output, sizeof(output),
-                      &failed_len, &error), DATA_BIND_ERR_TYPE_MISMATCH);
-      check_equal(reject_fixed_copy_hits, 2u);
-      check_equal(memcmp(output, output_before, sizeof(output)), 0);
-    }
     FixedValues_clear(&destination);
-    check_equal(memcmp(&destination, &(FixedValues_t){0}, sizeof(destination)), 0);
     data_bind_free(codec);
   }
 
