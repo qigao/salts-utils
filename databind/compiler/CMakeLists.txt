@@ -501,6 +501,39 @@ set_target_properties(test_databind_plugin_typed_error_client_cpp PROPERTIES
 add_test(NAME test_databind_plugin_typed_error_client_cpp
   COMMAND test_databind_plugin_typed_error_client_cpp)
 
+databind_target(
+  TARGET databind_plugin_owned_typed_error_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_owned_typed_error.schema"
+  COMPONENT "OwnedErrorPlugin.StorePlugin"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "owned_error"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_owned_typed_error_business_fixture.c)
+
+cmake_add_test(test_databind_plugin_owned_typed_error_client
+  SOURCES test_plugin_owned_typed_error_generated_client.c
+  LIBS
+    databind_plugin_owned_typed_error_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_owned_typed_error_fixture_plugin>"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_plugin_owned_typed_error_client
+  databind_plugin_owned_typed_error_fixture_plugin
+  databind_plugin_owned_typed_error_fixture_plugin_client)
+
+add_executable(test_databind_plugin_owned_typed_error_client_cpp
+  test_plugin_owned_typed_error_generated_client_cpp.cpp)
+target_compile_features(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
+  cxx_std_17)
+target_link_libraries(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
+  databind_plugin_owned_typed_error_fixture_plugin_client)
+set_target_properties(test_databind_plugin_owned_typed_error_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO
+  FOLDER "databind/compiler")
+add_test(NAME test_databind_plugin_owned_typed_error_client_cpp
+  COMMAND test_databind_plugin_owned_typed_error_client_cpp)
+
 foreach(_client_fixture IN ITEMS
         bad_plugin_id
         bad_contract
@@ -574,7 +607,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   DEFS
-    PLUGIN_OWNED_TYPED_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_owned_typed_error.schema"
+    PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_unsupported_owned_typed_error.schema"
     PLUGIN_MULTI_SERVICE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_multi_service.schema"
     PLUGIN_COMPONENT_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
