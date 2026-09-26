@@ -703,8 +703,17 @@ jobs:
           for manifest in "${manifests[@]}"; do
             echo "==> $manifest"
             cat "$manifest"
-            grep -Fx 'vcpkg_cache_contract=2' "$manifest"
-            grep -Eq '^vcpkg_cache_revision=[0-9a-f]{64}
+            grep -Fx "vcpkg_cache_contract=2" "$manifest"
+            revision="$(sed -n 's/^vcpkg_cache_revision=//p' "$manifest")"
+            test "$(printf '%s' "$revision" | wc -c)" -eq 64
+            case "$revision" in
+              ""|*[!0-9a-f]*) echo "invalid cache revision: $revision" >&2; exit 1 ;;
+            esac
+          done
+          test "$(grep -h '^vcpkg_cache_contract=' "${manifests[@]}" | sort -u | wc -l)" -eq 1
+          test "$(grep -h '^vcpkg_cache_revision=' "${manifests[@]}" | sort -u | wc -l)" -eq 1
+          grep -h '^vcpkg_cache_contract=' "${manifests[@]}" | sort -u
+          grep -h '^vcpkg_cache_revision=' "${manifests[@]}" | sort -u
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
