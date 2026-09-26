@@ -905,9 +905,15 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       }
       tbe_compiler_set_string(field, "native_type_symbol", symbol);
     } else {
-      snprintf(declaration, sizeof(declaration), "tbe_bytes_t %s;", c_name);
+      snprintf(declaration, sizeof(declaration), "stl_byte_buffer %s;", c_name);
       tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_BYTES");
       tbe_compiler_set_string(field, "typed_is_var_data", "1");
+      tbe_compiler_set_string(field, "native_data_symbol",
+                              "stl_byte_buffer_cmeta_data");
+      tbe_compiler_set_string(field, "native_type_symbol",
+                              "stl_byte_buffer_cmeta_type");
+      tbe_compiler_set_string(field, "native_external", "1");
+      tbe_compiler_set_string(field, "native_c_type", "stl_byte_buffer");
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -1002,6 +1008,12 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
     snprintf(declaration, sizeof(declaration), "tstr %s;", c_name);
     tbe_compiler_set_string(field, "typed_kind", "TBE_TYPED_STRING");
     tbe_compiler_set_string(field, "typed_is_var_data", "1");
+    tbe_compiler_set_string(field, "native_data_symbol",
+                            "salts_tstr_cmeta_data");
+    tbe_compiler_set_string(field, "native_type_symbol",
+                            "salts_tstr_cmeta_type");
+    tbe_compiler_set_string(field, "native_external", "1");
+    tbe_compiler_set_string(field, "native_c_type", "tstr");
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
   }
