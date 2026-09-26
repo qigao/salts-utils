@@ -498,6 +498,36 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     LIBS ${DATA_BIND_TEST_LIBS}
     INCLUDES "${TBE_SAFETY_GENERATED_DIR}"
     FOLDER "databind/runtime/tests")
+
+  set(DATABIND_OWNED_BUFFER_DIR
+      "${CMAKE_CURRENT_BINARY_DIR}/generated_owned_buffers")
+  set(DATABIND_OWNED_BUFFER_HEADER
+      "${DATABIND_OWNED_BUFFER_DIR}/generated_owned_buffers.h")
+  set(DATABIND_OWNED_BUFFER_SOURCE
+      "${DATABIND_OWNED_BUFFER_DIR}/generated_owned_buffers.c")
+  add_custom_command(
+    OUTPUT "${DATABIND_OWNED_BUFFER_HEADER}" "${DATABIND_OWNED_BUFFER_SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DATABIND_OWNED_BUFFER_DIR}"
+    COMMAND $<TARGET_FILE:databindc>
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
+            --lang c
+            --output "${DATABIND_OWNED_BUFFER_HEADER}"
+            --source-output "${DATABIND_OWNED_BUFFER_SOURCE}"
+    DEPENDS databindc
+            "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+    COMMENT "Generating canonical owned-buffer native fixture"
+    VERBATIM)
+  cmake_add_test(test_databind_generated_owned_buffers
+    SOURCES test_generated_owned_buffers.c
+            "${DATABIND_OWNED_BUFFER_HEADER}"
+            "${DATABIND_OWNED_BUFFER_SOURCE}"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${DATABIND_OWNED_BUFFER_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_tests_properties(test_databind_generated_owned_buffers PROPERTIES
+    FIXTURES_SETUP databind_generated_owned_buffers_contract)
   set(TBE_CMETA_GRAPH_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmeta_graph_generated")
   add_custom_command(
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
