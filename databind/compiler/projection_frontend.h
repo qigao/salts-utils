@@ -46,6 +46,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   databind_compiler_projection_config external_config;
   databind_compiler_http_projection_config http;
   databind_compiler_rpc_projection_config rpc;
+  databind_compiler_socket_projection_config socket;
 
   char method_plan_symbol_prefix[256];
   char artifact_dir[SALTS_FS_MAX_PATH];
@@ -56,6 +57,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   char plugin_client_source[SALTS_FS_MAX_PATH];
   char http_projection_header[SALTS_FS_MAX_PATH];
   char rpc_projection_header[SALTS_FS_MAX_PATH];
+  char socket_projection_header[SALTS_FS_MAX_PATH];
 } databind_compiler_projection_frontend_plan;
 
 /*

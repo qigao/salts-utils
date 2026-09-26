@@ -642,6 +642,87 @@ static int parse_rpc(
   return 0;
 }
 
+static int parse_socket_mode(
+    const char *text, DataBindSocketMode *out) {
+  if (text == NULL || out == NULL) return 0;
+  if (strcmp(text, "stream") == 0) {
+    *out = DATA_BIND_SOCKET_MODE_STREAM;
+    return 1;
+  }
+  if (strcmp(text, "datagram") == 0) {
+    *out = DATA_BIND_SOCKET_MODE_DATAGRAM;
+    return 1;
+  }
+  return 0;
+}
+
+static int parse_socket_framing(
+    const char *text, DataBindSocketFraming *out) {
+  if (text == NULL || out == NULL) return 0;
+  if (strcmp(text, "none") == 0) {
+    *out = DATA_BIND_SOCKET_FRAMING_NONE;
+    return 1;
+  }
+  if (strcmp(text, "length32-be") == 0) {
+    *out = DATA_BIND_SOCKET_FRAMING_LENGTH32_BE;
+    return 1;
+  }
+  return 0;
+}
+
+static int parse_socket(
+    const json_value_t *section,
+    databind_compiler_projection_config *out,
+    char *error, size_t error_size) {
+  static const char *const keys[] = {
+      "channel", "mode", "framing", "format", "max_frame_bytes"};
+  const char *mode;
+  const char *framing;
+  const char *format;
+  json_value_t *max_frame;
+  uint64_t max_frame_bytes;
+
+  if (section == NULL || json_type(section) != JSON_OBJECT)
+    return config_error(error, error_size,
+                        "Socket projection section must be an object");
+  if (object_keys_valid(
+          section, keys, sizeof(keys) / sizeof(keys[0]),
+          error, error_size) != 0)
+    return -1;
+
+  out->socket.channel_name =
+      required_string(section, "channel", error, error_size);
+  mode = required_string(section, "mode", error, error_size);
+  framing = required_string(section, "framing", error, error_size);
+  format = required_string(section, "format", error, error_size);
+  if (out->socket.channel_name == NULL ||
+      mode == NULL || framing == NULL || format == NULL)
+    return -1;
+
+  if (!parse_socket_mode(mode, &out->socket.mode))
+    return config_errorf(
+        error, error_size, "Unknown Socket mode '%s'", mode);
+  if (!parse_socket_framing(framing, &out->socket.framing))
+    return config_errorf(
+        error, error_size, "Unknown Socket framing '%s'", framing);
+  if (!parse_format_name(format, &out->socket.format))
+    return config_errorf(
+        error, error_size, "Unknown Socket format '%s'", format);
+
+  max_frame = json_object_get(section, "max_frame_bytes");
+  if (!parse_u64_value(max_frame, &max_frame_bytes) ||
+      max_frame_bytes == 0u ||
+      max_frame_bytes > UINT32_MAX ||
+      max_frame_bytes > (uint64_t)SIZE_MAX)
+    return config_error(
+        error, error_size,
+        "Socket max_frame_bytes must be in range 1..UINT32_MAX");
+
+  out->socket.max_frame_bytes = (size_t)max_frame_bytes;
+  out->has_socket = 1;
+  return 0;
+}
+
 void databind_compiler_projection_config_dispose(
     databind_compiler_projection_config *config) {
   if (config == NULL) return;
@@ -660,12 +741,13 @@ int databind_compiler_projection_config_load(
     databind_compiler_projection_config *out,
     char *error,
     size_t error_size) {
-  static const char *const root_keys[] = {"version", "http", "rpc"};
+  static const char *const root_keys[] = {"version", "http", "rpc", "socket"};
   json_value_t *root;
   json_value_t *version;
   uint64_t version_number;
   json_value_t *http;
   json_value_t *rpc;
+  json_value_t *socket;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
   if (path == NULL || path[0] == '\0' || out == NULL)
@@ -698,14 +780,17 @@ int databind_compiler_projection_config_load(
 
   http = json_object_get(root, "http");
   rpc = json_object_get(root, "rpc");
-  if (http == NULL && rpc == NULL) {
+  socket = json_object_get(root, "socket");
+  if (http == NULL && rpc == NULL && socket == NULL) {
     config_error(error, error_size,
-                 "Projection config must contain http and/or rpc");
+                 "Projection config must contain http, rpc and/or socket");
     goto fail;
   }
   if (http != NULL && parse_http(http, out, error, error_size) != 0)
     goto fail;
   if (rpc != NULL && parse_rpc(rpc, out, error, error_size) != 0)
+    goto fail;
+  if (socket != NULL && parse_socket(socket, out, error, error_size) != 0)
     goto fail;
 
   return 0;

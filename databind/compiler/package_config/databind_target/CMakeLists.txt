@@ -65,3 +65,23 @@ target_link_libraries(installed_image_plugin_client_cpp
 set_target_properties(installed_image_plugin_client_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 add_dependencies(installed_image installed_image_plugin_client_cpp)
+
+
+databind_target(
+  TARGET installed_socket
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/socket.schema"
+  ARTIFACT_NAME "installed_device"
+  TRANSPORTS SOCKET
+  PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/socket_config.json")
+
+add_executable(installed_socket_consumer socket_consumer.c)
+target_compile_features(installed_socket_consumer PRIVATE c_std_11)
+target_link_libraries(installed_socket_consumer PRIVATE Salts::DataBind)
+target_include_directories(installed_socket_consumer PRIVATE
+  "${installed_socket_GENERATED_DIR}")
+add_dependencies(installed_socket_consumer
+  installed_socket_databind_codegen)
+add_dependencies(installed_socket
+  installed_socket_consumer)
+add_dependencies(installed_image
+  installed_socket)

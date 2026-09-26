@@ -142,6 +142,43 @@ spec("DataBind public typed generation frontend") {
     databind_compiler_projection_frontend_dispose(&plan);
   }
 
+  it("lowers one explicit Socket transport through the shared frontend") {
+    databind_compiler_projection_frontend_input input = {
+        .transports = "socket",
+        .artifact_name = "device",
+        .projection_config_path = DATABIND_SOCKET_PROJECTION_CONFIG_FILE,
+        .output_path = "generated/device_native.h",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)1u);
+    check_equal(plan.backend_count, (size_t)1u);
+    check_equal(plan.requests[0].id.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT);
+    check_equal(plan.requests[0].id.kind,
+                (uint32_t)DATABIND_COMPILER_TRANSPORT_SOCKET);
+    check_true(plan.requests[0].config == &plan.socket);
+    check_equal(plan.backends[0].name, "socket");
+    check_equal(path_base(plan.requests[0].output, base),
+                "device.socket.h");
+
+    check_true(plan.external_config.has_socket);
+    check_equal(plan.socket.symbol_prefix, "databind_device");
+    check_equal(plan.socket.channel_name, "Device.Telemetry");
+    check_equal(plan.socket.format, DATA_BIND_FORMAT_BINARY);
+    check_equal(plan.socket.mode, DATA_BIND_SOCKET_MODE_STREAM);
+    check_equal(plan.socket.framing,
+                DATA_BIND_SOCKET_FRAMING_LENGTH32_BE);
+    check_equal(plan.socket.max_frame_bytes, (size_t)65536u);
+
+    databind_compiler_projection_frontend_dispose(&plan);
+  }
+
   it("rejects config sections for an unselected transport") {
     databind_compiler_projection_frontend_input input = {
         .transports = "http",
@@ -251,7 +288,7 @@ spec("DataBind public typed generation frontend") {
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)),
                 -1);
-    check_not_null(strstr(error, "not available"));
+    check_not_null(strstr(error, "socket section"));
   }
 
   it("requires safe artifact identity and explicit Plugin inputs") {

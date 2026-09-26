@@ -245,6 +245,54 @@ static int add_method_plan(
   return 0;
 }
 
+static int add_socket_plan(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+  if (out->method_plan_symbol_prefix[0] == '\0' &&
+      !method_plan_symbol_prefix(
+          input->artifact_name, out->method_plan_symbol_prefix,
+          sizeof(out->method_plan_symbol_prefix)))
+    return frontend_error(
+        error, error_size,
+        "Artifact name cannot form a SocketPlan C symbol prefix");
+
+  if (!out->external_config.has_socket)
+    return frontend_error(
+        error, error_size,
+        "SOCKET transport requires a socket section in --projection-config");
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".socket.h", out->socket_projection_header,
+          sizeof(out->socket_projection_header)))
+    return frontend_error(
+        error, error_size,
+        "Derived SocketPlan projection output path is too long");
+
+  if (path_reserved(input, out->socket_projection_header) ||
+      projection_output_in_use(out, out->socket_projection_header))
+    return frontend_error(
+        error, error_size,
+        "Derived projection outputs collide with another compiler output");
+
+  out->socket = out->external_config.socket;
+  out->socket.symbol_prefix = out->method_plan_symbol_prefix;
+
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
+                 DATABIND_COMPILER_TRANSPORT_SOCKET},
+          .output = out->socket_projection_header,
+          .config = &out->socket};
+  out->backends[out->backend_count++] =
+      databind_compiler_socket_plan_backend();
+  return 0;
+}
+
 static int token_copy_trimmed(
     const char *begin, const char *end,
     char *out, size_t out_size) {
@@ -360,6 +408,7 @@ int databind_compiler_projection_frontend_build(
   size_t i;
   int selected_http = 0;
   int selected_rpc = 0;
+  int selected_socket = 0;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
   if (input == NULL || out == NULL)
@@ -373,7 +422,7 @@ int databind_compiler_projection_frontend_build(
         input->projection_config_path[0] != '\0')
       return frontend_error(
           error, error_size,
-          "--projection-config requires --transports http and/or rpc");
+          "--projection-config requires a selected configured transport");
     return 0;
   }
 
@@ -441,6 +490,7 @@ int databind_compiler_projection_frontend_build(
     transports[transport_count++] = kind;
     if (kind == DATABIND_COMPILER_TRANSPORT_HTTP) selected_http = 1;
     if (kind == DATABIND_COMPILER_TRANSPORT_RPC) selected_rpc = 1;
+    if (kind == DATABIND_COMPILER_TRANSPORT_SOCKET) selected_socket = 1;
     if (*end == ',' && end[1] == '\0')
       return frontend_error(
           error, error_size, "Transport list must not end with a comma");
@@ -449,10 +499,10 @@ int databind_compiler_projection_frontend_build(
 
   if (input->projection_config_path != NULL &&
       input->projection_config_path[0] != '\0') {
-    if (!selected_http && !selected_rpc)
+    if (!selected_http && !selected_rpc && !selected_socket)
       return frontend_error(
           error, error_size,
-          "--projection-config is consumed only by HTTP/RPC transports");
+          "--projection-config is consumed only by selected configured transports");
     if (databind_compiler_projection_config_load(
             input->projection_config_path, &out->external_config,
             error, error_size) != 0)
@@ -467,6 +517,12 @@ int databind_compiler_projection_frontend_build(
       frontend_error(
           error, error_size,
           "Projection config contains rpc but RPC transport is not selected");
+      goto fail;
+    }
+    if (out->external_config.has_socket && !selected_socket) {
+      frontend_error(
+          error, error_size,
+          "Projection config contains socket but SOCKET transport is not selected");
       goto fail;
     }
   }
@@ -491,6 +547,10 @@ int databind_compiler_projection_frontend_build(
     case DATABIND_COMPILER_TRANSPORT_HTTP:
     case DATABIND_COMPILER_TRANSPORT_RPC:
       if (add_method_plan(input, out, transports[i], error, error_size) != 0)
+        goto fail;
+      break;
+    case DATABIND_COMPILER_TRANSPORT_SOCKET:
+      if (add_socket_plan(input, out, error, error_size) != 0)
         goto fail;
       break;
     default:
