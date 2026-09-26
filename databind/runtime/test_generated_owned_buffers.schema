@@ -1,0 +1,8 @@
+schema NativeOwnedBuffers [id(1), version(1), byte_order(little)];
+
+[id(1)]
+message NativeOwnedBufferRecord {
+    uint32 id;
+    string text;
+    bytes payload;
+}
