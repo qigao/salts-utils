@@ -1529,6 +1529,11 @@ DataBindStatus data_bind_native_measure(
   if (options->max_depth == 0u || options->max_items == 0u)
     return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
                        "Native depth and item budgets must be nonzero");
+  if (initial_items > options->max_items ||
+      initial_owned_bytes > options->max_owned_bytes)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+        "Initial native decode usage exceeds configured aggregate limits");
   if (!native_size_mul(options->max_depth, sizeof(*plan.ancestors),
                        &measured.traversal_bytes))
     return native_fail(diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
@@ -1589,7 +1594,10 @@ static DataBindStatus native_lifecycle_preflight(
   DataBindStatus status;
 
   if (out_path != NULL) *out_path = NULL;
-  if (usage != NULL) memset(usage, 0, sizeof(*usage));
+  const size_t initial_items = usage != NULL ? usage->items : 0u;
+  const size_t initial_owned_bytes =
+      usage != NULL ? usage->owned_bytes : 0u;
+
   if (!native_diagnostic_header_valid(diagnostic)) return DATA_BIND_ERR_INVALID_ARG;
   if (options == NULL ||
       options->size < offsetof(DataBindNativeOptions, abi_version) +
@@ -1826,6 +1834,8 @@ static DataBindStatus native_decode_bounded(
   decode.options = options;
   decode.diagnostic = diagnostic;
   decode.reader = reader;
+  decode.items = initial_items;
+  decode.owned_bytes = initial_owned_bytes;
   decode.max_buffer_bytes = max_buffer_bytes;
   status =
       first_token != NULL
@@ -1885,10 +1895,8 @@ DataBindStatus data_bind_native_decode_from_token_internal(
     size_t max_buffer_bytes,
     DataBindNativeDecodeUsage *usage,
     DataBindNativeDiagnostic *diagnostic) {
-  if (first_token == NULL) {
-    if (usage != NULL) memset(usage, 0, sizeof(*usage));
+  if (first_token == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
-  }
   return native_decode_bounded(
       options, shape, reader, first_token, destination, destination_bytes,
       max_buffer_bytes, usage, diagnostic);
