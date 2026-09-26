@@ -6,6 +6,7 @@
 #include "salts_fs.h"
 #include "tinytest.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef OPENAPI_SCHEMA
