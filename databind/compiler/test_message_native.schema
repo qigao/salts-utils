@@ -1,0 +1,10 @@
+schema NativeChannel [version(1)];
+
+message Event {
+  uint32 id;
+  optional uint32 sequence;
+  nullable uint32 result;
+  optional nullable uint32 tri;
+}
+
+channel Events: Event;
