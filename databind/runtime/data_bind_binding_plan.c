@@ -34,6 +34,8 @@ struct DataBindBindingPlan {
   DataBindMessagePlan *response_message;
 
   DataBindBindingPlanEntryOwned *errors;
+  DataBindNativeTypeBinding *error_native_bindings;
+  DataBindMessagePlan **error_messages;
   size_t error_count;
   size_t error_param_index;
   size_t error_envelope_bytes;
@@ -785,7 +787,12 @@ static DataBindStatus plan_compile_errors(
 
   plan->errors = (DataBindBindingPlanEntryOwned *)calloc(
       operation->error_count, sizeof(*plan->errors));
-  if (plan->errors == NULL)
+  plan->error_native_bindings = (DataBindNativeTypeBinding *)calloc(
+      operation->error_count, sizeof(*plan->error_native_bindings));
+  plan->error_messages = (DataBindMessagePlan **)calloc(
+      operation->error_count, sizeof(*plan->error_messages));
+  if (plan->errors == NULL || plan->error_native_bindings == NULL ||
+      plan->error_messages == NULL)
     return plan_diag_fail(diagnostic, DATA_BIND_ERR_OOM, NULL, param->name,
                           "Could not allocate typed-error BindingPlan entries");
   plan->error_count = operation->error_count;
@@ -794,7 +801,7 @@ static DataBindStatus plan_compile_errors(
     const DataBindNativeErrorBinding *binding = &native->errors[i];
     DataBindBindingPlanEntryOwned *owned = &plan->errors[i];
     DataBindBindingPlanEntry *entry = &owned->view;
-    DataBindNativeTypeBinding payload_binding;
+    DataBindNativeTypeBinding *payload_binding;
     const cmeta_data_desc *data = NULL;
     const char *name = data_bind_service_operation_error_at(
         codec, service_name, operation_name, i);
@@ -824,14 +831,14 @@ static DataBindStatus plan_compile_errors(
               : "Typed-error payload CMeta descriptor is unavailable");
 
     {
-      DataBindMessagePlan *payload_plan = NULL;
       DataBindMessagePlanDiagnostic message_diagnostic =
           DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
-      payload_binding = (DataBindNativeTypeBinding)
+      plan->error_native_bindings[i] = (DataBindNativeTypeBinding)
           DATA_BIND_NATIVE_TYPE_BINDING_INIT(name, data);
+      payload_binding = &plan->error_native_bindings[i];
       status = data_bind_message_plan_compile(
-          codec, name, &payload_binding, &payload_plan, &message_diagnostic);
-      data_bind_message_plan_free(payload_plan);
+          codec, name, payload_binding,
+          &plan->error_messages[i], &message_diagnostic);
       if (status != DATA_BIND_OK)
         return plan_message_fail(
             diagnostic, &message_diagnostic, name,
@@ -879,8 +886,13 @@ void data_bind_binding_plan_free(DataBindBindingPlan *plan) {
     plan_entry_owned_clear(&plan->ingress[i]);
   for (i = 0u; i < plan->egress_count; ++i)
     plan_entry_owned_clear(&plan->egress[i]);
-  for (i = 0u; i < plan->error_count; ++i)
+  for (i = 0u; i < plan->error_count; ++i) {
     plan_entry_owned_clear(&plan->errors[i]);
+    if (plan->error_messages != NULL)
+      data_bind_message_plan_free(plan->error_messages[i]);
+  }
+  free(plan->error_messages);
+  free(plan->error_native_bindings);
   free(plan->errors);
   data_bind_message_plan_free(plan->request_message);
   data_bind_message_plan_free(plan->response_message);
@@ -1893,6 +1905,20 @@ DataBindStatus data_bind_binding_plan_write_outcome(
         diagnostic, DATA_BIND_ERR_INVALID_ARG,
         entry->schema_field, entry->function_param,
         "Compiled typed-error entry has no native source");
+
+  if (plan->error_messages == NULL ||
+      plan->error_messages[error_index] == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME,
+        entry->schema_field, entry->function_param,
+        "Typed-error MessagePlan is unavailable");
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = data_bind_message_plan_validate_native(
+      plan->error_messages[error_index], source, source_bytes, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error payload validation failed");
 
   status = provider->begin_output(provider->context, &error);
   if (status != DATA_BIND_OK)
