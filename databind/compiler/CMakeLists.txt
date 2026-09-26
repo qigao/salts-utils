@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -114,6 +114,34 @@ add_test(NAME test_databind_projection_config_stale_rejected
     -P "${CMAKE_CURRENT_SOURCE_DIR}/test_projection_config_stale_rejection.cmake")
 set_tests_properties(test_databind_projection_config_stale_rejected
   PROPERTIES LABELS "databind;compiler;projection-config")
+
+cmake_add_test(test_databind_openapi_projection
+  SOURCES
+    test_openapi_projection.c
+    compiler_core.c
+    projection.c
+    openapi_projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    OPENAPI_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_projection.schema"
+    OPENAPI_OPTIONAL_PATH_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_optional_path.schema"
+    OPENAPI_BYTES_SIZE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_bytes_size.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_openapi_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_openapi_projection PROPERTIES
+  LABELS "databind;compiler;openapi;http;validation")
 
 
 set(DATABIND_METHOD_PLAN_FIXTURE_HTTP
