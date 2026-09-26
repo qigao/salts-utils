@@ -1256,6 +1256,9 @@ static DataBindStatus typed_native_record_preflight(const cmeta_data_desc *data,
   if (!cmeta_data_desc_valid(data))
     return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
                        "Canonical native CMeta record descriptor is invalid");
+  if (!cmeta_data_value_move_supported(data))
+    return typed_error(error, DATA_BIND_ERR_SCHEMA, path,
+                       "Canonical native CMeta record has no move authority");
   if (out != NULL) {
     out->data = data;
     out->shape = shape;
@@ -3896,8 +3899,16 @@ DataBindStatus tbe_typed_descriptor_parse(DataBind *codec, const char *type_name
   }
   json_free(json);
   if (status == DATA_BIND_OK) {
-    memcpy(object, temporary, native.data->storage_type->size);
-    status = typed_error(error, DATA_BIND_OK, NULL, NULL);
+    status = typed_native_clear_value(native.data, object, type_name, error);
+    if (status == DATA_BIND_OK) {
+      cmeta_status move_status =
+          cmeta_data_value_move(native.data, object, temporary);
+      status = typed_native_cmeta_status(
+          move_status, type_name,
+          "Canonical CMeta lifecycle could not commit decoded object", error);
+    }
+    if (status == DATA_BIND_OK)
+      status = typed_error(error, DATA_BIND_OK, NULL, NULL);
   }
   (void)typed_native_clear_value(native.data, temporary, type_name, NULL);
   free(temporary);
