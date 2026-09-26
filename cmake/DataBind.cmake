@@ -183,6 +183,7 @@ function(databind_target)
   set(_has_plugin FALSE)
   set(_has_http FALSE)
   set(_has_rpc FALSE)
+  set(_has_socket FALSE)
 
   foreach(artifact IN LISTS DB_ARTIFACTS)
     string(TOUPPER "${artifact}" artifact_upper)
@@ -202,6 +203,8 @@ function(databind_target)
       set(_has_http TRUE)
     elseif(transport_upper STREQUAL "RPC")
       set(_has_rpc TRUE)
+    elseif(transport_upper STREQUAL "SOCKET")
+      set(_has_socket TRUE)
     else()
       message(FATAL_ERROR
               "databind_target transport is not publicly available yet: "
@@ -294,9 +297,9 @@ function(databind_target)
 
   set(_projection_config)
   if(DB_PROJECTION_CONFIG)
-    if(NOT _has_http AND NOT _has_rpc)
+    if(NOT _has_http AND NOT _has_rpc AND NOT _has_socket)
       message(FATAL_ERROR
-              "databind_target PROJECTION_CONFIG requires HTTP and/or RPC")
+              "databind_target PROJECTION_CONFIG requires a configured transport")
     endif()
     get_filename_component(_projection_config
       "${DB_PROJECTION_CONFIG}" ABSOLUTE
@@ -306,6 +309,10 @@ function(databind_target)
               "databind_target PROJECTION_CONFIG does not exist: "
               "${_projection_config}")
     endif()
+  endif()
+  if(_has_socket AND NOT _projection_config)
+    message(FATAL_ERROR
+            "databind_target SOCKET requires PROJECTION_CONFIG")
   endif()
 
   list(JOIN _normalized_artifacts "," _artifact_csv)
@@ -347,6 +354,8 @@ function(databind_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.http.h")
   set(_rpc_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.rpc.h")
+  set(_socket_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.socket.h")
 
   set(_generated_outputs "${_native_header}")
   if(_has_plugin)
@@ -361,6 +370,9 @@ function(databind_target)
   endif()
   if(_has_rpc)
     list(APPEND _generated_outputs "${_rpc_header}")
+  endif()
+  if(_has_socket)
+    list(APPEND _generated_outputs "${_socket_header}")
   endif()
 
   set(_compiler_args
@@ -484,6 +496,12 @@ function(databind_target)
       DATABIND_RPC_PROJECTION "${_rpc_header}")
     set(${DB_TARGET}_RPC_PROJECTION
         "${_rpc_header}" PARENT_SCOPE)
+  endif()
+  if(_has_socket)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_SOCKET_PROJECTION "${_socket_header}")
+    set(${DB_TARGET}_SOCKET_PROJECTION
+        "${_socket_header}" PARENT_SCOPE)
   endif()
 
   set(${DB_TARGET}_GENERATED_DIR
