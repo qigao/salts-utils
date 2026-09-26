@@ -41,8 +41,8 @@ static inline bool salts_plugin_cflow_function_handle_valid(
 }
 
 /*
- * Acquire one reflected Function export and admit it through Salts 1.6's
- * canonical FunctionDesc -> CFlow projection boundary.
+ * Acquire one reflected Function export and admit it through the canonical Salts
+ * FunctionDesc -> CFlow projection boundary.
  *
  * No Plugin-private function-shape rules are introduced here. projection_status
  * receives the canonical CFlow admission result when non-NULL. Unsupported
