@@ -30,6 +30,8 @@ typedef struct DataBindPlanScan {
   int has_nullable;
   int has_csv_unsupported_shape;
   const char *csv_unsupported_field;
+  int has_xml_unsupported_shape;
+  const char *xml_unsupported_field;
 } DataBindPlanScan;
 
 static size_t plan_out_size(size_t requested, size_t full) {
@@ -108,6 +110,32 @@ static void plan_scan_reject_csv_field(
   scan->csv_unsupported_field = field->name;
 }
 
+static int plan_xml_root_kind_supported(DataBindSchemaKind kind) {
+  return kind == DATA_BIND_SCHEMA_MESSAGE ||
+         kind == DATA_BIND_SCHEMA_COMPOSITE ||
+         kind == DATA_BIND_SCHEMA_GROUP ||
+         kind == DATA_BIND_SCHEMA_ENUM ||
+         kind == DATA_BIND_SCHEMA_FLAGS ||
+         kind == DATA_BIND_SCHEMA_SCALAR;
+}
+
+static int plan_xml_nested_kind_supported(DataBindSchemaKind kind) {
+  return kind == DATA_BIND_SCHEMA_MESSAGE ||
+         kind == DATA_BIND_SCHEMA_COMPOSITE ||
+         kind == DATA_BIND_SCHEMA_ENUM ||
+         kind == DATA_BIND_SCHEMA_FLAGS ||
+         kind == DATA_BIND_SCHEMA_SCALAR;
+}
+
+static void plan_scan_reject_xml_field(
+    DataBindPlanScan *scan,
+    const DataBindSchemaField *field) {
+  if (scan == NULL || field == NULL || scan->has_xml_unsupported_shape)
+    return;
+  scan->has_xml_unsupported_shape = 1;
+  scan->xml_unsupported_field = field->name;
+}
+
 static int plan_scan_seen(
     const DataBindPlanScan *scan,
     const char *type_name) {
@@ -163,6 +191,15 @@ static DataBindStatus plan_scan_type(
       if (data_bind_schema_find_type(codec, field.type, &field_type) &&
           !plan_csv_nested_kind_supported(field_type.kind))
         plan_scan_reject_csv_field(scan, &field);
+    }
+
+    if (field.is_collection || field.is_group || field.is_map) {
+      plan_scan_reject_xml_field(scan, &field);
+    } else if (field.type != NULL && field.type[0] != '\0') {
+      DataBindSchemaType field_type = DATA_BIND_SCHEMA_TYPE_INIT;
+      if (data_bind_schema_find_type(codec, field.type, &field_type) &&
+          !plan_xml_nested_kind_supported(field_type.kind))
+        plan_scan_reject_xml_field(scan, &field);
     }
 
     candidates[0] = field.type;
@@ -225,6 +262,24 @@ DataBindStatus data_bind_format_plan_compile(
         snprintf(message, sizeof(message),
                  "CSV FormatPlan contains non-flat data; "
                  "explicit projection mapping is required");
+      return plan_error(error, DATA_BIND_ERR_SCHEMA, message);
+    }
+  }
+
+  if (format == DATA_BIND_FORMAT_XML) {
+    char message[sizeof(((DataBindError *)0)->message)];
+    if (!plan_xml_root_kind_supported(scan.root_kind))
+      return plan_error(
+          error, DATA_BIND_ERR_SCHEMA,
+          "XML FormatPlan root cannot be represented without explicit projection mapping");
+    if (scan.has_xml_unsupported_shape) {
+      if (scan.xml_unsupported_field != NULL)
+        snprintf(message, sizeof(message),
+                 "XML FormatPlan field '%s' requires collection/variant projection mapping",
+                 scan.xml_unsupported_field);
+      else
+        snprintf(message, sizeof(message),
+                 "XML FormatPlan contains a shape that requires explicit projection mapping");
       return plan_error(error, DATA_BIND_ERR_SCHEMA, message);
     }
   }
