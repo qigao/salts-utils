@@ -343,8 +343,14 @@ typedef struct {{typed_vector_type}} {
     {{native_cstl_raw_type}} raw;
 } {{typed_vector_type}};
 #else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
 {{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
 {{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
 #endif
 {{/native_cstl_container}}
 {{^native_cstl_container}}
@@ -708,8 +714,14 @@ typedef struct {{typed_vector_type}} {
     {{native_cstl_raw_type}} raw;
 } {{typed_vector_type}};
 #else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
 {{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
 {{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
 #endif
 {{/native_cstl_container}}
 {{^native_cstl_container}}
@@ -1305,8 +1317,14 @@ typedef struct {{typed_vector_type}} {
     {{native_cstl_raw_type}} raw;
 } {{typed_vector_type}};
 #else
+{{#native_cstl_explicit_metadata}}
+{{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}}, {{native_element_type_ref}}, {{native_element_data_ref}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
+{{^native_cstl_explicit_metadata}}
 {{#is_set}}typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
 {{^is_set}}typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});{{/is_set}}
+{{/native_cstl_explicit_metadata}}
 #endif
 {{/native_cstl_container}}
 {{^native_cstl_container}}
