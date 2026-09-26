@@ -65,3 +65,13 @@ target_link_libraries(test_data_bind_native_enum PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_writer PRIVATE Salts::TinyTest)
 target_link_libraries(test_data_bind_native_container
   PRIVATE Salts::TinyTest Salts::CSTL)
+
+# Pull the real databindc-generated tstr/stl_byte_buffer lifecycle proof into
+# the existing native-writer producer gate. The fixture is generated and run
+# only for host builds, matching the runtime CMake boundary.
+if(TARGET test_databind_generated_owned_buffers)
+  add_dependencies(test_data_bind_native_writer
+                   test_databind_generated_owned_buffers)
+  set_tests_properties(test_data_bind_native_writer PROPERTIES
+    FIXTURES_REQUIRED databind_generated_owned_buffers_contract)
+endif()
