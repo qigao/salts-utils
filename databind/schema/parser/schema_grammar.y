@@ -302,62 +302,15 @@ static void begin_enum_like(schema_parse_ctx_t *ctx, const char *name,
     ctx->cur_enum_items = items;
 }
 
-static schema_field_section_t classify_field_section(const char *field_type,
-                                                     int is_collection,
-                                                     int is_group_field,
-                                                     const char *length_field) {
-    if (is_group_field) {
-        return SCHEMA_FIELD_SECTION_GROUP;
-    }
-
-    if (strcmp(field_type, "string") == 0) {
-        return SCHEMA_FIELD_SECTION_VAR_DATA;
-    }
-
-    if (strcmp(field_type, "bytes") == 0 && !is_numeric_literal(length_field)) {
-        return SCHEMA_FIELD_SECTION_VAR_DATA;
-    }
-
-    if (strcmp(field_type, "array") == 0 && is_numeric_literal(length_field)) {
-        return SCHEMA_FIELD_SECTION_FIXED;
-    }
-
-    if (is_collection) {
-        return SCHEMA_FIELD_SECTION_VAR_DATA;
-    }
-
-    return SCHEMA_FIELD_SECTION_FIXED;
-}
-
-static int field_supported_in_tbe(const char *field_type,
-                                  int is_collection,
-                                  int is_group_field,
-                                  const char *length_field) {
-    if (is_group_field) {
-        return 1;
-    }
-
-    if (!is_collection) {
-        return 1;
-    }
-
-    if (strcmp(field_type, "array") == 0) {
-        return is_numeric_literal(length_field);
-    }
-
-    return strcmp(field_type, "list") == 0 ||
-           strcmp(field_type, "set") == 0 ||
-           strcmp(field_type, "map") == 0;
-}
-
-static int validate_field_layout(schema_parse_ctx_t *ctx,
-                                 const char *field_type,
-                                 const char *field_name,
-                                 int is_collection,
-                                 const char *collection_inner,
-                                 int is_group_field,
-                                 const char *length_field) {
-    schema_field_section_t section;
+static int validate_field_contract(schema_parse_ctx_t *ctx,
+                                   const char *field_type,
+                                   const char *field_name,
+                                   int is_collection,
+                                   const char *collection_inner,
+                                   int is_group_field,
+                                   const char *length_field) {
+    (void)is_collection;
+    (void)is_group_field;
 
     if (field_type == NULL) {
         grammar_oom(ctx);
@@ -374,42 +327,6 @@ static int validate_field_layout(schema_parse_ctx_t *ctx,
     if (!validate_fixed_length(ctx, field_name, length_field)) {
         return 0;
     }
-
-    /* Union variants are user-defined type references — no layout constraints */
-    if (ctx->cur_record_kind == SCHEMA_RECORD_UNION) {
-        return 1;
-    }
-
-    if (!field_supported_in_tbe(field_type, is_collection, is_group_field, length_field)) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Unsupported dynamic collection in tbe declaration");
-        ctx->error = 1;
-        return 0;
-    }
-
-    section = classify_field_section(field_type, is_collection, is_group_field, length_field);
-    if (ctx->cur_record_kind == SCHEMA_RECORD_COMPOSITE &&
-        section != SCHEMA_FIELD_SECTION_FIXED) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Composite fields must be fixed-size");
-        ctx->error = 1;
-        return 0;
-    }
-
-    if (ctx->cur_record_kind == SCHEMA_RECORD_MESSAGE ||
-        ctx->cur_record_kind == SCHEMA_RECORD_GROUP) {
-        if (section < ctx->cur_field_section) {
-            snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                     "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
-                     field_name ? field_name : "<unnamed>", field_type);
-            ctx->error = 1;
-            return 0;
-        }
-        if (section > ctx->cur_field_section) {
-            ctx->cur_field_section = section;
-        }
-    }
-
     return 1;
 }
 
@@ -786,7 +703,7 @@ static void add_field(schema_parse_ctx_t *ctx,
         node_free(attrs);
         return;
     }
-    if (!validate_field_layout(ctx, type_str, name_str, is_collection, inner,
+    if (!validate_field_contract(ctx, type_str, name_str, is_collection, inner,
                                is_group_field, len_field)) {
         node_free(constraints);
         node_free(attrs);
