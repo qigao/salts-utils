@@ -78,17 +78,19 @@ static int binary_codegen_layout_admitted(
 }
 
 int databind_compiler_binary_reader_admit(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
   databind_binary_layout_status status;
   int admitted;
 
-  if (canonical_ir == NULL || type_name == NULL || type_name[0] == '\0')
+  if (contract == NULL || wire_ir == NULL ||
+      type_name == NULL || type_name[0] == '\0')
     return -1;
   status = databind_binary_layout_build(
-      canonical_ir, type_name, &layout, &diagnostic);
+      contract, wire_ir, type_name, &layout, &diagnostic);
   if (status != DATABIND_BINARY_LAYOUT_OK) return -1;
   admitted = binary_codegen_layout_admitted(&layout);
   databind_binary_layout_destroy(&layout);
@@ -120,7 +122,8 @@ static int binary_codegen_symbol(
 
 int databind_compiler_binary_reader_emit(
     FILE *file,
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name,
     const char *symbol_prefix) {
   databind_binary_type_layout layout = {0};
@@ -130,14 +133,14 @@ int databind_compiler_binary_reader_emit(
   size_t i;
   int result = -1;
 
-  if (file == NULL || canonical_ir == NULL ||
+  if (file == NULL || contract == NULL || wire_ir == NULL ||
       type_name == NULL || symbol_prefix == NULL ||
       !binary_codegen_symbol(
           symbol, sizeof(symbol), symbol_prefix, type_name))
     return -1;
 
   status = databind_binary_layout_build(
-      canonical_ir, type_name, &layout, &diagnostic);
+      contract, wire_ir, type_name, &layout, &diagnostic);
   if (status != DATABIND_BINARY_LAYOUT_OK ||
       !binary_codegen_layout_admitted(&layout))
     goto cleanup;
