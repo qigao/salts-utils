@@ -641,7 +641,10 @@ bool cflow_process_is_quiescent(const cflow_process *process) {
   if (impl == NULL || !impl->close_requested || !cflow_io_actor_is_quiescent(&impl->actor) ||
       cflow_io_pipe_endpoint_is_valid(&impl->stdin_endpoint) ||
       cflow_io_pipe_endpoint_is_valid(&impl->stdout_endpoint) ||
-      cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint))
+      cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint) ||
+      native_io_endpoint_valid(impl->stdin_native_endpoint) ||
+      native_io_endpoint_valid(impl->stdout_native_endpoint) ||
+      native_io_endpoint_valid(impl->stderr_native_endpoint))
     return false;
   return salts_process_poll(impl->native_process, &result) == SALTS_OK;
 }
