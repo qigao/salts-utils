@@ -299,6 +299,41 @@ static int add_socket_plan(
   return 0;
 }
 
+static int add_openapi(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".openapi.json", out->openapi_output,
+          sizeof(out->openapi_output)))
+    return frontend_error(
+        error, error_size,
+        "Derived OpenAPI output path is too long");
+
+  if (path_reserved(input, out->openapi_output) ||
+      projection_output_in_use(out, out->openapi_output))
+    return frontend_error(
+        error, error_size,
+        "Derived projection outputs collide with another compiler output");
+
+  out->openapi =
+      (databind_compiler_openapi_projection_config){.http = &out->http};
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+                 DATABIND_COMPILER_ARTIFACT_OPENAPI},
+          .output = out->openapi_output,
+          .config = &out->openapi};
+  out->backends[out->backend_count++] =
+      DATABIND_COMPILER_OPENAPI_BACKEND;
+  return 0;
+}
+
 static int token_copy_trimmed(
     const char *begin, const char *end,
     char *out, size_t out_size) {
@@ -533,10 +568,27 @@ int databind_compiler_projection_frontend_build(
     }
   }
 
+  if (selected_http) {
+    if (out->external_config.has_http)
+      out->http = out->external_config.http;
+    else
+      out->http = (databind_compiler_http_projection_config){0};
+  }
+
   for (i = 0u; i < artifact_count; ++i) {
     switch (artifacts[i]) {
     case DATABIND_COMPILER_ARTIFACT_PLUGIN:
       if (add_plugin(input, out, error, error_size) != 0)
+        goto fail;
+      break;
+    case DATABIND_COMPILER_ARTIFACT_OPENAPI:
+      if (!selected_http) {
+        frontend_error(
+            error, error_size,
+            "OPENAPI artifact requires HTTP transport selection");
+        goto fail;
+      }
+      if (add_openapi(input, out, error, error_size) != 0)
         goto fail;
       break;
     default:
