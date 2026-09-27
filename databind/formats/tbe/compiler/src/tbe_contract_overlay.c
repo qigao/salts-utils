@@ -1,6 +1,6 @@
 #include "tbe_contract_overlay.h"
 
-#include "schema_builtin_type.h"
+#include "tbe_scalar_profile.h"
 #include "schema_size.h"
 
 #include <stdint.h>
@@ -162,7 +162,7 @@ static size_t count_records_in_list(const Node *list) {
 }
 
 static int primitive_type_size(const char *type_name, size_t *out) {
-    const schema_builtin_type_info_t *info = schema_builtin_type_find(type_name);
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
     if (type_name && strcmp(type_name, "uuid") == 0 && out) {
         *out = 16;
         return 1;
@@ -173,14 +173,14 @@ static int primitive_type_size(const char *type_name, size_t *out) {
 }
 
 static int primitive_type_wire_reader(const char *type_name, const char **out) {
-    const schema_builtin_type_info_t *info = schema_builtin_type_find(type_name);
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
     if (!info || !info->wire_reader || !out) return 0;
     *out = info->wire_reader;
     return 1;
 }
 
 static int primitive_type_host_type(const char *type_name, const char **out) {
-    const schema_builtin_type_info_t *info = schema_builtin_type_find(type_name);
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
     if (!info || !info->host_type || !out) return 0;
     *out = info->host_type;
     return 1;
@@ -877,8 +877,8 @@ static int annotate_field_states(Node *root) {
                         // 添加类型推断
                         const char *default_value = map_find_string_value(field, "default_value");
                         const char *field_type = map_find_string_value(field, "type");
-                        const schema_builtin_type_info_t *default_type =
-                            schema_builtin_type_find(field_type);
+                        const tbe_scalar_profile_t *default_type =
+                            tbe_scalar_profile_find(field_type);
                         
                         if (default_value && field_type) {
                             if (strcmp(field_type, "string") == 0) {
@@ -1265,7 +1265,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
   const char *field_type = map_find_string_value(field, "type");
   const char *length_field = map_find_string_value(field, "length_field");
   const char *collection_kind = map_find_string_value(field, "collection_kind");
-  const schema_builtin_type_info_t *builtin_type;
+  const tbe_scalar_profile_t *builtin_type;
   const cmeta_data_desc *builtin_data;
   int is_group = map_has_named_child(field, "is_group_field");
 
@@ -1278,7 +1278,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
     return 0;
   }
 
-  builtin_type = schema_builtin_type_find(field_type);
+  builtin_type = tbe_scalar_profile_find(field_type);
   builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
 
   if (is_group) {

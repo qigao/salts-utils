@@ -1,5 +1,5 @@
-#ifndef TBE_SCHEMA_BUILTIN_TYPE_H
-#define TBE_SCHEMA_BUILTIN_TYPE_H
+#ifndef DATABIND_TBE_SCALAR_PROFILE_H
+#define DATABIND_TBE_SCALAR_PROFILE_H
 
 #include "schema_cmeta.h"
 #include <cmeta/data.h>
@@ -7,18 +7,18 @@
 #include <stddef.h>
 #include <string.h>
 
-typedef struct schema_builtin_type_info {
+typedef struct tbe_scalar_profile {
     const char *name;
     size_t size;
     const char *wire_reader;
     const char *host_type;
     const cmeta_data_desc *data;
-} schema_builtin_type_info_t;
+} tbe_scalar_profile_t;
 
 /* Schema owns wire octets/readers/host projections, not scalar alias identity.
  * Keep one profile per canonical scalar; aliases are resolved only by CMeta.
  * Consumers derive scalar classification from the borrowed descriptor. */
-static const schema_builtin_type_info_t SCHEMA_BUILTIN_TYPES[] = {
+static const tbe_scalar_profile_t TBE_SCALAR_PROFILES[] = {
     {"bool", 1, "u8", "uint8_t", &cmeta_data_bool},
     {"uint8_t", 1, "u8", "uint8_t", &cmeta_data_uint8},
     {"int8_t", 1, "i8", "int8_t", &cmeta_data_int8},
@@ -32,13 +32,13 @@ static const schema_builtin_type_info_t SCHEMA_BUILTIN_TYPES[] = {
     {"double", 8, "f64", "double", &cmeta_data_double},
 };
 
-static inline const schema_builtin_type_info_t *schema_builtin_type_find(const char *name) {
+static inline const tbe_scalar_profile_t *tbe_scalar_profile_find(const char *name) {
     const cmeta_data_desc *data = schema_cmeta_builtin_data(name);
     size_t i;
 
     if (!cmeta_data_desc_valid(data)) return NULL;
-    for (i = 0; i < sizeof(SCHEMA_BUILTIN_TYPES) / sizeof(SCHEMA_BUILTIN_TYPES[0]); ++i) {
-        const schema_builtin_type_info_t *profile = &SCHEMA_BUILTIN_TYPES[i];
+    for (i = 0; i < sizeof(TBE_SCALAR_PROFILES) / sizeof(TBE_SCALAR_PROFILES[0]); ++i) {
+        const tbe_scalar_profile_t *profile = &TBE_SCALAR_PROFILES[i];
         if (data->kind == profile->data->kind &&
             cmeta_type_identity_equal(data->storage_type->identity,
                                       profile->data->storage_type->identity))

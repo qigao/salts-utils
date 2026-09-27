@@ -1,6 +1,6 @@
 #include "schema_type_ref.h"
 
-#include "schema_builtin_type.h"
+#include "schema_cmeta.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -61,7 +61,7 @@ int schema_type_ref_exists(Node *root, const char *name) {
     size_t i;
 
     if (name == NULL || name[0] == '\0') return 0;
-    if (schema_builtin_type_find(name) != NULL) return 1;
+    if (schema_cmeta_builtin_data(name) != NULL) return 1;
 
     for (i = 0u;
          i < sizeof(extended_scalars) / sizeof(extended_scalars[0]);

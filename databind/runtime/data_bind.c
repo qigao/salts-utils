@@ -5,15 +5,16 @@
 
 #include "data_bind.h"
 #include "data_bind_internal.h"
-#include "data_bind_schema_internal.h"
+#include "data_bind_contract_fingerprint.h"
 #include "data_bind_temporal_adapter.h"
 #include "data_bind_stream_format_state_internal.h"
 #include "fmt.h"
 #include "node_tree.h"
 #include "re.h"
-#include "schema_builtin_type.h"
+#include "tbe_scalar_profile.h"
 #include "schema_cmeta.h"
-#include "schema_parser_dsl.h"
+#include "idl.h"
+#include "tbe_contract_overlay.h"
 #include "tbe_typed.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
@@ -210,7 +211,7 @@ static int value_pool_put(DataBindValue *value) {
 
 struct DataBind {
   Node *schema_root;
-  uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE];
+  uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
 
 struct data_bind_stream_t {
@@ -351,7 +352,7 @@ struct db_dynamic_graph {
 struct DataBindObject {
   char *type_name;
   DataBindValue *value;
-  uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE];
+  uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
 
 typedef enum {
@@ -413,7 +414,7 @@ struct emit_field {
 /* Derived view over the shared schema_builtin_type.h table. The init writes are
  * idempotent, so a concurrent duplicate init is benign; the array and the table
  * never move afterwards. */
-#define TYPE_META_COUNT (sizeof(SCHEMA_BUILTIN_TYPES) / sizeof(SCHEMA_BUILTIN_TYPES[0]))
+#define TYPE_META_COUNT (sizeof(TBE_SCALAR_PROFILES) / sizeof(TBE_SCALAR_PROFILES[0]))
 static type_meta_t g_type_metas[TYPE_META_COUNT];
 static atomic_int g_type_metas_ready = 0;
 
@@ -433,7 +434,7 @@ static data_bind_wire_type_t db_wire_type_from_reader(const char *reader) {
 }
 
 static const type_meta_t *find_type_meta(const char *type) {
-  const schema_builtin_type_info_t *info = schema_builtin_type_find(type);
+  const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type);
   size_t index;
   size_t i;
   if (info == NULL) return NULL;
@@ -442,7 +443,7 @@ static const type_meta_t *find_type_meta(const char *type) {
     salts_mutex_lock(&g_value_pool_control_mutex);
     if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
       for (i = 0; i < TYPE_META_COUNT; ++i) {
-        const schema_builtin_type_info_t *src = &SCHEMA_BUILTIN_TYPES[i];
+        const tbe_scalar_profile_t *src = &TBE_SCALAR_PROFILES[i];
         g_type_metas[i].name = src->name;
         g_type_metas[i].size = (int)src->size;
         g_type_metas[i].wire_type = db_wire_type_from_reader(src->wire_reader);
@@ -454,7 +455,7 @@ static const type_meta_t *find_type_meta(const char *type) {
     }
     salts_mutex_unlock(&g_value_pool_control_mutex);
   }
-  index = (size_t)(info - SCHEMA_BUILTIN_TYPES);
+  index = (size_t)(info - TBE_SCALAR_PROFILES);
   return &g_type_metas[index];
 }
 
@@ -4671,7 +4672,7 @@ static db_dynamic_type_t *db_dynamic_graph_find(db_dynamic_graph_t *graph,
 }
 
 static char *db_dynamic_stable_id(
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *semantic_key) {
   static const char prefix[] = "salts-utils.databind.dynamic.v2:";
   static const char hex[] = "0123456789abcdef";
@@ -4683,15 +4684,15 @@ static char *db_dynamic_stable_id(
   char *cursor;
   if (schema_fingerprint == NULL || semantic_key == NULL) return NULL;
   key_len = strlen(semantic_key);
-  if (key_len > SIZE_MAX - prefix_len - DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u - 2u)
+  if (key_len > SIZE_MAX - prefix_len - DATA_BIND_CONTRACT_FINGERPRINT_SIZE * 2u - 2u)
     return NULL;
-  len = prefix_len + DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u + 1u + key_len;
+  len = prefix_len + DATA_BIND_CONTRACT_FINGERPRINT_SIZE * 2u + 1u + key_len;
   text = (char *)db_dynamic_graph_calloc(len + 1u, 1u);
   if (text == NULL) return NULL;
   cursor = text;
   memcpy(cursor, prefix, prefix_len);
   cursor += prefix_len;
-  for (i = 0u; i < DATA_BIND_SCHEMA_FINGERPRINT_SIZE; ++i) {
+  for (i = 0u; i < DATA_BIND_CONTRACT_FINGERPRINT_SIZE; ++i) {
     *cursor++ = hex[(schema_fingerprint[i] >> 4u) & 0x0fu];
     *cursor++ = hex[schema_fingerprint[i] & 0x0fu];
   }
@@ -4702,7 +4703,7 @@ static char *db_dynamic_stable_id(
 
 static db_dynamic_type_t *db_dynamic_graph_add(
     db_dynamic_graph_t *graph,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *semantic_key, cmeta_data_kind kind,
     const cmeta_data_desc *canonical_data) {
   db_dynamic_type_t *type;
@@ -4730,12 +4731,12 @@ static db_dynamic_type_t *db_dynamic_graph_add(
 
 static DataBindStatus db_dynamic_build_named(
     db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type);
 
 static DataBindStatus db_dynamic_build_container(
     db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     Node *field, const schema_cmeta_field_type *semantic, unsigned depth,
     db_dynamic_type_t **out_type) {
   const char *constructor = semantic->schema_kind;
@@ -4792,7 +4793,7 @@ static DataBindStatus db_dynamic_build_container(
 
 static DataBindStatus db_dynamic_build_named(
     db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type) {
   Node *record;
   Node *fields;
@@ -4865,7 +4866,7 @@ static DataBindStatus db_dynamic_build_named(
 
 static DataBindStatus db_dynamic_build_synthetic_sequence(
     db_dynamic_graph_t *graph,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *root_type, db_dynamic_type_t *element_type,
     db_dynamic_type_t **out_type) {
   char *key = db_dynamic_join_type("result", root_type, NULL);
@@ -6569,7 +6570,7 @@ static DataBindStatus data_bind_object_check_schema(const DataBind *codec,
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, format, -1, -1,
                         "Invalid schema-bound object arguments");
   if (memcmp(codec->schema_fingerprint, object->schema_fingerprint,
-             DATA_BIND_SCHEMA_FINGERPRINT_SIZE) != 0)
+             DATA_BIND_CONTRACT_FINGERPRINT_SIZE) != 0)
     return db_error_set(error, DATA_BIND_ERR_SCHEMA,
                         object->type_name != NULL ? object->type_name : format, -1, -1,
                         "Object schema fingerprint does not match the codec");
@@ -6671,11 +6672,19 @@ static Node *parse_schema_text_to_root(const char *schema_text, size_t len, cons
     db_error_set(error, DATA_BIND_ERR_OOM, path, -1, -1, "Out of memory");
     return NULL;
   }
-  if (parse_schema(schema_text, len, root, &err) != 0) {
+  if (idl_parse(schema_text, len, root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
       snprintf(error_buf, error_size, "Parse error: %s", err.message);
     db_error_set(error, DATA_BIND_ERR_PARSE, path, err.line, err.column, "Parse error: %s",
                  err.message);
+    node_free(root);
+    return NULL;
+  }
+  if (databind_tbe_contract_apply(root, &err) != 0) {
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "TBE format error: %s", err.message);
+    db_error_set(error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
+                 "TBE format error: %s", err.message);
     node_free(root);
     return NULL;
   }
@@ -6705,7 +6714,7 @@ static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **o
     free(codec);
     return status;
   }
-  if (!data_bind_schema_fingerprint(schema_root, codec->schema_fingerprint)) {
+  if (!data_bind_contract_fingerprint(schema_root, codec->schema_fingerprint)) {
     node_free(schema_root);
     free(codec);
     return db_error_set(error, DATA_BIND_ERR_SCHEMA, NULL, -1, -1,
@@ -10293,7 +10302,7 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
 #define DATA_BIND_JSON_MAX_DEPTH 64u
 
 static DataBindStatus data_bind_object_take(
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE], const char *type_name,
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE], const char *type_name,
     DataBindValue *value, DataBindObject **out_object, DataBindError *error) {
   DataBindObject *object;
   size_t type_len;

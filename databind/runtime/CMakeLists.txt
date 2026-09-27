@@ -132,6 +132,8 @@ set(DATA_BIND_TARGET data_bind)
 add_library(
   ${DATA_BIND_TARGET} SHARED
   data_bind.c
+  data_bind_contract_fingerprint.c
+  data_bind_contract_fingerprint.h
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
@@ -166,7 +168,10 @@ target_include_directories(
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/include>
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
     $<INSTALL_INTERFACE:include>
-  PRIVATE $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>)
+  PRIVATE
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/internal>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/compiler/include>)
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
@@ -176,6 +181,9 @@ target_link_libraries(
     Salts::DataBindCsvAdapter
     Salts::DataBindXmlAdapter
     Salts::DataBindTemporalAdapter
+    Salts::Schema
+    Salts::IDL
+    databind_tbe_contract
   PUBLIC
     Salts::DataBindCore)
 
