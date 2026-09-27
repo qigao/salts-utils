@@ -54,6 +54,9 @@ static int write_source(
     if (databind_compiler_service_native_emit_reflection(
             file, &ir->operations[i], 1) != 0)
       goto fail;
+    if (databind_compiler_service_native_emit_execution(
+            file, &ir->operations[i], 1) != 0)
+      goto fail;
     if (databind_compiler_service_native_emit_binding(
             file, &ir->operations[i]) != 0)
       goto fail;
