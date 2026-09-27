@@ -81,7 +81,11 @@ int main(void) {
         static const char *args[] = {NULL};
         options.program = "/usr/bin/true";
         options.args = args;
-        config.backend_kind = CFLOW_IO_NATIVE_POLL;
+        #if defined(__linux__)
+        config.backend_kind = CFLOW_IO_NATIVE_EPOLL;
+#else
+        config.backend_kind = CFLOW_IO_NATIVE_KQUEUE;
+#endif
     }
 #endif
     options.flags = 0u;
