@@ -187,9 +187,10 @@ static int flowmq_commit_atomic(
 }
 
 static int flowmq_generate(
-    const Node *root,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
+  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_flowmq_projection_config *config =
       request != NULL
           ? (const databind_compiler_flowmq_projection_config *)request->config
