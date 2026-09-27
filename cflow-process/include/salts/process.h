@@ -62,8 +62,9 @@ typedef struct cflow_process_stats {
  * Starts one process with three adapter-owned asynchronous standard streams.
  * options and config are borrowed only for the call. Capture/pipe flags,
  * zero capacities, a null callback, or an initialized output return
- * SALTS_EINVAL; an unavailable pipe backend returns SALTS_ENOTSUP. On success
- * process owns all runtime resources until quiescent destroy.
+ * SALTS_EINVAL; an unavailable pipe backend returns SALTS_ENOTSUP. POLL has
+ * no root NativeIO pipe backend and is never remapped to another backend.
+ * On success process owns all runtime resources until quiescent destroy.
  */
 int cflow_process_start(cflow_process *process, const salts_process_options_t *options,
                         const cflow_process_config *config);
