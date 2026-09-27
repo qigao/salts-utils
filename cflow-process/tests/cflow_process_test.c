@@ -121,10 +121,12 @@ static void init_process_options(salts_process_options_t *options, bool echo_std
 
 static cflow_process_config process_test_config(process_completion_probe *probe) {
   cflow_process_config config = {0};
-#ifdef _WIN32
+#if defined(_WIN32)
   config.backend_kind = CFLOW_IO_NATIVE_IOCP;
+#elif defined(__linux__)
+  config.backend_kind = CFLOW_IO_NATIVE_EPOLL;
 #else
-  config.backend_kind = CFLOW_IO_NATIVE_POLL;
+  config.backend_kind = CFLOW_IO_NATIVE_KQUEUE;
 #endif
   config.request_capacity = 4u;
   config.command_capacity = 4u;
