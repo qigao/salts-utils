@@ -312,11 +312,11 @@ static const char *plan_canonical_name(
 }
 
 static int plan_reader_container_begin(cserde_token_kind kind) {
-  return kind == CSERDE_MAP_BEGIN || kind == CSERDE_LIST_BEGIN;
+  return kind == CSERDE_MAP_BEGIN || kind == CSERDE_ARRAY_BEGIN;
 }
 
 static int plan_reader_container_end(cserde_token_kind kind) {
-  return kind == CSERDE_MAP_END || kind == CSERDE_LIST_END;
+  return kind == CSERDE_MAP_END || kind == CSERDE_ARRAY_END;
 }
 
 static cserde_status plan_canonical_reader_next(
