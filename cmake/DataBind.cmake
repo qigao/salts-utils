@@ -181,6 +181,7 @@ function(databind_target)
   set(_normalized_artifacts)
   set(_normalized_transports)
   set(_has_plugin FALSE)
+  set(_has_openapi FALSE)
   set(_has_http FALSE)
   set(_has_rpc FALSE)
   set(_has_socket FALSE)
@@ -189,6 +190,8 @@ function(databind_target)
     string(TOUPPER "${artifact}" artifact_upper)
     if(artifact_upper STREQUAL "PLUGIN")
       set(_has_plugin TRUE)
+    elseif(artifact_upper STREQUAL "OPENAPI")
+      set(_has_openapi TRUE)
     else()
       message(FATAL_ERROR
               "databind_target artifact is not publicly available yet: "
@@ -212,6 +215,11 @@ function(databind_target)
     endif()
     list(APPEND _normalized_transports "${transport_upper}")
   endforeach()
+
+  if(_has_openapi AND NOT _has_http)
+    message(FATAL_ERROR
+            "databind_target OPENAPI artifact requires HTTP transport")
+  endif()
 
   set(_unique_artifacts ${_normalized_artifacts})
   list(REMOVE_DUPLICATES _unique_artifacts)
@@ -352,6 +360,8 @@ function(databind_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.h")
   set(_plugin_client_source
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.c")
+  set(_openapi_output
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.openapi.json")
   set(_http_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.http.h")
   set(_rpc_header
@@ -369,6 +379,9 @@ function(databind_target)
       "${_plugin_source}"
       "${_plugin_client_header}"
       "${_plugin_client_source}")
+  endif()
+  if(_has_openapi)
+    list(APPEND _generated_outputs "${_openapi_output}")
   endif()
   if(_has_http)
     list(APPEND _generated_outputs "${_http_header}")
@@ -510,6 +523,12 @@ function(databind_target)
         "${DB_TARGET}_plugin" PARENT_SCOPE)
     set(${DB_TARGET}_PLUGIN_CLIENT_TARGET
         "${DB_TARGET}_plugin_client" PARENT_SCOPE)
+  endif()
+  if(_has_openapi)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_OPENAPI_ARTIFACT "${_openapi_output}")
+    set(${DB_TARGET}_OPENAPI_ARTIFACT
+        "${_openapi_output}" PARENT_SCOPE)
   endif()
   if(_has_http)
     set_property(TARGET "${DB_TARGET}" PROPERTY
