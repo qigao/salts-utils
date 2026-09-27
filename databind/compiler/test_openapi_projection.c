@@ -40,6 +40,8 @@ static int generate_openapi(
     const char *output,
     const databind_compiler_http_projection_config *http) {
   Node *root = NULL;
+  IdlContract *contract = NULL;
+  databind_compiler_projection_input input = {0};
   char *schema_data = NULL;
   databind_compiler_openapi_projection_config config = {http};
   databind_compiler_projection_request request = {
@@ -52,11 +54,13 @@ static int generate_openapi(
   int result;
 
   (void)salts_fs_unlink(output);
-  if (tbe_compiler_parse_schema_file(
-          schema_path, &root, &schema_data) != 0)
+  if (databind_compiler_parse_contract_file(
+          schema_path, &root, &contract, &schema_data) != 0)
     return -2;
+  input = (databind_compiler_projection_input){contract, root};
   result = databind_compiler_projection_run(
-      root, &request, 1u, &backend, 1u);
+      &input, &request, 1u, &backend, 1u);
+  idl_contract_destroy(contract);
   node_free(root);
   free(schema_data);
   return result;
