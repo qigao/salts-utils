@@ -1,7 +1,7 @@
 #ifndef DATABIND_COMPILER_MESSAGE_NATIVE_H
 #define DATABIND_COMPILER_MESSAGE_NATIVE_H
 
-#include "node_tree.h"
+#include "idl_contract.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -27,10 +27,11 @@ typedef struct databind_compiler_message_native_binding {
 
 /*
  * Build one transport-/Service-neutral generated native binding model from the
- * canonical message IR. The message must have an admitted CMeta graph.
+ * canonical typed IDL contract. Presence/null state is compiled from logical
+ * field order and does not depend on a format-specific rendering tree.
  */
 int databind_compiler_message_native_build(
-    const Node *canonical_ir,
+    const IdlContract *contract,
     const char *type_name,
     databind_compiler_message_native_binding *out);
 
