@@ -959,9 +959,10 @@ static int plugin_write_source(
 }
 
 int databind_compiler_plugin_generate(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
+  const Node *canonical_ir = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_plugin_config *config =
       request != NULL
           ? (const databind_compiler_plugin_config *)request->config
