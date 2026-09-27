@@ -184,6 +184,7 @@ function(databind_target)
   set(_has_http FALSE)
   set(_has_rpc FALSE)
   set(_has_socket FALSE)
+  set(_has_flowmq FALSE)
 
   foreach(artifact IN LISTS DB_ARTIFACTS)
     string(TOUPPER "${artifact}" artifact_upper)
@@ -205,6 +206,8 @@ function(databind_target)
       set(_has_rpc TRUE)
     elseif(transport_upper STREQUAL "SOCKET")
       set(_has_socket TRUE)
+    elseif(transport_upper STREQUAL "FLOWMQ")
+      set(_has_flowmq TRUE)
     else()
       message(FATAL_ERROR
               "databind_target transport is not publicly available yet: "
@@ -297,7 +300,8 @@ function(databind_target)
 
   set(_projection_config)
   if(DB_PROJECTION_CONFIG)
-    if(NOT _has_http AND NOT _has_rpc AND NOT _has_socket)
+    if(NOT _has_http AND NOT _has_rpc AND
+       NOT _has_socket AND NOT _has_flowmq)
       message(FATAL_ERROR
               "databind_target PROJECTION_CONFIG requires a configured transport")
     endif()
@@ -313,6 +317,10 @@ function(databind_target)
   if(_has_socket AND NOT _projection_config)
     message(FATAL_ERROR
             "databind_target SOCKET requires PROJECTION_CONFIG")
+  endif()
+  if(_has_flowmq AND NOT _projection_config)
+    message(FATAL_ERROR
+            "databind_target FLOWMQ requires PROJECTION_CONFIG")
   endif()
 
   list(JOIN _normalized_artifacts "," _artifact_csv)
@@ -358,9 +366,11 @@ function(databind_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.rpc.h")
   set(_socket_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.socket.h")
+  set(_flowmq_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_socket)
+  if(_has_socket OR _has_flowmq)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_plugin)
@@ -379,6 +389,9 @@ function(databind_target)
   if(_has_socket)
     list(APPEND _generated_outputs "${_socket_header}")
   endif()
+  if(_has_flowmq)
+    list(APPEND _generated_outputs "${_flowmq_header}")
+  endif()
 
   set(_compiler_args
       "${_idl}"
@@ -393,7 +406,7 @@ function(databind_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_socket)
+  if(_has_socket OR _has_flowmq)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -430,7 +443,7 @@ function(databind_target)
   add_custom_target("${DB_TARGET}_databind_codegen"
     DEPENDS ${_generated_outputs})
 
-  if(_has_socket)
+  if(_has_socket OR _has_flowmq)
     add_library("${DB_TARGET}_native" STATIC
       "${_native_source}"
       "${_native_header}")
@@ -479,7 +492,7 @@ function(databind_target)
 
   add_custom_target("${DB_TARGET}")
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_databind_codegen")
-  if(_has_socket)
+  if(_has_socket OR _has_flowmq)
     add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
   endif()
   if(_has_plugin)
@@ -526,10 +539,18 @@ function(databind_target)
   if(_has_socket)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_SOCKET_PROJECTION "${_socket_header}")
-    set_property(TARGET "${DB_TARGET}" PROPERTY
-      DATABIND_NATIVE_TARGET "${DB_TARGET}_native")
     set(${DB_TARGET}_SOCKET_PROJECTION
         "${_socket_header}" PARENT_SCOPE)
+  endif()
+  if(_has_flowmq)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_FLOWMQ_PROJECTION "${_flowmq_header}")
+    set(${DB_TARGET}_FLOWMQ_PROJECTION
+        "${_flowmq_header}" PARENT_SCOPE)
+  endif()
+  if(_has_socket OR _has_flowmq)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_TARGET "${DB_TARGET}_native")
     set(${DB_TARGET}_NATIVE_TARGET
         "${DB_TARGET}_native" PARENT_SCOPE)
   endif()

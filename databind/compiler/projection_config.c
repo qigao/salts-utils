@@ -723,6 +723,68 @@ static int parse_socket(
   return 0;
 }
 
+static int parse_flowmq_pattern(
+    const char *text, DataBindFlowMQChannelPattern *out) {
+  if (text == NULL || out == NULL) return 0;
+  if (strcmp(text, "pubsub") == 0 || strcmp(text, "pub-sub") == 0) {
+    *out = DATA_BIND_FLOWMQ_CHANNEL_PUB_SUB;
+    return 1;
+  }
+  if (strcmp(text, "pushpull") == 0 || strcmp(text, "push-pull") == 0) {
+    *out = DATA_BIND_FLOWMQ_CHANNEL_PUSH_PULL;
+    return 1;
+  }
+  return 0;
+}
+
+static int parse_flowmq(
+    const json_value_t *section,
+    databind_compiler_projection_config *out,
+    char *error, size_t error_size) {
+  static const char *const keys[] = {
+      "channel", "pattern", "format", "max_payload_bytes"};
+  const char *pattern;
+  const char *format;
+  json_value_t *max_payload;
+  uint64_t max_payload_bytes;
+
+  if (section == NULL || json_type(section) != JSON_OBJECT)
+    return config_error(error, error_size,
+                        "FlowMQ projection section must be an object");
+  if (object_keys_valid(
+          section, keys, sizeof(keys) / sizeof(keys[0]),
+          error, error_size) != 0)
+    return -1;
+
+  out->flowmq.channel_name =
+      required_string(section, "channel", error, error_size);
+  pattern = required_string(section, "pattern", error, error_size);
+  format = required_string(section, "format", error, error_size);
+  if (out->flowmq.channel_name == NULL ||
+      pattern == NULL || format == NULL)
+    return -1;
+
+  if (!parse_flowmq_pattern(pattern, &out->flowmq.pattern))
+    return config_errorf(
+        error, error_size, "Unknown FlowMQ Channel pattern '%s'", pattern);
+  if (!parse_format_name(format, &out->flowmq.format))
+    return config_errorf(
+        error, error_size, "Unknown FlowMQ format '%s'", format);
+
+  max_payload = json_object_get(section, "max_payload_bytes");
+  if (!parse_u64_value(max_payload, &max_payload_bytes) ||
+      max_payload_bytes == 0u ||
+      max_payload_bytes > UINT32_MAX ||
+      max_payload_bytes > (uint64_t)SIZE_MAX)
+    return config_error(
+        error, error_size,
+        "FlowMQ max_payload_bytes must be in range 1..UINT32_MAX");
+
+  out->flowmq.max_payload_bytes = (size_t)max_payload_bytes;
+  out->has_flowmq = 1;
+  return 0;
+}
+
 void databind_compiler_projection_config_dispose(
     databind_compiler_projection_config *config) {
   if (config == NULL) return;
@@ -741,13 +803,15 @@ int databind_compiler_projection_config_load(
     databind_compiler_projection_config *out,
     char *error,
     size_t error_size) {
-  static const char *const root_keys[] = {"version", "http", "rpc", "socket"};
+  static const char *const root_keys[] = {
+      "version", "http", "rpc", "socket", "flowmq"};
   json_value_t *root;
   json_value_t *version;
   uint64_t version_number;
   json_value_t *http;
   json_value_t *rpc;
   json_value_t *socket;
+  json_value_t *flowmq;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
   if (path == NULL || path[0] == '\0' || out == NULL)
@@ -781,9 +845,10 @@ int databind_compiler_projection_config_load(
   http = json_object_get(root, "http");
   rpc = json_object_get(root, "rpc");
   socket = json_object_get(root, "socket");
-  if (http == NULL && rpc == NULL && socket == NULL) {
+  flowmq = json_object_get(root, "flowmq");
+  if (http == NULL && rpc == NULL && socket == NULL && flowmq == NULL) {
     config_error(error, error_size,
-                 "Projection config must contain http, rpc and/or socket");
+                 "Projection config must contain http, rpc, socket and/or flowmq");
     goto fail;
   }
   if (http != NULL && parse_http(http, out, error, error_size) != 0)
@@ -791,6 +856,8 @@ int databind_compiler_projection_config_load(
   if (rpc != NULL && parse_rpc(rpc, out, error, error_size) != 0)
     goto fail;
   if (socket != NULL && parse_socket(socket, out, error, error_size) != 0)
+    goto fail;
+  if (flowmq != NULL && parse_flowmq(flowmq, out, error, error_size) != 0)
     goto fail;
 
   return 0;
