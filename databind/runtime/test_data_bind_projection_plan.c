@@ -313,7 +313,7 @@ spec("DataBind FormatPlan and TransportPlan") {
     check_not_null(reader);
     if (reader != NULL) {
       check_equal(cserde_reader_next(reader, &token), CSERDE_OK);
-      check_equal(cserde_reader_next(reader, &token), CSERDE_INVALID_TOKEN);
+      check_equal(cserde_reader_next(reader, &token), CSERDE_UNSUPPORTED);
     }
     data_bind_format_plan_free(plan);
     plan = NULL;
