@@ -336,7 +336,7 @@ static cserde_status plan_canonical_reader_next(
 
   if (!state->root_started) {
     if (token.kind != CSERDE_MAP_BEGIN)
-      return CSERDE_INVALID_TOKEN;
+      return CSERDE_UNSUPPORTED;
     state->root_started = 1;
     state->expect_root_key = 1;
     *out = token;
@@ -365,10 +365,10 @@ static cserde_status plan_canonical_reader_next(
       return CSERDE_OK;
     }
     if (token.kind != CSERDE_STRING)
-      return CSERDE_INVALID_TOKEN;
+      return CSERDE_UNSUPPORTED;
     canonical = plan_canonical_name(
         state->plan, &token.value.slice);
-    if (canonical == NULL) return CSERDE_INVALID_TOKEN;
+    if (canonical == NULL) return CSERDE_UNSUPPORTED;
     token.value.slice.data =
         (const unsigned char *)canonical;
     token.value.slice.size = strlen(canonical);
@@ -379,7 +379,7 @@ static cserde_status plan_canonical_reader_next(
   }
 
   if (plan_reader_container_end(token.kind))
-    return CSERDE_INVALID_TOKEN;
+    return CSERDE_UNSUPPORTED;
   if (plan_reader_container_begin(token.kind))
     state->value_depth = 1u;
   else
