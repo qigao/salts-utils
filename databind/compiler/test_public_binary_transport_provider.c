@@ -175,7 +175,7 @@ spec("generated Binary provider transport composition") {
     check_equal(binding.idl_type_name, "Event");
     check_true(binding.data != NULL && binding.data->storage_type != NULL);
     check(binding.data->storage_type->size <= sizeof(storage.bytes));
-    check(binding.data->storage_type->align <= _Alignof(storage));
+    check(binding.data->storage_type->align <= _Alignof(uint64_t));
     if (binding.data == NULL || binding.data->storage_type == NULL ||
         binding.data->storage_type->size > sizeof(storage.bytes))
       return;
