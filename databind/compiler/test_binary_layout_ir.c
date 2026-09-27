@@ -9,13 +9,14 @@
 spec("DataBind BinaryLayoutIR") {
   it("derives fixed scalar token representation from canonical CMeta semantics") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            BINARY_SCALAR_SCHEMA, &root, &schema_data), 0);
+        databind_compiler_parse_contract_file(
+            BINARY_SCALAR_SCHEMA, &root, &contract, &schema_data), 0);
     check_not_null(root);
     check_not_null(schema_data);
     if (root == NULL || schema_data == NULL) {
@@ -26,7 +27,7 @@ spec("DataBind BinaryLayoutIR") {
 
     check_equal(
         databind_binary_layout_build(
-            root, "Scalars", &layout, &diagnostic),
+            contract, root, "Scalars", &layout, &diagnostic),
         DATABIND_BINARY_LAYOUT_OK);
     check_equal(layout.field_count, (size_t)10u);
 
@@ -65,6 +66,7 @@ spec("DataBind BinaryLayoutIR") {
     check((layout.fields[9].flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u);
 
     databind_binary_layout_destroy(&layout);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
@@ -72,18 +74,19 @@ spec("DataBind BinaryLayoutIR") {
 
   it("builds LoginMessage wire layout from canonical compiler IR") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+        databind_compiler_parse_contract_file(
+            SCHEMA_EXAMPLE_FILE, &root, &contract, &schema_data), 0);
     check_not_null(root);
 
     check_equal(
         databind_binary_layout_build(
-            root, "LoginMessage", &layout, &diagnostic),
+            contract, root, "LoginMessage", &layout, &diagnostic),
         DATABIND_BINARY_LAYOUT_OK);
     check_equal(strcmp(layout.type_id, "LoginMessage"), 0);
     check_equal(layout.wire_big_endian, 0);
@@ -107,6 +110,7 @@ spec("DataBind BinaryLayoutIR") {
     check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
 
     databind_binary_layout_destroy(&layout);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
