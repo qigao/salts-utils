@@ -140,9 +140,16 @@ int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
 
 static const char *schema_cmeta_declared_semantic(
     const IdlContract *contract, const char *name) {
-  const IdlDataDecl *decl;
+  const IdlDataDecl *decl = NULL;
+  size_t i;
   if (contract == NULL || name == NULL) return NULL;
-  decl = idl_contract_find_data(contract, name);
+  for (i = 0u; i < contract->data_count; ++i) {
+    if (contract->data[i].name != NULL &&
+        strcmp(contract->data[i].name, name) == 0) {
+      decl = &contract->data[i];
+      break;
+    }
+  }
   if (decl == NULL) return NULL;
   switch (decl->kind) {
   case IDL_DATA_MESSAGE: return "message";
