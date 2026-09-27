@@ -1,5 +1,6 @@
 #include "tinytest.h"
 #include "compiler_core.h"
+#include "idl_contract_internal.h"
 #include "tbe_contract_overlay.h"
 
 #include <stdio.h>
@@ -9,6 +10,16 @@
  * mapper copy. Compare backend metadata while retaining source type spelling. */
 enum { PROJECTION_SCHEMA_CAPACITY = 256 };
 #define PROJECTION_COUNT(items_) (sizeof(items_) / sizeof((items_)[0]))
+
+static void annotate_language_types_from_tree(Node *root) {
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    if (root != NULL &&
+        idl_contract_build_from_tree(root, &contract, &diagnostic)) {
+        tbe_compiler_annotate_language_types(contract, root);
+    }
+    idl_contract_destroy(contract);
+}
 
 static Node *projection_child(const Node *parent, const char *name) {
     size_t i;
@@ -58,7 +69,7 @@ static int projection_equal(const char *alias, const char *canonical, const char
         roots[i] = create_node_map("root");
         if (roots[i] == NULL || databind_tbe_contract_parse(schema, (size_t)length, roots[i], &error) != 0)
             goto done;
-        tbe_compiler_annotate_language_types(roots[i]);
+        annotate_language_types_from_tree(roots[i]);
         fields[i] = projection_field(roots[i]);
         if (fields[i] == NULL) goto done;
     }
@@ -96,7 +107,7 @@ static int projection_float_is(const char *type, const char *cpp, const char *go
     int length = snprintf(schema, sizeof(schema), "message Scalar { %s value; }", type);
     if (root == NULL || length <= 0 || (size_t)length >= sizeof(schema) ||
         databind_tbe_contract_parse(schema, (size_t)length, root, &error) != 0) goto done;
-    tbe_compiler_annotate_language_types(root);
+    annotate_language_types_from_tree(root);
     field = projection_field(root);
     if (field != NULL) {
         const char *keys[] = {"cpp_type", "go_type", "rust_type", "typed_kind",
