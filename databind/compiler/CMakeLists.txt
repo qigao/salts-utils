@@ -245,6 +245,7 @@ cmake_add_test(test_databind_projection_frontend
     projection.c
     message_native.c service_native.c
     plugin_projection.c
+    openapi_projection.c
     method_plan_projection.c
     socket_plan_projection.c
     binary_layout_ir.c
