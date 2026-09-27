@@ -8,6 +8,7 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "idl.h"
+#include "tbe_contract_overlay.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
@@ -1868,6 +1869,13 @@ int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
     } else {
       fprintf(stderr, "Parse error: %s\n", parse_err.message);
     }
+    free(schema_data);
+    node_free(root);
+    return 1;
+  }
+
+  if (databind_tbe_contract_apply(root, &parse_err) != 0) {
+    fprintf(stderr, "TBE format error: %s\n", parse_err.message);
     free(schema_data);
     node_free(root);
     return 1;
