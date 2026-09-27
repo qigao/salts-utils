@@ -68,8 +68,11 @@ DATA_BIND_API DataBindStatus data_bind_socket_execution_plan_decode_native(
  * provider registry lookup, fallback or format substitution occurs.
  *
  * Startup compilation owns the immutable FormatPlan. The hot path opens a
- * provider reader, canonicalizes root field names through that plan, delegates
- * to MessagePlan, and closes the provider lease on every path.
+ * provider reader and delegates to MessagePlan. Parser-backed named formats
+ * canonicalize root field names through the compiled FormatPlan first. Binary
+ * has no text-name projection layer, so its explicit provider must already
+ * emit canonical DataBind field-name tokens. The provider lease is closed on
+ * every path.
  *
  * format_error reports provider/canonical-reader failures. message_diagnostic
  * reports DataBind state/native/validation failures after canonicalization.
