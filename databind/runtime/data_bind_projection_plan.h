@@ -3,6 +3,8 @@
 
 #include "data_bind.h"
 
+#include <cserde/reader.h>
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -30,6 +32,37 @@ typedef enum DataBindTransportKind {
 
 typedef struct DataBindFormatPlan DataBindFormatPlan;
 typedef struct DataBindTransportPlan DataBindTransportPlan;
+
+/*
+ * Caller-owned root-record canonicalizing CSerde reader.
+ *
+ * The wrapper rewrites only MAP key STRING tokens at the selected root record
+ * from compiled external primary/alias names to canonical DataBind field names.
+ * Value/container token streams are otherwise forwarded unchanged.
+ *
+ * This first v1 reader intentionally does not canonicalize nested-record field
+ * names. FormatPlan compilation fails when nested declared records require a
+ * non-identity name/alias mapping, rather than silently accepting partial
+ * semantics.
+ */
+typedef struct DataBindFormatCanonicalReader {
+  size_t size;
+  uint32_t abi_version;
+  const DataBindFormatPlan *plan;
+  cserde_reader *source;
+  cserde_reader reader;
+  size_t value_depth;
+  int root_started;
+  int expect_root_key;
+  int complete;
+} DataBindFormatCanonicalReader;
+
+enum { DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION = 1u };
+
+#define DATA_BIND_FORMAT_CANONICAL_READER_INIT \
+  { sizeof(DataBindFormatCanonicalReader), \
+    DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION, \
+    NULL, NULL, {0}, 0u, 0, 0, 0 }
 
 /** Size-prefixed immutable snapshot of one compiled FormatPlan. */
 typedef struct DataBindFormatPlanInfo {
@@ -96,6 +129,28 @@ DATA_BIND_API void data_bind_format_plan_free(DataBindFormatPlan *plan);
 DATA_BIND_API int data_bind_format_plan_info(
     const DataBindFormatPlan *plan,
     DataBindFormatPlanInfo *out);
+
+/**
+ * Initialize a caller-owned CSerde reader that canonicalizes root-record field
+ * names according to one immutable FormatPlan.
+ *
+ * The source reader is borrowed and must outlive the wrapper. No allocation,
+ * schema lookup, provider lookup or fallback occurs on this runtime path.
+ *
+ * On success, pass data_bind_format_canonical_reader_reader(out) to MessagePlan
+ * or another canonical-field consumer. The wrapper consumes exactly the same
+ * token stream as source except that admitted root MAP keys are replaced by
+ * stable plan-owned canonical field-name slices. Unknown external names return
+ * CSERDE_INVALID_TOKEN through the wrapper reader.
+ */
+DATA_BIND_API DataBindStatus data_bind_format_canonical_reader_init(
+    const DataBindFormatPlan *plan,
+    cserde_reader *source,
+    DataBindFormatCanonicalReader *out,
+    DataBindError *error);
+
+DATA_BIND_API cserde_reader *data_bind_format_canonical_reader_reader(
+    DataBindFormatCanonicalReader *reader);
 
 /*
  * Compile the format-neutral transport shell for one Service operation.
