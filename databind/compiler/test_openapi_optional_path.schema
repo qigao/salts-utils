@@ -1,0 +1,7 @@
+schema OpenApiBadPath [version(1)];
+
+message Request {
+    optional uint32 id;
+}
+message Response { uint32 value; }
+service Users { Read: Request -> Response; }
