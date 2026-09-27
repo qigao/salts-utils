@@ -239,7 +239,7 @@ static int socket_generate(
   if (!socket_format_representable(root, message_type, config->format))
     return -1;
   if (databind_compiler_message_native_build(
-          root, message_type, &native_binding) != 0)
+          input->contract, message_type, &native_binding) != 0)
     return -1;
 
   if (socket_open_atomic(request->output, &temp, &file) != 0) {
