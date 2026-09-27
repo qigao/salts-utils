@@ -1253,6 +1253,93 @@ static int annotate_unions(Node *root) {
     return 0;
 }
 
+typedef enum tbe_field_section {
+  TBE_FIELD_FIXED = 0,
+  TBE_FIELD_GROUP,
+  TBE_FIELD_VAR_DATA
+} tbe_field_section;
+
+static tbe_field_section tbe_field_section_of(const Node *field) {
+  if (map_has_named_child(field, "is_group_field")) return TBE_FIELD_GROUP;
+  if (map_has_named_child(field, "is_var_data")) return TBE_FIELD_VAR_DATA;
+  return TBE_FIELD_FIXED;
+}
+
+static int tbe_field_collection_supported(const Node *field) {
+  const char *kind;
+  if (!map_has_named_child(field, "is_collection")) return 1;
+  kind = map_find_string_value(field, "collection_kind");
+  if (kind == NULL) return 0;
+  if (strcmp(kind, "array") == 0)
+    return map_has_named_child(field, "is_fixed_size");
+  return strcmp(kind, "list") == 0 ||
+         strcmp(kind, "set") == 0 ||
+         strcmp(kind, "map") == 0;
+}
+
+static int tbe_validate_record_fields(
+    const Node *record, int composite, tbe_error_t *error) {
+  const Node *fields = map_find_named_child(record, "fields");
+  tbe_field_section previous = TBE_FIELD_FIXED;
+  size_t i;
+  if (fields == NULL || fields->type != NODE_LIST) return 1;
+
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *name = map_find_string_value(field, "name");
+    const char *type = map_find_string_value(field, "type");
+    tbe_field_section section = tbe_field_section_of(field);
+
+    if (!tbe_field_collection_supported(field)) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Unsupported dynamic collection in TBE declaration");
+      return 0;
+    }
+
+    if (composite && section != TBE_FIELD_FIXED) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Composite fields must be fixed-size");
+      return 0;
+    }
+
+    if (!composite && section < previous) {
+      char message[256];
+      snprintf(message, sizeof(message),
+               "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
+               name != NULL ? name : "<unnamed>",
+               type != NULL ? type : "<unknown>");
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
+      return 0;
+    }
+    if (section > previous) previous = section;
+  }
+  return 1;
+}
+
+static int tbe_validate_layout_policy(Node *root, tbe_error_t *error) {
+  static const struct {
+    const char *list;
+    int composite;
+  } groups[] = {
+      {"composites", 1},
+      {"groups", 0},
+      {"messages", 0},
+  };
+  size_t i, j;
+  for (i = 0u; i < sizeof(groups) / sizeof(groups[0]); ++i) {
+    Node *list = map_find_named_child(root, groups[i].list);
+    if (list == NULL || list->type != NODE_LIST) continue;
+    for (j = 0u; j < list->data.list.count; ++j)
+      if (!tbe_validate_record_fields(
+              list->data.list.items[j], groups[i].composite, error))
+        return 0;
+  }
+  return 1;
+}
+
 static int annotate_schema_tree(Node *root) {
     if (annotate_schema_metadata(root) != 0) return -1;
     if (annotate_wire_constants(root) != 0) return -1;
@@ -1274,6 +1361,7 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
                     "Invalid TBE contract overlay root");
     return -1;
   }
+  if (!tbe_validate_layout_policy(root, error)) return -1;
   if (annotate_schema_tree(root) != 0) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
