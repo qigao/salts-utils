@@ -1,6 +1,7 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "compiler_core.h"
+#include "idl_contract_internal.h"
 #include "database_schema.h"
 #include "node_tree.h"
 #include "tbe_wire.h"
@@ -30,6 +31,16 @@
 #define tt_fileno fileno
 #define TT_NULL_DEVICE "/dev/null"
 #endif
+
+static void annotate_language_types_from_tree(Node *root) {
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    if (root != NULL &&
+        idl_contract_build_from_tree(root, &contract, &diagnostic)) {
+        tbe_compiler_annotate_language_types(contract, root);
+    }
+    idl_contract_destroy(contract);
+}
 
 static void cleanup_test_file(const char *path);
 static Node *build_database_ir_from_schema_with_diagnostic(
@@ -229,7 +240,7 @@ static char *render_c_template(const char *schema) {
   if (!root) goto cleanup;
 
   if (databind_tbe_contract_parse(schema, strlen(schema), root, NULL) != 0) goto cleanup;
-  tbe_compiler_annotate_language_types(root);
+  annotate_language_types_from_tree(root);
 
   templ = mustache_compile(template_text, template_size, NULL, NULL, 0);
   if (!templ) goto cleanup;
@@ -1714,7 +1725,7 @@ spec("tbe_compiler") {
         Node *enums;
         size_t i;
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
         messages = find_child(root, "messages");
         fields = find_child(messages->data.list.items[0], "fields");
         enums = find_child(root, "enums");
