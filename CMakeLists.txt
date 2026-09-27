@@ -8,7 +8,7 @@ endif()
 
 project(
   SaltsUtils
-  VERSION 4.0.1
+  VERSION 4.1.0
   DESCRIPTION "Higher-level utilities built on Salts"
   HOMEPAGE_URL "https://github.com/qigao/salts-utils"
   LANGUAGES C CXX)
@@ -56,7 +56,7 @@ endif()
 
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_package(Salts 1.7.9 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_package(Salts 1.8.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
  
@@ -65,23 +65,20 @@ find_package(Salts 1.7.9 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
 # The focused qualification profile is deliberately internal to CI. It proves
 # Plugin/DataBind contracts without configuring unrelated product components
 # whose third-party dependencies do not participate in those contracts.
-if(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND)
+if(SALTS_UTILS_QUALIFY_DATABIND)
   add_subdirectory(tools/lemon)
   include(FindTools)
   add_subdirectory(parser)
   add_subdirectory(mustache)
-  add_subdirectory(plugin)
-  add_subdirectory(plugin-cflow)
   add_subdirectory(databind)
 else()
   add_subdirectory(tools)
   include(FindTools)
   add_subdirectory(vendor)
   add_subdirectory(parser)
+  add_subdirectory(bindings)
   add_subdirectory(tools/junit_to_html)
   add_subdirectory(crypto)
-  add_subdirectory(plugin)
-  add_subdirectory(plugin-cflow)
   add_subdirectory(cflow-fs)
   add_subdirectory(cflow-process)
   add_subdirectory(playback)
