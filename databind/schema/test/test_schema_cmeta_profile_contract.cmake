@@ -1,8 +1,8 @@
 # #45: scalar classification belongs to the canonical descriptor. This is a
 # source-structure guard; runtime and parser behavior are tested in TinyTest.
-file(READ "${CMAKE_CURRENT_LIST_DIR}/../parser/schema_builtin_type.h" source)
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../../formats/tbe/internal/tbe_scalar_profile.h" source)
 string(REGEX MATCH
-  "typedef[ \t\r\n]+struct[ \t\r\n]+schema_builtin_type_info[ \t\r\n]*\\{[^}]*\\}"
+  "typedef[ \t\r\n]+struct[ \t\r\n]+tbe_scalar_profile[ \t\r\n]*\\{[^}]*\\}"
   profile "${source}")
 if(profile STREQUAL "")
   message(FATAL_ERROR "Cannot locate the scalar wire-profile declaration")
