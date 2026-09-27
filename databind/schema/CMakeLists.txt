@@ -86,7 +86,7 @@ install(
 # Tests
 # =============================================================================
 
-set(DATABIND_SCHEMA_TEST_LIBS Salts::IDL Salts::TinyTest)
+set(DATABIND_SCHEMA_TEST_LIBS databind_tbe_contract Salts::TinyTest)
 if(BUILD_TESTS)
 foreach(test_name
         test_tbe_parser
