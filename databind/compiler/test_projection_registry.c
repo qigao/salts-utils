@@ -11,6 +11,7 @@
 #endif
 
 typedef struct projection_probe {
+  const IdlContract *seen_contract;
   const Node *seen_root;
   databind_compiler_projection_id seen_id;
   size_t calls;
@@ -18,12 +19,15 @@ typedef struct projection_probe {
 } projection_probe;
 
 static int probe_generate(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
   projection_probe *probe = (projection_probe *)context;
-  if (probe == NULL || request == NULL) return -1;
-  probe->seen_root = canonical_ir;
+  if (probe == NULL || input == NULL || input->contract == NULL ||
+      request == NULL)
+    return -1;
+  probe->seen_contract = input->contract;
+  probe->seen_root = input->legacy_tree;
   probe->seen_id = request->id;
   ++probe->calls;
   return probe->fail ? -1 : 0;
@@ -95,6 +99,8 @@ describe("typed selection identity") {
 describe("shared canonical IR") {
   it("runs artifact and transport generators against one parsed root") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     projection_probe plugin = {0};
     projection_probe http = {0};
@@ -111,19 +117,24 @@ describe("shared canonical IR") {
          probe_generate, &http},
     };
 
-    check_equal(tbe_compiler_parse_schema_file(
-                    SCHEMA_EXAMPLE_FILE, &root, &schema_data), 0);
+    check_equal(databind_compiler_parse_contract_file(
+                    SCHEMA_EXAMPLE_FILE, &root, &contract, &schema_data), 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(databind_compiler_projection_run(
-                    root,
+                    &input,
                     requests, sizeof(requests) / sizeof(requests[0]),
                     backends, sizeof(backends) / sizeof(backends[0])),
                 0);
 
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)1u);
+    check_true(plugin.seen_contract == contract);
+    check_true(http.seen_contract == contract);
+    check_true(plugin.seen_contract == http.seen_contract);
     check_true(plugin.seen_root == root);
     check_true(http.seen_root == root);
     check_true(plugin.seen_root == http.seen_root);
@@ -136,12 +147,15 @@ describe("shared canonical IR") {
         (databind_compiler_projection_id)
             TRANSPORT_ID(DATABIND_COMPILER_TRANSPORT_HTTP)));
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
 
   it("admits every typed backend before the first callback") {
     Node *root = create_node_map(NULL);
+    IdlContract contract = {sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION};
+    databind_compiler_projection_input input = {&contract, root};
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
@@ -154,7 +168,7 @@ describe("shared canonical IR") {
 
     check_not_null(root);
     check_equal(databind_compiler_projection_run(
-                    root,
+                    &input,
                     requests, sizeof(requests) / sizeof(requests[0]),
                     backends, sizeof(backends) / sizeof(backends[0])),
                 -1);
@@ -164,6 +178,8 @@ describe("shared canonical IR") {
 
   it("stops after one typed generator fails") {
     Node *root = create_node_map(NULL);
+    IdlContract contract = {sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION};
+    databind_compiler_projection_input input = {&contract, root};
     projection_probe plugin = {0};
     projection_probe http = {0};
     const databind_compiler_projection_request requests[] = {
@@ -180,7 +196,7 @@ describe("shared canonical IR") {
     check_not_null(root);
     plugin.fail = 1;
     check_equal(databind_compiler_projection_run(
-                    root,
+                    &input,
                     requests, sizeof(requests) / sizeof(requests[0]),
                     backends, sizeof(backends) / sizeof(backends[0])),
                 -1);
