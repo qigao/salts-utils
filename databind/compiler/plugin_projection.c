@@ -1012,6 +1012,7 @@ int databind_compiler_plugin_generate(
     return -1;
 
   if (databind_compiler_service_native_build_selected(
+          input->contract,
           canonical_ir,
           plugin_select_component_service,
           (void *)component,
