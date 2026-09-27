@@ -155,7 +155,6 @@ static Node *parse_schema_raw(const char *text, size_t len, tbe_error_t *err) {
     ctx.cur_enum     = NULL;
     ctx.cur_enum_items = NULL;
     ctx.cur_record_kind = SCHEMA_RECORD_COMPOSITE;
-    ctx.cur_field_section = SCHEMA_FIELD_SECTION_FIXED;
     ctx.error        = 0;
 
     schema_lexer_t lexer;
