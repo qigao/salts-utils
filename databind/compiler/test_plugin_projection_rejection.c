@@ -257,7 +257,6 @@ spec("DataBind Plugin projection semantic rejection") {
   it("shared Service native lowering excludes unselected Services before lowering") {
     Node *root = NULL;
     IdlContract *contract = NULL;
-    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_service_native_ir native_ir = {0};
 
@@ -267,10 +266,9 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
-
     check_equal(databind_compiler_service_native_build_selected(
-                    root, plugin_test_select_codec, NULL, &native_ir),
+                    contract, root,
+                    plugin_test_select_codec, NULL, &native_ir),
                 0);
     check_equal(native_ir.operation_count, (size_t)2u);
     check_equal(native_ir.operations[0].service_name, "Codec");
