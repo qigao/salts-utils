@@ -24,6 +24,8 @@ spec("DataBind generated FlowMQ ChannelPlan") {
   it("generates PUB/SUB and PUSH/PULL without FlowMQ runtime policy") {
     static const char output[] = "databind_flowmq_channel_plan_generated.h";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_flowmq_projection_config config = {
         "databind_device",
@@ -42,20 +44,22 @@ spec("DataBind generated FlowMQ ChannelPlan") {
 
     (void)salts_fs_unlink(output);
     check_equal(
-        tbe_compiler_parse_schema_file(
-            FLOWMQ_PLAN_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            FLOWMQ_PLAN_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
-    if (root == NULL || schema_data == NULL) {
+    if (root == NULL || contract == NULL || schema_data == NULL) {
+      idl_contract_destroy(contract);
       node_free(root);
       free(schema_data);
       return;
     }
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         0);
     check(file_contains(output, "Device.Telemetry"));
     check(file_contains(output, "TelemetryEvent"));
@@ -72,7 +76,7 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     config.pattern = DATA_BIND_FLOWMQ_CHANNEL_PUSH_PULL;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         0);
     check(file_contains(output, "DATA_BIND_FORMAT_JSON"));
     check(file_contains(output, "DATA_BIND_FLOWMQ_CHANNEL_PUSH_PULL"));
@@ -81,7 +85,7 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     config.format = DATA_BIND_FORMAT_XML;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
@@ -89,10 +93,11 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     config.channel_name = "Device.ChoiceEvents";
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
