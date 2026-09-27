@@ -1253,6 +1253,132 @@ static int annotate_unions(Node *root) {
     return 0;
 }
 
+static int tbe_numeric_literal(const char *text) {
+  const char *p;
+  if (text == NULL || text[0] == '\0') return 0;
+  for (p = text; *p != '\0'; ++p)
+    if (*p < '0' || *p > '9') return 0;
+  return 1;
+}
+
+static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
+  const char *field_type = map_find_string_value(field, "type");
+  const char *length_field = map_find_string_value(field, "length_field");
+  const char *collection_kind = map_find_string_value(field, "collection_kind");
+  const schema_builtin_type_info_t *builtin_type;
+  const cmeta_data_desc *builtin_data;
+  int is_group = map_has_named_child(field, "is_group_field");
+
+  if (field_type == NULL) return 1;
+
+  if (strcmp(field_type, "varint") == 0) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                    "Unsupported type 'varint': TBE runtime/compiler support is not implemented");
+    return 0;
+  }
+
+  builtin_type = schema_builtin_type_find(field_type);
+  builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
+
+  if (is_group) {
+    if (map_set_string(field, "ctype", "GROUP") < 0 ||
+        map_set_true(field, "is_variable_size") < 0)
+      return 0;
+  } else if (builtin_data != NULL &&
+             (builtin_data->kind == CMETA_DATA_SINT ||
+              builtin_data->kind == CMETA_DATA_UINT ||
+              builtin_data->kind == CMETA_DATA_FLOAT)) {
+    if (map_set_size(field, "size_bytes", builtin_type->size) < 0 ||
+        map_set_string(field, "host_type", builtin_type->host_type) < 0 ||
+        map_set_string(field, "wire_reader", builtin_type->wire_reader) < 0 ||
+        map_set_true(field, "is_numeric") < 0 ||
+        map_set_true(field, "is_primitive") < 0 ||
+        map_set_true(field, "is_fixed_size") < 0)
+      return 0;
+    if (builtin_data->kind == CMETA_DATA_UINT &&
+        map_set_true(field, "is_unsigned") < 0)
+      return 0;
+    if ((builtin_data->kind == CMETA_DATA_SINT ||
+         builtin_data->kind == CMETA_DATA_UINT) &&
+        map_set_true(field, "is_integer") < 0)
+      return 0;
+    if (builtin_data->kind == CMETA_DATA_FLOAT &&
+        map_set_true(field, "is_float") < 0)
+      return 0;
+  } else if (strcmp(field_type, "uuid") == 0) {
+    if (map_set_string(field, "ctype", "UUID") < 0 ||
+        map_set_size(field, "size_bytes", 16u) < 0 ||
+        map_set_string(field, "host_type", "salts_uuid_t") < 0 ||
+        map_set_true(field, "is_uuid") < 0 ||
+        map_set_true(field, "is_primitive") < 0 ||
+        map_set_true(field, "is_fixed_size") < 0)
+      return 0;
+  } else if (strcmp(field_type, "bytes") == 0) {
+    if (map_set_string(field, "ctype", "BYTES") < 0) return 0;
+    if (tbe_numeric_literal(length_field)) {
+      size_t bytes = 0u;
+      if (!schema_parse_fixed_layout_size(length_field, &bytes) ||
+          map_set_size(field, "size_bytes", bytes) < 0 ||
+          map_set_true(field, "is_fixed_size") < 0)
+        return 0;
+    } else if (map_set_true(field, "is_variable_size") < 0) {
+      return 0;
+    }
+  } else if (strcmp(field_type, "string") == 0) {
+    if (map_set_string(field, "ctype", "STRING") < 0 ||
+        map_set_true(field, "is_variable_size") < 0)
+      return 0;
+  } else if (map_has_named_child(field, "is_collection")) {
+    if (map_set_string(field, "ctype", "COLLECTION") < 0) return 0;
+    if (collection_kind != NULL &&
+        strcmp(collection_kind, "array") == 0 &&
+        tbe_numeric_literal(length_field)) {
+      if (map_set_true(field, "is_fixed_size") < 0) return 0;
+    } else if (map_set_true(field, "is_variable_size") < 0) {
+      return 0;
+    }
+  } else if (map_set_string(field, "ctype", "USER_DEFINED") < 0 ||
+             map_set_true(field, "is_user_defined") < 0) {
+    return 0;
+  }
+
+  if (!is_group &&
+      (strcmp(field_type, "string") == 0 ||
+       (strcmp(field_type, "bytes") == 0 && !tbe_numeric_literal(length_field)))) {
+    if (map_set_true(field, "is_var_data") < 0) return 0;
+  } else if (!is_group &&
+             (!map_has_named_child(field, "is_collection") ||
+              (collection_kind != NULL &&
+               strcmp(collection_kind, "array") == 0 &&
+               tbe_numeric_literal(length_field)) ||
+              (strcmp(field_type, "bytes") == 0 &&
+               tbe_numeric_literal(length_field)))) {
+    if (map_set_true(field, "is_fixed_block") < 0) return 0;
+  }
+
+  return 1;
+}
+
+static int tbe_annotate_field_profiles(Node *root, tbe_error_t *error) {
+  static const char *lists[] = {
+      "composites", "groups", "messages", "unions"
+  };
+  size_t i, j, k;
+  for (i = 0u; i < sizeof(lists) / sizeof(lists[0]); ++i) {
+    Node *records = map_find_named_child(root, lists[i]);
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (j = 0u; j < records->data.list.count; ++j) {
+      Node *fields = map_find_named_child(records->data.list.items[j], "fields");
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+      for (k = 0u; k < fields->data.list.count; ++k)
+        if (!tbe_annotate_field_profile(fields->data.list.items[k], error))
+          return 0;
+    }
+  }
+  return 1;
+}
+
 typedef enum tbe_field_section {
   TBE_FIELD_FIXED = 0,
   TBE_FIELD_GROUP,
@@ -1361,6 +1487,7 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
                     "Invalid TBE contract overlay root");
     return -1;
   }
+  if (!tbe_annotate_field_profiles(root, error)) return -1;
   if (!tbe_validate_layout_policy(root, error)) return -1;
   if (annotate_schema_tree(root) != 0) {
     if (error != NULL)
