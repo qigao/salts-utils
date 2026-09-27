@@ -245,7 +245,6 @@ static void begin_record(schema_parse_ctx_t *ctx, Node *list,
     }
     ctx->cur_record = new_record;
     ctx->cur_record_kind = kind;
-    ctx->cur_field_section = SCHEMA_FIELD_SECTION_FIXED;
     ctx->cur_fields = new_fields;
 }
 
