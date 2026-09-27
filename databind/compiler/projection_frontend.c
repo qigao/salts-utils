@@ -299,6 +299,60 @@ static int add_socket_plan(
   return 0;
 }
 
+static int add_flowmq_plan(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+  if (out->method_plan_symbol_prefix[0] == '\0' &&
+      !method_plan_symbol_prefix(
+          input->artifact_name, out->method_plan_symbol_prefix,
+          sizeof(out->method_plan_symbol_prefix)))
+    return frontend_error(
+        error, error_size,
+        "Artifact name cannot form a FlowMQ ChannelPlan C symbol prefix");
+
+  if (!out->external_config.has_flowmq)
+    return frontend_error(
+        error, error_size,
+        "FLOWMQ transport requires a flowmq section in --projection-config");
+  if (input->source_output_path == NULL ||
+      input->source_output_path[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "FLOWMQ transport requires --source-output for native execution metadata");
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".flowmq.h", out->flowmq_projection_header,
+          sizeof(out->flowmq_projection_header)))
+    return frontend_error(
+        error, error_size,
+        "Derived FlowMQ ChannelPlan output path is too long");
+
+  if (path_reserved(input, out->flowmq_projection_header) ||
+      projection_output_in_use(out, out->flowmq_projection_header))
+    return frontend_error(
+        error, error_size,
+        "Derived projection outputs collide with another compiler output");
+
+  out->flowmq = out->external_config.flowmq;
+  out->flowmq.symbol_prefix = out->method_plan_symbol_prefix;
+  out->flowmq.native_header_include = out->native_header;
+
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
+                 DATABIND_COMPILER_TRANSPORT_FLOWMQ},
+          .output = out->flowmq_projection_header,
+          .config = &out->flowmq};
+  out->backends[out->backend_count++] =
+      databind_compiler_flowmq_channel_plan_backend();
+  return 0;
+}
+
 static int token_copy_trimmed(
     const char *begin, const char *end,
     char *out, size_t out_size) {
@@ -415,6 +469,7 @@ int databind_compiler_projection_frontend_build(
   int selected_http = 0;
   int selected_rpc = 0;
   int selected_socket = 0;
+  int selected_flowmq = 0;
 
   if (error != NULL && error_size != 0u) error[0] = '\0';
   if (input == NULL || out == NULL)
@@ -497,6 +552,7 @@ int databind_compiler_projection_frontend_build(
     if (kind == DATABIND_COMPILER_TRANSPORT_HTTP) selected_http = 1;
     if (kind == DATABIND_COMPILER_TRANSPORT_RPC) selected_rpc = 1;
     if (kind == DATABIND_COMPILER_TRANSPORT_SOCKET) selected_socket = 1;
+    if (kind == DATABIND_COMPILER_TRANSPORT_FLOWMQ) selected_flowmq = 1;
     if (*end == ',' && end[1] == '\0')
       return frontend_error(
           error, error_size, "Transport list must not end with a comma");
@@ -505,7 +561,8 @@ int databind_compiler_projection_frontend_build(
 
   if (input->projection_config_path != NULL &&
       input->projection_config_path[0] != '\0') {
-    if (!selected_http && !selected_rpc && !selected_socket)
+    if (!selected_http && !selected_rpc &&
+        !selected_socket && !selected_flowmq)
       return frontend_error(
           error, error_size,
           "--projection-config is consumed only by selected configured transports");
@@ -529,6 +586,12 @@ int databind_compiler_projection_frontend_build(
       frontend_error(
           error, error_size,
           "Projection config contains socket but SOCKET transport is not selected");
+      goto fail;
+    }
+    if (out->external_config.has_flowmq && !selected_flowmq) {
+      frontend_error(
+          error, error_size,
+          "Projection config contains flowmq but FLOWMQ transport is not selected");
       goto fail;
     }
   }
@@ -557,6 +620,10 @@ int databind_compiler_projection_frontend_build(
       break;
     case DATABIND_COMPILER_TRANSPORT_SOCKET:
       if (add_socket_plan(input, out, error, error_size) != 0)
+        goto fail;
+      break;
+    case DATABIND_COMPILER_TRANSPORT_FLOWMQ:
+      if (add_flowmq_plan(input, out, error, error_size) != 0)
         goto fail;
       break;
     default:

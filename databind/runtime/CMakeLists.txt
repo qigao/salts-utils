@@ -148,6 +148,7 @@ add_library(
   data_bind_method_plan.h
   data_bind_projection_plan.c
   data_bind_projection_plan.h
+  data_bind_flowmq_plan.h
   data_bind_socket_plan.h
   data_bind_socket_execution_plan.c
   data_bind_socket_execution_plan.h
@@ -250,6 +251,7 @@ install(
     data_bind_native_binding.h
     data_bind_method_plan.h
     data_bind_projection_plan.h
+    data_bind_flowmq_plan.h
     data_bind_socket_plan.h
     data_bind_socket_execution_plan.h
     data_bind_validation_plan.h
@@ -401,6 +403,15 @@ set_target_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 set_tests_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   LABELS "databind;socket-plan;public;cpp")
+
+cmake_add_test(test_data_bind_flowmq_plan_public_cpp
+  SOURCES test_data_bind_flowmq_plan_public_cpp.cpp
+  LIBS Salts::DataBind
+  FOLDER "databind/runtime/tests")
+set_target_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+set_tests_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
+  LABELS "databind;flowmq-plan;public;cpp")
 
 cmake_add_test(test_data_bind_socket_execution_plan
   SOURCES test_data_bind_socket_execution_plan.c

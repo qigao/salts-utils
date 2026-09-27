@@ -187,6 +187,49 @@ spec("DataBind public typed generation frontend") {
     check_not_null(strstr(error, "source-output"));
   }
 
+  it("lowers one explicit FlowMQ Channel transport through the shared frontend") {
+    databind_compiler_projection_frontend_input input = {
+        .transports = "flowmq",
+        .artifact_name = "device",
+        .projection_config_path = DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE,
+        .output_path = "generated/device_native.h",
+        .source_output_path = "generated/device_native.c",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)1u);
+    check_equal(plan.backend_count, (size_t)1u);
+    check_equal(plan.requests[0].id.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT);
+    check_equal(plan.requests[0].id.kind,
+                (uint32_t)DATABIND_COMPILER_TRANSPORT_FLOWMQ);
+    check_true(plan.requests[0].config == &plan.flowmq);
+    check_equal(plan.backends[0].name, "flowmq");
+    check_equal(path_base(plan.requests[0].output, base),
+                "device.flowmq.h");
+
+    check_true(plan.external_config.has_flowmq);
+    check_equal(plan.flowmq.symbol_prefix, "databind_device");
+    check_equal(plan.flowmq.native_header_include, "device_native.h");
+    check_equal(plan.flowmq.channel_name, "Device.Telemetry");
+    check_equal(plan.flowmq.format, DATA_BIND_FORMAT_BINARY);
+    check_equal(plan.flowmq.pattern, DATA_BIND_FLOWMQ_CHANNEL_PUB_SUB);
+    check_equal(plan.flowmq.max_payload_bytes, (size_t)65536u);
+
+    databind_compiler_projection_frontend_dispose(&plan);
+
+    input.source_output_path = NULL;
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "source-output"));
+  }
+
   it("rejects config sections for an unselected transport") {
     databind_compiler_projection_frontend_input input = {
         .transports = "http",
