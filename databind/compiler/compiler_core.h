@@ -53,7 +53,8 @@ int tbe_compiler_parse_language_name(const char *name, int64_t *out_lang_enum);
 const char *tbe_compiler_resolve_template(const char *user_template,
                                           int64_t lang_enum);
 
-void tbe_compiler_annotate_language_types(Node *root);
+void tbe_compiler_annotate_language_types(
+    const IdlContract *contract, Node *root);
 
 int databind_compiler_parse_contract_file(
     const char *schema_path, Node **out_legacy_tree,
