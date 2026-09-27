@@ -533,7 +533,7 @@ set_tests_properties(test_tbe_typed_nullable_binary PROPERTIES
   LABELS "databind;typed;nullable;binary;tbe")
 
 
-# This fixture executes databindc during the build. Do not run a target-
+# This fixture executes salts_idlc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
 if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
@@ -542,11 +542,11 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_command(
     OUTPUT "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_SAFETY_GENERATED_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
+    COMMAND $<TARGET_FILE:salts_idlc>
             "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
             --lang c --output "${TBE_SAFETY_GENERATED_HEADER}"
             --source-output "${TBE_SAFETY_GENERATED_SOURCE}"
-    DEPENDS databindc
+    DEPENDS salts_idlc
             "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
             "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
             "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
@@ -568,12 +568,12 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_command(
     OUTPUT "${DATABIND_OWNED_BUFFER_HEADER}" "${DATABIND_OWNED_BUFFER_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DATABIND_OWNED_BUFFER_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
+    COMMAND $<TARGET_FILE:salts_idlc>
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
             --lang c
             --output "${DATABIND_OWNED_BUFFER_HEADER}"
             --source-output "${DATABIND_OWNED_BUFFER_SOURCE}"
-    DEPENDS databindc
+    DEPENDS salts_idlc
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
             "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
             "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
@@ -593,11 +593,11 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
            "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CMETA_GRAPH_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
+    COMMAND $<TARGET_FILE:salts_idlc>
             "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
             --lang c --output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
             --source-output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
-    DEPENDS databindc "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
+    DEPENDS salts_idlc "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
     VERBATIM)
   add_custom_target(tbe_cmeta_graph_generation
     DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
@@ -629,7 +629,7 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     FOLDER "databind/runtime/tests")
   add_test(NAME test_tbe_cmeta_cli_gates
     COMMAND ${CMAKE_COMMAND}
-      "-DTBE_COMPILER=$<TARGET_FILE:databindc>"
+      "-DTBE_COMPILER=$<TARGET_FILE:salts_idlc>"
       "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
 
