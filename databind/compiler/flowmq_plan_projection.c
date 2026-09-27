@@ -216,7 +216,7 @@ static int flowmq_generate(
   if (!flowmq_format_representable(root, message_type, config->format))
     return -1;
   if (databind_compiler_message_native_build(
-          root, message_type, &native_binding) != 0)
+          input->contract, message_type, &native_binding) != 0)
     return -1;
   if (snprintf(
           native_symbol, sizeof(native_symbol), "%s_flowmq",
