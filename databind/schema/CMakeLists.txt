@@ -157,10 +157,10 @@ set(ENUM_ENHANCED_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhanced.sch
 set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_HEADER}
-  COMMAND databindc ${ENUM_ENHANCED_SCHEMA}
+  COMMAND salts_idlc ${ENUM_ENHANCED_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced.h"
   VERBATIM)
 
@@ -168,10 +168,10 @@ set(ENUM_ENHANCED_SIMPLE_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhan
 set(ENUM_ENHANCED_SIMPLE_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced_simple.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_SIMPLE_HEADER}
-  COMMAND databindc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
+  COMMAND salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_SIMPLE_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced_simple.h"
   VERBATIM)
 
@@ -193,10 +193,10 @@ set(UNION_TYPES_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_union_types.schema)
 set(UNION_TYPES_HEADER ${CMAKE_BINARY_DIR}/bin/test_union_types.h)
 add_custom_command(
   OUTPUT ${UNION_TYPES_HEADER}
-  COMMAND databindc ${UNION_TYPES_SCHEMA}
+  COMMAND salts_idlc ${UNION_TYPES_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${UNION_TYPES_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_union_types.h"
   VERBATIM)
 
@@ -236,10 +236,10 @@ set(C_STRUCT_TEMPLATE
 
 add_custom_command(
   OUTPUT ${BENCH_HEADER}
-  COMMAND databindc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
+  COMMAND salts_idlc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
           --lang c --output ${BENCH_HEADER}
-  DEPENDS databindc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
-  COMMENT "Generating benchmark headers with databindc"
+  DEPENDS salts_idlc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
+  COMMENT "Generating benchmark headers with salts_idlc"
   VERBATIM)
 
 endif()
