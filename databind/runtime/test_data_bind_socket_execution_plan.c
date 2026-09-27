@@ -127,7 +127,7 @@ static DataBindNativeOptions socket_native_options(
 static DataBind *socket_codec(void) {
   static const char schema[] =
       "message Event {"
-      " [name(seq), alias(legacySeq)] @Min(1) @Max(10) uint32 sequence;"
+      " @Min(1) @Max(10) [name(seq), alias(legacySeq)] uint32 sequence;"
       " optional uint32 sample default 7;"
       "}"
       "channel Events: Event;";
