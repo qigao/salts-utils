@@ -23,6 +23,25 @@ typedef enum databind_binary_field_layout_kind {
   DATABIND_BINARY_FIELD_VAR_DATA = 2
 } databind_binary_field_layout_kind;
 
+/*
+ * Binary-private scalar token representation derived from canonical Contract /
+ * CMeta semantics. This is not a second public DataBind type system.
+ *
+ * NONE means the field is not a scalar admitted by the first generic Binary
+ * reader slice (for example an inline fixed record/bytes value). Its existing
+ * Binary wire layout remains valid and may be consumed by a later specialized
+ * lowering.
+ */
+typedef enum databind_binary_scalar_kind {
+  DATABIND_BINARY_SCALAR_NONE = 0,
+  DATABIND_BINARY_SCALAR_BOOL,
+  DATABIND_BINARY_SCALAR_SINT,
+  DATABIND_BINARY_SCALAR_UINT,
+  DATABIND_BINARY_SCALAR_FLOAT,
+  DATABIND_BINARY_SCALAR_ENUM_SINT,
+  DATABIND_BINARY_SCALAR_ENUM_UINT
+} databind_binary_scalar_kind;
+
 enum {
   DATABIND_BINARY_FIELD_OPTIONAL = 1u << 0,
   DATABIND_BINARY_FIELD_NULLABLE = 1u << 1
@@ -35,6 +54,14 @@ typedef struct databind_binary_field_layout {
   /* FIXED only: exact wire range inside the fixed block. */
   size_t wire_offset;
   size_t wire_extent;
+
+  /*
+   * FIXED scalar semantic representation. bits comes from canonical CMeta
+   * integer/float metadata or enum underlying storage, never from wire_extent.
+   * BOOL is the Binary one-byte boolean representation and records 8 bits.
+   */
+  databind_binary_scalar_kind scalar_kind;
+  unsigned scalar_bits;
 
   /* GROUP only: child fixed block repeated after a u16/u16 group header. */
   size_t child_fixed_block_size;
