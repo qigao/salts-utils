@@ -211,9 +211,10 @@ static int socket_commit_atomic(
 }
 
 static int socket_generate(
-    const Node *root,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
+  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_socket_projection_config *config =
       request != NULL
           ? (const databind_compiler_socket_projection_config *)request->config
