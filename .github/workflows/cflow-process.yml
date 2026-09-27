@@ -46,6 +46,7 @@ jobs:
           test -n "${VCPKG_ROOT:-}"
           test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
           test -n "${VCPKG_BINARY_SOURCES:-}"
+          test -d "${VCPKG_CACHE_REPOSITORY_ROOT:-}/manifests/salts-utils"
 
       - name: Restore published Salts 1.7.10 and re2c 4.6.3
         shell: bash
@@ -53,11 +54,31 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
 
+      - name: Restore canonical SaltsUtils third-party profile
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$VCPKG_CACHE_REPOSITORY_ROOT/manifests/salts-utils" \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
+            --triplet=x64-linux \
+            --only-binarycaching
+
       - name: Configure default SaltsUtils graph
         shell: bash
         run: |
           set -euxo pipefail
-          cmake -S . -B build/cflow-process -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE"             -DVCPKG_TARGET_TRIPLET=x64-linux             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching             -DSALTS_UTILS_ENABLE_CAPTURE=OFF             -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF             -DBUILD_TESTS=ON             -DBUILD_BENCHMARKS=OFF             -DBUILD_EXAMPLES=OFF
+          cmake -S . -B build/cflow-process -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF
 
       - name: Build and run CFlowProcess contract
         shell: bash
@@ -65,7 +86,9 @@ jobs:
           set -euxo pipefail
           cmake --build build/cflow-process --target cflow_process_test --parallel 2
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed/x64-linux/lib:${LD_LIBRARY_PATH:-}"
-          ctest --test-dir build/cflow-process             -R '^cflow_process_test$'             --no-tests=error --output-on-failure
+          ctest --test-dir build/cflow-process \
+            -R '^cflow_process_test$' \
+            --no-tests=error --output-on-failure
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
 
@@ -98,6 +121,9 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($vsInstall)) { throw "Visual Studio x64 C++ toolchain not found" }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) { throw "VCPKG_ROOT is unavailable" }
           if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE)) { throw "QIGAO_VCPKG_TOOLCHAIN_FILE is unavailable" }
+          if ([string]::IsNullOrWhiteSpace($env:VCPKG_CACHE_REPOSITORY_ROOT)) { throw "VCPKG_CACHE_REPOSITORY_ROOT is unavailable" }
+          $manifest = Join-Path $env:VCPKG_CACHE_REPOSITORY_ROOT "manifests\salts-utils\vcpkg.json"
+          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "canonical SaltsUtils manifest is unavailable" }
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
       - name: Restore published Salts 1.7.10 and re2c 4.6.3
@@ -106,12 +132,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
+      - name: Restore canonical SaltsUtils third-party profile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            "--x-manifest-root=$env:VCPKG_CACHE_REPOSITORY_ROOT\manifests\salts-utils" `
+            "--x-install-root=$env:GITHUB_WORKSPACE\vcpkg_installed" `
+            "--triplet=x64-windows" `
+            --only-binarycaching
+          if ($LASTEXITCODE -ne 0) { throw "canonical SaltsUtils cache-only restore failed" }
+
       - name: Configure default SaltsUtils graph
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\cflow-process -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake -S . -B build\cflow-process -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_MANIFEST_INSTALL=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
 
       - name: Build and run CFlowProcess contract
