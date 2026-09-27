@@ -3,6 +3,8 @@
 
 #include "data_bind.h"
 
+#include <cserde/reader.h>
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -30,6 +32,30 @@ typedef enum DataBindTransportKind {
 
 typedef struct DataBindFormatPlan DataBindFormatPlan;
 typedef struct DataBindTransportPlan DataBindTransportPlan;
+
+enum { DATA_BIND_FORMAT_PLAN_READER_ABI_VERSION = 1u };
+
+/**
+ * Caller-owned zero-allocation canonicalizing reader wrapper.
+ *
+ * The state borrows both FormatPlan and source reader for its lifetime. Public
+ * fields after reader are execution state, not semantic configuration.
+ */
+typedef struct DataBindFormatPlanReader {
+  size_t size;
+  uint32_t abi_version;
+  const DataBindFormatPlan *plan;
+  cserde_reader *source;
+  cserde_reader reader;
+  size_t depth;
+  int root_started;
+  int root_is_map;
+  int root_expect_key;
+} DataBindFormatPlanReader;
+
+#define DATA_BIND_FORMAT_PLAN_READER_INIT \
+  { sizeof(DataBindFormatPlanReader), DATA_BIND_FORMAT_PLAN_READER_ABI_VERSION, \
+    NULL, NULL, {0}, 0u, 0, 0, 0 }
 
 /** Size-prefixed immutable snapshot of one compiled FormatPlan. */
 typedef struct DataBindFormatPlanInfo {
@@ -96,6 +122,28 @@ DATA_BIND_API void data_bind_format_plan_free(DataBindFormatPlan *plan);
 DATA_BIND_API int data_bind_format_plan_info(
     const DataBindFormatPlan *plan,
     DataBindFormatPlanInfo *out);
+
+/**
+ * Wrap one provider/source CSerde reader with this FormatPlan's precompiled
+ * root-record input-name mapping.
+ *
+ * Accepted root MAP keys (primary name, aliases and canonical field name) are
+ * rewritten to stable canonical field-name slices owned by the FormatPlan.
+ * Unknown root keys fail closed. Nested token streams are passed through
+ * unchanged by this first slice; FormatPlan compilation rejects nested record
+ * types that require non-identity name mapping.
+ *
+ * No schema lookup or allocation occurs after initialization.
+ */
+DATA_BIND_API DataBindStatus data_bind_format_plan_reader_init(
+    const DataBindFormatPlan *plan,
+    cserde_reader *source,
+    DataBindFormatPlanReader *out,
+    DataBindError *error);
+
+/** Return the initialized canonical reader, or NULL for invalid state. */
+DATA_BIND_API cserde_reader *data_bind_format_plan_reader(
+    DataBindFormatPlanReader *state);
 
 /*
  * Compile the format-neutral transport shell for one Service operation.
