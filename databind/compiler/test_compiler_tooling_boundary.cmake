@@ -40,7 +40,7 @@ foreach(DIRECT IN ITEMS
     "LIBS Salts::IDL ${DIRECT}" DIRECT_LINK_POS)
   if(NOT DIRECT_LINK_POS EQUAL -1)
     message(FATAL_ERROR
-      "databindc directly owns compiler helper instead of tooling boundary: ${DIRECT}")
+      "salts-idlc directly owns compiler helper instead of tooling boundary: ${DIRECT}")
   endif()
 endforeach()
 
@@ -49,7 +49,7 @@ string(FIND "${COMPILER_CMAKE}"
   BOUNDARY_USE_POS)
 if(BOUNDARY_USE_POS EQUAL -1)
   message(FATAL_ERROR
-    "databindc does not consume the explicit compiler tooling boundary")
+    "salts-idlc does not consume the explicit compiler tooling boundary")
 endif()
 
 get_filename_component(SALTS_UTILS_SOURCE_ROOT "${DATABIND_SOURCE_ROOT}" DIRECTORY)
