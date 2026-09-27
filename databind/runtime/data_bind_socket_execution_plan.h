@@ -2,6 +2,8 @@
 #define DATA_BIND_SOCKET_EXECUTION_PLAN_H
 
 #include "data_bind_message_plan.h"
+#include "data_bind_format_provider.h"
+#include "data_bind_projection_plan.h"
 #include "data_bind_socket_plan.h"
 
 #include <cserde/reader.h>
@@ -56,6 +58,31 @@ DATA_BIND_API DataBindStatus data_bind_socket_execution_plan_decode_native(
     void *destination,
     size_t destination_bytes,
     DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
+ * Decode one raw parser-backed Socket frame through an explicitly supplied
+ * format provider.
+ *
+ * The provider is not retained. Its format must exactly match SocketPlan.format
+ * and DATA_BIND_FORMAT_BINARY is intentionally rejected by this API until the
+ * BinaryLayoutIR runtime reader replaces the historical typed Binary path.
+ *
+ * Runtime composition is:
+ *   provider -> FormatPlan canonical reader -> MessagePlan -> native staging.
+ *
+ * The provider lease is closed on every path after a successful open.
+ */
+DATA_BIND_API DataBindStatus data_bind_socket_execution_plan_decode_buffer(
+    const DataBindSocketExecutionPlan *plan,
+    const DataBindFormatProvider *provider,
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic,
+    DataBindError *error);
 
 #ifdef __cplusplus
 }
