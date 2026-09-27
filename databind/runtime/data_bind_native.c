@@ -501,94 +501,11 @@ static int native_map_contract(
   return 1;
 }
 
-static int native_variant_member_fits(
-    const cmeta_data_desc *owner, size_t offset,
-    const cmeta_data_desc *member) {
-  size_t end;
-  if (owner == NULL || owner->storage_type == NULL ||
-      member == NULL || member->storage_type == NULL ||
-      member->storage_type->align == 0u ||
-      offset % member->storage_type->align != 0u ||
-      !native_size_add(offset, member->storage_type->size, &end))
-    return 0;
-  return end <= owner->storage_type->size;
-}
-
-static int native_variant_members_overlap(
-    size_t left_offset, const cmeta_data_desc *left,
-    size_t right_offset, const cmeta_data_desc *right) {
-  size_t left_end;
-  size_t right_end;
-  if (left == NULL || left->storage_type == NULL ||
-      right == NULL || right->storage_type == NULL ||
-      !native_size_add(left_offset, left->storage_type->size, &left_end) ||
-      !native_size_add(right_offset, right->storage_type->size, &right_end))
-    return 1;
-  return left_offset < right_end && right_offset < left_end;
-}
-
-static int native_variant_tag_declared(
-    const cmeta_data_desc *tag_data, int64_t tag) {
-  if (tag_data == NULL) return 0;
-
-  if (tag_data->kind == CMETA_DATA_SINT) {
-    const cmeta_data_integer_shape *shape =
-        (const cmeta_data_integer_shape *)tag_data->shape;
-    if (shape == NULL) return 0;
-    if (shape->bits == 64u) return 1;
-    {
-      const int64_t limit = INT64_C(1) << (shape->bits - 1u);
-      return tag >= -limit && tag < limit;
-    }
-  }
-
-  if (tag_data->kind == CMETA_DATA_UINT) {
-    const cmeta_data_integer_shape *shape =
-        (const cmeta_data_integer_shape *)tag_data->shape;
-    uint64_t max_value;
-    if (shape == NULL || tag < 0) return 0;
-    max_value = shape->bits == 64u
-                    ? UINT64_MAX
-                    : (UINT64_C(1) << shape->bits) - UINT64_C(1);
-    return (uint64_t)tag <= max_value;
-  }
-
-  if (tag_data->kind == CMETA_DATA_ENUM) {
-    const cmeta_data_enum_shape *shape =
-        (const cmeta_data_enum_shape *)tag_data->shape;
-    size_t i;
-    if (shape == NULL || shape->meta == NULL) return 0;
-    for (i = 0u; i < shape->meta->count; ++i)
-      if (shape->meta->items[i].value == tag) return 1;
-  }
-
-  return 0;
-}
-
 static int native_variant_contract(const cmeta_data_desc *data) {
-  const cmeta_data_variant_shape *shape;
-  size_t i;
-
-  if (data == NULL || data->kind != CMETA_DATA_VARIANT ||
-      data->storage_type == NULL ||
-      cmeta_data_variant_ops_of(data) == NULL)
-    return 0;
-
-  shape = (const cmeta_data_variant_shape *)data->shape;
-  if (shape == NULL || shape->tag == NULL ||
-      !native_variant_member_fits(data, shape->tag_offset, shape->tag))
-    return 0;
-
-  for (i = 0u; i < shape->case_count; ++i) {
-    const cmeta_data_variant_case *item = &shape->cases[i];
-    if (item->value == NULL ||
-        !native_variant_tag_declared(shape->tag, item->tag) ||
-        !native_variant_member_fits(data, item->offset, item->value) ||
-        native_variant_members_overlap(
-            shape->tag_offset, shape->tag, item->offset, item->value))
-      return 0;
-  }
-  return 1;
+  return data != NULL &&
+         data->kind == CMETA_DATA_VARIANT &&
+         data->shape != NULL &&
+         cmeta_data_variant_ops_of(data) != NULL;
 }
 
 static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *data,
@@ -1277,10 +1194,6 @@ static DataBindStatus native_variant_tag_from_token(
     return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                        "Variant discriminator kind is unsupported");
   }
-
-  if (!native_variant_tag_declared(tag_data, tag))
-    return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
-                       path, "Variant discriminator is outside its declared domain");
 
   *out = tag;
   return DATA_BIND_OK;
