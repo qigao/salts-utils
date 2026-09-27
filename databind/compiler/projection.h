@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_PROJECTION_H
 
 #include "node_tree.h"
+#include "idl_contract.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -60,8 +61,14 @@ typedef struct databind_compiler_projection_request {
   const void *config;
 } databind_compiler_projection_request;
 
+typedef struct databind_compiler_projection_input {
+  const IdlContract *contract;
+  /* Transitional rendering/format tree. Never the semantic authority. */
+  const Node *legacy_tree;
+} databind_compiler_projection_input;
+
 typedef int (*databind_compiler_projection_generate_fn)(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context);
 
@@ -110,7 +117,7 @@ int databind_compiler_projection_requests_valid(
  * a format x transport Cartesian product; each request is one typed axis ID.
  */
 int databind_compiler_projection_run(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *requests,
     size_t request_count,
     const databind_compiler_projection_backend *backends,

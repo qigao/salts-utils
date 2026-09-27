@@ -171,14 +171,14 @@ static const databind_compiler_projection_backend *find_backend(
 }
 
 int databind_compiler_projection_run(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *requests,
     size_t request_count,
     const databind_compiler_projection_backend *backends,
     size_t backend_count) {
   size_t i;
 
-  if (canonical_ir == NULL ||
+  if (input == NULL || input->contract == NULL ||
       !databind_compiler_projection_requests_valid(requests, request_count) ||
       !backends_valid(backends, backend_count))
     return -1;
@@ -190,7 +190,7 @@ int databind_compiler_projection_run(
   for (i = 0u; i < request_count; ++i) {
     const databind_compiler_projection_backend *backend =
         find_backend(backends, backend_count, requests[i].id);
-    if (backend->generate(canonical_ir, &requests[i],
+    if (backend->generate(input, &requests[i],
                           backend->context) != 0)
       return -1;
   }
