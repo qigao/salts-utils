@@ -874,6 +874,7 @@ static int plugin_write_source(
       !plugin_write_c_string(file, service_header) ||
       fputs(
           "\n#include <salts/plugin.h>\n"
+          "#include <data_bind_native_binding.h>\n"
           "#include <cmeta/function.h>\n\n",
           file) == EOF)
     return 0;
