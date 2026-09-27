@@ -358,7 +358,7 @@ spec("DataBind SocketExecutionPlan") {
             unknown_json, sizeof(unknown_json) - 1u, 16u,
             &options, &unknown, sizeof(unknown),
             &diagnostic, &error),
-        DATA_BIND_ERR_PARSE);
+        DATA_BIND_ERR_SCHEMA);
     check_equal(unknown.sequence, (uint32_t)0u);
     check_equal(unknown.sample, (uint32_t)0u);
     check_equal(unknown.presence, (uint8_t)0u);
