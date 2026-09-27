@@ -220,7 +220,6 @@ static void process_close_parent_endpoint(cflow_process_impl *impl,
   if (cflow_io_pipe_endpoint_is_valid(endpoint)) {
     status = cflow_io_pipe_endpoint_close(endpoint);
     process_record_cleanup_error(impl, status);
-    if (status != SALTS_OK) return;
   }
   if (!native_io_endpoint_valid(*native_endpoint)) return;
   status = cflow_io_native_adapter_release_pipe(&impl->adapter, *native_endpoint);
