@@ -135,8 +135,6 @@ add_library(
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
-  data_bind_schema.c
-  data_bind_schema_internal.h
   data_bind_record.c
   data_bind_binary_reader.c
   data_bind_binary_reader.h
@@ -178,7 +176,6 @@ target_link_libraries(
     Salts::DataBindCsvAdapter
     Salts::DataBindXmlAdapter
     Salts::DataBindTemporalAdapter
-    Salts::DataBindSchema
   PUBLIC
     Salts::DataBindCore)
 
