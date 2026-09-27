@@ -485,6 +485,33 @@ databind_target(
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
 
+
+databind_target(
+  TARGET databind_channel_multi_transport_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "device_multi"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_socket_projection_config.json")
+
+cmake_add_test(test_databind_channel_multi_transport
+  SOURCES test_public_channel_multi_transport.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_channel_multi_transport_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_channel_multi_transport_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_channel_multi_transport
+  databind_channel_multi_transport_fixture_databind_codegen)
+set_target_properties(test_databind_channel_multi_transport PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_channel_multi_transport PROPERTIES
+  LABELS "databind;compiler;transport;composition")
+
 cmake_add_test(test_databind_flowmq_plan_public_frontend
   SOURCES test_public_flowmq_plan_frontend.c
   LIBS
