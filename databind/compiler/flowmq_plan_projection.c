@@ -196,6 +196,7 @@ static int flowmq_generate(
   const Node *channel;
   const char *message_type;
   databind_compiler_message_native_binding native_binding = {0};
+  char native_symbol[384];
   char *temp = NULL;
   FILE *file = NULL;
   int ok = 0;
@@ -215,6 +216,13 @@ static int flowmq_generate(
   if (databind_compiler_message_native_build(
           root, message_type, &native_binding) != 0)
     return -1;
+  if (snprintf(
+          native_symbol, sizeof(native_symbol), "%s_flowmq",
+          config->symbol_prefix) <= 0 ||
+      strlen(native_symbol) >= sizeof(native_symbol) - 1u) {
+    databind_compiler_message_native_destroy(&native_binding);
+    return -1;
+  }
 
   if (flowmq_open_atomic(request->output, &temp, &file) != 0) {
     databind_compiler_message_native_destroy(&native_binding);
@@ -232,7 +240,7 @@ static int flowmq_generate(
     goto cleanup;
 
   if (databind_compiler_message_native_emit_binding(
-          file, &native_binding, config->symbol_prefix) != 0)
+          file, &native_binding, native_symbol) != 0)
     goto cleanup;
 
   if (fprintf(
@@ -254,7 +262,7 @@ static int flowmq_generate(
           flowmq_format_name(config->format),
           flowmq_pattern_name(config->pattern),
           config->max_payload_bytes,
-          config->symbol_prefix,
+          native_symbol,
           config->symbol_prefix) < 0)
     goto cleanup;
 
