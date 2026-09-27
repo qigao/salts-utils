@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "http": {
+    "operations": [
+      {
+        "service": "Users",
+        "operation": "Get",
+        "method": "GET",
+        "route": "/users/{id}",
+        "success_status": 200,
+        "ingress_format": "json",
+        "egress_format": "json",
+        "fields": [
+          {
+            "direction": "ingress",
+            "field": "id",
+            "location": "path",
+            "name": "id"
+          }
+        ],
+        "errors": [
+          {
+            "type": "NotFoundError",
+            "status": 404
+          }
+        ]
+      }
+    ]
+  }
+}
