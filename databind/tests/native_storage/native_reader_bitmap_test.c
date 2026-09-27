@@ -1,5 +1,6 @@
 #define TINYTEST_NO_MAIN
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 
 #include <salts_cmeta_data.h>
@@ -7,7 +8,7 @@
 #include <string.h>
 
 typedef union BitmapWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[4096];
 } BitmapWorkspace;
 
