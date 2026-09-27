@@ -35,7 +35,7 @@ add_library(${IDL_TARGET} STATIC
   src/node_tree.c
   src/schema_enum.c
   src/schema_type_ref.c
-  src/schema_parser_dsl.c
+  src/idl_frontend.c
   src/schema_service.c
   src/schema_channel.c
   src/schema_component.c
