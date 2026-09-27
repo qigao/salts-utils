@@ -5,6 +5,8 @@
 
 int main(int argc, char **argv) {
   Node *root = NULL;
+  IdlContract *contract = NULL;
+  databind_compiler_projection_input input = {0};
   char *schema_data = NULL;
   databind_compiler_http_operation_config http_operations[] = {
       {"Calc", "Add", "GET", "/add/{left}", 201,
@@ -55,8 +57,10 @@ int main(int argc, char **argv) {
   int result;
 
   if (argc != 4) return 2;
-  if (tbe_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0)
+  if (databind_compiler_parse_contract_file(
+          argv[1], &root, &contract, &schema_data) != 0)
     return 3;
+  input = (databind_compiler_projection_input){contract, root};
 
   requests[0] = (databind_compiler_projection_request){
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
@@ -70,8 +74,9 @@ int main(int argc, char **argv) {
   backends[1] = databind_compiler_rpc_method_plan_backend();
 
   result = databind_compiler_projection_run(
-      root, requests, 2u, backends, 2u);
+      &input, requests, 2u, backends, 2u);
 
+  idl_contract_destroy(contract);
   node_free(root);
   free(schema_data);
   return result == 0 ? 0 : 4;
