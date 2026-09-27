@@ -23,7 +23,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(databindc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
@@ -221,6 +221,7 @@ cmake_add_test(test_databind_projection_frontend
     socket_plan_projection.c
     flowmq_plan_projection.c
     binary_layout_ir.c
+    binary_reader_codegen.c
   LIBS
     Salts::DataBindSchema
     Salts::PluginABI
@@ -248,6 +249,7 @@ cmake_add_test(test_databind_socket_plan_projection
     message_native.c
     socket_plan_projection.c
     binary_layout_ir.c
+    binary_reader_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c
@@ -303,6 +305,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
     message_native.c
     flowmq_plan_projection.c
     binary_layout_ir.c
+    binary_reader_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c
@@ -493,6 +496,49 @@ databind_target(
   TRANSPORTS SOCKET FLOWMQ
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_socket_projection_config.json")
+
+databind_target(
+  TARGET databind_binary_transport_provider_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider.schema"
+  ARTIFACT_NAME "binary_exec"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider_config.json")
+
+cmake_add_test(test_databind_binary_transport_provider
+  SOURCES test_public_binary_transport_provider.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_binary_transport_provider
+  databind_binary_transport_provider_fixture_databind_codegen)
+set_target_properties(test_databind_binary_transport_provider PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_transport_provider PROPERTIES
+  LABELS "databind;compiler;binary-reader;transport;execution")
+
+cmake_add_test(test_databind_binary_transport_provider_cpp
+  SOURCES test_public_binary_transport_provider_cpp.cpp
+  LIBS
+    Salts::DataBind
+    ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_binary_transport_provider_cpp
+  databind_binary_transport_provider_fixture_databind_codegen)
+set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
+  LABELS "databind;compiler;binary-reader;transport;public;cpp")
 
 cmake_add_test(test_databind_channel_multi_transport
   SOURCES test_public_channel_multi_transport.c
