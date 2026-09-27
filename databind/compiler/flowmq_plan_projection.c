@@ -129,7 +129,8 @@ static int flowmq_config_valid(
 }
 
 static int flowmq_format_representable(
-    const Node *root, const char *message_type, DataBindFormat format) {
+    const IdlContract *contract, const Node *root,
+    const char *message_type, DataBindFormat format) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
   databind_binary_layout_status status;
@@ -139,7 +140,7 @@ static int flowmq_format_representable(
   if (format != DATA_BIND_FORMAT_BINARY) return 0;
 
   status = databind_binary_layout_build(
-      root, message_type, &layout, &diagnostic);
+      contract, root, message_type, &layout, &diagnostic);
   databind_binary_layout_destroy(&layout);
   return status == DATABIND_BINARY_LAYOUT_OK;
 }
@@ -213,7 +214,8 @@ static int flowmq_generate(
   channel = flowmq_find_channel(root, config->channel_name);
   if (channel == NULL) return -1;
   message_type = flowmq_string(channel, "message_type");
-  if (!flowmq_format_representable(root, message_type, config->format))
+  if (!flowmq_format_representable(
+          input->contract, root, message_type, config->format))
     return -1;
   if (databind_compiler_message_native_build(
           input->contract, message_type, &native_binding) != 0)
@@ -246,10 +248,12 @@ static int flowmq_generate(
     goto cleanup;
 
   if (config->format == DATA_BIND_FORMAT_BINARY &&
-      databind_compiler_binary_reader_admit(root, message_type) == 0) {
+      databind_compiler_binary_reader_admit(
+          input->contract, root, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
         databind_compiler_binary_reader_emit(
-            file, root, message_type, config->symbol_prefix) != 0)
+            file, input->contract, root, message_type,
+            config->symbol_prefix) != 0)
       goto cleanup;
   }
 
