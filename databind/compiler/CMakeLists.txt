@@ -487,7 +487,10 @@ databind_target(
 
 cmake_add_test(test_databind_flowmq_plan_public_frontend
   SOURCES test_public_flowmq_plan_frontend.c
-  LIBS Salts::DataBind Salts::TinyTest
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_flowmq_plan_public_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_flowmq_plan_public_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
