@@ -19,12 +19,6 @@ typedef enum {
     SCHEMA_RECORD_UNION
 } schema_record_kind_t;
 
-typedef enum {
-    SCHEMA_FIELD_SECTION_FIXED = 0,
-    SCHEMA_FIELD_SECTION_GROUP,
-    SCHEMA_FIELD_SECTION_VAR_DATA
-} schema_field_section_t;
-
 typedef struct {
     Node *root;           /**< the temporary root map being built              */
     Node *schema_node;    /**< optional schema metadata map                    */
@@ -45,7 +39,6 @@ typedef struct {
     Node *cur_enum;       /**< current enum map being built                    */
     Node *cur_enum_items; /**< current enum items list being built             */
     schema_record_kind_t cur_record_kind; /**< current declaration kind       */
-    schema_field_section_t cur_field_section; /**< current field ordering state */
     int   error;
     int   error_line;     /**< line number of last error                       */
     int   error_column;   /**< column number of last error                     */
