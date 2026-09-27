@@ -1,47 +1,73 @@
-set(TARGET_NAME databind_schema)
+set(SCHEMA_TARGET databind_schema)
+set(IDL_TARGET databind_idl)
 
 cmake_add_grammar(SCHEMA
   LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_lexer.re
   GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_grammar.y
-  FOLDER "databind/${TARGET_NAME}/grammar")
+  FOLDER "databind/idl/grammar")
 
-# =============================================================================
-# Library
-# =============================================================================
+# Data-only Schema surface. This target owns logical data-shape -> CMeta
+# projection and must not carry the IDL parser or Service/Channel/Component.
+add_library(${SCHEMA_TARGET} STATIC
+  src/schema_cmeta.c
+  src/schema_cmeta_buffer.c)
 
-cmake_add_source(SOURCE_FILES RECURSE
-  DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PATTERNS "*.c*" "*.h*")
-
-cmake_add_source(SOURCE_FILES RECURSE
-  DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PATTERNS "*.c*" "*.h*")
-
-add_library(
-  ${TARGET_NAME} STATIC
-  ${SOURCE_FILES}
-  $<TARGET_OBJECTS:databind_tbe_format_objects>
-  ${SCHEMA_LEXER_GEN} ${SCHEMA_GRAMMAR_GEN} ${SCHEMA_GRAMMAR_Y}
-  ${SCHEMA_LEXER_RE})
-add_dependencies(${TARGET_NAME} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
-
+target_compile_features(${SCHEMA_TARGET} PUBLIC c_std_11)
 target_include_directories(
-  ${TARGET_NAME}
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-         $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
-         $<INSTALL_INTERFACE:include>
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
-
-target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
+  ${SCHEMA_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(${SCHEMA_TARGET} PUBLIC Salts::Core)
 
 cmake_config_target(
-  ${TARGET_NAME}
-  ALIAS Salts::DataBindSchema
+  ${SCHEMA_TARGET}
+  ALIAS Salts::Schema
   FOLDER databind/schema
-  EXPORT_NAME DataBindSchema)
+  EXPORT_NAME Schema)
+
+# Full IDL frontend. It owns syntax, logical contract parsing and semantic
+# validation for Data/Service/Channel/Component. TBE wire-format execution is
+# deliberately not linked into this target.
+add_library(${IDL_TARGET} STATIC
+  src/node_tree.c
+  src/schema_enum.c
+  src/schema_type_ref.c
+  src/schema_parser_dsl.c
+  src/schema_service.c
+  src/schema_channel.c
+  src/schema_component.c
+  src/tbe_error.c
+  ${SCHEMA_LEXER_GEN}
+  ${SCHEMA_GRAMMAR_GEN}
+  ${SCHEMA_GRAMMAR_Y}
+  ${SCHEMA_LEXER_RE})
+add_dependencies(${IDL_TARGET} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
+target_compile_features(${IDL_TARGET} PUBLIC c_std_11)
+target_include_directories(
+  ${IDL_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/parser
+    ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(${IDL_TARGET}
+  PUBLIC Salts::Schema
+  PRIVATE Salts::Core)
+
+cmake_config_target(
+  ${IDL_TARGET}
+  ALIAS Salts::IDL
+  FOLDER databind/idl
+  EXPORT_NAME IDL)
 
 install(
-  TARGETS ${TARGET_NAME}
+  TARGETS ${SCHEMA_TARGET} ${IDL_TARGET}
   EXPORT SaltsUtilsTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
@@ -58,7 +84,7 @@ install(
 # Tests
 # =============================================================================
 
-set(DATABIND_SCHEMA_TEST_LIBS Salts::DataBindSchema Salts::TinyTest)
+set(DATABIND_SCHEMA_TEST_LIBS Salts::IDL Salts::TinyTest)
 if(BUILD_TESTS)
 foreach(test_name
         test_tbe_parser
@@ -82,9 +108,14 @@ foreach(test_name
 endforeach()
 
 
+if(TARGET test_tbe_robustness)
+  target_sources(test_tbe_robustness PRIVATE
+    $<TARGET_OBJECTS:databind_tbe_format_objects>)
+endif()
+
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
-  LIBS Salts::DataBindSchema
+  LIBS Salts::Schema
   FOLDER "databind/schema/tests")
 if(TARGET test_schema_cmeta_public_cpp)
   set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
@@ -104,8 +135,10 @@ endif()
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
-  LIBS Salts::DataBindSchema
+  LIBS Salts::IDL
   FOLDER databind/schema/tests)
+target_sources(verify_fixes PRIVATE
+  $<TARGET_OBJECTS:databind_tbe_format_objects>)
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件
