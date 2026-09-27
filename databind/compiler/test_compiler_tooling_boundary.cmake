@@ -37,7 +37,7 @@ foreach(DIRECT IN ITEMS
         "Salts::Mustache"
         "Salts::JsonParser")
   string(FIND "${COMPILER_CMAKE}"
-    "LIBS Salts::DataBindSchema ${DIRECT}" DIRECT_LINK_POS)
+    "LIBS Salts::IDL ${DIRECT}" DIRECT_LINK_POS)
   if(NOT DIRECT_LINK_POS EQUAL -1)
     message(FATAL_ERROR
       "databindc directly owns compiler helper instead of tooling boundary: ${DIRECT}")
