@@ -1,5 +1,6 @@
 #include "tinytest.h"
 #include "compiler_core.h"
+#include "idl_contract_internal.h"
 #include <cmeta/data.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,16 @@ typedef struct ExpectedRuntimeCapability {
     cmeta_data_kind semantic_kind;
     ExpectedRuntimeRequirement requirement;
 } ExpectedRuntimeCapability;
+
+static void annotate_language_types_from_tree(Node *root) {
+    IdlContract *contract = NULL;
+    IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+    if (root != NULL &&
+        idl_contract_build_from_tree(root, &contract, &diagnostic)) {
+        tbe_compiler_annotate_language_types(contract, root);
+    }
+    idl_contract_destroy(contract);
+}
 
 static const ExpectedRuntimeCapability EXPECTED[] = {
     { "bool", "uint8_t", CMETA_DATA_BOOL, EXPECT_EXPLICIT_ADAPTER },
@@ -170,7 +181,7 @@ suite("compiler_cmeta_field_projection") {
             map_add(field, create_node_string("key_type", "string"));
             map_add(field, create_node_string("value_type", "int32"));
             if (cases[i].flag) map_add(field, create_node_string(cases[i].flag, "1"));
-            tbe_compiler_annotate_language_types(root);
+            annotate_language_types_from_tree(root);
             kind = field_projection_text(field, "cmeta_kind");
             check_not_null(kind);
             if (kind) check_equal(atoi(kind), cases[i].kind);
@@ -278,7 +289,7 @@ suite("compiler_cmeta_field_projection") {
             check_equal(map_add(field, create_node_string("value_type", "Item")), 0);
         }
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
 
         {
             Node *fields = field_projection_child(record, "fields");
@@ -353,7 +364,7 @@ suite("compiler_cmeta_field_projection") {
             }
         }
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
 
         for (i = 0; i < sizeof(EXPECTED) / sizeof(EXPECTED[0]); ++i) {
             Node *record = field_projection_record(root, "messages", names[i]);
@@ -419,7 +430,7 @@ suite("compiler_cmeta_field_projection") {
         check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
         check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
 
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "deferred_container");
@@ -453,7 +464,7 @@ suite("compiler_cmeta_field_projection") {
         check_equal(map_add(right_field, create_node_string("is_fixed_size", "1")), 0);
         check_equal(map_add(right_field, create_node_string("size_bytes", "4")), 0);
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
         left_symbol = field_projection_text(left_field, "native_fixed_bytes_name");
         right_symbol = field_projection_text(right_field, "native_fixed_bytes_name");
         check_equal(left_symbol, "tbe_fixed_bytes_3_A_B_1_C");
@@ -490,7 +501,7 @@ suite("compiler_cmeta_field_projection") {
             node_free(root);
             return;
         }
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
         left_symbol = field_projection_text(left, "native_enum_symbol");
         right_symbol = field_projection_text(right, "native_enum_symbol");
         long_symbol = field_projection_text(long_enum, "native_enum_symbol");
@@ -545,7 +556,7 @@ suite("compiler_cmeta_field_projection") {
         COMPLETE_MAP(right_field);
 #undef COMPLETE_MAP
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
         left_symbol = field_projection_text(left_field, "native_map_name");
         right_symbol = field_projection_text(right_field, "native_map_name");
         check_equal(left_symbol, "databindCmetaMap3xA_B1xC");
@@ -659,7 +670,7 @@ suite("compiler_cmeta_field_projection") {
             }
         }
 
-        tbe_compiler_annotate_language_types(root);
+        annotate_language_types_from_tree(root);
 
         check_not_null(field_projection_child(
             field_projection_record(root, "composites", "Point"),
