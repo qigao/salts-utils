@@ -4,6 +4,7 @@
 #include "data_bind.h"
 
 #include <cmeta/data.h>
+#include <cmeta/function.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -19,6 +20,55 @@ extern "C" {
  * historically declared by data_bind_binding_plan.h; only ownership moves.
  */
 enum { DATA_BIND_NATIVE_BINDING_ABI_VERSION = 2u };
+enum { DATA_BIND_NATIVE_EXECUTION_ABI_VERSION = 1u };
+
+#if defined(_WIN32)
+  #define DATA_BIND_NATIVE_CALL __cdecl
+#else
+  #define DATA_BIND_NATIVE_CALL
+#endif
+
+/**
+ * Exact generated native invocation bridge.
+ *
+ * params[i] points at the exact C parameter object expected by the generated
+ * adapter. return_storage points at the exact reflected return object. The
+ * boolean reports bridge/admission success only; business/native status remains
+ * in the reflected return contract.
+ *
+ * This is descriptive/exact generated execution glue, not a universal dynamic
+ * ABI invocation mechanism.
+ */
+typedef bool (DATA_BIND_NATIVE_CALL *DataBindNativeInvokeFn)(
+    void *context,
+    void *return_storage,
+    void *const *params,
+    size_t param_count);
+
+typedef struct DataBindNativeExecution {
+  size_t size;
+  uint32_t abi_version;
+  const cmeta_function_desc *function;
+  const cmeta_function_abi_desc *abi;
+  void *context;
+  DataBindNativeInvokeFn invoke;
+} DataBindNativeExecution;
+
+#define DATA_BIND_NATIVE_EXECUTION_INIT \
+  { sizeof(DataBindNativeExecution), DATA_BIND_NATIVE_EXECUTION_ABI_VERSION, \
+    NULL, NULL, NULL, NULL }
+
+static inline int
+data_bind_native_execution_valid(const DataBindNativeExecution *execution) {
+  return execution != NULL &&
+         execution->size >= sizeof(*execution) &&
+         execution->abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION &&
+         cmeta_function_desc_valid(execution->function) &&
+         cmeta_function_abi_desc_valid(execution->abi) &&
+         cmeta_function_desc_equal(execution->function,
+                                   execution->abi->function) &&
+         execution->invoke != NULL;
+}
 
 /** One generated DataBind state bit outside the canonical CMeta value graph. */
 typedef struct DataBindNativeStateBinding {

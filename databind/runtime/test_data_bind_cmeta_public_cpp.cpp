@@ -12,6 +12,7 @@ static_assert(std::is_standard_layout_v<DataBindSchemaConstraint>);
 static_assert(std::is_standard_layout_v<DataBindBindingAddress>);
 static_assert(std::is_standard_layout_v<DataBindMessagePlanDiagnostic>);
 static_assert(std::is_standard_layout_v<DataBindNativeTypeBinding>);
+static_assert(std::is_standard_layout_v<DataBindNativeExecution>);
 static_assert(std::is_standard_layout_v<DataBindNativeErrorBinding>);
 static_assert(std::is_standard_layout_v<DataBindServiceNativeBinding>);
 static_assert(std::is_standard_layout_v<DataBindBindingOutcome>);

@@ -10,10 +10,14 @@ const cmeta_function_desc *
 databind_13_ServiceNative_4_Calc_3_Add__databind_function(void);
 const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi(void);
+const DataBindNativeExecution *
+databind_13_ServiceNative_4_Calc_3_Add__databind_execution(void);
 const cmeta_function_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function(void);
 const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function_abi(void);
+const DataBindNativeExecution *
+databind_13_ServiceNative_4_Calc_4_Find__databind_execution(void);
 DataBindStatus databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
     DataBindNativeTypeBinding *request_out,
     DataBindNativeTypeBinding *response_out,
@@ -145,6 +149,15 @@ spec("DataBind canonical Service native lowering") {
         databind_13_ServiceNative_4_Calc_3_Add__databind_function();
     const cmeta_function_abi_desc *abi =
         databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi();
+    const DataBindNativeExecution *execution =
+        databind_13_ServiceNative_4_Calc_3_Add__databind_execution();
+    const DataBindNativeExecution *other_execution =
+        databind_13_ServiceNative_4_Calc_4_Find__databind_execution();
+    DataBindNativeExecution mismatch;
+    AddRequest_t invoke_request = {0};
+    AddResponse_t invoke_response = {0};
+    void *invoke_params[] = {&invoke_request, &invoke_response};
+    int invoke_status = -99;
     DataBindNativeTypeBinding request =
         (DataBindNativeTypeBinding){0};
     DataBindNativeTypeBinding response =
@@ -166,6 +179,25 @@ spec("DataBind canonical Service native lowering") {
 
     check_not_null(function);
     check_not_null(abi);
+    check_not_null(execution);
+    check_not_null(other_execution);
+    check_true(data_bind_native_execution_valid(execution));
+    check_true(data_bind_native_execution_valid(other_execution));
+    check_true(execution->function == function);
+    check_true(execution->abi == abi);
+    check_not_null(execution->invoke);
+
+    invoke_request.left = 7u;
+    invoke_request.scale = 3u;
+    check_true(execution->invoke(
+        execution->context, &invoke_status, invoke_params, 2u));
+    check_equal(invoke_status, 0);
+    check_equal(invoke_response.sum, (uint32_t)21u);
+
+    mismatch = *execution;
+    mismatch.abi = other_execution->abi;
+    check_false(data_bind_native_execution_valid(&mismatch));
+
     check_true(cmeta_function_desc_valid(function));
     check_true(cmeta_function_abi_desc_valid(abi));
     check_true(abi->function == function);

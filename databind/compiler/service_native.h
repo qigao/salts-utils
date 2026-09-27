@@ -112,6 +112,26 @@ int databind_compiler_service_native_emit_reflection(
     int emit_accessors);
 
 /*
+ * Emit the declaration-specific exact invocation adapter from the same
+ * operation lowering used for FunctionMeta/FunctionAbi.
+ *
+ * The adapter symbol is:
+ *   <symbol>__databind_invoke
+ *
+ * When emit_descriptor is nonzero, also emit:
+ *   <symbol>__execution_meta
+ *   <symbol>__databind_execution()
+ *
+ * Publication backends may request only the adapter so Plugin/HTTP/RPC reuse
+ * the same exact-call generation logic without importing each other's runtime
+ * ownership/lifecycle model.
+ */
+int databind_compiler_service_native_emit_execution(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation,
+    int emit_descriptor);
+
+/*
  * Emit the generated host-side DataBind native-binding initializer. The caller
  * owns request/response/service structs for at least as long as any compiled
  * BindingPlan retains them.
