@@ -15,6 +15,8 @@ spec("DataBind generated Binary MethodPlan admission") {
     static const char output[] =
         "databind_binary_method_plan_admission.rpc.h";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_rpc_operation_config operation = {
         "BinaryGate", "Use", "binary.use",
@@ -34,8 +36,8 @@ spec("DataBind generated Binary MethodPlan admission") {
 
     (void)salts_fs_unlink(output);
     check_equal(
-        tbe_compiler_parse_schema_file(
-            BINARY_ADMISSION_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            BINARY_ADMISSION_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
@@ -48,7 +50,7 @@ spec("DataBind generated Binary MethodPlan admission") {
     /* Non-Binary representation does not consult BinaryLayoutIR. */
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         0);
     check_equal(
         salts_fs_access(output, SALTS_FS_ACCESS_EXISTS),
@@ -62,10 +64,11 @@ spec("DataBind generated Binary MethodPlan admission") {
     operation.ingress_format = DATA_BIND_FORMAT_BINARY;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
