@@ -1,6 +1,7 @@
 #include "socket_plan_projection.h"
 
 #include "binary_layout_ir.h"
+#include "binary_reader_codegen.h"
 #include "message_native.h"
 
 #include "salts_fs.h"
@@ -258,6 +259,14 @@ static int socket_generate(
   if (databind_compiler_message_native_emit_binding(
           file, &native_binding, config->symbol_prefix) != 0)
     goto cleanup;
+
+  if (config->format == DATA_BIND_FORMAT_BINARY &&
+      databind_compiler_binary_reader_admit(root, message_type) == 0) {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_binary_reader_emit(
+            file, root, message_type, config->symbol_prefix) != 0)
+      goto cleanup;
+  }
 
   if (fprintf(file,
               "\nstatic const DataBindSocketPlan %s_socket_plan = {\n"
