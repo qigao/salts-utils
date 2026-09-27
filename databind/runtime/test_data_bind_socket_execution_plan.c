@@ -1,4 +1,5 @@
 #include "data_bind_socket_execution_plan.h"
+#include "data_bind_json_provider.h"
 
 #include "tinytest.h"
 
@@ -126,7 +127,7 @@ static DataBindNativeOptions socket_native_options(
 static DataBind *socket_codec(void) {
   static const char schema[] =
       "message Event {"
-      " @Min(1) @Max(10) uint32 sequence;"
+      " [name(seq), alias(legacySeq)] @Min(1) @Max(10) uint32 sequence;"
       " optional uint32 sample default 7;"
       "}"
       "channel Events: Event;";
@@ -137,6 +138,37 @@ static DataBind *socket_codec(void) {
           schema, sizeof(schema) - 1u, &codec, &error),
       DATA_BIND_OK);
   return codec;
+}
+
+static const DataBindFormatProvider *COUNTED_JSON_BASE;
+static size_t COUNTED_JSON_OPEN;
+static size_t COUNTED_JSON_CLOSE;
+
+static DataBindStatus counted_json_open(
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    cserde_reader **out_reader,
+    void **out_owner,
+    DataBindError *error) {
+  ++COUNTED_JSON_OPEN;
+  return COUNTED_JSON_BASE->open_reader(
+      data, len, max_depth, out_reader, out_owner, error);
+}
+
+static void counted_json_close(
+    cserde_reader *reader, void *owner) {
+  ++COUNTED_JSON_CLOSE;
+  COUNTED_JSON_BASE->close_reader(reader, owner);
+}
+
+static DataBindFormatProvider counted_json_provider(void) {
+  DataBindFormatProvider provider =
+      DATA_BIND_FORMAT_PROVIDER_INIT(
+          DATA_BIND_FORMAT_JSON,
+          counted_json_open,
+          counted_json_close);
+  return provider;
 }
 
 spec("DataBind SocketExecutionPlan") {
@@ -233,6 +265,146 @@ spec("DataBind SocketExecutionPlan") {
     check_equal(diagnostic.schema_field, "sequence");
 
     data_bind_socket_execution_plan_free(execution);
+  }
+
+  it("decodes raw JSON through explicit provider FormatPlan and MessagePlan") {
+    static const char valid_json[] = "{\"legacySeq\":3}";
+    static const char invalid_json[] = "{\"seq\":0}";
+    static const char unknown_json[] = "{\"vendor\":1}";
+    DataBindSocketPlan socket = {
+        sizeof(DataBindSocketPlan),
+        DATA_BIND_SOCKET_PLAN_ABI_VERSION,
+        "Events",
+        "Event",
+        DATA_BIND_FORMAT_JSON,
+        DATA_BIND_SOCKET_MODE_STREAM,
+        DATA_BIND_SOCKET_FRAMING_LENGTH32_BE,
+        4096u,
+        socket_event_binding};
+    DataBind *codec = socket_codec();
+    DataBindSocketExecutionPlan *execution = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[2048] = {0};
+    DataBindNativeOptions options =
+        socket_native_options(workspace, sizeof(workspace));
+    SocketEvent valid = {0};
+    SocketEvent invalid = {0};
+    SocketEvent unknown = {0};
+    DataBindFormatProvider provider;
+    DataBindFormatProvider wrong_provider;
+    DataBindFormatProvider fake_binary_provider;
+    size_t open_before;
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_socket_execution_plan_compile(
+            codec, &socket, &execution, &error),
+        DATA_BIND_OK);
+    check_not_null(execution);
+
+    /* Runtime holds FormatPlan/MessagePlan facts, not the startup codec. */
+    data_bind_free(codec);
+    codec = NULL;
+
+    COUNTED_JSON_BASE = data_bind_json_format_provider();
+    check_not_null(COUNTED_JSON_BASE);
+    if (COUNTED_JSON_BASE == NULL) {
+      data_bind_socket_execution_plan_free(execution);
+      return;
+    }
+    COUNTED_JSON_OPEN = 0u;
+    COUNTED_JSON_CLOSE = 0u;
+    provider = counted_json_provider();
+
+    check_equal(
+        data_bind_socket_execution_plan_decode_buffer(
+            execution, &provider,
+            valid_json, sizeof(valid_json) - 1u, 16u,
+            &options, &valid, sizeof(valid),
+            &diagnostic, &error),
+        DATA_BIND_OK);
+    check_equal(valid.sequence, (uint32_t)3u);
+    check_equal(valid.sample, (uint32_t)7u);
+    check_equal(valid.presence, (uint8_t)1u);
+    check_equal(COUNTED_JSON_OPEN, (size_t)1u);
+    check_equal(COUNTED_JSON_CLOSE, (size_t)1u);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_socket_execution_plan_decode_buffer(
+            execution, &provider,
+            invalid_json, sizeof(invalid_json) - 1u, 16u,
+            &options, &invalid, sizeof(invalid),
+            &diagnostic, &error),
+        DATA_BIND_ERR_VALIDATION);
+    check_equal(invalid.sequence, (uint32_t)0u);
+    check_equal(invalid.sample, (uint32_t)0u);
+    check_equal(invalid.presence, (uint8_t)0u);
+    check_equal(COUNTED_JSON_OPEN, (size_t)2u);
+    check_equal(COUNTED_JSON_CLOSE, (size_t)2u);
+    check_equal(error.code, DATA_BIND_ERR_VALIDATION);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_socket_execution_plan_decode_buffer(
+            execution, &provider,
+            unknown_json, sizeof(unknown_json) - 1u, 16u,
+            &options, &unknown, sizeof(unknown),
+            &diagnostic, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_equal(unknown.sequence, (uint32_t)0u);
+    check_equal(unknown.sample, (uint32_t)0u);
+    check_equal(unknown.presence, (uint8_t)0u);
+    check_equal(COUNTED_JSON_OPEN, (size_t)3u);
+    check_equal(COUNTED_JSON_CLOSE, (size_t)3u);
+
+    wrong_provider = provider;
+    wrong_provider.format = DATA_BIND_FORMAT_YAML;
+    open_before = COUNTED_JSON_OPEN;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_socket_execution_plan_decode_buffer(
+            execution, &wrong_provider,
+            valid_json, sizeof(valid_json) - 1u, 16u,
+            &options, &valid, sizeof(valid),
+            &diagnostic, &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(COUNTED_JSON_OPEN, open_before);
+
+    data_bind_socket_execution_plan_free(execution);
+    execution = NULL;
+
+    codec = socket_codec();
+    check_not_null(codec);
+    if (codec != NULL) {
+      socket.format = DATA_BIND_FORMAT_BINARY;
+      error = (DataBindError)DATA_BIND_ERROR_INIT;
+      check_equal(
+          data_bind_socket_execution_plan_compile(
+              codec, &socket, &execution, &error),
+          DATA_BIND_OK);
+      fake_binary_provider = provider;
+      fake_binary_provider.format = DATA_BIND_FORMAT_BINARY;
+      open_before = COUNTED_JSON_OPEN;
+      check_equal(
+          data_bind_socket_execution_plan_decode_buffer(
+              execution, &fake_binary_provider,
+              valid_json, sizeof(valid_json) - 1u, 16u,
+              &options, &valid, sizeof(valid),
+              &diagnostic, &error),
+          DATA_BIND_ERR_SCHEMA);
+      check_equal(COUNTED_JSON_OPEN, open_before);
+      check_contains(error.message, "BinaryLayoutIR");
+      data_bind_socket_execution_plan_free(execution);
+      data_bind_free(codec);
+    }
   }
 
   it("rejects a resolver whose native identity disagrees with the Channel") {
