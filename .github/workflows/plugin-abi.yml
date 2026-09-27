@@ -206,6 +206,25 @@ jobs:
           cmake --install build/openapi-package
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -x "$prefix/bin/databindc"
+          test -f "$prefix/include/data_bind_native_binding.h"
+          grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          cat > build/installed-native-execution.c <<'EOF'
+          #include <data_bind_native_binding.h>
+          _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
+                         "unexpected DataBind native execution ABI");
+          int main(void) {
+            DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT;
+            return execution.size == sizeof(DataBindNativeExecution) &&
+                           execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cc -std=c11 -Wall -Wextra -Werror \
+            -I"$prefix/include" -I"$SALTS_ROOT/include" \
+            build/installed-native-execution.c \
+            -o build/installed-native-execution
+          ./build/installed-native-execution
           cmake -S databind/compiler/package_config/databind_target \
             -B build/openapi-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
