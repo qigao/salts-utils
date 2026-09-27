@@ -82,7 +82,12 @@ spec("DataBind reusable message-native lowering") {
     check_true(emitted_contains(
         &binding, "offsetof(Event_t, _nulls)"));
     check_true(emitted_contains(
-        &binding, "DATA_BIND_NATIVE_BINDING_ABI_VERSION"));
+        &binding,
+        "DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"Event\", data)"));
+    check_true(emitted_contains(
+        &binding, "value.presence = databind_native_channel_event__presence"));
+    check_true(emitted_contains(
+        &binding, "value.nulls = databind_native_channel_event__nulls"));
     check_true(emitted_contains(
         &binding,
         "databind_native_channel_event__databind_message_native_binding"));
