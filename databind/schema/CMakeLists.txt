@@ -74,11 +74,13 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
 
 install(
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/idl.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/node_tree.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/schema_cmeta.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/tbe_error.h
   DESTINATION include
-  COMPONENT DataBind
-  FILES_MATCHING
-  PATTERN "*.h")
+  COMPONENT DataBind)
 
 # =============================================================================
 # Tests
