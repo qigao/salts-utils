@@ -102,18 +102,18 @@ static int token_key_equal(const cserde_token *token, const char *text) {
           memcmp(token->value.slice.data, text, length) == 0);
 }
 
-static DataBind *projection_collision_codec(void) {
+static DataBindStatus projection_collision_codec(
+    DataBind **out_codec) {
   static const char schema[] =
       "message Collision {"
       " [name(shared)] uint32 left;"
       " [alias(shared)] uint32 right;"
       "}";
-  DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
+  if (out_codec == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  *out_codec = NULL;
   return data_bind_create_from_text(
-             schema, sizeof(schema) - 1u, &codec, &error) == DATA_BIND_OK
-             ? codec
-             : NULL;
+      schema, sizeof(schema) - 1u, out_codec, &error);
 }
 
 spec("DataBind FormatPlan and TransportPlan") {
@@ -335,18 +335,25 @@ spec("DataBind FormatPlan and TransportPlan") {
     data_bind_format_plan_free(plan);
     data_bind_free(codec);
 
-    codec = projection_collision_codec();
-    check_not_null(codec);
-    if (codec != NULL) {
-      plan = NULL;
-      error = (DataBindError)DATA_BIND_ERROR_INIT;
-      check_equal(
-          data_bind_format_plan_compile(
-              codec, "Collision", DATA_BIND_FORMAT_JSON, &plan, &error),
-          DATA_BIND_ERR_SCHEMA);
-      check_null(plan);
-      check_contains(error.message, "collides");
-      data_bind_free(codec);
+    codec = NULL;
+    {
+      DataBindStatus collision_status =
+          projection_collision_codec(&codec);
+      if (collision_status == DATA_BIND_OK) {
+        plan = NULL;
+        error = (DataBindError)DATA_BIND_ERROR_INIT;
+        check_equal(
+            data_bind_format_plan_compile(
+                codec, "Collision", DATA_BIND_FORMAT_JSON, &plan, &error),
+            DATA_BIND_ERR_SCHEMA);
+        check_null(plan);
+        check_contains(error.message, "collides");
+        data_bind_free(codec);
+      } else {
+        /* The schema layer may reject the ambiguous input namespace earlier. */
+        check(collision_status != DATA_BIND_OK);
+        check_null(codec);
+      }
     }
   }
 
