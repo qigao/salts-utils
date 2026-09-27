@@ -36,3 +36,20 @@ int databind_13_ServiceNative_4_Calc_4_Find(
   response->sum = request->left * request->scale;
   return 0;
 }
+
+
+int databind_13_ServiceNative_3_A_B_1_C(
+    const AddRequest_t *request,
+    AddResponse_t *response) {
+  if (request == NULL || response == NULL) return -1;
+  response->sum = request->left + request->scale;
+  return 0;
+}
+
+int databind_13_ServiceNative_1_A_3_B_C(
+    const AddRequest_t *request,
+    AddResponse_t *response) {
+  if (request == NULL || response == NULL) return -1;
+  response->sum = request->left ^ request->scale;
+  return 0;
+}
