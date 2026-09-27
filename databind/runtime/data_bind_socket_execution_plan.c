@@ -11,6 +11,7 @@ struct DataBindSocketExecutionPlan {
   char *message_type;
   DataBindNativeTypeBinding native;
   DataBindMessagePlan *message;
+  DataBindFormatPlan *format;
 };
 
 static size_t socket_exec_required_plan_size(void) {
@@ -70,6 +71,7 @@ static char *socket_exec_strdup(const char *text) {
 void data_bind_socket_execution_plan_free(
     DataBindSocketExecutionPlan *plan) {
   if (plan == NULL) return;
+  data_bind_format_plan_free(plan->format);
   data_bind_message_plan_free(plan->message);
   free(plan->message_type);
   free(plan->channel_name);
@@ -167,6 +169,11 @@ DataBindStatus data_bind_socket_execution_plan_compile(
     goto fail;
   }
 
+  status = data_bind_format_plan_compile(
+      codec, plan->message_type, plan->socket.format,
+      &plan->format, error);
+  if (status != DATA_BIND_OK) goto fail;
+
   *out_plan = plan;
   socket_exec_error_clear(error);
   return DATA_BIND_OK;
@@ -199,4 +206,88 @@ DataBindStatus data_bind_socket_execution_plan_decode_native(
   return data_bind_message_plan_decode_native(
       plan->message, native_options, reader,
       destination, destination_bytes, diagnostic);
+}
+
+DataBindStatus data_bind_socket_execution_plan_decode_buffer(
+    const DataBindSocketExecutionPlan *plan,
+    const DataBindFormatProvider *provider,
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic,
+    DataBindError *error) {
+  DataBindFormatReader lease = DATA_BIND_FORMAT_READER_INIT;
+  DataBindFormatCanonicalReader canonical =
+      DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+  cserde_reader *reader;
+  DataBindStatus status;
+  DataBindStatus close_status;
+
+  socket_exec_error_clear(error);
+
+  if (plan == NULL || plan->message == NULL || plan->format == NULL ||
+      provider == NULL || data == NULL ||
+      native_options == NULL || destination == NULL)
+    return socket_exec_fail(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        plan != NULL ? plan->message_type : NULL,
+        "Invalid parser-backed Socket decode arguments");
+
+  if (provider->size <
+          offsetof(DataBindFormatProvider, format) +
+              sizeof(provider->format) ||
+      provider->abi_version != DATA_BIND_FORMAT_PROVIDER_ABI_VERSION)
+    return socket_exec_fail(
+        error, DATA_BIND_ERR_INVALID_ARG, plan->message_type,
+        "Socket format provider ABI is invalid");
+
+  if (plan->socket.format == DATA_BIND_FORMAT_BINARY)
+    return socket_exec_fail(
+        error, DATA_BIND_ERR_SCHEMA, plan->message_type,
+        "Binary Socket execution requires the BinaryLayoutIR runtime reader");
+
+  if (provider->format != plan->socket.format)
+    return socket_exec_fail(
+        error, DATA_BIND_ERR_TYPE_MISMATCH, plan->message_type,
+        "Socket format provider does not match the compiled SocketPlan format");
+
+  status = data_bind_format_reader_open(
+      provider, data, len, max_depth, &lease, error);
+  if (status != DATA_BIND_OK) return status;
+
+  status = data_bind_format_canonical_reader_init(
+      plan->format, lease.reader, &canonical, error);
+  if (status == DATA_BIND_OK) {
+    reader = data_bind_format_canonical_reader_reader(&canonical);
+    if (reader == NULL) {
+      status = socket_exec_fail(
+          error, DATA_BIND_ERR_RUNTIME, plan->message_type,
+          "FormatPlan canonical reader did not publish a CSerde reader");
+    } else {
+      status = data_bind_message_plan_decode_native(
+          plan->message, native_options, reader,
+          destination, destination_bytes, diagnostic);
+      if (status != DATA_BIND_OK && error != NULL &&
+          error->code == DATA_BIND_OK) {
+        socket_exec_fail(
+            error, status,
+            diagnostic != NULL && diagnostic->schema_field[0] != '\0'
+                ? diagnostic->schema_field
+                : plan->message_type,
+            diagnostic != NULL && diagnostic->message[0] != '\0'
+                ? diagnostic->message
+                : "Socket MessagePlan decode failed");
+      }
+    }
+  }
+
+  close_status = data_bind_format_reader_close(&lease);
+  if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+    return socket_exec_fail(
+        error, close_status, plan->message_type,
+        "Socket format provider lease close failed");
+  return status;
 }
