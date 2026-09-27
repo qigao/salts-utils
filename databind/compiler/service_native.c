@@ -1127,7 +1127,7 @@ int databind_compiler_service_native_emit_execution(
   if (operation->error_count == 0u) {
     status = fprintf(
         file,
-        "static bool %s__databind_invoke(\n"
+        "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
         "    void *context, void *return_storage, void *const *params,\n"
         "    size_t param_count) {\n"
         "  int result;\n"
@@ -1147,7 +1147,7 @@ int databind_compiler_service_native_emit_execution(
     if (operation->errors == NULL) return -1;
     status = fprintf(
         file,
-        "static bool %s__databind_invoke(\n"
+        "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
         "    void *context, void *return_storage, void *const *params,\n"
         "    size_t param_count) {\n"
         "  int result;\n"
