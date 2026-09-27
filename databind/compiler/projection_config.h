@@ -3,6 +3,7 @@
 
 #include "method_plan_projection.h"
 #include "socket_plan_projection.h"
+#include "flowmq_plan_projection.h"
 
 #include <stddef.h>
 
@@ -27,13 +28,16 @@ typedef struct databind_compiler_projection_config {
 
   databind_compiler_socket_projection_config socket;
   int has_socket;
+
+  databind_compiler_flowmq_projection_config flowmq;
+  int has_flowmq;
 } databind_compiler_projection_config;
 
 /*
  * Parse one compiler/control-plane JSON projection config.
  *
  * The config owns only transport representation. String pointers in the
- * materialized HTTP/RPC/Socket configs are borrowed from the retained JSON DOM
+ * materialized HTTP/RPC/Socket/FlowMQ configs are borrowed from the retained JSON DOM
  * and remain valid until dispose().
  */
 int databind_compiler_projection_config_load(
