@@ -1,4 +1,5 @@
 #include "binary_layout_ir.h"
+#include "schema_cmeta.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -86,6 +87,139 @@ static const Node *binary_find_record(
   if (record == NULL) record = binary_find_record_in(root, "groups", type_name);
   if (record == NULL) record = binary_find_record_in(root, "messages", type_name);
   return record;
+}
+
+static const Node *binary_find_enum(
+    const Node *root, const char *type_name) {
+  const Node *enums = binary_find_child(root, "enums");
+  size_t i;
+  if (enums == NULL || enums->type != NODE_LIST ||
+      type_name == NULL || type_name[0] == '\0')
+    return NULL;
+  for (i = 0u; i < enums->data.list.count; ++i) {
+    const Node *candidate = enums->data.list.items[i];
+    const char *name = binary_string_value(candidate, "enum_name");
+    if (name != NULL && strcmp(name, type_name) == 0)
+      return candidate;
+  }
+  return NULL;
+}
+
+static int binary_scalar_bits_valid(
+    databind_binary_scalar_kind kind, unsigned bits) {
+  switch (kind) {
+  case DATABIND_BINARY_SCALAR_NONE:
+    return bits == 0u;
+  case DATABIND_BINARY_SCALAR_BOOL:
+    return bits == 8u;
+  case DATABIND_BINARY_SCALAR_FLOAT:
+    return bits == 32u || bits == 64u;
+  case DATABIND_BINARY_SCALAR_SINT:
+  case DATABIND_BINARY_SCALAR_UINT:
+  case DATABIND_BINARY_SCALAR_ENUM_SINT:
+  case DATABIND_BINARY_SCALAR_ENUM_UINT:
+    return bits == 8u || bits == 16u || bits == 32u || bits == 64u;
+  default:
+    return 0;
+  }
+}
+
+static databind_binary_layout_status binary_field_scalar_representation(
+    const Node *root,
+    const Node *field_node,
+    databind_binary_field_layout *field,
+    databind_binary_layout_diagnostic *diagnostic) {
+  schema_cmeta_field_type semantic;
+  const cmeta_data_desc *data = NULL;
+  const char *field_name;
+  const char *declared_type;
+  unsigned bits = 0u;
+
+  if (root == NULL || field_node == NULL || field == NULL)
+    return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
+
+  field_name = binary_string_value(field_node, "name");
+  field->scalar_kind = DATABIND_BINARY_SCALAR_NONE;
+  field->scalar_bits = 0u;
+
+  if (!schema_cmeta_field_resolve(root, field_node, &semantic)) {
+    binary_diag(diagnostic, field_name,
+                "Binary scalar semantics cannot be resolved from canonical schema");
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+
+  switch (semantic.kind) {
+  case CMETA_DATA_BOOL:
+    field->scalar_kind = DATABIND_BINARY_SCALAR_BOOL;
+    bits = 8u;
+    break;
+
+  case CMETA_DATA_SINT:
+  case CMETA_DATA_UINT:
+    data = semantic.data;
+    if (data == NULL || data->shape == NULL) {
+      binary_diag(diagnostic, field_name,
+                  "Canonical integer metadata is incomplete");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    }
+    bits = ((const cmeta_data_integer_shape *)data->shape)->bits;
+    field->scalar_kind =
+        semantic.kind == CMETA_DATA_SINT
+            ? DATABIND_BINARY_SCALAR_SINT
+            : DATABIND_BINARY_SCALAR_UINT;
+    break;
+
+  case CMETA_DATA_FLOAT:
+    data = semantic.data;
+    if (data == NULL || data->shape == NULL) {
+      binary_diag(diagnostic, field_name,
+                  "Canonical float metadata is incomplete");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    }
+    bits = ((const cmeta_data_float_shape *)data->shape)->bits;
+    field->scalar_kind = DATABIND_BINARY_SCALAR_FLOAT;
+    break;
+
+  case CMETA_DATA_ENUM: {
+    const Node *enum_node;
+    const char *underlying;
+    declared_type = binary_string_value(field_node, "type");
+    enum_node = binary_find_enum(root, declared_type);
+    underlying = enum_node != NULL
+                     ? binary_string_value(enum_node, "underlying_type")
+                     : NULL;
+    data = schema_cmeta_builtin_data(underlying);
+    if (data == NULL || data->shape == NULL ||
+        (data->kind != CMETA_DATA_SINT &&
+         data->kind != CMETA_DATA_UINT)) {
+      binary_diag(diagnostic, field_name,
+                  "Canonical enum Binary storage is unavailable");
+      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+    }
+    bits = ((const cmeta_data_integer_shape *)data->shape)->bits;
+    field->scalar_kind =
+        data->kind == CMETA_DATA_SINT
+            ? DATABIND_BINARY_SCALAR_ENUM_SINT
+            : DATABIND_BINARY_SCALAR_ENUM_UINT;
+    break;
+  }
+
+  default:
+    /*
+     * Structural/custom/buffer semantics are intentionally not inferred into a
+     * scalar token class. Existing layout remains valid; the first generic
+     * Binary reader will fail closed on SCALAR_NONE.
+     */
+    return DATABIND_BINARY_LAYOUT_OK;
+  }
+
+  field->scalar_bits = bits;
+  if (!binary_scalar_bits_valid(field->scalar_kind, field->scalar_bits)) {
+    binary_diag(diagnostic, field_name,
+                "Canonical Binary scalar width is unsupported");
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+  return DATABIND_BINARY_LAYOUT_OK;
 }
 
 static int binary_size_add(size_t left, size_t right, size_t *out) {
@@ -185,6 +319,18 @@ databind_binary_layout_status databind_binary_layout_validate(
                                 0u, state_extent)) {
         binary_diag(diagnostic, field->field_id,
                     "Fixed Binary field range is invalid");
+        return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+      }
+      if (!binary_scalar_bits_valid(
+              field->scalar_kind, field->scalar_bits)) {
+        binary_diag(diagnostic, field->field_id,
+                    "Fixed Binary scalar representation is invalid");
+        return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+      }
+      if (field->scalar_kind != DATABIND_BINARY_SCALAR_NONE &&
+          field->wire_extent != (size_t)(field->scalar_bits / 8u)) {
+        binary_diag(diagnostic, field->field_id,
+                    "Fixed Binary scalar width disagrees with canonical semantics");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
       }
     } else if (field->kind == DATABIND_BINARY_FIELD_GROUP) {
@@ -301,7 +447,9 @@ static databind_binary_layout_status binary_build_field(
     binary_diag(diagnostic, name, "Fixed Binary field has no wire extent");
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
-  return DATABIND_BINARY_LAYOUT_OK;
+
+  return binary_field_scalar_representation(
+      root, field_node, field, diagnostic);
 }
 
 databind_binary_layout_status databind_binary_layout_build(
