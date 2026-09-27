@@ -147,6 +147,30 @@ jobs:
             -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_databind_plugin_generated_(dso|client))$' \
             --no-tests=error
 
+      - name: Qualify installed DataBind native execution ABI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          prefix="$RUNNER_TEMP/salts-utils-4.1-pair"
+          cmake --build build/pair-databind --parallel 2
+          cmake --install build/pair-databind --prefix "$prefix"
+          test -f "$prefix/include/data_bind_native_binding.h"
+          grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          cat > build/pair-native-execution-installed.c <<'EOF'
+          #include <data_bind_native_binding.h>
+          _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
+                         "unexpected DataBind native execution ABI");
+          int main(void) {
+            DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT;
+            return execution.size == sizeof(DataBindNativeExecution) &&
+                           execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cc -std=c11 -Wall -Wextra -Werror             -I"$prefix/include" -I"$SALTS_ROOT/include"             build/pair-native-execution-installed.c             -o build/pair-native-execution-installed
+          ./build/pair-native-execution-installed
+
       - name: Restore focused language-binding dependency closure
         shell: bash
         run: |
@@ -286,6 +310,25 @@ jobs:
           cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_databind_plugin_generated_dso test_databind_plugin_generated_client
           if errorlevel 1 exit /b 1
           ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_databind_plugin_generated_(dso|client))$" --no-tests=error
+          if errorlevel 1 exit /b 1
+
+      - name: Qualify installed DataBind native execution ABI
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "prefix=%RUNNER_TEMP%\salts-utils-4.1-pair"
+          cmake --build build\pair-databind --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install build\pair-databind --prefix "%prefix%"
+          if errorlevel 1 exit /b 1
+          if not exist "%prefix%\include\data_bind_native_binding.h" exit /b 1
+          > build\pair-native-execution-installed.c echo #include ^<data_bind_native_binding.h^>
+          >> build\pair-native-execution-installed.c echo _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u, "unexpected DataBind native execution ABI");
+          >> build\pair-native-execution-installed.c echo int main(void) { DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT; return execution.size == sizeof(DataBindNativeExecution) ^&^& execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION ? 0 : 1; }
+          cl /nologo /std:c11 /W4 /WX /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-native-execution-installed.c /Fe:build\pair-native-execution-installed.exe
+          if errorlevel 1 exit /b 1
+          build\pair-native-execution-installed.exe
           if errorlevel 1 exit /b 1
 
       - name: Restore focused language-binding dependency closure
