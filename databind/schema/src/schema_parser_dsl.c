@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "idl.h"
 #include "schema_builtin_type.h"
 #include "schema_size.h"
 #include "schema_enum.h"
@@ -1486,7 +1486,7 @@ static int merge_schema_into_root(Node *root, Node *parsed) {
     return 0;
 }
 
-int parse_schema(const char *text, size_t len, Node *root, tbe_error_t *err) {
+int idl_parse(const char *text, size_t len, Node *root, tbe_error_t *err) {
     if (err) {
         tbe_error_init(err);
     }
