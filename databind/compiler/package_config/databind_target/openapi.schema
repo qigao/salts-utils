@@ -1,0 +1,19 @@
+schema InstalledOpenApi [version(1)];
+
+message UserRequest {
+    @Min(1) uint32 id;
+    @Size(min = 2, max = 16) string name;
+}
+
+message UserResponse {
+    uint32 id;
+    string name;
+}
+
+message NotFoundError {
+    @Size(max = 32) string resource;
+}
+
+service Users {
+    Get: UserRequest -> UserResponse throws NotFoundError;
+}
