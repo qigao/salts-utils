@@ -1,4 +1,5 @@
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 
 #include <salts_cmeta_data.h>
@@ -18,7 +19,7 @@ enum {
 };
 
 typedef union VariantWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[VARIANT_WORKSPACE_BYTES];
 } VariantWorkspace;
 
