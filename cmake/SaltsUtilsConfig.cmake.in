@@ -22,7 +22,7 @@ if(NOT TARGET OpenSSL::Crypto)
 endif()
 unset(Salts_DIR CACHE)
 unset(Salts_DIR)
-find_dependency(Salts 1.7.9 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
+find_dependency(Salts 1.8.0 EXACT CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 foreach(required_salts_target IN ITEMS
@@ -32,7 +32,9 @@ foreach(required_salts_target IN ITEMS
         Salts::CFlow
         Salts::CSTL
         Salts::CSerde
-        Salts::UriParser)
+        Salts::UriParser
+        Salts::PluginABI
+        Salts::Plugin)
   if(NOT TARGET ${required_salts_target})
     message(FATAL_ERROR
             "SALTS_ROOT package is missing required target ${required_salts_target}")
@@ -60,12 +62,31 @@ foreach(pre_migration_target IN ITEMS
         Salts::DateTimeParser
         Salts::CYaml
         Salts::CYamlJsonAdapter
-        Salts::Selector)
+        Salts::Selector
+        Salts::BindingsCpp
+        Salts::Lua
+        Salts::QuickJS
+        Salts::CBind)
   if(TARGET ${pre_migration_target})
     message(FATAL_ERROR
             "SALTS_ROOT points to a pre-migration Salts package that still exports ${pre_migration_target}")
   endif()
 endforeach()
+
+
+if("@SALTS_UTILS_BINDINGS_LUA@" STREQUAL "ON")
+  find_dependency(Lua)
+  if(NOT TARGET Lua::Lua)
+    add_library(Lua::Lua INTERFACE IMPORTED)
+    set_target_properties(Lua::Lua PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
+      INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}")
+  endif()
+endif()
+
+if("@SALTS_UTILS_BINDINGS_QUICKJS@" STREQUAL "ON")
+  find_dependency(qjs CONFIG)
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
