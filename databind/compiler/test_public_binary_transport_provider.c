@@ -155,7 +155,9 @@ spec("generated Binary provider transport composition") {
     unsigned char workspace[2048] = {0};
     DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
     union {
-      max_align_t alignment;
+      uint64_t align_u64;
+      double align_double;
+      void *align_pointer;
       unsigned char bytes[256];
     } storage;
     unsigned char wire[64] = {0};
@@ -173,6 +175,7 @@ spec("generated Binary provider transport composition") {
     check_equal(binding.idl_type_name, "Event");
     check_true(binding.data != NULL && binding.data->storage_type != NULL);
     check(binding.data->storage_type->size <= sizeof(storage.bytes));
+    check(binding.data->storage_type->align <= _Alignof(storage));
     if (binding.data == NULL || binding.data->storage_type == NULL ||
         binding.data->storage_type->size > sizeof(storage.bytes))
       return;
