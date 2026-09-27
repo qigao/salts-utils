@@ -1,73 +1,73 @@
 include_guard(GLOBAL)
 include(CMakeParseArguments)
 
-set(SaltsUtils_DATABINDC_EXECUTABLE ""
+set(SaltsUtils_IDLC_EXECUTABLE ""
     CACHE FILEPATH
-    "Host databindc executable used by databind_target()")
-set(SaltsUtils_DATABINDC_HOST_SALTS_ROOT ""
+    "Host salts-idlc executable used by salts_idl_target()")
+set(SaltsUtils_IDLC_HOST_SALTS_ROOT ""
     CACHE PATH
-    "Host Salts SDK used to run databindc while cross-compiling")
+    "Host Salts SDK used to run salts-idlc while cross-compiling")
 
-function(_saltsutils_databind_resolve_compiler
+function(_saltsutils_idl_resolve_compiler
          out_executable out_dependency out_runtime_root out_salts_root)
-  if(SaltsUtils_DATABINDC_EXECUTABLE)
-    if(NOT EXISTS "${SaltsUtils_DATABINDC_EXECUTABLE}")
+  if(SaltsUtils_IDLC_EXECUTABLE)
+    if(NOT EXISTS "${SaltsUtils_IDLC_EXECUTABLE}")
       message(FATAL_ERROR
-              "SaltsUtils_DATABINDC_EXECUTABLE does not exist: "
-              "${SaltsUtils_DATABINDC_EXECUTABLE}")
+              "SaltsUtils_IDLC_EXECUTABLE does not exist: "
+              "${SaltsUtils_IDLC_EXECUTABLE}")
     endif()
 
-    get_filename_component(_databindc_bin
-      "${SaltsUtils_DATABINDC_EXECUTABLE}" DIRECTORY)
-    get_filename_component(_databindc_prefix
-      "${_databindc_bin}" DIRECTORY)
+    get_filename_component(_idlc_bin
+      "${SaltsUtils_IDLC_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_idlc_prefix
+      "${_idlc_bin}" DIRECTORY)
 
     if(CMAKE_CROSSCOMPILING)
-      if(NOT SaltsUtils_DATABINDC_HOST_SALTS_ROOT)
+      if(NOT SaltsUtils_IDLC_HOST_SALTS_ROOT)
         message(FATAL_ERROR
-                "Cross-compiling databind_target() requires "
-                "SaltsUtils_DATABINDC_HOST_SALTS_ROOT for the host compiler "
+                "Cross-compiling salts_idl_target() requires "
+                "SaltsUtils_IDLC_HOST_SALTS_ROOT for the host compiler "
                 "runtime closure.")
       endif()
-      set(_databindc_salts_root
-          "${SaltsUtils_DATABINDC_HOST_SALTS_ROOT}")
+      set(_idlc_salts_root
+          "${SaltsUtils_IDLC_HOST_SALTS_ROOT}")
     else()
       if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
         message(FATAL_ERROR
-                "SALTS_ROOT must identify the host Salts SDK used by databindc")
+                "SALTS_ROOT must identify the host Salts SDK used by salts-idlc")
       endif()
-      file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _databindc_salts_root)
+      file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _idlc_salts_root)
     endif()
 
     set(${out_executable}
-        "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
+        "${SaltsUtils_IDLC_EXECUTABLE}" PARENT_SCOPE)
     set(${out_dependency}
-        "${SaltsUtils_DATABINDC_EXECUTABLE}" PARENT_SCOPE)
+        "${SaltsUtils_IDLC_EXECUTABLE}" PARENT_SCOPE)
     set(${out_runtime_root}
-        "${_databindc_prefix}" PARENT_SCOPE)
+        "${_idlc_prefix}" PARENT_SCOPE)
     set(${out_salts_root}
-        "${_databindc_salts_root}" PARENT_SCOPE)
+        "${_idlc_salts_root}" PARENT_SCOPE)
     return()
   endif()
 
   if(CMAKE_CROSSCOMPILING)
     message(FATAL_ERROR
-            "databind_target() requires a host databindc while cross-compiling. "
-            "Set SaltsUtils_DATABINDC_EXECUTABLE and "
-            "SaltsUtils_DATABINDC_HOST_SALTS_ROOT.")
+            "salts_idl_target() requires a host salts-idlc while cross-compiling. "
+            "Set SaltsUtils_IDLC_EXECUTABLE and "
+            "SaltsUtils_IDLC_HOST_SALTS_ROOT.")
   endif()
 
   if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "")
     message(FATAL_ERROR
-            "SALTS_ROOT must identify the host Salts SDK used by databindc")
+            "SALTS_ROOT must identify the host Salts SDK used by salts-idlc")
   endif()
-  file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _databindc_salts_root)
+  file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _idlc_salts_root)
 
-  if(TARGET databindc)
-    set(${out_executable} "$<TARGET_FILE:databindc>" PARENT_SCOPE)
-    set(${out_dependency} "databindc" PARENT_SCOPE)
+  if(TARGET salts-idlc)
+    set(${out_executable} "$<TARGET_FILE:salts-idlc>" PARENT_SCOPE)
+    set(${out_dependency} "salts-idlc" PARENT_SCOPE)
     set(${out_runtime_root} "${CMAKE_BINARY_DIR}" PARENT_SCOPE)
-    set(${out_salts_root} "${_databindc_salts_root}" PARENT_SCOPE)
+    set(${out_salts_root} "${_idlc_salts_root}" PARENT_SCOPE)
     return()
   endif()
 
@@ -77,44 +77,44 @@ function(_saltsutils_databind_resolve_compiler
     list(APPEND _databind_hints "${SaltsUtils_DATABINDC_HINT}")
   endif()
 
-  unset(_databindc_program)
-  unset(_databindc_program CACHE)
+  unset(_idlc_program)
+  unset(_idlc_program CACHE)
   if(_databind_hints)
-    find_program(_databindc_program
-      NAMES databindc
+    find_program(_idlc_program
+      NAMES salts-idlc
       HINTS ${_databind_hints}
       NO_DEFAULT_PATH
       NO_CACHE)
-    if(NOT _databindc_program)
+    if(NOT _idlc_program)
       message(FATAL_ERROR
               "The installed SaltsUtils package is missing its matching host "
-              "databindc under: ${SaltsUtils_DATABINDC_HINT}. "
-              "Set SaltsUtils_DATABINDC_EXECUTABLE explicitly only when a "
+              "salts-idlc under: ${SaltsUtils_DATABINDC_HINT}. "
+              "Set SaltsUtils_IDLC_EXECUTABLE explicitly only when a "
               "different qualified host tool is intentional.")
     endif()
   else()
-    find_program(_databindc_program
-      NAMES databindc
+    find_program(_idlc_program
+      NAMES salts-idlc
       NO_CACHE)
-    if(NOT _databindc_program)
+    if(NOT _idlc_program)
       message(FATAL_ERROR
-              "databind_target() could not find host databindc. "
-              "Set SaltsUtils_DATABINDC_EXECUTABLE explicitly.")
+              "salts_idl_target() could not find host salts-idlc. "
+              "Set SaltsUtils_IDLC_EXECUTABLE explicitly.")
     endif()
   endif()
 
-  get_filename_component(_databindc_bin
-    "${_databindc_program}" DIRECTORY)
-  get_filename_component(_databindc_prefix
-    "${_databindc_bin}" DIRECTORY)
+  get_filename_component(_idlc_bin
+    "${_idlc_program}" DIRECTORY)
+  get_filename_component(_idlc_prefix
+    "${_idlc_bin}" DIRECTORY)
 
-  set(${out_executable} "${_databindc_program}" PARENT_SCOPE)
-  set(${out_dependency} "${_databindc_program}" PARENT_SCOPE)
-  set(${out_runtime_root} "${_databindc_prefix}" PARENT_SCOPE)
-  set(${out_salts_root} "${_databindc_salts_root}" PARENT_SCOPE)
+  set(${out_executable} "${_idlc_program}" PARENT_SCOPE)
+  set(${out_dependency} "${_idlc_program}" PARENT_SCOPE)
+  set(${out_runtime_root} "${_idlc_prefix}" PARENT_SCOPE)
+  set(${out_salts_root} "${_idlc_salts_root}" PARENT_SCOPE)
 endfunction()
 
-function(_saltsutils_databind_host_command
+function(_saltsutils_idl_host_command
          out_command executable runtime_root salts_root)
   if(WIN32)
     set(_runtime_path
@@ -138,7 +138,7 @@ function(_saltsutils_databind_host_command
   endif()
 endfunction()
 
-function(databind_target)
+function(salts_idl_target)
   set(options)
   set(one_value_args
       TARGET
@@ -158,13 +158,13 @@ function(databind_target)
   foreach(required_arg IN ITEMS TARGET IDL)
     if(NOT DB_${required_arg})
       message(FATAL_ERROR
-              "databind_target() requires ${required_arg}")
+              "salts_idl_target() requires ${required_arg}")
     endif()
   endforeach()
 
   if(NOT DB_ARTIFACTS AND NOT DB_TRANSPORTS)
     message(FATAL_ERROR
-            "databind_target() requires at least one ARTIFACTS or TRANSPORTS entry")
+            "salts_idl_target() requires at least one ARTIFACTS or TRANSPORTS entry")
   endif()
 
   if(NOT DB_ARTIFACT_NAME)
@@ -174,7 +174,7 @@ function(databind_target)
      DB_ARTIFACT_NAME STREQUAL "." OR
      DB_ARTIFACT_NAME STREQUAL "..")
     message(FATAL_ERROR
-            "databind_target ARTIFACT_NAME is not a safe artifact basename: "
+            "salts_idl_target ARTIFACT_NAME is not a safe artifact basename: "
             "${DB_ARTIFACT_NAME}")
   endif()
 
@@ -195,7 +195,7 @@ function(databind_target)
       set(_has_openapi TRUE)
     else()
       message(FATAL_ERROR
-              "databind_target artifact is not publicly available yet: "
+              "salts_idl_target artifact is not publicly available yet: "
               "${artifact}")
     endif()
     list(APPEND _normalized_artifacts "${artifact_upper}")
@@ -213,7 +213,7 @@ function(databind_target)
       set(_has_flowmq TRUE)
     else()
       message(FATAL_ERROR
-              "databind_target transport is not publicly available yet: "
+              "salts_idl_target transport is not publicly available yet: "
               "${transport}")
     endif()
     list(APPEND _normalized_transports "${transport_upper}")
@@ -221,7 +221,7 @@ function(databind_target)
 
   if(_has_openapi AND NOT _has_http)
     message(FATAL_ERROR
-            "databind_target OPENAPI artifact requires HTTP transport")
+            "salts_idl_target OPENAPI artifact requires HTTP transport")
   endif()
 
   set(_unique_artifacts ${_normalized_artifacts})
@@ -230,7 +230,7 @@ function(databind_target)
   list(LENGTH _unique_artifacts _unique_artifact_count)
   if(NOT _artifact_count EQUAL _unique_artifact_count)
     message(FATAL_ERROR
-            "databind_target ARTIFACTS contains a duplicate selection")
+            "salts_idl_target ARTIFACTS contains a duplicate selection")
   endif()
 
   set(_unique_transports ${_normalized_transports})
@@ -239,15 +239,15 @@ function(databind_target)
   list(LENGTH _unique_transports _unique_transport_count)
   if(NOT _transport_count EQUAL _unique_transport_count)
     message(FATAL_ERROR
-            "databind_target TRANSPORTS contains a duplicate selection")
+            "salts_idl_target TRANSPORTS contains a duplicate selection")
   endif()
 
   foreach(reserved_target IN ITEMS
           "${DB_TARGET}"
-          "${DB_TARGET}_databind_codegen")
+          "${DB_TARGET}_idl_codegen")
     if(TARGET "${reserved_target}")
       message(FATAL_ERROR
-              "databind_target generated target already exists: "
+              "salts_idl_target generated target already exists: "
               "${reserved_target}")
     endif()
   endforeach()
@@ -257,7 +257,7 @@ function(databind_target)
             "${DB_TARGET}_plugin_client")
       if(TARGET "${reserved_target}")
         message(FATAL_ERROR
-                "databind_target generated target already exists: "
+                "salts_idl_target generated target already exists: "
                 "${reserved_target}")
       endif()
     endforeach()
@@ -267,17 +267,17 @@ function(databind_target)
     foreach(plugin_arg IN ITEMS COMPONENT VERSION)
       if(NOT DB_${plugin_arg})
         message(FATAL_ERROR
-                "databind_target PLUGIN requires ${plugin_arg}")
+                "salts_idl_target PLUGIN requires ${plugin_arg}")
       endif()
     endforeach()
     if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
       message(FATAL_ERROR
-              "databind_target PLUGIN requires business implementation through "
+              "salts_idl_target PLUGIN requires business implementation through "
               "SOURCES and/or LIBRARIES")
     endif()
     if(NOT DB_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
       message(FATAL_ERROR
-              "databind_target VERSION must be MAJOR.MINOR.PATCH")
+              "salts_idl_target VERSION must be MAJOR.MINOR.PATCH")
     endif()
     string(REPLACE "." ";" _version_parts "${DB_VERSION}")
     foreach(_version_part IN LISTS _version_parts)
@@ -290,19 +290,19 @@ function(databind_target)
          (_version_part_length EQUAL 10 AND
           _version_part_normalized STRGREATER "4294967295"))
         message(FATAL_ERROR
-                "databind_target VERSION components must fit uint32: "
+                "salts_idl_target VERSION components must fit uint32: "
                 "${DB_VERSION}")
       endif()
     endforeach()
   else()
     if(DB_COMPONENT OR DB_VERSION)
       message(FATAL_ERROR
-              "databind_target COMPONENT/VERSION are only valid when PLUGIN "
+              "salts_idl_target COMPONENT/VERSION are only valid when PLUGIN "
               "is selected")
     endif()
     if(DB_SOURCES OR DB_LIBRARIES)
       message(FATAL_ERROR
-              "databind_target SOURCES/LIBRARIES are only consumed by PLUGIN")
+              "salts_idl_target SOURCES/LIBRARIES are only consumed by PLUGIN")
     endif()
   endif()
 
@@ -311,24 +311,24 @@ function(databind_target)
     if(NOT _has_http AND NOT _has_rpc AND
        NOT _has_socket AND NOT _has_flowmq)
       message(FATAL_ERROR
-              "databind_target PROJECTION_CONFIG requires a configured transport")
+              "salts_idl_target PROJECTION_CONFIG requires a configured transport")
     endif()
     get_filename_component(_projection_config
       "${DB_PROJECTION_CONFIG}" ABSOLUTE
       BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
     if(NOT EXISTS "${_projection_config}")
       message(FATAL_ERROR
-              "databind_target PROJECTION_CONFIG does not exist: "
+              "salts_idl_target PROJECTION_CONFIG does not exist: "
               "${_projection_config}")
     endif()
   endif()
   if(_has_socket AND NOT _projection_config)
     message(FATAL_ERROR
-            "databind_target SOCKET requires PROJECTION_CONFIG")
+            "salts_idl_target SOCKET requires PROJECTION_CONFIG")
   endif()
   if(_has_flowmq AND NOT _projection_config)
     message(FATAL_ERROR
-            "databind_target FLOWMQ requires PROJECTION_CONFIG")
+            "salts_idl_target FLOWMQ requires PROJECTION_CONFIG")
   endif()
 
   list(JOIN _normalized_artifacts "," _artifact_csv)
@@ -340,22 +340,22 @@ function(databind_target)
     "${DB_IDL}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
   if(NOT EXISTS "${_idl}")
     message(FATAL_ERROR
-            "databind_target IDL does not exist: ${_idl}")
+            "salts_idl_target IDL does not exist: ${_idl}")
   endif()
 
-  _saltsutils_databind_resolve_compiler(
-    _databindc
-    _databindc_dependency
-    _databindc_runtime_root
-    _databindc_salts_root)
-  _saltsutils_databind_host_command(
-    _databindc_command
-    "${_databindc}"
-    "${_databindc_runtime_root}"
-    "${_databindc_salts_root}")
+  _saltsutils_idl_resolve_compiler(
+    _idlc
+    _idlc_dependency
+    _idlc_runtime_root
+    _idlc_salts_root)
+  _saltsutils_idl_host_command(
+    _idlc_command
+    "${_idlc}"
+    "${_idlc_runtime_root}"
+    "${_idlc_salts_root}")
 
   set(_generated_dir
-      "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.databind")
+      "${CMAKE_CURRENT_BINARY_DIR}/${DB_TARGET}.idl")
   set(_native_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.h")
   set(_native_source
@@ -434,8 +434,8 @@ function(databind_target)
   endif()
 
   set(_generate_dependencies "${_idl}")
-  if(_databindc_dependency)
-    list(APPEND _generate_dependencies "${_databindc_dependency}")
+  if(_idlc_dependency)
+    list(APPEND _generate_dependencies "${_idlc_dependency}")
   endif()
   if(_projection_config)
     list(APPEND _generate_dependencies "${_projection_config}")
@@ -444,16 +444,16 @@ function(databind_target)
   add_custom_command(
     OUTPUT ${_generated_outputs}
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${_generated_dir}"
-    COMMAND ${_databindc_command} ${_compiler_args}
+    COMMAND ${_idlc_command} ${_compiler_args}
     DEPENDS ${_generate_dependencies}
     VERBATIM
     COMMENT
-      "Generating DataBind ${DB_TARGET} artifacts=[${_artifact_csv}] transports=[${_transport_csv}]")
+      "Generating IDL ${DB_TARGET} artifacts=[${_artifact_csv}] transports=[${_transport_csv}]")
 
   set_source_files_properties(${_generated_outputs}
     PROPERTIES GENERATED TRUE)
 
-  add_custom_target("${DB_TARGET}_databind_codegen"
+  add_custom_target("${DB_TARGET}_idl_codegen"
     DEPENDS ${_generated_outputs})
 
   if(_has_socket OR _has_flowmq)
@@ -461,7 +461,7 @@ function(databind_target)
       "${_native_source}"
       "${_native_header}")
     add_dependencies("${DB_TARGET}_native"
-      "${DB_TARGET}_databind_codegen")
+      "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_native" PRIVATE c_std_11)
     target_include_directories("${DB_TARGET}_native" PUBLIC
       "${_generated_dir}")
@@ -477,7 +477,7 @@ function(databind_target)
       "${_native_header}"
       ${DB_SOURCES})
     add_dependencies("${DB_TARGET}_plugin"
-      "${DB_TARGET}_databind_codegen")
+      "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_plugin" PRIVATE c_std_11)
     target_include_directories("${DB_TARGET}_plugin" PRIVATE
       "${_generated_dir}")
@@ -494,7 +494,7 @@ function(databind_target)
       "${_plugin_client_header}"
       "${_native_header}")
     add_dependencies("${DB_TARGET}_plugin_client"
-      "${DB_TARGET}_databind_codegen")
+      "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_plugin_client" PRIVATE c_std_11)
     target_include_directories("${DB_TARGET}_plugin_client" PUBLIC
       "${_generated_dir}")
@@ -504,7 +504,7 @@ function(databind_target)
   endif()
 
   add_custom_target("${DB_TARGET}")
-  add_dependencies("${DB_TARGET}" "${DB_TARGET}_databind_codegen")
+  add_dependencies("${DB_TARGET}" "${DB_TARGET}_idl_codegen")
   if(_has_socket OR _has_flowmq)
     add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
   endif()

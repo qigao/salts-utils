@@ -106,9 +106,9 @@ if(TARGET Salts::DataBindSchema)
           "SaltsUtils 4.1 must not export retired Salts::DataBindSchema")
 endif()
 
-set(SaltsUtils_DATABINDC_HINT
+set(SaltsUtils_IDLC_HINT
     "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
-include("${CMAKE_CURRENT_LIST_DIR}/DataBind.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/IDL.cmake")
 
 set_property(GLOBAL PROPERTY SALTS_UTILS_CONFIG_LOADED TRUE)
 check_required_components(SaltsUtils)

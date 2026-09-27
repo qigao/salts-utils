@@ -1,13 +1,13 @@
 /**
  * @file main.c
- * @brief databindc — DataBind IDL/compiler frontend.
+ * @brief salts-idlc — SaltsUtils IDL contract compiler.
  *
  * Reads a .schema file, parses it, and renders output through a Mustache
  * template.  Supports multiple target languages by selecting different
  * template files (built-in or custom).
  *
  * CLI (via cmd_arger):
- *   databindc <file> [--template <file>]
+ *   salts-idlc <file> [--template <file>]
  *              [--lang c|cpp|cxx|go|rust|python|py|ts|typescript|sqlite|postgresql|postgres]
  *              [--output <file>] [--source-output <file>]
  *              [--dsl-output <file>]
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     databind_compiler_projection_frontend_plan projection_plan = {0};
 
     if (!resolve_resource_dir(argc > 0 ? argv[0] : NULL, resource_dir, sizeof(resource_dir))) {
-        fprintf(stderr, "Failed to locate databindc resource directory\n");
+        fprintf(stderr, "Failed to locate salts-idlc resource directory\n");
         return 1;
     }
 
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
                     (uint32_t)(sizeof(optional_args) / sizeof(optional_args[0])),
                     required_args,
                     (uint32_t)(sizeof(required_args) / sizeof(required_args[0])),
-                    argc, argv, "databindc 3.0", cmd_arger_true);
+                    argc, argv, "salts-idlc 3.0", cmd_arger_true);
 
     if (lang_name != NULL &&
         tbe_compiler_parse_language_name(lang_name, &lang_enum) != 0) {

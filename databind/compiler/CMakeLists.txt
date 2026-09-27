@@ -26,13 +26,14 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
-cmake_add_executable(databindc
+cmake_add_executable(salts_idlc
+  OUTPUT_NAME "salts-idlc"
   SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
-target_include_directories(databindc
+target_include_directories(salts_idlc
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
-set_property(TARGET databindc APPEND PROPERTY LINK_DEPENDS
+set_property(TARGET salts_idlc APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
 # =============================================================================
@@ -40,15 +41,15 @@ set_property(TARGET databindc APPEND PROPERTY LINK_DEPENDS
 # =============================================================================
 
 add_custom_command(
-  TARGET databindc
+  TARGET salts_idlc
   POST_BUILD
   COMMAND
     ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/templates
-    $<TARGET_FILE_DIR:databindc>/templates
+    $<TARGET_FILE_DIR:salts_idlc>/templates
   COMMENT "Copying template files to output directory")
 
 install(
-  TARGETS databindc
+  TARGETS salts_idlc
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
 
 install(
@@ -81,13 +82,13 @@ add_custom_command(
     "${DATABIND_NULLABLE_GENERATED_H}"
     "${DATABIND_NULLABLE_GENERATED_C}"
   COMMAND
-    $<TARGET_FILE:databindc>
+    $<TARGET_FILE:salts_idlc>
       "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
       --lang c
       --output "${DATABIND_NULLABLE_GENERATED_H}"
       --source-output "${DATABIND_NULLABLE_GENERATED_C}"
   DEPENDS
-    databindc
+    salts_idlc
     "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
   VERBATIM
   COMMENT "Generating nullable DataBind artifact")
@@ -111,7 +112,7 @@ set_tests_properties(test_databind_nullable_codegen
 
 add_test(NAME test_databind_projection_config_stale_rejected
   COMMAND "${CMAKE_COMMAND}"
-    "-DDATABINDC=$<TARGET_FILE:databindc>"
+    "-DDATABINDC=$<TARGET_FILE:salts_idlc>"
     "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
     "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_stale.json"
     "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/projection-config-stale"
@@ -398,7 +399,7 @@ add_custom_command(
     "${DATABIND_SERVICE_NATIVE_HEADER}"
     "${DATABIND_SERVICE_NATIVE_SOURCE}"
   COMMAND
-    $<TARGET_FILE:databindc>
+    $<TARGET_FILE:salts_idlc>
       "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
       --lang c
       --output "${DATABIND_SERVICE_NATIVE_RECORD_H}"
@@ -412,7 +413,7 @@ add_custom_command(
       "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
       "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_owned_error.schema"
   DEPENDS
-    databindc
+    salts_idlc
     databind_service_native_codegen_fixture_tool
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
@@ -461,8 +462,8 @@ set_target_properties(test_databind_service_native_public_cpp PROPERTIES
   CXX_EXTENSIONS NO)
 
 # Generated PLUGIN backend qualification through the canonical public
-# databind_target() -> databindc projection frontend.
-include("${CMAKE_SOURCE_DIR}/cmake/DataBind.cmake")
+# salts_idl_target() -> salts_idlc projection frontend.
+include("${CMAKE_SOURCE_DIR}/cmake/IDL.cmake")
 
 set(DATABIND_PLUGIN_TEST_GENERATED_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/databind_plugin_generated_fixture.databind")
@@ -478,7 +479,7 @@ set(DATABIND_PLUGIN_TEST_SERVICE_H
 set(DATABIND_PLUGIN_TEST_SOURCE
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.c")
 
-databind_target(
+salts_idl_target(
   TARGET databind_plugin_generated_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
   COMPONENT "Image.ImageProcessor"
@@ -488,14 +489,14 @@ databind_target(
   SOURCES test_plugin_business_fixture.c)
 
 
-databind_target(
+salts_idl_target(
   TARGET databind_method_plan_public_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
   ARTIFACT_NAME "public_calc"
   TRANSPORTS HTTP RPC)
 
 
-databind_target(
+salts_idl_target(
   TARGET databind_method_plan_configured_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
   ARTIFACT_NAME "configured_calc"
@@ -504,7 +505,7 @@ databind_target(
     "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
 
 
-databind_target(
+salts_idl_target(
   TARGET databind_socket_plan_public_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_public.schema"
   ARTIFACT_NAME "device"
@@ -513,7 +514,7 @@ databind_target(
     "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json")
 
 
-databind_target(
+salts_idl_target(
   TARGET databind_flowmq_plan_public_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "device"
@@ -522,7 +523,7 @@ databind_target(
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
 
 
-databind_target(
+salts_idl_target(
   TARGET databind_channel_multi_transport_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "device_multi"
@@ -530,7 +531,7 @@ databind_target(
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_socket_projection_config.json")
 
-databind_target(
+salts_idl_target(
   TARGET databind_binary_transport_provider_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider.schema"
   ARTIFACT_NAME "binary_exec"
@@ -548,7 +549,7 @@ cmake_add_test(test_databind_binary_transport_provider
     "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_binary_transport_provider
-  databind_binary_transport_provider_fixture_databind_codegen)
+  databind_binary_transport_provider_fixture_idl_codegen)
 set_target_properties(test_databind_binary_transport_provider PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -565,7 +566,7 @@ cmake_add_test(test_databind_binary_transport_provider_cpp
     "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_binary_transport_provider_cpp
-  databind_binary_transport_provider_fixture_databind_codegen)
+  databind_binary_transport_provider_fixture_idl_codegen)
 set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON
@@ -583,7 +584,7 @@ cmake_add_test(test_databind_channel_multi_transport
     "${databind_channel_multi_transport_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_channel_multi_transport
-  databind_channel_multi_transport_fixture_databind_codegen)
+  databind_channel_multi_transport_fixture_idl_codegen)
 set_target_properties(test_databind_channel_multi_transport PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -601,7 +602,7 @@ cmake_add_test(test_databind_flowmq_plan_public_frontend
     "${databind_flowmq_plan_public_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_flowmq_plan_public_frontend
-  databind_flowmq_plan_public_fixture_databind_codegen)
+  databind_flowmq_plan_public_fixture_idl_codegen)
 set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -619,7 +620,7 @@ cmake_add_test(test_databind_socket_plan_public_frontend
     "${databind_socket_plan_public_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_socket_plan_public_frontend
-  databind_socket_plan_public_fixture_databind_codegen)
+  databind_socket_plan_public_fixture_idl_codegen)
 set_target_properties(test_databind_socket_plan_public_frontend PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -636,8 +637,8 @@ cmake_add_test(test_databind_method_plan_public_frontend
     "${databind_method_plan_configured_fixture_GENERATED_DIR}"
   FOLDER "databind/compiler")
 add_dependencies(test_databind_method_plan_public_frontend
-  databind_method_plan_public_fixture_databind_codegen
-  databind_method_plan_configured_fixture_databind_codegen)
+  databind_method_plan_public_fixture_idl_codegen
+  databind_method_plan_configured_fixture_idl_codegen)
 
 get_target_property(
   _databind_plugin_generated_fixture_links
@@ -688,13 +689,13 @@ add_custom_command(
     "${DATABIND_PLUGIN_TEST_BINDING_H}"
     "${DATABIND_PLUGIN_TEST_BINDING_C}"
   COMMAND
-    $<TARGET_FILE:databindc>
+    $<TARGET_FILE:salts_idlc>
       "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
       --lang c
       --output "${DATABIND_PLUGIN_TEST_BINDING_H}"
       --source-output "${DATABIND_PLUGIN_TEST_BINDING_C}"
   DEPENDS
-    databindc
+    salts_idlc
     "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
   VERBATIM
   COMMENT "Generating host-side DataBind binding fixture")
@@ -716,7 +717,7 @@ cmake_add_test(test_databind_plugin_generated_dso
 add_dependencies(test_databind_plugin_generated_dso
   databind_plugin_generated_fixture_plugin)
 
-databind_target(
+salts_idl_target(
   TARGET databind_plugin_typed_error_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
   COMPONENT "ErrorPlugin.StorePlugin"
@@ -749,7 +750,7 @@ set_target_properties(test_databind_plugin_typed_error_client_cpp PROPERTIES
 add_test(NAME test_databind_plugin_typed_error_client_cpp
   COMMAND test_databind_plugin_typed_error_client_cpp)
 
-databind_target(
+salts_idl_target(
   TARGET databind_plugin_owned_typed_error_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_owned_typed_error.schema"
   COMPONENT "OwnedErrorPlugin.StorePlugin"
