@@ -4,7 +4,7 @@
 #include "database_schema.h"
 #include "node_tree.h"
 #include "tbe_wire.h"
-#include "idl.h"
+#include "tbe_contract_overlay.h"
 #include "tinytest.h"
 #ifdef _WIN32
 #include <io.h>
@@ -98,7 +98,7 @@ static Node *build_schema_with_null_database_annotation_value(void) {
   Node *attributes;
   Node *value;
 
-  if (!root || idl_parse(schema, sizeof(schema) - 1u, root, NULL) != 0) {
+  if (!root || databind_tbe_contract_parse(schema, sizeof(schema) - 1u, root, NULL) != 0) {
     node_free(root);
     return NULL;
   }
@@ -152,7 +152,7 @@ static Node *build_database_ir_from_schema_with_diagnostic(
   Node *database_ir = NULL;
 
   if (!schema_root) return NULL;
-  if (idl_parse(schema, strlen(schema), schema_root, NULL) != 0) {
+  if (databind_tbe_contract_parse(schema, strlen(schema), schema_root, NULL) != 0) {
     node_free(schema_root);
     return NULL;
   }
@@ -172,7 +172,7 @@ static Node *build_database_ir_from_mutated_default(
   Node *field;
 
   if (!schema_root) return NULL;
-  if (idl_parse(schema, strlen(schema), schema_root, NULL) != 0) goto cleanup;
+  if (databind_tbe_contract_parse(schema, strlen(schema), schema_root, NULL) != 0) goto cleanup;
   messages = find_child(schema_root, "messages");
   fields = messages && messages->type == NODE_LIST && messages->data.list.count == 1u ?
                find_child(messages->data.list.items[0], "fields") : NULL;
@@ -228,7 +228,7 @@ static char *render_c_template(const char *schema) {
   root = create_node_map(NULL);
   if (!root) goto cleanup;
 
-  if (idl_parse(schema, strlen(schema), root, NULL) != 0) goto cleanup;
+  if (databind_tbe_contract_parse(schema, strlen(schema), root, NULL) != 0) goto cleanup;
   tbe_compiler_annotate_language_types(root);
 
   templ = mustache_compile(template_text, template_size, NULL, NULL, 0);
@@ -312,14 +312,14 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   if (saved_stdout < 0 || saved_stderr < 0) {
     if (saved_stdout >= 0) tt_close(saved_stdout);
     if (saved_stderr >= 0) tt_close(saved_stderr);
-    return idl_parse(schema, size, root, NULL);
+    return databind_tbe_contract_parse(schema, size, root, NULL);
   }
 
   null_file = freopen(TT_NULL_DEVICE, "w", stdout);
   if (!null_file) {
     tt_close(saved_stdout);
     tt_close(saved_stderr);
-    return idl_parse(schema, size, root, NULL);
+    return databind_tbe_contract_parse(schema, size, root, NULL);
   }
 
   null_file = freopen(TT_NULL_DEVICE, "w", stderr);
@@ -327,10 +327,10 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
     tt_dup2(saved_stdout, tt_fileno(stdout));
     tt_close(saved_stdout);
     tt_close(saved_stderr);
-    return idl_parse(schema, size, root, NULL);
+    return databind_tbe_contract_parse(schema, size, root, NULL);
   }
 
-  result = idl_parse(schema, size, root, NULL);
+  result = databind_tbe_contract_parse(schema, size, root, NULL);
   fflush(stdout);
   fflush(stderr);
   tt_dup2(saved_stdout, tt_fileno(stdout));
@@ -1669,7 +1669,7 @@ spec("tbe_compiler") {
     it("should parse empty schema") {
       Node *root = create_node_map(NULL);
       const char *empty = "";
-      int res = idl_parse(empty, strlen(empty), root, NULL);
+      int res = databind_tbe_contract_parse(empty, strlen(empty), root, NULL);
       check_equal(res, 0);
       node_free(root);
     }
@@ -1677,7 +1677,7 @@ spec("tbe_compiler") {
     it("should parse simple composite") {
       Node *root = create_node_map(NULL);
       const char *schema = "composite Point { uint32_t x; uint32_t y; }";
-      int res = idl_parse(schema, strlen(schema), root, NULL);
+      int res = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
       check_equal(res, 0);
 
       Node *composites = find_child(root, "composites");
@@ -1705,7 +1705,7 @@ spec("tbe_compiler") {
                                    "TBE_TYPED_U16", "TBE_TYPED_I32", "TBE_TYPED_U32",
                                    "TBE_TYPED_I64", "TBE_TYPED_U64"};
       Node *root = create_node_map(NULL);
-      int rc = idl_parse(schema, strlen(schema), root, NULL);
+      int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       if (rc == 0) {
@@ -1744,7 +1744,7 @@ spec("tbe_compiler") {
           "optional uint32 f6; optional uint32 f7; optional uint32 f8; "
           "}";
       Node *root = create_node_map(NULL);
-      int rc = idl_parse(schema, strlen(schema), root, NULL);
+      int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       if (rc == 0) {
@@ -1803,7 +1803,7 @@ spec("tbe_compiler") {
         fclose(f);
 
         Node *root = create_node_map(NULL);
-        int res = idl_parse(dat, size, root, NULL);
+        int res = databind_tbe_contract_parse(dat, size, root, NULL);
         check_equal(res, 0);
 
         Node *schema = NULL;

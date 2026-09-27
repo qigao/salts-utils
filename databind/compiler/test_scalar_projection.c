@@ -1,6 +1,6 @@
 #include "tinytest.h"
 #include "compiler_core.h"
-#include "idl.h"
+#include "tbe_contract_overlay.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -56,7 +56,7 @@ static int projection_equal(const char *alias, const char *canonical, const char
         int length = snprintf(schema, sizeof(schema), format, names[i]);
         if (length <= 0 || (size_t)length >= sizeof(schema)) goto done;
         roots[i] = create_node_map("root");
-        if (roots[i] == NULL || idl_parse(schema, (size_t)length, roots[i], &error) != 0)
+        if (roots[i] == NULL || databind_tbe_contract_parse(schema, (size_t)length, roots[i], &error) != 0)
             goto done;
         tbe_compiler_annotate_language_types(roots[i]);
         fields[i] = projection_field(roots[i]);
@@ -95,7 +95,7 @@ static int projection_float_is(const char *type, const char *cpp, const char *go
     int ok = 0;
     int length = snprintf(schema, sizeof(schema), "message Scalar { %s value; }", type);
     if (root == NULL || length <= 0 || (size_t)length >= sizeof(schema) ||
-        idl_parse(schema, (size_t)length, root, &error) != 0) goto done;
+        databind_tbe_contract_parse(schema, (size_t)length, root, &error) != 0) goto done;
     tbe_compiler_annotate_language_types(root);
     field = projection_field(root);
     if (field != NULL) {
