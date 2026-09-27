@@ -29,20 +29,12 @@ option(SALTS_UTILS_ENABLE_CFLOW_USB
 
 option(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND
        "Internal focused Plugin/DataBind qualification profile" OFF)
-option(SALTS_UTILS_QUALIFY_CFLOW_PROCESS
-       "Internal focused CFlowProcess qualification profile" OFF)
-mark_as_advanced(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND
-                 SALTS_UTILS_QUALIFY_CFLOW_PROCESS)
+mark_as_advanced(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND)
 
-if(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND AND SALTS_UTILS_QUALIFY_CFLOW_PROCESS)
-  message(FATAL_ERROR
-    "Focused Plugin/DataBind and CFlowProcess qualification profiles are mutually exclusive")
-endif()
-
-if((SALTS_UTILS_QUALIFY_PLUGIN_DATABIND OR SALTS_UTILS_QUALIFY_CFLOW_PROCESS) AND
+if(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
-    "Focused qualification profiles exclude capture and USB")
+    "The focused Plugin/DataBind qualification profile excludes capture and USB")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
