@@ -3,7 +3,7 @@
 
 #include <cmeta/data.h>
 #include <cmeta/type_identity.h>
-#include "node_tree.h"
+#include "idl_contract.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +53,8 @@ typedef struct schema_cmeta_field_type {
  * its canonical STRING text-adapter descriptor. All returned metadata is
  * immutable, provider-owned static storage; no allocation or callbacks occur.
  */
-int schema_cmeta_field_resolve(const Node *root, const Node *field,
+int schema_cmeta_field_resolve(const IdlContract *contract,
+                               const IdlField *field,
                                schema_cmeta_field_type *out);
 
 /**
