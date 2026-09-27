@@ -404,6 +404,15 @@ set_target_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
 set_tests_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   LABELS "databind;socket-plan;public;cpp")
 
+cmake_add_test(test_data_bind_flowmq_plan_public_cpp
+  SOURCES test_data_bind_flowmq_plan_public_cpp.cpp
+  LIBS Salts::DataBind
+  FOLDER "databind/runtime/tests")
+set_target_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+set_tests_properties(test_data_bind_flowmq_plan_public_cpp PROPERTIES
+  LABELS "databind;flowmq-plan;public;cpp")
+
 cmake_add_test(test_data_bind_socket_execution_plan
   SOURCES test_data_bind_socket_execution_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
