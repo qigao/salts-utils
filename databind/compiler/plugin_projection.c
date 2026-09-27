@@ -858,59 +858,6 @@ static int plugin_write_client_source(
   return 1;
 }
 
-static int plugin_write_adapter(
-    FILE *file,
-    const databind_compiler_service_native_operation *operation) {
-  if (file == NULL || operation == NULL ||
-      !plugin_text_valid(operation->symbol) ||
-      !plugin_text_valid(operation->request_type) ||
-      !plugin_text_valid(operation->response_type))
-    return 0;
-
-  if (operation->error_count == 0u) {
-    return fprintf(
-               file,
-               "static bool SALTS_PLUGIN_CALL %s__plugin_invoke(\n"
-               "    void *context, void *return_storage, void *const *params,\n"
-               "    size_t param_count) {\n"
-               "  int result;\n"
-               "  (void)context;\n"
-               "  if (return_storage == NULL || params == NULL ||\n"
-               "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
-               "    return false;\n"
-               "  result = %s((const %s_t *)params[0], (%s_t *)params[1]);\n"
-               "  *(int *)return_storage = result;\n"
-               "  return true;\n"
-               "}\n\n",
-               operation->symbol,
-               operation->symbol,
-               operation->request_type,
-               operation->response_type) >= 0;
-  }
-
-  return fprintf(
-             file,
-             "static bool SALTS_PLUGIN_CALL %s__plugin_invoke(\n"
-             "    void *context, void *return_storage, void *const *params,\n"
-             "    size_t param_count) {\n"
-             "  int result;\n"
-             "  (void)context;\n"
-             "  if (return_storage == NULL || params == NULL ||\n"
-             "      param_count != 3u || params[0] == NULL ||\n"
-             "      params[1] == NULL || params[2] == NULL)\n"
-             "    return false;\n"
-             "  result = %s((const %s_t *)params[0], (%s_t *)params[1],\n"
-             "              (%s__error *)params[2]);\n"
-             "  *(int *)return_storage = result;\n"
-             "  return true;\n"
-             "}\n\n",
-             operation->symbol,
-             operation->symbol,
-             operation->request_type,
-             operation->response_type,
-             operation->symbol) >= 0;
-}
-
 static int plugin_write_source(
     FILE *file,
     const Node *component,
@@ -935,7 +882,8 @@ static int plugin_write_source(
     if (databind_compiler_service_native_emit_reflection(
             file, &ir->operations[i], 0) != 0 ||
         fputc('\n', file) == EOF ||
-        !plugin_write_adapter(file, &ir->operations[i]))
+        databind_compiler_service_native_emit_execution(
+            file, &ir->operations[i], 0) != 0)
       return 0;
   }
 
@@ -969,7 +917,7 @@ static int plugin_write_source(
             "      .desc = &%s__function_meta,\n"
             "      .abi = &%s__function_abi_meta,\n"
             "      .context = NULL,\n"
-            "      .invoke = %s__plugin_invoke,\n"
+            "      .invoke = %s__databind_invoke,\n"
             "    },\n"
             "  },\n",
             operation->symbol,
