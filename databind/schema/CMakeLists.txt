@@ -33,6 +33,8 @@ cmake_config_target(
 # deliberately not linked into this target.
 add_library(${IDL_TARGET} STATIC
   src/node_tree.c
+  src/idl_contract.c
+  src/idl_contract_internal.h
   src/schema_enum.c
   src/schema_type_ref.c
   src/idl_frontend.c
@@ -75,6 +77,7 @@ install(
 
 install(
   FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/idl_contract.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/idl.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/node_tree.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/schema_cmeta.h
@@ -109,6 +112,11 @@ foreach(test_name
     FOLDER "databind/schema/tests")
 endforeach()
 
+
+cmake_add_test(test_idl_contract
+  SOURCES test/test_idl_contract.c
+  LIBS Salts::IDL Salts::TinyTest
+  FOLDER "databind/idl/tests")
 
 if(TARGET test_tbe_robustness)
   target_sources(test_tbe_robustness PRIVATE
