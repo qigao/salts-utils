@@ -84,13 +84,13 @@ spec("DataBind compiler Binary reader codegen") {
           text,
           "DATABIND_GENERATED_databind_binary_fixture_binary_Scalars_READER_INCLUDED");
       check_contains(text, "#include <data_bind_binary_reader.h>");
-      check_contains(text, ""ready", CSERDE_BOOL, 8u");
-      check_contains(text, ""delta8", CSERDE_SINT, 8u");
-      check_contains(text, ""count16", CSERDE_UINT, 16u");
-      check_contains(text, ""ratio", CSERDE_FLOAT, 32u");
-      check_contains(text, ""score", CSERDE_FLOAT, 64u");
-      check_contains(text, ""code", CSERDE_SINT, 16u");
-      check_contains(text, ""perms", CSERDE_UINT, 8u");
+      check_contains(text, "\"ready\", CSERDE_BOOL, 8u");
+      check_contains(text, "\"delta8\", CSERDE_SINT, 8u");
+      check_contains(text, "\"count16\", CSERDE_UINT, 16u");
+      check_contains(text, "\"ratio\", CSERDE_FLOAT, 32u");
+      check_contains(text, "\"score\", CSERDE_FLOAT, 64u");
+      check_contains(text, "\"code\", CSERDE_SINT, 16u");
+      check_contains(text, "\"perms\", CSERDE_UINT, 8u");
       check_contains(
           text,
           "DATA_BIND_BINARY_READER_FIELD_OPTIONAL | "
