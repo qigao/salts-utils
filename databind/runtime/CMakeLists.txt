@@ -3,7 +3,6 @@ add_library(
   ${DATA_BIND_CORE_TARGET} STATIC
   data_bind_format_provider.c
   data_bind_format_provider.h
-  data_bind_flowmq_plan.h
   data_bind_native.c
   data_bind_native.h)
 target_include_directories(
@@ -149,6 +148,7 @@ add_library(
   data_bind_method_plan.h
   data_bind_projection_plan.c
   data_bind_projection_plan.h
+  data_bind_flowmq_plan.h
   data_bind_socket_plan.h
   data_bind_socket_execution_plan.c
   data_bind_socket_execution_plan.h
@@ -251,6 +251,7 @@ install(
     data_bind_native_binding.h
     data_bind_method_plan.h
     data_bind_projection_plan.h
+    data_bind_flowmq_plan.h
     data_bind_socket_plan.h
     data_bind_socket_execution_plan.h
     data_bind_validation_plan.h
