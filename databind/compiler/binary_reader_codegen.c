@@ -209,30 +209,21 @@ int databind_compiler_binary_reader_emit(
       binary_codegen_c_string(file, type_name) != 0 ||
       fprintf(
           file,
-          ",\n  %d, %zuu, %zuu, %zuu, %zuu, %zuu,\n"
-          "  %s, %zuu\n"
-          "};\n\n",
+          ",\n  %d, %zuu, %zuu, %zuu, %zuu, %zuu,\n  ",
           layout.wire_big_endian ? 1 : 0,
           layout.fixed_block_size,
           layout.presence_offset, layout.presence_size,
-          layout.null_offset, layout.null_size,
-          layout.field_count != 0u
-              ? "" : "NULL",
-          layout.field_count) < 0)
+          layout.null_offset, layout.null_size) < 0)
     goto cleanup;
 
-  /*
-   * Patch in the field symbol separately so the NULL case above stays a raw
-   * C token rather than a quoted value.
-   */
   if (layout.field_count != 0u) {
-    long end = ftell(file);
-    (void)end;
-    /*
-     * The nonempty initializer is emitted below as a second definition guard
-     * branch is intentionally avoided. Re-emit the plan in one stable form.
-     */
-    goto cleanup;
+    if (fprintf(
+            file, "%s_fields, %zuu\n};\n\n",
+            symbol, layout.field_count) < 0)
+      goto cleanup;
+  } else {
+    if (fputs("NULL, 0u\n};\n\n", file) == EOF)
+      goto cleanup;
   }
 
   if (fprintf(
