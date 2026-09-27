@@ -137,7 +137,7 @@ endif()
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
-  LIBS Salts::IDL
+  LIBS databind_tbe_contract
   FOLDER databind/schema/tests)
 target_sources(verify_fixes PRIVATE
   $<TARGET_OBJECTS:databind_tbe_format_objects>)
