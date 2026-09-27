@@ -125,7 +125,8 @@ static int binary_scalar_bits_valid(
 }
 
 static databind_binary_layout_status binary_field_scalar_representation(
-    const Node *root,
+    const IdlContract *contract,
+    const IdlField *typed_field,
     const Node *field_node,
     databind_binary_field_layout *field,
     databind_binary_layout_diagnostic *diagnostic) {
@@ -135,14 +136,15 @@ static databind_binary_layout_status binary_field_scalar_representation(
   const char *declared_type;
   unsigned bits = 0u;
 
-  if (root == NULL || field_node == NULL || field == NULL)
+  if (contract == NULL || typed_field == NULL ||
+      field_node == NULL || field == NULL)
     return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
 
   field_name = binary_string_value(field_node, "name");
   field->scalar_kind = DATABIND_BINARY_SCALAR_NONE;
   field->scalar_bits = 0u;
 
-  if (!schema_cmeta_field_resolve(root, field_node, &semantic)) {
+  if (!schema_cmeta_field_resolve(contract, typed_field, &semantic)) {
     binary_diag(diagnostic, field_name,
                 "Binary scalar semantics cannot be resolved from canonical schema");
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
@@ -181,13 +183,11 @@ static databind_binary_layout_status binary_field_scalar_representation(
     break;
 
   case CMETA_DATA_ENUM: {
-    const Node *enum_node;
+    const IdlDataDecl *enum_decl;
     const char *underlying;
-    declared_type = binary_string_value(field_node, "type");
-    enum_node = binary_find_enum(root, declared_type);
-    underlying = enum_node != NULL
-                     ? binary_string_value(enum_node, "underlying_type")
-                     : NULL;
+    declared_type = typed_field->type_name;
+    enum_decl = idl_contract_find_data(contract, declared_type);
+    underlying = enum_decl != NULL ? enum_decl->underlying_type : NULL;
     data = schema_cmeta_builtin_data(underlying);
     if (data == NULL || data->shape == NULL ||
         (data->kind != CMETA_DATA_SINT &&
@@ -373,12 +373,27 @@ databind_binary_layout_status databind_binary_layout_validate(
   return DATABIND_BINARY_LAYOUT_OK;
 }
 
+static const IdlField *binary_typed_field(
+    const IdlDataDecl *record, const char *name) {
+  size_t i;
+  if (record == NULL || name == NULL) return NULL;
+  for (i = 0u; i < record->field_count; ++i)
+    if (record->fields[i].name != NULL &&
+        strcmp(record->fields[i].name, name) == 0)
+      return &record->fields[i];
+  return NULL;
+}
+
 static databind_binary_layout_status binary_build_field(
+    const IdlContract *contract,
+    const IdlDataDecl *typed_record,
     const Node *root,
     const Node *field_node,
     databind_binary_field_layout *field,
     databind_binary_layout_diagnostic *diagnostic) {
   const char *name = binary_string_value(field_node, "name");
+  const IdlField *typed_field =
+      binary_typed_field(typed_record, name);
   const char *text;
 
   if (name == NULL || name[0] == '\0') {
@@ -449,15 +464,17 @@ static databind_binary_layout_status binary_build_field(
   }
 
   return binary_field_scalar_representation(
-      root, field_node, field, diagnostic);
+      contract, typed_field, field_node, field, diagnostic);
 }
 
 databind_binary_layout_status databind_binary_layout_build(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name,
     databind_binary_type_layout *out_layout,
     databind_binary_layout_diagnostic *diagnostic) {
   databind_binary_type_layout candidate = {0};
+  const IdlDataDecl *typed_record;
   const Node *record;
   const Node *fields;
   const Node *schema;
@@ -466,14 +483,16 @@ databind_binary_layout_status databind_binary_layout_build(
   databind_binary_layout_status status;
 
   if (diagnostic != NULL) memset(diagnostic, 0, sizeof(*diagnostic));
-  if (canonical_ir == NULL || type_name == NULL || type_name[0] == '\0' ||
+  if (contract == NULL || wire_ir == NULL ||
+      type_name == NULL || type_name[0] == '\0' ||
       out_layout == NULL) {
     binary_diag(diagnostic, NULL, "Invalid Binary layout build arguments");
     return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
   }
 
-  record = binary_find_record(canonical_ir, type_name);
-  if (record == NULL) {
+  typed_record = idl_contract_find_data(contract, type_name);
+  record = binary_find_record(wire_ir, type_name);
+  if (typed_record == NULL || record == NULL) {
     binary_diag(diagnostic, NULL, "Binary layout type was not found");
     return DATABIND_BINARY_LAYOUT_TYPE_NOT_FOUND;
   }
@@ -498,12 +517,17 @@ databind_binary_layout_status databind_binary_layout_build(
   candidate.presence_offset = 0u;
   candidate.null_offset = candidate.presence_size;
 
-  schema = binary_find_child(canonical_ir, "schema");
+  schema = binary_find_child(wire_ir, "schema");
   text = binary_string_value(schema, "schema_wire_big_endian_value");
   candidate.wire_big_endian =
       text != NULL && strcmp(text, "0") != 0;
 
   candidate.field_count = fields->data.list.count;
+  if (typed_record->field_count != candidate.field_count) {
+    binary_diag(diagnostic, NULL,
+                "Typed Contract IR and TBE wire view disagree on field count");
+    goto invalid;
+  }
   if (candidate.field_count != 0u) {
     candidate.fields = (databind_binary_field_layout *)calloc(
         candidate.field_count, sizeof(*candidate.fields));
@@ -515,7 +539,7 @@ databind_binary_layout_status databind_binary_layout_build(
 
   for (i = 0u; i < candidate.field_count; ++i) {
     status = binary_build_field(
-        canonical_ir, fields->data.list.items[i],
+        contract, typed_record, wire_ir, fields->data.list.items[i],
         &candidate.fields[i], diagnostic);
     if (status != DATABIND_BINARY_LAYOUT_OK) {
       databind_binary_layout_destroy(&candidate);
