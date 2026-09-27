@@ -121,8 +121,12 @@ static void init_process_options(salts_process_options_t *options, bool echo_std
 
 static cflow_process_config process_test_config(process_completion_probe *probe) {
   cflow_process_config config = {0};
-#ifdef _WIN32
+#if defined(_WIN32)
   config.backend_kind = CFLOW_IO_NATIVE_IOCP;
+#elif defined(__linux__) || defined(__ANDROID__)
+  config.backend_kind = CFLOW_IO_NATIVE_EPOLL;
+#elif defined(__APPLE__)
+  config.backend_kind = CFLOW_IO_NATIVE_KQUEUE;
 #else
   config.backend_kind = CFLOW_IO_NATIVE_POLL;
 #endif
@@ -149,6 +153,18 @@ static int close_and_drain(cflow_process *process) {
 }
 
 spec("CFlow subprocess adapter") {
+  it("rejects POLL instead of silently falling back for async process pipes") {
+    salts_process_options_t options;
+    cflow_process process = {0};
+    process_completion_probe probe = {0};
+    cflow_process_config config = process_test_config(&probe);
+
+    init_process_options(&options, false);
+    config.backend_kind = CFLOW_IO_NATIVE_POLL;
+    check_equal(cflow_process_start(&process, &options, &config), SALTS_ENOTSUP);
+    check_null(process.impl);
+  }
+
   it("moves bytes through bounded asynchronous standard streams") {
     static const char payload[] = "cflow-process-payload";
     salts_process_options_t options;

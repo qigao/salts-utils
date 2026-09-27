@@ -1,5 +1,6 @@
 #include <salts/process.h>
 
+#include <cflow/io_native_adapter.h>
 #include <cflow/io_pipe.h>
 #include <salts/error_codes.h>
 #include <salts/thread.h>
@@ -25,7 +26,7 @@ enum { CFLOW_PROCESS_PIPE_NAME_CAPACITY = 192, CFLOW_PROCESS_PIPE_BUFFER_CAPACIT
 typedef struct cflow_process_impl cflow_process_impl;
 
 typedef struct cflow_process_slot {
-  cflow_io_native_pipe_operation operation;
+  native_io_operation operation;
   cflow_process_impl *owner;
   cflow_io_request_id request_id;
   cflow_process_stream stream;
@@ -34,10 +35,10 @@ typedef struct cflow_process_slot {
 } cflow_process_slot;
 
 _Static_assert(offsetof(cflow_process_slot, operation) == 0u,
-               "native operation must remain the slot prefix");
+               "NativeIO operation must remain the slot prefix");
 
 struct cflow_process_impl {
-  cflow_io_native_backend backend;
+  cflow_io_native_adapter adapter;
   cflow_executor executor;
   cflow_io_actor actor;
   cflow_process_slot *slots;
@@ -47,6 +48,9 @@ struct cflow_process_impl {
   cflow_io_pipe_endpoint stdin_endpoint;
   cflow_io_pipe_endpoint stdout_endpoint;
   cflow_io_pipe_endpoint stderr_endpoint;
+  native_io_endpoint stdin_native;
+  native_io_endpoint stdout_native;
+  native_io_endpoint stderr_native;
   cflow_process_completion_fn completion;
   void *completion_user;
   int cleanup_error;
@@ -65,6 +69,28 @@ static cflow_process_impl *process_impl(cflow_process *process) {
 
 static const cflow_process_impl *process_const_impl(const cflow_process *process) {
   return process != NULL ? (const cflow_process_impl *)process->impl : NULL;
+}
+
+static bool process_backend_kind(cflow_io_native_backend_kind kind,
+                                 native_io_backend_kind *out) {
+  if (out == NULL) return false;
+  switch (kind) {
+  case CFLOW_IO_NATIVE_IOCP:
+    *out = NATIVE_IO_BACKEND_IOCP;
+    return true;
+  case CFLOW_IO_NATIVE_EPOLL:
+    *out = NATIVE_IO_BACKEND_EPOLL;
+    return true;
+  case CFLOW_IO_NATIVE_IO_URING:
+    *out = NATIVE_IO_BACKEND_IO_URING;
+    return true;
+  case CFLOW_IO_NATIVE_KQUEUE:
+    *out = NATIVE_IO_BACKEND_KQUEUE;
+    return true;
+  case CFLOW_IO_NATIVE_POLL:
+  default:
+    return false;
+  }
 }
 
 static void process_pair_init(cflow_process_pipe_pair *pair) {
@@ -140,7 +166,7 @@ static int process_pipe_pair_create(cflow_process_pipe_pair *pair, bool parent_w
   }
   (void)CloseHandle(event);
   pair->parent.handle = (uintptr_t)parent;
-  pair->parent.flags = CFLOW_IO_NATIVE_PIPE_ASYNC_CAPABLE;
+  pair->parent.flags = NATIVE_IO_PIPE_ENDPOINT_ASYNC_CAPABLE;
   pair->child = (uintptr_t)child;
   return SALTS_OK;
 
@@ -175,7 +201,7 @@ static int process_pipe_pair_create(cflow_process_pipe_pair *pair, bool parent_w
     return status;
   }
   pair->parent.handle = (uintptr_t)handles[parent_index];
-  pair->parent.flags = CFLOW_IO_NATIVE_PIPE_ASYNC_CAPABLE;
+  pair->parent.flags = NATIVE_IO_PIPE_ENDPOINT_ASYNC_CAPABLE;
   pair->child = (uintptr_t)handles[child_index];
   return SALTS_OK;
 }
@@ -188,15 +214,18 @@ static void process_record_cleanup_error(cflow_process_impl *impl, int status) {
 }
 
 static void process_close_parent_endpoint(cflow_process_impl *impl,
-                                          cflow_io_pipe_endpoint *endpoint) {
-  uintptr_t handle;
+                                          cflow_io_pipe_endpoint *endpoint,
+                                          native_io_endpoint *native_endpoint) {
   int status;
-  if (!cflow_io_pipe_endpoint_is_valid(endpoint)) return;
-  handle = endpoint->handle;
-  status = cflow_io_pipe_endpoint_close(endpoint);
-  process_record_cleanup_error(impl, status);
-  status = cflow_io_native_backend_forget_pipe(&impl->backend, handle);
-  process_record_cleanup_error(impl, status);
+  if (cflow_io_pipe_endpoint_is_valid(endpoint)) {
+    status = cflow_io_pipe_endpoint_close(endpoint);
+    process_record_cleanup_error(impl, status);
+  }
+  if (native_endpoint != NULL && native_io_endpoint_valid(*native_endpoint)) {
+    status = cflow_io_native_adapter_release_pipe(&impl->adapter, *native_endpoint);
+    process_record_cleanup_error(impl, status);
+    if (status == SALTS_OK) *native_endpoint = (native_io_endpoint){0};
+  }
 }
 
 static void process_slot_release(void *operation_user) {
@@ -223,25 +252,29 @@ static void process_actor_completion(void *user, cflow_io_request_id request_id,
   salts_mutex_unlock(&impl->gate);
 }
 
-static void process_start_cleanup(cflow_process_impl *impl, bool backend_initialized,
+static void process_start_cleanup(cflow_process_impl *impl, bool adapter_initialized,
                                   bool executor_initialized, bool actor_initialized) {
   if (impl == NULL) return;
   if (actor_initialized) {
     (void)cflow_io_actor_close(&impl->actor);
     (void)cflow_io_actor_destroy(&impl->actor);
   }
-  if (backend_initialized) {
-    (void)cflow_io_native_backend_shutdown(&impl->backend);
-    (void)cflow_io_native_backend_destroy(&impl->backend);
+  if (impl->native_process != NULL) salts_process_destroy(impl->native_process);
+  if (adapter_initialized) {
+    (void)cflow_io_native_adapter_close(&impl->adapter);
+    process_close_parent_endpoint(impl, &impl->stdin_endpoint, &impl->stdin_native);
+    process_close_parent_endpoint(impl, &impl->stdout_endpoint, &impl->stdout_native);
+    process_close_parent_endpoint(impl, &impl->stderr_endpoint, &impl->stderr_native);
+    (void)cflow_io_native_adapter_destroy(&impl->adapter);
+  } else {
+    (void)cflow_io_pipe_endpoint_close(&impl->stdin_endpoint);
+    (void)cflow_io_pipe_endpoint_close(&impl->stdout_endpoint);
+    (void)cflow_io_pipe_endpoint_close(&impl->stderr_endpoint);
   }
   if (executor_initialized) {
     (void)cflow_executor_shutdown(&impl->executor);
     cflow_executor_destroy(&impl->executor);
   }
-  if (impl->native_process != NULL) salts_process_destroy(impl->native_process);
-  (void)cflow_io_pipe_endpoint_close(&impl->stdin_endpoint);
-  (void)cflow_io_pipe_endpoint_close(&impl->stdout_endpoint);
-  (void)cflow_io_pipe_endpoint_close(&impl->stderr_endpoint);
   salts_mutex_destroy(&impl->gate);
   free(impl->slots);
   free(impl);
@@ -256,9 +289,10 @@ int cflow_process_start(cflow_process *process, const salts_process_options_t *o
   cflow_process_pipe_pair stdout_pair;
   cflow_process_pipe_pair stderr_pair;
   salts_process_stdio_bindings_t bindings;
-  cflow_io_native_backend_config backend_config;
+  native_io_backend_kind backend_kind;
+  cflow_io_native_adapter_config adapter_config;
   cflow_io_actor_config actor_config;
-  bool backend_initialized = false;
+  bool adapter_initialized = false;
   bool executor_initialized = false;
   bool actor_initialized = false;
   size_t index;
@@ -270,7 +304,10 @@ int cflow_process_start(cflow_process *process, const salts_process_options_t *o
       (options->flags & conflicting_flags) != 0u ||
       config->request_capacity > SIZE_MAX / sizeof(cflow_process_slot))
     return SALTS_EINVAL;
-  if (!cflow_io_native_backend_pipe_supported(config->backend_kind)) return SALTS_ENOTSUP;
+  if (!process_backend_kind(config->backend_kind, &backend_kind) ||
+      !native_io_backend_kind_supported(backend_kind) ||
+      !native_io_backend_kind_supports_pipe(backend_kind))
+    return SALTS_ENOTSUP;
 
   process_pair_init(&stdin_pair);
   process_pair_init(&stdout_pair);
@@ -297,11 +334,14 @@ int cflow_process_start(cflow_process *process, const salts_process_options_t *o
   for (index = 0u; index < impl->slot_capacity; ++index)
     impl->slots[index].owner = impl;
 
-  backend_config = (cflow_io_native_backend_config){config->backend_kind, config->request_capacity,
-                                                    config->completion_batch_capacity};
-  status = cflow_io_native_backend_init(&impl->backend, &backend_config);
+  adapter_config = (cflow_io_native_adapter_config){
+      .backend = {.kind = backend_kind,
+                  .endpoint_capacity = 3u,
+                  .request_capacity = config->request_capacity,
+                  .completion_batch_capacity = config->completion_batch_capacity}};
+  status = cflow_io_native_adapter_init(&impl->adapter, &adapter_config);
   if (status != SALTS_OK) goto failed;
-  backend_initialized = true;
+  adapter_initialized = true;
   if (!cflow_executor_manual_init_with_capacity(&impl->executor, config->request_capacity)) {
     status = SALTS_ENOMEM;
     goto failed;
@@ -311,8 +351,8 @@ int cflow_process_start(cflow_process *process, const salts_process_options_t *o
   actor_config.request_capacity = config->request_capacity;
   actor_config.command_capacity = config->command_capacity;
   actor_config.executor = &impl->executor;
-  actor_config.backend = cflow_io_native_backend_pipe_actor_ops();
-  actor_config.backend_user = &impl->backend;
+  actor_config.backend = cflow_io_native_adapter_actor_ops();
+  actor_config.backend_user = &impl->adapter;
   actor_config.completion = process_actor_completion;
   actor_config.completion_user = impl;
   status = cflow_io_actor_init(&impl->actor, &actor_config);
@@ -322,6 +362,15 @@ int cflow_process_start(cflow_process *process, const salts_process_options_t *o
   status = process_pipe_pair_create(&stdin_pair, true, 0u);
   if (status == SALTS_OK) status = process_pipe_pair_create(&stdout_pair, false, 1u);
   if (status == SALTS_OK) status = process_pipe_pair_create(&stderr_pair, false, 2u);
+  if (status != SALTS_OK) goto failed_pairs;
+  status = cflow_io_native_adapter_attach_pipe(
+      &impl->adapter, stdin_pair.parent.handle, stdin_pair.parent.flags, &impl->stdin_native);
+  if (status == SALTS_OK)
+    status = cflow_io_native_adapter_attach_pipe(
+        &impl->adapter, stdout_pair.parent.handle, stdout_pair.parent.flags, &impl->stdout_native);
+  if (status == SALTS_OK)
+    status = cflow_io_native_adapter_attach_pipe(
+        &impl->adapter, stderr_pair.parent.handle, stderr_pair.parent.flags, &impl->stderr_native);
   if (status != SALTS_OK) goto failed_pairs;
   bindings.stdin_handle = stdin_pair.child;
   bindings.stdout_handle = stdout_pair.child;
@@ -345,7 +394,7 @@ failed_pairs:
   process_pair_close(&stdout_pair);
   process_pair_close(&stderr_pair);
 failed:
-  process_start_cleanup(impl, backend_initialized, executor_initialized, actor_initialized);
+  process_start_cleanup(impl, adapter_initialized, executor_initialized, actor_initialized);
   return status;
 }
 
@@ -379,6 +428,7 @@ static cflow_process_submit_result process_try_submit(cflow_process *process,
                                                       size_t length) {
   cflow_process_impl *impl = process_impl(process);
   cflow_io_pipe_endpoint *endpoint;
+  native_io_endpoint native_endpoint;
   cflow_process_slot *slot = NULL;
   cflow_io_operation actor_operation;
   cflow_io_submit_result submitted;
@@ -388,7 +438,10 @@ static cflow_process_submit_result process_try_submit(cflow_process *process,
   endpoint = stream == CFLOW_PROCESS_STDIN    ? &impl->stdin_endpoint
              : stream == CFLOW_PROCESS_STDOUT ? &impl->stdout_endpoint
                                               : &impl->stderr_endpoint;
-  if (!cflow_io_pipe_endpoint_is_valid(endpoint))
+  native_endpoint = stream == CFLOW_PROCESS_STDIN    ? impl->stdin_native
+                    : stream == CFLOW_PROCESS_STDOUT ? impl->stdout_native
+                                                     : impl->stderr_native;
+  if (!cflow_io_pipe_endpoint_is_valid(endpoint) || !native_io_endpoint_valid(native_endpoint))
     return process_submit_result(CFLOW_PROCESS_SUBMIT_CLOSED, 0u);
   salts_mutex_lock(&impl->gate);
   if (impl->close_requested) {
@@ -398,12 +451,12 @@ static cflow_process_submit_result process_try_submit(cflow_process *process,
   for (index = 0u; index < impl->slot_capacity; ++index) {
     if (!impl->slots[index].in_use) {
       slot = &impl->slots[index];
-      slot->operation.kind =
-          stream == CFLOW_PROCESS_STDIN ? CFLOW_IO_NATIVE_PIPE_WRITE : CFLOW_IO_NATIVE_PIPE_READ;
-      slot->operation.handle = endpoint->handle;
-      slot->operation.buffer = buffer;
-      slot->operation.length = length;
-      slot->operation.flags = endpoint->flags;
+      slot->operation = (native_io_operation){
+          .kind = stream == CFLOW_PROCESS_STDIN ? NATIVE_IO_OPERATION_PIPE_WRITE
+                                                : NATIVE_IO_OPERATION_PIPE_READ,
+          .endpoint = native_endpoint,
+          .buffer = buffer,
+          .length = length};
       slot->stream = stream;
       slot->request_id = 0u;
       slot->in_use = true;
@@ -462,7 +515,7 @@ int cflow_process_close_stdin(cflow_process *process) {
     }
   }
   salts_mutex_unlock(&impl->gate);
-  process_close_parent_endpoint(impl, &impl->stdin_endpoint);
+  process_close_parent_endpoint(impl, &impl->stdin_endpoint, &impl->stdin_native);
   return impl->cleanup_error;
 }
 
@@ -514,6 +567,15 @@ int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *pr
       status = ack == CFLOW_IO_ACK_BUSY ? SALTS_EBUSY : SALTS_EPROTO;
       break;
     }
+    {
+      size_t native_completed = 0u;
+      const int observe_status =
+          cflow_io_native_adapter_observe(&impl->adapter, 0u, &native_completed);
+      if (observe_status != SALTS_OK && observe_status != SALTS_ETIMEDOUT) {
+        status = observe_status;
+        break;
+      }
+    }
     actor_result = cflow_io_actor_run_one(&impl->actor);
     if (actor_result.status == CFLOW_IO_RUN_PROGRESSED) {
       ++count;
@@ -537,9 +599,9 @@ int cflow_process_run_ready(cflow_process *process, size_t max_steps, size_t *pr
   impl->driver_active = false;
   salts_mutex_unlock(&impl->gate);
   if (impl->close_requested && cflow_io_actor_is_quiescent(&impl->actor)) {
-    process_close_parent_endpoint(impl, &impl->stdin_endpoint);
-    process_close_parent_endpoint(impl, &impl->stdout_endpoint);
-    process_close_parent_endpoint(impl, &impl->stderr_endpoint);
+    process_close_parent_endpoint(impl, &impl->stdin_endpoint, &impl->stdin_native);
+    process_close_parent_endpoint(impl, &impl->stdout_endpoint, &impl->stdout_native);
+    process_close_parent_endpoint(impl, &impl->stderr_endpoint, &impl->stderr_native);
   }
   *progressed = count;
   return status;
@@ -568,6 +630,10 @@ int cflow_process_close(cflow_process *process) {
   if (impl == NULL) return SALTS_EINVAL;
   actor_status = cflow_io_actor_close(&impl->actor);
   if (actor_status != SALTS_OK && actor_status != SALTS_EALREADY) return actor_status;
+  {
+    const int adapter_status = cflow_io_native_adapter_close(&impl->adapter);
+    if (adapter_status != SALTS_OK && adapter_status != SALTS_EALREADY) return adapter_status;
+  }
   salts_mutex_lock(&impl->gate);
   impl->close_requested = true;
   salts_mutex_unlock(&impl->gate);
@@ -581,7 +647,10 @@ bool cflow_process_is_quiescent(const cflow_process *process) {
   if (impl == NULL || !impl->close_requested || !cflow_io_actor_is_quiescent(&impl->actor) ||
       cflow_io_pipe_endpoint_is_valid(&impl->stdin_endpoint) ||
       cflow_io_pipe_endpoint_is_valid(&impl->stdout_endpoint) ||
-      cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint))
+      cflow_io_pipe_endpoint_is_valid(&impl->stderr_endpoint) ||
+      native_io_endpoint_valid(impl->stdin_native) ||
+      native_io_endpoint_valid(impl->stdout_native) ||
+      native_io_endpoint_valid(impl->stderr_native))
     return false;
   return salts_process_poll(impl->native_process, &result) == SALTS_OK;
 }
@@ -593,11 +662,9 @@ int cflow_process_destroy(cflow_process *process) {
   if (impl == NULL) return SALTS_EINVAL;
   if (!cflow_process_is_quiescent(process)) return SALTS_EBUSY;
   result = impl->cleanup_error;
-  status = cflow_io_native_backend_shutdown(&impl->backend);
-  if (status != SALTS_OK && status != SALTS_EALREADY) return status;
   status = cflow_io_actor_destroy(&impl->actor);
   if (status != SALTS_OK) return status;
-  status = cflow_io_native_backend_destroy(&impl->backend);
+  status = cflow_io_native_adapter_destroy(&impl->adapter);
   if (status != SALTS_OK && result == SALTS_OK) result = status;
   if (!cflow_executor_shutdown(&impl->executor) && result == SALTS_OK) result = SALTS_EBUSY;
   cflow_executor_destroy(&impl->executor);
