@@ -29,6 +29,7 @@ target_compile_features(databind_tbe_contract PUBLIC c_std_11)
 target_include_directories(databind_tbe_contract
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compiler/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal>
   PRIVATE
     ${DATABIND_SOURCE_ROOT}/schema/include
     ${DATABIND_SOURCE_ROOT}/schema/parser)
