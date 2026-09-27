@@ -86,7 +86,7 @@ target_link_libraries(installed_socket_consumer PRIVATE
 target_include_directories(installed_socket_consumer PRIVATE
   "${installed_socket_GENERATED_DIR}")
 add_dependencies(installed_socket_consumer
-  installed_socket_databind_codegen)
+  installed_socket_idl_codegen)
 add_dependencies(installed_socket
   installed_socket_consumer)
 add_dependencies(installed_image
@@ -120,7 +120,7 @@ add_custom_target(installed_openapi_verify
     -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_openapi.cmake"
   VERBATIM)
 add_dependencies(installed_openapi_verify
-  installed_openapi_databind_codegen)
+  installed_openapi_idl_codegen)
 add_dependencies(installed_openapi
   installed_openapi_verify)
 add_dependencies(installed_image
@@ -141,7 +141,7 @@ target_link_libraries(installed_flowmq_consumer PRIVATE
 target_include_directories(installed_flowmq_consumer PRIVATE
   "${installed_flow_GENERATED_DIR}")
 add_dependencies(installed_flowmq_consumer
-  installed_flow_databind_codegen)
+  installed_flow_idl_codegen)
 add_dependencies(installed_flow
   installed_flowmq_consumer)
 add_dependencies(installed_image
