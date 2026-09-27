@@ -1106,13 +1106,34 @@ static void tbe_compiler_annotate_native_requirement(
       tbe_compiler_native_requirement_name(requirement));
 }
 
-static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
+static const IdlField *tbe_compiler_contract_field(
+    const IdlContract *contract, const char *owner_name,
+    const char *field_name) {
+  const IdlDataDecl *decl;
+  size_t i;
+  if (contract == NULL || owner_name == NULL || field_name == NULL) return NULL;
+  decl = idl_contract_find_data(contract, owner_name);
+  if (decl == NULL) return NULL;
+  for (i = 0u; i < decl->field_count; ++i)
+    if (decl->fields[i].name != NULL &&
+        strcmp(decl->fields[i].name, field_name) == 0)
+      return &decl->fields[i];
+  return NULL;
+}
+
+static void tbe_compiler_annotate_field_types(
+    Node *root, const IdlContract *contract,
+    const char *owner_name, Node *field) {
   char type_buf[256];
   char field_name[128];
   const char *name = tbe_compiler_string_value(field, "name");
+  const IdlField *typed_field =
+      tbe_compiler_contract_field(contract, owner_name, name);
   schema_cmeta_field_type resolved;
   const schema_cmeta_field_type *semantic =
-      schema_cmeta_field_resolve(root, field, &resolved) ? &resolved : NULL;
+      schema_cmeta_field_resolve(contract, typed_field, &resolved)
+          ? &resolved
+          : NULL;
 
   if (semantic) {
     snprintf(type_buf, sizeof(type_buf), "%d", (int)semantic->kind);
@@ -1158,17 +1179,20 @@ static void tbe_compiler_annotate_field_types(Node *root, Node *field) {
   tbe_compiler_annotate_native_requirement(root, field, semantic);
 }
 
-static void tbe_compiler_annotate_record_list_types(Node *root, const char *list_name) {
+static void tbe_compiler_annotate_record_list_types(
+    Node *root, const IdlContract *contract, const char *list_name) {
   Node *list = tbe_compiler_find_child(root, list_name);
   if (!list || list->type != NODE_LIST) return;
 
   for (size_t i = 0; i < list->data.list.count; ++i) {
     Node *record = list->data.list.items[i];
+    const char *owner_name = tbe_compiler_string_value(record, "name");
     Node *fields = tbe_compiler_find_child(record, "fields");
     if (!fields || fields->type != NODE_LIST) continue;
 
     for (size_t j = 0; j < fields->data.list.count; ++j) {
-      tbe_compiler_annotate_field_types(root, fields->data.list.items[j]);
+      tbe_compiler_annotate_field_types(
+          root, contract, owner_name, fields->data.list.items[j]);
     }
   }
 }
@@ -1508,13 +1532,15 @@ static void tbe_compiler_annotate_schema_types(Node *root) {
   tbe_compiler_set_string(schema, "go_package_name", package_name);
 }
 
-void tbe_compiler_annotate_language_types(Node *root) {
+void tbe_compiler_annotate_language_types(
+    const IdlContract *contract, Node *root) {
+  if (contract == NULL || root == NULL) return;
   tbe_compiler_annotate_schema_types(root);
   tbe_compiler_annotate_enum_types(root);
-  tbe_compiler_annotate_record_list_types(root, "composites");
-  tbe_compiler_annotate_record_list_types(root, "groups");
-  tbe_compiler_annotate_record_list_types(root, "messages");
-  tbe_compiler_annotate_record_list_types(root, "unions");
+  tbe_compiler_annotate_record_list_types(root, contract, "composites");
+  tbe_compiler_annotate_record_list_types(root, contract, "groups");
+  tbe_compiler_annotate_record_list_types(root, contract, "messages");
+  tbe_compiler_annotate_record_list_types(root, contract, "unions");
   tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_support(root, 0);
 }
@@ -1905,7 +1931,7 @@ int databind_compiler_parse_contract_file(
     return 1;
   }
 
-  tbe_compiler_annotate_language_types(root);
+  tbe_compiler_annotate_language_types(contract, root);
 
   *out_legacy_tree = root;
   *out_contract = contract;
