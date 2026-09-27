@@ -2,6 +2,7 @@
 #define TBE_COMPILER_CORE_H
 
 #include "node_tree.h"
+#include "idl_contract.h"
 #include "projection.h"
 
 #include <stdint.h>
@@ -54,8 +55,14 @@ const char *tbe_compiler_resolve_template(const char *user_template,
 
 void tbe_compiler_annotate_language_types(Node *root);
 
-int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
-                                   char **out_schema_data);
+int databind_compiler_parse_contract_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data);
+
+/* Transitional test/helper API. New compiler code must consume the typed
+ * IdlContract returned by databind_compiler_parse_contract_file(). */
+int tbe_compiler_parse_schema_file(
+    const char *schema_path, Node **out_root, char **out_schema_data);
 
 int tbe_compiler_render_file(Node *root, const char *template_path,
                              const char *output_path);
