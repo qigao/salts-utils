@@ -1,6 +1,6 @@
 #include "tinytest.h"
 #include "schema_cmeta.h"
-#include "idl.h"
+#include "tbe_contract_overlay.h"
 #include "../parser/schema_builtin_type.h"
 
 #include <stdio.h>
@@ -160,7 +160,7 @@ suite("schema_cmeta_production_profiles") {
             check_true(written > 0 && (size_t)written < sizeof(schema));
             check_not_null(root);
             snprintf(size_text, sizeof(size_text), "%zu", item->wire_size);
-            parsed = idl_parse(schema, (size_t)written, root, &error);
+            parsed = databind_tbe_contract_parse(schema, (size_t)written, root, &error);
             messages = profile_child(root, "messages");
             if (parsed == 0 && messages != NULL && messages->type == NODE_LIST &&
                 messages->data.list.count == 1u) {
