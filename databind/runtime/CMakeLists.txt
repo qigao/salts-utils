@@ -138,6 +138,8 @@ add_library(
   data_bind_schema.c
   data_bind_schema_internal.h
   data_bind_record.c
+  data_bind_binary_reader.c
+  data_bind_binary_reader.h
   data_bind_binding_plan.c
   data_bind_binding_plan.h
   data_bind_message_plan.c
@@ -246,6 +248,7 @@ install(
     data_bind.h
     data_bind_format_provider.h
     data_bind_native.h
+    data_bind_binary_reader.h
     data_bind_binding_plan.h
     data_bind_message_plan.h
     data_bind_native_binding.h
@@ -419,6 +422,13 @@ cmake_add_test(test_data_bind_socket_execution_plan
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_socket_execution_plan PROPERTIES
   LABELS "databind;socket-plan;message-plan;execution")
+cmake_add_test(test_data_bind_binary_reader
+  SOURCES test_data_bind_binary_reader.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_binary_reader PROPERTIES
+  LABELS "databind;binary;reader")
+
 cmake_add_test(test_data_bind_binding_plan
   SOURCES test_data_bind_binding_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
