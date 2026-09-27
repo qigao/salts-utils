@@ -322,6 +322,7 @@ jobs:
           findstr /C:"Salts::Lua" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::QuickJS" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
           echo SALTS_ROOT=%prefix%>>"%GITHUB_ENV%"
 
       - name: Restore focused DataBind dependency closure
@@ -361,6 +362,7 @@ jobs:
           findstr /C:"Salts::Plugin" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::CBind" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
           > build\pair-native-execution-installed.c echo #include ^<data_bind_native_binding.h^>
           >> build\pair-native-execution-installed.c echo _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u, "unexpected DataBind native execution ABI");
           >> build\pair-native-execution-installed.c echo int main(void) { DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT; return execution.size == sizeof(DataBindNativeExecution) ^&^& execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION ? 0 : 1; }
@@ -399,6 +401,7 @@ jobs:
           findstr /C:"Salts::Plugin" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
           findstr /C:"Salts::CBind" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
 
       - name: Verify exact pair remained immutable
         if: always()
