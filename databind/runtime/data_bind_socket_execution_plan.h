@@ -1,7 +1,9 @@
 #ifndef DATA_BIND_SOCKET_EXECUTION_PLAN_H
 #define DATA_BIND_SOCKET_EXECUTION_PLAN_H
 
+#include "data_bind_format_provider.h"
 #include "data_bind_message_plan.h"
+#include "data_bind_projection_plan.h"
 #include "data_bind_socket_plan.h"
 
 #include <cserde/reader.h>
@@ -56,6 +58,33 @@ DATA_BIND_API DataBindStatus data_bind_socket_execution_plan_decode_native(
     void *destination,
     size_t destination_bytes,
     DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
+ * Decode one already-framed Socket payload through the selected FormatPlan.
+ *
+ * Framing/datagram extraction is owned by CNet/the transport runtime. The
+ * caller passes one complete payload and one explicit format provider whose
+ * provider.format must exactly equal the generated SocketPlan format. No
+ * provider registry lookup, fallback or format substitution occurs.
+ *
+ * Startup compilation owns the immutable FormatPlan. The hot path opens a
+ * provider reader, canonicalizes root field names through that plan, delegates
+ * to MessagePlan, and closes the provider lease on every path.
+ *
+ * format_error reports provider/canonical-reader failures. message_diagnostic
+ * reports DataBind state/native/validation failures after canonicalization.
+ */
+DATA_BIND_API DataBindStatus data_bind_socket_execution_plan_decode_payload(
+    const DataBindSocketExecutionPlan *plan,
+    const DataBindFormatProvider *provider,
+    const void *payload,
+    size_t payload_bytes,
+    size_t max_depth,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *message_diagnostic,
+    DataBindError *format_error);
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,5 @@
 #include "data_bind_socket_execution_plan.h"
+#include "data_bind_json_provider.h"
 
 #include "tinytest.h"
 
@@ -6,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct SocketEvent {
@@ -123,10 +125,90 @@ static DataBindNativeOptions socket_native_options(
   return options;
 }
 
+typedef struct BinaryProviderOwner {
+  cserde_reader reader;
+  SocketTokenReader state;
+  cserde_token tokens[4];
+} BinaryProviderOwner;
+
+static size_t BINARY_PROVIDER_CLOSE_CALLS = 0u;
+
+static DataBindStatus binary_provider_error(
+    DataBindError *error, DataBindStatus status, const char *message) {
+  if (error != NULL) {
+    *error = (DataBindError)DATA_BIND_ERROR_INIT;
+    error->code = status;
+    snprintf(error->message, sizeof(error->message), "%s",
+             message != NULL ? message : "");
+  }
+  return status;
+}
+
+static DataBindStatus binary_provider_open(
+    const char *data,
+    size_t len,
+    size_t max_depth,
+    cserde_reader **out_reader,
+    void **out_owner,
+    DataBindError *error) {
+  BinaryProviderOwner *owner;
+  uint32_t sequence;
+  (void)max_depth;
+
+  if (out_reader == NULL || out_owner == NULL ||
+      data == NULL || len != 1u)
+    return binary_provider_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "Test Binary provider requires exactly one payload byte");
+
+  owner = (BinaryProviderOwner *)calloc(1u, sizeof(*owner));
+  if (owner == NULL)
+    return binary_provider_error(
+        error, DATA_BIND_ERR_OOM,
+        "Could not allocate test Binary provider owner");
+
+  sequence = (uint8_t)data[0];
+  owner->tokens[0] = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+  owner->tokens[1] = socket_key("sequence");
+  owner->tokens[2] =
+      (cserde_token){.kind = CSERDE_UINT, .value.uint = sequence};
+  owner->tokens[3] = (cserde_token){.kind = CSERDE_MAP_END};
+
+  owner->state.tokens = owner->tokens;
+  owner->state.count = 4u;
+  owner->state.index = 0u;
+  if (cserde_reader_init(
+          &owner->reader, &SOCKET_TOKEN_OPS, &owner->state) != CSERDE_OK) {
+    free(owner);
+    return binary_provider_error(
+        error, DATA_BIND_ERR_RUNTIME,
+        "Could not initialize test Binary provider reader");
+  }
+
+  *out_reader = &owner->reader;
+  *out_owner = owner;
+  if (error != NULL) *error = (DataBindError)DATA_BIND_ERROR_INIT;
+  return DATA_BIND_OK;
+}
+
+static void binary_provider_close(cserde_reader *reader, void *owner) {
+  (void)reader;
+  if (owner != NULL) {
+    ++BINARY_PROVIDER_CLOSE_CALLS;
+    free(owner);
+  }
+}
+
+static const DataBindFormatProvider TEST_BINARY_PROVIDER =
+    DATA_BIND_FORMAT_PROVIDER_INIT(
+        DATA_BIND_FORMAT_BINARY,
+        binary_provider_open,
+        binary_provider_close);
+
 static DataBind *socket_codec(void) {
   static const char schema[] =
       "message Event {"
-      " @Min(1) @Max(10) uint32 sequence;"
+      " @Min(1) @Max(10) [name(seq), alias(oldSeq)] uint32 sequence;"
       " optional uint32 sample default 7;"
       "}"
       "channel Events: Event;";
@@ -140,6 +222,129 @@ static DataBind *socket_codec(void) {
 }
 
 spec("DataBind SocketExecutionPlan") {
+  it("decodes framed JSON payloads through compiled FormatPlan aliases") {
+    DataBindSocketPlan socket = {
+        sizeof(DataBindSocketPlan),
+        DATA_BIND_SOCKET_PLAN_ABI_VERSION,
+        "Events",
+        "Event",
+        DATA_BIND_FORMAT_JSON,
+        DATA_BIND_SOCKET_MODE_STREAM,
+        DATA_BIND_SOCKET_FRAMING_LENGTH32_BE,
+        4096u,
+        socket_event_binding};
+    static const char payload[] = "{\"seq\":3}";
+    DataBind *codec = socket_codec();
+    DataBindSocketExecutionPlan *execution = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[2048] = {0};
+    DataBindNativeOptions options =
+        socket_native_options(workspace, sizeof(workspace));
+    SocketEvent value = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_socket_execution_plan_compile(
+            codec, &socket, &execution, &error),
+        DATA_BIND_OK);
+    check_not_null(execution);
+    data_bind_free(codec);
+    codec = NULL;
+
+    check_equal(
+        data_bind_socket_execution_plan_decode_payload(
+            execution, data_bind_json_format_provider(),
+            payload, sizeof(payload) - 1u, 16u,
+            &options, &value, sizeof(value),
+            &diagnostic, &error),
+        DATA_BIND_OK);
+    check_equal(value.sequence, (uint32_t)3u);
+    check_equal(value.sample, (uint32_t)7u);
+    check_equal(value.presence, (uint8_t)1u);
+
+    data_bind_socket_execution_plan_free(execution);
+  }
+
+  it("uses an explicit Binary provider and closes its lease on all paths") {
+    DataBindSocketPlan socket = {
+        sizeof(DataBindSocketPlan),
+        DATA_BIND_SOCKET_PLAN_ABI_VERSION,
+        "Events",
+        "Event",
+        DATA_BIND_FORMAT_BINARY,
+        DATA_BIND_SOCKET_MODE_DATAGRAM,
+        DATA_BIND_SOCKET_FRAMING_NONE,
+        4096u,
+        socket_event_binding};
+    DataBind *codec = socket_codec();
+    DataBindSocketExecutionPlan *execution = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[2048] = {0};
+    DataBindNativeOptions options =
+        socket_native_options(workspace, sizeof(workspace));
+    SocketEvent valid = {0};
+    SocketEvent invalid = {0};
+    const unsigned char valid_payload[] = {3u};
+    const unsigned char invalid_payload[] = {0u};
+    size_t close_before;
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_socket_execution_plan_compile(
+            codec, &socket, &execution, &error),
+        DATA_BIND_OK);
+    check_not_null(execution);
+    data_bind_free(codec);
+    codec = NULL;
+
+    close_before = BINARY_PROVIDER_CLOSE_CALLS;
+    check_equal(
+        data_bind_socket_execution_plan_decode_payload(
+            execution, &TEST_BINARY_PROVIDER,
+            valid_payload, sizeof(valid_payload), 16u,
+            &options, &valid, sizeof(valid),
+            &diagnostic, &error),
+        DATA_BIND_OK);
+    check_equal(valid.sequence, (uint32_t)3u);
+    check_equal(valid.sample, (uint32_t)7u);
+    check_equal(valid.presence, (uint8_t)1u);
+    check_equal(BINARY_PROVIDER_CLOSE_CALLS, close_before + 1u);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_socket_execution_plan_decode_payload(
+            execution, &TEST_BINARY_PROVIDER,
+            invalid_payload, sizeof(invalid_payload), 16u,
+            &options, &invalid, sizeof(invalid),
+            &diagnostic, &error),
+        DATA_BIND_ERR_VALIDATION);
+    check_equal(invalid.sequence, (uint32_t)0u);
+    check_equal(invalid.sample, (uint32_t)0u);
+    check_equal(invalid.presence, (uint8_t)0u);
+    check_equal(diagnostic.schema_field, "sequence");
+    check_equal(BINARY_PROVIDER_CLOSE_CALLS, close_before + 2u);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_socket_execution_plan_decode_payload(
+            execution, data_bind_json_format_provider(),
+            valid_payload, sizeof(valid_payload), 16u,
+            &options, &valid, sizeof(valid),
+            &diagnostic, &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_contains(error.message, "does not match");
+
+    data_bind_socket_execution_plan_free(execution);
+  }
+
   it("survives codec release and delegates lookup-free MessagePlan decode") {
     char channel[] = "Events";
     char message[] = "Event";

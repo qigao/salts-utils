@@ -10,6 +10,7 @@ struct DataBindSocketExecutionPlan {
   char *channel_name;
   char *message_type;
   DataBindNativeTypeBinding native;
+  DataBindFormatPlan *format;
   DataBindMessagePlan *message;
 };
 
@@ -71,6 +72,7 @@ void data_bind_socket_execution_plan_free(
     DataBindSocketExecutionPlan *plan) {
   if (plan == NULL) return;
   data_bind_message_plan_free(plan->message);
+  data_bind_format_plan_free(plan->format);
   free(plan->message_type);
   free(plan->channel_name);
   free(plan);
@@ -167,6 +169,11 @@ DataBindStatus data_bind_socket_execution_plan_compile(
     goto fail;
   }
 
+  status = data_bind_format_plan_compile(
+      codec, plan->message_type, plan->socket.format,
+      &plan->format, error);
+  if (status != DATA_BIND_OK) goto fail;
+
   *out_plan = plan;
   socket_exec_error_clear(error);
   return DATA_BIND_OK;
@@ -199,4 +206,70 @@ DataBindStatus data_bind_socket_execution_plan_decode_native(
   return data_bind_message_plan_decode_native(
       plan->message, native_options, reader,
       destination, destination_bytes, diagnostic);
+}
+
+
+static int socket_exec_provider_format_matches(
+    const DataBindFormatProvider *provider,
+    DataBindFormat format) {
+  return provider != NULL &&
+      provider->size >=
+          offsetof(DataBindFormatProvider, format) + sizeof(provider->format) &&
+      provider->abi_version == DATA_BIND_FORMAT_PROVIDER_ABI_VERSION &&
+      provider->format == format;
+}
+
+DataBindStatus data_bind_socket_execution_plan_decode_payload(
+    const DataBindSocketExecutionPlan *plan,
+    const DataBindFormatProvider *provider,
+    const void *payload,
+    size_t payload_bytes,
+    size_t max_depth,
+    const DataBindNativeOptions *native_options,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *message_diagnostic,
+    DataBindError *format_error) {
+  DataBindFormatReader format_reader = DATA_BIND_FORMAT_READER_INIT;
+  DataBindFormatCanonicalReader canonical =
+      DATA_BIND_FORMAT_CANONICAL_READER_INIT;
+  DataBindStatus status;
+  DataBindStatus close_status;
+
+  socket_exec_error_clear(format_error);
+
+  if (plan == NULL || plan->message == NULL || plan->format == NULL ||
+      native_options == NULL || destination == NULL ||
+      (payload == NULL && payload_bytes != 0u))
+    return socket_exec_fail(
+        format_error, DATA_BIND_ERR_INVALID_ARG,
+        plan != NULL ? plan->message_type : NULL,
+        "Invalid Socket payload decode arguments");
+
+  if (!socket_exec_provider_format_matches(provider, plan->socket.format))
+    return socket_exec_fail(
+        format_error, DATA_BIND_ERR_TYPE_MISMATCH, plan->message_type,
+        "Socket format provider does not match the compiled SocketPlan format");
+
+  status = data_bind_format_reader_open(
+      provider, (const char *)payload, payload_bytes, max_depth,
+      &format_reader, format_error);
+  if (status != DATA_BIND_OK) return status;
+
+  status = data_bind_format_canonical_reader_init(
+      plan->format, format_reader.reader, &canonical, format_error);
+  if (status == DATA_BIND_OK) {
+    status = data_bind_socket_execution_plan_decode_native(
+        plan, native_options,
+        data_bind_format_canonical_reader_reader(&canonical),
+        destination, destination_bytes, message_diagnostic);
+  }
+
+  close_status = data_bind_format_reader_close(&format_reader);
+  if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+    return socket_exec_fail(
+        format_error, close_status, plan->message_type,
+        "Socket format provider lease could not be closed");
+
+  return status;
 }
