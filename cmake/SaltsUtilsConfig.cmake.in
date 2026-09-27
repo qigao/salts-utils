@@ -90,6 +90,22 @@ endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 
+foreach(required_salts_utils_target IN ITEMS
+        Salts::IDL
+        Salts::Schema
+        Salts::DataBindCore
+        Salts::DataBind)
+  if(NOT TARGET ${required_salts_utils_target})
+    message(FATAL_ERROR
+            "SaltsUtils 4.1 package is missing required target ${required_salts_utils_target}")
+  endif()
+endforeach()
+
+if(TARGET Salts::DataBindSchema)
+  message(FATAL_ERROR
+          "SaltsUtils 4.1 must not export retired Salts::DataBindSchema")
+endif()
+
 set(SaltsUtils_DATABINDC_HINT
     "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/DataBind.cmake")
