@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "idl.h"
 
 #include "tinytest.h"
 
@@ -39,7 +39,7 @@ static Node *channel_test_named(
 static Node *channel_test_parse(const char *schema, tbe_error_t *error) {
   Node *root = create_node_map(NULL);
   if (root == NULL) return NULL;
-  if (parse_schema(schema, strlen(schema), root, error) != 0) {
+  if (idl_parse(schema, strlen(schema), root, error) != 0) {
     node_free(root);
     return NULL;
   }

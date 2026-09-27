@@ -1,5 +1,4 @@
 #include "node_tree.h"
-#include "schema_parser_dsl.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
