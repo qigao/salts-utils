@@ -1,4 +1,4 @@
-#include "idl.h"
+#include "tbe_contract_overlay.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
 #include "tbe_version.h"
@@ -109,17 +109,17 @@ suite("tbe_robustness") {
             Node *root = create_node_map("root");
             tbe_error_t err;
             
-            int rc = idl_parse(NULL, 0, root, &err);
+            int rc = databind_tbe_contract_parse(NULL, 0, root, &err);
             check_equal(rc, -1);
             check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
-            rc = idl_parse("test", 4, NULL, &err);
+            rc = databind_tbe_contract_parse("test", 4, NULL, &err);
             check_equal(rc, -1);
             check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
             // Test with extremely large input
             char large_text[] = "message Test { uint32 x; }";
-            rc = idl_parse(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
+            rc = databind_tbe_contract_parse(large_text, SIZE_MAX, root, &err);  // Unreasonably large size
             check_equal(rc, -1);
             check_equal(err.code, TBE_ERR_INVALID_ARGUMENT);
             
@@ -188,7 +188,7 @@ suite("tbe_robustness") {
             
             Node *root = create_node_map("root");
             tbe_error_t err;
-            int rc = idl_parse(large_schema, strlen(large_schema), root, &err);
+            int rc = databind_tbe_contract_parse(large_schema, strlen(large_schema), root, &err);
             
             check_equal(rc, 0);
             
@@ -245,7 +245,7 @@ suite("tbe_robustness") {
             tbe_error_t err;
 
             tbe_error_init(&err);
-            check_equal(idl_parse(schema_text, strlen(schema_text), root, &err), -1);
+            check_equal(databind_tbe_contract_parse(schema_text, strlen(schema_text), root, &err), -1);
             check_equal(err.code, TBE_ERR_SYNTAX_ERROR);
             check(err.line > 0);
             check(err.column > 0);
