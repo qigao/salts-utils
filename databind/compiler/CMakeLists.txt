@@ -27,12 +27,13 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(salts_idlc
-  OUTPUT_NAME "salts-idlc"
   SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(salts_idlc
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+set_target_properties(salts_idlc PROPERTIES
+  OUTPUT_NAME "salts-idlc")
 set_property(TARGET salts_idlc APPEND PROPERTY LINK_DEPENDS
              ${TBE_COMPILER_TEMPLATE_FILES})
 
