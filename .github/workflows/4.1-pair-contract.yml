@@ -155,7 +155,11 @@ jobs:
           cmake --build build/pair-databind --parallel 2
           cmake --install build/pair-databind --prefix "$prefix"
           test -f "$prefix/include/data_bind_native_binding.h"
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
           grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          ! grep -F "Salts::Plugin" "$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          ! grep -F "Salts::PluginCFlow" "$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          ! grep -F "Salts::CBind" "$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
           cat > build/pair-native-execution-installed.c <<'EOF'
           #include <data_bind_native_binding.h>
           _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
@@ -326,6 +330,10 @@ jobs:
           cmake --install build\pair-databind --prefix "%prefix%"
           if errorlevel 1 exit /b 1
           if not exist "%prefix%\include\data_bind_native_binding.h" exit /b 1
+          if not exist "%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake" exit /b 1
+          findstr /C:"Salts::Plugin" "%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake" >nul && exit /b 1
+          findstr /C:"Salts::PluginCFlow" "%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake" >nul && exit /b 1
+          findstr /C:"Salts::CBind" "%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake" >nul && exit /b 1
           > build\pair-native-execution-installed.c echo #include ^<data_bind_native_binding.h^>
           >> build\pair-native-execution-installed.c echo _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u, "unexpected DataBind native execution ABI");
           >> build\pair-native-execution-installed.c echo int main(void) { DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT; return execution.size == sizeof(DataBindNativeExecution) ^&^& execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION ? 0 : 1; }
