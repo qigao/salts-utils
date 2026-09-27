@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "idl.h"
 #include "tinytest.h"
 
 #include <string.h>
@@ -39,7 +39,7 @@ static Node *parse_fields(const char *schema, Node **out_root) {
 
   if (out_root != NULL) *out_root = root;
   if (root == NULL ||
-      parse_schema(schema, strlen(schema), root, NULL) != 0)
+      idl_parse(schema, strlen(schema), root, NULL) != 0)
     return NULL;
 
   messages = child(root, "messages");
@@ -54,7 +54,7 @@ static void expect_rejected(const char *schema) {
   Node *root = create_node_map("root");
   check_not_null(root);
   if (root == NULL) return;
-  check_not_equal(parse_schema(schema, strlen(schema), root, NULL), 0);
+  check_not_equal(idl_parse(schema, strlen(schema), root, NULL), 0);
   node_free(root);
 }
 

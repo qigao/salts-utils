@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "idl.h"
 #include "tbe_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -44,7 +44,7 @@ suite("schema_boundaries") {
           "message Valid { uint32 seq; group<Level> levels; string symbol; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       check_equal(err.code, TBE_OK);
@@ -57,7 +57,7 @@ suite("schema_boundaries") {
           "message Broken { string symbol; group<Level> levels; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "levels"));
@@ -71,7 +71,7 @@ suite("schema_boundaries") {
           "message Broken { group<Level> levels; uint32 seq; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "seq"));
@@ -83,7 +83,7 @@ suite("schema_boundaries") {
       const char *schema = "message Broken { string symbol; uint32 seq; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "seq"));
@@ -97,7 +97,7 @@ suite("schema_boundaries") {
       const char *schema = "message Large { uint8[2147483647] values; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, 0);
       check_equal(err.code, TBE_OK);
@@ -108,7 +108,7 @@ suite("schema_boundaries") {
       const char *schema = "message Huge { uint8[18446744073709551615] values; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "18446744073709551615"));
@@ -120,7 +120,7 @@ suite("schema_boundaries") {
       const char *schema = "message Huge { uint8[18446744073709551616] values; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "18446744073709551616"));
@@ -134,7 +134,7 @@ suite("schema_boundaries") {
       const char *schema = "message Bad { varint value; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
@@ -146,7 +146,7 @@ suite("schema_boundaries") {
       const char *schema = "message Bad { list<varint> values; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
@@ -158,7 +158,7 @@ suite("schema_boundaries") {
       const char *schema = "enum Bad <varint> { A = 1; }";
       Node *root = create_node_map("root");
       tbe_error_t err;
-      int rc = parse_schema(schema, strlen(schema), root, &err);
+      int rc = idl_parse(schema, strlen(schema), root, &err);
 
       check_equal(rc, -1);
       check_not_null(strstr(err.message, "varint"));
@@ -190,7 +190,7 @@ suite("schema_boundaries") {
       check_greater(written, 0);
       check_true((size_t)written < sizeof(schema));
 
-      rc = parse_schema(schema, strlen(schema), root, &err);
+      rc = idl_parse(schema, strlen(schema), root, &err);
       check_equal(rc, 0);
       check_equal(err.code, TBE_OK);
 

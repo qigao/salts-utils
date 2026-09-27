@@ -1,5 +1,5 @@
 #include "tbe_error.h"
-#include "schema_parser_dsl.h"
+#include "idl.h"
 #include "tinytest.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -64,37 +64,37 @@ suite("tbe bench") {
   bench("TBE Parser Performance") {
     benchmark("Parse small message (32 bytes)", 100000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_SMALL, strlen(SCHEMA_SMALL), root, NULL);
+      idl_parse(SCHEMA_SMALL, strlen(SCHEMA_SMALL), root, NULL);
       node_free(root);
     }
 
     benchmark("Parse medium message (256 bytes)", 50000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_MEDIUM, strlen(SCHEMA_MEDIUM), root, NULL);
+      idl_parse(SCHEMA_MEDIUM, strlen(SCHEMA_MEDIUM), root, NULL);
       node_free(root);
     }
 
     benchmark("Parse large message (4KB)", 10000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_LARGE, strlen(SCHEMA_LARGE), root, NULL);
+      idl_parse(SCHEMA_LARGE, strlen(SCHEMA_LARGE), root, NULL);
       node_free(root);
     }
 
     benchmark("Parse enum with 10 items", 50000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_ENUM, strlen(SCHEMA_ENUM), root, NULL);
+      idl_parse(SCHEMA_ENUM, strlen(SCHEMA_ENUM), root, NULL);
       node_free(root);
     }
 
     benchmark("Parse flags with 8 items", 50000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_FLAGS, strlen(SCHEMA_FLAGS), root, NULL);
+      idl_parse(SCHEMA_FLAGS, strlen(SCHEMA_FLAGS), root, NULL);
       node_free(root);
     }
 
     benchmark("Parse complex schema (all features)", 5000, 1.0) {
       Node *root = create_node_map("root");
-      parse_schema(SCHEMA_COMPLEX, strlen(SCHEMA_COMPLEX), root, NULL);
+      idl_parse(SCHEMA_COMPLEX, strlen(SCHEMA_COMPLEX), root, NULL);
       node_free(root);
     }
 
