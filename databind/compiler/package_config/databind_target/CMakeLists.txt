@@ -87,3 +87,36 @@ add_dependencies(installed_socket
   installed_socket_consumer)
 add_dependencies(installed_image
   installed_socket)
+
+databind_target(
+  TARGET installed_openapi
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/openapi.schema"
+  ARTIFACT_NAME "installed_users"
+  ARTIFACTS OPENAPI
+  TRANSPORTS HTTP
+  PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/openapi_config.json")
+
+get_target_property(
+  _installed_openapi_artifact
+  installed_openapi
+  DATABIND_OPENAPI_ARTIFACT)
+if(NOT _installed_openapi_artifact)
+  message(FATAL_ERROR "installed OpenAPI artifact property is missing")
+endif()
+if(NOT "${_installed_openapi_artifact}"
+       STREQUAL "${installed_openapi_OPENAPI_ARTIFACT}")
+  message(FATAL_ERROR
+          "installed OpenAPI target property/parent-scope output disagree")
+endif()
+
+add_custom_target(installed_openapi_verify
+  COMMAND "${CMAKE_COMMAND}"
+    "-DOPENAPI_FILE=${_installed_openapi_artifact}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/verify_openapi.cmake"
+  VERBATIM)
+add_dependencies(installed_openapi_verify
+  installed_openapi_databind_codegen)
+add_dependencies(installed_openapi
+  installed_openapi_verify)
+add_dependencies(installed_image
+  installed_openapi)
