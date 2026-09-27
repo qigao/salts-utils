@@ -15,6 +15,7 @@
 #endif
 
 static char *emit_to_text(
+    const IdlContract *contract,
     const Node *root,
     const char *type_name,
     const char *prefix) {
@@ -24,7 +25,7 @@ static char *emit_to_text(
 
   if (file == NULL) return NULL;
   if (databind_compiler_binary_reader_emit(
-          file, root, type_name, prefix) != 0) {
+          file, contract, root, type_name, prefix) != 0) {
     fclose(file);
     return NULL;
   }
@@ -56,12 +57,13 @@ static char *emit_to_text(
 spec("DataBind compiler Binary reader codegen") {
   it("lowers canonical scalar BinaryLayoutIR to one type-level provider") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     char *text = NULL;
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            BINARY_SCALAR_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            BINARY_SCALAR_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
@@ -73,11 +75,11 @@ spec("DataBind compiler Binary reader codegen") {
 
     check_equal(
         databind_compiler_binary_reader_admit(
-            root, "Scalars"),
+            contract, root, "Scalars"),
         0);
 
     text = emit_to_text(
-        root, "Scalars", "databind_binary_fixture");
+        contract, root, "Scalars", "databind_binary_fixture");
     check_not_null(text);
     if (text != NULL) {
       check_contains(
@@ -107,18 +109,20 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     free(text);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
 
   it("fails closed when BinaryLayoutIR contains unsupported tail semantics") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     FILE *file = tmpfile();
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            SCHEMA_EXAMPLE_FILE, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            SCHEMA_EXAMPLE_FILE, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
@@ -127,27 +131,29 @@ spec("DataBind compiler Binary reader codegen") {
     if (root != NULL && file != NULL) {
       check_equal(
           databind_compiler_binary_reader_admit(
-              root, "LoginMessage"),
+              contract, root, "LoginMessage"),
           -1);
       check_equal(
           databind_compiler_binary_reader_emit(
-              file, root, "LoginMessage", "databind_login"),
+              file, contract, root, "LoginMessage", "databind_login"),
           -1);
     }
 
     if (file != NULL) fclose(file);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
 
   it("rejects invalid generated symbol identity before writing output") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     FILE *file = tmpfile();
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            BINARY_SCALAR_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            BINARY_SCALAR_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(file);
@@ -155,11 +161,12 @@ spec("DataBind compiler Binary reader codegen") {
     if (root != NULL && file != NULL) {
       check_equal(
           databind_compiler_binary_reader_emit(
-              file, root, "Scalars", "bad-prefix"),
+              file, contract, root, "Scalars", "bad-prefix"),
           -1);
     }
 
     if (file != NULL) fclose(file);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
