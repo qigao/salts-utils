@@ -180,11 +180,28 @@ jobs:
         run: |
           set -euxo pipefail
           prefix="$GITHUB_WORKSPACE/stage/openapi-installed"
-          cmake --install build/plugin-abi --prefix "$prefix"
+          cmake -S . -B build/openapi-package -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build build/openapi-package --parallel 2
+          cmake --install build/openapi-package
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
           test -x "$prefix/bin/databindc"
-          cmake -S databind/compiler/package_config/databind_target             -B build/openapi-installed -G Ninja             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"             -DVCPKG_TARGET_TRIPLET=x64-linux             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed"             -DVCPKG_MANIFEST_INSTALL=OFF             -DCMAKE_PREFIX_PATH="$prefix"
-          cmake --build build/openapi-installed             --target installed_openapi --parallel 2
+          cmake -S databind/compiler/package_config/databind_target \
+            -B build/openapi-installed -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DCMAKE_PREFIX_PATH="$prefix"
+          cmake --build build/openapi-installed \
+            --target installed_openapi --parallel 2
 
       - name: Configure sanitized BindingPlan build
         shell: bash
