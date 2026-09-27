@@ -18,7 +18,6 @@
 
 %include {
 #include "schema_lexer.h"
-#include "schema_builtin_type.h"
 #include "schema_size.h"
 #include "schema_types.h"
 #include <stdio.h>
@@ -69,12 +68,6 @@ static void grammar_oom(schema_parse_ctx_t *ctx) {
 static int validate_type_name_supported(schema_parse_ctx_t *ctx, const char *type_name) {
     if (type_name == NULL) {
         grammar_oom(ctx);
-        return 0;
-    }
-    if (strcmp(type_name, "varint") == 0) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Unsupported type 'varint': TBE runtime/compiler support is not implemented");
-        ctx->error = 1;
         return 0;
     }
     return 1;
@@ -333,89 +326,21 @@ static int validate_field_contract(schema_parse_ctx_t *ctx,
 static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char *field_type,
                            int is_collection, const char *collection_inner,
                            const char *length_field, int is_group_field) {
-    const schema_builtin_type_info_t *builtin_type = schema_builtin_type_find(field_type);
-    const cmeta_data_desc *builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
-    int size = 0;
-    int is_numeric = 0;
-    int is_unsigned = 0;
-    int is_uuid = 0;
-    const char *host_type = NULL;
-    const char *wire_reader = NULL;
     const char *map_value_type = NULL;
 
     if (is_group_field) {
-        add_string(ctx, field_map, "ctype", "GROUP");
         add_true(ctx, field_map, "is_group_field");
-        add_true(ctx, field_map, "is_variable_size");
         if (collection_inner && collection_inner[0]) {
             add_string(ctx, field_map, "group_type", collection_inner);
             add_string(ctx, field_map, "inner_type", collection_inner);
         }
-    } else if (builtin_data != NULL &&
-               (builtin_data->kind == CMETA_DATA_SINT ||
-                builtin_data->kind == CMETA_DATA_UINT ||
-                builtin_data->kind == CMETA_DATA_FLOAT)) {
-        size = (int)builtin_type->size;
-        is_numeric = 1;
-        is_unsigned = builtin_data->kind == CMETA_DATA_UINT;
-        host_type = builtin_type->host_type;
-        wire_reader = builtin_type->wire_reader;
-    } else if (strcmp(field_type, "uuid") == 0) {
-        size = 16; is_uuid = 1;
-    }
-
-    if (is_numeric) {
-        char size_text[16];
-        snprintf(size_text, sizeof(size_text), "%d", size);
-        add_string(ctx, field_map, "size_bytes", size_text);
-        if (host_type) {
-            add_string(ctx, field_map, "host_type", host_type);
-        }
-        if (wire_reader) {
-            add_string(ctx, field_map, "wire_reader", wire_reader);
-        }
-        add_true(ctx, field_map, "is_numeric");
-        if (is_unsigned) {
-            add_true(ctx, field_map, "is_unsigned");
-        }
-        add_true(ctx, field_map, "is_primitive");
-        add_true(ctx, field_map, "is_fixed_size");
-    }
-
-    if (is_uuid) {
-        char size_text[16];
-        snprintf(size_text, sizeof(size_text), "%d", size);
-        add_string(ctx, field_map, "ctype", "UUID");
-        add_string(ctx, field_map, "size_bytes", size_text);
-        add_string(ctx, field_map, "host_type", "salts_uuid_t");
-        add_true(ctx, field_map, "is_uuid");
-        add_true(ctx, field_map, "is_primitive");
-        add_true(ctx, field_map, "is_fixed_size");
-    }
-
-    if (!is_group_field && builtin_data != NULL &&
-        (builtin_data->kind == CMETA_DATA_SINT || builtin_data->kind == CMETA_DATA_UINT)) {
-        add_true(ctx, field_map, "is_integer");
-    } else if (!is_group_field && builtin_data != NULL &&
-               builtin_data->kind == CMETA_DATA_FLOAT) {
-        add_true(ctx, field_map, "is_float");
-    } else if (!is_group_field && strcmp(field_type, "bytes") == 0) {
-        add_string(ctx, field_map, "ctype", "BYTES");
+    } else if (strcmp(field_type, "bytes") == 0) {
         add_true(ctx, field_map, "is_bytes");
-        if (is_numeric_literal(length_field)) {
-            add_string(ctx, field_map, "size_bytes", length_field);
-            add_true(ctx, field_map, "is_fixed_size");
-        } else {
-            add_true(ctx, field_map, "is_variable_size");
-        }
-    } else if (!is_group_field && strcmp(field_type, "string") == 0) {
-        add_string(ctx, field_map, "ctype", "STRING");
+    } else if (strcmp(field_type, "string") == 0) {
         add_true(ctx, field_map, "is_string");
-        add_true(ctx, field_map, "is_variable_size");
-    } else if (!is_group_field && (is_collection || strcmp(field_type, "array") == 0 ||
+    } else if (is_collection || strcmp(field_type, "array") == 0 ||
                strcmp(field_type, "list") == 0 || strcmp(field_type, "set") == 0 ||
-               strcmp(field_type, "map") == 0)) {
-        add_string(ctx, field_map, "ctype", "COLLECTION");
+               strcmp(field_type, "map") == 0) {
         add_true(ctx, field_map, "is_collection");
         add_string(ctx, field_map, "collection_kind", field_type);
         if (strcmp(field_type, "list") == 0) {
@@ -425,6 +350,7 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
         } else if (strcmp(field_type, "map") == 0) {
             add_true(ctx, field_map, "is_map");
         }
+
         if (strcmp(field_type, "map") == 0 && collection_inner && collection_inner[0]) {
             map_value_type = strchr(collection_inner, ',');
             if (map_value_type != NULL) {
@@ -436,30 +362,11 @@ static void annotate_field(schema_parse_ctx_t *ctx, Node *field_map, const char 
         } else if (collection_inner && collection_inner[0]) {
             add_string(ctx, field_map, "inner_type", collection_inner);
         }
-        if (is_numeric_literal(length_field)) {
-            add_true(ctx, field_map, "is_fixed_size");
-        } else {
-            add_true(ctx, field_map, "is_variable_size");
-        }
-    } else if (!is_group_field && !is_numeric) {
-        add_string(ctx, field_map, "ctype", "USER_DEFINED");
-        add_true(ctx, field_map, "is_user_defined");
     }
 
     if (length_field && length_field[0]) {
         add_string(ctx, field_map, "length_field", length_field);
         add_true(ctx, field_map, "has_length_field");
-    }
-
-    if (is_group_field) {
-        /* group fields are their own section */
-    } else if (strcmp(field_type, "string") == 0 ||
-               (strcmp(field_type, "bytes") == 0 && !is_numeric_literal(length_field))) {
-        add_true(ctx, field_map, "is_var_data");
-    } else if (!is_collection ||
-               (strcmp(field_type, "array") == 0 && is_numeric_literal(length_field)) ||
-               (strcmp(field_type, "bytes") == 0 && is_numeric_literal(length_field))) {
-        add_true(ctx, field_map, "is_fixed_block");
     }
 }
 
