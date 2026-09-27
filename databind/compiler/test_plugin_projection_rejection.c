@@ -67,6 +67,8 @@ spec("DataBind Plugin projection semantic rejection") {
     static const char client_source_output[] =
         "databind_plugin_owned_typed_error_client_should_not_exist.c";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
         .plugin_version_major = 1u,
@@ -92,15 +94,17 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
 
-    check_equal(tbe_compiler_parse_schema_file(
+    check_equal(databind_compiler_parse_contract_file(
                     PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA,
-                    &root, &schema_data),
+                    &root, &contract, &schema_data),
                 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(databind_compiler_projection_run(
-                    root, &request, 1u, &backend, 1u),
+                    &input, &request, 1u, &backend, 1u),
                 -1);
 
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
@@ -108,6 +112,7 @@ spec("DataBind Plugin projection semantic rejection") {
     check(salts_fs_access(client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
@@ -125,6 +130,8 @@ spec("DataBind Plugin projection semantic rejection") {
         "", "0", "bad", "4294967296"
     };
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
         .plugin_version_major = 1u,
@@ -146,11 +153,13 @@ spec("DataBind Plugin projection semantic rejection") {
         DATABIND_COMPILER_PLUGIN_BACKEND;
     size_t i;
 
-    check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
+    check_equal(databind_compiler_parse_contract_file(
+                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &contract, &schema_data),
                 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     for (i = 0u;
          i < sizeof(invalid_versions) / sizeof(invalid_versions[0]);
@@ -174,6 +183,7 @@ spec("DataBind Plugin projection semantic rejection") {
                 client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     }
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
@@ -188,6 +198,8 @@ spec("DataBind Plugin projection semantic rejection") {
     static const char client_source_output[] =
         "databind_plugin_component_required_client_should_not_exist.c";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_plugin_config config = {
         .plugin_version_major = 1u,
@@ -208,18 +220,20 @@ spec("DataBind Plugin projection semantic rejection") {
     databind_compiler_projection_backend backend =
         DATABIND_COMPILER_PLUGIN_BACKEND;
 
-    check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
+    check_equal(databind_compiler_parse_contract_file(
+                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &contract, &schema_data),
                 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
     check_equal(databind_compiler_projection_run(
-                    root, &request, 1u, &backend, 1u),
+                    &input, &request, 1u, &backend, 1u),
                 -1);
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
@@ -228,27 +242,32 @@ spec("DataBind Plugin projection semantic rejection") {
 
     config.component_id = "MultiServicePlugin.Missing";
     check_equal(databind_compiler_projection_run(
-                    root, &request, 1u, &backend, 1u),
+                    &input, &request, 1u, &backend, 1u),
                 -1);
     check(salts_fs_access(source_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(header_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(client_header_output, SALTS_FS_ACCESS_EXISTS) != 0);
     check(salts_fs_access(client_source_output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
 
   it("shared Service native lowering excludes unselected Services before lowering") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_service_native_ir native_ir = {0};
 
-    check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_COMPONENT_SCHEMA, &root, &schema_data),
+    check_equal(databind_compiler_parse_contract_file(
+                    PLUGIN_COMPONENT_SCHEMA, &root, &contract, &schema_data),
                 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(databind_compiler_service_native_build_selected(
                     root, plugin_test_select_codec, NULL, &native_ir),
@@ -260,6 +279,7 @@ spec("DataBind Plugin projection semantic rejection") {
     check_equal(native_ir.operations[1].operation_name, "Encode");
 
     databind_compiler_service_native_destroy(&native_ir);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
@@ -274,6 +294,8 @@ spec("DataBind Plugin projection semantic rejection") {
     static const char client_source_output[] =
         "databind_plugin_multi_service_client.c";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     salts_fs_buf_t generated = {0};
     databind_compiler_plugin_config config = {
@@ -300,14 +322,16 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
 
-    check_equal(tbe_compiler_parse_schema_file(
-                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &schema_data),
+    check_equal(databind_compiler_parse_contract_file(
+                    PLUGIN_MULTI_SERVICE_SCHEMA, &root, &contract, &schema_data),
                 0);
     check_not_null(root);
+    check_not_null(contract);
     check_not_null(schema_data);
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(databind_compiler_projection_run(
-                    root, &request, 1u, &backend, 1u),
+                    &input, &request, 1u, &backend, 1u),
                 0);
 
     check_equal(salts_fs_read_file(source_output, &generated), 0);
@@ -345,6 +369,7 @@ spec("DataBind Plugin projection semantic rejection") {
     (void)salts_fs_unlink(header_output);
     (void)salts_fs_unlink(client_header_output);
     (void)salts_fs_unlink(client_source_output);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
