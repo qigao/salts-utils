@@ -70,6 +70,7 @@ fail:
 
 int main(int argc, char **argv) {
   Node *root = NULL;
+  IdlContract *contract = NULL;
   char *schema_data = NULL;
   databind_compiler_service_native_ir ir = {0};
   int status = 1;
@@ -81,11 +82,12 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  if (tbe_compiler_parse_schema_file(argv[1], &root, &schema_data) != 0) {
+  if (databind_compiler_parse_contract_file(
+          argv[1], &root, &contract, &schema_data) != 0) {
     fprintf(stderr, "service-native-codegen: failed to parse main schema\n");
     goto cleanup;
   }
-  if (databind_compiler_service_native_build(root, &ir) != 0) {
+  if (databind_compiler_service_native_build(contract, root, &ir) != 0) {
     fprintf(stderr, "service-native-codegen: failed to build main native IR\n");
     goto cleanup;
   }
@@ -118,25 +120,29 @@ int main(int argc, char **argv) {
 
   {
     Node *overlay_root = NULL;
+    IdlContract *overlay_contract = NULL;
     char *overlay_schema_data = NULL;
     databind_compiler_service_native_ir overlay_ir = {0};
     const databind_compiler_service_native_operation *operation;
 
-    if (tbe_compiler_parse_schema_file(
-            argv[5], &overlay_root, &overlay_schema_data) != 0) {
+    if (databind_compiler_parse_contract_file(
+            argv[5], &overlay_root, &overlay_contract,
+            &overlay_schema_data) != 0) {
       fprintf(stderr,
               "service-native-codegen: failed to parse overlay schema %s\n",
               argv[5]);
+      idl_contract_destroy(overlay_contract);
       node_free(overlay_root);
       free(overlay_schema_data);
       goto cleanup;
     }
     if (databind_compiler_service_native_build(
-            overlay_root, &overlay_ir) != 0 ||
+            overlay_contract, overlay_root, &overlay_ir) != 0 ||
         overlay_ir.operation_count != 1u) {
       fprintf(stderr,
               "service-native-codegen: overlay schema failed to lower\n");
       databind_compiler_service_native_destroy(&overlay_ir);
+      idl_contract_destroy(overlay_contract);
       node_free(overlay_root);
       free(overlay_schema_data);
       goto cleanup;
@@ -166,41 +172,48 @@ int main(int argc, char **argv) {
       fprintf(stderr,
               "service-native-codegen: unexpected overlay state metadata\n");
       databind_compiler_service_native_destroy(&overlay_ir);
+      idl_contract_destroy(overlay_contract);
       node_free(overlay_root);
       free(overlay_schema_data);
       goto cleanup;
     }
 
     databind_compiler_service_native_destroy(&overlay_ir);
+    idl_contract_destroy(overlay_contract);
     node_free(overlay_root);
     free(overlay_schema_data);
   }
 
   {
     Node *reject_root = NULL;
+    IdlContract *reject_contract = NULL;
     char *reject_schema_data = NULL;
     databind_compiler_service_native_ir reject_ir = {0};
 
-    if (tbe_compiler_parse_schema_file(
-            argv[6], &reject_root, &reject_schema_data) != 0) {
+    if (databind_compiler_parse_contract_file(
+            argv[6], &reject_root, &reject_contract,
+            &reject_schema_data) != 0) {
       fprintf(stderr,
               "service-native-codegen: failed to parse reject schema %s\n",
               argv[6]);
+      idl_contract_destroy(reject_contract);
       node_free(reject_root);
       free(reject_schema_data);
       goto cleanup;
     }
     if (databind_compiler_service_native_build(
-            reject_root, &reject_ir) == 0) {
+            reject_contract, reject_root, &reject_ir) == 0) {
       fprintf(stderr,
               "service-native-codegen: reject schema unexpectedly lowered: %s\n",
               argv[6]);
       databind_compiler_service_native_destroy(&reject_ir);
+      idl_contract_destroy(reject_contract);
       node_free(reject_root);
       free(reject_schema_data);
       goto cleanup;
     }
     databind_compiler_service_native_destroy(&reject_ir);
+    idl_contract_destroy(reject_contract);
     node_free(reject_root);
     free(reject_schema_data);
   }
@@ -209,6 +222,7 @@ int main(int argc, char **argv) {
 
 cleanup:
   databind_compiler_service_native_destroy(&ir);
+  idl_contract_destroy(contract);
   node_free(root);
   free(schema_data);
   return status;
