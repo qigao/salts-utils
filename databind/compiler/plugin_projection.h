@@ -51,7 +51,7 @@ typedef struct databind_compiler_plugin_config {
  * - client_source_output / client_header_output: host lease/admission side.
  */
 int databind_compiler_plugin_generate(
-    const Node *canonical_ir,
+    const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context);
 
