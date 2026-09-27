@@ -5,7 +5,11 @@
 set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)
 add_library(${DATABIND_COMPILER_TOOLING_TARGET} INTERFACE)
 target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
-  INTERFACE Salts::CmdParser Salts::Mustache Salts::JsonParser)
+  INTERFACE
+    Salts::CmdParser
+    Salts::Mustache
+    Salts::JsonParser
+    databind_tbe_contract)
 set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
   PROPERTIES FOLDER "databind/compiler")
 
