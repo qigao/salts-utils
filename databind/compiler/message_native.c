@@ -289,10 +289,13 @@ int databind_compiler_message_native_emit_binding(
              "  if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
              "  status = %s_cmeta_data(&data, error);\n"
              "  if (status != DATA_BIND_OK) return status;\n"
-             "  *out = (DataBindNativeTypeBinding){\n"
-             "      sizeof(DataBindNativeTypeBinding),\n"
-             "      DATA_BIND_NATIVE_BINDING_ABI_VERSION,\n"
-             "      \"%s\", data, %s, %zuu, %s, %zuu};\n"
+             "  DataBindNativeTypeBinding value =\n"
+             "      DATA_BIND_NATIVE_TYPE_BINDING_INIT(\"%s\", data);\n"
+             "  value.presence = %s;\n"
+             "  value.presence_count = %zuu;\n"
+             "  value.nulls = %s;\n"
+             "  value.null_count = %zuu;\n"
+             "  *out = value;\n"
              "  return DATA_BIND_OK;\n"
              "}\n",
              symbol_prefix,
