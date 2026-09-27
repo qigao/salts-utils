@@ -8,6 +8,7 @@
 #include "mustache.h"
 #include "mustache_helpers.h"
 #include "idl.h"
+#include "idl_contract_internal.h"
 #include "tbe_contract_overlay.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
@@ -1845,30 +1846,52 @@ static int tbe_compiler_validate_options(const tbe_compiler_options_t *options,
   return 1;
 }
 
-int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
-                                   char **out_schema_data) {
+int databind_compiler_parse_contract_file(
+    const char *schema_path, Node **out_legacy_tree,
+    IdlContract **out_contract, char **out_schema_data) {
   tbe_error_t parse_err;
+  IdlDiagnostic contract_error = IDL_DIAGNOSTIC_INIT;
+  IdlContract *contract = NULL;
   Node *root = NULL;
-  char *schema_data = tbe_compiler_read_file(schema_path);
+  char *schema_data;
+
+  if (out_legacy_tree != NULL) *out_legacy_tree = NULL;
+  if (out_contract != NULL) *out_contract = NULL;
+  if (out_schema_data != NULL) *out_schema_data = NULL;
+  if (schema_path == NULL || out_legacy_tree == NULL ||
+      out_contract == NULL || out_schema_data == NULL)
+    return 1;
+
+  schema_data = tbe_compiler_read_file(schema_path);
   if (!schema_data) {
-    fprintf(stderr, "Failed to read schema file: %s\n", schema_path);
+    fprintf(stderr, "Failed to read IDL file: %s\n", schema_path);
     return 1;
   }
 
   root = create_node_map(NULL);
   if (!root) {
-    fprintf(stderr, "Failed to allocate root node\n");
+    fprintf(stderr, "Failed to allocate IDL frontend tree\n");
     free(schema_data);
     return 1;
   }
 
   if (idl_parse(schema_data, strlen(schema_data), root, &parse_err) != 0) {
     if (parse_err.line >= 0) {
-      fprintf(stderr, "Parse error at line %d: %s\n", parse_err.line,
+      fprintf(stderr, "IDL parse error at line %d: %s\n", parse_err.line,
               parse_err.message);
     } else {
-      fprintf(stderr, "Parse error: %s\n", parse_err.message);
+      fprintf(stderr, "IDL parse error: %s\n", parse_err.message);
     }
+    free(schema_data);
+    node_free(root);
+    return 1;
+  }
+
+  /* Freeze format-neutral semantic truth before any TBE overlay mutates the
+   * legacy rendering tree. */
+  if (!idl_contract_build_from_tree(root, &contract, &contract_error)) {
+    fprintf(stderr, "Failed to build typed IDL Contract IR: %s\n",
+            contract_error.message);
     free(schema_data);
     node_free(root);
     return 1;
@@ -1876,6 +1899,7 @@ int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
 
   if (databind_tbe_contract_apply(root, &parse_err) != 0) {
     fprintf(stderr, "TBE format error: %s\n", parse_err.message);
+    idl_contract_destroy(contract);
     free(schema_data);
     node_free(root);
     return 1;
@@ -1883,9 +1907,19 @@ int tbe_compiler_parse_schema_file(const char *schema_path, Node **out_root,
 
   tbe_compiler_annotate_language_types(root);
 
-  *out_root = root;
+  *out_legacy_tree = root;
+  *out_contract = contract;
   *out_schema_data = schema_data;
   return 0;
+}
+
+int tbe_compiler_parse_schema_file(
+    const char *schema_path, Node **out_root, char **out_schema_data) {
+  IdlContract *contract = NULL;
+  int status = databind_compiler_parse_contract_file(
+      schema_path, out_root, &contract, out_schema_data);
+  idl_contract_destroy(contract);
+  return status;
 }
 
 int tbe_compiler_render_file(Node *root, const char *template_path,
@@ -2049,6 +2083,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *root = NULL;
   Node *projection_root = NULL;
   Node *database_ir = NULL;
+  IdlContract *contract = NULL;
   char *schema_data = NULL;
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
@@ -2061,23 +2096,23 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
   database_language = tbe_compiler_is_database_language(options->lang_enum);
   if (!tbe_compiler_validate_options(options, lang_name)) return 1;
-  int status = tbe_compiler_parse_schema_file(options->schema_path, &root,
-                                              &schema_data);
+  int status = databind_compiler_parse_contract_file(
+      options->schema_path, &root, &contract, &schema_data);
   if (status != 0) return status;
 
   /*
-   * Preserve one immutable canonical IR for artifact backends. Ordinary source
-   * renderers are allowed to annotate their working tree, but projections run
-   * only after prerequisite renderer outputs succeed.
+   * 'contract' is the immutable, format-neutral semantic authority.
+   * 'root' is a legacy TBE/rendering view retained only while projections and
+   * templates are migrated to IdlContract.
    *
-   * This keeps parse-once semantics while preventing publication of a Plugin
-   * artifact when its generated native header/source failed earlier in the same
-   * compiler invocation.
+   * Preserve a separate legacy projection view because ordinary source
+   * renderers may add output-only annotations. No new semantic fact may be
+   * introduced through this Node tree.
    */
   if (options->projection_count != 0u) {
     projection_root = tbe_compiler_clone_canonical_node(root);
     if (projection_root == NULL) {
-      fprintf(stderr, "Failed to preserve canonical projection IR\n");
+      fprintf(stderr, "Failed to preserve legacy projection view\n");
       status = 1;
       goto cleanup;
     }
@@ -2227,6 +2262,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
 
 cleanup:
+  idl_contract_destroy(contract);
   free(schema_data);
   tbe_database_schema_destroy(database_ir);
   node_free(projection_root);
