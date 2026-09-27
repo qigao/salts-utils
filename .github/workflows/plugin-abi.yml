@@ -187,6 +187,7 @@ jobs:
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_MANIFEST_INSTALL=OFF \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_QUALIFY_PLUGIN_DATABIND=ON \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/openapi-package --parallel 2
