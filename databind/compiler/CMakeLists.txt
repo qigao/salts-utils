@@ -231,6 +231,7 @@ cmake_add_test(test_databind_projection_frontend
     DATABIND_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json"
     DATABIND_PROJECTION_CONFIG_INVALID_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_invalid.json"
     DATABIND_SOCKET_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json"
+    DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/schema/src
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -294,6 +295,34 @@ set_target_properties(test_databind_message_native PROPERTIES
   C_EXTENSIONS OFF)
 set_tests_properties(test_databind_message_native PROPERTIES
   LABELS "databind;compiler;message-native;channel")
+
+cmake_add_test(test_databind_flowmq_plan_projection
+  SOURCES
+    test_flowmq_plan_projection.c
+    projection.c
+    message_native.c
+    flowmq_plan_projection.c
+    binary_layout_ir.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    FLOWMQ_PLAN_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_flowmq_plan_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_flowmq_plan_projection PROPERTIES
+  LABELS "databind;compiler;flowmq-plan;transport")
 
 # Canonical Service -> native FunctionMeta/FunctionAbi lowering qualification.
 set(DATABIND_SERVICE_NATIVE_TEST_DIR
@@ -446,6 +475,30 @@ databind_target(
   TRANSPORTS SOCKET
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json")
+
+
+databind_target(
+  TARGET databind_flowmq_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "device"
+  TRANSPORTS FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
+
+cmake_add_test(test_databind_flowmq_plan_public_frontend
+  SOURCES test_public_flowmq_plan_frontend.c
+  LIBS Salts::DataBind Salts::TinyTest
+  INCLUDES
+    "${databind_flowmq_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/compiler")
+add_dependencies(test_databind_flowmq_plan_public_frontend
+  databind_flowmq_plan_public_fixture_databind_codegen)
+set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
+  LABELS "databind;compiler;flowmq-plan;public")
 
 cmake_add_test(test_databind_socket_plan_public_frontend
   SOURCES test_public_socket_plan_frontend.c
