@@ -313,40 +313,35 @@ static int native_error_fields_build(
 }
 
 static int native_errors_build(
-    const Node *root,
+    const Node *legacy_tree,
     const char *schema_name,
-    const Node *operation_node,
+    const IdlOperation *operation,
     databind_compiler_service_native_error **out_errors,
     size_t *out_count) {
-  const Node *errors;
   databind_compiler_service_native_error *result = NULL;
   size_t i;
 
   if (out_errors == NULL || out_count == NULL ||
-      root == NULL || schema_name == NULL || operation_node == NULL)
+      legacy_tree == NULL || schema_name == NULL || operation == NULL)
     return 0;
 
   *out_errors = NULL;
   *out_count = 0u;
-  errors = native_list(operation_node, "errors");
-  if (errors == NULL || errors->data.list.count == 0u)
-    return 1;
+  if (operation->error_count == 0u) return 1;
+  if (operation->error_types == NULL) return 0;
 
   result = (databind_compiler_service_native_error *)calloc(
-      errors->data.list.count, sizeof(*result));
+      operation->error_count, sizeof(*result));
   if (result == NULL) return 0;
 
-  for (i = 0u; i < errors->data.list.count; ++i) {
-    const Node *item = errors->data.list.items[i];
-    const char *type_name =
-        item != NULL && item->type == NODE_STRING
-            ? item->data.string_val
-            : NULL;
+  for (i = 0u; i < operation->error_count; ++i) {
+    const char *type_name = operation->error_types[i];
 
     if (type_name == NULL ||
         !native_error_fields_build(
-            root, type_name, &result[i].fields, &result[i].field_count)) {
-      native_errors_clear(result, errors->data.list.count);
+            legacy_tree, type_name,
+            &result[i].fields, &result[i].field_count)) {
+      native_errors_clear(result, operation->error_count);
       return 0;
     }
 
@@ -357,15 +352,16 @@ static int native_errors_build(
 
     if (result[i].type_name == NULL ||
         result[i].type_identity == NULL) {
-      native_errors_clear(result, errors->data.list.count);
+      native_errors_clear(result, operation->error_count);
       return 0;
     }
   }
 
   *out_errors = result;
-  *out_count = errors->data.list.count;
+  *out_count = operation->error_count;
   return 1;
 }
+
 
 
 static void native_operation_clear(
@@ -404,26 +400,33 @@ void databind_compiler_service_native_destroy(
 }
 
 static int native_operation_fill(
-    const Node *root,
+    const IdlContract *contract,
+    const Node *legacy_tree,
     const char *schema_name,
     const char *service_name,
-    const Node *operation_node,
+    const IdlOperation *operation,
     databind_compiler_service_native_operation *out) {
-  const char *operation_name = native_string(operation_node, "name");
-  const char *request_type = native_string(operation_node, "request_type");
-  const char *response_type = native_string(operation_node, "response_type");
   databind_compiler_message_native_binding request = {0};
   databind_compiler_message_native_binding response = {0};
+  const char *operation_name;
+  const char *request_type;
+  const char *response_type;
   int ok = 0;
 
-  if (out == NULL || operation_name == NULL ||
-      request_type == NULL || response_type == NULL)
+  if (contract == NULL || legacy_tree == NULL || out == NULL ||
+      operation == NULL)
+    return 0;
+
+  operation_name = operation->name;
+  request_type = operation->request_type;
+  response_type = operation->response_type;
+  if (operation_name == NULL || request_type == NULL || response_type == NULL)
     return 0;
 
   if (databind_compiler_message_native_build(
-          root, request_type, &request) != 0 ||
+          contract, request_type, &request) != 0 ||
       databind_compiler_message_native_build(
-          root, response_type, &response) != 0)
+          contract, response_type, &response) != 0)
     goto cleanup;
 
   out->schema_name = native_strdup(schema_name);
@@ -466,7 +469,7 @@ static int native_operation_fill(
   response.null_count = 0u;
 
   if (!native_errors_build(
-          root, schema_name, operation_node,
+          legacy_tree, schema_name, operation,
           &out->errors, &out->error_count))
     goto cleanup;
 
@@ -487,43 +490,34 @@ cleanup:
   return ok;
 }
 
+
 int databind_compiler_service_native_build_selected(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *legacy_tree,
     databind_compiler_service_native_select_fn select_service,
     void *select_context,
     databind_compiler_service_native_ir *out) {
-  const Node *schema;
-  const Node *services;
   const char *schema_name;
   size_t total = 0u;
   size_t i, j, index = 0u;
 
   if (out == NULL) return -1;
   memset(out, 0, sizeof(*out));
-  if (canonical_ir == NULL) return -1;
+  if (contract == NULL || legacy_tree == NULL) return -1;
 
-  schema = native_child(canonical_ir, "schema");
-  schema_name = native_string(schema, "schema_name");
-  if (schema_name == NULL || schema_name[0] == '\0')
-    schema_name = "GeneratedSchema";
+  schema_name =
+      contract->name != NULL && contract->name[0] != '\0'
+          ? contract->name
+          : "GeneratedSchema";
 
-  services = native_list(canonical_ir, "services");
-  if (services == NULL) return -1;
-
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const char *service_name = native_string(service, "name");
-    const Node *operations;
-
-    if (service_name == NULL || service_name[0] == '\0') return -1;
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    if (service->name == NULL || service->name[0] == '\0') return -1;
     if (select_service != NULL &&
-        !select_service(select_context, service_name))
+        !select_service(select_context, service->name))
       continue;
-
-    operations = native_list(service, "operations");
-    if (operations == NULL) return -1;
-    if (total > SIZE_MAX - operations->data.list.count) return -1;
-    total += operations->data.list.count;
+    if (total > SIZE_MAX - service->operation_count) return -1;
+    total += service->operation_count;
   }
   if (total == 0u) return -1;
 
@@ -532,24 +526,17 @@ int databind_compiler_service_native_build_selected(
   if (out->operations == NULL) return -1;
   out->operation_count = total;
 
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const char *service_name = native_string(service, "name");
-    const Node *operations;
-
-    if (service_name == NULL || service_name[0] == '\0') goto fail;
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
     if (select_service != NULL &&
-        !select_service(select_context, service_name))
+        !select_service(select_context, service->name))
       continue;
 
-    operations = native_list(service, "operations");
-    if (operations == NULL) goto fail;
-
-    for (j = 0u; j < operations->data.list.count; ++j, ++index) {
+    for (j = 0u; j < service->operation_count; ++j, ++index) {
       size_t prior;
       if (!native_operation_fill(
-              canonical_ir, schema_name, service_name,
-              operations->data.list.items[j], &out->operations[index]))
+              contract, legacy_tree, schema_name, service->name,
+              &service->operations[j], &out->operations[index]))
         goto fail;
       for (prior = 0u; prior < index; ++prior)
         if (strcmp(out->operations[prior].symbol,
@@ -566,12 +553,15 @@ fail:
   return -1;
 }
 
+
 int databind_compiler_service_native_build(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *legacy_tree,
     databind_compiler_service_native_ir *out) {
   return databind_compiler_service_native_build_selected(
-      canonical_ir, NULL, NULL, out);
+      contract, legacy_tree, NULL, NULL, out);
 }
+
 
 static int native_emit_error_variant_helpers(
     FILE *file,
