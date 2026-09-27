@@ -635,7 +635,7 @@ DataBindStatus data_bind_format_canonical_reader_init(
   cserde_status reader_status;
 
   if (plan == NULL || source == NULL || out == NULL ||
-      out->size < sizeof(size_t))
+      out->size < sizeof(*out))
     return plan_error(
         error, DATA_BIND_ERR_INVALID_ARG,
         "Invalid FormatPlan canonical reader arguments");
@@ -650,7 +650,7 @@ DataBindStatus data_bind_format_canonical_reader_init(
         error, DATA_BIND_ERR_SCHEMA,
         "FormatPlan canonical reader requires a record root");
 
-  size = plan_out_size(out->size, sizeof(*out));
+  size = sizeof(*out);
   memset(out, 0, size);
   initial.size = size;
   initial.plan = plan;
@@ -675,9 +675,7 @@ DataBindStatus data_bind_format_canonical_reader_init(
 cserde_reader *data_bind_format_canonical_reader_reader(
     DataBindFormatCanonicalReader *reader) {
   if (reader == NULL ||
-      reader->size <
-          offsetof(DataBindFormatCanonicalReader, reader) +
-              sizeof(reader->reader) ||
+      reader->size < sizeof(*reader) ||
       reader->abi_version !=
           DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION ||
       reader->reader.state == CSERDE_READER_ZERO)
