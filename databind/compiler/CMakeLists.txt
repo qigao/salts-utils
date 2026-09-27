@@ -24,7 +24,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
 
 cmake_add_executable(databindc
   SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS Salts::DataBindSchema Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(databindc
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
@@ -125,7 +125,7 @@ cmake_add_test(test_databind_openapi_projection
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -159,7 +159,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   mustache_helpers.c)
 target_link_libraries(databind_method_plan_projection_fixture_gen
   PRIVATE
-    Salts::DataBindSchema
+    Salts::IDL
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core)
 target_include_directories(databind_method_plan_projection_fixture_gen
@@ -221,7 +221,7 @@ cmake_add_test(test_databind_projection_registry
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -252,7 +252,7 @@ cmake_add_test(test_databind_projection_frontend
     binary_layout_ir.c
     binary_reader_codegen.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::PluginABI
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
@@ -283,7 +283,7 @@ cmake_add_test(test_databind_socket_plan_projection
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -309,7 +309,7 @@ cmake_add_test(test_databind_message_native
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -339,7 +339,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -379,7 +379,7 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   INCLUDES
@@ -639,9 +639,9 @@ get_target_property(
   _databind_plugin_generated_fixture_links
   databind_plugin_generated_fixture_plugin
   LINK_LIBRARIES)
-if("Salts::DataBindSchema" IN_LIST _databind_plugin_generated_fixture_links)
+if("Salts::IDL" IN_LIST _databind_plugin_generated_fixture_links)
   message(FATAL_ERROR
-          "generated Plugin must not link Salts::DataBindSchema")
+          "generated Plugin must not link Salts::IDL")
 endif()
 if(NOT "Salts::DataBind"
        IN_LIST _databind_plugin_generated_fixture_links)
@@ -658,10 +658,10 @@ get_target_property(
   _databind_plugin_generated_client_links
   databind_plugin_generated_fixture_plugin_client
   LINK_LIBRARIES)
-if("Salts::DataBindSchema"
+if("Salts::IDL"
    IN_LIST _databind_plugin_generated_client_links)
   message(FATAL_ERROR
-          "generated Plugin client must not link Salts::DataBindSchema")
+          "generated Plugin client must not link Salts::IDL")
 endif()
 if(NOT "Salts::Plugin"
        IN_LIST _databind_plugin_generated_client_links)
@@ -845,7 +845,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::PluginABI
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
@@ -862,7 +862,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
 
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     C_STRUCT_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
@@ -879,12 +879,12 @@ target_include_directories(test_tbe_compiler
 
 cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
-  LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
 cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
-  LIBS Salts::DataBindSchema Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 cmake_add_test(test_databind_method_plan_binary_admission
   SOURCES
@@ -896,7 +896,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -923,7 +923,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
@@ -950,7 +950,7 @@ cmake_add_test(test_databind_binary_layout_ir
     database_schema.c
     mustache_helpers.c
   LIBS
-    Salts::DataBindSchema
+    Salts::IDL
     Salts::TinyTest
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
