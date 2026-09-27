@@ -149,6 +149,8 @@ add_library(
   data_bind_projection_plan.c
   data_bind_projection_plan.h
   data_bind_socket_plan.h
+  data_bind_socket_execution_plan.c
+  data_bind_socket_execution_plan.h
   data_bind_validation_plan.c
   data_bind_validation_plan.h
   data_bind_stream_format_state.c
@@ -249,6 +251,7 @@ install(
     data_bind_method_plan.h
     data_bind_projection_plan.h
     data_bind_socket_plan.h
+    data_bind_socket_execution_plan.h
     data_bind_validation_plan.h
     data_bind_json_provider.h
     data_bind_yaml_provider.h
@@ -398,6 +401,13 @@ set_target_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
 set_tests_properties(test_data_bind_socket_plan_public_cpp PROPERTIES
   LABELS "databind;socket-plan;public;cpp")
+
+cmake_add_test(test_data_bind_socket_execution_plan
+  SOURCES test_data_bind_socket_execution_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_socket_execution_plan PROPERTIES
+  LABELS "databind;socket-plan;message-plan;execution")
 cmake_add_test(test_data_bind_binding_plan
   SOURCES test_data_bind_binding_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
