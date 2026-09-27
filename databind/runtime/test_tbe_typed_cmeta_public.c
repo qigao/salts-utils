@@ -1,4 +1,3 @@
-#include <node_tree.h>
 #include <schema_cmeta.h>
 #include "cmeta_graph_generated.h"
 #include <salts_cmeta_data.h>
@@ -76,19 +75,18 @@ int main(void) {
     return 4;
   {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
-    Node *root = create_node_map("root");
-    Node *field = create_node_map(NULL);
+    const IdlContract contract = {
+        sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION,
+        "Public", "1", 0u, NULL, 0u, NULL, 0u, NULL, 0u, NULL};
+    const IdlField field = {
+        "uuid", "uuid", IDL_COLLECTION_NONE,
+        NULL, NULL, NULL, NULL, NULL,
+        0, 0, 0u, NULL, 0u, NULL};
     schema_cmeta_field_type semantic;
-    int valid;
-    if (root == NULL || field == NULL) { node_free(root); node_free(field); return 5; }
-    if (map_add(field, create_node_string("type", "uuid")) != 0) {
-      node_free(root); node_free(field); return 6;
-    }
-    valid = schema_cmeta_field_resolve(root, field, &semantic) &&
+    int valid = schema_cmeta_field_resolve(&contract, &field, &semantic) &&
         semantic.kind == CMETA_DATA_CUSTOM && salts_uuid_cmeta_data_valid(semantic.data) &&
         salts_uuid_cmeta_data_valid(shape->fields[0].value) &&
         cmeta_type_equal(semantic.data->storage_type, shape->fields[0].value->storage_type);
-    node_free(field); node_free(root);
     if (!valid) return 7;
   }
   sentinel = data;
