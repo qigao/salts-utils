@@ -7,6 +7,69 @@
 #include <string.h>
 
 spec("DataBind BinaryLayoutIR") {
+  it("derives fixed scalar token representation from canonical CMeta semantics") {
+    Node *root = NULL;
+    char *schema_data = NULL;
+    databind_binary_type_layout layout = {0};
+    databind_binary_layout_diagnostic diagnostic = {0};
+
+    check_equal(
+        tbe_compiler_parse_schema_file(
+            BINARY_SCALAR_SCHEMA, &root, &schema_data), 0);
+    check_not_null(root);
+    check_not_null(schema_data);
+    if (root == NULL || schema_data == NULL) {
+      node_free(root);
+      free(schema_data);
+      return;
+    }
+
+    check_equal(
+        databind_binary_layout_build(
+            root, "Scalars", &layout, &diagnostic),
+        DATABIND_BINARY_LAYOUT_OK);
+    check_equal(layout.field_count, (size_t)10u);
+
+    check_equal(layout.fields[0].scalar_kind, DATABIND_BINARY_SCALAR_BOOL);
+    check_equal(layout.fields[0].scalar_bits, 8u);
+
+    check_equal(layout.fields[1].scalar_kind, DATABIND_BINARY_SCALAR_SINT);
+    check_equal(layout.fields[1].scalar_bits, 8u);
+
+    check_equal(layout.fields[2].scalar_kind, DATABIND_BINARY_SCALAR_UINT);
+    check_equal(layout.fields[2].scalar_bits, 16u);
+
+    check_equal(layout.fields[3].scalar_kind, DATABIND_BINARY_SCALAR_SINT);
+    check_equal(layout.fields[3].scalar_bits, 32u);
+
+    check_equal(layout.fields[4].scalar_kind, DATABIND_BINARY_SCALAR_UINT);
+    check_equal(layout.fields[4].scalar_bits, 64u);
+
+    check_equal(layout.fields[5].scalar_kind, DATABIND_BINARY_SCALAR_FLOAT);
+    check_equal(layout.fields[5].scalar_bits, 32u);
+
+    check_equal(layout.fields[6].scalar_kind, DATABIND_BINARY_SCALAR_FLOAT);
+    check_equal(layout.fields[6].scalar_bits, 64u);
+
+    check_equal(layout.fields[7].scalar_kind,
+                DATABIND_BINARY_SCALAR_ENUM_SINT);
+    check_equal(layout.fields[7].scalar_bits, 16u);
+
+    check_equal(layout.fields[8].scalar_kind,
+                DATABIND_BINARY_SCALAR_ENUM_UINT);
+    check_equal(layout.fields[8].scalar_bits, 8u);
+
+    check_equal(layout.fields[9].scalar_kind, DATABIND_BINARY_SCALAR_UINT);
+    check_equal(layout.fields[9].scalar_bits, 32u);
+    check((layout.fields[9].flags & DATABIND_BINARY_FIELD_OPTIONAL) != 0u);
+    check((layout.fields[9].flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u);
+
+    databind_binary_layout_destroy(&layout);
+    node_free(root);
+    free(schema_data);
+  }
+
+
   it("builds LoginMessage wire layout from canonical compiler IR") {
     Node *root = NULL;
     char *schema_data = NULL;
@@ -99,6 +162,31 @@ spec("DataBind BinaryLayoutIR") {
     check_equal(
         databind_binary_layout_validate(&layout, NULL),
         DATABIND_BINARY_LAYOUT_INVALID_SCHEMA);
+  }
+
+  it("rejects scalar wire extents that disagree with canonical token width") {
+    databind_binary_field_layout field = {
+        .field_id = "value",
+        .kind = DATABIND_BINARY_FIELD_FIXED,
+        .wire_offset = 0u,
+        .wire_extent = 2u,
+        .scalar_kind = DATABIND_BINARY_SCALAR_UINT,
+        .scalar_bits = 32u};
+    databind_binary_type_layout layout = {
+        .type_id = "ScalarMismatch",
+        .fixed_block_size = 2u,
+        .fields = &field,
+        .field_count = 1u};
+
+    check_equal(
+        databind_binary_layout_validate(&layout, NULL),
+        DATABIND_BINARY_LAYOUT_INVALID_SCHEMA);
+
+    field.wire_extent = 4u;
+    layout.fixed_block_size = 4u;
+    check_equal(
+        databind_binary_layout_validate(&layout, NULL),
+        DATABIND_BINARY_LAYOUT_OK);
   }
 
   it("rejects fixed fields after Binary tail fields") {

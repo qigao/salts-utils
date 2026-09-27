@@ -853,6 +853,7 @@ cmake_add_test(test_databind_binary_layout_ir
     Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+    BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/schema/src
     ${CMAKE_CURRENT_SOURCE_DIR}

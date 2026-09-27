@@ -1,0 +1,24 @@
+schema BinaryScalar [version(1)];
+
+enum SignedCode <int16> {
+  Zero = 0;
+  One = 1;
+}
+
+flags Permissions <uint8> {
+  Read = 1;
+  Write = 2;
+}
+
+message Scalars {
+  bool ready;
+  int8 delta8;
+  uint16 count16;
+  int32 delta32;
+  uint64 total64;
+  float ratio;
+  double score;
+  SignedCode code;
+  Permissions perms;
+  optional nullable uint32 tri;
+}
