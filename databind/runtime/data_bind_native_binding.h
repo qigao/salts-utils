@@ -22,6 +22,12 @@ extern "C" {
 enum { DATA_BIND_NATIVE_BINDING_ABI_VERSION = 2u };
 enum { DATA_BIND_NATIVE_EXECUTION_ABI_VERSION = 1u };
 
+#if defined(_WIN32)
+  #define DATA_BIND_NATIVE_CALL __cdecl
+#else
+  #define DATA_BIND_NATIVE_CALL
+#endif
+
 /**
  * Exact generated native invocation bridge.
  *
@@ -33,7 +39,7 @@ enum { DATA_BIND_NATIVE_EXECUTION_ABI_VERSION = 1u };
  * This is descriptive/exact generated execution glue, not a universal dynamic
  * ABI invocation mechanism.
  */
-typedef bool (*DataBindNativeInvokeFn)(
+typedef bool (DATA_BIND_NATIVE_CALL *DataBindNativeInvokeFn)(
     void *context,
     void *return_storage,
     void *const *params,
