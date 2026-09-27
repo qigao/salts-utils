@@ -478,7 +478,7 @@ jobs:
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
 
-      - name: Verify installed PluginABI and databind_target consumers
+      - name: Verify installed PluginABI and salts_idl_target consumers
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
@@ -651,10 +651,10 @@ jobs:
         run: |
           set -euo pipefail
           test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/DataBind.cmake
+          test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
-          test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/DataBind.cmake
+          test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
           test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
@@ -681,18 +681,18 @@ jobs:
           nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
           test -f "$nupkg"
           unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/windows-x64/bin/databindc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/bin/salts-idlc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/DataBind.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
-          if grep -Fxq "sdk/macos-arm64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+          if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
             :
           else
-            grep -Fx "sdk/macos-x64/bin/databindc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/macos-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           fi
       - uses: actions/upload-artifact@v4
         with:
