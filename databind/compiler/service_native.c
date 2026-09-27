@@ -1112,6 +1112,87 @@ int databind_compiler_service_native_emit_reflection(
   return 0;
 }
 
+int databind_compiler_service_native_emit_execution(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation,
+    int emit_descriptor) {
+  int status;
+
+  if (file == NULL || operation == NULL ||
+      operation->symbol == NULL ||
+      operation->request_type == NULL ||
+      operation->response_type == NULL)
+    return -1;
+
+  if (operation->error_count == 0u) {
+    status = fprintf(
+        file,
+        "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
+        "    void *context, void *return_storage, void *const *params,\n"
+        "    size_t param_count) {\n"
+        "  int result;\n"
+        "  (void)context;\n"
+        "  if (return_storage == NULL || params == NULL ||\n"
+        "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
+        "    return false;\n"
+        "  result = %s((const %s_t *)params[0], (%s_t *)params[1]);\n"
+        "  *(int *)return_storage = result;\n"
+        "  return true;\n"
+        "}\n",
+        operation->symbol,
+        operation->symbol,
+        operation->request_type,
+        operation->response_type);
+  } else {
+    if (operation->errors == NULL) return -1;
+    status = fprintf(
+        file,
+        "static bool DATA_BIND_NATIVE_CALL %s__databind_invoke(\n"
+        "    void *context, void *return_storage, void *const *params,\n"
+        "    size_t param_count) {\n"
+        "  int result;\n"
+        "  (void)context;\n"
+        "  if (return_storage == NULL || params == NULL ||\n"
+        "      param_count != 3u || params[0] == NULL ||\n"
+        "      params[1] == NULL || params[2] == NULL)\n"
+        "    return false;\n"
+        "  result = %s((const %s_t *)params[0], (%s_t *)params[1],\n"
+        "              (%s__error *)params[2]);\n"
+        "  *(int *)return_storage = result;\n"
+        "  return true;\n"
+        "}\n",
+        operation->symbol,
+        operation->symbol,
+        operation->request_type,
+        operation->response_type,
+        operation->symbol);
+  }
+  if (status < 0) return -1;
+  if (!emit_descriptor) return fputc('\n', file) == EOF ? -1 : 0;
+
+  return fprintf(
+             file,
+             "static const DataBindNativeExecution %s__execution_meta = {\n"
+             "  sizeof(DataBindNativeExecution),\n"
+             "  DATA_BIND_NATIVE_EXECUTION_ABI_VERSION,\n"
+             "  &%s__function_meta,\n"
+             "  &%s__function_abi_meta,\n"
+             "  NULL,\n"
+             "  %s__databind_invoke\n"
+             "};\n"
+             "const DataBindNativeExecution *%s__databind_execution(void) {\n"
+             "  return &%s__execution_meta;\n"
+             "}\n\n",
+             operation->symbol,
+             operation->symbol,
+             operation->symbol,
+             operation->symbol,
+             operation->symbol,
+             operation->symbol) < 0
+             ? -1
+             : 0;
+}
+
 static int native_emit_error_array(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
