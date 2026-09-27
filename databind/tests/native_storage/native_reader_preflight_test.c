@@ -2,6 +2,7 @@
  * native layout. All decoding and source-state checks use the real APIs. */
 #define TINYTEST_NO_MAIN
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 #include <salts_cmeta_data.h>
 #include <tinytest.h>
@@ -10,7 +11,7 @@
 
 enum { PREFLIGHT_WORKSPACE_BYTES = 4096, PREFLIGHT_DEPTH = 8, PREFLIGHT_ITEMS = 64 };
 typedef union PreflightWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[PREFLIGHT_WORKSPACE_BYTES];
 } PreflightWorkspace;
 typedef struct PreflightPair { int32_t a; int32_t b; } PreflightPair;
