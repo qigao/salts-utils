@@ -12,6 +12,7 @@ on:
       - "cmake/ci/vcpkg/plugin-databind/**"
       - "cmake/ci/vcpkg/bindings/**"
       - ".github/workflows/4.1-pair-contract.yml"
+      - ".github/workflows/cflow-process.yml"
   workflow_dispatch:
 
 permissions:
