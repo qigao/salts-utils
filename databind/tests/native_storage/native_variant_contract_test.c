@@ -65,7 +65,7 @@ static cmeta_status variant_select(void *object, int64_t tag) {
   memset(&value->payload, 0, sizeof(value->payload));
   if (tag == 2) {
     status = cmeta_data_value_init_zero(
-        &salts_tstr_cmeta_data, &value->payload.text);
+        SALTS_TSTR_CMETA_DATA_REF, &value->payload.text);
     if (status != CMETA_OK) return status;
   }
   value->tag = (int)tag;
@@ -77,7 +77,7 @@ static void variant_restore_zero(void *object) {
   if (value == NULL) return;
   if (value->tag == 2)
     (void)cmeta_data_value_restore_zero(
-        &salts_tstr_cmeta_data, &value->payload.text);
+        SALTS_TSTR_CMETA_DATA_REF, &value->payload.text);
   memset(value, 0, sizeof(*value));
 }
 
@@ -85,7 +85,7 @@ static const cmeta_data_variant_case VARIANT_CASES[] = {
     {1, "test.databind.native.Variant.number", "number",
      offsetof(NativeVariant, payload), &cmeta_data_int},
     {2, "test.databind.native.Variant.text", "text",
-     offsetof(NativeVariant, payload), &salts_tstr_cmeta_data}};
+     offsetof(NativeVariant, payload), SALTS_TSTR_CMETA_DATA_REF}};
 
 static const cmeta_data_variant_shape VARIANT_SHAPE = {
     .tag_offset = offsetof(NativeVariant, tag),
