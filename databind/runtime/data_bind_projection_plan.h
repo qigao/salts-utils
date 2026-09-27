@@ -51,11 +51,12 @@ typedef struct DataBindFormatPlanReader {
   int root_started;
   int root_is_map;
   int root_expect_key;
+  int root_done;
 } DataBindFormatPlanReader;
 
 #define DATA_BIND_FORMAT_PLAN_READER_INIT \
   { sizeof(DataBindFormatPlanReader), DATA_BIND_FORMAT_PLAN_READER_ABI_VERSION, \
-    NULL, NULL, {0}, 0u, 0, 0, 0 }
+    NULL, NULL, {0}, 0u, 0, 0, 0, 0 }
 
 /** Size-prefixed immutable snapshot of one compiled FormatPlan. */
 typedef struct DataBindFormatPlanInfo {
