@@ -4,33 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const Node *message_native_child(
-    const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    const Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const Node *message_native_list(
-    const Node *parent, const char *name) {
-  const Node *child = message_native_child(parent, name);
-  return child != NULL && child->type == NODE_LIST ? child : NULL;
-}
-
-static const char *message_native_string(
-    const Node *parent, const char *name) {
-  const Node *child = message_native_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
 static char *message_native_strdup(const char *text) {
   size_t length;
   char *copy;
@@ -42,32 +15,6 @@ static char *message_native_strdup(const char *text) {
   return copy;
 }
 
-static const Node *message_native_find_message(
-    const Node *root, const char *name) {
-  const Node *messages = message_native_list(root, "messages");
-  size_t i;
-  if (messages == NULL || name == NULL) return NULL;
-  for (i = 0u; i < messages->data.list.count; ++i) {
-    const Node *message = messages->data.list.items[i];
-    const char *candidate = message_native_string(message, "name");
-    if (candidate != NULL && strcmp(candidate, name) == 0) return message;
-  }
-  return NULL;
-}
-
-static int message_native_unsigned(const char *text, unsigned *out) {
-  uint64_t value = 0u;
-  const unsigned char *p;
-  if (text == NULL || text[0] == '\0' || out == NULL) return 0;
-  for (p = (const unsigned char *)text; *p != '\0'; ++p) {
-    if (*p < '0' || *p > '9') return 0;
-    value = value * 10u + (uint64_t)(*p - '0');
-    if (value > UINT32_MAX) return 0;
-  }
-  *out = (unsigned)value;
-  return 1;
-}
-
 static void message_native_state_destroy(
     databind_compiler_message_native_state *state, size_t count) {
   size_t i;
@@ -77,50 +24,34 @@ static void message_native_state_destroy(
 }
 
 static int message_native_state_build(
-    const Node *message,
-    const char *semantic_flag,
-    const char *bit_field,
+    const IdlDataDecl *message, int nullable,
     databind_compiler_message_native_state **out_state,
     size_t *out_count) {
-  const Node *fields;
   databind_compiler_message_native_state *state = NULL;
   size_t count = 0u;
   size_t i;
   size_t index = 0u;
 
-  if (message == NULL || semantic_flag == NULL || bit_field == NULL ||
-      out_state == NULL || out_count == NULL)
+  if (message == NULL || out_state == NULL || out_count == NULL)
     return 0;
   *out_state = NULL;
   *out_count = 0u;
 
-  fields = message_native_list(message, "fields");
-  if (fields == NULL) return 1;
-
-  for (i = 0u; i < fields->data.list.count; ++i)
-    if (message_native_child(fields->data.list.items[i], semantic_flag) != NULL)
-      ++count;
+  for (i = 0u; i < message->field_count; ++i) {
+    const IdlField *field = &message->fields[i];
+    if (nullable ? field->nullable : field->optional) ++count;
+  }
 
   if (count == 0u) return 1;
   state = (databind_compiler_message_native_state *)calloc(
       count, sizeof(*state));
   if (state == NULL) return 0;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *field_name;
-    const char *bit_text;
-    unsigned bit;
-
-    if (message_native_child(field, semantic_flag) == NULL) continue;
-    field_name = message_native_string(field, "name");
-    bit_text = message_native_string(field, bit_field);
-    if (field_name == NULL || !message_native_unsigned(bit_text, &bit)) {
-      message_native_state_destroy(state, count);
-      return 0;
-    }
-    state[index].field_name = message_native_strdup(field_name);
-    state[index].bit = bit;
+  for (i = 0u; i < message->field_count; ++i) {
+    const IdlField *field = &message->fields[i];
+    if (!(nullable ? field->nullable : field->optional)) continue;
+    state[index].field_name = message_native_strdup(field->name);
+    state[index].bit = (unsigned)index;
     if (state[index].field_name == NULL) {
       message_native_state_destroy(state, count);
       return 0;
@@ -166,26 +97,24 @@ void databind_compiler_message_native_destroy(
 }
 
 int databind_compiler_message_native_build(
-    const Node *canonical_ir,
+    const IdlContract *contract,
     const char *type_name,
     databind_compiler_message_native_binding *out) {
-  const Node *schema;
+  const IdlDataDecl *message;
   const char *schema_name;
-  const Node *message;
 
-  if (canonical_ir == NULL || type_name == NULL || type_name[0] == '\0' ||
+  if (contract == NULL || type_name == NULL || type_name[0] == '\0' ||
       out == NULL)
     return -1;
   memset(out, 0, sizeof(*out));
 
-  schema = message_native_child(canonical_ir, "schema");
-  schema_name = message_native_string(schema, "schema_name");
-  if (schema_name == NULL || schema_name[0] == '\0')
-    schema_name = "GeneratedSchema";
+  schema_name =
+      contract->name != NULL && contract->name[0] != '\0'
+          ? contract->name
+          : "GeneratedSchema";
 
-  message = message_native_find_message(canonical_ir, type_name);
-  if (message == NULL ||
-      message_native_child(message, "cmeta_graph_supported") == NULL)
+  message = idl_contract_find_data(contract, type_name);
+  if (message == NULL || message->kind != IDL_DATA_MESSAGE)
     return -1;
 
   out->schema_name = message_native_strdup(schema_name);
@@ -195,11 +124,9 @@ int databind_compiler_message_native_build(
   if (out->schema_name == NULL || out->type_name == NULL ||
       out->type_identity == NULL ||
       !message_native_state_build(
-          message, "is_optional", "optional_bit_index",
-          &out->presence, &out->presence_count) ||
+          message, 0, &out->presence, &out->presence_count) ||
       !message_native_state_build(
-          message, "is_nullable", "nullable_bit_index",
-          &out->nulls, &out->null_count)) {
+          message, 1, &out->nulls, &out->null_count)) {
     databind_compiler_message_native_destroy(out);
     return -1;
   }
