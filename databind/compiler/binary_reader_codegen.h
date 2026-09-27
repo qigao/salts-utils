@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_BINARY_READER_CODEGEN_H
 
 #include "node_tree.h"
+#include "idl_contract.h"
 
 #include <stdio.h>
 
@@ -14,7 +15,8 @@ extern "C" {
  * fixed-scalar runtime reader plan.
  */
 int databind_compiler_binary_reader_admit(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name);
 
 /*
@@ -29,7 +31,8 @@ int databind_compiler_binary_reader_admit(
  */
 int databind_compiler_binary_reader_emit(
     FILE *file,
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name,
     const char *symbol_prefix);
 
