@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_BINARY_LAYOUT_IR_H
 
 #include "node_tree.h"
+#include "idl_contract.h"
 
 #include <stddef.h>
 
@@ -104,12 +105,14 @@ typedef struct databind_binary_layout_diagnostic {
 } databind_binary_layout_diagnostic;
 
 /*
- * Build one independently owned Binary layout from compiler canonical IR.
- * The builder consumes only schema/wire annotations and never native C offsets,
+ * Build one independently owned Binary layout from typed Contract IR plus a
+ * TBE wire overlay. Semantic kinds come only from Contract IR; offsets/state
+ * come only from the wire overlay. The builder never consumes native C offsets,
  * CMeta storage/lifecycle, or historical TbeTyped descriptors.
  */
 databind_binary_layout_status databind_binary_layout_build(
-    const Node *canonical_ir,
+    const IdlContract *contract,
+    const Node *wire_ir,
     const char *type_name,
     databind_binary_type_layout *out_layout,
     databind_binary_layout_diagnostic *diagnostic);
