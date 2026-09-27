@@ -22,10 +22,12 @@ databind_target(
 
 get_target_property(
   _installed_plugin_links installed_image_plugin LINK_LIBRARIES)
-if("Salts::DataBindSchema" IN_LIST _installed_plugin_links)
-  message(FATAL_ERROR
-          "installed generated Plugin must not link Salts::DataBindSchema")
-endif()
+foreach(frontend_target IN ITEMS Salts::IDL Salts::Schema)
+  if("${frontend_target}" IN_LIST _installed_plugin_links)
+    message(FATAL_ERROR
+            "installed generated Plugin must not link ${frontend_target}")
+  endif()
+endforeach()
 if(NOT "Salts::DataBind" IN_LIST _installed_plugin_links)
   message(FATAL_ERROR
           "installed generated Plugin must link canonical Salts::DataBind")
@@ -41,10 +43,12 @@ if(NOT TARGET installed_image_plugin_client)
 endif()
 get_target_property(
   _installed_client_links installed_image_plugin_client LINK_LIBRARIES)
-if("Salts::DataBindSchema" IN_LIST _installed_client_links)
-  message(FATAL_ERROR
-          "installed generated Plugin client must not link Salts::DataBindSchema")
-endif()
+foreach(frontend_target IN ITEMS Salts::IDL Salts::Schema)
+  if("${frontend_target}" IN_LIST _installed_client_links)
+    message(FATAL_ERROR
+            "installed generated Plugin client must not link ${frontend_target}")
+  endif()
+endforeach()
 if(NOT "Salts::Plugin" IN_LIST _installed_client_links)
   message(FATAL_ERROR
           "installed generated Plugin client must link Salts::Plugin")
