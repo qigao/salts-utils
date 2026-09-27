@@ -463,7 +463,7 @@ set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
-  LIBS Salts::DataBindCMeta Salts::DataBindSchema Salts::TinyTest
+  LIBS Salts::DataBindCMeta Salts::Schema Salts::TinyTest
   FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_cmeta_kind
   SOURCES test_data_bind_cmeta_kind.c
@@ -617,7 +617,7 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
 
   cmake_add_test(test_tbe_cmeta_acceptance
     SOURCES test_tbe_cmeta_acceptance.c
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema Salts::TinyTest
+    LIBS tbe_cmeta_graph_public_fixture Salts::Schema Salts::TinyTest
     FOLDER "databind/runtime/tests")
   add_test(NAME test_tbe_cmeta_cli_gates
     COMMAND ${CMAKE_COMMAND}
@@ -627,13 +627,13 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
 
   cmake_add_test(test_tbe_typed_cmeta_public
     SOURCES test_tbe_typed_cmeta_public.c
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
+    LIBS tbe_cmeta_graph_public_fixture Salts::IDL
     FOLDER "databind/runtime/tests")
   set_tests_properties(test_tbe_typed_cmeta_public PROPERTIES
     LABELS "databind;cmeta;typed-contract")
   cmake_add_test(test_tbe_typed_cmeta_public_cpp
     SOURCES test_tbe_typed_cmeta_public_cpp.cpp
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
+    LIBS tbe_cmeta_graph_public_fixture Salts::Schema
     FOLDER "databind/runtime/tests")
   set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
