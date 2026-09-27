@@ -1,5 +1,7 @@
 #include "data_bind_socket_execution_plan.h"
+#include "data_bind_binary_reader.h"
 #include "data_bind_json_provider.h"
+#include "tbe_wire.h"
 
 #include "tinytest.h"
 
@@ -125,24 +127,28 @@ static DataBindNativeOptions socket_native_options(
   return options;
 }
 
-typedef struct BinaryProviderOwner {
-  cserde_reader reader;
-  SocketTokenReader state;
-  cserde_token tokens[4];
-} BinaryProviderOwner;
+static const DataBindBinaryReaderFieldPlan SOCKET_BINARY_FIELDS[] = {
+    {sizeof(DataBindBinaryReaderFieldPlan), "sequence",
+     CSERDE_UINT, 32u, 1u, 4u, 0u, 0u, 0u},
+    {sizeof(DataBindBinaryReaderFieldPlan), "sample",
+     CSERDE_UINT, 32u, 5u, 4u, 0u, 0u,
+     DATA_BIND_BINARY_READER_FIELD_OPTIONAL},
+};
+
+static const DataBindBinaryReaderPlan SOCKET_BINARY_PLAN = {
+    sizeof(DataBindBinaryReaderPlan),
+    DATA_BIND_BINARY_READER_PLAN_ABI_VERSION,
+    "Event",
+    0,
+    9u,
+    0u,
+    1u,
+    1u,
+    0u,
+    SOCKET_BINARY_FIELDS,
+    sizeof(SOCKET_BINARY_FIELDS) / sizeof(SOCKET_BINARY_FIELDS[0])};
 
 static size_t BINARY_PROVIDER_CLOSE_CALLS = 0u;
-
-static DataBindStatus binary_provider_error(
-    DataBindError *error, DataBindStatus status, const char *message) {
-  if (error != NULL) {
-    *error = (DataBindError)DATA_BIND_ERROR_INIT;
-    error->code = status;
-    snprintf(error->message, sizeof(error->message), "%s",
-             message != NULL ? message : "");
-  }
-  return status;
-}
 
 static DataBindStatus binary_provider_open(
     const char *data,
@@ -151,52 +157,14 @@ static DataBindStatus binary_provider_open(
     cserde_reader **out_reader,
     void **out_owner,
     DataBindError *error) {
-  BinaryProviderOwner *owner;
-  uint32_t sequence;
-  (void)max_depth;
-
-  if (out_reader == NULL || out_owner == NULL ||
-      data == NULL || len != 1u)
-    return binary_provider_error(
-        error, DATA_BIND_ERR_INVALID_ARG,
-        "Test Binary provider requires exactly one payload byte");
-
-  owner = (BinaryProviderOwner *)calloc(1u, sizeof(*owner));
-  if (owner == NULL)
-    return binary_provider_error(
-        error, DATA_BIND_ERR_OOM,
-        "Could not allocate test Binary provider owner");
-
-  sequence = (uint8_t)data[0];
-  owner->tokens[0] = (cserde_token){.kind = CSERDE_MAP_BEGIN};
-  owner->tokens[1] = socket_key("sequence");
-  owner->tokens[2] =
-      (cserde_token){.kind = CSERDE_UINT, .value.uint = sequence};
-  owner->tokens[3] = (cserde_token){.kind = CSERDE_MAP_END};
-
-  owner->state.tokens = owner->tokens;
-  owner->state.count = 4u;
-  owner->state.index = 0u;
-  if (cserde_reader_init(
-          &owner->reader, &SOCKET_TOKEN_OPS, &owner->state) != CSERDE_OK) {
-    free(owner);
-    return binary_provider_error(
-        error, DATA_BIND_ERR_RUNTIME,
-        "Could not initialize test Binary provider reader");
-  }
-
-  *out_reader = &owner->reader;
-  *out_owner = owner;
-  if (error != NULL) *error = (DataBindError)DATA_BIND_ERROR_INIT;
-  return DATA_BIND_OK;
+  return data_bind_binary_reader_open(
+      &SOCKET_BINARY_PLAN, data, len, max_depth,
+      out_reader, out_owner, error);
 }
 
 static void binary_provider_close(cserde_reader *reader, void *owner) {
-  (void)reader;
-  if (owner != NULL) {
-    ++BINARY_PROVIDER_CLOSE_CALLS;
-    free(owner);
-  }
+  ++BINARY_PROVIDER_CLOSE_CALLS;
+  data_bind_binary_reader_close(reader, owner);
 }
 
 static const DataBindFormatProvider TEST_BINARY_PROVIDER =
@@ -204,6 +172,13 @@ static const DataBindFormatProvider TEST_BINARY_PROVIDER =
         DATA_BIND_FORMAT_BINARY,
         binary_provider_open,
         binary_provider_close);
+
+static void socket_binary_payload(
+    unsigned char wire[9], uint32_t sequence) {
+  memset(wire, 0, 9u);
+  /* sample is optional/ABSENT so MessagePlan applies default 7. */
+  tbe_wire_write_u32(wire + 1u, 0, sequence);
+}
 
 static DataBind *socket_codec(void) {
   static const char schema[] =
@@ -289,9 +264,12 @@ spec("DataBind SocketExecutionPlan") {
         socket_native_options(workspace, sizeof(workspace));
     SocketEvent valid = {0};
     SocketEvent invalid = {0};
-    const unsigned char valid_payload[] = {3u};
-    const unsigned char invalid_payload[] = {0u};
+    unsigned char valid_payload[9] = {0};
+    unsigned char invalid_payload[9] = {0};
     size_t close_before;
+
+    socket_binary_payload(valid_payload, 3u);
+    socket_binary_payload(invalid_payload, 0u);
 
     check_not_null(codec);
     if (codec == NULL) return;
