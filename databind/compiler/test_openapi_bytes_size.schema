@@ -1,0 +1,7 @@
+schema OpenApiBadBytes [version(1)];
+
+message Request {
+    @Size(max = 4) bytes payload;
+}
+message Response { uint32 value; }
+service Blobs { Put: Request -> Response; }
