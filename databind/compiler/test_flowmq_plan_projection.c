@@ -93,7 +93,6 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
-    data_bind_compiler_flowmq_channel_plan_backend();
     node_free(root);
     free(schema_data);
   }
