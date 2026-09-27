@@ -256,13 +256,24 @@ DataBindStatus data_bind_socket_execution_plan_decode_payload(
       &format_reader, format_error);
   if (status != DATA_BIND_OK) return status;
 
-  status = data_bind_format_canonical_reader_init(
-      plan->format, format_reader.reader, &canonical, format_error);
-  if (status == DATA_BIND_OK) {
+  if (plan->socket.format == DATA_BIND_FORMAT_BINARY) {
+    /*
+     * Binary has no external text-field naming layer. A Binary provider is an
+     * explicit representation adapter and must already publish canonical
+     * DataBind field-name tokens.
+     */
     status = data_bind_socket_execution_plan_decode_native(
-        plan, native_options,
-        data_bind_format_canonical_reader_reader(&canonical),
+        plan, native_options, format_reader.reader,
         destination, destination_bytes, message_diagnostic);
+  } else {
+    status = data_bind_format_canonical_reader_init(
+        plan->format, format_reader.reader, &canonical, format_error);
+    if (status == DATA_BIND_OK) {
+      status = data_bind_socket_execution_plan_decode_native(
+          plan, native_options,
+          data_bind_format_canonical_reader_reader(&canonical),
+          destination, destination_bytes, message_diagnostic);
+    }
   }
 
   close_status = data_bind_format_reader_close(&format_reader);
