@@ -24,6 +24,8 @@ spec("DataBind generated SocketPlan") {
   it("generates bounded JSON/Binary plans and rejects unsupported shapes") {
     static const char output[] = "databind_socket_plan_generated.h";
     Node *root = NULL;
+    IdlContract *contract = NULL;
+    databind_compiler_projection_input input = {0};
     char *schema_data = NULL;
     databind_compiler_socket_projection_config config = {
         .symbol_prefix = "databind_device",
@@ -43,20 +45,22 @@ spec("DataBind generated SocketPlan") {
 
     (void)salts_fs_unlink(output);
     check_equal(
-        tbe_compiler_parse_schema_file(
-            SOCKET_PLAN_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            SOCKET_PLAN_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
-    if (root == NULL || schema_data == NULL) {
+    if (root == NULL || contract == NULL || schema_data == NULL) {
+      idl_contract_destroy(contract);
       node_free(root);
       free(schema_data);
       return;
     }
+    input = (databind_compiler_projection_input){contract, root};
 
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         0);
     check(file_contains(output, "Device.Telemetry"));
     check(file_contains(output, "TelemetryEvent"));
@@ -79,7 +83,7 @@ spec("DataBind generated SocketPlan") {
     config.framing = DATA_BIND_SOCKET_FRAMING_NONE;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         0);
     check(file_contains(output, "DATA_BIND_FORMAT_JSON"));
     check(file_contains(output, "DATA_BIND_SOCKET_MODE_DATAGRAM"));
@@ -89,7 +93,7 @@ spec("DataBind generated SocketPlan") {
     config.format = DATA_BIND_FORMAT_XML;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
@@ -98,7 +102,7 @@ spec("DataBind generated SocketPlan") {
     config.framing = DATA_BIND_SOCKET_FRAMING_NONE;
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
@@ -106,7 +110,7 @@ spec("DataBind generated SocketPlan") {
     config.channel_name = "Device.ChoiceEvents";
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
@@ -114,10 +118,11 @@ spec("DataBind generated SocketPlan") {
     config.native_header_include = "../device.h";
     check_equal(
         databind_compiler_projection_run(
-            root, &request, 1u, &backend, 1u),
+            &input, &request, 1u, &backend, 1u),
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
