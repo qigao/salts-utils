@@ -740,8 +740,10 @@ static int rpc_emit_errors(
 }
 
 static int http_generate(
-    const Node *root, const databind_compiler_projection_request *request,
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
     void *context) {
+  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_http_projection_config *config =
       request != NULL
           ? (const databind_compiler_http_projection_config *)request->config
@@ -935,8 +937,10 @@ cleanup:
 }
 
 static int rpc_generate(
-    const Node *root, const databind_compiler_projection_request *request,
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
     void *context) {
+  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_rpc_projection_config *config =
       request != NULL
           ? (const databind_compiler_rpc_projection_config *)request->config
