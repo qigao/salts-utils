@@ -838,6 +838,34 @@ set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
 set_tests_properties(test_databind_method_plan_binary_admission PROPERTIES
   LABELS "databind;compiler;binary-layout;transport")
 
+cmake_add_test(test_databind_binary_reader_codegen
+  SOURCES
+    test_binary_reader_codegen.c
+    binary_reader_codegen.c
+    binary_layout_ir.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::DataBindSchema
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_target_properties(test_databind_binary_reader_codegen PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_reader_codegen PROPERTIES
+  LABELS "databind;compiler;binary-reader")
+
 cmake_add_test(test_databind_binary_layout_ir
   SOURCES
     test_binary_layout_ir.c
