@@ -11,7 +11,7 @@ if(TARGET Salts::DataBindGeneratedABI)
           "removed Salts::DataBindGeneratedABI must not be exported")
 endif()
 
-databind_target(
+salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
   COMPONENT "Image.ImageProcessor"
@@ -71,7 +71,7 @@ set_target_properties(installed_image_plugin_client_cpp PROPERTIES
 add_dependencies(installed_image installed_image_plugin_client_cpp)
 
 
-databind_target(
+salts_idl_target(
   TARGET installed_socket
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/socket.schema"
   ARTIFACT_NAME "installed_device"
@@ -93,7 +93,7 @@ add_dependencies(installed_image
   installed_socket)
 
 
-databind_target(
+salts_idl_target(
   TARGET installed_openapi
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/openapi.schema"
   ARTIFACT_NAME "installed_users"
@@ -126,7 +126,7 @@ add_dependencies(installed_openapi
 add_dependencies(installed_image
   installed_openapi)
 
-databind_target(
+salts_idl_target(
   TARGET installed_flow
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/flowmq.schema"
   ARTIFACT_NAME "installed_flow"
