@@ -895,9 +895,9 @@ static int openapi_emit_field_schema(
          openapi_json_string(file, enum_format) != 0))
       return -1;
     if (is_unsigned &&
-        openapi_emit_key(file, &first, "minimum") == 0) {
-      if (fputs("0", file) == EOF) return -1;
-    }
+        (openapi_emit_key(file, &first, "minimum") != 0 ||
+         fputs("0", file) == EOF))
+      return -1;
     if (openapi_emit_key(file, &first, "enum") != 0 ||
         fputc('[', file) == EOF)
       return -1;
