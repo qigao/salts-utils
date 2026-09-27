@@ -87,3 +87,25 @@ add_dependencies(installed_socket
   installed_socket_consumer)
 add_dependencies(installed_image
   installed_socket)
+
+
+databind_target(
+  TARGET installed_flow
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/flowmq.schema"
+  ARTIFACT_NAME "installed_flow"
+  TRANSPORTS FLOWMQ
+  PROJECTION_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_config.json")
+
+add_executable(installed_flowmq_consumer flowmq_consumer.c)
+target_compile_features(installed_flowmq_consumer PRIVATE c_std_11)
+target_link_libraries(installed_flowmq_consumer PRIVATE
+  Salts::DataBind
+  ${installed_flow_NATIVE_TARGET})
+target_include_directories(installed_flowmq_consumer PRIVATE
+  "${installed_flow_GENERATED_DIR}")
+add_dependencies(installed_flowmq_consumer
+  installed_flow_databind_codegen)
+add_dependencies(installed_flow
+  installed_flowmq_consumer)
+add_dependencies(installed_image
+  installed_flow)
