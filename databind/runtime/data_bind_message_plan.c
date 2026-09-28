@@ -816,6 +816,61 @@ fail:
   return status;
 }
 
+DataBindStatus data_bind_message_plan_compile_object(
+    DataBind *codec,
+    const char *type_name,
+    const cmeta_data_desc *object_data,
+    DataBindMessagePlan **out_plan,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindMessagePlan *plan = NULL;
+  DataBindStatus status;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+  if (out_plan != NULL) *out_plan = NULL;
+
+  if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
+      out_plan == NULL || !cmeta_data_desc_valid(object_data) ||
+      object_data->kind != CMETA_DATA_STRUCT ||
+      object_data->storage_type == NULL || object_data->shape == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+        "Invalid CMeta object descriptor for DataBind IDL type '%s'",
+        type_name != NULL ? type_name : "");
+
+  plan = (DataBindMessagePlan *)calloc(1u, sizeof(*plan));
+  if (plan == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_OOM, type_name,
+        "Could not allocate DataBind MessagePlan");
+
+  plan->type_name = message_strdup(type_name);
+  plan->object_data = object_data;
+  if (plan->type_name == NULL) {
+    status = message_fail(
+        diagnostic, DATA_BIND_ERR_OOM, type_name,
+        "Could not copy MessagePlan identity");
+    goto fail;
+  }
+
+  status = message_compile_object_fields(
+      codec, type_name, object_data, plan, diagnostic);
+  if (status != DATA_BIND_OK) goto fail;
+
+  status = message_compile_validation(
+      codec, type_name, plan, diagnostic);
+  if (status != DATA_BIND_OK) goto fail;
+
+  message_diag_clear(diagnostic);
+  *out_plan = plan;
+  return DATA_BIND_OK;
+
+fail:
+  data_bind_message_plan_free(plan);
+  return status;
+}
+
 const char *data_bind_message_plan_type_name(
     const DataBindMessagePlan *plan) {
   return plan != NULL ? plan->type_name : NULL;
@@ -824,6 +879,11 @@ const char *data_bind_message_plan_type_name(
 const DataBindNativeTypeBinding *data_bind_message_plan_native_binding(
     const DataBindMessagePlan *plan) {
   return plan != NULL ? plan->native : NULL;
+}
+
+const cmeta_data_desc *data_bind_message_plan_object_data(
+    const DataBindMessagePlan *plan) {
+  return plan != NULL ? plan->object_data : NULL;
 }
 
 size_t data_bind_message_plan_field_count(
