@@ -2034,25 +2034,55 @@ cleanup:
 }
 
 /* Reject target domains before touching any of the requested output paths. */
-static int tbe_compiler_validate_enum_backend(Node *root,
-                                             const tbe_compiler_options_t *options) {
-  Node *enums = tbe_compiler_find_child(root, "enums");
-  if (!enums || enums->type != NODE_LIST) return 1;
-  for (size_t i = 0; i < enums->data.list.count; ++i) {
-    Node *node = enums->data.list.items[i];
-    const char *storage = tbe_compiler_string_value(node, "underlying_type");
-    const char *name = tbe_compiler_string_value(node, "enum_name");
-    if (!storage || !tbe_compiler_integer_type(storage)) {
-      fprintf(stderr, "Missing canonical enum storage for %s\n", name ? name : "<unnamed>");
+static int tbe_compiler_enum_is_ordinal(const IdlDataDecl *type) {
+  size_t i;
+  char expected[32];
+
+  if (type == NULL || type->kind != IDL_DATA_ENUM ||
+      type->enum_items == NULL || type->enum_item_count == 0u)
+    return 0;
+
+  for (i = 0u; i < type->enum_item_count; ++i) {
+    int written = snprintf(expected, sizeof(expected), "%zu", i);
+    if (written <= 0 || (size_t)written >= sizeof(expected) ||
+        type->enum_items[i].value == NULL ||
+        strcmp(type->enum_items[i].value, expected) != 0)
+      return 0;
+  }
+  return 1;
+}
+
+static int tbe_compiler_validate_enum_backend(
+    const IdlContract *contract,
+    const tbe_compiler_options_t *options) {
+  size_t i;
+
+  if (contract == NULL || options == NULL) return 0;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *type = &contract->data[i];
+    const char *storage;
+    const char *name;
+
+    if (type->kind != IDL_DATA_ENUM) continue;
+
+    storage = type->underlying_type;
+    name = type->name;
+    if (storage == NULL || !tbe_compiler_integer_type(storage)) {
+      fprintf(stderr, "Missing canonical enum storage for %s\n",
+              name != NULL ? name : "<unnamed>");
       return 0;
     }
     if (options->lang_enum == TBE_COMPILER_LANG_TS &&
         (strcmp(storage, "int64") == 0 || strcmp(storage, "uint64") == 0)) {
-      fprintf(stderr, "TypeScript numeric enum %s cannot preserve %s storage\n", name, storage);
+      fprintf(stderr, "TypeScript numeric enum %s cannot preserve %s storage\n",
+              name != NULL ? name : "<unnamed>", storage);
       return 0;
     }
-    if (options->dsl_output_path && !tbe_compiler_has_child(node, "is_ordinal")) {
-      fprintf(stderr, "RulesForge enum %s requires sequential values starting at zero\n", name);
+    if (options->dsl_output_path && !tbe_compiler_enum_is_ordinal(type)) {
+      fprintf(stderr,
+              "RulesForge enum %s requires sequential values starting at zero\n",
+              name != NULL ? name : "<unnamed>");
       return 0;
     }
   }
@@ -2154,7 +2184,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
   }
 
-  if (!tbe_compiler_validate_enum_backend(root, options)) {
+  if (!tbe_compiler_validate_enum_backend(contract, options)) {
     status = 1;
     goto cleanup;
   }
