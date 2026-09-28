@@ -1,7 +1,7 @@
 #ifndef DATABIND_COMPILER_BINARY_READER_CODEGEN_H
 #define DATABIND_COMPILER_BINARY_READER_CODEGEN_H
 
-#include "node_tree.h"
+#include "tbe_format_plan.h"
 #include "idl_contract.h"
 
 #include <stdio.h>
@@ -16,7 +16,7 @@ extern "C" {
  */
 int databind_compiler_binary_reader_admit(
     const IdlContract *contract,
-    const Node *wire_ir,
+    const databind_tbe_format_plan *format_plan,
     const char *type_name);
 
 /*
@@ -32,7 +32,7 @@ int databind_compiler_binary_reader_admit(
 int databind_compiler_binary_reader_emit(
     FILE *file,
     const IdlContract *contract,
-    const Node *wire_ir,
+    const databind_tbe_format_plan *format_plan,
     const char *type_name,
     const char *symbol_prefix);
 
