@@ -12,41 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static Node *flowmq_child(const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const char *flowmq_string(const Node *parent, const char *name) {
-  Node *child = flowmq_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
-static const Node *flowmq_find_channel(
-    const Node *root, const char *qualified_name) {
-  Node *channels = flowmq_child(root, "channels");
-  size_t i;
-  if (channels == NULL || channels->type != NODE_LIST ||
-      qualified_name == NULL || qualified_name[0] == '\0')
-    return NULL;
-  for (i = 0u; i < channels->data.list.count; ++i) {
-    const Node *channel = channels->data.list.items[i];
-    const char *candidate = flowmq_string(channel, "qualified_name");
-    if (candidate != NULL && strcmp(candidate, qualified_name) == 0)
-      return channel;
-  }
-  return NULL;
-}
-
 static int flowmq_identifier_valid(const char *text) {
   size_t i;
   if (text == NULL || text[0] == '\0' ||
@@ -196,7 +161,7 @@ static int flowmq_generate(
       request != NULL
           ? (const databind_compiler_flowmq_projection_config *)request->config
           : NULL;
-  const Node *channel;
+  const IdlChannel *channel;
   const char *message_type;
   databind_compiler_message_native_binding native_binding = {0};
   char native_symbol[384];
@@ -205,15 +170,19 @@ static int flowmq_generate(
   int ok = 0;
   (void)context;
 
-  if (root == NULL || request == NULL || request->output == NULL ||
+  if (input == NULL || input->contract == NULL || root == NULL ||
+      request == NULL || request->output == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT ||
       request->id.kind != DATABIND_COMPILER_TRANSPORT_FLOWMQ ||
       !flowmq_config_valid(config))
     return -1;
 
-  channel = flowmq_find_channel(root, config->channel_name);
-  if (channel == NULL) return -1;
-  message_type = flowmq_string(channel, "message_type");
+  channel = idl_contract_find_channel(
+      input->contract, config->channel_name);
+  if (channel == NULL || channel->message_type == NULL ||
+      channel->message_type[0] == '\0')
+    return -1;
+  message_type = channel->message_type;
   if (!flowmq_format_representable(
           input->contract, root, message_type, config->format))
     return -1;
