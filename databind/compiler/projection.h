@@ -1,7 +1,6 @@
 #ifndef DATABIND_COMPILER_PROJECTION_H
 #define DATABIND_COMPILER_PROJECTION_H
 
-#include "node_tree.h"
 #include "idl_contract.h"
 #include "tbe_format_plan.h"
 
@@ -66,8 +65,6 @@ typedef struct databind_compiler_projection_input {
   const IdlContract *contract;
   /* Typed compiler-side TBE wire facts. Never a semantic type authority. */
   const databind_tbe_format_plan *tbe_format;
-  /* Transitional rendering tree for artifact/template paths still migrating. */
-  const Node *legacy_tree;
 } databind_compiler_projection_input;
 
 typedef int (*databind_compiler_projection_generate_fn)(
