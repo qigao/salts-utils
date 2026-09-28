@@ -1,4 +1,5 @@
 #include "tbe_contract_overlay.h"
+#include "tbe_format_plan.h"
 
 #include "tbe_scalar_profile.h"
 #include "schema_size.h"
@@ -1502,4 +1503,274 @@ int databind_tbe_contract_parse(
     const char *text, size_t len, Node *root, tbe_error_t *error) {
   if (idl_parse(text, len, root, error) != 0) return -1;
   return databind_tbe_contract_apply(root, error);
+}
+
+static char *tbe_plan_strdup(const char *text) {
+  size_t length;
+  char *copy;
+  if (text == NULL) return NULL;
+  length = strlen(text);
+  copy = (char *)malloc(length + 1u);
+  if (copy != NULL) memcpy(copy, text, length + 1u);
+  return copy;
+}
+
+static const char *tbe_plan_list_name(IdlDataKind kind) {
+  switch (kind) {
+  case IDL_DATA_MESSAGE: return "messages";
+  case IDL_DATA_COMPOSITE: return "composites";
+  case IDL_DATA_GROUP: return "groups";
+  default: return NULL;
+  }
+}
+
+static const Node *tbe_plan_find_record(
+    const Node *root, IdlDataKind kind, const char *name) {
+  const char *list_name = tbe_plan_list_name(kind);
+  Node *list;
+  size_t i;
+  if (root == NULL || list_name == NULL || name == NULL) return NULL;
+  list = map_find_named_child((Node *)root, list_name);
+  if (list == NULL || list->type != NODE_LIST) return NULL;
+  for (i = 0u; i < list->data.list.count; ++i) {
+    const Node *record = list->data.list.items[i];
+    const char *candidate = map_find_string_value(record, "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return record;
+  }
+  return NULL;
+}
+
+static const Node *tbe_plan_find_field(
+    const Node *record, const char *name) {
+  Node *fields;
+  size_t i;
+  if (record == NULL || name == NULL) return NULL;
+  fields = map_find_named_child((Node *)record, "fields");
+  if (fields == NULL || fields->type != NODE_LIST) return NULL;
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *candidate = map_find_string_value(field, "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return field;
+  }
+  return NULL;
+}
+
+static int tbe_plan_parse_size(
+    const Node *owner, const char *name, size_t *out, int required) {
+  const char *text = map_find_string_value(owner, name);
+  if (text == NULL) {
+    if (!required) {
+      *out = 0u;
+      return 1;
+    }
+    return 0;
+  }
+  return schema_parse_fixed_layout_size(text, out);
+}
+
+static int tbe_plan_fail(tbe_error_t *error, const char *message) {
+  if (error != NULL)
+    tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
+  return 0;
+}
+
+void databind_tbe_format_plan_destroy(databind_tbe_format_plan *plan) {
+  size_t i, j;
+  if (plan == NULL) return;
+  for (i = 0u; i < plan->type_count; ++i) {
+    databind_tbe_type_plan *type = &plan->types[i];
+    for (j = 0u; j < type->field_count; ++j)
+      free(type->fields[j].name);
+    free(type->fields);
+    free(type->name);
+  }
+  free(plan->types);
+  memset(plan, 0, sizeof(*plan));
+}
+
+const databind_tbe_type_plan *databind_tbe_format_plan_find_type(
+    const databind_tbe_format_plan *plan,
+    const char *type_name) {
+  size_t i;
+  if (plan == NULL || type_name == NULL) return NULL;
+  for (i = 0u; i < plan->type_count; ++i)
+    if (plan->types[i].name != NULL &&
+        strcmp(plan->types[i].name, type_name) == 0)
+      return &plan->types[i];
+  return NULL;
+}
+
+static int tbe_plan_build_field(
+    const IdlContract *contract,
+    const Node *wire_ir,
+    const IdlField *typed_field,
+    const Node *field_node,
+    databind_tbe_field_plan *out,
+    tbe_error_t *error) {
+  const char *name;
+  const char *group_type;
+  const IdlDataDecl *group_decl;
+  const Node *group_record;
+  size_t bit = 0u;
+  (void)contract;
+
+  if (typed_field == NULL || field_node == NULL || out == NULL)
+    return tbe_plan_fail(error, "Invalid TBE field plan input");
+
+  name = typed_field->name;
+  if (name == NULL || name[0] == '\0')
+    return tbe_plan_fail(error, "TBE field identity is missing");
+  out->name = tbe_plan_strdup(name);
+  if (out->name == NULL) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                    "Failed to allocate TBE field identity");
+    return 0;
+  }
+
+  if (typed_field->optional) {
+    out->flags |= DATABIND_TBE_FIELD_OPTIONAL;
+    if (!tbe_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
+        bit > (size_t)UINT_MAX)
+      return tbe_plan_fail(error, "TBE optional bit is invalid");
+    out->optional_bit = (unsigned)bit;
+  }
+  if (typed_field->nullable) {
+    out->flags |= DATABIND_TBE_FIELD_NULLABLE;
+    if (!tbe_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
+        bit > (size_t)UINT_MAX)
+      return tbe_plan_fail(error, "TBE nullable bit is invalid");
+    out->nullable_bit = (unsigned)bit;
+  }
+
+  if (map_has_named_child(field_node, "is_group_field")) {
+    out->kind = DATABIND_TBE_FIELD_GROUP;
+    out->tail_prefix_bytes = 4u;
+    group_type = typed_field->inner_type;
+    if (group_type == NULL)
+      group_type = map_find_string_value(field_node, "group_type");
+    group_decl = group_type != NULL
+                     ? idl_contract_find_data(contract, group_type)
+                     : NULL;
+    group_record = group_decl != NULL
+                       ? tbe_plan_find_record(wire_ir, group_decl->kind, group_type)
+                       : NULL;
+    if (group_record == NULL ||
+        !tbe_plan_parse_size(
+            group_record, "fixed_block_size",
+            &out->child_fixed_block_size, 1))
+      return tbe_plan_fail(error, "TBE group child layout is unavailable");
+    return 1;
+  }
+
+  if (map_has_named_child(field_node, "is_var_data")) {
+    out->kind = DATABIND_TBE_FIELD_VAR_DATA;
+    out->tail_prefix_bytes = 4u;
+    return 1;
+  }
+
+  out->kind = DATABIND_TBE_FIELD_FIXED;
+  if (!tbe_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
+    return tbe_plan_fail(error, "TBE fixed field offset is unavailable");
+  if (!tbe_plan_parse_size(
+          field_node, "field_size_bytes", &out->wire_extent, 0) ||
+      out->wire_extent == 0u) {
+    if (!tbe_plan_parse_size(
+            field_node, "size_bytes", &out->wire_extent, 1) ||
+        out->wire_extent == 0u)
+      return tbe_plan_fail(error, "TBE fixed field extent is unavailable");
+  }
+  return 1;
+}
+
+int databind_tbe_format_plan_build(
+    const IdlContract *contract,
+    const Node *wire_ir,
+    databind_tbe_format_plan *out,
+    tbe_error_t *error) {
+  databind_tbe_format_plan candidate = {0};
+  const Node *schema;
+  const char *big_endian;
+  size_t eligible = 0u;
+  size_t i, j, out_index = 0u;
+
+  if (out != NULL) memset(out, 0, sizeof(*out));
+  if (contract == NULL || wire_ir == NULL || out == NULL)
+    return tbe_plan_fail(error, "Invalid TBE format plan arguments");
+
+  for (i = 0u; i < contract->data_count; ++i)
+    if (tbe_plan_list_name(contract->data[i].kind) != NULL)
+      ++eligible;
+
+  if (eligible != 0u) {
+    candidate.types =
+        (databind_tbe_type_plan *)calloc(eligible, sizeof(*candidate.types));
+    if (candidate.types == NULL) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                      "Failed to allocate TBE format plan");
+      return 0;
+    }
+  }
+  candidate.type_count = eligible;
+
+  schema = map_find_named_child((Node *)wire_ir, "schema");
+  big_endian = schema != NULL
+                   ? map_find_string_value(schema, "schema_wire_big_endian_value")
+                   : NULL;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *decl = &contract->data[i];
+    const Node *record;
+    databind_tbe_type_plan *type;
+    if (tbe_plan_list_name(decl->kind) == NULL) continue;
+
+    type = &candidate.types[out_index++];
+    record = tbe_plan_find_record(wire_ir, decl->kind, decl->name);
+    if (record == NULL)
+      goto invalid;
+
+    type->name = tbe_plan_strdup(decl->name);
+    if (type->name == NULL) goto oom;
+    type->wire_big_endian =
+        big_endian != NULL && strcmp(big_endian, "0") != 0;
+    if (!tbe_plan_parse_size(
+            record, "fixed_block_size", &type->fixed_block_size, 1) ||
+        !tbe_plan_parse_size(
+            record, "presence_bitmap_bytes", &type->presence_size, 0) ||
+        !tbe_plan_parse_size(
+            record, "null_bitmap_bytes", &type->null_size, 0))
+      goto invalid;
+
+    type->field_count = decl->field_count;
+    if (type->field_count != 0u) {
+      type->fields = (databind_tbe_field_plan *)calloc(
+          type->field_count, sizeof(*type->fields));
+      if (type->fields == NULL) goto oom;
+    }
+
+    for (j = 0u; j < decl->field_count; ++j) {
+      const Node *field_node =
+          tbe_plan_find_field(record, decl->fields[j].name);
+      if (field_node == NULL ||
+          !tbe_plan_build_field(
+              contract, wire_ir, &decl->fields[j], field_node,
+              &type->fields[j], error))
+        goto fail;
+    }
+  }
+
+  *out = candidate;
+  return 1;
+
+invalid:
+  tbe_plan_fail(error, "TBE wire overlay is incomplete");
+  goto fail;
+oom:
+  if (error != NULL)
+    tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                  "Failed to allocate TBE format plan");
+fail:
+  databind_tbe_format_plan_destroy(&candidate);
+  return 0;
 }
