@@ -1352,6 +1352,120 @@ static void plan_native_clear_noexcept(
   (void)data_bind_native_clear(options, data, storage, storage_bytes, &native);
 }
 
+static const unsigned char *plan_ingress_base_const(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntry *entry,
+    const DataBindBindingCallFrame *frame,
+    size_t *out_bytes) {
+  const unsigned char *base = NULL;
+  size_t bytes = 0u;
+
+  if (plan->has_request_root_param &&
+      entry->function_param_index == plan->request_root_param) {
+    base = (const unsigned char *)frame->request;
+    bytes = frame->request_bytes;
+  } else if (entry->function_param_index < frame->param_count &&
+             frame->params != NULL && frame->param_bytes != NULL) {
+    base = (const unsigned char *)frame->params[entry->function_param_index];
+    bytes = frame->param_bytes[entry->function_param_index];
+  }
+
+  if (out_bytes != NULL) *out_bytes = bytes;
+  return base;
+}
+
+static const void *plan_ingress_source(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntry *entry,
+    const DataBindBindingCallFrame *frame,
+    size_t *out_bytes) {
+  size_t bytes = 0u;
+  const unsigned char *base =
+      plan_ingress_base_const(plan, entry, frame, &bytes);
+
+  if (base == NULL || bytes < entry->native_offset ||
+      entry->data == NULL || entry->data->storage_type == NULL ||
+      bytes - entry->native_offset < entry->data->storage_type->size)
+    return NULL;
+
+  if (out_bytes != NULL)
+    *out_bytes = entry->data->storage_type->size;
+  return base + entry->native_offset;
+}
+
+static DataBindStatus plan_ingress_value(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntryOwned *owned,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingValueState *out_state,
+    const void **out_source,
+    size_t *out_source_bytes,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  const DataBindBindingPlanEntry *entry;
+  const unsigned char *state_base = NULL;
+  const void *source = NULL;
+  size_t source_bytes = 0u;
+  int present = 1;
+  int is_null = 0;
+  DataBindBindingValueState state = DATA_BIND_VALUE_STATE_VALUE;
+
+  if (plan == NULL || owned == NULL || frame == NULL ||
+      out_state == NULL || out_source == NULL || out_source_bytes == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid client request value classification arguments");
+
+  entry = &owned->view;
+  if (entry->has_presence || entry->has_null) {
+    state_base = plan_ingress_base_const(plan, entry, frame, NULL);
+    if (state_base == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Client request DataBind state storage is unavailable");
+  }
+
+  if (entry->has_presence)
+    present = (state_base[entry->presence_offset] &
+               (unsigned char)(1u << entry->presence_bit)) != 0u;
+  if (entry->has_null)
+    is_null = (state_base[entry->null_offset] &
+               (unsigned char)(1u << entry->null_bit)) != 0u;
+
+  if (!present) {
+    if (is_null)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Client request state has NULL set while presence is ABSENT");
+    if (!entry->has_presence && entry->required)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Required client request value is unavailable");
+    state = DATA_BIND_VALUE_STATE_ABSENT;
+  } else if (is_null) {
+    if (!entry->nullable || !entry->has_null)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Client request state is NULL for a non-null DataBind field");
+    state = DATA_BIND_VALUE_STATE_NULL;
+  } else {
+    source = plan_ingress_source(plan, entry, frame, &source_bytes);
+    if (source == NULL)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Compiled ingress entry has no client native source");
+  }
+
+  *out_state = state;
+  *out_source = source;
+  *out_source_bytes = source_bytes;
+  return DATA_BIND_OK;
+}
+
 static void *plan_ingress_destination(
     const DataBindBindingPlan *plan, const DataBindBindingPlanEntry *entry,
     DataBindBindingCallFrame *frame, size_t *out_bytes) {
