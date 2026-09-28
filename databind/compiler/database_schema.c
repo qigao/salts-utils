@@ -2095,8 +2095,9 @@ failed:
   return NULL;
 }
 
-tbe_database_schema_status_t tbe_database_schema_build(
-    const Node *schema_root, tbe_database_dialect_t dialect, Node **out_database_ir,
+static tbe_database_schema_status_t database_schema_build_view(
+    const Node *schema_root, tbe_database_dialect_t dialect,
+    Node **out_database_ir,
     tbe_database_schema_diagnostic_t *out_diagnostic) {
   Node *messages;
   Node *database_ir = NULL;
@@ -2282,7 +2283,7 @@ tbe_database_schema_status_t tbe_database_schema_build_contract(
   if (view == NULL)
     return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
 
-  status = tbe_database_schema_build(
+  status = database_schema_build_view(
       view, dialect, out_database_ir, out_diagnostic);
   node_free(view);
   return status;
