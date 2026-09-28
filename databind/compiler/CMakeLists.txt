@@ -867,7 +867,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
   FOLDER "databind/compiler")
 
 cmake_add_test(test_tbe_compiler
-  SOURCES test_tbe_compiler.c compiler_core.c database_schema.c mustache_helpers.c
+  SOURCES test_tbe_compiler.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
@@ -884,7 +884,7 @@ target_include_directories(test_tbe_compiler
   PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
-  SOURCES test_schema_boundary.c compiler_core.c database_schema.c mustache_helpers.c
+  SOURCES test_schema_boundary.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
