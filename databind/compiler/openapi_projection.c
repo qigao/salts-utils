@@ -238,17 +238,20 @@ static int openapi_error_status(
   return 500;
 }
 
-static const Node *openapi_field(
-    const Node *root, const char *type_name, const char *field_name) {
-  const Node *record = openapi_record(root, type_name);
-  const Node *fields = openapi_list(record, "fields");
+
+static const IdlField *openapi_field(
+    const IdlContract *contract,
+    const char *type_name, const char *field_name) {
+  const IdlDataDecl *record;
   size_t i;
-  if (fields == NULL || field_name == NULL) return NULL;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
-    if (name != NULL && strcmp(name, field_name) == 0) return field;
-  }
+  if (contract == NULL || type_name == NULL || field_name == NULL)
+    return NULL;
+  record = idl_contract_find_data(contract, type_name);
+  if (record == NULL || record->fields == NULL) return NULL;
+  for (i = 0u; i < record->field_count; ++i)
+    if (record->fields[i].name != NULL &&
+        strcmp(record->fields[i].name, field_name) == 0)
+      return &record->fields[i];
   return NULL;
 }
 
@@ -283,13 +286,15 @@ static int openapi_route_placeholder_count(
   return (int)count;
 }
 
+
 static int openapi_http_config_valid(
-    const Node *root,
+    const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operations,
     size_t operation_count) {
   size_t i, j;
 
+  if (contract == NULL) return 0;
   if (config == NULL) return 1;
   if ((config->operation_count != 0u && config->operations == NULL) ||
       (config->field_count != 0u && config->fields == NULL) ||
@@ -323,10 +328,11 @@ static int openapi_http_config_valid(
     const databind_compiler_http_field_config *field = &config->fields[i];
     const openapi_operation *operation = NULL;
     const char *type_name;
-    const Node *schema_field;
+    const IdlField *schema_field;
     const char *wire;
     if (field->service_name == NULL || field->operation_name == NULL ||
-        field->schema_field == NULL)
+        field->schema_field == NULL ||
+        field->wire_name == NULL || field->wire_name[0] == '\0')
       return 0;
     for (j = 0u; j < operation_count; ++j)
       if (openapi_operation_matches(
@@ -336,7 +342,6 @@ static int openapi_http_config_valid(
         break;
       }
     if (operation == NULL) return 0;
-
     if (field->direction == DATABIND_COMPILER_PROJECTION_INGRESS) {
       if (field->location < DATABIND_COMPILER_HTTP_PATH ||
           field->location > DATABIND_COMPILER_HTTP_BODY)
@@ -352,13 +357,13 @@ static int openapi_http_config_valid(
     }
     if (type_name == NULL || strcmp(type_name, "void") == 0)
       return 0;
-    schema_field = openapi_field(root, type_name, field->schema_field);
+    schema_field = openapi_field(
+        contract, type_name, field->schema_field);
     if (schema_field == NULL) return 0;
 
     if (field->location == DATABIND_COMPILER_HTTP_PATH) {
       wire = field->wire_name != NULL ? field->wire_name : field->schema_field;
-      if (openapi_flag(schema_field, "is_optional") ||
-          openapi_flag(schema_field, "is_nullable") ||
+      if (schema_field->optional || schema_field->nullable ||
           openapi_route_placeholder_count(operation->route, wire) != 1)
         return 0;
     }
@@ -484,7 +489,7 @@ static int openapi_operations_build(
     }
   }
 
-  if (!openapi_http_config_valid(root, config, result, count))
+  if (!openapi_http_config_valid(contract, config, result, count))
     goto fail;
 
   for (i = 0u; i < count; ++i)
@@ -681,32 +686,33 @@ static int openapi_field_is_collection(const Node *field) {
          openapi_flag(field, "is_group_field");
 }
 
+
 static int openapi_constraint_kind_present(
-    const Node *field, const char *kind) {
-  const Node *constraints = openapi_list(field, "constraints");
+    const IdlField *field, const char *kind) {
   size_t i;
-  for (i = 0u; constraints != NULL && i < constraints->data.list.count; ++i) {
-    const char *candidate =
-        openapi_string(constraints->data.list.items[i], "kind");
-    if (candidate != NULL && strcmp(candidate, kind) == 0) return 1;
-  }
+  if (field == NULL || kind == NULL || field->constraints == NULL)
+    return 0;
+  for (i = 0u; i < field->constraint_count; ++i)
+    if (field->constraints[i].kind != NULL &&
+        strcmp(field->constraints[i].kind, kind) == 0)
+      return 1;
   return 0;
 }
 
+
 static int openapi_emit_default(
-    FILE *file, const Node *field, const char *type,
+    FILE *file, const IdlField *field, const char *type,
     int *first) {
   const char *value;
   const char *json_type;
   const char *format;
   int is_unsigned;
 
-  if (!openapi_flag(field, "has_default")) return 0;
-  value = openapi_string(field, "default_value");
-  if (value == NULL || openapi_emit_key(file, first, "default") != 0)
-    return -1;
+  if (field == NULL || field->default_value == NULL) return 0;
+  value = field->default_value;
+  if (openapi_emit_key(file, first, "default") != 0) return -1;
 
-  if (strcmp(value, "null") == 0 && openapi_flag(field, "is_nullable"))
+  if (strcmp(value, "null") == 0 && field->nullable)
     return fputs("null", file) == EOF ? -1 : 0;
 
   if (!openapi_primitive(type, &json_type, &format, &is_unsigned))
@@ -723,14 +729,14 @@ static int openapi_emit_default(
 }
 
 static int openapi_emit_constraints(
-    FILE *file, const Node *field,
+    FILE *file, const IdlField *field,
     const char *type, int is_collection, int is_map, int *first) {
-  const Node *constraints = openapi_list(field, "constraints");
   size_t i;
   const char *json_type = NULL;
   const char *format = NULL;
   int is_unsigned = 0;
 
+  if (field == NULL) return -1;
   (void)openapi_primitive(type, &json_type, &format, &is_unsigned);
 
   if (is_unsigned && !openapi_constraint_kind_present(field, "min")) {
@@ -739,13 +745,13 @@ static int openapi_emit_constraints(
       return -1;
   }
 
-  for (i = 0u; constraints != NULL && i < constraints->data.list.count; ++i) {
-    const Node *constraint = constraints->data.list.items[i];
-    const char *kind = openapi_string(constraint, "kind");
+  for (i = 0u; i < field->constraint_count; ++i) {
+    const IdlConstraint *constraint = &field->constraints[i];
+    const char *kind = constraint->kind;
     if (kind == NULL) return -1;
 
     if (strcmp(kind, "min") == 0 || strcmp(kind, "max") == 0) {
-      const char *value = openapi_string(constraint, "value");
+      const char *value = constraint->value;
       const char *key = strcmp(kind, "min") == 0 ? "minimum" : "maximum";
       if (json_type == NULL ||
           (strcmp(json_type, "integer") != 0 &&
@@ -755,15 +761,15 @@ static int openapi_emit_constraints(
           fputs(value, file) == EOF)
         return -1;
     } else if (strcmp(kind, "pattern") == 0) {
-      const char *pattern = openapi_string(constraint, "pattern");
+      const char *pattern = constraint->pattern;
       if (json_type == NULL || strcmp(json_type, "string") != 0 ||
           strcmp(type, "bytes") == 0 || pattern == NULL ||
           openapi_emit_key(file, first, "pattern") != 0 ||
           openapi_json_string(file, pattern) != 0)
         return -1;
     } else if (strcmp(kind, "size") == 0) {
-      const char *minimum = openapi_string(constraint, "min");
-      const char *maximum = openapi_string(constraint, "max");
+      const char *minimum = constraint->minimum;
+      const char *maximum = constraint->maximum;
       const char *min_key = NULL;
       const char *max_key = NULL;
 
@@ -778,10 +784,6 @@ static int openapi_emit_constraints(
         min_key = "minLength";
         max_key = "maxLength";
       } else {
-        /*
-         * Decoded-byte @Size cannot be represented losslessly by a base64
-         * string minLength/maxLength. Fail closed.
-         */
         return -1;
       }
 
@@ -800,119 +802,88 @@ static int openapi_emit_constraints(
   return 0;
 }
 
-static int openapi_emit_type_schema(
-    FILE *file, const Node *root, const char *type, int nullable);
 
-static int openapi_emit_field_schema(
-    FILE *file, const Node *root, const Node *field) {
-  const char *type = openapi_string(field, "type");
+static int openapi_emit_type_schema(
+    FILE *file, const IdlContract *contract,
+    const char *type, int nullable) {
   const char *json_type = NULL;
   const char *format = NULL;
-  const Node *record;
-  const Node *enumeration;
+  const IdlDataDecl *data;
   int is_unsigned = 0;
-  int nullable = openapi_flag(field, "is_nullable");
-  int is_map = openapi_flag(field, "is_map");
-  int is_set = openapi_flag(field, "is_set");
-  int is_collection = openapi_field_is_collection(field);
   int first = 1;
 
-  if (file == NULL || root == NULL || field == NULL || type == NULL)
-    return -1;
+  if (file == NULL || contract == NULL || type == NULL) return -1;
   if (fputc('{', file) == EOF) return -1;
 
-  if (is_map) {
-    const char *key_type = openapi_string(field, "key_type");
-    const char *value_type = openapi_string(field, "value_type");
-    if (key_type == NULL || strcmp(key_type, "string") != 0 ||
-        value_type == NULL ||
-        openapi_emit_key(file, &first, "type") != 0 ||
-        openapi_emit_type_value(file, "object", nullable) != 0 ||
-        openapi_emit_key(file, &first, "additionalProperties") != 0 ||
-        openapi_emit_type_schema(file, root, value_type, 0) != 0)
-      return -1;
-  } else if (is_collection) {
-    const char *inner = openapi_string(field, "inner_type");
-    if (inner == NULL ||
-        openapi_emit_key(file, &first, "type") != 0 ||
-        openapi_emit_type_value(file, "array", nullable) != 0 ||
-        (is_set &&
-         (openapi_emit_key(file, &first, "uniqueItems") != 0 ||
-          fputs("true", file) == EOF)) ||
-        openapi_emit_key(file, &first, "items") != 0 ||
-        openapi_emit_type_schema(file, root, inner, 0) != 0)
-      return -1;
-  } else if (openapi_primitive(type, &json_type, &format, &is_unsigned)) {
+  if (openapi_primitive(type, &json_type, &format, &is_unsigned)) {
     if (openapi_emit_key(file, &first, "type") != 0 ||
         openapi_emit_type_value(file, json_type, nullable) != 0)
       return -1;
-    if (format != NULL) {
-      if (openapi_emit_key(file, &first, "format") != 0 ||
-          openapi_json_string(file, format) != 0)
-        return -1;
-      if (strcmp(type, "bytes") == 0) {
-        if (openapi_emit_key(file, &first, "contentEncoding") != 0 ||
-            openapi_json_string(file, "base64") != 0)
-          return -1;
-      }
-    }
-  } else if ((record = openapi_record(root, type)) != NULL) {
-    (void)record;
-    if (nullable) {
-      if (openapi_emit_key(file, &first, "anyOf") != 0 ||
-          fputs("[", file) == EOF ||
-          openapi_emit_ref(file, type) != 0 ||
-          fputs(",{\"type\":\"null\"}]", file) == EOF)
-        return -1;
-    } else {
-      char ref[512];
-      int written = snprintf(ref, sizeof(ref), "#/components/schemas/%s", type);
-      if (written <= 0 || (size_t)written >= sizeof(ref) ||
-          openapi_emit_key(file, &first, "$ref") != 0 ||
-          openapi_json_string(file, ref) != 0)
-        return -1;
-    }
-  } else if ((enumeration = openapi_enum(root, type)) != NULL) {
-    const Node *items = openapi_list(enumeration, "items");
-    size_t i;
-    const char *underlying = openapi_string(enumeration, "underlying_type");
-    const char *enum_json_type = NULL;
-    const char *enum_format = NULL;
-    if (!openapi_primitive(
-            underlying, &enum_json_type, &enum_format, &is_unsigned) ||
-        enum_json_type == NULL || strcmp(enum_json_type, "integer") != 0 ||
-        items == NULL ||
-        openapi_emit_key(file, &first, "type") != 0 ||
-        openapi_emit_type_value(file, "integer", nullable) != 0)
-      return -1;
-    if (enum_format != NULL &&
+    if (format != NULL &&
         (openapi_emit_key(file, &first, "format") != 0 ||
-         openapi_json_string(file, enum_format) != 0))
+         openapi_json_string(file, format) != 0))
+      return -1;
+    if (strcmp(type, "bytes") == 0 &&
+        (openapi_emit_key(file, &first, "contentEncoding") != 0 ||
+         openapi_json_string(file, "base64") != 0))
       return -1;
     if (is_unsigned &&
         (openapi_emit_key(file, &first, "minimum") != 0 ||
          fputs("0", file) == EOF))
       return -1;
-    if (openapi_emit_key(file, &first, "enum") != 0 ||
-        fputc('[', file) == EOF)
-      return -1;
-    for (i = 0u; i < items->data.list.count; ++i) {
-      const char *value = openapi_string(items->data.list.items[i], "value");
-      if (value == NULL || (i != 0u && fputc(',', file) == EOF) ||
-          fputs(value, file) == EOF)
-        return -1;
-    }
-    if (fputc(']', file) == EOF) return -1;
   } else {
-    return -1;
+    data = idl_contract_find_data(contract, type);
+    if (data == NULL) return -1;
+    if (data->kind == IDL_DATA_ENUM) {
+      size_t i;
+      if (!openapi_primitive(
+              data->underlying_type != NULL ? data->underlying_type : "int32",
+              &json_type, &format, &is_unsigned) ||
+          json_type == NULL || strcmp(json_type, "integer") != 0 ||
+          openapi_emit_key(file, &first, "type") != 0 ||
+          openapi_emit_type_value(file, "integer", nullable) != 0)
+        return -1;
+      if (format != NULL &&
+          (openapi_emit_key(file, &first, "format") != 0 ||
+           openapi_json_string(file, format) != 0))
+        return -1;
+      if (is_unsigned &&
+          (openapi_emit_key(file, &first, "minimum") != 0 ||
+           fputs("0", file) == EOF))
+        return -1;
+      if (openapi_emit_key(file, &first, "enum") != 0 ||
+          fputc('[', file) == EOF)
+        return -1;
+      for (i = 0u; i < data->enum_item_count; ++i) {
+        const char *value = data->enum_items[i].value;
+        if (value == NULL || (i != 0u && fputc(',', file) == EOF) ||
+            fputs(value, file) == EOF)
+          return -1;
+      }
+      if (fputc(']', file) == EOF) return -1;
+    } else if (data->kind == IDL_DATA_MESSAGE ||
+               data->kind == IDL_DATA_COMPOSITE ||
+               data->kind == IDL_DATA_GROUP) {
+      if (nullable) {
+        if (openapi_emit_key(file, &first, "anyOf") != 0 ||
+            fputs("[", file) == EOF ||
+            openapi_emit_ref(file, type) != 0 ||
+            fputs(",{\"type\":\"null\"}]", file) == EOF)
+          return -1;
+      } else {
+        char ref[512];
+        int written =
+            snprintf(ref, sizeof(ref), "#/components/schemas/%s", type);
+        if (written <= 0 || (size_t)written >= sizeof(ref) ||
+            openapi_emit_key(file, &first, "$ref") != 0 ||
+            openapi_json_string(file, ref) != 0)
+          return -1;
+      }
+    } else {
+      return -1;
+    }
   }
-
-  if (openapi_emit_constraints(
-          file, field, type, is_collection && !is_map, is_map, &first) != 0 ||
-      openapi_emit_default(file, field, type, &first) != 0 ||
-      fputc('}', file) == EOF)
-    return -1;
-  return 0;
+  return fputc('}', file) == EOF ? -1 : 0;
 }
 
 static int openapi_emit_type_schema(
@@ -994,40 +965,167 @@ static int openapi_emit_type_schema(
   return fputc('}', file) == EOF ? -1 : 0;
 }
 
+
+static int openapi_emit_field_schema(
+    FILE *file, const IdlContract *contract,
+    const IdlField *field) {
+  const char *type;
+  const char *json_type = NULL;
+  const char *format = NULL;
+  const IdlDataDecl *data;
+  int is_unsigned = 0;
+  int nullable;
+  int is_map;
+  int is_set;
+  int is_collection;
+  int first = 1;
+
+  if (file == NULL || contract == NULL || field == NULL ||
+      field->type_name == NULL)
+    return -1;
+
+  type = field->type_name;
+  nullable = field->nullable;
+  is_map = field->collection_kind == IDL_COLLECTION_MAP;
+  is_set = field->collection_kind == IDL_COLLECTION_SET;
+  is_collection = field->collection_kind != IDL_COLLECTION_NONE;
+
+  if (fputc('{', file) == EOF) return -1;
+
+  if (is_map) {
+    if (field->key_type == NULL || strcmp(field->key_type, "string") != 0 ||
+        field->value_type == NULL ||
+        openapi_emit_key(file, &first, "type") != 0 ||
+        openapi_emit_type_value(file, "object", nullable) != 0 ||
+        openapi_emit_key(file, &first, "additionalProperties") != 0 ||
+        openapi_emit_type_schema(file, contract, field->value_type, 0) != 0)
+      return -1;
+  } else if (is_collection) {
+    if (field->inner_type == NULL ||
+        openapi_emit_key(file, &first, "type") != 0 ||
+        openapi_emit_type_value(file, "array", nullable) != 0 ||
+        (is_set &&
+         (openapi_emit_key(file, &first, "uniqueItems") != 0 ||
+          fputs("true", file) == EOF)) ||
+        openapi_emit_key(file, &first, "items") != 0 ||
+        openapi_emit_type_schema(file, contract, field->inner_type, 0) != 0)
+      return -1;
+  } else if (openapi_primitive(type, &json_type, &format, &is_unsigned)) {
+    if (openapi_emit_key(file, &first, "type") != 0 ||
+        openapi_emit_type_value(file, json_type, nullable) != 0)
+      return -1;
+    if (format != NULL) {
+      if (openapi_emit_key(file, &first, "format") != 0 ||
+          openapi_json_string(file, format) != 0)
+        return -1;
+      if (strcmp(type, "bytes") == 0 &&
+          (openapi_emit_key(file, &first, "contentEncoding") != 0 ||
+           openapi_json_string(file, "base64") != 0))
+        return -1;
+    }
+  } else {
+    data = idl_contract_find_data(contract, type);
+    if (data == NULL) return -1;
+    if (data->kind == IDL_DATA_ENUM) {
+      size_t i;
+      const char *underlying =
+          data->underlying_type != NULL ? data->underlying_type : "int32";
+      if (!openapi_primitive(
+              underlying, &json_type, &format, &is_unsigned) ||
+          json_type == NULL || strcmp(json_type, "integer") != 0 ||
+          openapi_emit_key(file, &first, "type") != 0 ||
+          openapi_emit_type_value(file, "integer", nullable) != 0)
+        return -1;
+      if (format != NULL &&
+          (openapi_emit_key(file, &first, "format") != 0 ||
+           openapi_json_string(file, format) != 0))
+        return -1;
+      if (is_unsigned &&
+          (openapi_emit_key(file, &first, "minimum") != 0 ||
+           fputs("0", file) == EOF))
+        return -1;
+      if (openapi_emit_key(file, &first, "enum") != 0 ||
+          fputc('[', file) == EOF)
+        return -1;
+      for (i = 0u; i < data->enum_item_count; ++i) {
+        const char *value = data->enum_items[i].value;
+        if (value == NULL || (i != 0u && fputc(',', file) == EOF) ||
+            fputs(value, file) == EOF)
+          return -1;
+      }
+      if (fputc(']', file) == EOF) return -1;
+    } else if (data->kind == IDL_DATA_MESSAGE ||
+               data->kind == IDL_DATA_COMPOSITE ||
+               data->kind == IDL_DATA_GROUP) {
+      if (nullable) {
+        if (openapi_emit_key(file, &first, "anyOf") != 0 ||
+            fputs("[", file) == EOF ||
+            openapi_emit_ref(file, type) != 0 ||
+            fputs(",{\"type\":\"null\"}]", file) == EOF)
+          return -1;
+      } else {
+        char ref[512];
+        int written =
+            snprintf(ref, sizeof(ref), "#/components/schemas/%s", type);
+        if (written <= 0 || (size_t)written >= sizeof(ref) ||
+            openapi_emit_key(file, &first, "$ref") != 0 ||
+            openapi_json_string(file, ref) != 0)
+          return -1;
+      }
+    } else {
+      return -1;
+    }
+  }
+
+  if (openapi_emit_constraints(
+          file, field, type, is_collection && !is_map, is_map, &first) != 0 ||
+      openapi_emit_default(file, field, type, &first) != 0 ||
+      fputc('}', file) == EOF)
+    return -1;
+  return 0;
+}
+
+  if (!first_required && fputc(']', file) == EOF) return -1;
+
+  return fputc('}', file) == EOF ? -1 : 0;
+}
+
+
 static int openapi_emit_record_schema(
-    FILE *file, const Node *root, const Node *record) {
-  const Node *fields = openapi_list(record, "fields");
+    FILE *file, const IdlContract *contract,
+    const IdlDataDecl *record) {
   size_t i;
   int first_required = 1;
 
-  if (file == NULL || root == NULL || record == NULL || fields == NULL)
+  if (file == NULL || contract == NULL || record == NULL ||
+      (record->field_count != 0u && record->fields == NULL))
     return -1;
   if (fputs("{\"type\":\"object\",\"properties\":{", file) == EOF)
     return -1;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
-    if (name == NULL ||
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
+    if (field->name == NULL ||
         (i != 0u && fputc(',', file) == EOF) ||
-        openapi_json_string(file, name) != 0 ||
+        openapi_json_string(file, field->name) != 0 ||
         fputc(':', file) == EOF ||
-        openapi_emit_field_schema(file, root, field) != 0)
+        openapi_emit_field_schema(file, contract, field) != 0)
       return -1;
   }
 
   if (fputc('}', file) == EOF) return -1;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    if (!openapi_flag(field, "is_optional")) {
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
+    if (!field->optional) {
       if (first_required) {
         if (fputs(",\"required\":[", file) == EOF) return -1;
         first_required = 0;
       } else if (fputc(',', file) == EOF) {
         return -1;
       }
-      if (openapi_json_string(file, openapi_string(field, "name")) != 0)
+      if (field->name == NULL ||
+          openapi_json_string(file, field->name) != 0)
         return -1;
     }
   }
@@ -1036,91 +1134,29 @@ static int openapi_emit_record_schema(
   return fputc('}', file) == EOF ? -1 : 0;
 }
 
-static int openapi_emit_components(FILE *file, const Node *root) {
-  const char *lists[] = {"composites", "groups", "messages"};
-  size_t l, i;
-  int first = 1;
-
-  if (fputs("\"components\":{\"schemas\":{", file) == EOF) return -1;
-
-  for (l = 0u; l < sizeof(lists) / sizeof(lists[0]); ++l) {
-    const Node *records = openapi_list(root, lists[l]);
-    for (i = 0u; records != NULL && i < records->data.list.count; ++i) {
-      const Node *record = records->data.list.items[i];
-      const char *name = openapi_string(record, "name");
-      if (name == NULL ||
-          openapi_emit_comma(file, &first) != 0 ||
-          openapi_json_string(file, name) != 0 ||
-          fputc(':', file) == EOF ||
-          openapi_emit_record_schema(file, root, record) != 0)
-        return -1;
-    }
-  }
-
-  {
-    const Node *enums = openapi_list(root, "enums");
-    for (i = 0u; enums != NULL && i < enums->data.list.count; ++i) {
-      const Node *enumeration = enums->data.list.items[i];
-      const char *name = openapi_string(enumeration, "name");
-      const char *underlying = openapi_string(enumeration, "underlying_type");
-      const Node *items = openapi_list(enumeration, "items");
-      const char *json_type = NULL;
-      const char *format = NULL;
-      int is_unsigned = 0;
-      size_t j;
-      int property_first = 1;
-      if (name == NULL || underlying == NULL || items == NULL ||
-          !openapi_primitive(
-              underlying, &json_type, &format, &is_unsigned) ||
-          json_type == NULL || strcmp(json_type, "integer") != 0 ||
-          openapi_emit_comma(file, &first) != 0 ||
-          openapi_json_string(file, name) != 0 ||
-          fputs(":{", file) == EOF ||
-          openapi_emit_key(file, &property_first, "type") != 0 ||
-          openapi_json_string(file, "integer") != 0)
-        return -1;
-      if (format != NULL &&
-          (openapi_emit_key(file, &property_first, "format") != 0 ||
-           openapi_json_string(file, format) != 0))
-        return -1;
-      if (is_unsigned &&
-          (openapi_emit_key(file, &property_first, "minimum") != 0 ||
-           fputs("0", file) == EOF))
-        return -1;
-      if (openapi_emit_key(file, &property_first, "enum") != 0 ||
-          fputc('[', file) == EOF)
-        return -1;
-      for (j = 0u; j < items->data.list.count; ++j) {
-        const char *value = openapi_string(items->data.list.items[j], "value");
-        if (value == NULL || (j != 0u && fputc(',', file) == EOF) ||
-            fputs(value, file) == EOF)
-          return -1;
-      }
-      if (fputs("]}", file) == EOF) return -1;
-    }
-  }
-
   return fputs("}}", file) == EOF ? -1 : 0;
 }
+
 
 static int openapi_field_is_body(
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation,
     databind_compiler_projection_direction direction,
-    const Node *field) {
-  const char *name = openapi_string(field, "name");
-  const databind_compiler_http_field_config *mapping =
-      openapi_field_config(
-          config, operation->service_name, operation->operation_name,
-          direction, name);
+    const IdlField *field) {
+  const databind_compiler_http_field_config *mapping;
+  if (field == NULL) return 0;
+  mapping = openapi_field_config(
+      config, operation->service_name, operation->operation_name,
+      direction, field->name);
   if (mapping == NULL) return 1;
   if (direction == DATABIND_COMPILER_PROJECTION_INGRESS)
     return mapping->location == DATABIND_COMPILER_HTTP_BODY;
   return mapping->location == DATABIND_COMPILER_HTTP_RESPONSE_BODY;
 }
 
+
 static int openapi_body_field_count(
-    const Node *root,
+    const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation,
     databind_compiler_projection_direction direction,
@@ -1128,69 +1164,71 @@ static int openapi_body_field_count(
   const char *type_name =
       direction == DATABIND_COMPILER_PROJECTION_INGRESS
           ? operation->request_type : operation->response_type;
-  const Node *record;
-  const Node *fields;
+  const IdlDataDecl *record;
   size_t i;
   int count = 0;
   int required = 0;
 
   if (out_required != NULL) *out_required = 0;
-  if (type_name == NULL || strcmp(type_name, "void") == 0) return 0;
-  record = openapi_record(root, type_name);
-  fields = openapi_list(record, "fields");
-  if (fields == NULL) return -1;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    if (openapi_field_is_body(config, operation, direction,
-                              fields->data.list.items[i])) {
+  if (contract == NULL || type_name == NULL ||
+      strcmp(type_name, "void") == 0)
+    return 0;
+  record = idl_contract_find_data(contract, type_name);
+  if (record == NULL || (record->field_count != 0u && record->fields == NULL))
+    return -1;
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
+    if (openapi_field_is_body(config, operation, direction, field)) {
       ++count;
-      if (!openapi_flag(fields->data.list.items[i], "is_optional"))
-        required = 1;
+      if (!field->optional) required = 1;
     }
   }
   if (out_required != NULL) *out_required = required;
   return count;
 }
 
+
 static int openapi_emit_body_schema(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation,
     databind_compiler_projection_direction direction) {
   const char *type_name =
       direction == DATABIND_COMPILER_PROJECTION_INGRESS
           ? operation->request_type : operation->response_type;
-  const Node *record = openapi_record(root, type_name);
-  const Node *fields = openapi_list(record, "fields");
+  const IdlDataDecl *record =
+      idl_contract_find_data(contract, type_name);
   size_t i;
   int first_property = 1;
   int first_required = 1;
   int body_count = openapi_body_field_count(
-      root, config, operation, direction, NULL);
+      contract, config, operation, direction, NULL);
 
-  if (body_count < 0 || record == NULL || fields == NULL) return -1;
-  if ((size_t)body_count == fields->data.list.count)
+  if (body_count < 0 || record == NULL ||
+      (record->field_count != 0u && record->fields == NULL))
+    return -1;
+  if ((size_t)body_count == record->field_count)
     return openapi_emit_ref(file, type_name);
 
   if (fputs("{\"type\":\"object\",\"properties\":{", file) == EOF)
     return -1;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     if (!openapi_field_is_body(config, operation, direction, field))
       continue;
-    if (name == NULL ||
+    if (field->name == NULL ||
         openapi_emit_comma(file, &first_property) != 0 ||
-        openapi_json_string(file, name) != 0 ||
+        openapi_json_string(file, field->name) != 0 ||
         fputc(':', file) == EOF ||
-        openapi_emit_field_schema(file, root, field) != 0)
+        openapi_emit_field_schema(file, contract, field) != 0)
       return -1;
   }
   if (fputc('}', file) == EOF) return -1;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     if (!openapi_field_is_body(config, operation, direction, field) ||
-        openapi_flag(field, "is_optional"))
+        field->optional)
       continue;
     if (first_required) {
       if (fputs(",\"required\":[", file) == EOF) return -1;
@@ -1198,7 +1236,8 @@ static int openapi_emit_body_schema(
     } else if (fputc(',', file) == EOF) {
       return -1;
     }
-    if (openapi_json_string(file, openapi_string(field, "name")) != 0)
+    if (field->name == NULL ||
+        openapi_json_string(file, field->name) != 0)
       return -1;
   }
   if (!first_required && fputc(']', file) == EOF) return -1;
@@ -1221,28 +1260,30 @@ static const char *openapi_parameter_location(
   }
 }
 
+
 static int openapi_emit_parameters(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation,
     int *operation_first) {
-  const Node *record = openapi_record(root, operation->request_type);
-  const Node *fields = openapi_list(record, "fields");
+  const IdlDataDecl *record;
   size_t i;
   size_t count = 0u;
 
   if (operation->request_type == NULL ||
       strcmp(operation->request_type, "void") == 0)
     return 0;
-  if (fields == NULL || operation_first == NULL) return -1;
+  record = idl_contract_find_data(contract, operation->request_type);
+  if (record == NULL || operation_first == NULL ||
+      (record->field_count != 0u && record->fields == NULL))
+    return -1;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     const databind_compiler_http_field_config *mapping =
         openapi_field_config(
             config, operation->service_name, operation->operation_name,
-            DATABIND_COMPILER_PROJECTION_INGRESS, name);
+            DATABIND_COMPILER_PROJECTION_INGRESS, field->name);
     if (mapping != NULL &&
         mapping->location != DATABIND_COMPILER_HTTP_BODY)
       ++count;
@@ -1254,13 +1295,12 @@ static int openapi_emit_parameters(
     return -1;
 
   count = 0u;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     const databind_compiler_http_field_config *mapping =
         openapi_field_config(
             config, operation->service_name, operation->operation_name,
-            DATABIND_COMPILER_PROJECTION_INGRESS, name);
+            DATABIND_COMPILER_PROJECTION_INGRESS, field->name);
     const char *location;
     const char *wire;
     int required;
@@ -1270,10 +1310,10 @@ static int openapi_emit_parameters(
       continue;
 
     location = openapi_parameter_location(mapping->location);
-    if (location == NULL) return -1;
-    wire = mapping->wire_name != NULL ? mapping->wire_name : name;
+    if (location == NULL || field->name == NULL) return -1;
+    wire = mapping->wire_name != NULL ? mapping->wire_name : field->name;
     required = mapping->location == DATABIND_COMPILER_HTTP_PATH ||
-               !openapi_flag(field, "is_optional");
+               !field->optional;
 
     if (count++ != 0u && fputc(',', file) == EOF) return -1;
     if (fputs("{\"name\":", file) == EOF ||
@@ -1282,7 +1322,7 @@ static int openapi_emit_parameters(
         openapi_json_string(file, location) != 0 ||
         fprintf(file, ",\"required\":%s,\"schema\":",
                 required ? "true" : "false") < 0 ||
-        openapi_emit_field_schema(file, root, field) != 0 ||
+        openapi_emit_field_schema(file, contract, field) != 0 ||
         fputc('}', file) == EOF)
       return -1;
   }
@@ -1290,13 +1330,13 @@ static int openapi_emit_parameters(
   return fputc(']', file) == EOF ? -1 : 0;
 }
 
+
 static int openapi_emit_response_headers(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation,
     int *response_first) {
-  const Node *record;
-  const Node *fields;
+  const IdlDataDecl *record;
   size_t i;
   size_t count = 0u;
 
@@ -1304,17 +1344,17 @@ static int openapi_emit_response_headers(
       strcmp(operation->response_type, "void") == 0)
     return 0;
   if (response_first == NULL) return -1;
-  record = openapi_record(root, operation->response_type);
-  fields = openapi_list(record, "fields");
-  if (fields == NULL) return -1;
+  record = idl_contract_find_data(contract, operation->response_type);
+  if (record == NULL ||
+      (record->field_count != 0u && record->fields == NULL))
+    return -1;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     const databind_compiler_http_field_config *mapping =
         openapi_field_config(
             config, operation->service_name, operation->operation_name,
-            DATABIND_COMPILER_PROJECTION_EGRESS, name);
+            DATABIND_COMPILER_PROJECTION_EGRESS, field->name);
     if (mapping != NULL &&
         mapping->location == DATABIND_COMPILER_HTTP_RESPONSE_HEADER)
       ++count;
@@ -1326,23 +1366,23 @@ static int openapi_emit_response_headers(
     return -1;
 
   count = 0u;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *name = openapi_string(field, "name");
+  for (i = 0u; i < record->field_count; ++i) {
+    const IdlField *field = &record->fields[i];
     const databind_compiler_http_field_config *mapping =
         openapi_field_config(
             config, operation->service_name, operation->operation_name,
-            DATABIND_COMPILER_PROJECTION_EGRESS, name);
+            DATABIND_COMPILER_PROJECTION_EGRESS, field->name);
     const char *wire;
     if (mapping == NULL ||
         mapping->location != DATABIND_COMPILER_HTTP_RESPONSE_HEADER)
       continue;
-    wire = mapping->wire_name != NULL ? mapping->wire_name : name;
+    if (field->name == NULL) return -1;
+    wire = mapping->wire_name != NULL ? mapping->wire_name : field->name;
 
     if (count++ != 0u && fputc(',', file) == EOF) return -1;
     if (openapi_json_string(file, wire) != 0 ||
         fputs(":{\"schema\":", file) == EOF ||
-        openapi_emit_field_schema(file, root, field) != 0 ||
+        openapi_emit_field_schema(file, contract, field) != 0 ||
         fputc('}', file) == EOF)
       return -1;
   }
@@ -1350,19 +1390,21 @@ static int openapi_emit_response_headers(
   return fputc('}', file) == EOF ? -1 : 0;
 }
 
+
 static int openapi_emit_error_schema_for_status(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation, int status) {
-  const Node *errors = openapi_list(operation->operation, "errors");
   size_t i;
   size_t count = 0u;
+  const IdlOperation *idl_operation =
+      operation != NULL ? operation->operation : NULL;
 
-  for (i = 0u; errors != NULL && i < errors->data.list.count; ++i) {
-    const Node *item = errors->data.list.items[i];
-    const char *error_type =
-        item != NULL && item->type == NODE_STRING
-            ? item->data.string_val : NULL;
+  (void)contract;
+  if (idl_operation == NULL) return -1;
+
+  for (i = 0u; i < idl_operation->error_count; ++i) {
+    const char *error_type = idl_operation->error_types[i];
     if (error_type != NULL &&
         openapi_error_status(
             config, operation->service_name,
@@ -1372,9 +1414,10 @@ static int openapi_emit_error_schema_for_status(
 
   if (count == 0u) return -1;
   if (count == 1u) {
-    for (i = 0u; i < errors->data.list.count; ++i) {
-      const char *error_type = errors->data.list.items[i]->data.string_val;
-      if (openapi_error_status(
+    for (i = 0u; i < idl_operation->error_count; ++i) {
+      const char *error_type = idl_operation->error_types[i];
+      if (error_type != NULL &&
+          openapi_error_status(
               config, operation->service_name,
               operation->operation_name, error_type) == status)
         return openapi_emit_ref(file, error_type);
@@ -1384,9 +1427,10 @@ static int openapi_emit_error_schema_for_status(
 
   if (fputs("{\"oneOf\":[", file) == EOF) return -1;
   count = 0u;
-  for (i = 0u; i < errors->data.list.count; ++i) {
-    const char *error_type = errors->data.list.items[i]->data.string_val;
-    if (openapi_error_status(
+  for (i = 0u; i < idl_operation->error_count; ++i) {
+    const char *error_type = idl_operation->error_types[i];
+    if (error_type == NULL ||
+        openapi_error_status(
             config, operation->service_name,
             operation->operation_name, error_type) != status)
       continue;
@@ -1396,20 +1440,24 @@ static int openapi_emit_error_schema_for_status(
   return fputs("]}", file) == EOF ? -1 : 0;
 }
 
+
 static int openapi_emit_operation(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operation) {
   int first = 1;
   int request_body_required = 0;
   int request_body_count;
   int response_body_count;
-  const Node *errors;
   size_t i, j;
   char operation_id[512];
   int operation_id_length;
+  const IdlOperation *idl_operation =
+      operation != NULL ? operation->operation : NULL;
 
-  if (fputc('{', file) == EOF) return -1;
+  if (contract == NULL || idl_operation == NULL ||
+      fputc('{', file) == EOF)
+    return -1;
 
   operation_id_length = snprintf(
       operation_id, sizeof(operation_id), "%s.%s",
@@ -1425,11 +1473,11 @@ static int openapi_emit_operation(
     return -1;
 
   if (openapi_emit_parameters(
-          file, root, config, operation, &first) != 0)
+          file, contract, config, operation, &first) != 0)
     return -1;
 
   request_body_count = openapi_body_field_count(
-      root, config, operation,
+      contract, config, operation,
       DATABIND_COMPILER_PROJECTION_INGRESS,
       &request_body_required);
   if (request_body_count < 0) return -1;
@@ -1440,7 +1488,7 @@ static int openapi_emit_operation(
             "{\"required\":%s,\"content\":{\"application/json\":{\"schema\":",
             request_body_required ? "true" : "false") < 0 ||
         openapi_emit_body_schema(
-            file, root, config, operation,
+            file, contract, config, operation,
             DATABIND_COMPILER_PROJECTION_INGRESS) != 0 ||
         fputs("}}}", file) == EOF)
       return -1;
@@ -1463,30 +1511,26 @@ static int openapi_emit_operation(
         openapi_emit_key(file, &success_first, "description") != 0 ||
         openapi_json_string(file, "Success") != 0 ||
         openapi_emit_response_headers(
-            file, root, config, operation, &success_first) != 0)
+            file, contract, config, operation, &success_first) != 0)
       return -1;
 
     response_body_count = openapi_body_field_count(
-        root, config, operation,
+        contract, config, operation,
         DATABIND_COMPILER_PROJECTION_EGRESS, NULL);
     if (response_body_count < 0) return -1;
     if (response_body_count > 0) {
       if (openapi_emit_key(file, &success_first, "content") != 0 ||
           fputs("{\"application/json\":{\"schema\":", file) == EOF ||
           openapi_emit_body_schema(
-              file, root, config, operation,
+              file, contract, config, operation,
               DATABIND_COMPILER_PROJECTION_EGRESS) != 0 ||
           fputs("}}", file) == EOF)
         return -1;
     }
     if (fputc('}', file) == EOF) return -1;
 
-    errors = openapi_list(operation->operation, "errors");
-    for (i = 0u; errors != NULL && i < errors->data.list.count; ++i) {
-      const Node *item = errors->data.list.items[i];
-      const char *error_type =
-          item != NULL && item->type == NODE_STRING
-              ? item->data.string_val : NULL;
+    for (i = 0u; i < idl_operation->error_count; ++i) {
+      const char *error_type = idl_operation->error_types[i];
       int error_status;
       int seen = 0;
       char error_status_text[4];
@@ -1499,10 +1543,7 @@ static int openapi_emit_operation(
       if (error_status == operation->success_status) return -1;
 
       for (j = 0u; j < i; ++j) {
-        const Node *previous_item = errors->data.list.items[j];
-        const char *previous =
-            previous_item != NULL && previous_item->type == NODE_STRING
-                ? previous_item->data.string_val : NULL;
+        const char *previous = idl_operation->error_types[j];
         if (previous != NULL &&
             openapi_error_status(
                 config, operation->service_name,
@@ -1523,7 +1564,7 @@ static int openapi_emit_operation(
           openapi_emit_key(file, &error_first, "content") != 0 ||
           fputs("{\"application/json\":{\"schema\":", file) == EOF ||
           openapi_emit_error_schema_for_status(
-              file, root, config, operation, error_status) != 0 ||
+              file, contract, config, operation, error_status) != 0 ||
           fputs("}}}", file) == EOF)
         return -1;
     }
@@ -1532,14 +1573,17 @@ static int openapi_emit_operation(
   return fputs("}}", file) == EOF ? -1 : 0;
 }
 
+
 static int openapi_emit_paths(
-    FILE *file, const Node *root,
+    FILE *file, const IdlContract *contract,
     const databind_compiler_http_projection_config *config,
     const openapi_operation *operations, size_t operation_count) {
   size_t i, j;
   int first_path = 1;
 
-  if (fputs("\"paths\":{", file) == EOF) return -1;
+  if (contract == NULL ||
+      fputs("\"paths\":{", file) == EOF)
+    return -1;
   for (i = 0u; i < operation_count; ++i) {
     int earlier = 0;
     int first_method = 1;
@@ -1567,7 +1611,8 @@ static int openapi_emit_paths(
       if (openapi_emit_comma(file, &first_method) != 0 ||
           openapi_json_string(file, method) != 0 ||
           fputc(':', file) == EOF ||
-          openapi_emit_operation(file, root, config, &operations[j]) != 0)
+          openapi_emit_operation(
+              file, contract, config, &operations[j]) != 0)
         return -1;
     }
     if (fputc('}', file) == EOF) return -1;
@@ -1575,64 +1620,70 @@ static int openapi_emit_paths(
   return fputc('}', file) == EOF ? -1 : 0;
 }
 
-static int openapi_generate(
-    const databind_compiler_projection_input *input,
-    const databind_compiler_projection_request *request,
-    void *context) {
-  const Node *root = input != NULL ? input->legacy_tree : NULL;
-  const databind_compiler_openapi_projection_config *config =
-      request != NULL
-          ? (const databind_compiler_openapi_projection_config *)request->config
-          : NULL;
-  const databind_compiler_http_projection_config *http =
-      config != NULL ? config->http : NULL;
-  const IdlContract *contract = input != NULL ? input->contract : NULL;
-  const char *schema_name = contract != NULL ? contract->name : NULL;
-  const char *schema_version = contract != NULL ? contract->version : NULL;
-  openapi_operation *operations = NULL;
-  size_t operation_count = 0u;
-  char *temp = NULL;
-  FILE *file = NULL;
-  int ok = 0;
-  (void)context;
+static int openapi_emit_components(
+    FILE *file, const IdlContract *contract) {
+  size_t i;
+  int first = 1;
 
-  if (contract == NULL || root == NULL ||
-      request == NULL || request->output == NULL ||
-      request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
-      request->id.kind != DATABIND_COMPILER_ARTIFACT_OPENAPI ||
-      schema_name == NULL)
+  if (file == NULL || contract == NULL ||
+      fputs("\"components\":{\"schemas\":{", file) == EOF)
     return -1;
 
-  if (openapi_operations_build(
-          contract, root, http, &operations, &operation_count) != 0)
-    return -1;
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *data = &contract->data[i];
+    const char *name = data->name;
+    const char *json_type = NULL;
+    const char *format = NULL;
+    int is_unsigned = 0;
 
-  if (openapi_open_atomic(request->output, &temp, &file) != 0)
-    goto cleanup;
+    if (data->kind == IDL_DATA_UNION) continue;
+    if (name == NULL ||
+        openapi_emit_comma(file, &first) != 0 ||
+        openapi_json_string(file, name) != 0 ||
+        fputc(':', file) == EOF)
+      return -1;
 
-  if (fputs("{\"openapi\":\"3.1.0\",\"info\":{\"title\":", file) == EOF ||
-      openapi_json_string(file, schema_name) != 0 ||
-      fputs(",\"version\":", file) == EOF ||
-      openapi_json_string(
-          file, schema_version != NULL ? schema_version : "1") != 0 ||
-      fputs("},", file) == EOF ||
-      openapi_emit_paths(file, root, http, operations, operation_count) != 0 ||
-      fputc(',', file) == EOF ||
-      openapi_emit_components(file, root) != 0 ||
-      fputs("}\n", file) == EOF)
-    goto cleanup;
+    if (data->kind == IDL_DATA_ENUM) {
+      size_t j;
+      int property_first = 1;
+      const char *underlying =
+          data->underlying_type != NULL ? data->underlying_type : "int32";
+      if (!openapi_primitive(
+              underlying, &json_type, &format, &is_unsigned) ||
+          json_type == NULL || strcmp(json_type, "integer") != 0 ||
+          fputc('{', file) == EOF ||
+          openapi_emit_key(file, &property_first, "type") != 0 ||
+          openapi_json_string(file, "integer") != 0)
+        return -1;
+      if (format != NULL &&
+          (openapi_emit_key(file, &property_first, "format") != 0 ||
+           openapi_json_string(file, format) != 0))
+        return -1;
+      if (is_unsigned &&
+          (openapi_emit_key(file, &property_first, "minimum") != 0 ||
+           fputs("0", file) == EOF))
+        return -1;
+      if (openapi_emit_key(file, &property_first, "enum") != 0 ||
+          fputc('[', file) == EOF)
+        return -1;
+      for (j = 0u; j < data->enum_item_count; ++j) {
+        const char *value = data->enum_items[j].value;
+        if (value == NULL || (j != 0u && fputc(',', file) == EOF) ||
+            fputs(value, file) == EOF)
+          return -1;
+      }
+      if (fputs("]}", file) == EOF) return -1;
+    } else if (data->kind == IDL_DATA_MESSAGE ||
+               data->kind == IDL_DATA_COMPOSITE ||
+               data->kind == IDL_DATA_GROUP) {
+      if (openapi_emit_record_schema(file, contract, data) != 0)
+        return -1;
+    } else {
+      return -1;
+    }
+  }
 
-  ok = 1;
-
-cleanup:
-  openapi_operations_free(operations, operation_count);
-  return openapi_commit_atomic(request->output, temp, file, ok);
+  return fputs("}}", file) == EOF ? -1 : 0;
 }
 
-const databind_compiler_projection_backend
-    DATABIND_COMPILER_OPENAPI_BACKEND = {
-        {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
-         DATABIND_COMPILER_ARTIFACT_OPENAPI},
-        "openapi",
-        openapi_generate,
-        NULL};
+;
