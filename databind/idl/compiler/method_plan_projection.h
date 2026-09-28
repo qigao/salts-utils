@@ -2,7 +2,7 @@
 #define DATABIND_COMPILER_METHOD_PLAN_PROJECTION_H
 
 #include "projection.h"
-#include "../runtime/data_bind.h"
+#include "../../runtime/data_bind.h"
 
 #include <stddef.h>
 #include <stdint.h>
