@@ -1518,6 +1518,100 @@ static const void *plan_egress_source(
   return base + entry->native_offset;
 }
 
+static void *plan_egress_destination(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingPlanEntry *entry,
+    DataBindBindingCallFrame *frame,
+    size_t *out_bytes) {
+  unsigned char *base = NULL;
+  size_t bytes = 0u;
+
+  if (entry->target_is_return) {
+    base = (unsigned char *)frame->return_value;
+    bytes = frame->return_bytes;
+  } else if (entry->function_param_index < frame->param_count &&
+             frame->params != NULL && frame->param_bytes != NULL) {
+    base = (unsigned char *)frame->params[entry->function_param_index];
+    bytes = frame->param_bytes[entry->function_param_index];
+  }
+
+  (void)plan;
+  if (base == NULL || bytes < entry->native_offset ||
+      entry->data == NULL || entry->data->storage_type == NULL ||
+      bytes - entry->native_offset < entry->data->storage_type->size)
+    return NULL;
+
+  if (out_bytes != NULL)
+    *out_bytes = entry->data->storage_type->size;
+  return base + entry->native_offset;
+}
+
+static unsigned char *plan_egress_state_base(
+    const DataBindBindingPlanEntry *entry,
+    DataBindBindingCallFrame *frame) {
+  if (entry == NULL || frame == NULL) return NULL;
+  if (entry->target_is_return)
+    return (unsigned char *)frame->return_value;
+  if (entry->function_param_index < frame->param_count &&
+      frame->params != NULL)
+    return (unsigned char *)frame->params[entry->function_param_index];
+  return NULL;
+}
+
+static void plan_reset_response_state(
+    const DataBindBindingPlan *plan, DataBindBindingCallFrame *frame) {
+  size_t i;
+  if (plan == NULL || frame == NULL) return;
+  for (i = 0u; i < plan->egress_count; ++i) {
+    const DataBindBindingPlanEntry *entry = &plan->egress[i].view;
+    unsigned char *base;
+    if (!entry->has_presence && !entry->has_null) continue;
+    base = plan_egress_state_base(entry, frame);
+    if (base == NULL) continue;
+    if (entry->has_presence)
+      base[entry->presence_offset] &=
+          (unsigned char)~(1u << entry->presence_bit);
+    if (entry->has_null)
+      base[entry->null_offset] &=
+          (unsigned char)~(1u << entry->null_bit);
+  }
+}
+
+static void plan_cleanup_client_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindNativeOptions *options,
+    DataBindBindingCallFrame *frame,
+    size_t initialized_param_limit,
+    int root_initialized) {
+  size_t i = initialized_param_limit;
+
+  while (i != 0u) {
+    --i;
+    if (!plan->param_egress[i] || plan->param_data[i] == NULL ||
+        (plan->has_response_root_param && i == plan->response_root_param))
+      continue;
+    if (frame->params != NULL && frame->param_bytes != NULL)
+      plan_native_clear_noexcept(
+          options, plan->param_data[i], frame->params[i],
+          frame->param_bytes[i]);
+  }
+
+  if (!root_initialized) return;
+
+  if (plan->response_uses_return) {
+    plan_native_clear_noexcept(
+        options, plan->response->data, frame->return_value,
+        frame->return_bytes);
+  } else if (plan->has_response_root_param &&
+             frame->params != NULL && frame->param_bytes != NULL) {
+    const size_t index = plan->response_root_param;
+    plan_native_clear_noexcept(
+        options, plan->response->data, frame->params[index],
+        frame->param_bytes[index]);
+  }
+  plan_reset_response_state(plan, frame);
+}
+
 static DataBindStatus plan_validate_ingress_value(
     const DataBindBindingPlan *plan,
     const DataBindBindingPlanEntryOwned *owned,
