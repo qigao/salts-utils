@@ -21,55 +21,6 @@ typedef struct openapi_operation {
   int success_status;
 } openapi_operation;
 
-static const Node *openapi_child(const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    const Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const Node *openapi_list(const Node *parent, const char *name) {
-  const Node *child = openapi_child(parent, name);
-  return child != NULL && child->type == NODE_LIST ? child : NULL;
-}
-
-static const char *openapi_string(const Node *parent, const char *name) {
-  const Node *child = openapi_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
-static char *openapi_strdup(const char *text) {
-  size_t length;
-  char *copy;
-  if (text == NULL) return NULL;
-  length = strlen(text);
-  if (length == SIZE_MAX) return NULL;
-  copy = (char *)malloc(length + 1u);
-  if (copy != NULL) memcpy(copy, text, length + 1u);
-  return copy;
-}
-
-static const Node *openapi_find_named(
-    const Node *root, const char *list_name, const char *name) {
-  const Node *list = openapi_list(root, list_name);
-  size_t i;
-  if (list == NULL || name == NULL) return NULL;
-  for (i = 0u; i < list->data.list.count; ++i) {
-    const Node *item = list->data.list.items[i];
-    const char *candidate = openapi_string(item, "name");
-    if (candidate != NULL && strcmp(candidate, name) == 0)
-      return item;
-  }
-  return NULL;
-}
-
 static int openapi_json_string(FILE *file, const char *text) {
   const unsigned char *p = (const unsigned char *)text;
   if (file == NULL || text == NULL || fputc('"', file) == EOF) return -1;
@@ -400,7 +351,6 @@ static void openapi_operations_free(
 
 static int openapi_operations_build(
     const IdlContract *contract,
-    const Node *root,
     const databind_compiler_http_projection_config *config,
     openapi_operation **out_operations,
     size_t *out_count) {
