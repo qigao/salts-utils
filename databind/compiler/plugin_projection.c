@@ -897,7 +897,6 @@ int databind_compiler_plugin_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
-  const Node *legacy_tree = input != NULL ? input->legacy_tree : NULL;
   const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_plugin_config *config =
       request != NULL
@@ -919,7 +918,7 @@ int databind_compiler_plugin_generate(
   int result = -1;
   (void)context;
 
-  if (contract == NULL || legacy_tree == NULL || request == NULL ||
+  if (contract == NULL || request == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
       request->id.kind != DATABIND_COMPILER_ARTIFACT_PLUGIN ||
       config == NULL ||
