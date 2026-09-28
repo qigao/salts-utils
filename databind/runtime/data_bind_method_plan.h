@@ -232,6 +232,19 @@ DATA_BIND_API int data_bind_rpc_method_plan_error_at(
     DataBindRpcErrorMapping *out);
 
 /**
+ * Resolve one wire JSON-RPC typed Service error back to canonical throws order.
+ *
+ * RPC codes are not required to be unique: multiple Service errors may use the
+ * default -32000 code. The canonical Service error type, emitted as the CRPC
+ * error message by generated servers, disambiguates the mapping.
+ */
+DATA_BIND_API int data_bind_rpc_method_plan_error_index_for_wire(
+    const DataBindRpcMethodPlan *plan,
+    int code,
+    const char *error_type,
+    size_t *out_index);
+
+/**
  * Map a completed canonical BindingPlan outcome into the RPC projection.
  *
  * SUCCESS maps to code 0 and TYPED_ERROR maps by canonical error index.
