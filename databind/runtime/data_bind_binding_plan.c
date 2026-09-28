@@ -2056,6 +2056,183 @@ static DataBindStatus plan_validate_egress_value(
   return DATA_BIND_OK;
 }
 
+DataBindStatus data_bind_binding_plan_bind_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindStatus status;
+  size_t i;
+  size_t initialized_param_limit = 0u;
+  int root_initialized = 0;
+
+  if (!plan_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (plan == NULL || native_options == NULL || frame == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid BindingPlan client response arguments");
+
+  if (plan->egress_count != 0u &&
+      !plan_provider_valid_for_input(provider))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid BindingPlan client response input provider");
+
+  status = plan_frame_preflight_client_outputs(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  if (plan->response_uses_return) {
+    status = plan_native_init(
+        native_options, plan->response->data,
+        frame->return_value, frame->return_bytes,
+        diagnostic, NULL, NULL);
+    if (status != DATA_BIND_OK) return status;
+    root_initialized = 1;
+  } else if (plan->has_response_root_param) {
+    const size_t index = plan->response_root_param;
+    status = plan_native_init(
+        native_options, plan->response->data,
+        frame->params[index], frame->param_bytes[index],
+        diagnostic, NULL, plan->function->params[index].name);
+    if (status != DATA_BIND_OK) return status;
+    root_initialized = 1;
+  }
+
+  plan_reset_response_state(plan, frame);
+
+  for (i = 0u; i < plan->param_count; ++i) {
+    if (!plan->param_egress[i] || plan->param_data[i] == NULL ||
+        (plan->has_response_root_param && i == plan->response_root_param)) {
+      initialized_param_limit = i + 1u;
+      continue;
+    }
+    status = plan_native_init(
+        native_options, plan->param_data[i],
+        frame->params[i], frame->param_bytes[i],
+        diagnostic, NULL, plan->function->params[i].name);
+    if (status != DATA_BIND_OK) {
+      plan_cleanup_client_outputs(
+          plan, native_options, frame, i, root_initialized);
+      return status;
+    }
+    initialized_param_limit = i + 1u;
+  }
+
+  for (i = 0u; i < plan->egress_count; ++i) {
+    const DataBindBindingPlanEntryOwned *owned = &plan->egress[i];
+    const DataBindBindingPlanEntry *entry = &owned->view;
+    cserde_reader reader = {0};
+    DataBindBindingValueState state = DATA_BIND_VALUE_STATE_ABSENT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    void *destination = NULL;
+    size_t destination_bytes = 0u;
+    unsigned char *state_base = NULL;
+
+    status = provider->open_input(
+        provider->context, entry, &reader, &state, &error);
+    if (status != DATA_BIND_OK) {
+      status = plan_runtime_fail_error(
+          diagnostic, status, entry, &error,
+          "Client response input provider failed");
+      goto fail;
+    }
+
+    if (state < DATA_BIND_VALUE_STATE_ABSENT ||
+        state > DATA_BIND_VALUE_STATE_NULL) {
+      status = plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          entry->schema_field, entry->function_param,
+          "Client response provider returned an invalid logical value state");
+      goto fail;
+    }
+
+    if (state == DATA_BIND_VALUE_STATE_ABSENT) {
+      if (!entry->has_presence) {
+        status = plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND,
+            entry->schema_field, entry->function_param,
+            "Required client response value is absent");
+        goto fail;
+      }
+      continue;
+    }
+
+    state_base = plan_egress_state_base(entry, frame);
+    if ((entry->has_presence || entry->has_null) && state_base == NULL) {
+      status = plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Client response DataBind state storage is unavailable");
+      goto fail;
+    }
+
+    if (state == DATA_BIND_VALUE_STATE_NULL) {
+      if (!entry->nullable || !entry->has_null) {
+        status = plan_diag_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+            entry->schema_field, entry->function_param,
+            "Client response NULL is not admitted by the DataBind contract");
+        goto fail;
+      }
+      if (entry->has_presence)
+        state_base[entry->presence_offset] |=
+            (unsigned char)(1u << entry->presence_bit);
+      state_base[entry->null_offset] |=
+          (unsigned char)(1u << entry->null_bit);
+      continue;
+    }
+
+    destination = plan_egress_destination(
+        plan, entry, frame, &destination_bytes);
+    if (destination == NULL) {
+      status = plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG,
+          entry->schema_field, entry->function_param,
+          "Compiled egress entry has no client native destination");
+      goto fail;
+    }
+
+    status = data_bind_native_decode(
+        native_options, entry->data, &reader,
+        destination, destination_bytes, &native);
+    if (status != DATA_BIND_OK) {
+      status = plan_diag_fail(
+          diagnostic, status, entry->schema_field,
+          entry->function_param, "%s",
+          native.error.message[0] != '\0'
+              ? native.error.message
+              : "Client response native decode failed");
+      goto fail;
+    }
+
+    status = plan_validate_egress_value(
+        plan, owned, destination, diagnostic);
+    if (status != DATA_BIND_OK) goto fail;
+
+    if (entry->has_presence)
+      state_base[entry->presence_offset] |=
+          (unsigned char)(1u << entry->presence_bit);
+    if (entry->has_null)
+      state_base[entry->null_offset] &=
+          (unsigned char)~(1u << entry->null_bit);
+  }
+
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+
+fail:
+  plan_cleanup_client_outputs(
+      plan, native_options, frame,
+      initialized_param_limit, root_initialized);
+  return status;
+}
+
+
 static DataBindStatus plan_write_response_outputs(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
