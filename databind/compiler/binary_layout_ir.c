@@ -1,7 +1,6 @@
 #include "binary_layout_ir.h"
 #include "schema_cmeta.h"
 
-#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,42 +18,6 @@ static void binary_diag(
            text != NULL ? text : "");
 }
 
-static const Node *binary_find_child(const Node *map, const char *name) {
-  size_t i;
-  if (map == NULL || name == NULL || map->type != NODE_MAP) return NULL;
-  for (i = 0u; i < map->data.map.count; ++i) {
-    const Node *child = map->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const char *binary_string_value(const Node *map, const char *name) {
-  const Node *child = binary_find_child(map, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
-static int binary_has_child(const Node *map, const char *name) {
-  return binary_find_child(map, name) != NULL;
-}
-
-static int binary_parse_size(const char *text, size_t *out) {
-  unsigned long long parsed;
-  char *end = NULL;
-  if (text == NULL || text[0] == '\0' || out == NULL) return 0;
-  errno = 0;
-  parsed = strtoull(text, &end, 10);
-  if (errno != 0 || end == text || *end != '\0' ||
-      parsed > (unsigned long long)SIZE_MAX)
-    return 0;
-  *out = (size_t)parsed;
-  return 1;
-}
-
 static char *binary_strdup(const char *text) {
   size_t size;
   char *copy;
@@ -65,44 +28,6 @@ static char *binary_strdup(const char *text) {
   if (copy == NULL) return NULL;
   memcpy(copy, text, size + 1u);
   return copy;
-}
-
-static const Node *binary_find_record_in(
-    const Node *root, const char *list_name, const char *type_name) {
-  const Node *list = binary_find_child(root, list_name);
-  size_t i;
-  if (list == NULL || list->type != NODE_LIST) return NULL;
-  for (i = 0u; i < list->data.list.count; ++i) {
-    const Node *record = list->data.list.items[i];
-    const char *name = binary_string_value(record, "name");
-    if (name != NULL && strcmp(name, type_name) == 0) return record;
-  }
-  return NULL;
-}
-
-static const Node *binary_find_record(
-    const Node *root, const char *type_name) {
-  const Node *record;
-  record = binary_find_record_in(root, "composites", type_name);
-  if (record == NULL) record = binary_find_record_in(root, "groups", type_name);
-  if (record == NULL) record = binary_find_record_in(root, "messages", type_name);
-  return record;
-}
-
-static const Node *binary_find_enum(
-    const Node *root, const char *type_name) {
-  const Node *enums = binary_find_child(root, "enums");
-  size_t i;
-  if (enums == NULL || enums->type != NODE_LIST ||
-      type_name == NULL || type_name[0] == '\0')
-    return NULL;
-  for (i = 0u; i < enums->data.list.count; ++i) {
-    const Node *candidate = enums->data.list.items[i];
-    const char *name = binary_string_value(candidate, "enum_name");
-    if (name != NULL && strcmp(name, type_name) == 0)
-      return candidate;
-  }
-  return NULL;
 }
 
 static int binary_scalar_bits_valid(
@@ -127,7 +52,6 @@ static int binary_scalar_bits_valid(
 static databind_binary_layout_status binary_field_scalar_representation(
     const IdlContract *contract,
     const IdlField *typed_field,
-    const Node *field_node,
     databind_binary_field_layout *field,
     databind_binary_layout_diagnostic *diagnostic) {
   schema_cmeta_field_type semantic;
@@ -136,11 +60,10 @@ static databind_binary_layout_status binary_field_scalar_representation(
   const char *declared_type;
   unsigned bits = 0u;
 
-  if (contract == NULL || typed_field == NULL ||
-      field_node == NULL || field == NULL)
+  if (contract == NULL || typed_field == NULL || field == NULL)
     return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
 
-  field_name = binary_string_value(field_node, "name");
+  field_name = typed_field->name;
   field->scalar_kind = DATABIND_BINARY_SCALAR_NONE;
   field->scalar_bits = 0u;
 
@@ -387,103 +310,76 @@ static const IdlField *binary_typed_field(
 static databind_binary_layout_status binary_build_field(
     const IdlContract *contract,
     const IdlDataDecl *typed_record,
-    const Node *root,
-    const Node *field_node,
+    const databind_tbe_field_plan *wire_field,
     databind_binary_field_layout *field,
     databind_binary_layout_diagnostic *diagnostic) {
-  const char *name = binary_string_value(field_node, "name");
-  const IdlField *typed_field =
-      binary_typed_field(typed_record, name);
-  const char *text;
+  const char *name;
+  const IdlField *typed_field;
 
-  if (name == NULL || name[0] == '\0') {
-    binary_diag(diagnostic, NULL, "Binary field name is unavailable");
+  if (contract == NULL || typed_record == NULL ||
+      wire_field == NULL || field == NULL)
+    return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
+
+  name = wire_field->name;
+  typed_field = binary_typed_field(typed_record, name);
+  if (name == NULL || name[0] == '\0' || typed_field == NULL) {
+    binary_diag(diagnostic, name,
+                "Typed Contract IR and TBE wire field disagree");
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
+
   field->field_id = binary_strdup(name);
   if (field->field_id == NULL)
     return DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY;
 
-  if (binary_has_child(field_node, "is_optional")) {
-    size_t bit;
+  if ((wire_field->flags & DATABIND_TBE_FIELD_OPTIONAL) != 0u) {
     field->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
-    text = binary_string_value(field_node, "optional_bit_index");
-    if (!binary_parse_size(text, &bit) || bit > (size_t)UINT_MAX) {
-      binary_diag(diagnostic, name, "Optional field bit is invalid");
-      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
-    }
-    field->optional_bit = (unsigned)bit;
+    field->optional_bit = wire_field->optional_bit;
   }
-  if (binary_has_child(field_node, "is_nullable")) {
-    size_t bit;
+  if ((wire_field->flags & DATABIND_TBE_FIELD_NULLABLE) != 0u) {
     field->flags |= DATABIND_BINARY_FIELD_NULLABLE;
-    text = binary_string_value(field_node, "nullable_bit_index");
-    if (!binary_parse_size(text, &bit) || bit > (size_t)UINT_MAX) {
-      binary_diag(diagnostic, name, "Nullable field bit is invalid");
-      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
-    }
-    field->nullable_bit = (unsigned)bit;
+    field->nullable_bit = wire_field->nullable_bit;
   }
 
-  if (binary_has_child(field_node, "is_group_field")) {
-    const char *group_type = binary_string_value(field_node, "group_type");
-    const Node *group = group_type != NULL
-                            ? binary_find_record(root, group_type)
-                            : NULL;
+  switch (wire_field->kind) {
+  case DATABIND_TBE_FIELD_GROUP:
     field->kind = DATABIND_BINARY_FIELD_GROUP;
-    field->tail_prefix_bytes = 4u;
-    if (group == NULL ||
-        !binary_parse_size(binary_string_value(group, "fixed_block_size"),
-                           &field->child_fixed_block_size)) {
-      binary_diag(diagnostic, name, "Binary group child layout is unavailable");
-      return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
-    }
+    field->child_fixed_block_size = wire_field->child_fixed_block_size;
+    field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
     return DATABIND_BINARY_LAYOUT_OK;
-  }
 
-  if (binary_has_child(field_node, "is_var_data")) {
+  case DATABIND_TBE_FIELD_VAR_DATA:
     field->kind = DATABIND_BINARY_FIELD_VAR_DATA;
-    field->tail_prefix_bytes = 4u;
+    field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
     return DATABIND_BINARY_LAYOUT_OK;
-  }
 
-  field->kind = DATABIND_BINARY_FIELD_FIXED;
-  if (!binary_has_child(field_node, "has_offset") ||
-      !binary_parse_size(binary_string_value(field_node, "offset"),
-                         &field->wire_offset)) {
-    binary_diag(diagnostic, name, "Fixed Binary field has no wire offset");
+  case DATABIND_TBE_FIELD_FIXED:
+    field->kind = DATABIND_BINARY_FIELD_FIXED;
+    field->wire_offset = wire_field->wire_offset;
+    field->wire_extent = wire_field->wire_extent;
+    return binary_field_scalar_representation(
+        contract, typed_field, field, diagnostic);
+
+  default:
+    binary_diag(diagnostic, name, "Unknown TBE wire field kind");
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
-
-  text = binary_string_value(field_node, "field_size_bytes");
-  if (text == NULL) text = binary_string_value(field_node, "size_bytes");
-  if (!binary_parse_size(text, &field->wire_extent) ||
-      field->wire_extent == 0u) {
-    binary_diag(diagnostic, name, "Fixed Binary field has no wire extent");
-    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
-  }
-
-  return binary_field_scalar_representation(
-      contract, typed_field, field_node, field, diagnostic);
 }
 
 databind_binary_layout_status databind_binary_layout_build(
     const IdlContract *contract,
-    const Node *wire_ir,
+    const databind_tbe_format_plan *format_plan,
     const char *type_name,
     databind_binary_type_layout *out_layout,
     databind_binary_layout_diagnostic *diagnostic) {
   databind_binary_type_layout candidate = {0};
   const IdlDataDecl *typed_record;
-  const Node *record;
-  const Node *fields;
-  const Node *schema;
-  const char *text;
+  const databind_tbe_type_plan *wire_type;
   size_t i;
   databind_binary_layout_status status;
 
   if (diagnostic != NULL) memset(diagnostic, 0, sizeof(*diagnostic));
-  if (contract == NULL || wire_ir == NULL ||
+  if (contract == NULL || format_plan == NULL ||
       type_name == NULL || type_name[0] == '\0' ||
       out_layout == NULL) {
     binary_diag(diagnostic, NULL, "Invalid Binary layout build arguments");
@@ -491,43 +387,31 @@ databind_binary_layout_status databind_binary_layout_build(
   }
 
   typed_record = idl_contract_find_data(contract, type_name);
-  record = binary_find_record(wire_ir, type_name);
-  if (typed_record == NULL || record == NULL) {
+  wire_type = databind_tbe_format_plan_find_type(format_plan, type_name);
+  if (typed_record == NULL || wire_type == NULL) {
     binary_diag(diagnostic, NULL, "Binary layout type was not found");
     return DATABIND_BINARY_LAYOUT_TYPE_NOT_FOUND;
-  }
-  fields = binary_find_child(record, "fields");
-  if (fields == NULL || fields->type != NODE_LIST ||
-      !binary_parse_size(binary_string_value(record, "fixed_block_size"),
-                         &candidate.fixed_block_size)) {
-    binary_diag(diagnostic, NULL, "Binary record layout is incomplete");
-    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
 
   candidate.type_id = binary_strdup(type_name);
   if (candidate.type_id == NULL)
     return DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY;
 
-  text = binary_string_value(record, "presence_bitmap_bytes");
-  if (text != NULL && !binary_parse_size(text, &candidate.presence_size))
-    goto invalid;
-  text = binary_string_value(record, "null_bitmap_bytes");
-  if (text != NULL && !binary_parse_size(text, &candidate.null_size))
-    goto invalid;
+  candidate.fixed_block_size = wire_type->fixed_block_size;
   candidate.presence_offset = 0u;
+  candidate.presence_size = wire_type->presence_size;
   candidate.null_offset = candidate.presence_size;
+  candidate.null_size = wire_type->null_size;
+  candidate.wire_big_endian = wire_type->wire_big_endian;
+  candidate.field_count = wire_type->field_count;
 
-  schema = binary_find_child(wire_ir, "schema");
-  text = binary_string_value(schema, "schema_wire_big_endian_value");
-  candidate.wire_big_endian =
-      text != NULL && strcmp(text, "0") != 0;
-
-  candidate.field_count = fields->data.list.count;
   if (typed_record->field_count != candidate.field_count) {
     binary_diag(diagnostic, NULL,
-                "Typed Contract IR and TBE wire view disagree on field count");
-    goto invalid;
+                "Typed Contract IR and TBE wire plan disagree on field count");
+    databind_binary_layout_destroy(&candidate);
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
+
   if (candidate.field_count != 0u) {
     candidate.fields = (databind_binary_field_layout *)calloc(
         candidate.field_count, sizeof(*candidate.fields));
@@ -539,7 +423,7 @@ databind_binary_layout_status databind_binary_layout_build(
 
   for (i = 0u; i < candidate.field_count; ++i) {
     status = binary_build_field(
-        contract, typed_record, wire_ir, fields->data.list.items[i],
+        contract, typed_record, &wire_type->fields[i],
         &candidate.fields[i], diagnostic);
     if (status != DATABIND_BINARY_LAYOUT_OK) {
       databind_binary_layout_destroy(&candidate);
@@ -555,9 +439,4 @@ databind_binary_layout_status databind_binary_layout_build(
 
   *out_layout = candidate;
   return DATABIND_BINARY_LAYOUT_OK;
-
-invalid:
-  binary_diag(diagnostic, NULL, "Binary record state metadata is invalid");
-  databind_binary_layout_destroy(&candidate);
-  return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
 }
