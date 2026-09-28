@@ -296,7 +296,7 @@ spec("DataBind provider-backed object MessagePlan") {
     check_equal(sink.tokens[4].kind, CSERDE_FLOAT);
     check_true(sink.tokens[4].value.floating == 3.5);
     check_equal(sink.tokens[5].kind, CSERDE_MAP_END);
-    check_equal(provider.reads, 4u);
+    check_equal(provider.reads, 3u);
 
     cmeta_object_release(&object);
     data_bind_message_plan_free(plan);
