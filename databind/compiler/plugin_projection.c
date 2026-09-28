@@ -948,7 +948,6 @@ int databind_compiler_plugin_generate(
 
   if (databind_compiler_service_native_build_selected(
           contract,
-          legacy_tree,
           plugin_select_component_service,
           (void *)component,
           &native_ir) != 0)
