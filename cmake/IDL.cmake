@@ -63,9 +63,9 @@ function(_saltsutils_idl_resolve_compiler
   endif()
   file(TO_CMAKE_PATH "$ENV{SALTS_ROOT}" _idlc_salts_root)
 
-  if(TARGET salts-idlc)
-    set(${out_executable} "$<TARGET_FILE:salts-idlc>" PARENT_SCOPE)
-    set(${out_dependency} "salts-idlc" PARENT_SCOPE)
+  if(TARGET salts_idlc)
+    set(${out_executable} "$<TARGET_FILE:salts_idlc>" PARENT_SCOPE)
+    set(${out_dependency} "salts_idlc" PARENT_SCOPE)
     set(${out_runtime_root} "${CMAKE_BINARY_DIR}" PARENT_SCOPE)
     set(${out_salts_root} "${_idlc_salts_root}" PARENT_SCOPE)
     return()
