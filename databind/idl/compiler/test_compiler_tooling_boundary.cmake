@@ -7,13 +7,13 @@ if(NOT IS_DIRECTORY "${DATABIND_SOURCE_ROOT}")
   message(FATAL_ERROR "DATABIND_SOURCE_ROOT is not a directory: ${DATABIND_SOURCE_ROOT}")
 endif()
 
-file(READ "${DATABIND_SOURCE_ROOT}/compiler/CMakeLists.txt" COMPILER_CMAKE)
+file(READ "${DATABIND_SOURCE_ROOT}/idl/compiler/CMakeLists.txt" COMPILER_CMAKE)
 
 string(FIND "${COMPILER_CMAKE}"
   "set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)" TOOLING_TARGET_POS)
 if(TOOLING_TARGET_POS EQUAL -1)
   message(FATAL_ERROR
-    "DataBind compiler must declare an explicit build-tool dependency boundary")
+    "IDL compiler must declare an explicit build-tool dependency boundary")
 endif()
 
 string(FIND "${COMPILER_CMAKE}"
@@ -55,8 +55,8 @@ endif()
 get_filename_component(SALTS_UTILS_SOURCE_ROOT "${DATABIND_SOURCE_ROOT}" DIRECTORY)
 foreach(RETIRED_PATH IN ITEMS
         "${SALTS_UTILS_SOURCE_ROOT}/tools/lua"
-        "${DATABIND_SOURCE_ROOT}/compiler/templates/c_lua_bind.mustache"
-        "${DATABIND_SOURCE_ROOT}/compiler/test_typed_order_lua.c")
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_lua_bind.mustache"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/test_typed_order_lua.c")
   if(EXISTS "${RETIRED_PATH}")
     message(FATAL_ERROR
       "Retired schema-specific Lua binding path was restored: ${RETIRED_PATH}")
@@ -64,14 +64,14 @@ foreach(RETIRED_PATH IN ITEMS
 endforeach()
 
 foreach(COMPILER_FILE IN ITEMS
-        "${DATABIND_SOURCE_ROOT}/compiler/CMakeLists.txt"
-        "${DATABIND_SOURCE_ROOT}/compiler/compiler_core.c"
-        "${DATABIND_SOURCE_ROOT}/compiler/compiler_core.h"
-        "${DATABIND_SOURCE_ROOT}/compiler/main.c"
-        "${DATABIND_SOURCE_ROOT}/compiler/projection_frontend.c"
-        "${DATABIND_SOURCE_ROOT}/compiler/projection_frontend.h"
-        "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
-        "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache")
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/CMakeLists.txt"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/compiler_core.c"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/compiler_core.h"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/main.c"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/projection_frontend.c"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/projection_frontend.h"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
+        "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache")
   file(READ "${COMPILER_FILE}" COMPILER_CONTENT)
   foreach(RETIRED_MARKER IN ITEMS
           "lua_output_path"
@@ -88,4 +88,4 @@ foreach(COMPILER_FILE IN ITEMS
   endforeach()
 endforeach()
 
-message(STATUS "DataBind compiler tooling boundary passed")
+message(STATUS "IDL compiler tooling boundary passed")
