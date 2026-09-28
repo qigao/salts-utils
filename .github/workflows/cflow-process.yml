@@ -47,7 +47,7 @@ jobs:
           test -n "${VCPKG_ROOT:-}"
           test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
           test -n "${VCPKG_BINARY_SOURCES:-}"
-          test -d "${VCPKG_CACHE_REPOSITORY_ROOT:-}/manifests/salts-utils"
+          test -f "$GITHUB_WORKSPACE/vcpkg.json"
 
       - name: Restore published Salts 1.8.1 and re2c 4.6.3
         shell: bash
@@ -55,12 +55,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
 
-      - name: Restore canonical SaltsUtils third-party profile
+      - name: Restore SaltsUtils third-party profile from repository manifest
         shell: bash
         run: |
           set -euxo pipefail
           "$VCPKG_ROOT/vcpkg" install \
-            --x-manifest-root="$VCPKG_CACHE_REPOSITORY_ROOT/manifests/salts-utils" \
+            --x-manifest-root="$GITHUB_WORKSPACE" \
             --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed" \
             --triplet=x64-linux \
             --only-binarycaching
@@ -123,9 +123,8 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($vsInstall)) { throw "Visual Studio x64 C++ toolchain not found" }
           if ([string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) { throw "VCPKG_ROOT is unavailable" }
           if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_TOOLCHAIN_FILE)) { throw "QIGAO_VCPKG_TOOLCHAIN_FILE is unavailable" }
-          if ([string]::IsNullOrWhiteSpace($env:VCPKG_CACHE_REPOSITORY_ROOT)) { throw "VCPKG_CACHE_REPOSITORY_ROOT is unavailable" }
-          $manifest = Join-Path $env:VCPKG_CACHE_REPOSITORY_ROOT "manifests\salts-utils\vcpkg.json"
-          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "canonical SaltsUtils manifest is unavailable" }
+          $manifest = Join-Path $env:GITHUB_WORKSPACE "vcpkg.json"
+          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "repository SaltsUtils manifest is unavailable" }
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
       - name: Restore published Salts 1.8.1 and re2c 4.6.3
@@ -134,16 +133,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
-      - name: Restore canonical SaltsUtils third-party profile
+      - name: Restore SaltsUtils third-party profile from repository manifest
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           & "$env:VCPKG_ROOT\vcpkg.exe" install `
-            "--x-manifest-root=$env:VCPKG_CACHE_REPOSITORY_ROOT\manifests\salts-utils" `
+            "--x-manifest-root=$env:GITHUB_WORKSPACE" `
             "--x-install-root=$env:GITHUB_WORKSPACE\vcpkg_installed" `
             "--triplet=x64-windows" `
             --only-binarycaching
-          if ($LASTEXITCODE -ne 0) { throw "canonical SaltsUtils cache-only restore failed" }
+          if ($LASTEXITCODE -ne 0) { throw "SaltsUtils repository manifest cache-only restore failed" }
 
       - name: Configure default SaltsUtils graph
         shell: cmd
