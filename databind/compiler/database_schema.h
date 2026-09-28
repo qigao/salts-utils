@@ -1,6 +1,7 @@
 #ifndef TBE_COMPILER_DATABASE_SCHEMA_H
 #define TBE_COMPILER_DATABASE_SCHEMA_H
 
+#include "idl_contract.h"
 #include "node_tree.h"
 
 #ifdef __cplusplus
@@ -39,12 +40,21 @@ typedef struct tbe_database_schema_diagnostic_s {
 } tbe_database_schema_diagnostic_t;
 
 /**
- * Builds a normalized, independently owned database schema Node tree.
- * The caller owns the returned tree and releases it with
- * tbe_database_schema_destroy().
+ * Builds a normalized, independently owned database schema IR from the
+ * canonical typed IDL contract. Production compiler paths use this API.
+ */
+tbe_database_schema_status_t tbe_database_schema_build_contract(
+    const IdlContract *contract, tbe_database_dialect_t dialect,
+    Node **out_database_ir,
+    tbe_database_schema_diagnostic_t *out_diagnostic);
+
+/*
+ * Transitional test helper for legacy malformed-tree probes.
+ * No production compiler path may call this entry point.
  */
 tbe_database_schema_status_t tbe_database_schema_build(
-    const Node *schema_root, tbe_database_dialect_t dialect, Node **out_database_ir,
+    const Node *schema_root, tbe_database_dialect_t dialect,
+    Node **out_database_ir,
     tbe_database_schema_diagnostic_t *out_diagnostic);
 
 /** Safely releases a database IR tree; NULL is accepted. */
