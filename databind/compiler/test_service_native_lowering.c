@@ -487,6 +487,8 @@ spec("DataBind canonical Service native lowering") {
     int native_status;
     int http_status = -1;
     int rpc_code = 1;
+    size_t http_error_index = SIZE_MAX;
+    size_t rpc_error_index = SIZE_MAX;
 
     http_config.success_status = 201;
     http_config.errors = http_errors;
@@ -526,6 +528,13 @@ spec("DataBind canonical Service native lowering") {
     check(data_bind_http_method_plan_error_at(http, 0u, &http_mapping));
     check_equal(http_mapping.error_type, "NotFound");
     check_equal(http_mapping.status, 404);
+    check(data_bind_http_method_plan_error_index_for_wire(
+        http, 404, "NotFound", &http_error_index));
+    check_equal(http_error_index, (size_t)0u);
+    check_false(data_bind_http_method_plan_error_index_for_wire(
+        http, 404, "PermissionDenied", &http_error_index));
+    check_false(data_bind_http_method_plan_error_index_for_wire(
+        http, 500, "NotFound", &http_error_index));
     check(data_bind_transport_plan_info(
         data_bind_http_method_plan_transport(http), &http_transport));
     check_equal(http_transport.kind, DATA_BIND_TRANSPORT_HTTP);
@@ -562,6 +571,13 @@ spec("DataBind canonical Service native lowering") {
     check(data_bind_rpc_method_plan_error_at(rpc, 1u, &rpc_mapping));
     check_equal(rpc_mapping.error_type, "PermissionDenied");
     check_equal(rpc_mapping.code, -32003);
+    check(data_bind_rpc_method_plan_error_index_for_wire(
+        rpc, -32003, "PermissionDenied", &rpc_error_index));
+    check_equal(rpc_error_index, (size_t)1u);
+    check_false(data_bind_rpc_method_plan_error_index_for_wire(
+        rpc, -32003, "NotFound", &rpc_error_index));
+    check_false(data_bind_rpc_method_plan_error_index_for_wire(
+        rpc, -32603, "PermissionDenied", &rpc_error_index));
     check(data_bind_transport_plan_info(
         data_bind_rpc_method_plan_transport(rpc), &rpc_transport));
     check_equal(rpc_transport.kind, DATA_BIND_TRANSPORT_RPC);
