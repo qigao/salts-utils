@@ -1,4 +1,4 @@
-name: Salts 1.8.2 / SaltsUtils 4.1.2 pair contract
+name: Salts 1.8.2 / SaltsUtils 4.1.3 pair contract
 
 on:
   pull_request:
@@ -20,7 +20,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: salts-utils-4.1.2-pair-${{ github.event.pull_request.number || github.ref }}
+  group: salts-utils-4.1.3-pair-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -euxo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
-          prefix="$RUNNER_TEMP/salts-utils-4.1.2-pair"
+          prefix="$RUNNER_TEMP/salts-utils-4.1.3-pair"
           cmake -S . -B build/pair-install -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
@@ -245,7 +245,7 @@ jobs:
             --output-on-failure \
             -R '^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$' \
             --no-tests=error
-          bind_prefix="$RUNNER_TEMP/salts-utils-4.1.2-bindings"
+          bind_prefix="$RUNNER_TEMP/salts-utils-4.1.3-bindings"
           cmake --install build/pair-bindings --prefix "$bind_prefix"
           targets="$bind_prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
           test -f "$targets"
@@ -374,7 +374,7 @@ jobs:
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
-          set "prefix=%RUNNER_TEMP%\salts-utils-4.1.2-pair"
+          set "prefix=%RUNNER_TEMP%\salts-utils-4.1.3-pair"
           cmake -S . -B build\pair-install -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
           if errorlevel 1 exit /b 1
           cmake --build build\pair-install --parallel 2
@@ -420,7 +420,7 @@ jobs:
           if errorlevel 1 exit /b 1
           ctest --test-dir build\pair-bindings --output-on-failure -R "^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$" --no-tests=error
           if errorlevel 1 exit /b 1
-          set "bind_prefix=%RUNNER_TEMP%\salts-utils-4.1.2-bindings"
+          set "bind_prefix=%RUNNER_TEMP%\salts-utils-4.1.3-bindings"
           cmake --install build\pair-bindings --prefix "%bind_prefix%"
           if errorlevel 1 exit /b 1
           set "targets=%bind_prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake"
