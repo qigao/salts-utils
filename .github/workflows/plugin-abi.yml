@@ -1,11 +1,9 @@
-name: Plugin ABI contract
+name: DataBind Plugin consumer contract
 
 on:
   pull_request:
     branches: [master]
     paths:
-      - "plugin/**"
-      - "plugin-cflow/**"
       - "databind/**"
       - "CMakeLists.txt"
       - "CMakeOptions.cmake"
@@ -18,8 +16,6 @@ on:
   push:
     branches: [master]
     paths:
-      - "plugin/**"
-      - "plugin-cflow/**"
       - "databind/**"
       - "CMakeLists.txt"
       - "CMakeOptions.cmake"
