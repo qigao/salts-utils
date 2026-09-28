@@ -81,10 +81,13 @@ static IdlStatus diagnostic_status_from_tbe(tbe_error_code_t code) {
 }
 
 static void annotation_destroy(IdlAnnotation *items, size_t count) {
-  size_t i;
+  size_t i, j;
   for (i = 0u; i < count; ++i) {
     free((void *)items[i].name);
     free((void *)items[i].value);
+    for (j = 0u; j < items[i].argument_count; ++j)
+      free((void *)items[i].arguments[j]);
+    free((void *)items[i].arguments);
   }
   free(items);
 }
@@ -101,10 +104,37 @@ static int annotation_build(
   if (items == NULL) return 0;
   for (i = 0u; i < attrs->data.list.count; ++i) {
     const Node *attr = attrs->data.list.items[i];
+    const Node *values = list_child(attr, "values");
     const char *name = text_child(attr, "name");
     const char *value = text_child(attr, "value");
+    size_t j;
+
     items[i].name = copy_text(name != NULL ? name : "");
     items[i].value = copy_text(value != NULL ? value : "");
+    items[i].bare = flag_child(attr, "bare");
+
+    if (values != NULL && values->data.list.count != 0u) {
+      char **arguments = (char **)calloc(
+          values->data.list.count, sizeof(*arguments));
+      if (arguments == NULL) {
+        annotation_destroy(items, attrs->data.list.count);
+        return 0;
+      }
+      items[i].arguments = (const char *const *)arguments;
+      items[i].argument_count = values->data.list.count;
+      for (j = 0u; j < values->data.list.count; ++j) {
+        const Node *argument = values->data.list.items[j];
+        const char *text =
+            argument != NULL && argument->type == NODE_STRING
+                ? argument->data.string_val
+                : NULL;
+        if (text == NULL || (arguments[j] = copy_text(text)) == NULL) {
+          annotation_destroy(items, attrs->data.list.count);
+          return 0;
+        }
+      }
+    }
+
     if (items[i].name == NULL || items[i].value == NULL) {
       annotation_destroy(items, attrs->data.list.count);
       return 0;
@@ -676,6 +706,8 @@ int idl_contract_build_from_tree(
   const char *name;
   const char *version;
   IdlContract *contract;
+  IdlAnnotation *contract_annotations = NULL;
+  size_t contract_annotation_count = 0u;
   IdlDataDecl *data = NULL;
   IdlService *services = NULL;
   IdlChannel *channels = NULL;
@@ -701,7 +733,9 @@ int idl_contract_build_from_tree(
   contract->name = copy_text(name != NULL ? name : "");
   if (version != NULL) contract->version = copy_text(version);
   if (contract->name == NULL ||
-      (version != NULL && contract->version == NULL))
+      (version != NULL && contract->version == NULL) ||
+      !annotation_build(schema, &contract_annotations,
+                        &contract_annotation_count))
     goto oom;
 
   if (!data_build(root, &data, &data_count) ||
@@ -710,6 +744,8 @@ int idl_contract_build_from_tree(
       !component_build(root, &components, &component_count))
     goto oom;
 
+  contract->annotations = contract_annotations;
+  contract->annotation_count = contract_annotation_count;
   contract->data = data;
   contract->data_count = data_count;
   contract->services = services;
@@ -723,6 +759,7 @@ int idl_contract_build_from_tree(
   return 1;
 
 oom:
+  annotation_destroy(contract_annotations, contract_annotation_count);
   data_destroy(data, data_count);
   service_destroy(services, service_count);
   channel_destroy(channels, channel_count);
@@ -770,6 +807,8 @@ void idl_contract_destroy(IdlContract *contract) {
   if (contract == NULL) return;
   free((void *)contract->name);
   free((void *)contract->version);
+  annotation_destroy((IdlAnnotation *)contract->annotations,
+                     contract->annotation_count);
   data_destroy((IdlDataDecl *)contract->data, contract->data_count);
   service_destroy((IdlService *)contract->services, contract->service_count);
   channel_destroy((IdlChannel *)contract->channels, contract->channel_count);
@@ -828,4 +867,40 @@ const IdlComponent *idl_contract_find_component(
       return component;
   }
   return NULL;
+}
+
+size_t idl_annotation_count(
+    const IdlAnnotation *annotations, size_t annotation_count,
+    const char *name) {
+  size_t i;
+  size_t count = 0u;
+  if (name == NULL) return 0u;
+  for (i = 0u; i < annotation_count; ++i)
+    if (annotations != NULL && annotations[i].name != NULL &&
+        strcmp(annotations[i].name, name) == 0)
+      ++count;
+  return count;
+}
+
+const IdlAnnotation *idl_annotation_find(
+    const IdlAnnotation *annotations, size_t annotation_count,
+    const char *name, size_t occurrence) {
+  size_t i;
+  if (name == NULL) return NULL;
+  for (i = 0u; i < annotation_count; ++i) {
+    if (annotations != NULL && annotations[i].name != NULL &&
+        strcmp(annotations[i].name, name) == 0) {
+      if (occurrence == 0u) return &annotations[i];
+      --occurrence;
+    }
+  }
+  return NULL;
+}
+
+const char *idl_annotation_argument(
+    const IdlAnnotation *annotation, size_t index) {
+  if (annotation == NULL || index >= annotation->argument_count ||
+      annotation->arguments == NULL)
+    return NULL;
+  return annotation->arguments[index];
 }
