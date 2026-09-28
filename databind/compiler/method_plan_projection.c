@@ -58,33 +58,30 @@ static const Node *projection_named_type(
 }
 
 static int projection_type_has_field(
-    const Node *root, const char *type_name, const char *field_name) {
-  const Node *type = projection_named_type(root, type_name);
-  Node *fields;
+    const IdlContract *contract,
+    const char *type_name, const char *field_name) {
+  const IdlDataDecl *type;
   size_t i;
-  if (type == NULL || field_name == NULL) return 0;
-  fields = projection_child(type, "fields");
-  if (fields == NULL || fields->type != NODE_LIST) return 0;
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const char *name = projection_string(fields->data.list.items[i], "name");
-    if (name != NULL && strcmp(name, field_name) == 0) return 1;
-  }
+  if (contract == NULL || type_name == NULL || field_name == NULL) return 0;
+  type = idl_contract_find_data(contract, type_name);
+  if (type == NULL || type->fields == NULL) return 0;
+  for (i = 0u; i < type->field_count; ++i)
+    if (type->fields[i].name != NULL &&
+        strcmp(type->fields[i].name, field_name) == 0)
+      return 1;
   return 0;
 }
 
 static int projection_operation_has_error(
-    const Node *operation, const char *error_type) {
-  Node *errors = projection_child(operation, "errors");
+    const IdlOperation *operation, const char *error_type) {
   size_t i;
-  if (errors == NULL || errors->type != NODE_LIST || error_type == NULL)
+  if (operation == NULL || error_type == NULL ||
+      operation->error_types == NULL)
     return 0;
-  for (i = 0u; i < errors->data.list.count; ++i) {
-    Node *item = errors->data.list.items[i];
-    if (item != NULL && item->type == NODE_STRING &&
-        item->data.string_val != NULL &&
-        strcmp(item->data.string_val, error_type) == 0)
+  for (i = 0u; i < operation->error_count; ++i)
+    if (operation->error_types[i] != NULL &&
+        strcmp(operation->error_types[i], error_type) == 0)
       return 1;
-  }
   return 0;
 }
 
@@ -251,16 +248,14 @@ static int projection_format_type_representable(
 static int projection_operation_formats_representable(
     const IdlContract *contract,
     const Node *root,
-    const Node *operation,
+    const IdlOperation *operation,
     DataBindFormat ingress_format,
     DataBindFormat egress_format) {
-  const char *request_type = projection_string(operation, "request_type");
-  const char *response_type = projection_string(operation, "response_type");
-
+  if (operation == NULL) return 0;
   return projection_format_type_representable(
-             contract, root, request_type, ingress_format) &&
+             contract, root, operation->request_type, ingress_format) &&
          projection_format_type_representable(
-             contract, root, response_type, egress_format);
+             contract, root, operation->response_type, egress_format);
 }
 
 static int http_method_valid(const char *method) {
@@ -469,13 +464,15 @@ static int rpc_config_shape_valid(
 
 static int http_operation_config_valid(
     const IdlContract *contract,
-    const Node *root, const Node *operation,
+    const Node *root, const IdlOperation *operation,
     const databind_compiler_http_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_http_operation_config *op_config =
       http_operation_config(config, service_name, operation_name, NULL);
-  const char *request_type = projection_string(operation, "request_type");
-  const char *response_type = projection_string(operation, "response_type");
+  const char *request_type =
+      operation != NULL ? operation->request_type : NULL;
+  const char *response_type =
+      operation != NULL ? operation->response_type : NULL;
   const DataBindFormat ingress_format =
       op_config != NULL ? op_config->ingress_format : DATA_BIND_FORMAT_JSON;
   const DataBindFormat egress_format =
@@ -496,7 +493,7 @@ static int http_operation_config_valid(
     type_name = field->direction == DATABIND_COMPILER_PROJECTION_INGRESS
                     ? request_type : response_type;
     if (type_name == NULL || strcmp(type_name, "void") == 0 ||
-        !projection_type_has_field(root, type_name, field->schema_field))
+        !projection_type_has_field(contract, type_name, field->schema_field))
       return 0;
     if (field->location == DATABIND_COMPILER_HTTP_PATH) {
       if (op_config == NULL || op_config->route == NULL) return 0;
@@ -543,7 +540,7 @@ static int http_operation_config_valid(
 
 static int rpc_operation_config_valid(
     const IdlContract *contract,
-    const Node *root, const Node *operation,
+    const Node *root, const IdlOperation *operation,
     const databind_compiler_rpc_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_rpc_operation_config *op_config =
@@ -557,7 +554,7 @@ static int rpc_operation_config_valid(
   size_t i;
 
   if (!projection_operation_formats_representable(
-          root, operation, ingress_format, egress_format))
+          contract, root, operation, ingress_format, egress_format))
     return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_rpc_field_config *field = &config->fields[i];
@@ -569,7 +566,7 @@ static int rpc_operation_config_valid(
     type_name = field->direction == DATABIND_COMPILER_PROJECTION_INGRESS
                     ? request_type : response_type;
     if (type_name == NULL || strcmp(type_name, "void") == 0 ||
-        !projection_type_has_field(root, type_name, field->schema_field))
+        !projection_type_has_field(contract, type_name, field->schema_field))
       return 0;
   }
   for (i = 0u; config != NULL && i < config->error_count; ++i) {
@@ -583,15 +580,13 @@ static int rpc_operation_config_valid(
   return 1;
 }
 
-static size_t projection_operation_count(const Node *root) {
-  const Node *services = projection_services(root);
+static size_t projection_operation_count(
+    const IdlContract *contract) {
   size_t count = 0u;
   size_t i;
-  if (services == NULL) return 0u;
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *operations = projection_operations(services->data.list.items[i]);
-    if (operations != NULL) count += operations->data.list.count;
-  }
+  if (contract == NULL) return 0u;
+  for (i = 0u; i < contract->service_count; ++i)
+    count += contract->services[i].operation_count;
   return count;
 }
 
@@ -748,6 +743,7 @@ static int http_generate(
     const databind_compiler_projection_request *request,
     void *context) {
   const Node *root = input != NULL ? input->legacy_tree : NULL;
+  const IdlContract *contract = input != NULL ? contract : NULL;
   const databind_compiler_http_projection_config *config =
       request != NULL
           ? (const databind_compiler_http_projection_config *)request->config
@@ -755,7 +751,6 @@ static int http_generate(
   const char *prefix =
       config != NULL && config->symbol_prefix != NULL
           ? config->symbol_prefix : "databind_generated";
-  const Node *services;
   unsigned char *used_operations = NULL;
   unsigned char *used_fields = NULL;
   unsigned char *used_errors = NULL;
@@ -767,12 +762,11 @@ static int http_generate(
   int ok = 0;
   (void)context;
 
-  if (root == NULL || request == NULL || request->output == NULL ||
+  if (contract == NULL || root == NULL ||
+      request == NULL || request->output == NULL ||
       !http_config_shape_valid(config))
     return -1;
-  services = projection_services(root);
-  if (services == NULL) return -1;
-  total_operations = projection_operation_count(root);
+  total_operations = projection_operation_count(contract);
 
   if (config != NULL && config->operation_count != 0u)
     used_operations = (unsigned char *)calloc(config->operation_count, 1u);
@@ -794,18 +788,17 @@ static int http_generate(
               prefix, prefix) < 0)
     goto cleanup;
 
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const Node *operations = projection_operations(service);
-    const char *service_name = projection_string(service, "name");
-    if (operations == NULL || service_name == NULL) goto cleanup;
-    for (j = 0u; j < operations->data.list.count; ++j, ++operation_index) {
-      const Node *operation = operations->data.list.items[j];
-      const char *operation_name = projection_string(operation, "name");
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    const char *service_name = service->name;
+    if (service_name == NULL) goto cleanup;
+    for (j = 0u; j < service->operation_count; ++j, ++operation_index) {
+      const IdlOperation *operation = &service->operations[j];
+      const char *operation_name = operation->name;
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !http_operation_config_valid(
-              input->contract, root, operation, config,
+              contract, root, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (http_emit_fields(
@@ -844,13 +837,12 @@ static int http_generate(
     goto cleanup;
 
   operation_index = 0u;
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const Node *operations = projection_operations(service);
-    const char *service_name = projection_string(service, "name");
-    for (j = 0u; j < operations->data.list.count; ++j, ++operation_index) {
-      const Node *operation = operations->data.list.items[j];
-      const char *operation_name = projection_string(operation, "name");
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    const char *service_name = service->name;
+    for (j = 0u; j < service->operation_count; ++j, ++operation_index) {
+      const IdlOperation *operation = &service->operations[j];
+      const char *operation_name = operation->name;
       const databind_compiler_http_operation_config *op_config =
           http_operation_config(config, service_name, operation_name, NULL);
       size_t field_count = 0u, error_count = 0u;
@@ -946,6 +938,7 @@ static int rpc_generate(
     const databind_compiler_projection_request *request,
     void *context) {
   const Node *root = input != NULL ? input->legacy_tree : NULL;
+  const IdlContract *contract = input != NULL ? contract : NULL;
   const databind_compiler_rpc_projection_config *config =
       request != NULL
           ? (const databind_compiler_rpc_projection_config *)request->config
@@ -953,7 +946,6 @@ static int rpc_generate(
   const char *prefix =
       config != NULL && config->symbol_prefix != NULL
           ? config->symbol_prefix : "databind_generated";
-  const Node *services;
   unsigned char *used_operations = NULL;
   unsigned char *used_fields = NULL;
   unsigned char *used_errors = NULL;
@@ -965,12 +957,11 @@ static int rpc_generate(
   int ok = 0;
   (void)context;
 
-  if (root == NULL || request == NULL || request->output == NULL ||
+  if (contract == NULL || root == NULL ||
+      request == NULL || request->output == NULL ||
       !rpc_config_shape_valid(config))
     return -1;
-  services = projection_services(root);
-  if (services == NULL) return -1;
-  total_operations = projection_operation_count(root);
+  total_operations = projection_operation_count(contract);
 
   if (config != NULL && config->operation_count != 0u)
     used_operations = (unsigned char *)calloc(config->operation_count, 1u);
@@ -991,18 +982,17 @@ static int rpc_generate(
               prefix, prefix) < 0)
     goto cleanup;
 
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const Node *operations = projection_operations(service);
-    const char *service_name = projection_string(service, "name");
-    if (operations == NULL || service_name == NULL) goto cleanup;
-    for (j = 0u; j < operations->data.list.count; ++j, ++operation_index) {
-      const Node *operation = operations->data.list.items[j];
-      const char *operation_name = projection_string(operation, "name");
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    const char *service_name = service->name;
+    if (service_name == NULL) goto cleanup;
+    for (j = 0u; j < service->operation_count; ++j, ++operation_index) {
+      const IdlOperation *operation = &service->operations[j];
+      const char *operation_name = operation->name;
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !rpc_operation_config_valid(
-              input->contract, root, operation, config,
+              contract, root, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (rpc_emit_fields(
@@ -1041,13 +1031,12 @@ static int rpc_generate(
     goto cleanup;
 
   operation_index = 0u;
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const Node *operations = projection_operations(service);
-    const char *service_name = projection_string(service, "name");
-    for (j = 0u; j < operations->data.list.count; ++j, ++operation_index) {
-      const Node *operation = operations->data.list.items[j];
-      const char *operation_name = projection_string(operation, "name");
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    const char *service_name = service->name;
+    for (j = 0u; j < service->operation_count; ++j, ++operation_index) {
+      const IdlOperation *operation = &service->operations[j];
+      const char *operation_name = operation->name;
       const databind_compiler_rpc_operation_config *op_config =
           rpc_operation_config(config, service_name, operation_name, NULL);
       size_t field_count = 0u, error_count = 0u;
