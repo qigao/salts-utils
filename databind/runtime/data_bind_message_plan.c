@@ -1645,13 +1645,27 @@ static DataBindStatus message_object_decode_value(
       &temporary, &field_options, diagnostic);
   if (status != DATA_BIND_OK) return status;
 
-  status = data_bind_native_decode(
-      &field_options, field->data, reader, temporary,
+  status = data_bind_native_init(
+      &field_options, field->data, temporary,
       field->data->storage_type->size, &native);
   if (status != DATA_BIND_OK)
     return message_native_failure(
         diagnostic, status, field->name, &native,
+        "Provider-backed field temporary initialization failed");
+
+  status = data_bind_native_decode(
+      &field_options, field->data, reader, temporary,
+      field->data->storage_type->size, &native);
+  if (status != DATA_BIND_OK) {
+    DataBindNativeDiagnostic cleanup = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic failure = native;
+    (void)data_bind_native_clear(
+        &field_options, field->data, temporary,
+        field->data->storage_type->size, &cleanup);
+    return message_native_failure(
+        diagnostic, status, field->name, &failure,
         "Provider-backed field decode failed");
+  }
 
   status = data_bind_message_plan_internal_validate_field(
       plan, field->name, temporary, &validation);
