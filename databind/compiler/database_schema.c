@@ -1842,6 +1842,65 @@ static tbe_database_schema_status_t database_build_initializers(
 }
 
 
+static int database_contract_annotations_valid(
+    const IdlAnnotation *annotations, size_t count) {
+  size_t i, j;
+  if (count != 0u && annotations == NULL) return 0;
+  for (i = 0u; i < count; ++i) {
+    const IdlAnnotation *annotation = &annotations[i];
+    if (annotation->name == NULL || annotation->value == NULL ||
+        (annotation->argument_count != 0u && annotation->arguments == NULL))
+      return 0;
+    for (j = 0u; j < annotation->argument_count; ++j)
+      if (annotation->arguments[j] == NULL) return 0;
+  }
+  return 1;
+}
+
+static int database_contract_valid(const IdlContract *contract) {
+  size_t i, j;
+
+  if (contract == NULL ||
+      contract->size < sizeof(IdlContract) ||
+      contract->abi_version != IDL_CONTRACT_ABI_VERSION ||
+      (contract->data_count != 0u && contract->data == NULL) ||
+      !database_contract_annotations_valid(
+          contract->annotations, contract->annotation_count))
+    return 0;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *type = &contract->data[i];
+    if (type->name == NULL ||
+        !database_contract_annotations_valid(
+            type->annotations, type->annotation_count))
+      return 0;
+
+    if (type->kind == IDL_DATA_MESSAGE ||
+        type->kind == IDL_DATA_COMPOSITE ||
+        type->kind == IDL_DATA_GROUP ||
+        type->kind == IDL_DATA_UNION) {
+      if (type->field_count != 0u && type->fields == NULL) return 0;
+      for (j = 0u; j < type->field_count; ++j) {
+        const IdlField *field = &type->fields[j];
+        if (field->name == NULL || field->type_name == NULL ||
+            (field->constraint_count != 0u && field->constraints == NULL) ||
+            !database_contract_annotations_valid(
+                field->annotations, field->annotation_count))
+          return 0;
+      }
+    } else if (type->kind == IDL_DATA_ENUM) {
+      if (type->enum_item_count != 0u && type->enum_items == NULL) return 0;
+      for (j = 0u; j < type->enum_item_count; ++j)
+        if (type->enum_items[j].name == NULL ||
+            type->enum_items[j].value == NULL)
+          return 0;
+    } else {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 static Node *database_contract_annotation_view(const IdlAnnotation *annotation) {
   Node *node = NULL;
   Node *values = NULL;
@@ -2272,11 +2331,19 @@ tbe_database_schema_status_t tbe_database_schema_build_contract(
   Node *view;
   tbe_database_schema_status_t status;
 
-  if (contract == NULL || out_database_ir == NULL) {
+  if (out_database_ir == NULL) {
     database_set_diagnostic(
         out_diagnostic, dialect, "<schema>", "<schema>",
         "invalid typed database schema build arguments");
     return TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+  }
+  *out_database_ir = NULL;
+
+  if (!database_contract_valid(contract)) {
+    database_set_diagnostic(
+        out_diagnostic, dialect, "<schema>", "<schema>",
+        "invalid canonical IDL contract shape");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA;
   }
 
   view = database_contract_view(contract);
