@@ -197,6 +197,19 @@ DATA_BIND_API int data_bind_http_method_plan_error_at(
     DataBindHttpErrorMapping *out);
 
 /**
+ * Resolve one wire HTTP typed Service error back to canonical throws order.
+ *
+ * HTTP statuses are not required to be unique across typed Service errors.
+ * The canonical error type emitted by the generated projection disambiguates
+ * the mapping.
+ */
+DATA_BIND_API int data_bind_http_method_plan_error_index_for_wire(
+    const DataBindHttpMethodPlan *plan,
+    int status,
+    const char *error_type,
+    size_t *out_index);
+
+/**
  * Map a completed canonical BindingPlan outcome into the HTTP projection.
  *
  * SUCCESS maps to success_status and TYPED_ERROR maps by canonical error index.
