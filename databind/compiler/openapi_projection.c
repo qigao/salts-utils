@@ -10,7 +10,7 @@
 #include <string.h>
 
 typedef struct openapi_operation {
-  const Node *operation;
+  const IdlOperation *operation;
   const char *service_name;
   const char *operation_name;
   const char *request_type;
@@ -253,17 +253,15 @@ static const Node *openapi_field(
 }
 
 static int openapi_operation_has_error(
-    const Node *operation, const char *error_type) {
-  const Node *errors = openapi_list(operation, "errors");
+    const IdlOperation *operation, const char *error_type) {
   size_t i;
-  if (errors == NULL || error_type == NULL) return 0;
-  for (i = 0u; i < errors->data.list.count; ++i) {
-    const Node *item = errors->data.list.items[i];
-    if (item != NULL && item->type == NODE_STRING &&
-        item->data.string_val != NULL &&
-        strcmp(item->data.string_val, error_type) == 0)
+  if (operation == NULL || error_type == NULL ||
+      operation->error_types == NULL)
+    return 0;
+  for (i = 0u; i < operation->error_count; ++i)
+    if (operation->error_types[i] != NULL &&
+        strcmp(operation->error_types[i], error_type) == 0)
       return 1;
-  }
   return 0;
 }
 
@@ -413,39 +411,36 @@ static void openapi_operations_free(
 }
 
 static int openapi_operations_build(
+    const IdlContract *contract,
     const Node *root,
     const databind_compiler_http_projection_config *config,
     openapi_operation **out_operations,
     size_t *out_count) {
-  const Node *services = openapi_list(root, "services");
   openapi_operation *result = NULL;
   size_t count = 0u, index = 0u;
   size_t i, j, k;
 
-  if (out_operations == NULL || out_count == NULL || services == NULL)
+  if (contract == NULL || out_operations == NULL || out_count == NULL)
     return -1;
   *out_operations = NULL;
   *out_count = 0u;
 
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *operations = openapi_list(services->data.list.items[i], "operations");
-    if (operations != NULL) count += operations->data.list.count;
-  }
+  for (i = 0u; i < contract->service_count; ++i)
+    count += contract->services[i].operation_count;
 
   if (count != 0u) {
     result = (openapi_operation *)calloc(count, sizeof(*result));
     if (result == NULL) return -1;
   }
 
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const Node *operations = openapi_list(service, "operations");
-    const char *service_name = openapi_string(service, "name");
-    if (service_name == NULL || operations == NULL) goto fail;
+  for (i = 0u; i < contract->service_count; ++i) {
+    const IdlService *service = &contract->services[i];
+    const char *service_name = service->name;
+    if (service_name == NULL) goto fail;
 
-    for (j = 0u; j < operations->data.list.count; ++j, ++index) {
-      const Node *operation = operations->data.list.items[j];
-      const char *operation_name = openapi_string(operation, "name");
+    for (j = 0u; j < service->operation_count; ++j, ++index) {
+      const IdlOperation *operation = &service->operations[j];
+      const char *operation_name = operation->name;
       const databind_compiler_http_operation_config *op_config;
       const char *configured_route;
       if (operation_name == NULL) goto fail;
@@ -455,8 +450,8 @@ static int openapi_operations_build(
       result[index].operation = operation;
       result[index].service_name = service_name;
       result[index].operation_name = operation_name;
-      result[index].request_type = openapi_string(operation, "request_type");
-      result[index].response_type = openapi_string(operation, "response_type");
+      result[index].request_type = operation->request_type;
+      result[index].response_type = operation->response_type;
       result[index].config = op_config;
       result[index].method =
           op_config != NULL && op_config->method != NULL
@@ -1591,9 +1586,9 @@ static int openapi_generate(
           : NULL;
   const databind_compiler_http_projection_config *http =
       config != NULL ? config->http : NULL;
-  const Node *schema = openapi_child(root, "schema");
-  const char *schema_name = openapi_string(schema, "schema_name");
-  const char *schema_version = openapi_string(schema, "schema_version");
+  const IdlContract *contract = input != NULL ? input->contract : NULL;
+  const char *schema_name = contract != NULL ? contract->name : NULL;
+  const char *schema_version = contract != NULL ? contract->version : NULL;
   openapi_operation *operations = NULL;
   size_t operation_count = 0u;
   char *temp = NULL;
@@ -1601,14 +1596,15 @@ static int openapi_generate(
   int ok = 0;
   (void)context;
 
-  if (root == NULL || request == NULL || request->output == NULL ||
+  if (contract == NULL || root == NULL ||
+      request == NULL || request->output == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
       request->id.kind != DATABIND_COMPILER_ARTIFACT_OPENAPI ||
       schema_name == NULL)
     return -1;
 
   if (openapi_operations_build(
-          root, http, &operations, &operation_count) != 0)
+          contract, root, http, &operations, &operation_count) != 0)
     return -1;
 
   if (openapi_open_atomic(request->output, &temp, &file) != 0)
