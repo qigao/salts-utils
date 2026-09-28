@@ -1,6 +1,6 @@
 {
   "name": "salts-utils",
-  "version-semver": "4.0.3",
+  "version-semver": "4.1.0",
   "dependencies": [
     {
       "name": "pkgconf",
@@ -28,6 +28,18 @@
       "description": "Build the optional libusb-backed CFlow device adapter",
       "dependencies": [
         "libusb"
+      ]
+    },
+    "lua-bindings": {
+      "description": "Build and test the optional SaltsUtils CMeta Lua binding",
+      "dependencies": [
+        "lua"
+      ]
+    },
+    "quickjs-bindings": {
+      "description": "Build and test the optional SaltsUtils CMeta QuickJS binding",
+      "dependencies": [
+        "quickjs-ng"
       ]
     }
   },

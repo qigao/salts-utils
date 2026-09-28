@@ -1,0 +1,449 @@
+name: Salts 1.8 / SaltsUtils 4.1 pair contract
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "CMakeLists.txt"
+      - "CMakeOptions.cmake"
+      - "bindings/**"
+      - "databind/**"
+      - "cmake/SaltsUtilsConfig.cmake.in"
+      - "cmake/ci/vcpkg/plugin-databind/**"
+      - "cmake/ci/vcpkg/bindings/**"
+      - ".github/workflows/4.1-pair-contract.yml"
+      - ".github/workflows/cflow-process.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: salts-utils-4.1-pair-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_UTILS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SALTS_CANDIDATE_SHA: "805db421af61cd56e912d63b91f13e576ab8da00"
+
+jobs:
+  linux:
+    name: Linux exact PR pair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout SaltsUtils candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_UTILS_SHA }}
+          persist-credentials: false
+
+      - name: Verify exact SaltsUtils source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS_SHA"
+
+      - name: Configure shared vcpkg cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - name: Restore canonical re2c host tool
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
+
+      - name: Prepare native build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config nasm
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+
+      - name: Checkout exact Salts candidate
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_CANDIDATE_SHA }}
+          path: _pair/salts
+          persist-credentials: false
+
+      - name: Verify exact Salts candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _pair/salts rev-parse HEAD)" = "$SALTS_CANDIDATE_SHA"
+          grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.0([[:space:]]|$)' _pair/salts/CMakeLists.txt
+
+      - name: Build unpublished Salts 1.8 SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          prefix="$RUNNER_TEMP/salts-1.8-pair"
+          cmake -S _pair/salts -B build/pair-salts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-pair-salts" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DENABLE_TESTS=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build build/pair-salts --parallel 2
+          cmake --install build/pair-salts
+          targets="$prefix/lib/cmake/Salts/SaltsTargets.cmake"
+          test -f "$prefix/lib/cmake/Salts/SaltsConfig.cmake"
+          test -f "$prefix/include/salts/plugin.h"
+          test -f "$targets"
+          grep -F "Salts::PluginABI" "$targets"
+          grep -F "Salts::Plugin" "$targets"
+          ! grep -F "Salts::CBind" "$targets"
+          ! grep -F "Salts::BindingsCpp" "$targets"
+          ! grep -F "Salts::Lua" "$targets"
+          ! grep -F "Salts::QuickJS" "$targets"
+          ! grep -F "Salts::PluginCFlow" "$targets"
+          echo "SALTS_ROOT=$prefix" >> "$GITHUB_ENV"
+
+      - name: Restore focused DataBind dependency closure
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$GITHUB_WORKSPACE/cmake/ci/vcpkg/plugin-databind" \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed-pair-utils" \
+            --triplet=x64-linux \
+            --only-binarycaching
+
+      - name: Configure DataBind against unpublished Salts candidate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/pair-databind -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-pair-utils" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DSALTS_UTILS_QUALIFY_DATABIND=ON
+
+      - name: Build and run DataBind / Plugin seam contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build build/pair-databind --parallel 2 --target \
+            test_data_bind_native_reader \
+            test_data_bind_native_writer \
+            test_data_bind_native_container \
+            test_data_bind_native_variant \
+            test_data_bind_binding_plan \
+            test_database_schema_contract \
+            test_databind_plugin_generated_dso \
+            test_databind_plugin_generated_client
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir build/pair-databind \
+            --output-on-failure \
+            -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$' \
+            --no-tests=error
+
+      - name: Qualify installed DataBind native execution ABI and ownership
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
+          prefix="$RUNNER_TEMP/salts-utils-4.1-pair"
+          cmake -S . -B build/pair-install -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-pair-utils" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DSALTS_UTILS_QUALIFY_DATABIND=ON
+          cmake --build build/pair-install --parallel 2
+          cmake --install build/pair-install --prefix "$prefix"
+          targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          test -f "$prefix/include/data_bind_native_binding.h"
+          test -f "$prefix/include/idl_contract.h"
+          test -f "$prefix/include/schema_cmeta.h"
+          test ! -e "$prefix/include/idl.h"
+          test ! -e "$prefix/include/node_tree.h"
+          test ! -e "$prefix/include/tbe_error.h"
+          test -f "$targets"
+          grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          ! grep -F "Salts::Plugin" "$targets"
+          ! grep -F "Salts::PluginCFlow" "$targets"
+          ! grep -F "Salts::CBind" "$targets"
+          cat > build/pair-native-execution-installed.c <<'EOF'
+          #include <data_bind_native_binding.h>
+          _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
+                         "unexpected DataBind native execution ABI");
+          int main(void) {
+            DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT;
+            return execution.size == sizeof(DataBindNativeExecution) &&
+                           execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cc -std=c11 -Wall -Wextra -Werror \
+            -I"$prefix/include" -I"$SALTS_ROOT/include" \
+            build/pair-native-execution-installed.c \
+            -o build/pair-native-execution-installed
+          ./build/pair-native-execution-installed
+
+      - name: Restore focused language-binding dependency closure
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$GITHUB_WORKSPACE/cmake/ci/vcpkg/bindings" \
+            --x-install-root="$GITHUB_WORKSPACE/vcpkg_installed-pair-bindings" \
+            --triplet=x64-linux \
+            --only-binarycaching
+
+      - name: Build run and install C++ Lua QuickJS ownership contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/pair-bindings -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-pair-bindings" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DBUILD_TESTS=ON \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DSALTS_UTILS_BINDINGS_LUA=ON \
+            -DSALTS_UTILS_BINDINGS_QUICKJS=ON \
+            -DSALTS_UTILS_QUALIFY_BINDINGS=ON
+          cmake --build build/pair-bindings --parallel 2 --target \
+            salts_cpp_member_thunk_test \
+            salts_lua_invokable_test \
+            salts_lua_object_test \
+            salts_lua_conversion_test \
+            salts_quickjs_cmeta_test \
+            salts_quickjs_object_test \
+            salts_object_cross_runtime_test \
+            salts_cpp_object_facade_test
+          ctest --test-dir build/pair-bindings \
+            --output-on-failure \
+            -R '^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$' \
+            --no-tests=error
+          bind_prefix="$RUNNER_TEMP/salts-utils-4.1-bindings"
+          cmake --install build/pair-bindings --prefix "$bind_prefix"
+          targets="$bind_prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
+          test -f "$targets"
+          grep -F "Salts::BindingsCpp" "$targets"
+          grep -F "Salts::Lua" "$targets"
+          grep -F "Salts::QuickJS" "$targets"
+          ! grep -F "Salts::Plugin" "$targets"
+          ! grep -F "Salts::PluginCFlow" "$targets"
+          ! grep -F "Salts::CBind" "$targets"
+
+      - name: Verify exact pair remained immutable
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_UTILS_SHA"
+          test "$(git -C _pair/salts rev-parse HEAD)" = "$SALTS_CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test -z "$(git -C _pair/salts status --porcelain --untracked-files=no)"
+
+  windows:
+    name: Windows exact PR pair
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - name: Checkout SaltsUtils candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_UTILS_SHA }}
+          persist-credentials: false
+
+      - name: Verify exact SaltsUtils source
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_UTILS_SHA) {
+            throw "SaltsUtils source mismatch"
+          }
+
+      - name: Configure shared vcpkg cache
+        uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - name: Restore canonical re2c host tool
+        uses: qigao/vcpkg-cache/.github/actions/setup-re2c-tools@master
+
+      - name: Prepare native toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install nasm ninja -y --no-progress
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ([string]::IsNullOrWhiteSpace($vsInstall)) {
+            throw "Visual Studio x64 C++ toolchain not found"
+          }
+          "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
+          "QIGAO_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+
+      - name: Checkout exact Salts candidate
+        uses: actions/checkout@v4
+        with:
+          repository: qigao/salts
+          ref: ${{ env.SALTS_CANDIDATE_SHA }}
+          path: _pair/salts
+          persist-credentials: false
+
+      - name: Verify exact Salts candidate
+        shell: pwsh
+        run: |
+          if ((git -C _pair/salts rev-parse HEAD) -ne $env:SALTS_CANDIDATE_SHA) {
+            throw "Salts candidate mismatch"
+          }
+
+      - name: Build unpublished Salts 1.8 SDK
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "prefix=%RUNNER_TEMP%\salts-1.8-pair"
+          cmake -S _pair\salts -B build\pair-salts -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-salts" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%prefix%"
+          if errorlevel 1 exit /b 1
+          cmake --build build\pair-salts --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install build\pair-salts
+          if errorlevel 1 exit /b 1
+          set "targets=%prefix%\lib\cmake\Salts\SaltsTargets.cmake"
+          if not exist "%prefix%\lib\cmake\Salts\SaltsConfig.cmake" exit /b 1
+          if not exist "%prefix%\include\salts\plugin.h" exit /b 1
+          if not exist "%targets%" exit /b 1
+          findstr /C:"Salts::PluginABI" "%targets%" >nul || exit /b 1
+          findstr /C:"Salts::Plugin" "%targets%" >nul || exit /b 1
+          findstr /C:"Salts::CBind" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::BindingsCpp" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::Lua" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::QuickJS" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
+          echo SALTS_ROOT=%prefix%>>"%GITHUB_ENV%"
+
+      - name: Restore focused DataBind dependency closure
+        shell: cmd
+        run: |
+          "%QIGAO_VCPKG_ROOT%\vcpkg.exe" install --x-manifest-root="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\plugin-databind" --x-install-root="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" --triplet=x64-windows --only-binarycaching
+          if errorlevel 1 exit /b 1
+
+      - name: Build and run DataBind / Plugin seam contracts
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
+          cmake -S . -B build\pair-databind -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
+          if errorlevel 1 exit /b 1
+          cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_database_schema_contract test_databind_plugin_generated_dso test_databind_plugin_generated_client
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$" --no-tests=error
+          if errorlevel 1 exit /b 1
+
+      - name: Qualify installed DataBind native execution ABI and ownership
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
+          set "prefix=%RUNNER_TEMP%\salts-utils-4.1-pair"
+          cmake -S . -B build\pair-install -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
+          if errorlevel 1 exit /b 1
+          cmake --build build\pair-install --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install build\pair-install --prefix "%prefix%"
+          if errorlevel 1 exit /b 1
+          set "targets=%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake"
+          if not exist "%prefix%\include\data_bind_native_binding.h" exit /b 1
+          if not exist "%prefix%\include\idl_contract.h" exit /b 1
+          if not exist "%prefix%\include\schema_cmeta.h" exit /b 1
+          if exist "%prefix%\include\idl.h" exit /b 1
+          if exist "%prefix%\include\node_tree.h" exit /b 1
+          if exist "%prefix%\include\tbe_error.h" exit /b 1
+          if not exist "%targets%" exit /b 1
+          findstr /C:"Salts::Plugin" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::CBind" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
+          > build\pair-native-execution-installed.c echo #include ^<data_bind_native_binding.h^>
+          >> build\pair-native-execution-installed.c echo _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u, "unexpected DataBind native execution ABI");
+          >> build\pair-native-execution-installed.c echo int main(void) { DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT; return execution.size == sizeof(DataBindNativeExecution) ^&^& execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION ? 0 : 1; }
+          cl /nologo /std:c11 /experimental:c11atomics /W4 /WX /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-native-execution-installed.c /Fe:build\pair-native-execution-installed.exe
+          if errorlevel 1 exit /b 1
+          build\pair-native-execution-installed.exe
+          if errorlevel 1 exit /b 1
+
+      - name: Restore focused language-binding dependency closure
+        shell: cmd
+        run: |
+          "%QIGAO_VCPKG_ROOT%\vcpkg.exe" install --x-manifest-root="%GITHUB_WORKSPACE%\cmake\ci\vcpkg\bindings" --x-install-root="%GITHUB_WORKSPACE%\vcpkg_installed-pair-bindings" --triplet=x64-windows --only-binarycaching
+          if errorlevel 1 exit /b 1
+
+      - name: Build run and install C++ Lua QuickJS ownership contracts
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          if errorlevel 1 exit /b 1
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-bindings\x64-windows\bin;%PATH%"
+          cmake -S . -B build\pair-bindings -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-bindings" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_BINDINGS_LUA=ON -DSALTS_UTILS_BINDINGS_QUICKJS=ON -DSALTS_UTILS_QUALIFY_BINDINGS=ON
+          if errorlevel 1 exit /b 1
+          cmake --build build\pair-bindings --parallel 2 --target salts_cpp_member_thunk_test salts_lua_invokable_test salts_lua_object_test salts_lua_conversion_test salts_quickjs_cmeta_test salts_quickjs_object_test salts_object_cross_runtime_test salts_cpp_object_facade_test
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build\pair-bindings --output-on-failure -R "^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$" --no-tests=error
+          if errorlevel 1 exit /b 1
+          set "bind_prefix=%RUNNER_TEMP%\salts-utils-4.1-bindings"
+          cmake --install build\pair-bindings --prefix "%bind_prefix%"
+          if errorlevel 1 exit /b 1
+          set "targets=%bind_prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake"
+          if not exist "%targets%" exit /b 1
+          findstr /C:"Salts::BindingsCpp" "%targets%" >nul || exit /b 1
+          findstr /C:"Salts::Lua" "%targets%" >nul || exit /b 1
+          findstr /C:"Salts::QuickJS" "%targets%" >nul || exit /b 1
+          findstr /C:"Salts::Plugin" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::PluginCFlow" "%targets%" >nul && exit /b 1
+          findstr /C:"Salts::CBind" "%targets%" >nul && exit /b 1
+          cmd /c exit 0
+
+      - name: Verify exact pair remained immutable
+        if: always()
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:EXPECTED_UTILS_SHA) {
+            throw "SaltsUtils source changed"
+          }
+          if ((git -C _pair/salts rev-parse HEAD) -ne $env:SALTS_CANDIDATE_SHA) {
+            throw "Salts candidate changed"
+          }
+          if (-not [string]::IsNullOrWhiteSpace((git status --porcelain --untracked-files=no))) {
+            throw "SaltsUtils tracked source changed"
+          }
+          if (-not [string]::IsNullOrWhiteSpace((git -C _pair/salts status --porcelain --untracked-files=no))) {
+            throw "Salts tracked source changed"
+          }

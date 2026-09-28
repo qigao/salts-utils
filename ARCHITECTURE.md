@@ -24,7 +24,7 @@ package 消费它。
 `find_package(SaltsUtils CONFIG REQUIRED)` 导出 SaltsUtils 的高层能力，包括：
 
 - `Salts::Crypto`
-- `Salts::Plugin`
+- `Salts::PluginABI`、`Salts::Plugin`（由 installed Salts 1.8 提供）
 - `Salts::FS`
 - `Salts::Process`
 - `Salts::QueryVM`
@@ -40,11 +40,13 @@ package 消费它。
 - `Salts::Selector`
 - `Salts::Cron`
 - `Salts::Mustache`
-- `Salts::DataBindSchema`
+- `Salts::IDL`（contract frontend）
+- `Salts::Schema`（Data-only shape/CMeta projection）
 - `Salts::DataBind`、`Salts::DataBindCMeta`、`Salts::DataBindCFlow`
+- `Salts::BindingsCpp`、可选 `Salts::Lua` / `Salts::QuickJS`
 - `Salts::Serial`
 - `Salts::Playback`
-- 可选的 `Salts::Capture`、`Salts::CFlowUSB`；Lua 运行时绑定由 Salts `Salts::Lua` 基于 CMeta 提供
+- 可选的 `Salts::Capture`、`Salts::CFlowUSB`
 
 基础 Salts 包拥有并导出：
 
@@ -53,7 +55,8 @@ package 消费它。
 - `Salts::CSerde`
 - `Salts::UriParser`
 
-`Salts::Plugin` 复用 `Salts::CMeta` 的 Interface、Callable 与语义身份，拥有 plugin manifest/export ABI、版本准入和后续 loader/registry/lifecycle policy；Plugin 语义不进入 CMeta/CFlow core。当前基础 target 不依赖 CFlow，后续执行适配由独立 `Salts::PluginCFlow` target 承担。
+`Salts::PluginABI` / `Salts::Plugin` 由 Salts 1.8 拥有。SaltsUtils 只消费其 manifest/export、loader/registry/lease/lifecycle 能力；Plugin 与 CFlow 无直接依赖，历史 `PluginCFlow` public subsystem 在 4.1 中删除。
+
 
 `Salts::FS` 组合 Salts 的同步文件系统 API 与 CFlow bounded execution；`Salts::Process`
 组合 Salts 的 process owner 与 CFlow native byte-pipe execution。`Salts::Crypto` 依赖
@@ -80,33 +83,35 @@ Salts::TLVParser / LtvParser / SoaParser -> installed Salts::UriParser
 `Salts::JsonParser` 不因为存在 CSerde adapter 就新增 CSerde 依赖。UriParser 也不因上层 parser
 使用而反向依赖 SaltsUtils。这样 package graph 始终保持 `SaltsUtils -> Salts` 单向。
 
-## DataBind 边界
+## IDL / Schema / DataBind 边界
 
-DataBind 由 SaltsUtils 构建、安装并导出为 `Salts::DataBind`，是 SaltsUtils 唯一的数据绑定
-引擎。生成代码、现有原生 C struct 与动态对象的转换与失败回滚都由 DataBind 执行；格式编排
-直接消费本包的 parser component targets，并通过 installed Salts 获取 CMeta/CSTL/CSerde 等基础
-能力，不提供其他 binder、fallback 或 compatibility route。
-
-规范所有权边界为：
+4.1 明确三个不同事实源：
 
 ```text
-CMeta: native structure and semantic type graph                 (Salts)
-schema overlay: external names, presence/defaults, wire layout and validation
-DataBind: native/dynamic conversion, rollback and format orchestration
-CSTL: concrete container storage                                (Salts)
-CSerde: format-neutral canonical token contract                 (Salts)
-QueryVM / concrete format and protocol parsers                  (SaltsUtils)
-UriParser: low-level URI syntax primitive                       (Salts)
+Salts::IDL
+  syntax / contract frontend / Service / Channel / Component
+        |
+        v
+canonical contract model
+
+Salts::Schema
+  Data-only message / enum / union shape
+  external names / presence / defaults / validation
+  logical data -> CMeta projection
+
+Salts::DataBind
+  CSerde + CMeta <-> native storage
+  BindingPlan / ValidationPlan
+  lifecycle / bounds / rollback
 ```
 
-Generated/native and dynamic paths remain DataBind-owned over canonical CMeta structural
-metadata; external names, presence/defaults, wire layout, validation, and fingerprints remain
-overlay-only.
+`Schema ⊂ IDL`，但 `Schema` 不拥有 Service/Channel/Component。production
+`Salts::DataBind` 不链接 IDL frontend 或 parser；compiler/tooling 私有消费
+`Salts::IDL`，native runtime 只消费编译后的 plan 与 canonical CMeta/CSerde。
 
-`Salts::DataBindCMeta` 将不可变 DataBind 容器暴露为 borrowed `cmeta_range`，
-`Salts::DataBindCFlow` 在其上提供同步 Stream 与 Reactive Publisher。适配库不改变 DataBind
-核心 ABI，也不拥有或缓存 payload；调用方必须让 DataBind owner 存活至遍历或 subscription
-关闭。
+TBE 是 format/backend，不是 IDL 本体。TBE field-order、wire-size、cursor 等
+representation policy 必须逐步从 frontend parser 下沉到 format compiler，不能成为
+IDL semantic truth。
 
 ## 所有权与行为
 
@@ -125,7 +130,7 @@ CFlowUSB 由一个内部线程独占 libusb native events，使用固定 transfe
 queue，并只由 `cflow_usb_run_ready()` 交付用户 callback。borrowed transfer buffer、exactly-once
 terminal completion 与 quiescent destroy 是其公开生命周期契约。
 
-DataBind IDL/schema 与 `databindc` 位于 SaltsUtils；TBE 仅是 DataBind 的格式/backend。编译器只在构建、CI 和代码生成阶段运行；数据库
+`Salts::IDL`、`Salts::Schema`、DataBind 与当前 compiler tooling 位于 SaltsUtils；TBE 仅是 format/backend。编译器只在构建、CI 和代码生成阶段运行；数据库
 DDL 生成不会成为部署后二进制的运行时依赖。
 
 ## 构建与发布

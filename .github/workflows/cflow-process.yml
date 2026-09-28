@@ -14,11 +14,12 @@ permissions:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_SDK_VERSION: "1.7.12"
+  SALTS_SDK_VERSION: "1.7.10"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
   linux:
+    if: github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence'
     name: Linux C11 contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -48,7 +49,7 @@ jobs:
           test -n "${VCPKG_BINARY_SOURCES:-}"
           test -d "${VCPKG_CACHE_REPOSITORY_ROOT:-}/manifests/salts-utils"
 
-      - name: Restore published Salts 1.7.12 and re2c 4.6.3
+      - name: Restore published Salts 1.7.10 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,6 +94,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
 
   windows:
+    if: github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence'
     name: Windows C11 contract
     runs-on: windows-2022
     timeout-minutes: 35
@@ -126,7 +128,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "canonical SaltsUtils manifest is unavailable" }
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.7.12 and re2c 4.6.3
+      - name: Restore published Salts 1.7.10 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

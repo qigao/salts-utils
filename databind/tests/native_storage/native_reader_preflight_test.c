@@ -2,6 +2,7 @@
  * native layout. All decoding and source-state checks use the real APIs. */
 #define TINYTEST_NO_MAIN
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 #include <salts_cmeta_data.h>
 #include <tinytest.h>
@@ -10,7 +11,7 @@
 
 enum { PREFLIGHT_WORKSPACE_BYTES = 4096, PREFLIGHT_DEPTH = 8, PREFLIGHT_ITEMS = 64 };
 typedef union PreflightWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[PREFLIGHT_WORKSPACE_BYTES];
 } PreflightWorkspace;
 typedef struct PreflightPair { int32_t a; int32_t b; } PreflightPair;
@@ -107,6 +108,7 @@ static void require_diagnostic_alias_rejection(bool aliases_workspace) {
 }
 
 spec("DataBind native preflight preserves canonical storage and control records") {
+  (void)ttest_config__;
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));
@@ -306,6 +308,7 @@ static void require_measure_size_overflow(bool alignment) {
 }
 
 spec("DataBind native workspace measurement before source dispatch") {
+  (void)ttest_config__;
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));
@@ -487,6 +490,7 @@ static void require_buffer_bounds(const char *left, const char *right,
 }
 
 spec("DataBind per-value payload bounds preserve aggregate accounting and rollback") {
+  (void)ttest_config__;
   it("allows two separately bounded values whose sum exceeds the per-value bound") {
     require_buffer_bounds("abc", "def", 6u, 3u, DATA_BIND_OK);
   }

@@ -1,64 +1,45 @@
-set(TARGET_NAME databind_schema)
+set(SCHEMA_TARGET databind_schema)
 
-cmake_add_grammar(SCHEMA
-  LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_lexer.re
-  GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_grammar.y
-  FOLDER "databind/${TARGET_NAME}/grammar")
+# Data-only Schema surface. Logical contracts are owned by Salts::IDL; this
+# target only projects Data declarations into canonical CMeta semantics.
+add_library(${SCHEMA_TARGET} STATIC
+  src/schema_cmeta.c
+  src/schema_cmeta_buffer.c)
 
-# =============================================================================
-# Library
-# =============================================================================
-
-cmake_add_source(SOURCE_FILES RECURSE
-  DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PATTERNS "*.c*" "*.h*")
-
-cmake_add_source(SOURCE_FILES RECURSE
-  DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PATTERNS "*.c*" "*.h*")
-
-add_library(
-  ${TARGET_NAME} STATIC
-  ${SOURCE_FILES}
-  $<TARGET_OBJECTS:databind_tbe_format_objects>
-  ${SCHEMA_LEXER_GEN} ${SCHEMA_GRAMMAR_GEN} ${SCHEMA_GRAMMAR_Y}
-  ${SCHEMA_LEXER_RE})
-add_dependencies(${TARGET_NAME} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
-
+target_compile_features(${SCHEMA_TARGET} PUBLIC c_std_11)
 target_include_directories(
-  ${TARGET_NAME}
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-         $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
-         $<INSTALL_INTERFACE:include>
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/parser ${CMAKE_CURRENT_BINARY_DIR})
-
-target_link_libraries(${TARGET_NAME} PUBLIC Salts::Core)
+  ${SCHEMA_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/idl/include>
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(${SCHEMA_TARGET} PUBLIC Salts::Core)
 
 cmake_config_target(
-  ${TARGET_NAME}
-  ALIAS Salts::DataBindSchema
+  ${SCHEMA_TARGET}
+  ALIAS Salts::Schema
   FOLDER databind/schema
-  EXPORT_NAME DataBindSchema)
+  EXPORT_NAME Schema)
 
 install(
-  TARGETS ${TARGET_NAME}
+  TARGETS ${SCHEMA_TARGET}
   EXPORT SaltsUtilsTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
 
 install(
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/schema_cmeta.h
   DESTINATION include
-  COMPONENT DataBind
-  FILES_MATCHING
-  PATTERN "*.h")
+  COMPONENT DataBind)
 
 # =============================================================================
 # Tests
 # =============================================================================
 
-set(DATABIND_SCHEMA_TEST_LIBS Salts::DataBindSchema Salts::TinyTest)
+set(DATABIND_SCHEMA_TEST_LIBS databind_tbe_contract Salts::TinyTest)
 if(BUILD_TESTS)
 foreach(test_name
         test_tbe_parser
@@ -72,9 +53,7 @@ foreach(test_name
         test_tbe_robustness
         test_optional_and_defaults
         test_validation_constraints
-        test_enum_helpers
-        test_component_contract
-        test_channel_contract)
+        test_enum_helpers)
   cmake_add_test(${test_name}
     SOURCES test/${test_name}.c
     LIBS ${DATABIND_SCHEMA_TEST_LIBS}
@@ -82,9 +61,14 @@ foreach(test_name
 endforeach()
 
 
+if(TARGET test_tbe_robustness)
+  target_sources(test_tbe_robustness PRIVATE
+    $<TARGET_OBJECTS:databind_tbe_format_objects>)
+endif()
+
 cmake_add_test(test_schema_cmeta_public_cpp
   SOURCES test/test_schema_cmeta_public_cpp.cpp
-  LIBS Salts::DataBindSchema
+  LIBS Salts::Schema
   FOLDER "databind/schema/tests")
 if(TARGET test_schema_cmeta_public_cpp)
   set_target_properties(test_schema_cmeta_public_cpp PROPERTIES
@@ -104,23 +88,25 @@ endif()
 
 cmake_add_executable(verify_fixes
   SOURCES test/verify_fixes.c
-  LIBS Salts::DataBindSchema
+  LIBS databind_tbe_contract
   FOLDER databind/schema/tests)
+target_sources(verify_fixes PRIVATE
+  $<TARGET_OBJECTS:databind_tbe_format_objects>)
 
 # =============================================================================
 # 枚举增强功能测试：生成头文件
 # =============================================================================
 
-set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache)
+set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
 
 set(ENUM_ENHANCED_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhanced.schema)
 set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_HEADER}
-  COMMAND databindc ${ENUM_ENHANCED_SCHEMA}
+  COMMAND salts_idlc ${ENUM_ENHANCED_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${ENUM_ENHANCED_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced.h"
   VERBATIM)
 
@@ -128,10 +114,10 @@ set(ENUM_ENHANCED_SIMPLE_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhan
 set(ENUM_ENHANCED_SIMPLE_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced_simple.h)
 add_custom_command(
   OUTPUT ${ENUM_ENHANCED_SIMPLE_HEADER}
-  COMMAND databindc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
+  COMMAND salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${ENUM_ENHANCED_SIMPLE_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${ENUM_ENHANCED_SIMPLE_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_enum_enhanced_simple.h"
   VERBATIM)
 
@@ -153,10 +139,10 @@ set(UNION_TYPES_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_union_types.schema)
 set(UNION_TYPES_HEADER ${CMAKE_BINARY_DIR}/bin/test_union_types.h)
 add_custom_command(
   OUTPUT ${UNION_TYPES_HEADER}
-  COMMAND databindc ${UNION_TYPES_SCHEMA}
+  COMMAND salts_idlc ${UNION_TYPES_SCHEMA}
           --template ${C_STRUCT_TEMPLATE} --lang c --output ${UNION_TYPES_HEADER}
-  WORKING_DIRECTORY $<TARGET_FILE_DIR:databindc>
-  DEPENDS databindc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:salts_idlc>
+  DEPENDS salts_idlc ${UNION_TYPES_SCHEMA} ${C_STRUCT_TEMPLATE}
   COMMENT "Generating test_union_types.h"
   VERBATIM)
 
@@ -192,14 +178,14 @@ cmake_add_benchmark(benchmark_encoding
 set(BENCH_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/bench.schema)
 set(BENCH_HEADER ${CMAKE_CURRENT_BINARY_DIR}/bench_data.h)
 set(C_STRUCT_TEMPLATE
-    ${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache)
+    ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
 
 add_custom_command(
   OUTPUT ${BENCH_HEADER}
-  COMMAND databindc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
+  COMMAND salts_idlc ${BENCH_SCHEMA} --template ${C_STRUCT_TEMPLATE}
           --lang c --output ${BENCH_HEADER}
-  DEPENDS databindc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
-  COMMENT "Generating benchmark headers with databindc"
+  DEPENDS salts_idlc ${BENCH_SCHEMA} ${C_STRUCT_TEMPLATE}
+  COMMENT "Generating benchmark headers with salts_idlc"
   VERBATIM)
 
 endif()

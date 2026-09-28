@@ -20,3 +20,19 @@ install(
   COMPONENT DataBind
   FILES_MATCHING
   PATTERN "*.h")
+
+# Compiler-side TBE contract overlay. This target is internal and is linked
+# only by compiler/test tooling; Salts::IDL and Salts::DataBind do not depend on it.
+add_library(databind_tbe_contract STATIC
+  compiler/src/tbe_contract_overlay.c)
+target_compile_features(databind_tbe_contract PUBLIC c_std_11)
+target_include_directories(databind_tbe_contract
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/compiler/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal>
+  PRIVATE
+    ${DATABIND_SOURCE_ROOT}/schema/include
+    ${DATABIND_SOURCE_ROOT}/idl/parser)
+set_target_properties(databind_tbe_contract PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+  FOLDER "databind/formats/tbe/compiler")

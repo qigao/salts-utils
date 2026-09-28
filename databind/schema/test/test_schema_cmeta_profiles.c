@@ -1,7 +1,7 @@
 #include "tinytest.h"
 #include "schema_cmeta.h"
-#include "schema_parser_dsl.h"
-#include "../parser/schema_builtin_type.h"
+#include "tbe_contract_overlay.h"
+#include "tbe_scalar_profile.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -73,7 +73,7 @@ suite("schema_cmeta_production_profiles") {
         size_t i;
         for (i = 0u; i < PROFILE_COUNT(profile_cases); ++i) {
             const ProfileCase *item = &profile_cases[i];
-            const schema_builtin_type_info_t *info = schema_builtin_type_find(item->alias);
+            const tbe_scalar_profile_t *info = tbe_scalar_profile_find(item->alias);
             check_not_null(info);
             check_equal(strcmp(info->name, item->canonical), 0);
         }
@@ -83,7 +83,7 @@ suite("schema_cmeta_production_profiles") {
         size_t i;
         for (i = 0u; i < PROFILE_COUNT(profile_cases); ++i) {
             const ProfileCase *item = &profile_cases[i];
-            const schema_builtin_type_info_t *info = schema_builtin_type_find(item->alias);
+            const tbe_scalar_profile_t *info = tbe_scalar_profile_find(item->alias);
             const cmeta_data_desc *alias = schema_cmeta_builtin_data(item->alias);
             const cmeta_data_desc *canonical = schema_cmeta_builtin_data(item->canonical);
             const cmeta_data_desc *profile;
@@ -108,7 +108,7 @@ suite("schema_cmeta_production_profiles") {
         size_t i;
         for (i = 0u; i < PROFILE_COUNT(profile_cases); ++i) {
             const ProfileCase *item = &profile_cases[i];
-            const schema_builtin_type_info_t *info = schema_builtin_type_find(item->alias);
+            const tbe_scalar_profile_t *info = tbe_scalar_profile_find(item->alias);
             check_not_null(info);
             check_equal(info->size, item->wire_size);
             check_equal(strcmp(info->wire_reader, item->reader), 0);
@@ -117,8 +117,8 @@ suite("schema_cmeta_production_profiles") {
     }
 
     it("does not turn bool semantics into uint8 because the wire reader is u8") {
-        const schema_builtin_type_info_t *boolean = schema_builtin_type_find("bool");
-        const schema_builtin_type_info_t *byte = schema_builtin_type_find("byte");
+        const tbe_scalar_profile_t *boolean = tbe_scalar_profile_find("bool");
+        const tbe_scalar_profile_t *byte = tbe_scalar_profile_find("byte");
         const cmeta_data_desc *bool_data = schema_cmeta_builtin_data("bool");
         const cmeta_data_desc *byte_data = schema_cmeta_builtin_data("byte");
         check_not_null(boolean);
@@ -141,7 +141,7 @@ suite("schema_cmeta_production_profiles") {
         };
         size_t i;
         for (i = 0u; i < PROFILE_COUNT(names); ++i)
-            check_null(schema_builtin_type_find(names[i]));
+            check_null(tbe_scalar_profile_find(names[i]));
         check_null(schema_cmeta_builtin_data("string"));
         check_null(schema_cmeta_builtin_data("bytes"));
     }
@@ -160,7 +160,7 @@ suite("schema_cmeta_production_profiles") {
             check_true(written > 0 && (size_t)written < sizeof(schema));
             check_not_null(root);
             snprintf(size_text, sizeof(size_text), "%zu", item->wire_size);
-            parsed = parse_schema(schema, (size_t)written, root, &error);
+            parsed = databind_tbe_contract_parse(schema, (size_t)written, root, &error);
             messages = profile_child(root, "messages");
             if (parsed == 0 && messages != NULL && messages->type == NODE_LIST &&
                 messages->data.list.count == 1u) {

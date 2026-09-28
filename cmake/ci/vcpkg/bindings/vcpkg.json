@@ -1,0 +1,10 @@
+{
+  "name": "salts-utils-bindings-qualification",
+  "version-string": "1",
+  "description": "Focused third-party closure for SaltsUtils C++/Lua/QuickJS binding qualification.",
+  "dependencies": [
+    "lua",
+    "quickjs-ng"
+  ],
+  "builtin-baseline": "b1b19307e2d2ec1eefbdb7ea069de7d4bcd31f01"
+}

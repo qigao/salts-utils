@@ -1,0 +1,1777 @@
+#include "tbe_contract_overlay.h"
+#include "tbe_format_plan.h"
+
+#include "tbe_scalar_profile.h"
+#include "schema_size.h"
+
+#include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int is_named_child(const Node *node, const char *name) {
+    return node && node->name && strcmp(node->name, name) == 0;
+}
+
+static void map_remove_named_children(Node *map, const char *name) {
+    size_t out = 0;
+
+    if (!map || map->type != NODE_MAP) {
+        return;
+    }
+
+    for (size_t i = 0; i < map->data.map.count; ++i) {
+        Node *child = map->data.map.items[i];
+        if (is_named_child(child, name)) {
+            node_free(child);
+            continue;
+        }
+        map->data.map.items[out++] = child;
+    }
+
+    map->data.map.count = out;
+}
+
+static Node *map_find_named_child(const Node *parent, const char *name) {
+    if (!parent || !name) {
+        return NULL;
+    }
+
+    if (parent->type == NODE_MAP) {
+        for (size_t i = 0; i < parent->data.map.count; ++i) {
+            Node *child = parent->data.map.items[i];
+            if (is_named_child(child, name)) {
+                return child;
+            }
+        }
+    } else if (parent->type == NODE_LIST) {
+        for (size_t i = 0; i < parent->data.list.count; ++i) {
+            Node *child = parent->data.list.items[i];
+            if (is_named_child(child, name)) {
+                return child;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static const char *map_find_string_value(const Node *map, const char *name) {
+    Node *child = map_find_named_child(map, name);
+
+    if (!child || child->type != NODE_STRING) {
+        return NULL;
+    }
+
+    return child->data.string_val;
+}
+
+static int map_has_named_child(const Node *map, const char *name) {
+    return map_find_named_child(map, name) != NULL;
+}
+
+static int parse_size_text(const char *text, size_t *out) {
+    return schema_parse_fixed_layout_size(text, out);
+}
+
+static int annotate_result(int result) {
+    return result < 0 ? -1 : 0;
+}
+
+static int annotate_add_string(Node *map, const char *name, const char *value) {
+    Node *node;
+    if (!map || name == NULL || value == NULL) {
+        return -1;
+    }
+    node = create_node_string(name, value);
+    if (node == NULL) {
+        return -1;
+    }
+    if (map_add(map, node) != 0) {
+        node_free(node);
+        return -1;
+    }
+    return 0;
+}
+
+static int annotate_add_true(Node *map, const char *name) {
+    return annotate_add_string(map, name, "1");
+}
+
+static int map_set_string(Node *map, const char *name, const char *value) {
+    const char *current = map_find_string_value(map, name);
+    Node *new_node;
+
+    if (current && strcmp(current, value) == 0) {
+        return 0;
+    }
+
+    new_node = create_node_string(name, value);
+    if (!new_node) {
+        return -1;
+    }
+
+    map_remove_named_children(map, name);
+    if (map_add(map, new_node) != 0) {
+        node_free(new_node);
+        return -1;
+    }
+    return 1;
+}
+
+static int map_set_size(Node *map, const char *name, size_t value) {
+    char buf[32];
+    int result;
+
+    snprintf(buf, sizeof(buf), "%zu", value);
+    result = map_set_string(map, name, buf);
+    return (result < 0) ? -1 : result;
+}
+
+static int map_set_true(Node *map, const char *name) {
+    int result = map_set_string(map, name, "1");
+    return (result < 0) ? -1 : result;
+}
+
+static const char *attribute_value(const Node *owner, const char *attr_name) {
+    Node *attributes;
+    Node *attribute;
+
+    if (!owner || !attr_name) {
+        return NULL;
+    }
+
+    attributes = map_find_named_child(owner, "attributes");
+    if (!attributes) {
+        return NULL;
+    }
+
+    attribute = map_find_named_child(attributes, attr_name);
+    if (!attribute) {
+        return NULL;
+    }
+
+    return map_find_string_value(attribute, "value");
+}
+
+static size_t count_records_in_list(const Node *list) {
+    if (!list || list->type != NODE_LIST) {
+        return 0;
+    }
+
+    return list->data.list.count;
+}
+
+static int primitive_type_size(const char *type_name, size_t *out) {
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    if (type_name && strcmp(type_name, "uuid") == 0 && out) {
+        *out = 16;
+        return 1;
+    }
+    if (!info || !out) return 0;
+    *out = info->size;
+    return 1;
+}
+
+static int primitive_type_wire_reader(const char *type_name, const char **out) {
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    if (!info || !info->wire_reader || !out) return 0;
+    *out = info->wire_reader;
+    return 1;
+}
+
+static int primitive_type_host_type(const char *type_name, const char **out) {
+    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    if (!info || !info->host_type || !out) return 0;
+    *out = info->host_type;
+    return 1;
+}
+
+static Node *find_composite_by_name(const Node *root, const char *name) {
+    static const char *record_lists[] = { "composites" };
+
+    if (!root || !name) {
+        return NULL;
+    }
+
+    for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+         ++list_index) {
+        Node *list = map_find_named_child(root, record_lists[list_index]);
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t i = 0; i < list->data.list.count; ++i) {
+            Node *record = list->data.list.items[i];
+            const char *record_name = map_find_string_value(record, "name");
+
+            if (record_name && strcmp(record_name, name) == 0) {
+                return record;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static Node *find_enum_by_name(const Node *root, const char *name) {
+    Node *enums;
+
+    if (!root || !name) {
+        return NULL;
+    }
+
+    enums = map_find_named_child(root, "enums");
+    if (!enums || enums->type != NODE_LIST) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < enums->data.list.count; ++i) {
+        Node *enum_node = enums->data.list.items[i];
+        const char *enum_name = map_find_string_value(enum_node, "name");
+
+        if (enum_name && strcmp(enum_name, name) == 0) {
+            return enum_node;
+        }
+    }
+
+    return NULL;
+}
+
+static int resolve_enum_fixed_size(const Node *root, const char *type_name, size_t *out) {
+    Node *enum_node;
+    const char *underlying_type;
+
+    if (!root || !type_name || !out) {
+        return 0;
+    }
+
+    enum_node = find_enum_by_name(root, type_name);
+    if (!enum_node) {
+        return 0;
+    }
+
+    underlying_type = map_find_string_value(enum_node, "underlying_type");
+    if (!underlying_type || underlying_type[0] == '\0') {
+        underlying_type = "int32";
+    }
+
+    return primitive_type_size(underlying_type, out);
+}
+
+static int resolve_type_fixed_size(const Node *root, const char *type_name, size_t *out) {
+    Node *record;
+
+    if (primitive_type_size(type_name, out)) {
+        return 1;
+    }
+
+    record = find_composite_by_name(root, type_name);
+    if (!record || !map_has_named_child(record, "has_fixed_block_size")) {
+        return resolve_enum_fixed_size(root, type_name, out);
+    }
+
+    return parse_size_text(map_find_string_value(record, "fixed_block_size"), out);
+}
+
+static int resolve_field_fixed_size(const Node *root, const Node *field, size_t *out) {
+    const char *type_name;
+    const char *length_field;
+    const char *inner_type;
+    size_t inner_size = 0;
+    size_t element_count = 0;
+
+    if (!field || !out) {
+        return 0;
+    }
+
+    if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data")) {
+        return 0;
+    }
+
+    if (map_has_named_child(field, "is_numeric") || map_has_named_child(field, "is_bytes")) {
+        return parse_size_text(map_find_string_value(field, "size_bytes"), out);
+    }
+
+    if (map_has_named_child(field, "is_collection")) {
+        length_field = map_find_string_value(field, "length_field");
+        inner_type = map_find_string_value(field, "inner_type");
+
+        if (!map_has_named_child(field, "is_fixed_size") ||
+            !parse_size_text(length_field, &element_count) ||
+            !resolve_type_fixed_size(root, inner_type, &inner_size)) {
+            return 0;
+        }
+
+        // Check for overflow before multiplication
+        if (element_count > 0 && inner_size > SIZE_MAX / element_count) {
+            return 0;  // Overflow would occur
+        }
+
+        *out = inner_size * element_count;
+        return 1;
+    }
+
+    type_name = map_find_string_value(field, "type");
+    return resolve_type_fixed_size(root, type_name, out);
+}
+
+static int annotate_record_layout(const Node *root, Node *record) {
+    Node *fields = map_find_named_child(record, "fields");
+    size_t offset = 0;
+    int unresolved_prefix = 0;
+    int changed = 0;
+    int result;
+
+    if (!fields || fields->type != NODE_LIST) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < fields->data.list.count; ++i) {
+        Node *field = fields->data.list.items[i];
+        size_t field_size = 0;
+
+        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data")) {
+            break;
+        }
+
+        if (!resolve_field_fixed_size(root, field, &field_size)) {
+            unresolved_prefix = 1;
+            break;
+        }
+
+        // Check for overflow before adding field_size to offset
+        if (field_size > SIZE_MAX - offset) {
+            unresolved_prefix = 1;  // Treat overflow as unresolved
+            break;
+        }
+
+        result = map_set_size(field, "offset", offset);
+        if (result < 0) return -1;
+        changed |= (result > 0);
+        result = map_set_true(field, "has_offset");
+        if (result < 0) return -1;
+        changed |= (result > 0);
+        result = map_set_size(field, "field_size_bytes", field_size);
+        if (result < 0) return -1;
+        changed |= (result > 0);
+        offset += field_size;
+    }
+
+    if (!unresolved_prefix) {
+        result = map_set_size(record, "fixed_block_size", offset);
+        if (result < 0) return -1;
+        changed |= (result > 0);
+        result = map_set_true(record, "has_fixed_block_size");
+        if (result < 0) return -1;
+        changed |= (result > 0);
+    }
+
+    return changed;
+}
+
+static int annotate_wire_constants(Node *root) {
+    static const char *record_lists[] = { "composites", "groups", "messages" };
+    Node *schema = map_find_named_child(root, "schema");
+    const char *schema_name = schema ? map_find_string_value(schema, "schema_name") : NULL;
+    char wire_name[256];
+
+    if (schema_name && schema_name[0]) {
+        snprintf(wire_name, sizeof(wire_name), "%s_WIRE_BIG_ENDIAN", schema_name);
+    } else {
+        snprintf(wire_name, sizeof(wire_name), "GeneratedSchema_WIRE_BIG_ENDIAN");
+    }
+
+    for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+         ++list_index) {
+        Node *list = map_find_named_child(root, record_lists[list_index]);
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t i = 0; i < list->data.list.count; ++i) {
+            Node *record = list->data.list.items[i];
+            Node *fields = map_find_named_child(record, "fields");
+
+            if (annotate_result(map_set_string(record, "wire_endian_const", wire_name)) != 0) {
+                return -1;
+            }
+            if (!fields || fields->type != NODE_LIST) {
+                continue;
+            }
+
+            for (size_t field_index = 0; field_index < fields->data.list.count; ++field_index) {
+                if (annotate_result(map_set_string(fields->data.list.items[field_index],
+                                                   "wire_endian_const", wire_name)) != 0) {
+                    return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+static Node *find_group_by_name(const Node *root, const char *name) {
+    Node *groups = map_find_named_child(root, "groups");
+
+    if (!groups || groups->type != NODE_LIST || !name) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < groups->data.list.count; ++i) {
+        Node *group = groups->data.list.items[i];
+        const char *group_name = map_find_string_value(group, "name");
+
+        if (group_name && strcmp(group_name, name) == 0) {
+            return group;
+        }
+    }
+
+    return NULL;
+}
+
+static int record_has_only_fixed_fields(const Node *record) {
+    Node *fields = map_find_named_child(record, "fields");
+
+    if (!fields || fields->type != NODE_LIST) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < fields->data.list.count; ++i) {
+        Node *field = fields->data.list.items[i];
+
+        if (map_has_named_child(field, "is_group_field") || map_has_named_child(field, "is_var_data")) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int annotate_group_cursors(Node *root) {
+    static const char *record_lists[] = { "composites", "groups", "messages" };
+    Node *groups = map_find_named_child(root, "groups");
+
+    if (groups && groups->type == NODE_LIST) {
+        for (size_t i = 0; i < groups->data.list.count; ++i) {
+            Node *group = groups->data.list.items[i];
+
+            if (!map_has_named_child(group, "has_fixed_block_size") ||
+                !record_has_only_fixed_fields(group)) {
+                continue;
+            }
+
+            if (annotate_result(map_set_true(group, "supports_group_cursor")) != 0) return -1;
+            if (annotate_result(map_set_size(group, "group_dimension_size", 4)) != 0) return -1;
+        }
+    }
+
+    for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+         ++list_index) {
+        Node *list = map_find_named_child(root, record_lists[list_index]);
+        const char *previous_group_name = NULL;
+        const char *previous_group_type = NULL;
+        int previous_group_supported = 1;
+
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t record_index = 0; record_index < list->data.list.count; ++record_index) {
+            Node *record = list->data.list.items[record_index];
+            Node *fields = map_find_named_child(record, "fields");
+
+            previous_group_name = NULL;
+            previous_group_type = NULL;
+            previous_group_supported = 1;
+
+            if (!fields || fields->type != NODE_LIST) {
+                continue;
+            }
+
+            for (size_t field_index = 0; field_index < fields->data.list.count; ++field_index) {
+                Node *field = fields->data.list.items[field_index];
+                Node *group_record;
+                const char *group_type;
+                int supported;
+
+                if (!map_has_named_child(field, "is_group_field")) {
+                    continue;
+                }
+
+                group_type = map_find_string_value(field, "group_type");
+                group_record = find_group_by_name(root, group_type);
+                supported = group_record && map_has_named_child(group_record, "supports_group_cursor");
+
+                if (supported) {
+                    if (annotate_result(map_set_true(field, "supports_group_cursor")) != 0)
+                        return -1;
+                    if (annotate_result(map_set_size(field, "group_dimension_size", 4)) != 0)
+                        return -1;
+                }
+
+                if (!previous_group_name) {
+                    if (annotate_result(map_set_true(field, "is_first_group_field")) != 0)
+                        return -1;
+                } else {
+                    if (annotate_result(map_set_string(field, "previous_group_field_name",
+                                                       previous_group_name)) != 0)
+                        return -1;
+                    if (previous_group_type) {
+                        if (annotate_result(map_set_string(field, "previous_group_type",
+                                                           previous_group_type)) != 0)
+                            return -1;
+                    }
+                }
+
+                if (supported && previous_group_supported) {
+                    if (annotate_result(map_set_true(field, "group_cursor_accessible")) != 0)
+                        return -1;
+                }
+
+                previous_group_name = map_find_string_value(field, "name");
+                previous_group_type = group_type;
+                previous_group_supported = supported && previous_group_supported;
+            }
+        }
+    }
+    return 0;
+}
+
+static int annotate_var_data_accessors(Node *root) {
+    static const char *record_lists[] = { "groups", "messages" };
+
+    for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+         ++list_index) {
+        Node *list = map_find_named_child(root, record_lists[list_index]);
+
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t record_index = 0; record_index < list->data.list.count; ++record_index) {
+            Node *record = list->data.list.items[record_index];
+            Node *fields = map_find_named_child(record, "fields");
+            const char *previous_group_name = NULL;
+            const char *previous_group_type = NULL;
+            const char *previous_var_data_name = NULL;
+            int previous_group_accessible = 1;
+            int previous_var_data_accessible = 1;
+
+            if (!fields || fields->type != NODE_LIST) {
+                continue;
+            }
+
+            for (size_t field_index = 0; field_index < fields->data.list.count; ++field_index) {
+                Node *field = fields->data.list.items[field_index];
+                const char *field_name;
+                int accessible = 0;
+
+                if (map_has_named_child(field, "is_group_field")) {
+                    previous_group_name = map_find_string_value(field, "name");
+                    previous_group_type = map_find_string_value(field, "group_type");
+                    previous_group_accessible = map_has_named_child(field, "group_cursor_accessible");
+                    continue;
+                }
+
+                if (!map_has_named_child(field, "is_var_data")) {
+                    continue;
+                }
+
+                if (!previous_var_data_name && map_has_named_child(record, "has_fixed_block_size")) {
+                    if (annotate_result(map_set_true(field, "is_first_var_data_field")) != 0)
+                        return -1;
+                }
+
+                if (previous_var_data_name) {
+                    if (previous_var_data_accessible) {
+                        if (annotate_result(map_set_true(field, "var_data_from_previous_var_data")) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_var_data_field_name",
+                                                           previous_var_data_name)) != 0)
+                            return -1;
+                        accessible = 1;
+                    }
+                } else if (previous_group_name) {
+                    if (previous_group_accessible && previous_group_type) {
+                        if (annotate_result(map_set_true(field, "var_data_from_previous_group")) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_group_field_name",
+                                                           previous_group_name)) != 0)
+                            return -1;
+                        if (annotate_result(map_set_string(field, "previous_group_type",
+                                                           previous_group_type)) != 0)
+                            return -1;
+                        accessible = 1;
+                    }
+                } else {
+                    if (annotate_result(map_set_true(field, "var_data_from_block_length")) != 0)
+                        return -1;
+                    accessible = map_has_named_child(record, "has_fixed_block_size");
+                }
+
+                if (accessible) {
+                    if (annotate_result(map_set_true(field, "var_data_accessor_accessible")) != 0)
+                        return -1;
+                }
+
+                field_name = map_find_string_value(field, "name");
+                previous_var_data_name = field_name;
+                previous_var_data_accessible = accessible;
+            }
+        }
+    }
+    return 0;
+}
+
+static int annotate_field_states(Node *root) {
+    static const char *record_lists[] = { "messages", "composites", "groups" };
+    
+    for (size_t list_idx = 0; list_idx < sizeof(record_lists) / sizeof(record_lists[0]); ++list_idx) {
+        Node *list = map_find_named_child(root, record_lists[list_idx]);
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t i = 0; i < list->data.list.count; ++i) {
+            Node *record = list->data.list.items[i];
+            Node *fields = map_find_named_child(record, "fields");
+            
+            if (!fields || fields->type != NODE_LIST) {
+                continue;
+            }
+
+            // 统计 DataBind state overlay fields.
+            size_t optional_count = 0;
+            size_t nullable_count = 0;
+            size_t default_count = 0;
+            
+            for (size_t j = 0; j < fields->data.list.count; ++j) {
+                Node *field = fields->data.list.items[j];
+                if (map_find_named_child(field, "is_optional")) {
+                    optional_count++;
+                }
+                if (map_find_named_child(field, "is_nullable")) {
+                    nullable_count++;
+                }
+                if (map_find_named_child(field, "has_default")) {
+                    default_count++;
+                }
+            }
+
+            if (optional_count > 0 || nullable_count > 0) {
+                size_t presence_bitmap_bytes = (optional_count + 7u) / 8u;
+                size_t null_bitmap_bytes = (nullable_count + 7u) / 8u;
+                size_t state_bytes;
+                char count_str[32];
+                char bitmap_size_str[32];
+
+                if (presence_bitmap_bytes > SIZE_MAX - null_bitmap_bytes) return -1;
+                state_bytes = presence_bitmap_bytes + null_bitmap_bytes;
+
+                if (optional_count > 0) {
+                    if (annotate_add_true(record, "has_optional_fields") != 0) return -1;
+                    snprintf(count_str, sizeof(count_str), "%zu", optional_count);
+                    if (annotate_add_string(record, "optional_field_count", count_str) != 0) return -1;
+                    snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", presence_bitmap_bytes);
+                    if (annotate_add_string(record, "presence_bitmap_bytes", bitmap_size_str) != 0)
+                        return -1;
+                }
+
+                if (nullable_count > 0) {
+                    char offset_str[32];
+                    if (annotate_add_true(record, "has_nullable_fields") != 0) return -1;
+                    snprintf(count_str, sizeof(count_str), "%zu", nullable_count);
+                    if (annotate_add_string(record, "nullable_field_count", count_str) != 0) return -1;
+                    snprintf(bitmap_size_str, sizeof(bitmap_size_str), "%zu", null_bitmap_bytes);
+                    if (annotate_add_string(record, "null_bitmap_bytes", bitmap_size_str) != 0)
+                        return -1;
+                    snprintf(offset_str, sizeof(offset_str), "%zu", presence_bitmap_bytes);
+                    if (annotate_add_string(record, "null_bitmap_offset", offset_str) != 0)
+                        return -1;
+                }
+
+                // State overlays precede all logical CMeta fields.
+                const char *original_block_size_str = map_find_string_value(record, "fixed_block_size");
+                if (original_block_size_str) {
+                    size_t original_size;
+                    size_t new_size;
+                    if (!parse_size_text(original_block_size_str, &original_size)) return -1;
+                    if (state_bytes > SIZE_MAX - original_size) return -1;
+                    new_size = original_size + state_bytes;
+                    char new_size_str[32];
+                    snprintf(new_size_str, sizeof(new_size_str), "%zu", new_size);
+                    
+                    // 更新固定块大小
+                    map_remove_named_children(record, "fixed_block_size");
+                    if (annotate_add_string(record, "fixed_block_size", new_size_str) != 0)
+                        return -1;
+                    
+                    // 为所有有偏移的字段调整偏移量
+                    for (size_t j = 0; j < fields->data.list.count; ++j) {
+                        Node *field = fields->data.list.items[j];
+                        const char *offset_str = map_find_string_value(field, "offset");
+                        if (offset_str) {
+                            size_t original_offset;
+                            size_t new_offset;
+                            if (!parse_size_text(offset_str, &original_offset)) return -1;
+                            if (state_bytes > SIZE_MAX - original_offset) return -1;
+                            new_offset = original_offset + state_bytes;
+                            char new_offset_str[32];
+                            snprintf(new_offset_str, sizeof(new_offset_str), "%zu", new_offset);
+                            
+                            // 更新字段偏移
+                            map_remove_named_children(field, "offset");
+                            if (annotate_add_string(field, "offset", new_offset_str) != 0)
+                                return -1;
+                        }
+                    }
+                }
+
+                Node *optional_fields_list = create_node_list("optional_fields");
+                Node *nullable_fields_list = create_node_list("nullable_fields");
+                Node *default_fields_list = create_node_list("default_value_fields");
+                if (optional_fields_list == NULL || nullable_fields_list == NULL ||
+                    default_fields_list == NULL) {
+                    node_free(optional_fields_list);
+                    node_free(nullable_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
+                
+                size_t optional_index = 0;
+                size_t nullable_index = 0;
+                for (size_t j = 0; j < fields->data.list.count; ++j) {
+                    Node *field = fields->data.list.items[j];
+                    
+                    if (map_find_named_child(field, "is_optional")) {
+                        // 创建可选字段条目
+                        Node *optional_field = create_node_map(NULL);
+                        const char *field_name = map_find_string_value(field, "name");
+                        const char *owner_name = map_find_string_value(field, "owner_name");
+                        if (optional_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        
+                        if (annotate_add_string(optional_field, "name",
+                                                field_name ? field_name : "") != 0 ||
+                            annotate_add_string(optional_field, "owner_name",
+                                                owner_name ? owner_name : "") != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        
+                        char bit_index_str[32];
+                        snprintf(bit_index_str, sizeof(bit_index_str), "%zu", optional_index);
+                        map_remove_named_children(field, "optional_bit_index");
+                        if (annotate_add_string(field, "optional_bit_index", bit_index_str) != 0 ||
+                            annotate_add_string(optional_field, "optional_bit_index",
+                                                bit_index_str) != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        
+                        // 添加last标记
+                        if (optional_index == optional_count - 1) {
+                            if (annotate_add_true(optional_field, "last") != 0) {
+                                node_free(optional_field);
+                                node_free(optional_fields_list);
+                                node_free(nullable_fields_list);
+                                node_free(default_fields_list);
+                                return -1;
+                            }
+                        }
+                        
+                        if (list_add(optional_fields_list, optional_field) != 0) {
+                            node_free(optional_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        optional_index++;
+                    }
+
+                    if (map_find_named_child(field, "is_nullable")) {
+                        Node *nullable_field = create_node_map(NULL);
+                        const char *field_name = map_find_string_value(field, "name");
+                        const char *owner_name = map_find_string_value(field, "owner_name");
+                        char bit_index_str[32];
+
+                        if (nullable_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        snprintf(bit_index_str, sizeof(bit_index_str), "%zu", nullable_index);
+                        map_remove_named_children(field, "nullable_bit_index");
+                        if (annotate_add_string(nullable_field, "name",
+                                                field_name ? field_name : "") != 0 ||
+                            annotate_add_string(nullable_field, "owner_name",
+                                                owner_name ? owner_name : "") != 0 ||
+                            annotate_add_string(field, "nullable_bit_index",
+                                                bit_index_str) != 0 ||
+                            annotate_add_string(nullable_field, "nullable_bit_index",
+                                                bit_index_str) != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        if (nullable_index == nullable_count - 1u &&
+                            annotate_add_true(nullable_field, "last") != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+
+                        if (list_add(nullable_fields_list, nullable_field) != 0) {
+                            node_free(nullable_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        nullable_index++;
+                    }
+                    
+                    if (map_find_named_child(field, "has_default")) {
+                        // 创建默认值字段条目（复制字段信息）
+                        Node *default_field = create_node_map(NULL);
+                        if (default_field == NULL) {
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                        
+                        // 复制所有字段属性
+                        for (size_t k = 0; k < field->data.map.count; ++k) {
+                            Node *attr = field->data.map.items[k];
+                            if (attr->name) {
+                                const char *value = attr->type == NODE_STRING ? attr->data.string_val : "";
+                                if (annotate_add_string(default_field, attr->name, value) != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
+                            }
+                        }
+                        
+                        // 添加类型推断
+                        const char *default_value = map_find_string_value(field, "default_value");
+                        const char *field_type = map_find_string_value(field, "type");
+                        const tbe_scalar_profile_t *default_type =
+                            tbe_scalar_profile_find(field_type);
+                        
+                        if (default_value && field_type) {
+                            if (strcmp(field_type, "string") == 0) {
+                                if (annotate_add_true(default_field, "is_string") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
+                            } else if (default_type != NULL &&
+                                       (default_type->data->kind == CMETA_DATA_SINT ||
+                                        default_type->data->kind == CMETA_DATA_UINT ||
+                                        default_type->data->kind == CMETA_DATA_FLOAT)) {
+                                if (annotate_add_true(default_field, "is_numeric") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
+                            } else if (strcmp(default_value, "true") == 0 || strcmp(default_value, "false") == 0) {
+                                if (annotate_add_true(default_field, "is_boolean") != 0) {
+                                    node_free(default_field);
+                                    node_free(optional_fields_list);
+                                    node_free(nullable_fields_list);
+                                    node_free(default_fields_list);
+                                    return -1;
+                                }
+                            }
+                            
+                            // 检查是否是枚举引用
+                            Node *enums = map_find_named_child(root, "enums");
+                            if (enums && enums->type == NODE_LIST) {
+                                for (size_t e = 0; e < enums->data.list.count; ++e) {
+                                    Node *enum_node = enums->data.list.items[e];
+                                    const char *enum_name = map_find_string_value(enum_node, "enum_name");
+                                    if (enum_name && strcmp(field_type, enum_name) == 0) {
+                                        if (annotate_add_true(default_field, "is_enum_ref") != 0 ||
+                                            annotate_add_string(default_field, "enum_name",
+                                                                enum_name) != 0) {
+                                            node_free(default_field);
+                                            node_free(optional_fields_list);
+                                            node_free(nullable_fields_list);
+                                            node_free(default_fields_list);
+                                            return -1;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (list_add(default_fields_list, default_field) != 0) {
+                            node_free(default_field);
+                            node_free(optional_fields_list);
+                            node_free(nullable_fields_list);
+                            node_free(default_fields_list);
+                            return -1;
+                        }
+                    }
+                }
+                
+                if (map_add(record, optional_fields_list) != 0) {
+                    node_free(optional_fields_list);
+                    node_free(nullable_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
+                if (map_add(record, nullable_fields_list) != 0) {
+                    /* optional_fields_list is already owned by record */
+                    node_free(nullable_fields_list);
+                    node_free(default_fields_list);
+                    return -1;
+                }
+                if (map_add(record, default_fields_list) != 0) {
+                    /* optional/nullable field lists are already owned by record */
+                    node_free(default_fields_list);
+                    return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+static int annotate_enum_helpers(Node *root) {
+    Node *enums = map_find_named_child(root, "enums");
+    if (!enums || enums->type != NODE_LIST) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < enums->data.list.count; ++i) {
+        Node *enum_node = enums->data.list.items[i];
+        Node *items = map_find_named_child(enum_node, "items");
+        
+        if (!items || items->type != NODE_LIST) {
+            continue;
+        }
+
+        // 计算项目数量
+        char count_str[32];
+        snprintf(count_str, sizeof(count_str), "%zu", items->data.list.count);
+        if (annotate_add_string(enum_node, "items_count", count_str) != 0) return -1;
+
+        // 标记最后一个枚举项，模板据此省略末尾逗号
+        if (items->data.list.count > 0) {
+            Node *last_item = items->data.list.items[items->data.list.count - 1];
+            if (annotate_add_true(last_item, "last") != 0) return -1;
+        }
+
+
+    }
+    return 0;
+}
+
+static int annotate_type_references(Node *root) {
+    static const char *record_lists[] = { "composites", "groups", "messages" };
+
+    for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+         ++list_index) {
+        Node *list = map_find_named_child(root, record_lists[list_index]);
+
+        if (!list || list->type != NODE_LIST) {
+            continue;
+        }
+
+        for (size_t record_index = 0; record_index < list->data.list.count; ++record_index) {
+            Node *record = list->data.list.items[record_index];
+            Node *fields = map_find_named_child(record, "fields");
+
+            if (!fields || fields->type != NODE_LIST) {
+                continue;
+            }
+
+            for (size_t field_index = 0; field_index < fields->data.list.count; ++field_index) {
+                Node *field = fields->data.list.items[field_index];
+                const char *type_name;
+
+                if (map_has_named_child(field, "is_collection") &&
+                    map_has_named_child(field, "is_fixed_size")) {
+                    const char *inner_type = map_find_string_value(field, "inner_type");
+                    size_t element_size = 0;
+
+                    if (inner_type && resolve_type_fixed_size(root, inner_type, &element_size)) {
+                        if (annotate_result(map_set_size(field, "element_size_bytes",
+                                                         element_size)) != 0)
+                            return -1;
+                    }
+
+                    if (inner_type && find_composite_by_name(root, inner_type)) {
+                        if (annotate_result(map_set_true(field,
+                                                         "collection_element_is_composite")) != 0)
+                            return -1;
+                        continue;
+                    }
+
+                    if (inner_type && find_enum_by_name(root, inner_type)) {
+                        Node *enum_node = find_enum_by_name(root, inner_type);
+                        const char *underlying_type = map_find_string_value(enum_node, "underlying_type");
+                        const char *host_type = NULL;
+                        const char *wire_reader = NULL;
+                        char enum_c_type[256];
+
+                        if (!underlying_type || underlying_type[0] == '\0') {
+                            underlying_type = "int32";
+                        }
+
+                        if (!primitive_type_wire_reader(underlying_type, &wire_reader) ||
+                            !primitive_type_host_type(underlying_type, &host_type)) {
+                            continue;
+                        }
+
+                        snprintf(enum_c_type, sizeof(enum_c_type), "%s_t", inner_type);
+                        if (annotate_result(map_set_true(field, "collection_element_is_enum")) != 0 ||
+                            annotate_result(map_set_string(field,
+                                                           "collection_element_enum_c_type",
+                                                           enum_c_type)) != 0 ||
+                            annotate_result(map_set_string(field, "collection_element_host_type",
+                                                           host_type)) != 0 ||
+                            annotate_result(map_set_string(field, "collection_element_wire_reader",
+                                                           wire_reader)) != 0)
+                            return -1;
+                        continue;
+                    }
+
+                    if (inner_type) {
+                        const char *host_type = NULL;
+                        const char *wire_reader = NULL;
+
+                        if (primitive_type_wire_reader(inner_type, &wire_reader) &&
+                            primitive_type_host_type(inner_type, &host_type)) {
+                            if (annotate_result(map_set_true(field,
+                                                             "collection_element_is_primitive")) != 0 ||
+                                annotate_result(map_set_string(field,
+                                                               "collection_element_host_type",
+                                                               host_type)) != 0 ||
+                                annotate_result(map_set_string(field,
+                                                               "collection_element_wire_reader",
+                                                               wire_reader)) != 0)
+                                return -1;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (!map_has_named_child(field, "is_user_defined")) {
+                    continue;
+                }
+
+                type_name = map_find_string_value(field, "type");
+                if (!type_name) {
+                    continue;
+                }
+
+                if (find_composite_by_name(root, type_name)) {
+                    if (annotate_result(map_set_true(field, "is_composite_ref")) != 0) return -1;
+                    map_remove_named_children(field, "is_enum_ref");
+                    map_remove_named_children(field, "enum_c_type");
+                    map_remove_named_children(field, "enum_host_type");
+                    map_remove_named_children(field, "enum_wire_reader");
+                    continue;
+                }
+
+                if (find_enum_by_name(root, type_name)) {
+                    Node *enum_node = find_enum_by_name(root, type_name);
+                    const char *underlying_type = map_find_string_value(enum_node, "underlying_type");
+                    const char *host_type = NULL;
+                    const char *wire_reader = NULL;
+                    char enum_c_type[256];
+
+                    if (!underlying_type || underlying_type[0] == '\0') {
+                        underlying_type = "int32";
+                    }
+
+                    if (!primitive_type_wire_reader(underlying_type, &wire_reader) ||
+                        !primitive_type_host_type(underlying_type, &host_type)) {
+                        continue;
+                    }
+
+                    snprintf(enum_c_type, sizeof(enum_c_type), "%s_t", type_name);
+                    if (annotate_result(map_set_true(field, "is_enum_ref")) != 0) return -1;
+                    map_remove_named_children(field, "is_composite_ref");
+                    if (annotate_result(map_set_string(field, "enum_c_type", enum_c_type)) != 0 ||
+                        annotate_result(map_set_string(field, "enum_host_type", host_type)) != 0 ||
+                        annotate_result(map_set_string(field, "enum_wire_reader", wire_reader)) != 0)
+                        return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+static int annotate_layouts(Node *root) {
+    static const char *record_lists[] = { "composites", "groups", "messages" };
+
+    while (1) {
+        int changed = 0;
+
+        for (size_t list_index = 0; list_index < sizeof(record_lists) / sizeof(record_lists[0]);
+             ++list_index) {
+            Node *list = map_find_named_child(root, record_lists[list_index]);
+            if (!list || list->type != NODE_LIST) {
+                continue;
+            }
+
+            for (size_t i = 0; i < list->data.list.count; ++i) {
+                int result = annotate_record_layout(root, list->data.list.items[i]);
+                if (result < 0) return -1;
+                changed |= result;
+            }
+        }
+
+        if (!changed) {
+            break;
+        }
+    }
+    return 0;
+}
+
+static int annotate_schema_metadata(Node *root) {
+    Node *schema = map_find_named_child(root, "schema");
+    Node *attributes;
+    const char *byte_order;
+    char attrs_buf[512];
+    size_t attrs_len = 0;
+    const char *wire_value = "0";
+
+    if (!schema) {
+        return 0;
+    }
+
+    attributes = map_find_named_child(schema, "attributes");
+    attrs_buf[0] = '\0';
+    if (attributes && attributes->type == NODE_MAP) {
+        for (size_t i = 0; i < attributes->data.map.count; ++i) {
+            Node *attribute = attributes->data.map.items[i];
+            const char *attr_name;
+            const char *attr_value;
+            int written;
+
+            if (!attribute || attribute->type != NODE_MAP) {
+                continue;
+            }
+
+            attr_name = map_find_string_value(attribute, "name");
+            attr_value = map_find_string_value(attribute, "value");
+            if (!attr_name || !attr_value) {
+                continue;
+            }
+
+            written = snprintf(attrs_buf + attrs_len, sizeof(attrs_buf) - attrs_len,
+                               "[ %s: %s ] ", attr_name, attr_value);
+            if (written < 0 || (size_t)written >= sizeof(attrs_buf) - attrs_len) {
+                break;
+            }
+            attrs_len += (size_t)written;
+        }
+    }
+    if (annotate_result(map_set_string(schema, "schema_attributes_rendered", attrs_buf)) != 0)
+        return -1;
+
+    byte_order = attribute_value(schema, "byte_order");
+    if (byte_order && strcmp(byte_order, "big") == 0) {
+        if (annotate_result(map_set_string(schema, "wire_byte_order", "big")) != 0 ||
+            annotate_result(map_set_true(schema, "is_big_endian")) != 0)
+            return -1;
+        map_remove_named_children(schema, "is_little_endian");
+        wire_value = "1";
+    } else {
+        if (annotate_result(map_set_string(schema, "wire_byte_order", "little")) != 0 ||
+            annotate_result(map_set_true(schema, "is_little_endian")) != 0)
+            return -1;
+        map_remove_named_children(schema, "is_big_endian");
+    }
+    if (annotate_result(map_set_string(schema, "schema_wire_big_endian_value", wire_value)) != 0)
+        return -1;
+
+    /* Extract version attribute and expose as schema_version */
+    {
+        const char *ver = attribute_value(schema, "version");
+        if (ver && ver[0]) {
+            if (annotate_result(map_set_string(schema, "schema_version", ver)) != 0 ||
+                annotate_result(map_set_true(schema, "has_schema_version")) != 0)
+                return -1;
+        }
+    }
+    return 0;
+}
+
+static int annotate_unions(Node *root) {
+    Node *unions = map_find_named_child(root, "unions");
+    if (!unions || unions->type != NODE_LIST) return 0;
+
+    for (size_t i = 0; i < unions->data.list.count; ++i) {
+        Node *u = unions->data.list.items[i];
+        const char *union_name = map_find_string_value(u, "name");
+        Node *fields = map_find_named_child(u, "fields");
+        if (!fields || fields->type != NODE_LIST) continue;
+
+        for (size_t j = 0; j < fields->data.list.count; ++j) {
+            Node *field = fields->data.list.items[j];
+            if (annotate_result(map_set_size(field, "field_index", j)) != 0) return -1;
+            if (union_name) {
+                if (annotate_result(map_set_string(field, "owner_name", union_name)) != 0)
+                    return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int tbe_numeric_literal(const char *text) {
+  const char *p;
+  if (text == NULL || text[0] == '\0') return 0;
+  for (p = text; *p != '\0'; ++p)
+    if (*p < '0' || *p > '9') return 0;
+  return 1;
+}
+
+static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
+  const char *field_type = map_find_string_value(field, "type");
+  const char *length_field = map_find_string_value(field, "length_field");
+  const char *collection_kind = map_find_string_value(field, "collection_kind");
+  const tbe_scalar_profile_t *builtin_type;
+  const cmeta_data_desc *builtin_data;
+  int is_group = map_has_named_child(field, "is_group_field");
+
+  if (field_type == NULL) return 1;
+
+  if (strcmp(field_type, "varint") == 0) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                    "Unsupported type 'varint': TBE runtime/compiler support is not implemented");
+    return 0;
+  }
+
+  builtin_type = tbe_scalar_profile_find(field_type);
+  builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
+
+  if (is_group) {
+    if (map_set_string(field, "ctype", "GROUP") < 0 ||
+        map_set_true(field, "is_variable_size") < 0)
+      return 0;
+  } else if (builtin_data != NULL &&
+             (builtin_data->kind == CMETA_DATA_SINT ||
+              builtin_data->kind == CMETA_DATA_UINT ||
+              builtin_data->kind == CMETA_DATA_FLOAT)) {
+    if (map_set_size(field, "size_bytes", builtin_type->size) < 0 ||
+        map_set_string(field, "host_type", builtin_type->host_type) < 0 ||
+        map_set_string(field, "wire_reader", builtin_type->wire_reader) < 0 ||
+        map_set_true(field, "is_numeric") < 0 ||
+        map_set_true(field, "is_primitive") < 0 ||
+        map_set_true(field, "is_fixed_size") < 0)
+      return 0;
+    if (builtin_data->kind == CMETA_DATA_UINT &&
+        map_set_true(field, "is_unsigned") < 0)
+      return 0;
+    if ((builtin_data->kind == CMETA_DATA_SINT ||
+         builtin_data->kind == CMETA_DATA_UINT) &&
+        map_set_true(field, "is_integer") < 0)
+      return 0;
+    if (builtin_data->kind == CMETA_DATA_FLOAT &&
+        map_set_true(field, "is_float") < 0)
+      return 0;
+  } else if (strcmp(field_type, "uuid") == 0) {
+    if (map_set_string(field, "ctype", "UUID") < 0 ||
+        map_set_size(field, "size_bytes", 16u) < 0 ||
+        map_set_string(field, "host_type", "salts_uuid_t") < 0 ||
+        map_set_true(field, "is_uuid") < 0 ||
+        map_set_true(field, "is_primitive") < 0 ||
+        map_set_true(field, "is_fixed_size") < 0)
+      return 0;
+  } else if (strcmp(field_type, "bytes") == 0) {
+    if (map_set_string(field, "ctype", "BYTES") < 0) return 0;
+    if (tbe_numeric_literal(length_field)) {
+      size_t bytes = 0u;
+      if (!schema_parse_fixed_layout_size(length_field, &bytes) ||
+          map_set_size(field, "size_bytes", bytes) < 0 ||
+          map_set_true(field, "is_fixed_size") < 0)
+        return 0;
+    } else if (map_set_true(field, "is_variable_size") < 0) {
+      return 0;
+    }
+  } else if (strcmp(field_type, "string") == 0) {
+    if (map_set_string(field, "ctype", "STRING") < 0 ||
+        map_set_true(field, "is_variable_size") < 0)
+      return 0;
+  } else if (map_has_named_child(field, "is_collection")) {
+    if (map_set_string(field, "ctype", "COLLECTION") < 0) return 0;
+    if (collection_kind != NULL &&
+        strcmp(collection_kind, "array") == 0 &&
+        tbe_numeric_literal(length_field)) {
+      if (map_set_true(field, "is_fixed_size") < 0) return 0;
+    } else if (map_set_true(field, "is_variable_size") < 0) {
+      return 0;
+    }
+  } else if (map_set_string(field, "ctype", "USER_DEFINED") < 0 ||
+             map_set_true(field, "is_user_defined") < 0) {
+    return 0;
+  }
+
+  if (!is_group &&
+      (strcmp(field_type, "string") == 0 ||
+       (strcmp(field_type, "bytes") == 0 && !tbe_numeric_literal(length_field)))) {
+    if (map_set_true(field, "is_var_data") < 0) return 0;
+  } else if (!is_group &&
+             (!map_has_named_child(field, "is_collection") ||
+              (collection_kind != NULL &&
+               strcmp(collection_kind, "array") == 0 &&
+               tbe_numeric_literal(length_field)) ||
+              (strcmp(field_type, "bytes") == 0 &&
+               tbe_numeric_literal(length_field)))) {
+    if (map_set_true(field, "is_fixed_block") < 0) return 0;
+  }
+
+  return 1;
+}
+
+static int tbe_annotate_field_profiles(Node *root, tbe_error_t *error) {
+  static const char *lists[] = {
+      "composites", "groups", "messages", "unions"
+  };
+  size_t i, j, k;
+  for (i = 0u; i < sizeof(lists) / sizeof(lists[0]); ++i) {
+    Node *records = map_find_named_child(root, lists[i]);
+    if (records == NULL || records->type != NODE_LIST) continue;
+    for (j = 0u; j < records->data.list.count; ++j) {
+      Node *fields = map_find_named_child(records->data.list.items[j], "fields");
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+      for (k = 0u; k < fields->data.list.count; ++k)
+        if (!tbe_annotate_field_profile(fields->data.list.items[k], error))
+          return 0;
+    }
+  }
+  return 1;
+}
+
+typedef enum tbe_field_section {
+  TBE_FIELD_FIXED = 0,
+  TBE_FIELD_GROUP,
+  TBE_FIELD_VAR_DATA
+} tbe_field_section;
+
+static tbe_field_section tbe_field_section_of(const Node *field) {
+  if (map_has_named_child(field, "is_group_field")) return TBE_FIELD_GROUP;
+  if (map_has_named_child(field, "is_var_data")) return TBE_FIELD_VAR_DATA;
+  return TBE_FIELD_FIXED;
+}
+
+static int tbe_field_collection_supported(const Node *field) {
+  const char *kind;
+  if (!map_has_named_child(field, "is_collection")) return 1;
+  kind = map_find_string_value(field, "collection_kind");
+  if (kind == NULL) return 0;
+  if (strcmp(kind, "array") == 0)
+    return map_has_named_child(field, "is_fixed_size");
+  return strcmp(kind, "list") == 0 ||
+         strcmp(kind, "set") == 0 ||
+         strcmp(kind, "map") == 0;
+}
+
+static int tbe_validate_record_fields(
+    const Node *record, int composite, tbe_error_t *error) {
+  const Node *fields = map_find_named_child(record, "fields");
+  tbe_field_section previous = TBE_FIELD_FIXED;
+  size_t i;
+  if (fields == NULL || fields->type != NODE_LIST) return 1;
+
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *name = map_find_string_value(field, "name");
+    const char *type = map_find_string_value(field, "type");
+    tbe_field_section section = tbe_field_section_of(field);
+
+    if (!tbe_field_collection_supported(field)) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Unsupported dynamic collection in TBE declaration");
+      return 0;
+    }
+
+    if (composite && section != TBE_FIELD_FIXED) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
+                      "Composite fields must be fixed-size");
+      return 0;
+    }
+
+    if (!composite && section < previous) {
+      char message[256];
+      snprintf(message, sizeof(message),
+               "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
+               name != NULL ? name : "<unnamed>",
+               type != NULL ? type : "<unknown>");
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
+      return 0;
+    }
+    if (section > previous) previous = section;
+  }
+  return 1;
+}
+
+static int tbe_validate_layout_policy(Node *root, tbe_error_t *error) {
+  static const struct {
+    const char *list;
+    int composite;
+  } groups[] = {
+      {"composites", 1},
+      {"groups", 0},
+      {"messages", 0},
+  };
+  size_t i, j;
+  for (i = 0u; i < sizeof(groups) / sizeof(groups[0]); ++i) {
+    Node *list = map_find_named_child(root, groups[i].list);
+    if (list == NULL || list->type != NODE_LIST) continue;
+    for (j = 0u; j < list->data.list.count; ++j)
+      if (!tbe_validate_record_fields(
+              list->data.list.items[j], groups[i].composite, error))
+        return 0;
+  }
+  return 1;
+}
+
+static int annotate_schema_tree(Node *root) {
+    if (annotate_schema_metadata(root) != 0) return -1;
+    if (annotate_wire_constants(root) != 0) return -1;
+    if (annotate_layouts(root) != 0) return -1;
+    if (annotate_type_references(root) != 0) return -1;
+    if (annotate_group_cursors(root) != 0) return -1;
+    if (annotate_var_data_accessors(root) != 0) return -1;
+    if (annotate_field_states(root) != 0) return -1;
+    if (annotate_enum_helpers(root) != 0) return -1;
+    if (annotate_unions(root) != 0) return -1;
+    return 0;
+}
+
+
+int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
+  if (root == NULL || root->type != NODE_MAP) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
+                    "Invalid TBE contract overlay root");
+    return -1;
+  }
+  if (!tbe_annotate_field_profiles(root, error)) return -1;
+  if (!tbe_validate_layout_policy(root, error)) return -1;
+  if (annotate_schema_tree(root) != 0) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                    "Failed to apply TBE contract overlay");
+    return -1;
+  }
+  return 0;
+}
+
+int databind_tbe_contract_parse(
+    const char *text, size_t len, Node *root, tbe_error_t *error) {
+  if (idl_parse(text, len, root, error) != 0) return -1;
+  return databind_tbe_contract_apply(root, error);
+}
+
+static char *tbe_plan_strdup(const char *text) {
+  size_t length;
+  char *copy;
+  if (text == NULL) return NULL;
+  length = strlen(text);
+  copy = (char *)malloc(length + 1u);
+  if (copy != NULL) memcpy(copy, text, length + 1u);
+  return copy;
+}
+
+static const char *tbe_plan_list_name(IdlDataKind kind) {
+  switch (kind) {
+  case IDL_DATA_MESSAGE: return "messages";
+  case IDL_DATA_COMPOSITE: return "composites";
+  case IDL_DATA_GROUP: return "groups";
+  default: return NULL;
+  }
+}
+
+static const Node *tbe_plan_find_record(
+    const Node *root, IdlDataKind kind, const char *name) {
+  const char *list_name = tbe_plan_list_name(kind);
+  Node *list;
+  size_t i;
+  if (root == NULL || list_name == NULL || name == NULL) return NULL;
+  list = map_find_named_child((Node *)root, list_name);
+  if (list == NULL || list->type != NODE_LIST) return NULL;
+  for (i = 0u; i < list->data.list.count; ++i) {
+    const Node *record = list->data.list.items[i];
+    const char *candidate = map_find_string_value(record, "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return record;
+  }
+  return NULL;
+}
+
+static const Node *tbe_plan_find_field(
+    const Node *record, const char *name) {
+  Node *fields;
+  size_t i;
+  if (record == NULL || name == NULL) return NULL;
+  fields = map_find_named_child((Node *)record, "fields");
+  if (fields == NULL || fields->type != NODE_LIST) return NULL;
+  for (i = 0u; i < fields->data.list.count; ++i) {
+    const Node *field = fields->data.list.items[i];
+    const char *candidate = map_find_string_value(field, "name");
+    if (candidate != NULL && strcmp(candidate, name) == 0) return field;
+  }
+  return NULL;
+}
+
+static int tbe_plan_parse_size(
+    const Node *owner, const char *name, size_t *out, int required) {
+  const char *text = map_find_string_value(owner, name);
+  if (text == NULL) {
+    if (!required) {
+      *out = 0u;
+      return 1;
+    }
+    return 0;
+  }
+  return schema_parse_fixed_layout_size(text, out);
+}
+
+static int tbe_plan_fail(tbe_error_t *error, const char *message) {
+  if (error != NULL)
+    tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
+  return 0;
+}
+
+void databind_tbe_format_plan_destroy(databind_tbe_format_plan *plan) {
+  size_t i, j;
+  if (plan == NULL) return;
+  for (i = 0u; i < plan->type_count; ++i) {
+    databind_tbe_type_plan *type = &plan->types[i];
+    for (j = 0u; j < type->field_count; ++j)
+      free(type->fields[j].name);
+    free(type->fields);
+    free(type->name);
+  }
+  free(plan->types);
+  memset(plan, 0, sizeof(*plan));
+}
+
+const databind_tbe_type_plan *databind_tbe_format_plan_find_type(
+    const databind_tbe_format_plan *plan,
+    const char *type_name) {
+  size_t i;
+  if (plan == NULL || type_name == NULL) return NULL;
+  for (i = 0u; i < plan->type_count; ++i)
+    if (plan->types[i].name != NULL &&
+        strcmp(plan->types[i].name, type_name) == 0)
+      return &plan->types[i];
+  return NULL;
+}
+
+static int tbe_plan_build_field(
+    const IdlContract *contract,
+    const Node *wire_ir,
+    const IdlField *typed_field,
+    const Node *field_node,
+    databind_tbe_field_plan *out,
+    tbe_error_t *error) {
+  const char *name;
+  const char *group_type;
+  const IdlDataDecl *group_decl;
+  const Node *group_record;
+  size_t bit = 0u;
+  (void)contract;
+
+  if (typed_field == NULL || field_node == NULL || out == NULL)
+    return tbe_plan_fail(error, "Invalid TBE field plan input");
+
+  name = typed_field->name;
+  if (name == NULL || name[0] == '\0')
+    return tbe_plan_fail(error, "TBE field identity is missing");
+  out->name = tbe_plan_strdup(name);
+  if (out->name == NULL) {
+    if (error != NULL)
+      tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                    "Failed to allocate TBE field identity");
+    return 0;
+  }
+
+  if (typed_field->optional) {
+    out->flags |= DATABIND_TBE_FIELD_OPTIONAL;
+    if (!tbe_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
+        bit > (size_t)UINT_MAX)
+      return tbe_plan_fail(error, "TBE optional bit is invalid");
+    out->optional_bit = (unsigned)bit;
+  }
+  if (typed_field->nullable) {
+    out->flags |= DATABIND_TBE_FIELD_NULLABLE;
+    if (!tbe_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
+        bit > (size_t)UINT_MAX)
+      return tbe_plan_fail(error, "TBE nullable bit is invalid");
+    out->nullable_bit = (unsigned)bit;
+  }
+
+  if (map_has_named_child(field_node, "is_group_field")) {
+    out->kind = DATABIND_TBE_FIELD_GROUP;
+    out->tail_prefix_bytes = 4u;
+    group_type = typed_field->inner_type;
+    if (group_type == NULL)
+      group_type = map_find_string_value(field_node, "group_type");
+    group_decl = group_type != NULL
+                     ? idl_contract_find_data(contract, group_type)
+                     : NULL;
+    group_record = group_decl != NULL
+                       ? tbe_plan_find_record(wire_ir, group_decl->kind, group_type)
+                       : NULL;
+    if (group_record == NULL ||
+        !tbe_plan_parse_size(
+            group_record, "fixed_block_size",
+            &out->child_fixed_block_size, 1))
+      return tbe_plan_fail(error, "TBE group child layout is unavailable");
+    return 1;
+  }
+
+  if (map_has_named_child(field_node, "is_var_data")) {
+    out->kind = DATABIND_TBE_FIELD_VAR_DATA;
+    out->tail_prefix_bytes = 4u;
+    return 1;
+  }
+
+  out->kind = DATABIND_TBE_FIELD_FIXED;
+  if (!tbe_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
+    return tbe_plan_fail(error, "TBE fixed field offset is unavailable");
+  if (!tbe_plan_parse_size(
+          field_node, "field_size_bytes", &out->wire_extent, 0) ||
+      out->wire_extent == 0u) {
+    if (!tbe_plan_parse_size(
+            field_node, "size_bytes", &out->wire_extent, 1) ||
+        out->wire_extent == 0u)
+      return tbe_plan_fail(error, "TBE fixed field extent is unavailable");
+  }
+  return 1;
+}
+
+int databind_tbe_format_plan_build(
+    const IdlContract *contract,
+    const Node *wire_ir,
+    databind_tbe_format_plan *out,
+    tbe_error_t *error) {
+  databind_tbe_format_plan candidate = {0};
+  const Node *schema;
+  const char *big_endian;
+  size_t eligible = 0u;
+  size_t i, j, out_index = 0u;
+
+  if (out != NULL) memset(out, 0, sizeof(*out));
+  if (contract == NULL || wire_ir == NULL || out == NULL)
+    return tbe_plan_fail(error, "Invalid TBE format plan arguments");
+
+  for (i = 0u; i < contract->data_count; ++i)
+    if (tbe_plan_list_name(contract->data[i].kind) != NULL)
+      ++eligible;
+
+  if (eligible != 0u) {
+    candidate.types =
+        (databind_tbe_type_plan *)calloc(eligible, sizeof(*candidate.types));
+    if (candidate.types == NULL) {
+      if (error != NULL)
+        tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                      "Failed to allocate TBE format plan");
+      return 0;
+    }
+  }
+  candidate.type_count = eligible;
+
+  schema = map_find_named_child((Node *)wire_ir, "schema");
+  big_endian = schema != NULL
+                   ? map_find_string_value(schema, "schema_wire_big_endian_value")
+                   : NULL;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *decl = &contract->data[i];
+    const Node *record;
+    databind_tbe_type_plan *type;
+    if (tbe_plan_list_name(decl->kind) == NULL) continue;
+
+    type = &candidate.types[out_index++];
+    record = tbe_plan_find_record(wire_ir, decl->kind, decl->name);
+    if (record == NULL)
+      goto invalid;
+
+    type->name = tbe_plan_strdup(decl->name);
+    if (type->name == NULL) goto oom;
+    type->wire_big_endian =
+        big_endian != NULL && strcmp(big_endian, "0") != 0;
+    if (!tbe_plan_parse_size(
+            record, "fixed_block_size", &type->fixed_block_size, 1) ||
+        !tbe_plan_parse_size(
+            record, "presence_bitmap_bytes", &type->presence_size, 0) ||
+        !tbe_plan_parse_size(
+            record, "null_bitmap_bytes", &type->null_size, 0))
+      goto invalid;
+
+    type->field_count = decl->field_count;
+    if (type->field_count != 0u) {
+      type->fields = (databind_tbe_field_plan *)calloc(
+          type->field_count, sizeof(*type->fields));
+      if (type->fields == NULL) goto oom;
+    }
+
+    for (j = 0u; j < decl->field_count; ++j) {
+      const Node *field_node =
+          tbe_plan_find_field(record, decl->fields[j].name);
+      if (field_node == NULL ||
+          !tbe_plan_build_field(
+              contract, wire_ir, &decl->fields[j], field_node,
+              &type->fields[j], error))
+        goto fail;
+    }
+  }
+
+  *out = candidate;
+  return 1;
+
+invalid:
+  tbe_plan_fail(error, "TBE wire overlay is incomplete");
+  goto fail;
+oom:
+  if (error != NULL)
+    tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
+                  "Failed to allocate TBE format plan");
+fail:
+  databind_tbe_format_plan_destroy(&candidate);
+  return 0;
+}

@@ -1,6 +1,7 @@
 /* #99 plain-CMeta lifecycle contract. This intentionally requires the
  * production lifecycle API; no local fallback or typed-descriptor adapter. */
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 
 #include <cmeta/struct.h>
 #include <salts_cmeta_data.h>
@@ -17,7 +18,7 @@ enum {
 };
 
 typedef union LifecycleWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[LIFECYCLE_WORKSPACE_BYTES];
 } LifecycleWorkspace;
 

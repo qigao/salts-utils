@@ -501,6 +501,13 @@ static int native_map_contract(
   return 1;
 }
 
+static int native_variant_contract(const cmeta_data_desc *data) {
+  return data != NULL &&
+         data->kind == CMETA_DATA_VARIANT &&
+         data->shape != NULL &&
+         cmeta_data_variant_ops_of(data) != NULL;
+}
+
 static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *data,
                                        size_t depth, size_t active_seen,
                                        const char *path) {
@@ -554,6 +561,30 @@ static DataBindStatus native_preflight(NativePlan *plan, const cmeta_data_desc *
     if (cmeta_data_enum_bits_ops_of(data) == NULL)
       return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
                          "Direct native reader requires canonical enum-bits provider");
+    return DATA_BIND_OK;
+  }
+
+  if (data->kind == CMETA_DATA_VARIANT) {
+    const cmeta_data_variant_shape *shape =
+        (const cmeta_data_variant_shape *)data->shape;
+    if (depth > plan->container_depth) plan->container_depth = depth;
+    if (!native_variant_contract(data))
+      return native_fail(
+          plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+          "Native Variant requires valid provider, tag and non-overlapping case storage");
+    for (i = 0u; i < shape->case_count; ++i) {
+      char child_path[sizeof(((DataBindError *)0)->path)];
+      const cmeta_data_variant_case *item = &shape->cases[i];
+      if (!native_path_join(child_path, sizeof(child_path), path, item->name))
+        return native_fail(plan->diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK,
+                           path, "Native Variant case path exceeds diagnostic capacity");
+      {
+        DataBindStatus status =
+            native_preflight(plan, item->value, depth + 1u, active_seen,
+                             child_path);
+        if (status != DATA_BIND_OK) return status;
+      }
+    }
     return DATA_BIND_OK;
   }
 
@@ -661,6 +692,17 @@ static DataBindStatus native_measure_scratch(
       data->kind == CMETA_DATA_STRING || data->kind == CMETA_DATA_BYTES ||
       data->kind == CMETA_DATA_ENUM)
     return DATA_BIND_OK;
+
+  if (data->kind == CMETA_DATA_VARIANT) {
+    const cmeta_data_variant_shape *shape =
+        (const cmeta_data_variant_shape *)data->shape;
+    for (i = 0u; i < shape->case_count; ++i) {
+      DataBindStatus status =
+          native_measure_scratch(plan, shape->cases[i].value, active, path);
+      if (status != DATA_BIND_OK) return status;
+    }
+    return DATA_BIND_OK;
+  }
 
   if (data->kind == CMETA_DATA_STRUCT) {
     const cmeta_data_struct_shape *shape =
@@ -796,6 +838,10 @@ static int native_value_is_zero(const cmeta_data_desc *data, const void *storage
   if (data->kind == CMETA_DATA_ENUM) {
     bool zero = false;
     return cmeta_data_enum_bits_is_zero(data, storage, &zero) == CMETA_OK && zero;
+  }
+  if (data->kind == CMETA_DATA_VARIANT) {
+    bool zero = false;
+    return cmeta_data_variant_is_zero(data, storage, &zero) == CMETA_OK && zero;
   }
   if (data->kind == CMETA_DATA_STRUCT) {
     const cmeta_data_struct_shape *shape = (const cmeta_data_struct_shape *)data->shape;
@@ -1084,6 +1130,75 @@ static DataBindStatus native_assign_enum(
                      "Enum provider rejected canonical assignment");
 }
 
+static DataBindStatus native_variant_tag_from_token(
+    DataBindNativeDiagnostic *diagnostic, const cmeta_data_desc *tag_data,
+    const cserde_token *token, int64_t *out, const char *path) {
+  int64_t tag = 0;
+
+  if (tag_data == NULL || token == NULL || out == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Native Variant has no usable discriminator");
+
+  if (tag_data->kind == CMETA_DATA_SINT) {
+    if (!native_signed_token(token, &tag))
+      return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
+                         path, "Expected signed Variant discriminator");
+  } else if (tag_data->kind == CMETA_DATA_UINT) {
+    uint64_t value = 0u;
+    if (!native_unsigned_token(token, &value) || value > (uint64_t)INT64_MAX)
+      return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
+                         path, "Expected non-negative Variant discriminator");
+    tag = (int64_t)value;
+  } else if (tag_data->kind == CMETA_DATA_ENUM) {
+    const cmeta_data_enum_shape *shape =
+        (const cmeta_data_enum_shape *)tag_data->shape;
+    size_t i;
+    int matched = 0;
+
+    if (shape == NULL || shape->meta == NULL)
+      return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                         "Variant enum discriminator has no reflection domain");
+
+    if (token->kind == CSERDE_STRING) {
+      for (i = 0u; i < shape->meta->count; ++i) {
+        const cmeta_enum_item_desc *item = &shape->meta->items[i];
+        if (native_enum_slice_equal(&token->value.slice, item->symbol) ||
+            native_enum_slice_equal(&token->value.slice, item->text)) {
+          tag = item->value;
+          matched = 1;
+          break;
+        }
+      }
+    } else if (token->kind == CSERDE_SINT) {
+      tag = token->value.sint;
+      matched = 1;
+    } else if (token->kind == CSERDE_UINT &&
+               token->value.uint <= (uint64_t)INT64_MAX) {
+      tag = (int64_t)token->value.uint;
+      matched = 1;
+    }
+
+    if (matched) {
+      matched = 0;
+      for (i = 0u; i < shape->meta->count; ++i) {
+        if (shape->meta->items[i].value == tag) {
+          matched = 1;
+          break;
+        }
+      }
+    }
+    if (!matched)
+      return native_fail(diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, CSERDE_OK,
+                         path, "Variant enum discriminator is not declared");
+  } else {
+    return native_fail(diagnostic, DATA_BIND_ERR_SCHEMA, CSERDE_OK, path,
+                       "Variant discriminator kind is unsupported");
+  }
+
+  *out = tag;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus native_decode_check_budget(
     NativeDecode *decode, size_t depth, const char *path) {
   if (depth == 0u || depth > decode->options->max_depth)
@@ -1127,6 +1242,81 @@ static DataBindStatus native_cmeta_provider_failure(
       break;
   }
   return native_fail(diagnostic, mapped, CSERDE_OK, path, message);
+}
+
+static DataBindStatus native_decode_variant(
+    NativeDecode *decode, const cmeta_data_desc *data, void *storage,
+    size_t depth, const char *path, NativeArena *scratch,
+    const cserde_token *opener) {
+  const cmeta_data_variant_shape *shape =
+      (const cmeta_data_variant_shape *)data->shape;
+  const cmeta_data_variant_case *active_case;
+  cserde_token token;
+  int64_t tag = 0;
+  DataBindStatus status;
+  cmeta_status provider_status;
+  void *payload;
+
+  if (opener == NULL || opener->kind != CSERDE_ARRAY_BEGIN)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                       CSERDE_OK, path,
+                       "Expected [tag,payload] array for native Variant");
+
+  status = native_next(decode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+  status = native_variant_tag_from_token(
+      decode->diagnostic, shape->tag, &token, &tag, path);
+  if (status != DATA_BIND_OK) return status;
+
+  active_case = cmeta_data_variant_case_by_tag(shape, tag);
+  if (active_case == NULL)
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_TYPE_MISMATCH,
+                       CSERDE_OK, path,
+                       "Variant discriminator has no declared case");
+
+  provider_status = cmeta_data_variant_select(data, storage, tag);
+  if (provider_status != CMETA_OK)
+    return native_cmeta_provider_failure(
+        decode->diagnostic, provider_status, path,
+        "Variant provider could not select the requested case");
+
+  payload = (unsigned char *)storage + active_case->offset;
+  if (!native_value_is_zero(active_case->value, payload)) {
+    (void)cmeta_data_variant_restore_zero(data, storage);
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK,
+                       path,
+                       "Variant provider selected a non-zero payload");
+  }
+
+  status = native_decode_value(
+      decode, active_case->value, payload, depth + 1u, path, scratch);
+  if (status != DATA_BIND_OK) {
+    if (cmeta_data_variant_restore_zero(data, storage) != CMETA_OK)
+      return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME,
+                         CSERDE_OK, path,
+                         "Variant rollback failed after payload decode");
+    return status;
+  }
+
+  status = native_next(decode, &token, path);
+  if (status != DATA_BIND_OK) {
+    if (cmeta_data_variant_restore_zero(data, storage) != CMETA_OK)
+      return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME,
+                         CSERDE_OK, path,
+                         "Variant rollback failed after truncated input");
+    return status;
+  }
+  if (token.kind != CSERDE_ARRAY_END) {
+    if (cmeta_data_variant_restore_zero(data, storage) != CMETA_OK)
+      return native_fail(decode->diagnostic, DATA_BIND_ERR_RUNTIME,
+                         CSERDE_OK, path,
+                         "Variant rollback failed after malformed input");
+    return native_fail(decode->diagnostic, DATA_BIND_ERR_PARSE,
+                       CSERDE_OK, path,
+                       "Variant array must contain exactly tag and payload");
+  }
+
+  return DATA_BIND_OK;
 }
 
 static DataBindStatus native_decode_collection(
@@ -1379,6 +1569,10 @@ static DataBindStatus native_decode_value_admitted(
 
   if (data->kind == CMETA_DATA_STRUCT)
     return native_decode_struct(
+        decode, data, storage, depth, path, scratch, token);
+
+  if (data->kind == CMETA_DATA_VARIANT)
+    return native_decode_variant(
         decode, data, storage, depth, path, scratch, token);
 
   if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
@@ -2066,6 +2260,62 @@ static DataBindStatus native_encode_value(
     NativeEncode *encode, const cmeta_data_desc *data,
     const void *source, size_t depth, const char *path);
 
+static DataBindStatus native_encode_variant(
+    NativeEncode *encode, const cmeta_data_desc *data,
+    const void *source, size_t depth, const char *path) {
+  const cmeta_data_variant_shape *shape =
+      (const cmeta_data_variant_shape *)data->shape;
+  const cmeta_data_variant_case *active_case;
+  cserde_token token = {.kind = CSERDE_ARRAY_BEGIN};
+  int64_t tag = 0;
+  cmeta_status provider_status;
+  DataBindStatus status;
+
+  provider_status = cmeta_data_variant_active_tag(data, source, &tag);
+  if (provider_status != CMETA_OK)
+    return native_fail(
+        encode->diagnostic,
+        provider_status == CMETA_INVALID_ARGUMENT
+            ? DATA_BIND_ERR_TYPE_MISMATCH
+            : DATA_BIND_ERR_RUNTIME,
+        CSERDE_OK, path,
+        provider_status == CMETA_INVALID_ARGUMENT
+            ? "Cannot encode an unselected native Variant"
+            : "Variant provider could not read the active case");
+
+  active_case = cmeta_data_variant_case_by_tag(shape, tag);
+  if (active_case == NULL)
+    return native_fail(encode->diagnostic, DATA_BIND_ERR_RUNTIME,
+                       CSERDE_OK, path,
+                       "Variant provider returned an undeclared active case");
+
+  status = native_write(encode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+
+  if (shape->tag->kind == CMETA_DATA_UINT) {
+    if (tag < 0)
+      return native_fail(encode->diagnostic, DATA_BIND_ERR_RUNTIME,
+                         CSERDE_OK, path,
+                         "Unsigned Variant provider returned a negative tag");
+    token = (cserde_token){
+        .kind = CSERDE_UINT, .value.uint = (uint64_t)tag};
+  } else {
+    token = (cserde_token){
+        .kind = CSERDE_SINT, .value.sint = tag};
+  }
+  status = native_write(encode, &token, path);
+  if (status != DATA_BIND_OK) return status;
+
+  status = native_encode_value(
+      encode, active_case->value,
+      (const unsigned char *)source + active_case->offset,
+      depth + 1u, path);
+  if (status != DATA_BIND_OK) return status;
+
+  token = (cserde_token){.kind = CSERDE_ARRAY_END};
+  return native_write(encode, &token, path);
+}
+
 static DataBindStatus native_encode_collection(
     NativeEncode *encode, const cmeta_data_desc *data,
     const void *source, size_t depth, const char *path) {
@@ -2232,6 +2482,9 @@ static DataBindStatus native_encode_value(
 
   if (data->kind == CMETA_DATA_STRUCT)
     return native_encode_struct(encode, data, source, depth, path);
+
+  if (data->kind == CMETA_DATA_VARIANT)
+    return native_encode_variant(encode, data, source, depth, path);
 
   if (data->kind == CMETA_DATA_SEQUENCE || data->kind == CMETA_DATA_SET)
     return native_encode_collection(encode, data, source, depth, path);

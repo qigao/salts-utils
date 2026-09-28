@@ -1,0 +1,1010 @@
+# =============================================================================
+# Executable
+# =============================================================================
+
+set(DATABIND_COMPILER_TOOLING_TARGET databind_compiler_tooling)
+add_library(${DATABIND_COMPILER_TOOLING_TARGET} INTERFACE)
+target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
+  INTERFACE
+    Salts::CmdParser
+    Salts::Mustache
+    Salts::JsonParser
+    Salts::Schema
+    databind_tbe_contract)
+set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
+  PROPERTIES FOLDER "databind/idl/compiler")
+
+set(TBE_COMPILER_TEMPLATE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_typed_source.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/cpp_types.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/go_types.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/python_dataclass.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/rfl_types.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/sqlite_schema.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
+    "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
+
+cmake_add_executable(salts_idlc
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  FOLDER "databind/idl/compiler")
+target_include_directories(salts_idlc
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+set_target_properties(salts_idlc PROPERTIES
+  OUTPUT_NAME "salts-idlc")
+set_property(TARGET salts_idlc APPEND PROPERTY LINK_DEPENDS
+             ${TBE_COMPILER_TEMPLATE_FILES})
+
+# =============================================================================
+# Copy templates next to executable for easy access
+# =============================================================================
+
+add_custom_command(
+  TARGET salts_idlc
+  POST_BUILD
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/templates
+    $<TARGET_FILE_DIR:salts_idlc>/templates
+  COMMENT "Copying template files to output directory")
+
+install(
+  TARGETS salts_idlc
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
+
+install(
+  DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates"
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT DataBind)
+
+# =============================================================================
+# Tests
+# =============================================================================
+
+if(BUILD_TESTS)
+add_test(NAME test_databind_compiler_tooling_boundary
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDATABIND_SOURCE_ROOT=${DATABIND_SOURCE_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_tooling_boundary.cmake")
+set_tests_properties(test_databind_compiler_tooling_boundary
+  PROPERTIES LABELS "databind;package;compiler")
+
+set(DATABIND_NULLABLE_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/nullable_generated")
+file(MAKE_DIRECTORY "${DATABIND_NULLABLE_GENERATED_DIR}")
+set(DATABIND_NULLABLE_GENERATED_H
+    "${DATABIND_NULLABLE_GENERATED_DIR}/nullable_generated.h")
+set(DATABIND_NULLABLE_GENERATED_C
+    "${DATABIND_NULLABLE_GENERATED_DIR}/nullable_generated.c")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_NULLABLE_GENERATED_H}"
+    "${DATABIND_NULLABLE_GENERATED_C}"
+  COMMAND
+    $<TARGET_FILE:salts_idlc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
+      --lang c
+      --output "${DATABIND_NULLABLE_GENERATED_H}"
+      --source-output "${DATABIND_NULLABLE_GENERATED_C}"
+  DEPENDS
+    salts_idlc
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_nullable_codegen.schema"
+  VERBATIM
+  COMMENT "Generating nullable DataBind artifact")
+
+set_source_files_properties(
+  "${DATABIND_NULLABLE_GENERATED_C}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_nullable_codegen
+  SOURCES
+    test_nullable_codegen.c
+    "${DATABIND_NULLABLE_GENERATED_C}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_NULLABLE_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+set_tests_properties(test_databind_nullable_codegen
+  PROPERTIES LABELS "databind;compiler;nullable")
+
+add_test(NAME test_databind_projection_config_stale_rejected
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDATABINDC=$<TARGET_FILE:salts_idlc>"
+    "-DSCHEMA=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+    "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_stale.json"
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/projection-config-stale"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/test_projection_config_stale_rejection.cmake")
+set_tests_properties(test_databind_projection_config_stale_rejected
+  PROPERTIES LABELS "databind;compiler;projection-config")
+
+
+cmake_add_test(test_databind_openapi_projection
+  SOURCES
+    test_openapi_projection.c
+    compiler_core.c
+    projection.c
+    openapi_projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    OPENAPI_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_projection.schema"
+    OPENAPI_OPTIONAL_PATH_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_optional_path.schema"
+    OPENAPI_BYTES_SIZE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_bytes_size.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_openapi_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_openapi_projection PROPERTIES
+  LABELS "databind;compiler;openapi;http;validation")
+
+set(DATABIND_METHOD_PLAN_FIXTURE_HTTP
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_http_projection.h")
+set(DATABIND_METHOD_PLAN_FIXTURE_RPC
+    "${CMAKE_CURRENT_BINARY_DIR}/generated_rpc_projection.h")
+
+add_executable(databind_method_plan_projection_fixture_gen
+  test_method_plan_projection_generate.c
+  projection.c
+  method_plan_projection.c
+  binary_layout_ir.c
+  compiler_core.c
+  database_schema.c
+  mustache_helpers.c)
+target_link_libraries(databind_method_plan_projection_fixture_gen
+  PRIVATE
+    Salts::IDL
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core)
+target_include_directories(databind_method_plan_projection_fixture_gen
+  PRIVATE
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(databind_method_plan_projection_fixture_gen
+  PROPERTIES FOLDER "databind/idl/compiler/tests")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  COMMAND
+    $<TARGET_FILE:databind_method_plan_projection_fixture_gen>
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  DEPENDS
+    databind_method_plan_projection_fixture_gen
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  VERBATIM)
+
+add_custom_target(databind_method_plan_projection_artifacts
+  DEPENDS
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}")
+set_target_properties(databind_method_plan_projection_artifacts
+  PROPERTIES FOLDER "databind/idl/compiler/tests")
+
+cmake_add_test(test_databind_generated_method_plan_projection
+  SOURCES
+    test_generated_method_plan_projection.c
+    "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+    "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${CMAKE_CURRENT_BINARY_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_generated_method_plan_projection
+  databind_method_plan_projection_artifacts)
+set_source_files_properties(
+  "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
+  "${DATABIND_METHOD_PLAN_FIXTURE_RPC}"
+  PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
+set_target_properties(test_databind_generated_method_plan_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+
+cmake_add_test(test_databind_projection_registry
+  SOURCES
+    test_projection_registry.c
+    projection.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_projection_registry PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+cmake_add_test(test_databind_projection_frontend
+  SOURCES
+    test_projection_frontend.c
+    projection_frontend.c
+    projection_config.c
+    projection.c
+    service_native.c
+    plugin_projection.c
+    openapi_projection.c
+    method_plan_projection.c
+    socket_plan_projection.c
+    flowmq_plan_projection.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
+  LIBS
+    Salts::IDL
+    Salts::PluginABI
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    DATABIND_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json"
+    DATABIND_PROJECTION_CONFIG_INVALID_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config_invalid.json"
+    DATABIND_SOCKET_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json"
+    DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_projection_frontend PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+
+cmake_add_test(test_databind_socket_plan_projection
+  SOURCES
+    test_socket_plan_projection.c
+    projection.c
+    socket_plan_projection.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    SOCKET_PLAN_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_socket_plan_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_socket_plan_projection PROPERTIES
+  LABELS "databind;compiler;socket-plan;transport")
+
+cmake_add_test(test_databind_message_native
+  SOURCES
+    test_message_native.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    MESSAGE_NATIVE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_message_native PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_message_native PROPERTIES
+  LABELS "databind;compiler;message-native;channel")
+
+cmake_add_test(test_databind_flowmq_plan_projection
+  SOURCES
+    test_flowmq_plan_projection.c
+    projection.c
+    flowmq_plan_projection.c
+    binary_layout_ir.c
+    binary_reader_codegen.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    FLOWMQ_PLAN_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_flowmq_plan_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_flowmq_plan_projection PROPERTIES
+  LABELS "databind;compiler;flowmq-plan;transport")
+
+# Canonical Service -> native FunctionMeta/FunctionAbi lowering qualification.
+set(DATABIND_SERVICE_NATIVE_TEST_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/generated-service-native")
+file(MAKE_DIRECTORY "${DATABIND_SERVICE_NATIVE_TEST_DIR}")
+
+set(DATABIND_SERVICE_NATIVE_RECORD_H
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_records.h")
+set(DATABIND_SERVICE_NATIVE_RECORD_C
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_records.c")
+set(DATABIND_SERVICE_NATIVE_HEADER
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_generated.h")
+set(DATABIND_SERVICE_NATIVE_SOURCE
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}/service_native_generated.c")
+
+cmake_add_executable(databind_service_native_codegen_fixture_tool
+  SOURCES
+    test_service_native_codegen_tool.c
+    compiler_core.c
+    projection.c
+    service_native.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_HEADER}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  COMMAND
+    $<TARGET_FILE:salts_idlc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+      --lang c
+      --output "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+      --source-output "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+  COMMAND
+    $<TARGET_FILE:databind_service_native_codegen_fixture_tool>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+      "${DATABIND_SERVICE_NATIVE_HEADER}"
+      "${DATABIND_SERVICE_NATIVE_SOURCE}"
+      "service_native_records.h"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_owned_error.schema"
+  DEPENDS
+    salts_idlc
+    databind_service_native_codegen_fixture_tool
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_optional.schema"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_owned_error.schema"
+  VERBATIM
+  COMMENT "Generating canonical DataBind Service native metadata")
+
+add_custom_target(databind_service_native_generated_sources
+  DEPENDS
+    "${DATABIND_SERVICE_NATIVE_RECORD_H}"
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_HEADER}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}")
+
+set_source_files_properties(
+  "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+  "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_service_native_lowering
+  SOURCES
+    test_service_native_lowering.c
+    test_service_native_business.c
+    "${DATABIND_SERVICE_NATIVE_RECORD_C}"
+    "${DATABIND_SERVICE_NATIVE_SOURCE}"
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_service_native_lowering
+  databind_service_native_generated_sources)
+
+cmake_add_test(test_databind_service_native_public_cpp
+  SOURCES test_service_native_public_cpp.cpp
+  LIBS Salts::DataBind
+  INCLUDES
+    "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_service_native_public_cpp
+  databind_service_native_generated_sources)
+set_target_properties(test_databind_service_native_public_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED YES
+  CXX_EXTENSIONS NO)
+
+# Generated PLUGIN backend qualification through the canonical public
+# salts_idl_target() -> salts_idlc projection frontend.
+include("${CMAKE_SOURCE_DIR}/cmake/IDL.cmake")
+
+set(DATABIND_PLUGIN_TEST_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/databind_plugin_generated_fixture.databind")
+file(MAKE_DIRECTORY "${DATABIND_PLUGIN_TEST_GENERATED_DIR}")
+set(DATABIND_PLUGIN_TEST_NATIVE_H
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_native.h")
+set(DATABIND_PLUGIN_TEST_BINDING_H
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_binding_native.h")
+set(DATABIND_PLUGIN_TEST_BINDING_C
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image_binding_native.c")
+set(DATABIND_PLUGIN_TEST_SERVICE_H
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.h")
+set(DATABIND_PLUGIN_TEST_SOURCE
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}/image.plugin.c")
+
+salts_idl_target(
+  TARGET databind_plugin_generated_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+  COMPONENT "Image.ImageProcessor"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "image"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_business_fixture.c)
+
+
+salts_idl_target(
+  TARGET databind_method_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  ARTIFACT_NAME "public_calc"
+  TRANSPORTS HTTP RPC)
+
+
+salts_idl_target(
+  TARGET databind_method_plan_configured_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection.schema"
+  ARTIFACT_NAME "configured_calc"
+  TRANSPORTS HTTP RPC
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
+
+
+salts_idl_target(
+  TARGET databind_socket_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_public.schema"
+  ARTIFACT_NAME "device"
+  TRANSPORTS SOCKET
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json")
+
+
+salts_idl_target(
+  TARGET databind_flowmq_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "device"
+  TRANSPORTS FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json")
+
+
+salts_idl_target(
+  TARGET databind_channel_multi_transport_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "device_multi"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_socket_projection_config.json")
+
+salts_idl_target(
+  TARGET databind_binary_transport_provider_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider.schema"
+  ARTIFACT_NAME "binary_exec"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_transport_provider_config.json")
+
+cmake_add_test(test_databind_binary_transport_provider
+  SOURCES test_public_binary_transport_provider.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_binary_transport_provider
+  databind_binary_transport_provider_fixture_idl_codegen)
+set_target_properties(test_databind_binary_transport_provider PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_transport_provider PROPERTIES
+  LABELS "databind;compiler;binary-reader;transport;execution")
+
+cmake_add_test(test_databind_binary_transport_provider_cpp
+  SOURCES test_public_binary_transport_provider_cpp.cpp
+  LIBS
+    Salts::DataBind
+    ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_binary_transport_provider_cpp
+  databind_binary_transport_provider_fixture_idl_codegen)
+set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
+  LABELS "databind;compiler;binary-reader;transport;public;cpp")
+
+cmake_add_test(test_databind_channel_multi_transport
+  SOURCES test_public_channel_multi_transport.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_channel_multi_transport_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_channel_multi_transport_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_channel_multi_transport
+  databind_channel_multi_transport_fixture_idl_codegen)
+set_target_properties(test_databind_channel_multi_transport PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_channel_multi_transport PROPERTIES
+  LABELS "databind;compiler;transport;composition")
+
+cmake_add_test(test_databind_flowmq_plan_public_frontend
+  SOURCES test_public_flowmq_plan_frontend.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_flowmq_plan_public_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_flowmq_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_flowmq_plan_public_frontend
+  databind_flowmq_plan_public_fixture_idl_codegen)
+set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
+  LABELS "databind;compiler;flowmq-plan;public")
+
+cmake_add_test(test_databind_socket_plan_public_frontend
+  SOURCES test_public_socket_plan_frontend.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_socket_plan_public_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_socket_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_socket_plan_public_frontend
+  databind_socket_plan_public_fixture_idl_codegen)
+set_target_properties(test_databind_socket_plan_public_frontend PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_socket_plan_public_frontend PROPERTIES
+  LABELS "databind;compiler;socket-plan;public")
+
+
+cmake_add_test(test_databind_method_plan_public_frontend
+  SOURCES test_public_method_plan_frontend.c
+  LIBS Salts::DataBind Salts::TinyTest
+  INCLUDES
+    "${databind_method_plan_public_fixture_GENERATED_DIR}"
+    "${databind_method_plan_configured_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_method_plan_public_frontend
+  databind_method_plan_public_fixture_idl_codegen
+  databind_method_plan_configured_fixture_idl_codegen)
+
+get_target_property(
+  _databind_plugin_generated_fixture_links
+  databind_plugin_generated_fixture_plugin
+  LINK_LIBRARIES)
+if("Salts::IDL" IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must not link Salts::IDL")
+endif()
+if(NOT "Salts::DataBind"
+       IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI"
+   IN_LIST _databind_plugin_generated_fixture_links)
+  message(FATAL_ERROR
+          "generated Plugin must not link removed Salts::DataBindGeneratedABI")
+endif()
+
+get_target_property(
+  _databind_plugin_generated_client_links
+  databind_plugin_generated_fixture_plugin_client
+  LINK_LIBRARIES)
+if("Salts::IDL"
+   IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must not link Salts::IDL")
+endif()
+if(NOT "Salts::Plugin"
+       IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must link Salts::Plugin")
+endif()
+if(NOT "Salts::DataBind"
+       IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must link canonical Salts::DataBind")
+endif()
+if("Salts::DataBindGeneratedABI"
+   IN_LIST _databind_plugin_generated_client_links)
+  message(FATAL_ERROR
+          "generated Plugin client must not link removed Salts::DataBindGeneratedABI")
+endif()
+
+add_custom_command(
+  OUTPUT
+    "${DATABIND_PLUGIN_TEST_BINDING_H}"
+    "${DATABIND_PLUGIN_TEST_BINDING_C}"
+  COMMAND
+    $<TARGET_FILE:salts_idlc>
+      "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+      --lang c
+      --output "${DATABIND_PLUGIN_TEST_BINDING_H}"
+      --source-output "${DATABIND_PLUGIN_TEST_BINDING_C}"
+  DEPENDS
+    salts_idlc
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+  VERBATIM
+  COMMENT "Generating host-side DataBind binding fixture")
+
+set_source_files_properties(
+  "${DATABIND_PLUGIN_TEST_BINDING_C}"
+  PROPERTIES GENERATED TRUE)
+
+cmake_add_test(test_databind_plugin_generated_dso
+  SOURCES
+    test_plugin_generated_dso.c
+    "${DATABIND_PLUGIN_TEST_BINDING_C}"
+  LIBS Salts::Plugin Salts::DataBind Salts::TinyTest
+  DEFS
+    GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
+  INCLUDES
+    "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_generated_dso
+  databind_plugin_generated_fixture_plugin)
+
+salts_idl_target(
+  TARGET databind_plugin_typed_error_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_typed_error.schema"
+  COMPONENT "ErrorPlugin.StorePlugin"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "error"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_typed_error_business_fixture.c)
+
+cmake_add_test(test_databind_plugin_typed_error_client
+  SOURCES test_plugin_typed_error_generated_client.c
+  LIBS
+    databind_plugin_typed_error_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_typed_error_fixture_plugin>"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_typed_error_client
+  databind_plugin_typed_error_fixture_plugin
+  databind_plugin_typed_error_fixture_plugin_client)
+
+add_executable(test_databind_plugin_typed_error_client_cpp
+  test_plugin_typed_error_generated_client_cpp.cpp)
+target_compile_features(test_databind_plugin_typed_error_client_cpp PRIVATE
+  cxx_std_17)
+target_link_libraries(test_databind_plugin_typed_error_client_cpp PRIVATE
+  databind_plugin_typed_error_fixture_plugin_client)
+set_target_properties(test_databind_plugin_typed_error_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO
+  FOLDER "databind/idl/compiler")
+add_test(NAME test_databind_plugin_typed_error_client_cpp
+  COMMAND test_databind_plugin_typed_error_client_cpp)
+
+salts_idl_target(
+  TARGET databind_plugin_owned_typed_error_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_owned_typed_error.schema"
+  COMPONENT "OwnedErrorPlugin.StorePlugin"
+  VERSION "1.0.0"
+  ARTIFACT_NAME "owned_error"
+  ARTIFACTS PLUGIN
+  SOURCES test_plugin_owned_typed_error_business_fixture.c)
+
+cmake_add_test(test_databind_plugin_owned_typed_error_client
+  SOURCES test_plugin_owned_typed_error_generated_client.c
+  LIBS
+    databind_plugin_owned_typed_error_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_owned_typed_error_fixture_plugin>"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_owned_typed_error_client
+  databind_plugin_owned_typed_error_fixture_plugin
+  databind_plugin_owned_typed_error_fixture_plugin_client)
+
+add_executable(test_databind_plugin_owned_typed_error_client_cpp
+  test_plugin_owned_typed_error_generated_client_cpp.cpp)
+target_compile_features(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
+  cxx_std_17)
+target_link_libraries(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
+  databind_plugin_owned_typed_error_fixture_plugin_client)
+set_target_properties(test_databind_plugin_owned_typed_error_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO
+  FOLDER "databind/idl/compiler")
+add_test(NAME test_databind_plugin_owned_typed_error_client_cpp
+  COMMAND test_databind_plugin_owned_typed_error_client_cpp)
+
+foreach(_client_fixture IN ITEMS
+        bad_plugin_id
+        bad_contract
+        bad_export
+        bad_function)
+  add_library("databind_plugin_client_${_client_fixture}" SHARED
+    test_plugin_client_mismatch_fixture.c)
+  target_compile_features(
+    "databind_plugin_client_${_client_fixture}" PRIVATE c_std_11)
+  target_link_libraries(
+    "databind_plugin_client_${_client_fixture}" PRIVATE Salts::PluginABI)
+  set_target_properties(
+    "databind_plugin_client_${_client_fixture}" PROPERTIES
+    PREFIX ""
+    FOLDER "databind/idl/compiler/tests")
+endforeach()
+target_compile_definitions(databind_plugin_client_bad_plugin_id PRIVATE
+  PLUGIN_CLIENT_MISMATCH_PLUGIN_ID=1)
+target_compile_definitions(databind_plugin_client_bad_contract PRIVATE
+  PLUGIN_CLIENT_MISMATCH_CONTRACT_ID=1)
+target_compile_definitions(databind_plugin_client_bad_export PRIVATE
+  PLUGIN_CLIENT_MISMATCH_EXPORT_ID=1)
+target_compile_definitions(databind_plugin_client_bad_function PRIVATE
+  PLUGIN_CLIENT_MISMATCH_FUNCTION=1)
+
+cmake_add_test(test_databind_plugin_generated_client
+  SOURCES test_plugin_generated_client.c
+  LIBS
+    databind_plugin_generated_fixture_plugin_client
+    Salts::TinyTest
+  DEFS
+    GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
+    GENERATED_DATABIND_CLIENT_BAD_PLUGIN_ID_PATH="$<TARGET_FILE:databind_plugin_client_bad_plugin_id>"
+    GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH="$<TARGET_FILE:databind_plugin_client_bad_contract>"
+    GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH="$<TARGET_FILE:databind_plugin_client_bad_export>"
+    GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH="$<TARGET_FILE:databind_plugin_client_bad_function>"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_plugin_generated_client
+  databind_plugin_generated_fixture_plugin
+  databind_plugin_generated_fixture_plugin_client
+  databind_plugin_client_bad_plugin_id
+  databind_plugin_client_bad_contract
+  databind_plugin_client_bad_export
+  databind_plugin_client_bad_function)
+
+add_executable(test_databind_plugin_generated_client_cpp
+  test_plugin_generated_client_cpp.cpp)
+target_compile_features(test_databind_plugin_generated_client_cpp PRIVATE
+  cxx_std_17)
+target_link_libraries(test_databind_plugin_generated_client_cpp PRIVATE
+  databind_plugin_generated_fixture_plugin_client)
+set_target_properties(test_databind_plugin_generated_client_cpp PROPERTIES
+  CXX_EXTENSIONS NO
+  FOLDER "databind/idl/compiler")
+add_test(NAME test_databind_plugin_generated_client_cpp
+  COMMAND test_databind_plugin_generated_client_cpp)
+
+cmake_add_test(test_databind_plugin_projection_rejection
+  SOURCES
+    test_plugin_projection_rejection.c
+    compiler_core.c
+    projection.c
+    service_native.c
+    plugin_projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::PluginABI
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    PLUGIN_UNSUPPORTED_OWNED_TYPED_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_unsupported_owned_typed_error.schema"
+    PLUGIN_MULTI_SERVICE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_multi_service.schema"
+    PLUGIN_COMPONENT_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+
+cmake_add_test(test_database_schema_contract
+  SOURCES test_database_schema_contract.c database_schema.c
+  LIBS Salts::IDL Salts::TinyTest Salts::Core
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_tests_properties(test_database_schema_contract PROPERTIES
+  LABELS "databind;compiler;database;idl-contract")
+
+cmake_add_test(test_tbe_compiler
+  SOURCES test_tbe_compiler.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  DEFS
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+    C_STRUCT_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/c_structs.mustache"
+    CPP_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/cpp_types.mustache"
+    GO_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/go_types.mustache"
+    PYTHON_DATACLASS_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/python_dataclass.mustache"
+    RUST_STRUCTS_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/rust_structs.mustache"
+    TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
+    POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_postgresql_security_probe.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  FOLDER "databind/idl/compiler")
+target_include_directories(test_tbe_compiler
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+
+cmake_add_test(test_tbe_compiler_schema_boundary
+  SOURCES test_schema_boundary.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  FOLDER "databind/idl/compiler")
+target_include_directories(test_tbe_compiler_schema_boundary
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+cmake_add_test(test_tbe_compiler_cmeta_fields
+  SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
+  LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  FOLDER "databind/idl/compiler")
+target_include_directories(test_tbe_compiler_cmeta_fields
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+cmake_add_test(test_databind_method_plan_binary_admission
+  SOURCES
+    test_method_plan_binary_admission.c
+    projection.c
+    method_plan_projection.c
+    binary_layout_ir.c
+    compiler_core.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    BINARY_ADMISSION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_binary_admission.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_method_plan_binary_admission PROPERTIES
+  LABELS "databind;compiler;binary-layout;transport")
+
+cmake_add_test(test_databind_binary_reader_codegen
+  SOURCES
+    test_binary_reader_codegen.c
+    binary_reader_codegen.c
+    binary_layout_ir.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_binary_reader_codegen PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_reader_codegen PROPERTIES
+  LABELS "databind;compiler;binary-reader")
+
+cmake_add_test(test_databind_binary_layout_ir
+  SOURCES
+    test_binary_layout_ir.c
+    binary_layout_ir.c
+    compiler_core.c
+    projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
+    BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_binary_layout_ir PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_layout_ir PROPERTIES
+  LABELS "databind;compiler;binary-layout")
+target_include_directories(test_tbe_compiler_cmeta_fields
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+target_include_directories(test_tbe_compiler_schema_boundary
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
+if(TARGET test_tbe_compiler_schema_boundary)
+  target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
+  set_source_files_properties(test_scalar_projection.c
+    PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
+endif()
+endif()
+
+if(BUILD_TESTS)
+  foreach(binding_compiler_consumer IN ITEMS
+      test_databind_projection_frontend
+      test_databind_socket_plan_projection
+      test_databind_message_native
+      test_databind_flowmq_plan_projection
+      databind_service_native_codegen_fixture_tool
+      test_databind_plugin_projection_rejection)
+    if(TARGET ${binding_compiler_consumer})
+      target_link_libraries(${binding_compiler_consumer}
+        PRIVATE databind_binding_compiler)
+    endif()
+  endforeach()
+endif()

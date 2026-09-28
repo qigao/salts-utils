@@ -138,70 +138,70 @@ int schema_cmeta_data_kind(const char *semantic, cmeta_data_kind *out_kind) {
   return 0;
 }
 
-static const Node *schema_cmeta_child(const Node *map, const char *name) {
+static const char *schema_cmeta_declared_semantic(
+    const IdlContract *contract, const char *name) {
+  const IdlDataDecl *decl = NULL;
   size_t i;
-  if (map == NULL || map->type != NODE_MAP) return NULL;
-  for (i = 0; i < map->data.map.count; ++i) {
-    const Node *child = map->data.map.items[i];
-    if (child != NULL && child->name != NULL && strcmp(child->name, name) == 0) return child;
-  }
-  return NULL;
-}
-
-static const char *schema_cmeta_text(const Node *map, const char *name) {
-  const Node *node = schema_cmeta_child(map, name);
-  return node != NULL && node->type == NODE_STRING ? node->data.string_val : NULL;
-}
-
-static int schema_cmeta_flag(const Node *field, const char *name) {
-  const char *value = schema_cmeta_text(field, name);
-  return value != NULL && strcmp(value, "1") == 0;
-}
-
-static const char *schema_cmeta_named_semantic(const Node *root, const char *name) {
-  static const struct {
-    const char *list;
-    const char *semantic;
-  } declarations[] = {{"composites", "composite"},
-                      {"messages", "message"},
-                      {"groups", "group"},
-                      {"enums", "enum"},
-                      {"unions", "union"}};
-  size_t i, j;
-  if (name == NULL) return NULL;
-  for (i = 0; i < sizeof(declarations) / sizeof(declarations[0]); ++i) {
-    const Node *list = schema_cmeta_child(root, declarations[i].list);
-    if (list == NULL || list->type != NODE_LIST) continue;
-    for (j = 0; j < list->data.list.count; ++j) {
-      const char *candidate = schema_cmeta_text(list->data.list.items[j], "name");
-      if (candidate != NULL && strcmp(candidate, name) == 0) return declarations[i].semantic;
+  if (contract == NULL || name == NULL) return NULL;
+  for (i = 0u; i < contract->data_count; ++i) {
+    if (contract->data[i].name != NULL &&
+        strcmp(contract->data[i].name, name) == 0) {
+      decl = &contract->data[i];
+      break;
     }
   }
-  return NULL;
+  if (decl == NULL) return NULL;
+  switch (decl->kind) {
+  case IDL_DATA_MESSAGE: return "message";
+  case IDL_DATA_COMPOSITE: return "composite";
+  case IDL_DATA_GROUP: return "group";
+  case IDL_DATA_ENUM: return decl->flags ? "flags" : "enum";
+  case IDL_DATA_UNION: return "union";
+  default: return NULL;
+  }
 }
 
-int schema_cmeta_field_resolve(const Node *root, const Node *field, schema_cmeta_field_type *out) {
+int schema_cmeta_field_resolve(
+    const IdlContract *contract, const IdlField *field,
+    schema_cmeta_field_type *out) {
   schema_cmeta_field_type result;
-  const char *semantic, *declared;
+  const char *semantic;
   const char *sequence_label = "list";
-  if (root == NULL || root->type != NODE_MAP || field == NULL || field->type != NODE_MAP ||
-      out == NULL)
+
+  if (field == NULL || field->name == NULL ||
+      field->type_name == NULL || out == NULL)
     return 0;
-  declared = schema_cmeta_text(field, "type");
-  semantic = schema_cmeta_named_semantic(root, declared);
-  if (semantic == NULL) semantic = declared;
-  if (schema_cmeta_flag(field, "is_group_field")) {
+
+  semantic = schema_cmeta_declared_semantic(contract, field->type_name);
+  if (semantic == NULL) semantic = field->type_name;
+
+  switch (field->collection_kind) {
+  case IDL_COLLECTION_GROUP:
     semantic = "list";
     sequence_label = "group";
-  } else if (schema_cmeta_flag(field, "is_map")) semantic = "map";
-  else if (schema_cmeta_flag(field, "is_set")) semantic = "set";
-  else if (schema_cmeta_flag(field, "is_list")) semantic = "list";
-  else if (schema_cmeta_flag(field, "is_collection")) {
+    break;
+  case IDL_COLLECTION_ARRAY:
     semantic = "list";
     sequence_label = "array";
+    break;
+  case IDL_COLLECTION_LIST:
+    semantic = "list";
+    sequence_label = "list";
+    break;
+  case IDL_COLLECTION_SET:
+    semantic = "set";
+    break;
+  case IDL_COLLECTION_MAP:
+    semantic = "map";
+    break;
+  case IDL_COLLECTION_NONE:
+  default:
+    break;
   }
+
   if (!schema_cmeta_data_kind(semantic, &result.kind)) return 0;
   result.data = schema_cmeta_builtin_data(semantic);
+
   switch (result.kind) {
   case CMETA_DATA_BOOL:
   case CMETA_DATA_SINT:
@@ -234,9 +234,9 @@ int schema_cmeta_field_resolve(const Node *root, const Node *field, schema_cmeta
     result.schema_kind = "union";
     break;
   case CMETA_DATA_STRUCT:
-    result.schema_kind = strcmp(semantic, "composite") == 0 ? "composite"
-                         : strcmp(semantic, "group") == 0   ? "group"
-                                                            : "message";
+    result.schema_kind =
+        strcmp(semantic, "composite") == 0 ? "composite" :
+        strcmp(semantic, "group") == 0 ? "group" : "message";
     break;
   case CMETA_DATA_CUSTOM:
     result.schema_kind = "custom";
@@ -244,6 +244,7 @@ int schema_cmeta_field_resolve(const Node *root, const Node *field, schema_cmeta
   default:
     return 0;
   }
+
   *out = result;
   return 1;
 }

@@ -5,15 +5,17 @@
 
 #include "data_bind.h"
 #include "data_bind_internal.h"
-#include "data_bind_schema_internal.h"
+#include "data_bind_contract_fingerprint.h"
 #include "data_bind_temporal_adapter.h"
 #include "data_bind_stream_format_state_internal.h"
 #include "fmt.h"
 #include "node_tree.h"
 #include "re.h"
-#include "schema_builtin_type.h"
+#include "tbe_scalar_profile.h"
 #include "schema_cmeta.h"
-#include "schema_parser_dsl.h"
+#include "idl.h"
+#include "idl_contract.h"
+#include "tbe_contract_overlay.h"
 #include "tbe_typed.h"
 #include "tbe_error.h"
 #include "tbe_wire.h"
@@ -209,9 +211,38 @@ static int value_pool_put(DataBindValue *value) {
 }
 
 struct DataBind {
-  Node *schema_root;
-  uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE];
+  IdlContract *contract;
+  Node *schema_root; /* transitional TBE/render tree; not semantic authority */
+  uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
+
+static const IdlDataDecl *db_idl_data_decl(
+    const DataBind *codec, const char *type_name) {
+  return codec != NULL && codec->contract != NULL && type_name != NULL
+             ? idl_contract_find_data(codec->contract, type_name)
+             : NULL;
+}
+
+static const IdlField *db_idl_field_at(
+    const DataBind *codec, const char *type_name, size_t index) {
+  const IdlDataDecl *decl = db_idl_data_decl(codec, type_name);
+  return decl != NULL && index < decl->field_count
+             ? &decl->fields[index]
+             : NULL;
+}
+
+static const char *db_idl_collection_kind_name(IdlCollectionKind kind) {
+  switch (kind) {
+  case IDL_COLLECTION_ARRAY: return "array";
+  case IDL_COLLECTION_LIST: return "list";
+  case IDL_COLLECTION_SET: return "set";
+  case IDL_COLLECTION_MAP: return "map";
+  case IDL_COLLECTION_GROUP: return "group";
+  case IDL_COLLECTION_NONE:
+  default:
+    return NULL;
+  }
+}
 
 struct data_bind_stream_t {
   DataBind *codec;
@@ -351,7 +382,7 @@ struct db_dynamic_graph {
 struct DataBindObject {
   char *type_name;
   DataBindValue *value;
-  uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE];
+  uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
 
 typedef enum {
@@ -413,7 +444,7 @@ struct emit_field {
 /* Derived view over the shared schema_builtin_type.h table. The init writes are
  * idempotent, so a concurrent duplicate init is benign; the array and the table
  * never move afterwards. */
-#define TYPE_META_COUNT (sizeof(SCHEMA_BUILTIN_TYPES) / sizeof(SCHEMA_BUILTIN_TYPES[0]))
+#define TYPE_META_COUNT (sizeof(TBE_SCALAR_PROFILES) / sizeof(TBE_SCALAR_PROFILES[0]))
 static type_meta_t g_type_metas[TYPE_META_COUNT];
 static atomic_int g_type_metas_ready = 0;
 
@@ -433,7 +464,7 @@ static data_bind_wire_type_t db_wire_type_from_reader(const char *reader) {
 }
 
 static const type_meta_t *find_type_meta(const char *type) {
-  const schema_builtin_type_info_t *info = schema_builtin_type_find(type);
+  const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type);
   size_t index;
   size_t i;
   if (info == NULL) return NULL;
@@ -442,7 +473,7 @@ static const type_meta_t *find_type_meta(const char *type) {
     salts_mutex_lock(&g_value_pool_control_mutex);
     if (!atomic_load_explicit(&g_type_metas_ready, memory_order_relaxed)) {
       for (i = 0; i < TYPE_META_COUNT; ++i) {
-        const schema_builtin_type_info_t *src = &SCHEMA_BUILTIN_TYPES[i];
+        const tbe_scalar_profile_t *src = &TBE_SCALAR_PROFILES[i];
         g_type_metas[i].name = src->name;
         g_type_metas[i].size = (int)src->size;
         g_type_metas[i].wire_type = db_wire_type_from_reader(src->wire_reader);
@@ -454,7 +485,7 @@ static const type_meta_t *find_type_meta(const char *type) {
     }
     salts_mutex_unlock(&g_value_pool_control_mutex);
   }
-  index = (size_t)(info - SCHEMA_BUILTIN_TYPES);
+  index = (size_t)(info - TBE_SCALAR_PROFILES);
   return &g_type_metas[index];
 }
 
@@ -4671,7 +4702,7 @@ static db_dynamic_type_t *db_dynamic_graph_find(db_dynamic_graph_t *graph,
 }
 
 static char *db_dynamic_stable_id(
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *semantic_key) {
   static const char prefix[] = "salts-utils.databind.dynamic.v2:";
   static const char hex[] = "0123456789abcdef";
@@ -4683,15 +4714,15 @@ static char *db_dynamic_stable_id(
   char *cursor;
   if (schema_fingerprint == NULL || semantic_key == NULL) return NULL;
   key_len = strlen(semantic_key);
-  if (key_len > SIZE_MAX - prefix_len - DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u - 2u)
+  if (key_len > SIZE_MAX - prefix_len - DATA_BIND_CONTRACT_FINGERPRINT_SIZE * 2u - 2u)
     return NULL;
-  len = prefix_len + DATA_BIND_SCHEMA_FINGERPRINT_SIZE * 2u + 1u + key_len;
+  len = prefix_len + DATA_BIND_CONTRACT_FINGERPRINT_SIZE * 2u + 1u + key_len;
   text = (char *)db_dynamic_graph_calloc(len + 1u, 1u);
   if (text == NULL) return NULL;
   cursor = text;
   memcpy(cursor, prefix, prefix_len);
   cursor += prefix_len;
-  for (i = 0u; i < DATA_BIND_SCHEMA_FINGERPRINT_SIZE; ++i) {
+  for (i = 0u; i < DATA_BIND_CONTRACT_FINGERPRINT_SIZE; ++i) {
     *cursor++ = hex[(schema_fingerprint[i] >> 4u) & 0x0fu];
     *cursor++ = hex[schema_fingerprint[i] & 0x0fu];
   }
@@ -4702,7 +4733,7 @@ static char *db_dynamic_stable_id(
 
 static db_dynamic_type_t *db_dynamic_graph_add(
     db_dynamic_graph_t *graph,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *semantic_key, cmeta_data_kind kind,
     const cmeta_data_desc *canonical_data) {
   db_dynamic_type_t *type;
@@ -4729,61 +4760,74 @@ static db_dynamic_type_t *db_dynamic_graph_add(
 }
 
 static DataBindStatus db_dynamic_build_named(
-    db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    db_dynamic_graph_t *graph, const IdlContract *contract,
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type);
 
 static DataBindStatus db_dynamic_build_container(
-    db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
-    Node *field, const schema_cmeta_field_type *semantic, unsigned depth,
-    db_dynamic_type_t **out_type) {
+    db_dynamic_graph_t *graph, const IdlContract *contract,
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
+    const IdlField *field, const schema_cmeta_field_type *semantic,
+    unsigned depth, db_dynamic_type_t **out_type) {
   const char *constructor = semantic->schema_kind;
-  const char *element_name = get_string_val(find_child(field, "inner_type"));
-  const char *key_name = get_string_val(find_child(field, "key_type"));
-  const char *value_name = get_string_val(find_child(field, "value_type"));
+  const char *element_name = field != NULL ? field->inner_type : NULL;
+  const char *key_name = field != NULL ? field->key_type : NULL;
+  const char *value_name = field != NULL ? field->value_type : NULL;
   char *semantic_key;
   db_dynamic_type_t *type;
   DataBindStatus status;
+
+  if (contract == NULL || field == NULL || semantic == NULL ||
+      out_type == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
   if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+
   if (semantic->kind == CMETA_DATA_MAP) {
     if (key_name == NULL || value_name == NULL) return DATA_BIND_ERR_SCHEMA;
     semantic_key = db_dynamic_join_type("map", key_name, value_name);
   } else {
     if (element_name == NULL) return DATA_BIND_ERR_SCHEMA;
-    semantic_key = db_dynamic_join_type(constructor != NULL ? constructor : "list",
-                                        element_name, NULL);
+    semantic_key = db_dynamic_join_type(
+        constructor != NULL ? constructor : "list",
+        element_name, NULL);
   }
   if (semantic_key == NULL) return DATA_BIND_ERR_OOM;
+
   type = db_dynamic_graph_find(graph, semantic_key);
   if (type == NULL)
-    type = db_dynamic_graph_add(graph, schema_fingerprint, semantic_key,
-                                semantic->kind, semantic->data);
+    type = db_dynamic_graph_add(
+        graph, schema_fingerprint, semantic_key,
+        semantic->kind, semantic->data);
   free(semantic_key);
   if (type == NULL) return DATA_BIND_ERR_OOM;
   if (type->complete || type->building) {
     *out_type = type;
     return DATA_BIND_OK;
   }
+
   type->building = 1;
   if (semantic->kind == CMETA_DATA_MAP) {
     db_dynamic_type_t *key_type = NULL;
     db_dynamic_type_t *value_type = NULL;
-    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                    key_name, depth + 1u, &key_type);
+    status = db_dynamic_build_named(
+        graph, contract, schema_fingerprint,
+        key_name, depth + 1u, &key_type);
     if (status == DATA_BIND_OK)
-      status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                      value_name, depth + 1u, &value_type);
+      status = db_dynamic_build_named(
+          graph, contract, schema_fingerprint,
+          value_name, depth + 1u, &value_type);
     if (status != DATA_BIND_OK) return status;
     type->key_type = key_type;
     type->value_type = value_type;
   } else {
     db_dynamic_type_t *element_type = NULL;
-    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                    element_name, depth + 1u, &element_type);
+    status = db_dynamic_build_named(
+        graph, contract, schema_fingerprint,
+        element_name, depth + 1u, &element_type);
     if (status != DATA_BIND_OK) return status;
     type->element_type = element_type;
   }
+
   type->building = 0;
   type->complete = 1;
   *out_type = type;
@@ -4791,72 +4835,95 @@ static DataBindStatus db_dynamic_build_container(
 }
 
 static DataBindStatus db_dynamic_build_named(
-    db_dynamic_graph_t *graph, Node *schema_root,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    db_dynamic_graph_t *graph, const IdlContract *contract,
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type) {
-  Node *record;
-  Node *fields;
+  const IdlDataDecl *decl;
   const cmeta_data_desc *canonical;
   cmeta_data_kind kind;
   db_dynamic_type_t *type;
   size_t i;
+
   if (out_type != NULL) *out_type = NULL;
-  if (graph == NULL || schema_root == NULL || type_name == NULL ||
+  if (graph == NULL || contract == NULL || type_name == NULL ||
       out_type == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+
   type = db_dynamic_graph_find(graph, type_name);
   if (type != NULL) {
     *out_type = type;
     return DATA_BIND_OK;
   }
+
   canonical = schema_cmeta_builtin_data(type_name);
-  record = find_data_record(schema_root, type_name);
-  if (record != NULL) kind = CMETA_DATA_STRUCT;
-  else if (find_enum_record(schema_root, type_name) != NULL) kind = CMETA_DATA_ENUM;
-  else if (find_union_record(schema_root, type_name) != NULL) kind = CMETA_DATA_VARIANT;
-  else if (!schema_cmeta_data_kind(type_name, &kind)) return DATA_BIND_ERR_SCHEMA;
-  type = db_dynamic_graph_add(graph, schema_fingerprint, type_name, kind,
-                              canonical);
+  decl = idl_contract_find_data(contract, type_name);
+  if (decl != NULL) {
+    switch (decl->kind) {
+    case IDL_DATA_MESSAGE:
+    case IDL_DATA_COMPOSITE:
+    case IDL_DATA_GROUP:
+      kind = CMETA_DATA_STRUCT;
+      break;
+    case IDL_DATA_ENUM:
+      kind = CMETA_DATA_ENUM;
+      break;
+    case IDL_DATA_UNION:
+      kind = CMETA_DATA_VARIANT;
+      break;
+    default:
+      return DATA_BIND_ERR_SCHEMA;
+    }
+  } else if (!schema_cmeta_data_kind(type_name, &kind)) {
+    return DATA_BIND_ERR_SCHEMA;
+  }
+
+  type = db_dynamic_graph_add(
+      graph, schema_fingerprint, type_name, kind, canonical);
   if (type == NULL) return DATA_BIND_ERR_OOM;
   type->building = 1;
+
   if (kind == CMETA_DATA_STRUCT || kind == CMETA_DATA_VARIANT) {
-    if (record == NULL) record = find_union_record(schema_root, type_name);
-    fields = fields_node_for_record(record);
-    if (fields == NULL) return DATA_BIND_ERR_SCHEMA;
-    if (fields->data.list.count != 0u) {
+    if (decl == NULL) return DATA_BIND_ERR_SCHEMA;
+    if (decl->field_count != 0u) {
       type->fields = (db_dynamic_field_type_t *)db_dynamic_graph_calloc(
-          fields->data.list.count, sizeof(*type->fields));
+          decl->field_count, sizeof(*type->fields));
       if (type->fields == NULL) return DATA_BIND_ERR_OOM;
     }
-    type->field_count = fields->data.list.count;
+    type->field_count = decl->field_count;
+
     for (i = 0u; i < type->field_count; ++i) {
-      Node *field = fields->data.list.items[i];
-      const char *name = get_string_val(find_child(field, "name"));
-      const char *field_type = get_string_val(find_child(field, "type"));
+      const IdlField *field = &decl->fields[i];
+      const char *field_type = field->type_name;
       schema_cmeta_field_type semantic;
       db_dynamic_type_t *child_type = NULL;
       DataBindStatus status;
-      if (name == NULL || !schema_cmeta_field_resolve(schema_root, field,
-                                                       &semantic))
+
+      if (field->name == NULL ||
+          !schema_cmeta_field_resolve(contract, field, &semantic))
         return DATA_BIND_ERR_SCHEMA;
-      type->fields[i].stable_name = db_dynamic_graph_strdup(name);
-      if (type->fields[i].stable_name == NULL) return DATA_BIND_ERR_OOM;
+
+      type->fields[i].stable_name =
+          db_dynamic_graph_strdup(field->name);
+      if (type->fields[i].stable_name == NULL)
+        return DATA_BIND_ERR_OOM;
+
       if (cmeta_data_kind_is_container(semantic.kind)) {
-        status = db_dynamic_build_container(graph, schema_root,
-                                            schema_fingerprint, field,
-                                            &semantic, depth + 1u,
-                                            &child_type);
+        status = db_dynamic_build_container(
+            graph, contract, schema_fingerprint,
+            field, &semantic, depth + 1u, &child_type);
       } else {
-        if (field_flag(field, "is_group_field"))
-          field_type = get_string_val(find_child(field, "group_type"));
-        status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                        field_type, depth + 1u, &child_type);
+        if (field->collection_kind == IDL_COLLECTION_GROUP)
+          field_type = field->inner_type;
+        status = db_dynamic_build_named(
+            graph, contract, schema_fingerprint,
+            field_type, depth + 1u, &child_type);
       }
       if (status != DATA_BIND_OK) return status;
       type->fields[i].value_type = child_type;
     }
   }
+
   type->building = 0;
   type->complete = 1;
   *out_type = type;
@@ -4865,7 +4932,7 @@ static DataBindStatus db_dynamic_build_named(
 
 static DataBindStatus db_dynamic_build_synthetic_sequence(
     db_dynamic_graph_t *graph,
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE],
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *root_type, db_dynamic_type_t *element_type,
     db_dynamic_type_t **out_type) {
   char *key = db_dynamic_join_type("result", root_type, NULL);
@@ -5023,9 +5090,10 @@ static DataBindStatus db_dynamic_attach_root(DataBind *codec,
   }
   graph->references = 1u;
   graph->node_capacity = capacity;
-  status = db_dynamic_build_named(graph, codec->schema_root,
-                                  codec->schema_fingerprint, root_type, 0u,
-                                  &semantic_root);
+  status = db_dynamic_build_named(
+      graph, codec->contract,
+      codec->schema_fingerprint, root_type, 0u,
+      &semantic_root);
   value_root = semantic_root;
   if (status == DATA_BIND_OK && synthetic_sequence)
     status = db_dynamic_build_synthetic_sequence(
@@ -5191,83 +5259,97 @@ static int fill_schema_constraint(Node *constraint,
   return kind != DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN;
 }
 
-static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField *out) {
+static int fill_schema_field(
+    const IdlContract *contract, const IdlField *idl_field,
+    Node *format_field, DataBindSchemaField *out) {
   size_t out_size;
-  const char *name;
   schema_cmeta_field_type semantic;
   int resolved;
-  if (schema_root == NULL || field == NULL || out == NULL) return 0;
-  resolved = schema_cmeta_field_resolve(schema_root, field, &semantic);
+  const char *collection_kind;
+
+  if (contract == NULL || idl_field == NULL ||
+      format_field == NULL || out == NULL)
+    return 0;
+
+  resolved = schema_cmeta_field_resolve(
+      contract, idl_field, &semantic);
+  collection_kind =
+      db_idl_collection_kind_name(idl_field->collection_kind);
+
   out_size = db_reflect_out_size(out->size, sizeof(*out));
   memset(out, 0, out_size);
-  name = get_string_val(find_child(field, "name"));
+
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, size, out_size);
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, name, name);
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, type,
-                 get_string_val(find_child(field, "type")));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, name, idl_field->name);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, type, idl_field->type_name);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, kind,
                  resolved ? semantic.schema_kind : "unknown");
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, inner_type,
-                 get_string_val(find_child(field, "inner_type")));
+                 idl_field->inner_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, group_type,
-                 get_string_val(find_child(field, "group_type")));
+                 idl_field->collection_kind == IDL_COLLECTION_GROUP
+                     ? idl_field->inner_type
+                     : NULL);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, key_type,
-                 get_string_val(find_child(field, "key_type")));
+                 idl_field->key_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, value_type,
-                 get_string_val(find_child(field, "value_type")));
+                 idl_field->value_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, collection_kind,
-                 get_string_val(find_child(field, "collection_kind")));
+                 collection_kind);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, length,
-                 get_string_val(find_child(field, "length_field")));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_optional, field_flag(field, "is_optional"));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_default, field_flag(field, "has_default"));
+                 idl_field->length);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_optional,
+                 idl_field->optional);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_default,
+                 idl_field->default_value != NULL);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, default_value,
-                 get_string_val(find_child(field, "default_value")));
+                 idl_field->default_value);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_collection,
                  resolved && cmeta_data_kind_is_container(semantic.kind) &&
+                 semantic.schema_kind != NULL &&
                  strcmp(semantic.schema_kind, "group") != 0);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_composite,
                  resolved && semantic.kind == CMETA_DATA_STRUCT &&
+                 semantic.schema_kind != NULL &&
                  strcmp(semantic.schema_kind, "composite") == 0);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_group,
-                 resolved && semantic.kind == CMETA_DATA_SEQUENCE &&
-                 strcmp(semantic.schema_kind, "group") == 0);
+                 idl_field->collection_kind == IDL_COLLECTION_GROUP);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_map,
                  resolved && semantic.kind == CMETA_DATA_MAP);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_enum,
                  resolved && semantic.kind == CMETA_DATA_ENUM);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_variable_size,
-                 field_flag(field, "is_variable_size"));
+                 field_flag(format_field, "is_variable_size"));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_fixed_size,
-                 field_flag(field, "is_fixed_size"));
+                 field_flag(format_field, "is_fixed_size"));
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, offset), sizeof(out->offset)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_offset),
                            sizeof(out->has_offset))) {
-    out->has_offset = parse_size_value(get_string_val(find_child(field, "offset")), &out->offset);
+    out->has_offset = parse_size_value(get_string_val(find_child(format_field, "offset")), &out->offset);
   }
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, size_bytes),
                            sizeof(out->size_bytes)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_size_bytes),
                            sizeof(out->has_size_bytes))) {
     out->has_size_bytes =
-        parse_size_value(get_string_val(find_child(field, "size_bytes")), &out->size_bytes);
+        parse_size_value(get_string_val(find_child(format_field, "size_bytes")), &out->size_bytes);
   }
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, field_size_bytes),
                            sizeof(out->field_size_bytes)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_field_size_bytes),
                            sizeof(out->has_field_size_bytes))) {
     out->has_field_size_bytes = parse_size_value(
-        get_string_val(find_child(field, "field_size_bytes")), &out->field_size_bytes);
+        get_string_val(find_child(format_field, "field_size_bytes")), &out->field_size_bytes);
   }
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, format, field_format(field));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, format, field_format(format_field));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_cmeta_kind, resolved);
   if (resolved) {
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_kind, semantic.kind);
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_data, semantic.data);
   }
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_nullable,
-                 field_flag(field, "is_nullable"));
-  return name != NULL;
+                 idl_field->nullable);
+  return idl_field->name != NULL;
 }
 
 static int emit_field_array_push(emit_field_array_t *fields, emit_field_t field) {
@@ -6569,7 +6651,7 @@ static DataBindStatus data_bind_object_check_schema(const DataBind *codec,
     return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, format, -1, -1,
                         "Invalid schema-bound object arguments");
   if (memcmp(codec->schema_fingerprint, object->schema_fingerprint,
-             DATA_BIND_SCHEMA_FINGERPRINT_SIZE) != 0)
+             DATA_BIND_CONTRACT_FINGERPRINT_SIZE) != 0)
     return db_error_set(error, DATA_BIND_ERR_SCHEMA,
                         object->type_name != NULL ? object->type_name : format, -1, -1,
                         "Object schema fingerprint does not match the codec");
@@ -6656,101 +6738,219 @@ static DataBindStatus db_binary_measure(const emit_field_array_t *fields,
   return status;
 }
 
-static Node *parse_schema_text_to_root(const char *schema_text, size_t len, const char *path,
-                                       char *error_buf, size_t error_size, DataBindError *error) {
+static DataBindStatus parse_idl_contract_text(
+    const char *schema_text, size_t len, const char *path,
+    IdlContract **out_contract, DataBindError *error) {
+  IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+
+  if (out_contract != NULL) *out_contract = NULL;
+  if (schema_text == NULL || out_contract == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1,
+        "Invalid IDL contract text");
+
+  if (idl_contract_parse(
+          schema_text, len, out_contract, &diagnostic)) {
+    db_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
+  switch (diagnostic.status) {
+  case IDL_NO_MEMORY:
+    status = DATA_BIND_ERR_OOM;
+    break;
+  case IDL_LEXER_ERROR:
+  case IDL_SYNTAX_ERROR:
+    status = DATA_BIND_ERR_PARSE;
+    break;
+  case IDL_SEMANTIC_ERROR:
+    status = DATA_BIND_ERR_SCHEMA;
+    break;
+  case IDL_INVALID_ARGUMENT:
+  default:
+    status = DATA_BIND_ERR_INVALID_ARG;
+    break;
+  }
+
+  return db_error_set(
+      error, status, path, diagnostic.line, diagnostic.column,
+      "IDL contract error: %s", diagnostic.message);
+}
+
+/* Transitional representation for TBE-format/runtime paths. The typed
+ * IdlContract is the semantic authority; this tree may carry format overlay
+ * facts that are not part of the logical contract. */
+static Node *parse_schema_text_to_root(
+    const char *schema_text, size_t len, const char *path,
+    char *error_buf, size_t error_size, DataBindError *error) {
   Node *root;
   tbe_error_t err = {0};
+
   if (schema_text == NULL) {
-    if (error_buf != NULL && error_size > 0) snprintf(error_buf, error_size, "Invalid schema text");
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1, "Invalid schema text");
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "Invalid schema text");
+    db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1,
+        "Invalid schema text");
     return NULL;
   }
+
   root = create_node_map(NULL);
   if (root == NULL) {
-    if (error_buf != NULL && error_size > 0) snprintf(error_buf, error_size, "Out of memory");
-    db_error_set(error, DATA_BIND_ERR_OOM, path, -1, -1, "Out of memory");
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "Out of memory");
+    db_error_set(
+        error, DATA_BIND_ERR_OOM, path, -1, -1, "Out of memory");
     return NULL;
   }
-  if (parse_schema(schema_text, len, root, &err) != 0) {
+
+  if (idl_parse(schema_text, len, root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
       snprintf(error_buf, error_size, "Parse error: %s", err.message);
-    db_error_set(error, DATA_BIND_ERR_PARSE, path, err.line, err.column, "Parse error: %s",
-                 err.message);
+    db_error_set(
+        error, DATA_BIND_ERR_PARSE, path, err.line, err.column,
+        "Parse error: %s", err.message);
     node_free(root);
     return NULL;
   }
+
+  if (databind_tbe_contract_apply(root, &err) != 0) {
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "TBE format error: %s", err.message);
+    db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
+        "TBE format error: %s", err.message);
+    node_free(root);
+    return NULL;
+  }
+
   db_error_clear(error);
   return root;
 }
 
-static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **out_codec,
-                                                 DataBindError *error) {
+static DataBindStatus data_bind_create_from_root(
+    Node *schema_root, IdlContract *contract,
+    DataBind **out_codec, DataBindError *error) {
   DataBind *codec;
   DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
-  if (schema_root == NULL || out_codec == NULL) {
+  if (schema_root == NULL || contract == NULL || out_codec == NULL) {
     node_free(schema_root);
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
-                        "Invalid codec create arguments");
+    idl_contract_destroy(contract);
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+        "Invalid codec create arguments");
   }
+
   codec = (DataBind *)calloc(1, sizeof(*codec));
   if (codec == NULL) {
     node_free(schema_root);
-    return db_error_set(error, DATA_BIND_ERR_OOM, NULL, -1, -1, "Out of memory");
+    idl_contract_destroy(contract);
+    return db_error_set(
+        error, DATA_BIND_ERR_OOM, NULL, -1, -1, "Out of memory");
   }
+
+  codec->contract = contract;
   codec->schema_root = schema_root;
+
   status = validate_schema_binding_names(schema_root, error);
   if (status != DATA_BIND_OK) {
     node_free(schema_root);
+    idl_contract_destroy(contract);
     free(codec);
     return status;
   }
-  if (!data_bind_schema_fingerprint(schema_root, codec->schema_fingerprint)) {
+
+  if (!data_bind_contract_fingerprint(
+          schema_root, codec->schema_fingerprint)) {
     node_free(schema_root);
+    idl_contract_destroy(contract);
     free(codec);
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, NULL, -1, -1,
-                        "Failed to fingerprint parsed schema");
+    return db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, NULL, -1, -1,
+        "Failed to fingerprint parsed schema");
   }
+
   db_error_clear(error);
   *out_codec = codec;
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_create(const char *schema_path, DataBind **out_codec,
-                                DataBindError *error) {
+DataBindStatus data_bind_create(
+    const char *schema_path, DataBind **out_codec,
+    DataBindError *error) {
   salts_fs_buf_t schema = {NULL, 0};
   Node *schema_root;
+  IdlContract *contract = NULL;
   DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
   if (schema_path == NULL || out_codec == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
-                        "Invalid codec create arguments");
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
+        "Invalid codec create arguments");
+
   if (salts_fs_read_file(schema_path, &schema) != 0)
-    return db_error_set(error, DATA_BIND_ERR_IO, schema_path, -1, -1,
-                        "Cannot read schema: %s", schema_path);
-  schema_root =
-      parse_schema_text_to_root(schema.base, schema.len, schema_path, NULL, 0, error);
-  status = schema_root != NULL ? data_bind_create_from_root(schema_root, out_codec, error)
-                               : db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+    return db_error_set(
+        error, DATA_BIND_ERR_IO, schema_path, -1, -1,
+        "Cannot read schema: %s", schema_path);
+
+  schema_root = parse_schema_text_to_root(
+      schema.base, schema.len, schema_path, NULL, 0, error);
+  if (schema_root == NULL) {
+    salts_fs_buf_free(&schema);
+    return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+  }
+
+  status = parse_idl_contract_text(
+      schema.base, schema.len, schema_path, &contract, error);
+  if (status != DATA_BIND_OK) {
+    node_free(schema_root);
+    salts_fs_buf_free(&schema);
+    return status;
+  }
+
+  status = data_bind_create_from_root(
+      schema_root, contract, out_codec, error);
   salts_fs_buf_free(&schema);
   return status;
 }
 
-DataBindStatus data_bind_create_from_text(const char *schema_text, size_t len,
-                                          DataBind **out_codec, DataBindError *error) {
+DataBindStatus data_bind_create_from_text(
+    const char *schema_text, size_t len,
+    DataBind **out_codec, DataBindError *error) {
   Node *schema_root;
+  IdlContract *contract = NULL;
+  DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
   if (schema_text == NULL || out_codec == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
-                        "Invalid codec create arguments");
-  schema_root = parse_schema_text_to_root(schema_text, len, NULL, NULL, 0, error);
-  if (schema_root == NULL) return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
-  return data_bind_create_from_root(schema_root, out_codec, error);
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+        "Invalid codec create arguments");
+
+  schema_root = parse_schema_text_to_root(
+      schema_text, len, NULL, NULL, 0, error);
+  if (schema_root == NULL)
+    return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+
+  status = parse_idl_contract_text(
+      schema_text, len, NULL, &contract, error);
+  if (status != DATA_BIND_OK) {
+    node_free(schema_root);
+    return status;
+  }
+
+  return data_bind_create_from_root(
+      schema_root, contract, out_codec, error);
 }
 
 void data_bind_free(DataBind *codec) {
   if (codec == NULL) return;
   node_free(codec->schema_root);
+  idl_contract_destroy(codec->contract);
   free(codec);
 }
 
@@ -10293,7 +10493,7 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
 #define DATA_BIND_JSON_MAX_DEPTH 64u
 
 static DataBindStatus data_bind_object_take(
-    const uint8_t schema_fingerprint[DATA_BIND_SCHEMA_FINGERPRINT_SIZE], const char *type_name,
+    const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE], const char *type_name,
     DataBindValue *value, DataBindObject **out_object, DataBindError *error) {
   DataBindObject *object;
   size_t type_len;
@@ -12471,12 +12671,8 @@ int data_bind_schema_find_type(DataBind *codec, const char *name, DataBindSchema
 }
 
 size_t data_bind_schema_field_count(DataBind *codec, const char *type_name) {
-  Node *record;
-  Node *fields;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL) return 0;
-  record = find_schema_record(codec->schema_root, type_name);
-  fields = fields_node_for_record(record);
-  return fields != NULL ? fields->data.list.count : 0;
+  const IdlDataDecl *decl = db_idl_data_decl(codec, type_name);
+  return decl != NULL ? decl->field_count : 0u;
 }
 
 int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
@@ -12490,7 +12686,14 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
     db_reflect_clear(out, out->size, sizeof(*out));
     return 0;
   }
-  return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
+  {
+    const IdlField *idl_field = db_idl_field_at(codec, type_name, index);
+    return idl_field != NULL
+               ? fill_schema_field(
+                     codec->contract, idl_field,
+                     fields->data.list.items[index], out)
+               : 0;
+  }
 }
 
 
@@ -12601,34 +12804,43 @@ int data_bind_internal_csv_header_matches_path(const char *header,
   return csv_header_matches_path(header, path);
 }
 
-DataBindStatus data_bind_schema_field_cmeta_data(DataBind *codec, const char *type_name,
-                                                size_t index,
-                                                const cmeta_data_desc **out_data,
-                                                DataBindError *error) {
-  Node *record, *fields, *field;
+DataBindStatus data_bind_schema_field_cmeta_data(
+    DataBind *codec, const char *type_name, size_t index,
+    const cmeta_data_desc **out_data, DataBindError *error) {
+  const IdlDataDecl *decl;
+  const IdlField *field;
   schema_cmeta_field_type semantic;
-  const char *name, *declared;
   char path[260];
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || out_data == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
-                        "Invalid CMeta field descriptor query");
-  record = find_schema_record(codec->schema_root, type_name);
-  if (record == NULL)
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
-                        "CMeta schema type not found");
-  fields = fields_node_for_record(record);
-  if (fields == NULL || index >= fields->data.list.count)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
-                        "CMeta schema field index is out of range");
-  field = fields->data.list.items[index];
-  name = get_string_val(find_child(field, "name"));
-  declared = get_string_val(find_child(field, "type"));
-  snprintf(path, sizeof(path), "%s.%s", type_name, name != NULL ? name : "<unnamed>");
-  if (!schema_cmeta_field_resolve(codec->schema_root, field, &semantic) ||
+
+  if (codec == NULL || codec->contract == NULL ||
+      type_name == NULL || out_data == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+        "Invalid CMeta field descriptor query");
+
+  decl = idl_contract_find_data(codec->contract, type_name);
+  if (decl == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
+        "CMeta schema type not found");
+
+  if (index >= decl->field_count)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+        "CMeta schema field index is out of range");
+
+  field = &decl->fields[index];
+  snprintf(path, sizeof(path), "%s.%s", type_name,
+           field->name != NULL ? field->name : "<unnamed>");
+
+  if (!schema_cmeta_field_resolve(
+          codec->contract, field, &semantic) ||
       semantic.data == NULL || semantic.data->storage_type == NULL)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
-                        "CMeta storage descriptor unresolved or gated for schema type '%s'",
-                        declared != NULL ? declared : "<unknown>");
+    return db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
+        "CMeta storage descriptor unresolved or gated for schema type '%s'",
+        field->type_name != NULL ? field->type_name : "<unknown>");
+
   db_error_clear(error);
   *out_data = semantic.data;
   return DATA_BIND_OK;

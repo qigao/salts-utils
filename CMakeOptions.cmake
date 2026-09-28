@@ -27,14 +27,24 @@ unset(_SALTS_UTILS_CAPTURE_DEFAULT)
 option(SALTS_UTILS_ENABLE_CFLOW_USB
        "Build the optional libusb-backed CFlow device adapter" OFF)
 
-option(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND
-       "Internal focused Plugin/DataBind qualification profile" OFF)
-mark_as_advanced(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND)
+option(SALTS_UTILS_QUALIFY_DATABIND
+       "Internal focused DataBind qualification profile" OFF)
+mark_as_advanced(SALTS_UTILS_QUALIFY_DATABIND)
 
-if(SALTS_UTILS_QUALIFY_PLUGIN_DATABIND AND
+option(SALTS_UTILS_QUALIFY_BINDINGS
+       "Internal focused language-binding qualification profile" OFF)
+mark_as_advanced(SALTS_UTILS_QUALIFY_BINDINGS)
+
+if(SALTS_UTILS_QUALIFY_DATABIND AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
-    "The focused Plugin/DataBind qualification profile excludes capture and USB")
+    "The focused DataBind qualification profile excludes capture and USB")
+endif()
+
+if(SALTS_UTILS_QUALIFY_BINDINGS AND
+   (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
+  message(FATAL_ERROR
+    "The focused bindings qualification profile excludes capture and USB")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)

@@ -41,11 +41,12 @@ concurrency:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_SDK_VERSION: "1.7.12"
+  SALTS_SDK_VERSION: "1.8.0"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
   linux:
+    if: (github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence') && github.ref != 'refs/heads/refactor/4.1-ownership-convergence'
     name: Linux C11/C++17 + BindingPlan sanitizers
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -91,7 +92,7 @@ jobs:
           test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
           test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
 
-      - name: Restore published Salts 1.7.12 and re2c 4.6.3
+      - name: Restore published Salts 1.8.0 and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -187,7 +188,7 @@ jobs:
             -R '^(salts_plugin_(contract|header_cpp|loader)_test|plugin_cflow_(publisher_provider|function_projection)_test|test_databind_compiler_tooling_boundary|test_databind_projection_config_stale_rejected|test_databind_projection_registry|test_databind_projection_frontend|test_databind_openapi_projection|test_tbe_compiler_cmeta_fields|test_databind_message_native|test_databind_method_plan_binary_admission|test_databind_binary_layout_ir|test_databind_binary_reader_codegen|test_databind_binary_transport_provider|test_databind_binary_transport_provider_cpp|test_databind_socket_plan_projection|test_databind_socket_plan_public_frontend|test_databind_flowmq_plan_projection|test_databind_flowmq_plan_public_frontend|test_databind_channel_multi_transport|test_tbe_cmeta_acceptance|test_databind_generated_method_plan_projection|test_databind_method_plan_public_frontend|test_component_contract|test_channel_contract|test_data_bind_channel|test_data_bind_channel_public_cpp|test_data_bind_socket_plan_public_cpp|test_data_bind_flowmq_plan_public_cpp|test_data_bind_socket_execution_plan|test_data_bind_component|test_data_bind_component_public_cpp|test_databind_service_native_lowering|test_databind_service_native_public_cpp|test_databind_plugin_generated_dso|test_databind_plugin_generated_client|test_databind_plugin_generated_client_cpp|test_databind_plugin_typed_error_client|test_databind_plugin_typed_error_client_cpp|test_databind_plugin_owned_typed_error_client|test_databind_plugin_owned_typed_error_client_cpp|test_databind_plugin_projection_rejection|test_data_bind_(binary_reader|binding_plan|owned_error_validation|projection_plan|native_writer|native_container|validation_plan|cmeta_public_cpp))$' \
             --no-tests=error --output-on-failure
 
-      - name: Qualify installed OpenAPI databind_target
+      - name: Qualify installed OpenAPI salts_idl_target
         shell: bash
         run: |
           set -euxo pipefail
@@ -205,7 +206,7 @@ jobs:
           cmake --build build/openapi-package --parallel 2
           cmake --install build/openapi-package
           test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
-          test -x "$prefix/bin/databindc"
+          test -x "$prefix/bin/salts-idlc"
           test -f "$prefix/include/data_bind_native_binding.h"
           grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
           cat > build/installed-native-execution.c <<'EOF'
@@ -225,7 +226,7 @@ jobs:
             build/installed-native-execution.c \
             -o build/installed-native-execution
           ./build/installed-native-execution
-          cmake -S databind/compiler/package_config/databind_target \
+          cmake -S databind/idl/compiler/package_config/salts_idl_target \
             -B build/openapi-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
@@ -284,6 +285,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
 
   windows:
+    if: (github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence') && github.ref != 'refs/heads/refactor/4.1-ownership-convergence'
     name: Windows C11/C++17 contract
     runs-on: windows-2022
     timeout-minutes: 35
@@ -348,7 +350,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.7.12 and re2c 4.6.3
+      - name: Restore published Salts 1.8.0 and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

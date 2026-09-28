@@ -1,5 +1,6 @@
 #define TINYTEST_NO_MAIN
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 
 #include <salts_cmeta_data.h>
@@ -7,7 +8,7 @@
 #include <string.h>
 
 typedef union BitmapWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[4096];
 } BitmapWorkspace;
 
@@ -163,6 +164,7 @@ static void require_bitmap_boundary(size_t field_count, size_t branches,
 }
 
 spec("DataBind field bitmap byte boundaries and nested lifetimes") {
+  (void)ttest_config__;
   it("fits exactly eight scalar fields in one bitmap byte") {
     require_bitmap_boundary(8u, 0u, BITMAP_VALID);
   }

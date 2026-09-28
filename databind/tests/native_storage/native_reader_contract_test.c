@@ -1,6 +1,7 @@
 /* #99 direct-consumer requirements. This deliberately needs the production
  * DataBind header/implementation; no test decoder or replacement symbol. */
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 #include <cmeta/struct.h>
 #include <salts_cmeta_data.h>
@@ -17,7 +18,7 @@ enum {
 };
 
 typedef union ContractWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[CONTRACT_WORKSPACE_BYTES];
 } ContractWorkspace;
 
@@ -67,6 +68,8 @@ static void check_empty_row(void) {
 }
 
 spec("DataBind direct reader to native contract") {
+  (void)ttest_config__;
+
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));

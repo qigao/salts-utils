@@ -132,11 +132,11 @@ set(DATA_BIND_TARGET data_bind)
 add_library(
   ${DATA_BIND_TARGET} SHARED
   data_bind.c
+  data_bind_contract_fingerprint.c
+  data_bind_contract_fingerprint.h
   data_bind.h
   data_bind_internal.h
   data_bind_value_internal.h
-  data_bind_schema.c
-  data_bind_schema_internal.h
   data_bind_record.c
   data_bind_binary_reader.c
   data_bind_binary_reader.h
@@ -168,7 +168,10 @@ target_include_directories(
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/include>
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
     $<INSTALL_INTERFACE:include>
-  PRIVATE $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>)
+  PRIVATE
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/internal>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/compiler/include>)
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
@@ -178,7 +181,9 @@ target_link_libraries(
     Salts::DataBindCsvAdapter
     Salts::DataBindXmlAdapter
     Salts::DataBindTemporalAdapter
-    Salts::DataBindSchema
+    Salts::Schema
+    Salts::IDL
+    databind_tbe_contract
   PUBLIC
     Salts::DataBindCore)
 
@@ -466,7 +471,7 @@ set_target_properties(test_data_bind_cmeta_public_cpp PROPERTIES
 
 cmake_add_test(test_data_bind_cmeta
   SOURCES test_data_bind_cmeta.c
-  LIBS Salts::DataBindCMeta Salts::DataBindSchema Salts::TinyTest
+  LIBS Salts::DataBindCMeta Salts::Schema Salts::TinyTest
   FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_cmeta_kind
   SOURCES test_data_bind_cmeta_kind.c
@@ -528,7 +533,7 @@ set_tests_properties(test_tbe_typed_nullable_binary PROPERTIES
   LABELS "databind;typed;nullable;binary;tbe")
 
 
-# This fixture executes databindc during the build. Do not run a target-
+# This fixture executes salts_idlc during the build. Do not run a target-
 # platform executable on the build host when cross-compiling (e.g. Android).
 if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   set(TBE_SAFETY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/descriptor_safety_generated")
@@ -537,14 +542,14 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_command(
     OUTPUT "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_SAFETY_GENERATED_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
-            "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
+    COMMAND $<TARGET_FILE:salts_idlc>
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
             --lang c --output "${TBE_SAFETY_GENERATED_HEADER}"
             --source-output "${TBE_SAFETY_GENERATED_SOURCE}"
-    DEPENDS databindc
-            "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+    DEPENDS salts_idlc
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
     COMMENT "Generating typed descriptor compatibility fixture"
     VERBATIM)
   cmake_add_test(test_tbe_typed_generated
@@ -563,15 +568,15 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
   add_custom_command(
     OUTPUT "${DATABIND_OWNED_BUFFER_HEADER}" "${DATABIND_OWNED_BUFFER_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DATABIND_OWNED_BUFFER_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
+    COMMAND $<TARGET_FILE:salts_idlc>
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
             --lang c
             --output "${DATABIND_OWNED_BUFFER_HEADER}"
             --source-output "${DATABIND_OWNED_BUFFER_SOURCE}"
-    DEPENDS databindc
+    DEPENDS salts_idlc
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
     COMMENT "Generating canonical owned-buffer native fixture"
     VERBATIM)
   cmake_add_test(test_databind_generated_owned_buffers
@@ -588,11 +593,11 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
            "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_CMETA_GRAPH_DIR}"
-    COMMAND $<TARGET_FILE:databindc>
+    COMMAND $<TARGET_FILE:salts_idlc>
             "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
             --lang c --output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
             --source-output "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.c"
-    DEPENDS databindc "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
+    DEPENDS salts_idlc "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_graph.schema"
     VERBATIM)
   add_custom_target(tbe_cmeta_graph_generation
     DEPENDS "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
@@ -620,23 +625,23 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
 
   cmake_add_test(test_tbe_cmeta_acceptance
     SOURCES test_tbe_cmeta_acceptance.c
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema Salts::TinyTest
+    LIBS tbe_cmeta_graph_public_fixture Salts::Schema Salts::TinyTest
     FOLDER "databind/runtime/tests")
   add_test(NAME test_tbe_cmeta_cli_gates
     COMMAND ${CMAKE_COMMAND}
-      "-DTBE_COMPILER=$<TARGET_FILE:databindc>"
+      "-DTBE_COMPILER=$<TARGET_FILE:salts_idlc>"
       "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cmeta_cli_gates"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_cmeta_cli_gates.cmake")
 
   cmake_add_test(test_tbe_typed_cmeta_public
     SOURCES test_tbe_typed_cmeta_public.c
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
+    LIBS tbe_cmeta_graph_public_fixture Salts::IDL
     FOLDER "databind/runtime/tests")
   set_tests_properties(test_tbe_typed_cmeta_public PROPERTIES
     LABELS "databind;cmeta;typed-contract")
   cmake_add_test(test_tbe_typed_cmeta_public_cpp
     SOURCES test_tbe_typed_cmeta_public_cpp.cpp
-    LIBS tbe_cmeta_graph_public_fixture Salts::DataBindSchema
+    LIBS tbe_cmeta_graph_public_fixture Salts::Schema
     FOLDER "databind/runtime/tests")
   set_target_properties(test_tbe_typed_cmeta_public_cpp PROPERTIES
     CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)

@@ -1,6 +1,7 @@
 /* #99 canonical enum-bits direct-reader contract.
  * No legacy enum adapter, CBind delegation, or local decoder. */
 #include "data_bind_native.h"
+#include "native_test_alignment.h"
 #include "reader_probe.h"
 
 #include <cmeta/struct.h>
@@ -18,7 +19,7 @@ enum {
 };
 
 typedef union EnumWorkspace {
-  max_align_t alignment;
+  DataBindNativeTestAlignment alignment;
   unsigned char bytes[ENUM_WORKSPACE_BYTES];
 } EnumWorkspace;
 

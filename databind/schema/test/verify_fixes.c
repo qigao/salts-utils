@@ -1,4 +1,4 @@
-#include "schema_parser_dsl.h"
+#include "tbe_contract_overlay.h"
 #include "tbe_error.h"
 #include "tbe_version.h"
 #include "tbe_wire.h"
@@ -63,11 +63,11 @@ int main() {
     printf("5. Testing input validation...\n");
     Node *test_root = create_node_map("test");
     
-    int rc = parse_schema(NULL, 0, test_root, &err);
+    int rc = databind_tbe_contract_parse(NULL, 0, test_root, &err);
     printf("   NULL input rejection: %s\n", (rc == -1 && err.code == TBE_ERR_INVALID_ARGUMENT) ? "PASS" : "FAIL");
     
     const char *valid_schema = "composite Point { int32 x; int32 y; }";
-    rc = parse_schema(valid_schema, strlen(valid_schema), test_root, &err);
+    rc = databind_tbe_contract_parse(valid_schema, strlen(valid_schema), test_root, &err);
     printf("   Valid schema parsing: %s\n", rc == 0 ? "PASS" : "FAIL");
     
     node_free(test_root);
