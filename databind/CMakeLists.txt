@@ -15,7 +15,7 @@ target_link_libraries(databind_tbe_contract
   PUBLIC Salts::IDL
   PRIVATE Salts::Schema Salts::Core)
 add_subdirectory(runtime)
-add_subdirectory(compiler)
+add_subdirectory(idl/compiler)
 
 if(BUILD_TESTS)
   add_subdirectory(tests/package_config)
