@@ -157,8 +157,20 @@ jobs:
           set -euxo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           prefix="$RUNNER_TEMP/salts-utils-4.1-pair"
-          cmake --build build/pair-databind --parallel 2
-          cmake --install build/pair-databind --prefix "$prefix"
+          cmake -S . -B build/pair-install -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-pair-utils" \
+            -DVCPKG_MANIFEST_INSTALL=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF \
+            -DSALTS_UTILS_QUALIFY_DATABIND=ON
+          cmake --build build/pair-install --parallel 2
+          cmake --install build/pair-install --prefix "$prefix"
           targets="$prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
           test -f "$prefix/include/data_bind_native_binding.h"
           test -f "$prefix/include/idl_contract.h"
@@ -360,9 +372,11 @@ jobs:
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
           set "prefix=%RUNNER_TEMP%\salts-utils-4.1-pair"
-          cmake --build build\pair-databind --parallel 2
+          cmake -S . -B build\pair-install -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
           if errorlevel 1 exit /b 1
-          cmake --install build\pair-databind --prefix "%prefix%"
+          cmake --build build\pair-install --parallel 2
+          if errorlevel 1 exit /b 1
+          cmake --install build\pair-install --prefix "%prefix%"
           if errorlevel 1 exit /b 1
           set "targets=%prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake"
           if not exist "%prefix%\include\data_bind_native_binding.h" exit /b 1
