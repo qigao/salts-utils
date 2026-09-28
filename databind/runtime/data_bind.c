@@ -6711,109 +6711,219 @@ static DataBindStatus db_binary_measure(const emit_field_array_t *fields,
   return status;
 }
 
-static Node *parse_schema_text_to_root(const char *schema_text, size_t len, const char *path,
-                                       char *error_buf, size_t error_size, DataBindError *error) {
+static DataBindStatus parse_idl_contract_text(
+    const char *schema_text, size_t len, const char *path,
+    IdlContract **out_contract, DataBindError *error) {
+  IdlDiagnostic diagnostic = IDL_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+
+  if (out_contract != NULL) *out_contract = NULL;
+  if (schema_text == NULL || out_contract == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1,
+        "Invalid IDL contract text");
+
+  if (idl_contract_parse(
+          schema_text, len, out_contract, &diagnostic)) {
+    db_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
+  switch (diagnostic.status) {
+  case IDL_NO_MEMORY:
+    status = DATA_BIND_ERR_OOM;
+    break;
+  case IDL_LEXER_ERROR:
+  case IDL_SYNTAX_ERROR:
+    status = DATA_BIND_ERR_PARSE;
+    break;
+  case IDL_SEMANTIC_ERROR:
+    status = DATA_BIND_ERR_SCHEMA;
+    break;
+  case IDL_INVALID_ARGUMENT:
+  default:
+    status = DATA_BIND_ERR_INVALID_ARG;
+    break;
+  }
+
+  return db_error_set(
+      error, status, path, diagnostic.line, diagnostic.column,
+      "IDL contract error: %s", diagnostic.message);
+}
+
+/* Transitional representation for TBE-format/runtime paths. The typed
+ * IdlContract is the semantic authority; this tree may carry format overlay
+ * facts that are not part of the logical contract. */
+static Node *parse_schema_text_to_root(
+    const char *schema_text, size_t len, const char *path,
+    char *error_buf, size_t error_size, DataBindError *error) {
   Node *root;
   tbe_error_t err = {0};
+
   if (schema_text == NULL) {
-    if (error_buf != NULL && error_size > 0) snprintf(error_buf, error_size, "Invalid schema text");
-    db_error_set(error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1, "Invalid schema text");
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "Invalid schema text");
+    db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, path, -1, -1,
+        "Invalid schema text");
     return NULL;
   }
+
   root = create_node_map(NULL);
   if (root == NULL) {
-    if (error_buf != NULL && error_size > 0) snprintf(error_buf, error_size, "Out of memory");
-    db_error_set(error, DATA_BIND_ERR_OOM, path, -1, -1, "Out of memory");
+    if (error_buf != NULL && error_size > 0)
+      snprintf(error_buf, error_size, "Out of memory");
+    db_error_set(
+        error, DATA_BIND_ERR_OOM, path, -1, -1, "Out of memory");
     return NULL;
   }
+
   if (idl_parse(schema_text, len, root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
       snprintf(error_buf, error_size, "Parse error: %s", err.message);
-    db_error_set(error, DATA_BIND_ERR_PARSE, path, err.line, err.column, "Parse error: %s",
-                 err.message);
+    db_error_set(
+        error, DATA_BIND_ERR_PARSE, path, err.line, err.column,
+        "Parse error: %s", err.message);
     node_free(root);
     return NULL;
   }
+
   if (databind_tbe_contract_apply(root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
       snprintf(error_buf, error_size, "TBE format error: %s", err.message);
-    db_error_set(error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
-                 "TBE format error: %s", err.message);
+    db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
+        "TBE format error: %s", err.message);
     node_free(root);
     return NULL;
   }
+
   db_error_clear(error);
   return root;
 }
 
-static DataBindStatus data_bind_create_from_root(Node *schema_root, DataBind **out_codec,
-                                                 DataBindError *error) {
+static DataBindStatus data_bind_create_from_root(
+    Node *schema_root, IdlContract *contract,
+    DataBind **out_codec, DataBindError *error) {
   DataBind *codec;
   DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
-  if (schema_root == NULL || out_codec == NULL) {
+  if (schema_root == NULL || contract == NULL || out_codec == NULL) {
     node_free(schema_root);
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
-                        "Invalid codec create arguments");
+    idl_contract_destroy(contract);
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+        "Invalid codec create arguments");
   }
+
   codec = (DataBind *)calloc(1, sizeof(*codec));
   if (codec == NULL) {
     node_free(schema_root);
-    return db_error_set(error, DATA_BIND_ERR_OOM, NULL, -1, -1, "Out of memory");
+    idl_contract_destroy(contract);
+    return db_error_set(
+        error, DATA_BIND_ERR_OOM, NULL, -1, -1, "Out of memory");
   }
+
+  codec->contract = contract;
   codec->schema_root = schema_root;
+
   status = validate_schema_binding_names(schema_root, error);
   if (status != DATA_BIND_OK) {
     node_free(schema_root);
+    idl_contract_destroy(contract);
     free(codec);
     return status;
   }
-  if (!data_bind_contract_fingerprint(schema_root, codec->schema_fingerprint)) {
+
+  if (!data_bind_contract_fingerprint(
+          schema_root, codec->schema_fingerprint)) {
     node_free(schema_root);
+    idl_contract_destroy(contract);
     free(codec);
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, NULL, -1, -1,
-                        "Failed to fingerprint parsed schema");
+    return db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, NULL, -1, -1,
+        "Failed to fingerprint parsed schema");
   }
+
   db_error_clear(error);
   *out_codec = codec;
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_create(const char *schema_path, DataBind **out_codec,
-                                DataBindError *error) {
+DataBindStatus data_bind_create(
+    const char *schema_path, DataBind **out_codec,
+    DataBindError *error) {
   salts_fs_buf_t schema = {NULL, 0};
   Node *schema_root;
+  IdlContract *contract = NULL;
   DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
   if (schema_path == NULL || out_codec == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
-                        "Invalid codec create arguments");
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, schema_path, -1, -1,
+        "Invalid codec create arguments");
+
   if (salts_fs_read_file(schema_path, &schema) != 0)
-    return db_error_set(error, DATA_BIND_ERR_IO, schema_path, -1, -1,
-                        "Cannot read schema: %s", schema_path);
-  schema_root =
-      parse_schema_text_to_root(schema.base, schema.len, schema_path, NULL, 0, error);
-  status = schema_root != NULL ? data_bind_create_from_root(schema_root, out_codec, error)
-                               : db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+    return db_error_set(
+        error, DATA_BIND_ERR_IO, schema_path, -1, -1,
+        "Cannot read schema: %s", schema_path);
+
+  schema_root = parse_schema_text_to_root(
+      schema.base, schema.len, schema_path, NULL, 0, error);
+  if (schema_root == NULL) {
+    salts_fs_buf_free(&schema);
+    return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+  }
+
+  status = parse_idl_contract_text(
+      schema.base, schema.len, schema_path, &contract, error);
+  if (status != DATA_BIND_OK) {
+    node_free(schema_root);
+    salts_fs_buf_free(&schema);
+    return status;
+  }
+
+  status = data_bind_create_from_root(
+      schema_root, contract, out_codec, error);
   salts_fs_buf_free(&schema);
   return status;
 }
 
-DataBindStatus data_bind_create_from_text(const char *schema_text, size_t len,
-                                          DataBind **out_codec, DataBindError *error) {
+DataBindStatus data_bind_create_from_text(
+    const char *schema_text, size_t len,
+    DataBind **out_codec, DataBindError *error) {
   Node *schema_root;
+  IdlContract *contract = NULL;
+  DataBindStatus status;
+
   if (out_codec != NULL) *out_codec = NULL;
   if (schema_text == NULL || out_codec == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
-                        "Invalid codec create arguments");
-  schema_root = parse_schema_text_to_root(schema_text, len, NULL, NULL, 0, error);
-  if (schema_root == NULL) return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
-  return data_bind_create_from_root(schema_root, out_codec, error);
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL, -1, -1,
+        "Invalid codec create arguments");
+
+  schema_root = parse_schema_text_to_root(
+      schema_text, len, NULL, NULL, 0, error);
+  if (schema_root == NULL)
+    return db_error_code_or(error, DATA_BIND_ERR_SCHEMA);
+
+  status = parse_idl_contract_text(
+      schema_text, len, NULL, &contract, error);
+  if (status != DATA_BIND_OK) {
+    node_free(schema_root);
+    return status;
+  }
+
+  return data_bind_create_from_root(
+      schema_root, contract, out_codec, error);
 }
 
 void data_bind_free(DataBind *codec) {
   if (codec == NULL) return;
   node_free(codec->schema_root);
+  idl_contract_destroy(codec->contract);
   free(codec);
 }
 
