@@ -4,6 +4,7 @@
 #include <cmeta/object.h>
 #include <cmeta/struct.h>
 
+#include <stdio.h>
 #include <string.h>
 
 typedef struct DynamicRecord {
@@ -379,11 +380,17 @@ spec("DataBind provider-backed object MessagePlan") {
 
     check_equal(
         cserde_reader_init(&reader, &TOKEN_READER_OPS, &source), CSERDE_OK);
-    check_equal(
-        data_bind_message_plan_decode_object_format(
-            plan, &options, DATA_BIND_FORMAT_XML, &reader, &object, NULL,
-            &diagnostic),
-        DATA_BIND_OK);
+    {
+      DataBindStatus decode_status =
+          data_bind_message_plan_decode_object_format(
+              plan, &options, DATA_BIND_FORMAT_XML, &reader, &object, NULL,
+              &diagnostic);
+      if (decode_status != DATA_BIND_OK)
+        fprintf(stderr, "XML object decode failed: status=%d field=%s message=%s\n",
+                (int)decode_status, diagnostic.schema_field,
+                diagnostic.message);
+      check_equal(decode_status, DATA_BIND_OK);
+    }
     check_equal(record.age, INT64_C(37));
     check_true(record.score == 3.5);
     check_true(record.active);
