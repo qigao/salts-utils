@@ -45,10 +45,6 @@ static const char *openapi_string(const Node *parent, const char *name) {
              : NULL;
 }
 
-static int openapi_flag(const Node *parent, const char *name) {
-  return openapi_child(parent, name) != NULL;
-}
-
 static char *openapi_strdup(const char *text) {
   size_t length;
   char *copy;
@@ -72,19 +68,6 @@ static const Node *openapi_find_named(
       return item;
   }
   return NULL;
-}
-
-static const Node *openapi_record(const Node *root, const char *name) {
-  const Node *result;
-  result = openapi_find_named(root, "messages", name);
-  if (result != NULL) return result;
-  result = openapi_find_named(root, "composites", name);
-  if (result != NULL) return result;
-  return openapi_find_named(root, "groups", name);
-}
-
-static const Node *openapi_enum(const Node *root, const char *name) {
-  return openapi_find_named(root, "enums", name);
 }
 
 static int openapi_json_string(FILE *file, const char *text) {
@@ -678,15 +661,6 @@ static int openapi_emit_type_value(
   return openapi_json_string(file, json_type);
 }
 
-static int openapi_field_is_collection(const Node *field) {
-  return openapi_flag(field, "is_collection") ||
-         openapi_flag(field, "is_list") ||
-         openapi_flag(field, "is_set") ||
-         openapi_flag(field, "is_map") ||
-         openapi_flag(field, "is_group_field");
-}
-
-
 static int openapi_constraint_kind_present(
     const IdlField *field, const char *kind) {
   size_t i;
@@ -885,86 +859,6 @@ static int openapi_emit_type_schema(
   }
   return fputc('}', file) == EOF ? -1 : 0;
 }
-
-static int openapi_emit_type_schema(
-    FILE *file, const Node *root, const char *type, int nullable) {
-  const char *json_type = NULL;
-  const char *format = NULL;
-  const Node *record;
-  const Node *enumeration;
-  int is_unsigned = 0;
-  int first = 1;
-
-  if (file == NULL || root == NULL || type == NULL) return -1;
-  if (fputc('{', file) == EOF) return -1;
-
-  if (openapi_primitive(type, &json_type, &format, &is_unsigned)) {
-    if (openapi_emit_key(file, &first, "type") != 0 ||
-        openapi_emit_type_value(file, json_type, nullable) != 0)
-      return -1;
-    if (format != NULL &&
-        (openapi_emit_key(file, &first, "format") != 0 ||
-         openapi_json_string(file, format) != 0))
-      return -1;
-    if (strcmp(type, "bytes") == 0 &&
-        (openapi_emit_key(file, &first, "contentEncoding") != 0 ||
-         openapi_json_string(file, "base64") != 0))
-      return -1;
-    if (is_unsigned &&
-        (openapi_emit_key(file, &first, "minimum") != 0 ||
-         fputs("0", file) == EOF))
-      return -1;
-  } else if ((record = openapi_record(root, type)) != NULL) {
-    (void)record;
-    if (nullable) {
-      if (openapi_emit_key(file, &first, "anyOf") != 0 ||
-          fputs("[", file) == EOF ||
-          openapi_emit_ref(file, type) != 0 ||
-          fputs(",{\"type\":\"null\"}]", file) == EOF)
-        return -1;
-    } else {
-      char ref[512];
-      int written = snprintf(ref, sizeof(ref), "#/components/schemas/%s", type);
-      if (written <= 0 || (size_t)written >= sizeof(ref) ||
-          openapi_emit_key(file, &first, "$ref") != 0 ||
-          openapi_json_string(file, ref) != 0)
-        return -1;
-    }
-  } else if ((enumeration = openapi_enum(root, type)) != NULL) {
-    const Node *items = openapi_list(enumeration, "items");
-    size_t i;
-    const char *underlying = openapi_string(enumeration, "underlying_type");
-    if (!openapi_primitive(underlying, &json_type, &format, &is_unsigned) ||
-        json_type == NULL || strcmp(json_type, "integer") != 0 ||
-        items == NULL ||
-        openapi_emit_key(file, &first, "type") != 0 ||
-        openapi_emit_type_value(file, "integer", nullable) != 0)
-      return -1;
-    if (format != NULL &&
-        (openapi_emit_key(file, &first, "format") != 0 ||
-         openapi_json_string(file, format) != 0))
-      return -1;
-    if (is_unsigned &&
-        (openapi_emit_key(file, &first, "minimum") != 0 ||
-         fputs("0", file) == EOF))
-      return -1;
-    if (openapi_emit_key(file, &first, "enum") != 0 ||
-        fputc('[', file) == EOF)
-      return -1;
-    for (i = 0u; i < items->data.list.count; ++i) {
-      const char *value = openapi_string(items->data.list.items[i], "value");
-      if (value == NULL || (i != 0u && fputc(',', file) == EOF) ||
-          fputs(value, file) == EOF)
-        return -1;
-    }
-    if (fputc(']', file) == EOF) return -1;
-  } else {
-    return -1;
-  }
-
-  return fputc('}', file) == EOF ? -1 : 0;
-}
-
 
 static int openapi_emit_field_schema(
     FILE *file, const IdlContract *contract,
