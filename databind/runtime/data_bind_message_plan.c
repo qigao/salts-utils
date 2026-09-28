@@ -1474,3 +1474,593 @@ fail:
       plan, native_options, destination, destination_bytes,
       diagnostic, status);
 }
+
+
+static int message_object_compatible(
+    const DataBindMessagePlan *plan,
+    const cmeta_object_ref *object) {
+  return plan != NULL &&
+         plan->mode == DATA_BIND_MESSAGE_PLAN_OBJECT &&
+         cmeta_data_desc_valid(plan->object_data) &&
+         cmeta_object_ref_valid(object) &&
+         cmeta_data_desc_equal(plan->object_data, object->data);
+}
+
+static DataBindStatus message_object_state_get(
+    const DataBindMessageFieldPlan *field,
+    const cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *provider,
+    DataBindMessageObjectFieldState *out_state,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+
+  if (out_state == NULL || field == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  *out_state = DATA_BIND_MESSAGE_OBJECT_VALUE;
+  if (!field->optional && !field->nullable) return DATA_BIND_OK;
+
+  if (!message_object_state_provider_valid(provider))
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+        "Optional/nullable provider-backed field requires a DataBind object state provider");
+
+  status = provider->get_state(
+      provider->context, object, field->name, out_state, &error);
+  if (status != DATA_BIND_OK)
+    return message_fail(
+        diagnostic, status, field->name, "%s",
+        error.message[0] != '\0'
+            ? error.message
+            : "Object state provider read failed");
+
+  if (*out_state != DATA_BIND_MESSAGE_OBJECT_ABSENT &&
+      *out_state != DATA_BIND_MESSAGE_OBJECT_VALUE &&
+      *out_state != DATA_BIND_MESSAGE_OBJECT_NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, field->name,
+        "Object state provider returned an invalid field state");
+
+  if (*out_state == DATA_BIND_MESSAGE_OBJECT_ABSENT && !field->optional)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND, field->name,
+        "Required provider-backed field is absent");
+  if (*out_state == DATA_BIND_MESSAGE_OBJECT_NULL && !field->nullable)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+        "Provider-backed field is NULL but not nullable");
+
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_object_state_set(
+    const DataBindMessageFieldPlan *field,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *provider,
+    DataBindMessageObjectFieldState state,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+
+  if (field == NULL || object == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  if (!field->optional && !field->nullable) {
+    if (state != DATA_BIND_MESSAGE_OBJECT_VALUE)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+          "Required non-nullable object field cannot carry DataBind state");
+    return DATA_BIND_OK;
+  }
+
+  if (!message_object_state_provider_valid(provider))
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+        "Optional/nullable provider-backed field requires a DataBind object state provider");
+
+  status = provider->set_state(
+      provider->context, object, field->name, state, &error);
+  if (status != DATA_BIND_OK)
+    return message_fail(
+        diagnostic, status, field->name, "%s",
+        error.message[0] != '\0'
+            ? error.message
+            : "Object state provider write failed");
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_object_field_workspace(
+    const DataBindNativeOptions *options,
+    size_t prefix_bytes,
+    const DataBindMessageFieldPlan *field,
+    void **out_storage,
+    DataBindNativeOptions *out_options,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  uintptr_t start;
+  uintptr_t aligned;
+  size_t padding;
+  size_t extent;
+  size_t align;
+  size_t used;
+
+  if (out_storage != NULL) *out_storage = NULL;
+  if (out_options != NULL) memset(out_options, 0, sizeof(*out_options));
+  if (options == NULL || field == NULL || field->data == NULL ||
+      field->data->storage_type == NULL || out_storage == NULL ||
+      out_options == NULL || options->workspace == NULL ||
+      prefix_bytes > options->workspace_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid provider-backed field workspace");
+
+  extent = field->data->storage_type->size;
+  align = field->data->storage_type->align;
+  if (extent == 0u || align == 0u)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+        "Provider-backed field has invalid native storage metadata");
+
+  start = (uintptr_t)((unsigned char *)options->workspace + prefix_bytes);
+  padding = (size_t)(start % align);
+  if (padding != 0u) padding = align - padding;
+  if (padding > SIZE_MAX - prefix_bytes ||
+      extent > SIZE_MAX - prefix_bytes - padding)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, field->name,
+        "Provider-backed field workspace size overflow");
+
+  used = prefix_bytes + padding + extent;
+  if (used > options->workspace_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, field->name,
+        "Native workspace cannot hold provider-backed field staging");
+
+  aligned = start + padding;
+  *out_storage = (void *)aligned;
+  *out_options = *options;
+  out_options->workspace =
+      (unsigned char *)options->workspace + used;
+  out_options->workspace_bytes = options->workspace_bytes - used;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_object_decode_value(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    size_t workspace_prefix,
+    cserde_reader *reader,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativeOptions field_options;
+  DataBindError validation = DATA_BIND_ERROR_INIT;
+  void *temporary = NULL;
+  DataBindStatus status;
+  cmeta_status cmeta_result;
+
+  status = message_object_field_workspace(
+      native_options, workspace_prefix, field,
+      &temporary, &field_options, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  status = data_bind_native_decode(
+      &field_options, field->data, reader, temporary,
+      field->data->storage_type->size, &native);
+  if (status != DATA_BIND_OK)
+    return message_native_failure(
+        diagnostic, status, field->name, &native,
+        "Provider-backed field decode failed");
+
+  status = data_bind_message_plan_internal_validate_field(
+      plan, field->name, temporary, &validation);
+  if (status != DATA_BIND_OK) {
+    (void)data_bind_native_clear(
+        &field_options, field->data, temporary,
+        field->data->storage_type->size, &native);
+    return message_fail(
+        diagnostic, status, field->name, "%s",
+        validation.message[0] != '\0'
+            ? validation.message
+            : "Provider-backed field validation failed");
+  }
+
+  cmeta_result = cmeta_object_field_assign(
+      object, field->name, field->data, temporary);
+  if (cmeta_result != CMETA_OK) {
+    status = message_cmeta_status(cmeta_result);
+    (void)data_bind_native_clear(
+        &field_options, field->data, temporary,
+        field->data->storage_type->size, &native);
+    return message_fail(
+        diagnostic, status, field->name,
+        "CMeta object field assignment failed");
+  }
+
+  status = data_bind_native_clear(
+      &field_options, field->data, temporary,
+      field->data->storage_type->size, &native);
+  if (status != DATA_BIND_OK)
+    return message_native_failure(
+        diagnostic, DATA_BIND_ERR_RUNTIME, field->name, &native,
+        "Provider-backed field temporary cleanup failed");
+
+  return message_object_state_set(
+      field, object, state_provider,
+      DATA_BIND_MESSAGE_OBJECT_VALUE, diagnostic);
+}
+
+static DataBindStatus message_object_decode_prefixed_value(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    size_t workspace_prefix,
+    cserde_reader *source,
+    const cserde_token *first,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  MessagePrefixedReaderContext context;
+  cserde_reader reader = {0};
+
+  if (source == NULL || first == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid provider-backed prefixed MessagePlan reader");
+
+  context.source = source;
+  context.first = *first;
+  context.emitted_first = 0;
+  if (cserde_reader_init(
+          &reader, &MESSAGE_PREFIXED_READER_OPS, &context) != CSERDE_OK)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME,
+        field != NULL ? field->name : NULL,
+        "Could not initialize provider-backed prefixed reader");
+
+  return message_object_decode_value(
+      plan, field, native_options, workspace_prefix, &reader,
+      object, state_provider, diagnostic);
+}
+
+static DataBindStatus message_object_decode_default(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    size_t workspace_prefix,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  MessageSingleReaderContext context;
+  cserde_reader reader = {0};
+
+  if (field == NULL || !field->has_default_token)
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+
+  context.token = &field->default_token;
+  context.emitted = 0;
+  if (cserde_reader_init(
+          &reader, &MESSAGE_SINGLE_READER_OPS, &context) != CSERDE_OK)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, field->name,
+        "Could not initialize provider-backed default reader");
+
+  return message_object_decode_value(
+      plan, field, native_options, workspace_prefix, &reader,
+      object, state_provider, diagnostic);
+}
+
+DataBindStatus data_bind_message_plan_validate_object(
+    const DataBindMessagePlan *plan,
+    const cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindError *error) {
+  size_t i;
+
+  if (error != NULL) *error = (DataBindError)DATA_BIND_ERROR_INIT;
+  if (!message_object_compatible(plan, object))
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    DataBindMessageObjectFieldState state;
+    const cmeta_data_desc *value_data = NULL;
+    const void *value = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindStatus status;
+    cmeta_status cmeta_result;
+
+    status = message_object_state_get(
+        field, object, state_provider, &state, &diagnostic);
+    if (status != DATA_BIND_OK) {
+      if (error != NULL) {
+        error->code = status;
+        snprintf(error->path, sizeof(error->path), "%s", field->name);
+        snprintf(error->message, sizeof(error->message), "%s",
+                 diagnostic.message);
+      }
+      return status;
+    }
+    if (state != DATA_BIND_MESSAGE_OBJECT_VALUE) continue;
+    if (field->validation_rule_count == 0u) continue;
+
+    cmeta_result = cmeta_object_field_read(
+        object, field->name, &value_data, &value);
+    if (cmeta_result != CMETA_OK || value == NULL ||
+        !cmeta_data_desc_equal(field->data, value_data)) {
+      status = cmeta_result == CMETA_OK
+                   ? DATA_BIND_ERR_TYPE_MISMATCH
+                   : message_cmeta_status(cmeta_result);
+      if (error != NULL) {
+        error->code = status;
+        snprintf(error->path, sizeof(error->path), "%s", field->name);
+        snprintf(error->message, sizeof(error->message),
+                 "CMeta object field read failed");
+      }
+      return status;
+    }
+
+    status = data_bind_message_plan_internal_validate_field(
+        plan, field->name, value, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_message_plan_decode_object(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  unsigned char *bitmap;
+  size_t bitmap_bytes;
+  cserde_token token = {0};
+  cserde_status reader_status;
+  DataBindStatus status;
+  size_t i;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+
+  if (!message_object_compatible(plan, object) ||
+      native_options == NULL || reader == NULL ||
+      native_options->size < sizeof(*native_options) ||
+      native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
+      native_options->workspace == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid provider-backed MessagePlan decode arguments");
+
+  if ((plan->field_count != 0u) && object->field_provider == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, NULL,
+        "Provider-backed MessagePlan requires a CMeta field provider");
+
+  bitmap_bytes = message_bitmap_bytes(plan->field_count);
+  if (bitmap_bytes > native_options->workspace_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, NULL,
+        "Native workspace cannot hold provider-backed field-state bitmap");
+  bitmap = (unsigned char *)native_options->workspace;
+  if (bitmap_bytes != 0u) memset(bitmap, 0, bitmap_bytes);
+
+  reader_status = cserde_reader_next(reader, &token);
+  if (reader_status != CSERDE_OK)
+    return message_reader_failure(
+        diagnostic, reader_status, NULL, "Message root");
+  if (token.kind != CSERDE_MAP_BEGIN)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+        "Provider-backed MessagePlan requires a canonical CSerde MAP root");
+
+  for (;;) {
+    const DataBindMessageFieldPlan *field;
+    size_t field_index = 0u;
+
+    reader_status = cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK)
+      return message_reader_failure(
+          diagnostic, reader_status, NULL, "Message field");
+    if (token.kind == CSERDE_MAP_END) break;
+    if (token.kind != CSERDE_STRING)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+          "Message field name must be a canonical CSerde STRING");
+
+    field = message_field_slice(plan, &token.value.slice, &field_index);
+    if (field == NULL)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+          "Unknown canonical DataBind message field");
+    if (message_field_seen(bitmap, field_index))
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+          "Duplicate canonical DataBind message field");
+
+    reader_status = cserde_reader_next(reader, &token);
+    if (reader_status != CSERDE_OK)
+      return message_reader_failure(
+          diagnostic, reader_status, field->name,
+          "Message field value");
+
+    if (token.kind == CSERDE_NULL) {
+      if (!field->nullable)
+        return message_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
+            "Explicit NULL is not admitted by the DataBind contract");
+      status = message_object_state_set(
+          field, object, state_provider,
+          DATA_BIND_MESSAGE_OBJECT_NULL, diagnostic);
+    } else {
+      status = message_object_decode_prefixed_value(
+          plan, field, native_options, bitmap_bytes,
+          reader, &token, object, state_provider, diagnostic);
+    }
+    if (status != DATA_BIND_OK) return status;
+    message_mark_field_seen(bitmap, field_index);
+  }
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    if (message_field_seen(bitmap, i)) continue;
+
+    if (field->has_default_token) {
+      status = message_object_decode_default(
+          plan, field, native_options, bitmap_bytes,
+          object, state_provider, diagnostic);
+      if (status != DATA_BIND_OK) return status;
+      continue;
+    }
+
+    if (field->optional) {
+      status = message_object_state_set(
+          field, object, state_provider,
+          DATA_BIND_MESSAGE_OBJECT_ABSENT, diagnostic);
+      if (status != DATA_BIND_OK) return status;
+      continue;
+    }
+
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_NOT_FOUND, field->name,
+        "Required logical input is absent");
+  }
+
+  message_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus message_writer_failure(
+    DataBindMessagePlanDiagnostic *diagnostic,
+    cserde_status writer_status,
+    const char *field,
+    const char *context) {
+  DataBindStatus status =
+      writer_status == CSERDE_LIMIT_EXCEEDED
+          ? DATA_BIND_ERR_LIMIT
+          : writer_status == CSERDE_SINK_ERROR
+                ? DATA_BIND_ERR_IO
+                : DATA_BIND_ERR_RUNTIME;
+  return message_fail(
+      diagnostic, status, field, "%s: CSerde writer failed (%d)",
+      context != NULL ? context : "Message encode",
+      (int)writer_status);
+}
+
+static DataBindStatus message_write_token(
+    cserde_writer *writer,
+    const cserde_token *token,
+    DataBindMessagePlanDiagnostic *diagnostic,
+    const char *field,
+    const char *context) {
+  cserde_status status = cserde_writer_write(writer, token);
+  return status == CSERDE_OK
+             ? DATA_BIND_OK
+             : message_writer_failure(
+                   diagnostic, status, field, context);
+}
+
+DataBindStatus data_bind_message_plan_encode_object(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    const cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    cserde_writer *writer,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  cserde_token token = {0};
+  size_t i;
+  DataBindStatus status;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+
+  if (!message_object_compatible(plan, object) ||
+      native_options == NULL || writer == NULL ||
+      native_options->size < sizeof(*native_options) ||
+      native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid provider-backed MessagePlan encode arguments");
+
+  token.kind = CSERDE_MAP_BEGIN;
+  status = message_write_token(
+      writer, &token, diagnostic, NULL, "Message root begin");
+  if (status != DATA_BIND_OK) return status;
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    DataBindMessageObjectFieldState state;
+    const cmeta_data_desc *value_data = NULL;
+    const void *value = NULL;
+    DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindError validation = DATA_BIND_ERROR_INIT;
+    cmeta_status cmeta_result;
+
+    status = message_object_state_get(
+        field, object, state_provider, &state, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+    if (state == DATA_BIND_MESSAGE_OBJECT_ABSENT) continue;
+
+    token.kind = CSERDE_STRING;
+    token.value.slice.data = (const unsigned char *)field->name;
+    token.value.slice.size = strlen(field->name);
+    token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+    status = message_write_token(
+        writer, &token, diagnostic, field->name, "Message field name");
+    if (status != DATA_BIND_OK) return status;
+
+    if (state == DATA_BIND_MESSAGE_OBJECT_NULL) {
+      token = (cserde_token){0};
+      token.kind = CSERDE_NULL;
+      status = message_write_token(
+          writer, &token, diagnostic, field->name, "Message NULL value");
+      if (status != DATA_BIND_OK) return status;
+      continue;
+    }
+
+    cmeta_result = cmeta_object_field_read(
+        object, field->name, &value_data, &value);
+    if (cmeta_result != CMETA_OK || value == NULL ||
+        !cmeta_data_desc_equal(field->data, value_data))
+      return message_fail(
+          diagnostic,
+          cmeta_result == CMETA_OK
+              ? DATA_BIND_ERR_TYPE_MISMATCH
+              : message_cmeta_status(cmeta_result),
+          field->name,
+          "CMeta object field read does not match MessagePlan semantics");
+
+    status = data_bind_message_plan_internal_validate_field(
+        plan, field->name, value, &validation);
+    if (status != DATA_BIND_OK)
+      return message_fail(
+          diagnostic, status, field->name, "%s",
+          validation.message[0] != '\0'
+              ? validation.message
+              : "Provider-backed field validation failed");
+
+    status = data_bind_native_encode(
+        native_options, field->data, value,
+        field->data->storage_type->size, writer, &native);
+    if (status != DATA_BIND_OK)
+      return message_native_failure(
+          diagnostic, status, field->name, &native,
+          "Provider-backed field encode failed");
+  }
+
+  token = (cserde_token){0};
+  token.kind = CSERDE_MAP_END;
+  status = message_write_token(
+      writer, &token, diagnostic, NULL, "Message root end");
+  if (status != DATA_BIND_OK) return status;
+
+  message_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
