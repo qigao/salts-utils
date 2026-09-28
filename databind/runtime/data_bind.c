@@ -231,6 +231,19 @@ static const IdlField *db_idl_field_at(
              : NULL;
 }
 
+static const char *db_idl_collection_kind_name(IdlCollectionKind kind) {
+  switch (kind) {
+  case IDL_COLLECTION_ARRAY: return "array";
+  case IDL_COLLECTION_LIST: return "list";
+  case IDL_COLLECTION_SET: return "set";
+  case IDL_COLLECTION_MAP: return "map";
+  case IDL_COLLECTION_GROUP: return "group";
+  case IDL_COLLECTION_NONE:
+  default:
+    return NULL;
+  }
+}
+
 struct data_bind_stream_t {
   DataBind *codec;
   char *type_name;
@@ -5246,83 +5259,97 @@ static int fill_schema_constraint(Node *constraint,
   return kind != DATA_BIND_SCHEMA_CONSTRAINT_UNKNOWN;
 }
 
-static int fill_schema_field(Node *schema_root, Node *field, DataBindSchemaField *out) {
+static int fill_schema_field(
+    const IdlContract *contract, const IdlField *idl_field,
+    Node *format_field, DataBindSchemaField *out) {
   size_t out_size;
-  const char *name;
   schema_cmeta_field_type semantic;
   int resolved;
-  if (schema_root == NULL || field == NULL || out == NULL) return 0;
-  resolved = schema_cmeta_field_resolve(schema_root, field, &semantic);
+  const char *collection_kind;
+
+  if (contract == NULL || idl_field == NULL ||
+      format_field == NULL || out == NULL)
+    return 0;
+
+  resolved = schema_cmeta_field_resolve(
+      contract, idl_field, &semantic);
+  collection_kind =
+      db_idl_collection_kind_name(idl_field->collection_kind);
+
   out_size = db_reflect_out_size(out->size, sizeof(*out));
   memset(out, 0, out_size);
-  name = get_string_val(find_child(field, "name"));
+
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, size, out_size);
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, name, name);
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, type,
-                 get_string_val(find_child(field, "type")));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, name, idl_field->name);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, type, idl_field->type_name);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, kind,
                  resolved ? semantic.schema_kind : "unknown");
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, inner_type,
-                 get_string_val(find_child(field, "inner_type")));
+                 idl_field->inner_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, group_type,
-                 get_string_val(find_child(field, "group_type")));
+                 idl_field->collection_kind == IDL_COLLECTION_GROUP
+                     ? idl_field->inner_type
+                     : NULL);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, key_type,
-                 get_string_val(find_child(field, "key_type")));
+                 idl_field->key_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, value_type,
-                 get_string_val(find_child(field, "value_type")));
+                 idl_field->value_type);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, collection_kind,
-                 get_string_val(find_child(field, "collection_kind")));
+                 collection_kind);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, length,
-                 get_string_val(find_child(field, "length_field")));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_optional, field_flag(field, "is_optional"));
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_default, field_flag(field, "has_default"));
+                 idl_field->length);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_optional,
+                 idl_field->optional);
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_default,
+                 idl_field->default_value != NULL);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, default_value,
-                 get_string_val(find_child(field, "default_value")));
+                 idl_field->default_value);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_collection,
                  resolved && cmeta_data_kind_is_container(semantic.kind) &&
+                 semantic.schema_kind != NULL &&
                  strcmp(semantic.schema_kind, "group") != 0);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_composite,
                  resolved && semantic.kind == CMETA_DATA_STRUCT &&
+                 semantic.schema_kind != NULL &&
                  strcmp(semantic.schema_kind, "composite") == 0);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_group,
-                 resolved && semantic.kind == CMETA_DATA_SEQUENCE &&
-                 strcmp(semantic.schema_kind, "group") == 0);
+                 idl_field->collection_kind == IDL_COLLECTION_GROUP);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_map,
                  resolved && semantic.kind == CMETA_DATA_MAP);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_enum,
                  resolved && semantic.kind == CMETA_DATA_ENUM);
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_variable_size,
-                 field_flag(field, "is_variable_size"));
+                 field_flag(format_field, "is_variable_size"));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_fixed_size,
-                 field_flag(field, "is_fixed_size"));
+                 field_flag(format_field, "is_fixed_size"));
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, offset), sizeof(out->offset)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_offset),
                            sizeof(out->has_offset))) {
-    out->has_offset = parse_size_value(get_string_val(find_child(field, "offset")), &out->offset);
+    out->has_offset = parse_size_value(get_string_val(find_child(format_field, "offset")), &out->offset);
   }
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, size_bytes),
                            sizeof(out->size_bytes)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_size_bytes),
                            sizeof(out->has_size_bytes))) {
     out->has_size_bytes =
-        parse_size_value(get_string_val(find_child(field, "size_bytes")), &out->size_bytes);
+        parse_size_value(get_string_val(find_child(format_field, "size_bytes")), &out->size_bytes);
   }
   if (db_reflect_has_field(out_size, offsetof(DataBindSchemaField, field_size_bytes),
                            sizeof(out->field_size_bytes)) &&
       db_reflect_has_field(out_size, offsetof(DataBindSchemaField, has_field_size_bytes),
                            sizeof(out->has_field_size_bytes))) {
     out->has_field_size_bytes = parse_size_value(
-        get_string_val(find_child(field, "field_size_bytes")), &out->field_size_bytes);
+        get_string_val(find_child(format_field, "field_size_bytes")), &out->field_size_bytes);
   }
-  DB_REFLECT_SET(DataBindSchemaField, out, out_size, format, field_format(field));
+  DB_REFLECT_SET(DataBindSchemaField, out, out_size, format, field_format(format_field));
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, has_cmeta_kind, resolved);
   if (resolved) {
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_kind, semantic.kind);
     DB_REFLECT_SET(DataBindSchemaField, out, out_size, cmeta_data, semantic.data);
   }
   DB_REFLECT_SET(DataBindSchemaField, out, out_size, is_nullable,
-                 field_flag(field, "is_nullable"));
-  return name != NULL;
+                 idl_field->nullable);
+  return idl_field->name != NULL;
 }
 
 static int emit_field_array_push(emit_field_array_t *fields, emit_field_t field) {
@@ -12644,12 +12671,8 @@ int data_bind_schema_find_type(DataBind *codec, const char *name, DataBindSchema
 }
 
 size_t data_bind_schema_field_count(DataBind *codec, const char *type_name) {
-  Node *record;
-  Node *fields;
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL) return 0;
-  record = find_schema_record(codec->schema_root, type_name);
-  fields = fields_node_for_record(record);
-  return fields != NULL ? fields->data.list.count : 0;
+  const IdlDataDecl *decl = db_idl_data_decl(codec, type_name);
+  return decl != NULL ? decl->field_count : 0u;
 }
 
 int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t index,
@@ -12663,7 +12686,14 @@ int data_bind_schema_field_at(DataBind *codec, const char *type_name, size_t ind
     db_reflect_clear(out, out->size, sizeof(*out));
     return 0;
   }
-  return fill_schema_field(codec->schema_root, fields->data.list.items[index], out);
+  {
+    const IdlField *idl_field = db_idl_field_at(codec, type_name, index);
+    return idl_field != NULL
+               ? fill_schema_field(
+                     codec->contract, idl_field,
+                     fields->data.list.items[index], out)
+               : 0;
+  }
 }
 
 
@@ -12774,34 +12804,43 @@ int data_bind_internal_csv_header_matches_path(const char *header,
   return csv_header_matches_path(header, path);
 }
 
-DataBindStatus data_bind_schema_field_cmeta_data(DataBind *codec, const char *type_name,
-                                                size_t index,
-                                                const cmeta_data_desc **out_data,
-                                                DataBindError *error) {
-  Node *record, *fields, *field;
+DataBindStatus data_bind_schema_field_cmeta_data(
+    DataBind *codec, const char *type_name, size_t index,
+    const cmeta_data_desc **out_data, DataBindError *error) {
+  const IdlDataDecl *decl;
+  const IdlField *field;
   schema_cmeta_field_type semantic;
-  const char *name, *declared;
   char path[260];
-  if (codec == NULL || codec->schema_root == NULL || type_name == NULL || out_data == NULL)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
-                        "Invalid CMeta field descriptor query");
-  record = find_schema_record(codec->schema_root, type_name);
-  if (record == NULL)
-    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
-                        "CMeta schema type not found");
-  fields = fields_node_for_record(record);
-  if (fields == NULL || index >= fields->data.list.count)
-    return db_error_set(error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
-                        "CMeta schema field index is out of range");
-  field = fields->data.list.items[index];
-  name = get_string_val(find_child(field, "name"));
-  declared = get_string_val(find_child(field, "type"));
-  snprintf(path, sizeof(path), "%s.%s", type_name, name != NULL ? name : "<unnamed>");
-  if (!schema_cmeta_field_resolve(codec->schema_root, field, &semantic) ||
+
+  if (codec == NULL || codec->contract == NULL ||
+      type_name == NULL || out_data == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+        "Invalid CMeta field descriptor query");
+
+  decl = idl_contract_find_data(codec->contract, type_name);
+  if (decl == NULL)
+    return db_error_set(
+        error, DATA_BIND_ERR_TYPE_NOT_FOUND, type_name, -1, -1,
+        "CMeta schema type not found");
+
+  if (index >= decl->field_count)
+    return db_error_set(
+        error, DATA_BIND_ERR_INVALID_ARG, type_name, -1, -1,
+        "CMeta schema field index is out of range");
+
+  field = &decl->fields[index];
+  snprintf(path, sizeof(path), "%s.%s", type_name,
+           field->name != NULL ? field->name : "<unnamed>");
+
+  if (!schema_cmeta_field_resolve(
+          codec->contract, field, &semantic) ||
       semantic.data == NULL || semantic.data->storage_type == NULL)
-    return db_error_set(error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
-                        "CMeta storage descriptor unresolved or gated for schema type '%s'",
-                        declared != NULL ? declared : "<unknown>");
+    return db_error_set(
+        error, DATA_BIND_ERR_SCHEMA, path, -1, -1,
+        "CMeta storage descriptor unresolved or gated for schema type '%s'",
+        field->type_name != NULL ? field->type_name : "<unknown>");
+
   db_error_clear(error);
   *out_data = semantic.data;
   return DATA_BIND_OK;
