@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "service-native-codegen: failed to parse main schema\n");
     goto cleanup;
   }
-  if (databind_compiler_service_native_build(contract, root, &ir) != 0) {
+  if (databind_compiler_service_native_build(contract, &ir) != 0) {
     fprintf(stderr, "service-native-codegen: failed to build main native IR\n");
     goto cleanup;
   }
@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
       goto cleanup;
     }
     if (databind_compiler_service_native_build(
-            overlay_contract, overlay_root, &overlay_ir) != 0 ||
+            overlay_contract, &overlay_ir) != 0 ||
         overlay_ir.operation_count != 1u) {
       fprintf(stderr,
               "service-native-codegen: overlay schema failed to lower\n");
@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
       goto cleanup;
     }
     if (databind_compiler_service_native_build(
-            reject_contract, reject_root, &reject_ir) == 0) {
+            reject_contract, &reject_ir) == 0) {
       fprintf(stderr,
               "service-native-codegen: reject schema unexpectedly lowered: %s\n",
               argv[6]);
