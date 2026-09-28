@@ -161,13 +161,13 @@ static const cmeta_type_desc TEXT_DYNAMIC_TYPE = {
     .traits = NULL,
     .identity = &TEXT_DYNAMIC_IDENTITY
 };
-static const cmeta_field_desc TEXT_DYNAMIC_LAYOUT_FIELDS[] = {{
+static cmeta_field_desc TEXT_DYNAMIC_LAYOUT_FIELDS[] = {{
     .name = "name",
     .type_name = "string",
     .offset = CMETA_FIELD_DYNAMIC_OFFSET,
     .size = sizeof(tstr),
     .align = _Alignof(tstr),
-    .type = &salts_tstr_cmeta_type,
+    .type = NULL,
     .declared_type = NULL
 }};
 static const cmeta_struct_desc TEXT_DYNAMIC_LAYOUT = {
@@ -177,11 +177,11 @@ static const cmeta_struct_desc TEXT_DYNAMIC_LAYOUT = {
     .fields = TEXT_DYNAMIC_LAYOUT_FIELDS,
     .field_count = 1u
 };
-static const cmeta_data_field_desc TEXT_DYNAMIC_FIELDS[] = {{
+static cmeta_data_field_desc TEXT_DYNAMIC_FIELDS[] = {{
     .stable_id = "test.databind.text-dynamic-record.name",
     .name = "name",
     .offset = CMETA_FIELD_DYNAMIC_OFFSET,
-    .value = &salts_tstr_cmeta_data
+    .value = NULL
 }};
 static const cmeta_data_struct_shape TEXT_DYNAMIC_SHAPE = {
     .layout = &TEXT_DYNAMIC_LAYOUT,
@@ -205,6 +205,11 @@ static const cmeta_data_desc TEXT_DYNAMIC_DATA = {
     .map_ops = NULL,
     .construct_ops = NULL
 };
+
+static void init_text_dynamic_cmeta(void) {
+  TEXT_DYNAMIC_LAYOUT_FIELDS[0].type = salts_tstr_cmeta_data.storage_type;
+  TEXT_DYNAMIC_FIELDS[0].value = &salts_tstr_cmeta_data;
+}
 
 static cmeta_status text_dynamic_read(
     void *context, const void *object,
@@ -446,6 +451,7 @@ spec("DataBind provider-backed object MessagePlan") {
     TokenReader source = {input, sizeof(input) / sizeof(input[0]), 0u};
     cserde_reader reader = {0};
 
+    init_text_dynamic_cmeta();
     memset(workspace, 0xA5, sizeof(workspace));
     check_equal(
         cmeta_data_value_init_zero(
