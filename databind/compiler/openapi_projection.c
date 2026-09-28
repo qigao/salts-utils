@@ -21,6 +21,17 @@ typedef struct openapi_operation {
   int success_status;
 } openapi_operation;
 
+static char *openapi_strdup(const char *text) {
+  size_t length;
+  char *copy;
+  if (text == NULL) return NULL;
+  length = strlen(text);
+  if (length == SIZE_MAX) return NULL;
+  copy = (char *)malloc(length + 1u);
+  if (copy != NULL) memcpy(copy, text, length + 1u);
+  return copy;
+}
+
 static int openapi_json_string(FILE *file, const char *text) {
   const unsigned char *p = (const unsigned char *)text;
   if (file == NULL || text == NULL || fputc('"', file) == EOF) return -1;
