@@ -393,7 +393,7 @@ jobs:
           > build\pair-native-execution-installed.c echo #include ^<data_bind_native_binding.h^>
           >> build\pair-native-execution-installed.c echo _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u, "unexpected DataBind native execution ABI");
           >> build\pair-native-execution-installed.c echo int main(void) { DataBindNativeExecution execution = DATA_BIND_NATIVE_EXECUTION_INIT; return execution.size == sizeof(DataBindNativeExecution) ^&^& execution.abi_version == DATA_BIND_NATIVE_EXECUTION_ABI_VERSION ? 0 : 1; }
-          cl /nologo /std:c11 /W4 /WX /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-native-execution-installed.c /Fe:build\pair-native-execution-installed.exe
+          cl /nologo /std:c11 /experimental:c11atomics /W4 /WX /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-native-execution-installed.c /Fe:build\pair-native-execution-installed.exe
           if errorlevel 1 exit /b 1
           build\pair-native-execution-installed.exe
           if errorlevel 1 exit /b 1
