@@ -179,7 +179,7 @@ static int compiler_format_valid(DataBindFormat format) {
 
 static int projection_format_type_representable(
     const IdlContract *contract,
-    const Node *root,
+    const databind_tbe_format_plan *format_plan,
     const char *type_name,
     DataBindFormat format) {
   databind_binary_type_layout layout = {0};
@@ -191,22 +191,22 @@ static int projection_format_type_representable(
     return 1;
 
   status = databind_binary_layout_build(
-      contract, root, type_name, &layout, &diagnostic);
+      contract, format_plan, type_name, &layout, &diagnostic);
   databind_binary_layout_destroy(&layout);
   return status == DATABIND_BINARY_LAYOUT_OK;
 }
 
 static int projection_operation_formats_representable(
     const IdlContract *contract,
-    const Node *root,
+    const databind_tbe_format_plan *format_plan,
     const IdlOperation *operation,
     DataBindFormat ingress_format,
     DataBindFormat egress_format) {
   if (operation == NULL) return 0;
   return projection_format_type_representable(
-             contract, root, operation->request_type, ingress_format) &&
+             contract, format_plan, operation->request_type, ingress_format) &&
          projection_format_type_representable(
-             contract, root, operation->response_type, egress_format);
+             contract, format_plan, operation->response_type, egress_format);
 }
 
 static int http_method_valid(const char *method) {
@@ -415,7 +415,7 @@ static int rpc_config_shape_valid(
 
 static int http_operation_config_valid(
     const IdlContract *contract,
-    const Node *root, const IdlOperation *operation,
+    const databind_tbe_format_plan *format_plan, const IdlOperation *operation,
     const databind_compiler_http_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_http_operation_config *op_config =
@@ -431,7 +431,7 @@ static int http_operation_config_valid(
   size_t i;
 
   if (!projection_operation_formats_representable(
-          contract, root, operation, ingress_format, egress_format))
+          contract, format_plan, operation, ingress_format, egress_format))
     return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_http_field_config *field = &config->fields[i];
@@ -491,7 +491,7 @@ static int http_operation_config_valid(
 
 static int rpc_operation_config_valid(
     const IdlContract *contract,
-    const Node *root, const IdlOperation *operation,
+    const databind_tbe_format_plan *format_plan, const IdlOperation *operation,
     const databind_compiler_rpc_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_rpc_operation_config *op_config =
@@ -507,7 +507,7 @@ static int rpc_operation_config_valid(
   size_t i;
 
   if (!projection_operation_formats_representable(
-          contract, root, operation, ingress_format, egress_format))
+          contract, format_plan, operation, ingress_format, egress_format))
     return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_rpc_field_config *field = &config->fields[i];
@@ -695,7 +695,6 @@ static int http_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
-  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_http_projection_config *config =
       request != NULL
@@ -715,7 +714,7 @@ static int http_generate(
   int ok = 0;
   (void)context;
 
-  if (contract == NULL || root == NULL ||
+  if (contract == NULL || input->tbe_format == NULL ||
       request == NULL || request->output == NULL ||
       !http_config_shape_valid(config))
     return -1;
@@ -751,7 +750,7 @@ static int http_generate(
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !http_operation_config_valid(
-              contract, root, operation, config,
+              contract, input->tbe_format, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (http_emit_fields(
@@ -890,7 +889,6 @@ static int rpc_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
-  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_rpc_projection_config *config =
       request != NULL
@@ -910,7 +908,7 @@ static int rpc_generate(
   int ok = 0;
   (void)context;
 
-  if (contract == NULL || root == NULL ||
+  if (contract == NULL || input->tbe_format == NULL ||
       request == NULL || request->output == NULL ||
       !rpc_config_shape_valid(config))
     return -1;
@@ -945,7 +943,7 @@ static int rpc_generate(
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !rpc_operation_config_valid(
-              contract, root, operation, config,
+              contract, input->tbe_format, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (rpc_emit_fields(
