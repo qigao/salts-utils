@@ -68,6 +68,8 @@ static void check_empty_row(void) {
 }
 
 spec("DataBind direct reader to native contract") {
+  (void)ttest_config__;
+
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));
