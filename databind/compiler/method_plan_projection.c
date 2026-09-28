@@ -8,55 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static Node *projection_child(const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const char *projection_string(const Node *parent, const char *name) {
-  Node *child = projection_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
-static const Node *projection_services(const Node *root) {
-  Node *services = projection_child(root, "services");
-  return services != NULL && services->type == NODE_LIST ? services : NULL;
-}
-
-static const Node *projection_operations(const Node *service) {
-  Node *operations = projection_child(service, "operations");
-  return operations != NULL && operations->type == NODE_LIST
-             ? operations
-             : NULL;
-}
-
-static const Node *projection_named_type(
-    const Node *root, const char *type_name) {
-  static const char *const lists[] = {
-      "messages", "composites", "groups", "unions", "enums"};
-  size_t i, j;
-  if (root == NULL || type_name == NULL) return NULL;
-  for (i = 0u; i < sizeof(lists) / sizeof(lists[0]); ++i) {
-    Node *list = projection_child(root, lists[i]);
-    if (list == NULL || list->type != NODE_LIST) continue;
-    for (j = 0u; j < list->data.list.count; ++j) {
-      Node *record = list->data.list.items[j];
-      const char *name = projection_string(record, "name");
-      if (name != NULL && strcmp(name, type_name) == 0) return record;
-    }
-  }
-  return NULL;
-}
-
 static int projection_type_has_field(
     const IdlContract *contract,
     const char *type_name, const char *field_name) {
@@ -545,8 +496,10 @@ static int rpc_operation_config_valid(
     const char *service_name, const char *operation_name) {
   const databind_compiler_rpc_operation_config *op_config =
       rpc_operation_config(config, service_name, operation_name, NULL);
-  const char *request_type = projection_string(operation, "request_type");
-  const char *response_type = projection_string(operation, "response_type");
+  const char *request_type =
+      operation != NULL ? operation->request_type : NULL;
+  const char *response_type =
+      operation != NULL ? operation->response_type : NULL;
   const DataBindFormat ingress_format =
       op_config != NULL ? op_config->ingress_format : DATA_BIND_FORMAT_JSON;
   const DataBindFormat egress_format =
