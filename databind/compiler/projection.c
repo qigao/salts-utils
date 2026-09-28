@@ -1,5 +1,6 @@
 #include "projection.h"
 
+#include <stdio.h>
 #include <string.h>
 
 typedef struct artifact_name_row {
@@ -191,8 +192,14 @@ int databind_compiler_projection_run(
     const databind_compiler_projection_backend *backend =
         find_backend(backends, backend_count, requests[i].id);
     if (backend->generate(input, &requests[i],
-                          backend->context) != 0)
+                          backend->context) != 0) {
+      fprintf(
+          stderr,
+          "salts-idlc: projection backend '%s' failed for output '%s'\n",
+          backend->name != NULL ? backend->name : "<unnamed>",
+          requests[i].output != NULL ? requests[i].output : "<none>");
       return -1;
+    }
   }
   return 0;
 }
