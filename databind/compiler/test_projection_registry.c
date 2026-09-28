@@ -12,7 +12,6 @@
 
 typedef struct projection_probe {
   const IdlContract *seen_contract;
-  const Node *seen_root;
   databind_compiler_projection_id seen_id;
   size_t calls;
   int fail;
@@ -27,7 +26,6 @@ static int probe_generate(
       request == NULL)
     return -1;
   probe->seen_contract = input->contract;
-  probe->seen_root = input->legacy_tree;
   probe->seen_id = request->id;
   ++probe->calls;
   return probe->fail ? -1 : 0;
@@ -238,7 +236,6 @@ describe("compiler integration") {
     check_equal(tbe_compiler_run(&options), 0);
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)1u);
-    check_not_null(plugin.seen_root);
     check_true(plugin.seen_root == http.seen_root);
     check_true(file_exists(output));
     (void)remove(output);
