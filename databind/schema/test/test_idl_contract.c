@@ -55,15 +55,23 @@ spec("typed IDL contract snapshot") {
     if (channel != NULL) {
       check_equal(strcmp(channel->message_type, "Event"), 0);
       check_equal(strcmp(channel->qualified_name, "Demo.Updates"), 0);
+      check_true(
+          idl_contract_find_channel(contract, "Demo.Updates") == channel);
     }
 
     component = idl_contract_find_component(contract, "Api");
     check_not_null(component);
     if (component != NULL) {
       check_equal(strcmp(component->qualified_name, "Demo.Api"), 0);
+      check_true(
+          idl_contract_find_component(contract, "Demo.Api") == component);
       check_equal(component->capability_count, (size_t)2u);
       check_true(component->capabilities[0].kind == IDL_CAPABILITY_SERVICE);
       check_true(component->capabilities[1].kind == IDL_CAPABILITY_CHANNEL);
+      check_equal(
+          strcmp(component->capabilities[0].qualified_name, "Demo.Echo"), 0);
+      check_equal(
+          strcmp(component->capabilities[1].qualified_name, "Demo.Updates"), 0);
     }
 
     idl_contract_destroy(contract);
