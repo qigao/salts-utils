@@ -12,7 +12,7 @@ target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Schema
     databind_tbe_contract)
 set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
-  PROPERTIES FOLDER "databind/compiler")
+  PROPERTIES FOLDER "databind/idl/compiler")
 
 set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/c_guest_adapter.mustache"
@@ -30,7 +30,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
 cmake_add_executable(salts_idlc
   SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 set_target_properties(salts_idlc PROPERTIES
@@ -108,7 +108,7 @@ cmake_add_test(test_databind_nullable_codegen
     Salts::TinyTest
   INCLUDES
     "${DATABIND_NULLABLE_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_tests_properties(test_databind_nullable_codegen
   PROPERTIES LABELS "databind;compiler;nullable")
 
@@ -143,7 +143,7 @@ cmake_add_test(test_databind_openapi_projection
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_openapi_projection PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -174,7 +174,7 @@ target_include_directories(databind_method_plan_projection_fixture_gen
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(databind_method_plan_projection_fixture_gen
-  PROPERTIES FOLDER "databind/compiler/tests")
+  PROPERTIES FOLDER "databind/idl/compiler/tests")
 
 add_custom_command(
   OUTPUT
@@ -195,7 +195,7 @@ add_custom_target(databind_method_plan_projection_artifacts
     "${DATABIND_METHOD_PLAN_FIXTURE_HTTP}"
     "${DATABIND_METHOD_PLAN_FIXTURE_RPC}")
 set_target_properties(databind_method_plan_projection_artifacts
-  PROPERTIES FOLDER "databind/compiler/tests")
+  PROPERTIES FOLDER "databind/idl/compiler/tests")
 
 cmake_add_test(test_databind_generated_method_plan_projection
   SOURCES
@@ -207,7 +207,7 @@ cmake_add_test(test_databind_generated_method_plan_projection
     Salts::TinyTest
   INCLUDES
     "${CMAKE_CURRENT_BINARY_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_generated_method_plan_projection
   databind_method_plan_projection_artifacts)
 set_source_files_properties(
@@ -238,7 +238,7 @@ cmake_add_test(test_databind_projection_registry
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_projection_registry PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -272,7 +272,7 @@ cmake_add_test(test_databind_projection_frontend
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_projection_frontend PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -299,7 +299,7 @@ cmake_add_test(test_databind_socket_plan_projection
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_socket_plan_projection PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -326,7 +326,7 @@ cmake_add_test(test_databind_message_native
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_message_native PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -355,7 +355,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_flowmq_plan_projection PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -392,7 +392,7 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 
 add_custom_command(
   OUTPUT
@@ -446,7 +446,7 @@ cmake_add_test(test_databind_service_native_lowering
     Salts::TinyTest
   INCLUDES
     "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_service_native_lowering
   databind_service_native_generated_sources)
 
@@ -455,7 +455,7 @@ cmake_add_test(test_databind_service_native_public_cpp
   LIBS Salts::DataBind
   INCLUDES
     "${DATABIND_SERVICE_NATIVE_TEST_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_service_native_public_cpp
   databind_service_native_generated_sources)
 set_target_properties(test_databind_service_native_public_cpp PROPERTIES
@@ -549,7 +549,7 @@ cmake_add_test(test_databind_binary_transport_provider
     ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_binary_transport_provider
   databind_binary_transport_provider_fixture_idl_codegen)
 set_target_properties(test_databind_binary_transport_provider PROPERTIES
@@ -566,7 +566,7 @@ cmake_add_test(test_databind_binary_transport_provider_cpp
     ${databind_binary_transport_provider_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_binary_transport_provider_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_binary_transport_provider_cpp
   databind_binary_transport_provider_fixture_idl_codegen)
 set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
@@ -584,7 +584,7 @@ cmake_add_test(test_databind_channel_multi_transport
     ${databind_channel_multi_transport_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_channel_multi_transport_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_channel_multi_transport
   databind_channel_multi_transport_fixture_idl_codegen)
 set_target_properties(test_databind_channel_multi_transport PROPERTIES
@@ -602,7 +602,7 @@ cmake_add_test(test_databind_flowmq_plan_public_frontend
     ${databind_flowmq_plan_public_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_flowmq_plan_public_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_flowmq_plan_public_frontend
   databind_flowmq_plan_public_fixture_idl_codegen)
 set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
@@ -620,7 +620,7 @@ cmake_add_test(test_databind_socket_plan_public_frontend
     ${databind_socket_plan_public_fixture_NATIVE_TARGET}
   INCLUDES
     "${databind_socket_plan_public_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_socket_plan_public_frontend
   databind_socket_plan_public_fixture_idl_codegen)
 set_target_properties(test_databind_socket_plan_public_frontend PROPERTIES
@@ -637,7 +637,7 @@ cmake_add_test(test_databind_method_plan_public_frontend
   INCLUDES
     "${databind_method_plan_public_fixture_GENERATED_DIR}"
     "${databind_method_plan_configured_fixture_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_method_plan_public_frontend
   databind_method_plan_public_fixture_idl_codegen
   databind_method_plan_configured_fixture_idl_codegen)
@@ -715,7 +715,7 @@ cmake_add_test(test_databind_plugin_generated_dso
     GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
   INCLUDES
     "${DATABIND_PLUGIN_TEST_GENERATED_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_plugin_generated_dso
   databind_plugin_generated_fixture_plugin)
 
@@ -735,7 +735,7 @@ cmake_add_test(test_databind_plugin_typed_error_client
     Salts::TinyTest
   DEFS
     GENERATED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_typed_error_fixture_plugin>"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_plugin_typed_error_client
   databind_plugin_typed_error_fixture_plugin
   databind_plugin_typed_error_fixture_plugin_client)
@@ -748,7 +748,7 @@ target_link_libraries(test_databind_plugin_typed_error_client_cpp PRIVATE
   databind_plugin_typed_error_fixture_plugin_client)
 set_target_properties(test_databind_plugin_typed_error_client_cpp PROPERTIES
   CXX_EXTENSIONS NO
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_test(NAME test_databind_plugin_typed_error_client_cpp
   COMMAND test_databind_plugin_typed_error_client_cpp)
 
@@ -768,7 +768,7 @@ cmake_add_test(test_databind_plugin_owned_typed_error_client
     Salts::TinyTest
   DEFS
     GENERATED_OWNED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_owned_typed_error_fixture_plugin>"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_plugin_owned_typed_error_client
   databind_plugin_owned_typed_error_fixture_plugin
   databind_plugin_owned_typed_error_fixture_plugin_client)
@@ -781,7 +781,7 @@ target_link_libraries(test_databind_plugin_owned_typed_error_client_cpp PRIVATE
   databind_plugin_owned_typed_error_fixture_plugin_client)
 set_target_properties(test_databind_plugin_owned_typed_error_client_cpp PROPERTIES
   CXX_EXTENSIONS NO
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_test(NAME test_databind_plugin_owned_typed_error_client_cpp
   COMMAND test_databind_plugin_owned_typed_error_client_cpp)
 
@@ -799,7 +799,7 @@ foreach(_client_fixture IN ITEMS
   set_target_properties(
     "databind_plugin_client_${_client_fixture}" PROPERTIES
     PREFIX ""
-    FOLDER "databind/compiler/tests")
+    FOLDER "databind/idl/compiler/tests")
 endforeach()
 target_compile_definitions(databind_plugin_client_bad_plugin_id PRIVATE
   PLUGIN_CLIENT_MISMATCH_PLUGIN_ID=1)
@@ -821,7 +821,7 @@ cmake_add_test(test_databind_plugin_generated_client
     GENERATED_DATABIND_CLIENT_BAD_CONTRACT_PATH="$<TARGET_FILE:databind_plugin_client_bad_contract>"
     GENERATED_DATABIND_CLIENT_BAD_EXPORT_PATH="$<TARGET_FILE:databind_plugin_client_bad_export>"
     GENERATED_DATABIND_CLIENT_BAD_FUNCTION_PATH="$<TARGET_FILE:databind_plugin_client_bad_function>"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_dependencies(test_databind_plugin_generated_client
   databind_plugin_generated_fixture_plugin
   databind_plugin_generated_fixture_plugin_client
@@ -838,7 +838,7 @@ target_link_libraries(test_databind_plugin_generated_client_cpp PRIVATE
   databind_plugin_generated_fixture_plugin_client)
 set_target_properties(test_databind_plugin_generated_client_cpp PROPERTIES
   CXX_EXTENSIONS NO
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 add_test(NAME test_databind_plugin_generated_client_cpp
   COMMAND test_databind_plugin_generated_client_cpp)
 
@@ -865,13 +865,13 @@ cmake_add_test(test_databind_plugin_projection_rejection
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 
 cmake_add_test(test_database_schema_contract
   SOURCES test_database_schema_contract.c database_schema.c
   LIBS Salts::IDL Salts::TinyTest Salts::Core
   INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_tests_properties(test_database_schema_contract PROPERTIES
   LABELS "databind;compiler;database;idl-contract")
 
@@ -888,7 +888,7 @@ cmake_add_test(test_tbe_compiler
     TS_TYPES_TEMPLATE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache"
     POSTGRESQL_SECURITY_PROBE_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_postgresql_security_probe.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 
@@ -896,13 +896,13 @@ cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_schema_boundary
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_databind_method_plan_binary_admission
@@ -924,7 +924,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -952,7 +952,7 @@ cmake_add_test(test_databind_binary_reader_codegen
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_binary_reader_codegen PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
@@ -979,7 +979,7 @@ cmake_add_test(test_databind_binary_layout_ir
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
-  FOLDER "databind/compiler")
+  FOLDER "databind/idl/compiler")
 set_target_properties(test_databind_binary_layout_ir PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
