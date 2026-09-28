@@ -394,6 +394,40 @@ spec("DataBind provider-backed object MessagePlan") {
   }
 
   it("keeps strict and non-XML object decode from guessing textual numerics") {
+    {
+      DataBind *codec = make_xml_scalar_codec();
+      DataBindMessagePlan *plan = make_xml_scalar_plan(codec);
+      XmlScalarRecord record = {0};
+      cmeta_object_field_provider field_provider;
+      cmeta_object_ref object = make_xml_scalar_object(&record, &field_provider);
+      unsigned char workspace[1024] = {0};
+      DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+      DataBindMessagePlanDiagnostic diagnostic =
+          DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+      const cserde_token input[] = {
+          {.kind = CSERDE_MAP_BEGIN}, key_token("age"), key_token("37"),
+          {.kind = CSERDE_MAP_END}
+      };
+      TokenReader source = {input, sizeof(input) / sizeof(input[0]), 0u};
+      cserde_reader reader = {0};
+
+      options.workspace = workspace;
+      options.workspace_bytes = sizeof(workspace);
+      options.max_depth = 8u;
+      options.max_items = 32u;
+      options.max_owned_bytes = 1024u;
+      check_equal(
+          cserde_reader_init(&reader, &TOKEN_READER_OPS, &source), CSERDE_OK);
+      check_equal(
+          data_bind_message_plan_decode_object(
+              plan, &options, &reader, &object, NULL, &diagnostic),
+          DATA_BIND_ERR_TYPE_MISMATCH);
+
+      cmeta_object_release(&object);
+      data_bind_message_plan_free(plan);
+      data_bind_free(codec);
+    }
+
     const DataBindFormat formats[] = {
         DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_YAML
     };
