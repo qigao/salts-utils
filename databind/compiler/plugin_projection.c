@@ -34,14 +34,13 @@ static const char *plugin_string(const Node *parent, const char *name) {
              : NULL;
 }
 
-static const char *plugin_schema_name(const Node *root) {
-  return plugin_string(plugin_child(root, "schema"), "schema_name");
+static const char *plugin_schema_name(const IdlContract *contract) {
+  return contract != NULL ? contract->name : NULL;
 }
 
 static int plugin_schema_contract_version(
-    const Node *root, uint32_t *out_version) {
-  const Node *schema = plugin_child(root, "schema");
-  const char *text = plugin_string(schema, "schema_version");
+    const IdlContract *contract, uint32_t *out_version) {
+  const char *text = contract != NULL ? contract->version : NULL;
   const unsigned char *p;
   uint64_t value = 0u;
 
@@ -66,65 +65,24 @@ static int plugin_bounded_text_valid(const char *text, size_t max_length) {
   return plugin_text_valid(text) && strlen(text) <= max_length;
 }
 
-static const Node *plugin_component(
-    const Node *root, const char *component_id) {
-  const Node *components = plugin_list(root, "components");
-  size_t i;
-
-  if (components == NULL || component_id == NULL) return NULL;
-  for (i = 0u; i < components->data.list.count; ++i) {
-    const Node *qualified_name =
-        plugin_child(components->data.list.items[i], "qualified_name");
-    if (qualified_name != NULL &&
-        qualified_name->type == NODE_STRING &&
-        qualified_name->data.string_val != NULL &&
-        strcmp(qualified_name->data.string_val, component_id) == 0)
-      return components->data.list.items[i];
-  }
-  return NULL;
-}
-
-static const Node *plugin_component_capabilities(
-    const Node *component) {
-  return plugin_list(component, "capabilities");
-}
-
 static int plugin_component_has_service(
-    const Node *component, const char *service_name) {
-  const Node *capabilities =
-      plugin_component_capabilities(component);
+    const IdlComponent *component, const char *service_name) {
   size_t i;
 
-  if (capabilities == NULL || service_name == NULL) return 0;
-  for (i = 0u; i < capabilities->data.list.count; ++i) {
-    const Node *capability = capabilities->data.list.items[i];
-    const char *kind = plugin_string(capability, "kind");
-    const char *name = plugin_string(capability, "name");
-    if (kind != NULL && name != NULL &&
-        strcmp(kind, "service") == 0 &&
-        strcmp(name, service_name) == 0)
+  if (component == NULL || service_name == NULL) return 0;
+  for (i = 0u; i < component->capability_count; ++i) {
+    const IdlComponentCapability *capability =
+        &component->capabilities[i];
+    if (capability->kind == IDL_CAPABILITY_SERVICE &&
+        capability->name != NULL &&
+        strcmp(capability->name, service_name) == 0)
       return 1;
   }
   return 0;
 }
 
-static const Node *plugin_service(
-    const Node *root, const char *service_name) {
-  const Node *services = plugin_list(root, "services");
-  size_t i;
-
-  if (services == NULL || service_name == NULL) return NULL;
-  for (i = 0u; i < services->data.list.count; ++i) {
-    const Node *service = services->data.list.items[i];
-    const char *name = plugin_string(service, "name");
-    if (name != NULL && strcmp(name, service_name) == 0)
-      return service;
-  }
-  return NULL;
-}
-
 static int plugin_operation_selected(
-    const Node *component,
+    const IdlComponent *component,
     const databind_compiler_service_native_operation *operation) {
   return operation != NULL &&
          plugin_component_has_service(
@@ -134,15 +92,15 @@ static int plugin_operation_selected(
 static int plugin_select_component_service(
     void *context, const char *service_name) {
   return plugin_component_has_service(
-      (const Node *)context, service_name);
+      (const IdlComponent *)context, service_name);
 }
 
 static int plugin_native_ir_valid(
-    const Node *component,
+    const IdlComponent *component,
     const databind_compiler_service_native_ir *ir,
     size_t *out_selected_count) {
   const char *plugin_id =
-      plugin_string(component, "qualified_name");
+      component != NULL ? component->qualified_name : NULL;
   size_t selected_count = 0u;
   size_t i;
 
@@ -228,12 +186,13 @@ static int plugin_header_guard(
 }
 
 static int plugin_client_symbol(
-    const Node *root,
-    const Node *component,
+    const IdlContract *contract,
+    const IdlComponent *component,
     char *out,
     size_t out_size) {
-  const char *schema_name = plugin_schema_name(root);
-  const char *component_name = plugin_string(component, "name");
+  const char *schema_name = plugin_schema_name(contract);
+  const char *component_name =
+      component != NULL ? component->name : NULL;
   char guard_probe[320];
   int written;
 
@@ -451,16 +410,16 @@ cleanup:
 
 static int plugin_write_header(
     FILE *file,
-    const Node *root,
-    const Node *component,
+    const IdlContract *contract,
+    const IdlComponent *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
   char guard[320];
   size_t i;
 
   if (!plugin_header_guard(
-          plugin_schema_name(root),
-          plugin_string(component, "name"),
+          plugin_schema_name(contract),
+          component != NULL ? component->name : NULL,
           "_PLUGIN_SERVICE_H",
           guard, sizeof(guard)))
     return 0;
@@ -487,8 +446,8 @@ static int plugin_write_header(
 
 static int plugin_write_client_header(
     FILE *file,
-    const Node *root,
-    const Node *component,
+    const IdlContract *contract,
+    const IdlComponent *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir) {
   const char *service_header =
@@ -499,17 +458,17 @@ static int plugin_write_client_header(
   size_t i;
 
   if (!plugin_header_guard(
-          plugin_schema_name(root),
-          plugin_string(component, "name"),
+          plugin_schema_name(contract),
+          component != NULL ? component->name : NULL,
           "_PLUGIN_CLIENT_H",
           guard, sizeof(guard)) ||
       !plugin_header_guard(
-          plugin_schema_name(root),
-          plugin_string(component, "name"),
+          plugin_schema_name(contract),
+          component != NULL ? component->name : NULL,
           "_PLUGIN_CLIENT_INIT",
           init_macro, sizeof(init_macro)) ||
       !plugin_client_symbol(
-          root, component,
+          contract, component,
           client_symbol, sizeof(client_symbol)))
     return 0;
 
@@ -592,22 +551,22 @@ static int plugin_write_client_header(
 
 static int plugin_write_client_source(
     FILE *file,
-    const Node *root,
-    const Node *component,
+    const IdlContract *contract,
+    const IdlComponent *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir,
     uint32_t contract_version) {
   const char *client_header =
       plugin_basename(config->client_header_output);
   const char *plugin_id =
-      plugin_string(component, "qualified_name");
+      component != NULL ? component->qualified_name : NULL;
   char client_symbol[512];
   size_t i;
 
   if (!plugin_text_valid(client_header) ||
       !plugin_text_valid(plugin_id) ||
       !plugin_client_symbol(
-          root, component,
+          contract, component,
           client_symbol, sizeof(client_symbol)))
     return 0;
 
@@ -860,14 +819,14 @@ static int plugin_write_client_source(
 
 static int plugin_write_source(
     FILE *file,
-    const Node *component,
+    const IdlComponent *component,
     const databind_compiler_plugin_config *config,
     const databind_compiler_service_native_ir *ir,
     uint32_t contract_version) {
   const char *service_header =
       plugin_basename(config->service_header_output);
   const char *plugin_id =
-      plugin_string(component, "qualified_name");
+      component != NULL ? component->qualified_name : NULL;
   size_t i;
 
   if (fputs("#include ", file) == EOF ||
@@ -962,13 +921,14 @@ int databind_compiler_plugin_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
-  const Node *canonical_ir = input != NULL ? input->legacy_tree : NULL;
+  const Node *legacy_tree = input != NULL ? input->legacy_tree : NULL;
+  const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_plugin_config *config =
       request != NULL
           ? (const databind_compiler_plugin_config *)request->config
           : NULL;
   databind_compiler_service_native_ir native_ir = {0};
-  const Node *component = NULL;
+  const IdlComponent *component = NULL;
   size_t selected_count = 0u;
   uint32_t contract_version = 0u;
   char *header_staging = NULL;
@@ -983,7 +943,7 @@ int databind_compiler_plugin_generate(
   int result = -1;
   (void)context;
 
-  if (canonical_ir == NULL || request == NULL ||
+  if (contract == NULL || legacy_tree == NULL || request == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
       request->id.kind != DATABIND_COMPILER_ARTIFACT_PLUGIN ||
       config == NULL ||
@@ -1003,17 +963,17 @@ int databind_compiler_plugin_generate(
       strcmp(config->client_header_output,
              config->client_source_output) == 0 ||
       !plugin_schema_contract_version(
-          canonical_ir, &contract_version))
+          contract, &contract_version))
     return -1;
 
-  component = plugin_component(
-      canonical_ir, config->component_id);
+  component = idl_contract_find_component(
+      contract, config->component_id);
   if (component == NULL)
     return -1;
 
   if (databind_compiler_service_native_build_selected(
-          input->contract,
-          canonical_ir,
+          contract,
+          legacy_tree,
           plugin_select_component_service,
           (void *)component,
           &native_ir) != 0)
@@ -1042,16 +1002,16 @@ int databind_compiler_plugin_generate(
   if (client_source_file == NULL) goto cleanup;
 
   if (!plugin_write_header(
-          header_file, canonical_ir, component,
+          header_file, contract, component,
           config, &native_ir) ||
       !plugin_write_source(
           source_file, component, config, &native_ir,
           contract_version) ||
       !plugin_write_client_header(
-          client_header_file, canonical_ir, component,
+          client_header_file, contract, component,
           config, &native_ir) ||
       !plugin_write_client_source(
-          client_source_file, canonical_ir, component,
+          client_source_file, contract, component,
           config, &native_ir, contract_version))
     goto cleanup;
 
