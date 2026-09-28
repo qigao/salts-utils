@@ -1,5 +1,6 @@
 #include "binary_layout_ir.h"
 #include "compiler_core.h"
+#include "tbe_contract_overlay.h"
 
 #include <tinytest.h>
 
@@ -13,6 +14,8 @@ spec("DataBind BinaryLayoutIR") {
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
 
     check_equal(
         databind_compiler_parse_contract_file(
@@ -25,9 +28,12 @@ spec("DataBind BinaryLayoutIR") {
       return;
     }
 
+    tbe_error_init(&format_error);
+    check(databind_tbe_format_plan_build(
+        contract, root, &format_plan, &format_error));
     check_equal(
         databind_binary_layout_build(
-            contract, root, "Scalars", &layout, &diagnostic),
+            contract, &format_plan, "Scalars", &layout, &diagnostic),
         DATABIND_BINARY_LAYOUT_OK);
     check_equal(layout.field_count, (size_t)10u);
 
@@ -66,6 +72,7 @@ spec("DataBind BinaryLayoutIR") {
     check((layout.fields[9].flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u);
 
     databind_binary_layout_destroy(&layout);
+    databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -78,15 +85,20 @@ spec("DataBind BinaryLayoutIR") {
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
 
     check_equal(
         databind_compiler_parse_contract_file(
             SCHEMA_EXAMPLE_FILE, &root, &contract, &schema_data), 0);
     check_not_null(root);
 
+    tbe_error_init(&format_error);
+    check(databind_tbe_format_plan_build(
+        contract, root, &format_plan, &format_error));
     check_equal(
         databind_binary_layout_build(
-            contract, root, "LoginMessage", &layout, &diagnostic),
+            contract, &format_plan, "LoginMessage", &layout, &diagnostic),
         DATABIND_BINARY_LAYOUT_OK);
     check_equal(strcmp(layout.type_id, "LoginMessage"), 0);
     check_equal(layout.wire_big_endian, 0);
@@ -110,6 +122,7 @@ spec("DataBind BinaryLayoutIR") {
     check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
 
     databind_binary_layout_destroy(&layout);
+    databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
