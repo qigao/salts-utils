@@ -112,7 +112,8 @@ static int socket_config_valid(
 }
 
 static int socket_format_representable(
-    const IdlContract *contract, const Node *root,
+    const IdlContract *contract,
+    const databind_tbe_format_plan *format_plan,
     const char *message_type, DataBindFormat format) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
@@ -125,7 +126,7 @@ static int socket_format_representable(
     return 0;
 
   status = databind_binary_layout_build(
-      contract, root, message_type, &layout, &diagnostic);
+      contract, format_plan, message_type, &layout, &diagnostic);
   databind_binary_layout_destroy(&layout);
   return status == DATABIND_BINARY_LAYOUT_OK;
 }
@@ -179,7 +180,6 @@ static int socket_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
     void *context) {
-  const Node *root = input != NULL ? input->legacy_tree : NULL;
   const databind_compiler_socket_projection_config *config =
       request != NULL
           ? (const databind_compiler_socket_projection_config *)request->config
@@ -192,7 +192,7 @@ static int socket_generate(
   int ok = 0;
   (void)context;
 
-  if (input == NULL || input->contract == NULL || root == NULL ||
+  if (input == NULL || input->contract == NULL || input->tbe_format == NULL ||
       request == NULL || request->output == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT ||
       request->id.kind != DATABIND_COMPILER_TRANSPORT_SOCKET ||
@@ -206,7 +206,7 @@ static int socket_generate(
     return -1;
   message_type = channel->message_type;
   if (!socket_format_representable(
-          input->contract, root, message_type, config->format))
+          input->contract, input->tbe_format, message_type, config->format))
     return -1;
   if (databind_compiler_message_native_build(
           input->contract, message_type, &native_binding) != 0)
@@ -233,10 +233,10 @@ static int socket_generate(
 
   if (config->format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
-          input->contract, root, message_type) == 0) {
+          input->contract, input->tbe_format, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
         databind_compiler_binary_reader_emit(
-            file, input->contract, root, message_type,
+            file, input->contract, input->tbe_format, message_type,
             config->symbol_prefix) != 0)
       goto cleanup;
   }
