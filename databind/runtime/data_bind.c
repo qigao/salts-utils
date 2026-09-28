@@ -14,6 +14,7 @@
 #include "tbe_scalar_profile.h"
 #include "schema_cmeta.h"
 #include "idl.h"
+#include "idl_contract.h"
 #include "tbe_contract_overlay.h"
 #include "tbe_typed.h"
 #include "tbe_error.h"
@@ -210,9 +211,25 @@ static int value_pool_put(DataBindValue *value) {
 }
 
 struct DataBind {
-  Node *schema_root;
+  IdlContract *contract;
+  Node *schema_root; /* transitional TBE/render tree; not semantic authority */
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
+
+static const IdlDataDecl *db_idl_data_decl(
+    const DataBind *codec, const char *type_name) {
+  return codec != NULL && codec->contract != NULL && type_name != NULL
+             ? idl_contract_find_data(codec->contract, type_name)
+             : NULL;
+}
+
+static const IdlField *db_idl_field_at(
+    const DataBind *codec, const char *type_name, size_t index) {
+  const IdlDataDecl *decl = db_idl_data_decl(codec, type_name);
+  return decl != NULL && index < decl->field_count
+             ? &decl->fields[index]
+             : NULL;
+}
 
 struct data_bind_stream_t {
   DataBind *codec;
@@ -4730,61 +4747,74 @@ static db_dynamic_type_t *db_dynamic_graph_add(
 }
 
 static DataBindStatus db_dynamic_build_named(
-    db_dynamic_graph_t *graph, Node *schema_root,
+    db_dynamic_graph_t *graph, const IdlContract *contract,
     const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type);
 
 static DataBindStatus db_dynamic_build_container(
-    db_dynamic_graph_t *graph, Node *schema_root,
+    db_dynamic_graph_t *graph, const IdlContract *contract,
     const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
-    Node *field, const schema_cmeta_field_type *semantic, unsigned depth,
-    db_dynamic_type_t **out_type) {
+    const IdlField *field, const schema_cmeta_field_type *semantic,
+    unsigned depth, db_dynamic_type_t **out_type) {
   const char *constructor = semantic->schema_kind;
-  const char *element_name = get_string_val(find_child(field, "inner_type"));
-  const char *key_name = get_string_val(find_child(field, "key_type"));
-  const char *value_name = get_string_val(find_child(field, "value_type"));
+  const char *element_name = field != NULL ? field->inner_type : NULL;
+  const char *key_name = field != NULL ? field->key_type : NULL;
+  const char *value_name = field != NULL ? field->value_type : NULL;
   char *semantic_key;
   db_dynamic_type_t *type;
   DataBindStatus status;
+
+  if (contract == NULL || field == NULL || semantic == NULL ||
+      out_type == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
   if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+
   if (semantic->kind == CMETA_DATA_MAP) {
     if (key_name == NULL || value_name == NULL) return DATA_BIND_ERR_SCHEMA;
     semantic_key = db_dynamic_join_type("map", key_name, value_name);
   } else {
     if (element_name == NULL) return DATA_BIND_ERR_SCHEMA;
-    semantic_key = db_dynamic_join_type(constructor != NULL ? constructor : "list",
-                                        element_name, NULL);
+    semantic_key = db_dynamic_join_type(
+        constructor != NULL ? constructor : "list",
+        element_name, NULL);
   }
   if (semantic_key == NULL) return DATA_BIND_ERR_OOM;
+
   type = db_dynamic_graph_find(graph, semantic_key);
   if (type == NULL)
-    type = db_dynamic_graph_add(graph, schema_fingerprint, semantic_key,
-                                semantic->kind, semantic->data);
+    type = db_dynamic_graph_add(
+        graph, schema_fingerprint, semantic_key,
+        semantic->kind, semantic->data);
   free(semantic_key);
   if (type == NULL) return DATA_BIND_ERR_OOM;
   if (type->complete || type->building) {
     *out_type = type;
     return DATA_BIND_OK;
   }
+
   type->building = 1;
   if (semantic->kind == CMETA_DATA_MAP) {
     db_dynamic_type_t *key_type = NULL;
     db_dynamic_type_t *value_type = NULL;
-    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                    key_name, depth + 1u, &key_type);
+    status = db_dynamic_build_named(
+        graph, contract, schema_fingerprint,
+        key_name, depth + 1u, &key_type);
     if (status == DATA_BIND_OK)
-      status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                      value_name, depth + 1u, &value_type);
+      status = db_dynamic_build_named(
+          graph, contract, schema_fingerprint,
+          value_name, depth + 1u, &value_type);
     if (status != DATA_BIND_OK) return status;
     type->key_type = key_type;
     type->value_type = value_type;
   } else {
     db_dynamic_type_t *element_type = NULL;
-    status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                    element_name, depth + 1u, &element_type);
+    status = db_dynamic_build_named(
+        graph, contract, schema_fingerprint,
+        element_name, depth + 1u, &element_type);
     if (status != DATA_BIND_OK) return status;
     type->element_type = element_type;
   }
+
   type->building = 0;
   type->complete = 1;
   *out_type = type;
@@ -4792,72 +4822,95 @@ static DataBindStatus db_dynamic_build_container(
 }
 
 static DataBindStatus db_dynamic_build_named(
-    db_dynamic_graph_t *graph, Node *schema_root,
+    db_dynamic_graph_t *graph, const IdlContract *contract,
     const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE],
     const char *type_name, unsigned depth, db_dynamic_type_t **out_type) {
-  Node *record;
-  Node *fields;
+  const IdlDataDecl *decl;
   const cmeta_data_desc *canonical;
   cmeta_data_kind kind;
   db_dynamic_type_t *type;
   size_t i;
+
   if (out_type != NULL) *out_type = NULL;
-  if (graph == NULL || schema_root == NULL || type_name == NULL ||
+  if (graph == NULL || contract == NULL || type_name == NULL ||
       out_type == NULL)
     return DATA_BIND_ERR_INVALID_ARG;
   if (depth > DATA_BIND_SEMANTIC_MAX_DEPTH) return DATA_BIND_ERR_LIMIT;
+
   type = db_dynamic_graph_find(graph, type_name);
   if (type != NULL) {
     *out_type = type;
     return DATA_BIND_OK;
   }
+
   canonical = schema_cmeta_builtin_data(type_name);
-  record = find_data_record(schema_root, type_name);
-  if (record != NULL) kind = CMETA_DATA_STRUCT;
-  else if (find_enum_record(schema_root, type_name) != NULL) kind = CMETA_DATA_ENUM;
-  else if (find_union_record(schema_root, type_name) != NULL) kind = CMETA_DATA_VARIANT;
-  else if (!schema_cmeta_data_kind(type_name, &kind)) return DATA_BIND_ERR_SCHEMA;
-  type = db_dynamic_graph_add(graph, schema_fingerprint, type_name, kind,
-                              canonical);
+  decl = idl_contract_find_data(contract, type_name);
+  if (decl != NULL) {
+    switch (decl->kind) {
+    case IDL_DATA_MESSAGE:
+    case IDL_DATA_COMPOSITE:
+    case IDL_DATA_GROUP:
+      kind = CMETA_DATA_STRUCT;
+      break;
+    case IDL_DATA_ENUM:
+      kind = CMETA_DATA_ENUM;
+      break;
+    case IDL_DATA_UNION:
+      kind = CMETA_DATA_VARIANT;
+      break;
+    default:
+      return DATA_BIND_ERR_SCHEMA;
+    }
+  } else if (!schema_cmeta_data_kind(type_name, &kind)) {
+    return DATA_BIND_ERR_SCHEMA;
+  }
+
+  type = db_dynamic_graph_add(
+      graph, schema_fingerprint, type_name, kind, canonical);
   if (type == NULL) return DATA_BIND_ERR_OOM;
   type->building = 1;
+
   if (kind == CMETA_DATA_STRUCT || kind == CMETA_DATA_VARIANT) {
-    if (record == NULL) record = find_union_record(schema_root, type_name);
-    fields = fields_node_for_record(record);
-    if (fields == NULL) return DATA_BIND_ERR_SCHEMA;
-    if (fields->data.list.count != 0u) {
+    if (decl == NULL) return DATA_BIND_ERR_SCHEMA;
+    if (decl->field_count != 0u) {
       type->fields = (db_dynamic_field_type_t *)db_dynamic_graph_calloc(
-          fields->data.list.count, sizeof(*type->fields));
+          decl->field_count, sizeof(*type->fields));
       if (type->fields == NULL) return DATA_BIND_ERR_OOM;
     }
-    type->field_count = fields->data.list.count;
+    type->field_count = decl->field_count;
+
     for (i = 0u; i < type->field_count; ++i) {
-      Node *field = fields->data.list.items[i];
-      const char *name = get_string_val(find_child(field, "name"));
-      const char *field_type = get_string_val(find_child(field, "type"));
+      const IdlField *field = &decl->fields[i];
+      const char *field_type = field->type_name;
       schema_cmeta_field_type semantic;
       db_dynamic_type_t *child_type = NULL;
       DataBindStatus status;
-      if (name == NULL || !schema_cmeta_field_resolve(schema_root, field,
-                                                       &semantic))
+
+      if (field->name == NULL ||
+          !schema_cmeta_field_resolve(contract, field, &semantic))
         return DATA_BIND_ERR_SCHEMA;
-      type->fields[i].stable_name = db_dynamic_graph_strdup(name);
-      if (type->fields[i].stable_name == NULL) return DATA_BIND_ERR_OOM;
+
+      type->fields[i].stable_name =
+          db_dynamic_graph_strdup(field->name);
+      if (type->fields[i].stable_name == NULL)
+        return DATA_BIND_ERR_OOM;
+
       if (cmeta_data_kind_is_container(semantic.kind)) {
-        status = db_dynamic_build_container(graph, schema_root,
-                                            schema_fingerprint, field,
-                                            &semantic, depth + 1u,
-                                            &child_type);
+        status = db_dynamic_build_container(
+            graph, contract, schema_fingerprint,
+            field, &semantic, depth + 1u, &child_type);
       } else {
-        if (field_flag(field, "is_group_field"))
-          field_type = get_string_val(find_child(field, "group_type"));
-        status = db_dynamic_build_named(graph, schema_root, schema_fingerprint,
-                                        field_type, depth + 1u, &child_type);
+        if (field->collection_kind == IDL_COLLECTION_GROUP)
+          field_type = field->inner_type;
+        status = db_dynamic_build_named(
+            graph, contract, schema_fingerprint,
+            field_type, depth + 1u, &child_type);
       }
       if (status != DATA_BIND_OK) return status;
       type->fields[i].value_type = child_type;
     }
   }
+
   type->building = 0;
   type->complete = 1;
   *out_type = type;
@@ -5024,9 +5077,10 @@ static DataBindStatus db_dynamic_attach_root(DataBind *codec,
   }
   graph->references = 1u;
   graph->node_capacity = capacity;
-  status = db_dynamic_build_named(graph, codec->schema_root,
-                                  codec->schema_fingerprint, root_type, 0u,
-                                  &semantic_root);
+  status = db_dynamic_build_named(
+      graph, codec->contract,
+      codec->schema_fingerprint, root_type, 0u,
+      &semantic_root);
   value_root = semantic_root;
   if (status == DATA_BIND_OK && synthetic_sequence)
     status = db_dynamic_build_synthetic_sequence(
