@@ -97,7 +97,7 @@ target_sources(verify_fixes PRIVATE
 # 枚举增强功能测试：生成头文件
 # =============================================================================
 
-set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache)
+set(C_STRUCT_TEMPLATE ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
 
 set(ENUM_ENHANCED_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/test_enum_enhanced.schema)
 set(ENUM_ENHANCED_HEADER ${CMAKE_BINARY_DIR}/bin/test_enum_enhanced.h)
@@ -178,7 +178,7 @@ cmake_add_benchmark(benchmark_encoding
 set(BENCH_SCHEMA ${CMAKE_CURRENT_SOURCE_DIR}/test/bench.schema)
 set(BENCH_HEADER ${CMAKE_CURRENT_BINARY_DIR}/bench_data.h)
 set(C_STRUCT_TEMPLATE
-    ${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache)
+    ${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache)
 
 add_custom_command(
   OUTPUT ${BENCH_HEADER}
