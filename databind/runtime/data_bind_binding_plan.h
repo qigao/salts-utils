@@ -301,6 +301,38 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_inputs(
     DataBindBindingPlanDiagnostic *diagnostic);
 
 /**
+ * Publish native request values transactionally through the compiled ingress
+ * projection.
+ *
+ * This is the client-direction inverse of bind_inputs(). The native call frame
+ * is authoritative: optional ABSENT/NULL/VALUE state is read from generated
+ * native presence/null bits and defaults are not applied during encoding.
+ * VALUE fields execute the same canonical request ValidationPlan before
+ * begin_output, so validation failure has no provider side effect.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_write_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
+ * Decode a successful wire/provider result into caller-owned native response
+ * staging.
+ *
+ * This is the client-direction inverse of write_outputs(). Response staging is
+ * initialized transactionally before decode; malformed input is rolled back to
+ * canonical native zero/cleanup state. Typed Service errors use the dedicated
+ * outcome API added alongside MethodPlan error-code inversion.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
  * Publish response values transactionally for a non-throws Service.
  * begin/write/commit failures do not report success and any write/commit
  * failure calls abort_output. Throws Services must use
