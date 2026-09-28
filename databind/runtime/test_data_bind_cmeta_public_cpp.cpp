@@ -32,3 +32,38 @@ static_assert(std::is_standard_layout_v<DataBindRpcErrorMapping>);
 static_assert(std::is_standard_layout_v<DataBindRpcProjectionConfig>);
 static_assert(std::is_standard_layout_v<DataBindFormatPlanInfo>);
 static_assert(std::is_standard_layout_v<DataBindTransportPlanInfo>);
+
+
+using DataBindWriteInputsFn = DataBindStatus (*)(
+    const DataBindBindingPlan *, const DataBindBindingProvider *,
+    const DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+using DataBindBindOutputsFn = DataBindStatus (*)(
+    const DataBindBindingPlan *, const DataBindBindingProvider *,
+    const DataBindNativeOptions *, DataBindBindingCallFrame *,
+    DataBindBindingPlanDiagnostic *);
+using DataBindBindErrorFn = DataBindStatus (*)(
+    const DataBindBindingPlan *, size_t, const DataBindBindingProvider *,
+    const DataBindNativeOptions *, DataBindBindingCallFrame *,
+    DataBindBindingPlanDiagnostic *);
+using DataBindClearErrorFn = DataBindStatus (*)(
+    const DataBindBindingPlan *, const DataBindNativeOptions *,
+    DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+using DataBindHttpErrorIndexFn = int (*)(
+    const DataBindHttpMethodPlan *, int, const char *, size_t *);
+using DataBindRpcErrorIndexFn = int (*)(
+    const DataBindRpcMethodPlan *, int, const char *, size_t *);
+
+static_assert(std::is_same_v<
+    decltype(&data_bind_binding_plan_write_inputs), DataBindWriteInputsFn>);
+static_assert(std::is_same_v<
+    decltype(&data_bind_binding_plan_bind_outputs), DataBindBindOutputsFn>);
+static_assert(std::is_same_v<
+    decltype(&data_bind_binding_plan_bind_error), DataBindBindErrorFn>);
+static_assert(std::is_same_v<
+    decltype(&data_bind_binding_plan_clear_error), DataBindClearErrorFn>);
+static_assert(std::is_same_v<
+    decltype(&data_bind_http_method_plan_error_index_for_wire),
+    DataBindHttpErrorIndexFn>);
+static_assert(std::is_same_v<
+    decltype(&data_bind_rpc_method_plan_error_index_for_wire),
+    DataBindRpcErrorIndexFn>);
