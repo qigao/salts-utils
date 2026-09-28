@@ -226,7 +226,7 @@ jobs:
             build/installed-native-execution.c \
             -o build/installed-native-execution
           ./build/installed-native-execution
-          cmake -S databind/compiler/package_config/salts_idl_target \
+          cmake -S databind/idl/compiler/package_config/salts_idl_target \
             -B build/openapi-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
