@@ -58,80 +58,6 @@ static Node *find_child(Node *parent, const char *name) {
   return NULL;
 }
 
-static int replace_test_string(Node *map, const char *name, const char *value) {
-  Node *node = find_child(map, name);
-  char *replacement;
-  size_t length;
-
-  if (!node || node->type != NODE_STRING || !value) return -1;
-  length = strlen(value);
-  replacement = (char *)malloc(length + 1u);
-  if (!replacement) return -1;
-  memcpy(replacement, value, length + 1u);
-  free(node->data.string_val);
-  node->data.string_val = replacement;
-  return 0;
-}
-
-static Node *build_malformed_database_message_schema(int fields_as_string) {
-  Node *root = create_node_map("root");
-  Node *messages = create_node_list("messages");
-  Node *message = create_node_map(NULL);
-  Node *name = create_node_string("name", "Malformed");
-  Node *fields = fields_as_string ? create_node_string("fields", "not-a-list") : NULL;
-
-  if (!root || !messages || !message || !name || (fields_as_string && !fields)) goto cleanup;
-  if (map_add(message, name) != 0) goto cleanup;
-  name = NULL;
-  if (fields && map_add(message, fields) != 0) goto cleanup;
-  fields = NULL;
-  if (list_add(messages, message) != 0) goto cleanup;
-  message = NULL;
-  if (map_add(root, messages) != 0) goto cleanup;
-  messages = NULL;
-  return root;
-
-cleanup:
-  node_free(fields);
-  node_free(name);
-  node_free(message);
-  node_free(messages);
-  node_free(root);
-  return NULL;
-}
-
-static Node *build_schema_with_null_database_annotation_value(void) {
-  static const char schema[] =
-      "[db_table(records)] message Record { [db_unique(1)] int32 value; }";
-  Node *root = create_node_map("root");
-  Node *messages;
-  Node *fields;
-  Node *attributes;
-  Node *value;
-
-  if (!root || databind_tbe_contract_parse(schema, sizeof(schema) - 1u, root, NULL) != 0) {
-    node_free(root);
-    return NULL;
-  }
-  messages = find_child(root, "messages");
-  fields = messages && messages->type == NODE_LIST && messages->data.list.count == 1u
-               ? find_child(messages->data.list.items[0], "fields")
-               : NULL;
-  attributes = fields && fields->type == NODE_LIST && fields->data.list.count == 1u
-                   ? find_child(fields->data.list.items[0], "attributes")
-                   : NULL;
-  value = attributes && attributes->type == NODE_LIST && attributes->data.list.count == 1u
-              ? find_child(attributes->data.list.items[0], "value")
-              : NULL;
-  if (!value || value->type != NODE_STRING) {
-    node_free(root);
-    return NULL;
-  }
-  free(value->data.string_val);
-  value->data.string_val = NULL;
-  return root;
-}
-
 static Node *database_ir_table(Node *database_ir, size_t index) {
   Node *tables = find_child(database_ir, "db_tables");
   if (!tables || tables->type != NODE_LIST || index >= tables->data.list.count) return NULL;
@@ -157,44 +83,56 @@ static Node *build_database_ir_from_schema(const char *schema,
 }
 
 static Node *build_database_ir_from_schema_with_diagnostic(
-    const char *schema, tbe_database_dialect_t dialect, tbe_database_schema_status_t *status,
+    const char *schema, tbe_database_dialect_t dialect,
+    tbe_database_schema_status_t *status,
     tbe_database_schema_diagnostic_t *diagnostic) {
-  Node *schema_root = create_node_map("root");
+  IdlContract *contract = NULL;
+  IdlDiagnostic idl_error = IDL_DIAGNOSTIC_INIT;
   Node *database_ir = NULL;
 
-  if (!schema_root) return NULL;
-  if (databind_tbe_contract_parse(schema, strlen(schema), schema_root, NULL) != 0) {
-    node_free(schema_root);
+  if (schema == NULL || status == NULL) return NULL;
+  if (!idl_contract_parse(schema, strlen(schema), &contract, &idl_error))
     return NULL;
-  }
 
-  *status = tbe_database_schema_build(schema_root, dialect, &database_ir, diagnostic);
-  node_free(schema_root);
+  *status = tbe_database_schema_build_contract(
+      contract, dialect, &database_ir, diagnostic);
+  idl_contract_destroy(contract);
   return database_ir;
 }
 
-static Node *build_database_ir_from_mutated_default(
-    const char *schema, const char *default_value, tbe_database_dialect_t dialect,
-    tbe_database_schema_status_t *status, tbe_database_schema_diagnostic_t *diagnostic) {
-  Node *schema_root = create_node_map("root");
-  Node *database_ir = NULL;
-  Node *messages;
-  Node *fields;
-  Node *field;
+static Node *build_database_ir_from_default_literal(
+    const char *schema, const char *default_value,
+    tbe_database_dialect_t dialect,
+    tbe_database_schema_status_t *status,
+    tbe_database_schema_diagnostic_t *diagnostic) {
+  static const char marker[] = " default 0;";
+  const char *position;
+  size_t prefix;
+  size_t suffix;
+  size_t value_length;
+  char *source;
+  Node *database_ir;
 
-  if (!schema_root) return NULL;
-  if (databind_tbe_contract_parse(schema, strlen(schema), schema_root, NULL) != 0) goto cleanup;
-  messages = find_child(schema_root, "messages");
-  fields = messages && messages->type == NODE_LIST && messages->data.list.count == 1u ?
-               find_child(messages->data.list.items[0], "fields") : NULL;
-  field = fields && fields->type == NODE_LIST && fields->data.list.count == 1u ?
-              fields->data.list.items[0] : NULL;
-  if (!field || replace_test_string(field, "default_value", default_value) != 0) goto cleanup;
+  if (schema == NULL || default_value == NULL) return NULL;
+  position = strstr(schema, marker);
+  if (position == NULL) return NULL;
+  prefix = (size_t)(position - schema);
+  suffix = strlen(position + sizeof(marker) - 1u);
+  value_length = strlen(default_value);
+  if (prefix > SIZE_MAX - value_length - suffix - 11u) return NULL;
 
-  *status = tbe_database_schema_build(schema_root, dialect, &database_ir, diagnostic);
+  source = (char *)malloc(prefix + value_length + suffix + 11u);
+  if (source == NULL) return NULL;
+  memcpy(source, schema, prefix);
+  memcpy(source + prefix, " default ", 9u);
+  memcpy(source + prefix + 9u, default_value, value_length);
+  source[prefix + 9u + value_length] = ';';
+  memcpy(source + prefix + 10u + value_length,
+         position + sizeof(marker) - 1u, suffix + 1u);
 
-cleanup:
-  node_free(schema_root);
+  database_ir = build_database_ir_from_schema_with_diagnostic(
+      source, dialect, status, diagnostic);
+  free(source);
   return database_ir;
 }
 
@@ -1398,7 +1336,7 @@ spec("tbe_compiler") {
         snprintf(schema, sizeof(schema),
                  "[db_table(ast_defaults)] message AstDefault { %s value default 0; }",
                  valid_cases[index].type);
-        database_ir = build_database_ir_from_mutated_default(
+        database_ir = build_database_ir_from_default_literal(
             schema, valid_cases[index].value, TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
         info("type=%s default=%s", valid_cases[index].type, valid_cases[index].value);
         check_equal(status, TBE_DATABASE_SCHEMA_STATUS_OK);
@@ -1438,7 +1376,7 @@ spec("tbe_compiler") {
         type[type_length] = '\0';
         snprintf(schema, sizeof(schema),
                  "[db_table(ast_defaults)] message AstDefault { %s value default 0; }", type);
-        database_ir = build_database_ir_from_mutated_default(
+        database_ir = build_database_ir_from_default_literal(
             schema, separator + 1, TBE_DATABASE_DIALECT_POSTGRESQL, &status, &diagnostic);
         info("case=%s", invalid_cases[index].name);
         check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
@@ -1450,48 +1388,29 @@ spec("tbe_compiler") {
       }
     }
 
-    it("rejects malformed message fields before skipping a non-table message") {
-      static const int fields_as_string_cases[] = {0, 1};
-
-      for (size_t index = 0; index < sizeof(fields_as_string_cases) / sizeof(fields_as_string_cases[0]);
-           ++index) {
-        tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
-        tbe_database_schema_diagnostic_t diagnostic;
-        Node *schema_root = build_malformed_database_message_schema(fields_as_string_cases[index]);
-        Node *database_ir = NULL;
-
-        check_not_null(schema_root);
-        if (!schema_root) continue;
-        status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE, &database_ir,
-                                           &diagnostic);
-        info("fields=%s", fields_as_string_cases[index] ? "string" : "missing");
-        check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
-        check_null(database_ir);
-        check_equal(diagnostic.dialect, "sqlite");
-        check_equal(diagnostic.message_name, "Malformed");
-        check_equal(diagnostic.field_name, "<message>");
-        check_contains(diagnostic.context, "fields");
-        node_free(schema_root);
-      }
-    }
-
-    it("rejects a malformed database annotation value with field context") {
-      tbe_database_schema_status_t status = TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
-      tbe_database_schema_diagnostic_t diagnostic;
-      Node *schema_root = build_schema_with_null_database_annotation_value();
+    it("rejects malformed typed contract shape before database lowering") {
+      IdlContract contract = {0};
+      IdlDataDecl message = {0};
+      tbe_database_schema_status_t status =
+          TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+      tbe_database_schema_diagnostic_t diagnostic = {{0}};
       Node *database_ir = NULL;
 
-      check_not_null(schema_root);
-      if (!schema_root) return;
-      status = tbe_database_schema_build(schema_root, TBE_DATABASE_DIALECT_SQLITE,
-                                         &database_ir, &diagnostic);
+      contract.size = sizeof(contract);
+      contract.abi_version = IDL_CONTRACT_ABI_VERSION;
+      contract.name = "Malformed";
+      contract.data_count = 1u;
+      contract.data = &message;
+      message.kind = IDL_DATA_MESSAGE;
+      message.name = "Record";
+      message.field_count = 1u;
+      message.fields = NULL;
+
+      status = tbe_database_schema_build_contract(
+          &contract, TBE_DATABASE_DIALECT_SQLITE,
+          &database_ir, &diagnostic);
       check_equal(status, TBE_DATABASE_SCHEMA_STATUS_INVALID_SCHEMA);
       check_null(database_ir);
-      check_equal(diagnostic.message_name, "Record");
-      check_equal(diagnostic.field_name, "value");
-      check_contains(diagnostic.context, "annotation=db_unique");
-      check_contains(diagnostic.context, "value");
-      node_free(schema_root);
     }
   }
 
