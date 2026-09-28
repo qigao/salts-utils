@@ -161,6 +161,8 @@ static DataBindStatus decode(
 }
 
 spec("DataBind canonical native Variant binding") {
+  (void)ttest_config__;
+
   before_each() {
     reset_options();
     check_true(cmeta_data_desc_valid(&VARIANT_DATA));
