@@ -74,7 +74,6 @@ jobs:
             *) echo "shared vcpkg NuGet cache is not configured" >&2; exit 1 ;;
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
-          test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "3"
           printf '%s\n' "${{ steps.vcpkg_cache.outputs.cache_revision }}" | grep -Eq '^[0-9a-f]{64}$'
           test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
           test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
