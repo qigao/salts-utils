@@ -333,6 +333,33 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_outputs(
     DataBindBindingPlanDiagnostic *diagnostic);
 
 /**
+ * Decode one selected canonical Service typed-error payload into the generated
+ * native error envelope.
+ *
+ * error_index is the canonical throws-order index. The target envelope must be
+ * empty (kind == 0); a successful call publishes kind=error_index+1 only after
+ * payload decode and ValidationPlan success. Failure cleans the initialized
+ * payload and restores the envelope to zero.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_error(
+    const DataBindBindingPlan *plan,
+    size_t error_index,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
+ * Destroy the currently selected typed-error payload and reset the generated
+ * native error envelope to kind 0. Safe on an already-empty envelope.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_clear_error(
+    const DataBindBindingPlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
  * Publish response values transactionally for a non-throws Service.
  * begin/write/commit failures do not report success and any write/commit
  * failure calls abort_output. Throws Services must use
