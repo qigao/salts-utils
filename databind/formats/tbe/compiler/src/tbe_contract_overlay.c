@@ -4,6 +4,7 @@
 #include "tbe_scalar_profile.h"
 #include "schema_size.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
