@@ -543,13 +543,13 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     OUTPUT "${TBE_SAFETY_GENERATED_HEADER}" "${TBE_SAFETY_GENERATED_SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${TBE_SAFETY_GENERATED_DIR}"
     COMMAND $<TARGET_FILE:salts_idlc>
-            "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
             --lang c --output "${TBE_SAFETY_GENERATED_HEADER}"
             --source-output "${TBE_SAFETY_GENERATED_SOURCE}"
     DEPENDS salts_idlc
-            "${DATABIND_SOURCE_ROOT}/compiler/example.schema"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/example.schema"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
     COMMENT "Generating typed descriptor compatibility fixture"
     VERBATIM)
   cmake_add_test(test_tbe_typed_generated
@@ -575,8 +575,8 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
             --source-output "${DATABIND_OWNED_BUFFER_SOURCE}"
     DEPENDS salts_idlc
             "${CMAKE_CURRENT_SOURCE_DIR}/test_generated_owned_buffers.schema"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_structs.mustache"
-            "${DATABIND_SOURCE_ROOT}/compiler/templates/c_typed_source.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_structs.mustache"
+            "${DATABIND_SOURCE_ROOT}/idl/compiler/templates/c_typed_source.mustache"
     COMMENT "Generating canonical owned-buffer native fixture"
     VERBATIM)
   cmake_add_test(test_databind_generated_owned_buffers
