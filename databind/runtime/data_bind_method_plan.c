@@ -892,6 +892,33 @@ int data_bind_rpc_method_plan_error_at(
   return 1;
 }
 
+int data_bind_rpc_method_plan_error_index_for_wire(
+    const DataBindRpcMethodPlan *plan,
+    int code,
+    const char *error_type,
+    size_t *out_index) {
+  size_t i;
+  size_t found = SIZE_MAX;
+
+  if (plan == NULL || error_type == NULL || error_type[0] == '\0' ||
+      out_index == NULL)
+    return 0;
+
+  for (i = 0u; i < plan->error_count; ++i) {
+    const DataBindRpcErrorMapping *mapping = &plan->errors[i];
+    if (mapping->code != code || mapping->error_type == NULL ||
+        strcmp(mapping->error_type, error_type) != 0)
+      continue;
+    if (found != SIZE_MAX)
+      return 0;
+    found = i;
+  }
+
+  if (found == SIZE_MAX) return 0;
+  *out_index = found;
+  return 1;
+}
+
 int data_bind_rpc_method_plan_code_for_outcome(
     const DataBindRpcMethodPlan *plan,
     const DataBindBindingOutcome *outcome,
