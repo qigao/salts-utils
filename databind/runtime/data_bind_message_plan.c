@@ -16,6 +16,7 @@ typedef struct DataBindMessageFieldPlan {
   char *name;
   char *default_value;
   const cmeta_data_desc *data;
+  const cmeta_data_field_desc *object_field;
   size_t native_offset;
 
   int optional;
@@ -39,6 +40,7 @@ typedef struct DataBindMessageFieldPlan {
 struct DataBindMessagePlan {
   char *type_name;
   const DataBindNativeTypeBinding *native;
+  const cmeta_data_desc *object_data;
   DataBindMessageFieldPlan *fields;
   size_t field_count;
   DataBindValidationPlan *validation;
@@ -113,19 +115,16 @@ static char *message_strdup(const char *text) {
   return copy;
 }
 
-static const cmeta_data_struct_shape *message_struct_shape(
-    const DataBindNativeTypeBinding *binding) {
-  if (binding == NULL || binding->data == NULL ||
-      binding->data->kind != CMETA_DATA_STRUCT ||
-      binding->data->shape == NULL)
+static const cmeta_data_struct_shape *message_data_struct_shape(
+    const cmeta_data_desc *data) {
+  if (data == NULL || data->kind != CMETA_DATA_STRUCT || data->shape == NULL)
     return NULL;
-  return (const cmeta_data_struct_shape *)binding->data->shape;
+  return (const cmeta_data_struct_shape *)data->shape;
 }
 
-static const cmeta_data_field_desc *message_native_field(
-    const DataBindNativeTypeBinding *binding,
-    const char *name) {
-  const cmeta_data_struct_shape *shape = message_struct_shape(binding);
+static const cmeta_data_field_desc *message_data_field(
+    const cmeta_data_desc *data, const char *name) {
+  const cmeta_data_struct_shape *shape = message_data_struct_shape(data);
   size_t i;
   if (shape == NULL || name == NULL) return NULL;
   for (i = 0u; i < shape->field_count; ++i) {
@@ -134,6 +133,16 @@ static const cmeta_data_field_desc *message_native_field(
       return field;
   }
   return NULL;
+}
+
+static const cmeta_data_struct_shape *message_struct_shape(
+    const DataBindNativeTypeBinding *binding) {
+  return binding != NULL ? message_data_struct_shape(binding->data) : NULL;
+}
+
+static const cmeta_data_field_desc *message_native_field(
+    const DataBindNativeTypeBinding *binding, const char *name) {
+  return binding != NULL ? message_data_field(binding->data, name) : NULL;
 }
 
 static const DataBindNativeStateBinding *message_state_binding(
@@ -403,6 +412,7 @@ static DataBindStatus message_compile_fields(
 
     field->name = message_strdup(schema_field.name);
     field->data = native_field->value;
+    field->object_field = native_field;
     field->native_offset = native_field->offset;
     field->optional = schema_field.is_optional != 0;
     field->nullable = schema_field.is_nullable != 0;
