@@ -30,7 +30,7 @@ enum {
 /**
  * Bounded, caller-owned failure detail for database schema validation.
  * All text members are NUL-terminated when returned by
- * tbe_database_schema_build().
+ * tbe_database_schema_build_contract().
  */
 typedef struct tbe_database_schema_diagnostic_s {
   char dialect[TBE_DATABASE_SCHEMA_DIAGNOSTIC_DIALECT_CAPACITY];
@@ -45,15 +45,6 @@ typedef struct tbe_database_schema_diagnostic_s {
  */
 tbe_database_schema_status_t tbe_database_schema_build_contract(
     const IdlContract *contract, tbe_database_dialect_t dialect,
-    Node **out_database_ir,
-    tbe_database_schema_diagnostic_t *out_diagnostic);
-
-/*
- * Transitional test helper for legacy malformed-tree probes.
- * No production compiler path may call this entry point.
- */
-tbe_database_schema_status_t tbe_database_schema_build(
-    const Node *schema_root, tbe_database_dialect_t dialect,
     Node **out_database_ir,
     tbe_database_schema_diagnostic_t *out_diagnostic);
 
