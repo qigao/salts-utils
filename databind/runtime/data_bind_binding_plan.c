@@ -2398,6 +2398,203 @@ static DataBindStatus plan_read_typed_error_kind(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus plan_error_frame_preflight(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  if (plan == NULL || frame == NULL || frame->size < sizeof(*frame) ||
+      !plan->has_error_param || plan->error_count == 0u ||
+      plan->error_kind_bytes != sizeof(uint32_t) ||
+      plan->error_param_index >= frame->param_count ||
+      frame->params == NULL || frame->param_bytes == NULL ||
+      frame->params[plan->error_param_index] == NULL ||
+      frame->param_bytes[plan->error_param_index] <
+          plan->error_envelope_bytes)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan != NULL && plan->has_error_param &&
+                plan->function != NULL &&
+                plan->error_param_index < plan->function->param_count
+            ? plan->function->params[plan->error_param_index].name
+            : NULL,
+        "Typed-error client envelope staging storage is unavailable");
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_binding_plan_clear_error(
+    const DataBindBindingPlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  unsigned char *base;
+  uint32_t kind = 0u;
+  const DataBindBindingPlanEntry *entry;
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+
+  if (!plan_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (native_options == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Typed-error cleanup requires native options");
+
+  status = plan_error_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  base = (unsigned char *)frame->params[plan->error_param_index];
+  memcpy(&kind, base + plan->error_kind_offset, sizeof(kind));
+  if (kind > plan->error_count)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error client envelope kind %u is outside the compiled contract",
+        (unsigned)kind);
+
+  if (kind != 0u) {
+    entry = &plan->errors[(size_t)kind - 1u].view;
+    native = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    status = data_bind_native_clear(
+        native_options, entry->data,
+        base + entry->native_offset,
+        entry->data->storage_type->size, &native);
+    if (status != DATA_BIND_OK)
+      return plan_diag_fail(
+          diagnostic, status, entry->schema_field,
+          entry->function_param, "%s",
+          native.error.message[0] != '\0'
+              ? native.error.message
+              : "Typed-error client payload cleanup failed");
+  }
+
+  memset(base, 0, plan->error_envelope_bytes);
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_binding_plan_bind_error(
+    const DataBindBindingPlan *plan,
+    size_t error_index,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  unsigned char *base;
+  void *destination;
+  const DataBindBindingPlanEntry *entry;
+  cserde_reader reader = {0};
+  DataBindBindingValueState state = DATA_BIND_VALUE_STATE_ABSENT;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindNativeDiagnostic native =
+      DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindStatus status;
+  uint32_t current_kind = 0u;
+  uint32_t published_kind;
+
+  if (!plan_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (plan == NULL || native_options == NULL || frame == NULL ||
+      error_index >= (plan != NULL ? plan->error_count : 0u))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid typed-error client binding arguments");
+
+  if (!plan_provider_valid_for_input(provider))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid typed-error client input provider");
+
+  status = plan_error_frame_preflight(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  base = (unsigned char *)frame->params[plan->error_param_index];
+  memcpy(
+      &current_kind, base + plan->error_kind_offset,
+      sizeof(current_kind));
+  if (current_kind != 0u)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        plan->function->params[plan->error_param_index].name,
+        "Typed-error client envelope must be cleared before reuse");
+
+  memset(base, 0, plan->error_envelope_bytes);
+  entry = &plan->errors[error_index].view;
+  destination = base + entry->native_offset;
+
+  status = plan_native_init(
+      native_options, entry->data, destination,
+      entry->data->storage_type->size, diagnostic,
+      entry->schema_field, entry->function_param);
+  if (status != DATA_BIND_OK) return status;
+
+  status = provider->open_input(
+      provider->context, entry, &reader, &state, &error);
+  if (status != DATA_BIND_OK) {
+    status = plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error client input provider failed");
+    goto fail;
+  }
+
+  if (state != DATA_BIND_VALUE_STATE_VALUE) {
+    status = plan_diag_fail(
+        diagnostic,
+        state == DATA_BIND_VALUE_STATE_ABSENT
+            ? DATA_BIND_ERR_TYPE_NOT_FOUND
+            : DATA_BIND_ERR_TYPE_MISMATCH,
+        entry->schema_field, entry->function_param,
+        state == DATA_BIND_VALUE_STATE_ABSENT
+            ? "Typed Service error data is absent"
+            : "Typed Service error data cannot be NULL");
+    goto fail;
+  }
+
+  status = data_bind_native_decode(
+      native_options, entry->data, &reader,
+      destination, entry->data->storage_type->size, &native);
+  if (status != DATA_BIND_OK) {
+    status = plan_diag_fail(
+        diagnostic, status, entry->schema_field,
+        entry->function_param, "%s",
+        native.error.message[0] != '\0'
+            ? native.error.message
+            : "Typed-error client native decode failed");
+    goto fail;
+  }
+
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = data_bind_message_plan_validate_native(
+      plan->error_messages[error_index],
+      destination, entry->data->storage_type->size, &error);
+  if (status != DATA_BIND_OK) {
+    status = plan_runtime_fail_error(
+        diagnostic, status, entry, &error,
+        "Typed-error client payload validation failed");
+    goto fail;
+  }
+
+  published_kind = (uint32_t)(error_index + 1u);
+  memcpy(
+      base + plan->error_kind_offset,
+      &published_kind, sizeof(published_kind));
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+
+fail:
+  native = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  (void)data_bind_native_clear(
+      native_options, entry->data, destination,
+      entry->data->storage_type->size, &native);
+  memset(base, 0, plan->error_envelope_bytes);
+  return status;
+}
+
+
 DataBindStatus data_bind_binding_plan_write_outcome(
     const DataBindBindingPlan *plan,
     const DataBindBindingProvider *provider,
