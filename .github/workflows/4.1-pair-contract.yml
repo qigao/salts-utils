@@ -25,7 +25,7 @@ concurrency:
 
 env:
   EXPECTED_UTILS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_CANDIDATE_SHA: "64f16348eba56ca0540734cbde6c1a054e8afd48"
+  SALTS_CANDIDATE_SHA: "8f67305c298ca8f5d74d80b349e9f271e436cbe4"
 
 jobs:
   linux:
@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C _pair/salts rev-parse HEAD)" = "$SALTS_CANDIDATE_SHA"
-          grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.2([[:space:]]|$)' _pair/salts/CMakeLists.txt
+          grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.3([[:space:]]|$)' _pair/salts/CMakeLists.txt
 
       - name: Build exact Salts 1.8.3 SDK
         shell: bash
