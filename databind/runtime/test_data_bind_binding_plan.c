@@ -725,6 +725,142 @@ static DataBindBindingProvider provider_for(TestProvider *state) {
 }
 
 
+typedef struct ClientDirectionProvider {
+  OneTokenReader reader;
+  uint32_t left;
+  uint32_t right;
+  uint32_t scale;
+  uint32_t result;
+  DataBindBindingValueState scale_state;
+  size_t begin_calls;
+  size_t write_calls;
+  size_t commit_calls;
+  size_t abort_calls;
+  int invalid_result_type;
+} ClientDirectionProvider;
+
+static DataBindStatus client_direction_open(
+    void *context, const DataBindBindingPlanEntry *entry,
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error) {
+  ClientDirectionProvider *provider =
+      (ClientDirectionProvider *)context;
+  static const unsigned char invalid[] = "bad";
+  (void)error;
+  if (provider == NULL || entry == NULL || reader == NULL || state == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (strcmp(entry_logical_name(entry), "sum") != 0)
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+
+  *state = DATA_BIND_VALUE_STATE_VALUE;
+  provider->reader.emitted = 0;
+  if (provider->invalid_result_type) {
+    provider->reader.token =
+        (cserde_token){.kind = CSERDE_STRING,
+                       .value.slice = {
+                           invalid, sizeof(invalid) - 1u,
+                           CSERDE_VIEW_STABLE}};
+  } else {
+    provider->reader.token =
+        (cserde_token){.kind = CSERDE_UINT,
+                       .value.uint = provider->result};
+  }
+  return cserde_reader_init(
+             reader, &ONE_TOKEN_OPS, &provider->reader) == CSERDE_OK
+             ? DATA_BIND_OK
+             : DATA_BIND_ERR_RUNTIME;
+}
+
+static DataBindStatus client_direction_begin(
+    void *context, DataBindError *error) {
+  ClientDirectionProvider *provider =
+      (ClientDirectionProvider *)context;
+  (void)error;
+  if (provider == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++provider->begin_calls;
+  provider->left = 0u;
+  provider->right = 0u;
+  provider->scale = 0u;
+  provider->scale_state = DATA_BIND_VALUE_STATE_ABSENT;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus client_direction_write(
+    void *context, const DataBindBindingPlanEntry *entry,
+    DataBindBindingValueState state,
+    const void *value, size_t value_bytes, DataBindError *error) {
+  ClientDirectionProvider *provider =
+      (ClientDirectionProvider *)context;
+  const char *name;
+  uint32_t scalar = 0u;
+  (void)error;
+
+  if (provider == NULL || entry == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  name = entry_logical_name(entry);
+  if (name == NULL) return DATA_BIND_ERR_SCHEMA;
+
+  if (state == DATA_BIND_VALUE_STATE_VALUE) {
+    if (value == NULL || value_bytes != sizeof(uint32_t))
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    scalar = *(const uint32_t *)value;
+  } else if (value != NULL || value_bytes != 0u) {
+    return DATA_BIND_ERR_TYPE_MISMATCH;
+  }
+
+  ++provider->write_calls;
+  if (strcmp(name, "left") == 0) {
+    if (state != DATA_BIND_VALUE_STATE_VALUE)
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    provider->left = scalar;
+    return DATA_BIND_OK;
+  }
+  if (strcmp(name, "right") == 0) {
+    if (state != DATA_BIND_VALUE_STATE_VALUE)
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    provider->right = scalar;
+    return DATA_BIND_OK;
+  }
+  if (strcmp(name, "scale") == 0) {
+    if (state != DATA_BIND_VALUE_STATE_ABSENT &&
+        state != DATA_BIND_VALUE_STATE_VALUE)
+      return DATA_BIND_ERR_TYPE_MISMATCH;
+    provider->scale_state = state;
+    provider->scale = scalar;
+    return DATA_BIND_OK;
+  }
+  return DATA_BIND_ERR_TYPE_NOT_FOUND;
+}
+
+static DataBindStatus client_direction_commit(
+    void *context, DataBindError *error) {
+  ClientDirectionProvider *provider =
+      (ClientDirectionProvider *)context;
+  (void)error;
+  if (provider == NULL) return DATA_BIND_ERR_INVALID_ARG;
+  ++provider->commit_calls;
+  return DATA_BIND_OK;
+}
+
+static void client_direction_abort(void *context) {
+  ClientDirectionProvider *provider =
+      (ClientDirectionProvider *)context;
+  if (provider != NULL) ++provider->abort_calls;
+}
+
+static DataBindBindingProvider client_direction_provider_for(
+    ClientDirectionProvider *state) {
+  DataBindBindingProvider provider = DATA_BIND_BINDING_PROVIDER_INIT;
+  provider.context = state;
+  provider.open_input = client_direction_open;
+  provider.begin_output = client_direction_begin;
+  provider.write_output = client_direction_write;
+  provider.commit_output = client_direction_commit;
+  provider.abort_output = client_direction_abort;
+  return provider;
+}
+
+
 typedef struct EncodeWriterContext {
   cserde_token token;
   size_t write_calls;
@@ -1304,6 +1440,110 @@ spec("DataBind canonical Service BindingPlan") {
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
+  }
+
+  it("executes one compiled RPC plan in both server and client directions") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-client-v1", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    ClientDirectionProvider state = {0};
+    DataBindBindingProvider provider =
+        client_direction_provider_for(&state);
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest request = {
+        .left = 3u, .right = 4u, .scale = 99u, .presence = 0u};
+    AddResponse response = {.sum = 91u};
+    void *params[] = {NULL, &response};
+    const size_t param_bytes[] = {0u, sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    size_t begin_before;
+    size_t write_before;
+    size_t commit_before;
+    size_t abort_before;
+
+    check_equal(
+        data_bind_binding_plan_compile_service(
+            codec, "Calc", "Add", &rpc, &native,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_free(codec);
+    codec = NULL;
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    /* Client encoding preserves native ABSENT; it does not re-apply default=1. */
+    check_equal(
+        data_bind_binding_plan_write_inputs(
+            plan, &provider, &frame, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(state.left, (uint32_t)3u);
+    check_equal(state.right, (uint32_t)4u);
+    check_equal(state.scale_state, DATA_BIND_VALUE_STATE_ABSENT);
+    check_equal(state.scale, (uint32_t)0u);
+    check_equal(state.begin_calls, (size_t)1u);
+    check_equal(state.write_calls, (size_t)3u);
+    check_equal(state.commit_calls, (size_t)1u);
+    check_equal(state.abort_calls, (size_t)0u);
+
+    request.scale = 2u;
+    request.presence = (uint8_t)(1u << 0u);
+    check_equal(
+        data_bind_binding_plan_write_inputs(
+            plan, &provider, &frame, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(state.scale_state, DATA_BIND_VALUE_STATE_VALUE);
+    check_equal(state.scale, (uint32_t)2u);
+
+    /* Request validation fails before begin_output observes a transaction. */
+    begin_before = state.begin_calls;
+    write_before = state.write_calls;
+    commit_before = state.commit_calls;
+    abort_before = state.abort_calls;
+    request.left = 0u;
+    check_equal(
+        data_bind_binding_plan_write_inputs(
+            plan, &provider, &frame, &diagnostic),
+        DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "left");
+    check_equal(state.begin_calls, begin_before);
+    check_equal(state.write_calls, write_before);
+    check_equal(state.commit_calls, commit_before);
+    check_equal(state.abort_calls, abort_before);
+
+    request.left = 3u;
+    state.result = 11u;
+    state.invalid_result_type = 0;
+    response.sum = 91u;
+    check_equal(
+        data_bind_binding_plan_bind_outputs(
+            plan, &provider, &options, &frame, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(response.sum, (uint32_t)11u);
+
+    /* Malformed result rolls initialized native response back to zero. */
+    state.invalid_result_type = 1;
+    response.sum = 77u;
+    check_equal(
+        data_bind_binding_plan_bind_outputs(
+            plan, &provider, &options, &frame, &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(diagnostic.schema_field, "sum");
+    check_equal(response.sum, (uint32_t)0u);
+
+    data_bind_binding_plan_free(plan);
   }
 
   it("executes a compiled root plan after the schema codec is released") {
