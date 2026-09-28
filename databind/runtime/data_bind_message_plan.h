@@ -184,6 +184,29 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_object(
     DataBindMessagePlanDiagnostic *diagnostic);
 
 /**
+ * Decode one provider-backed object using explicit format semantics.
+ *
+ * JSON/YAML preserve the strict canonical token rules of
+ * data_bind_message_plan_decode_object(). XML additionally admits textual leaf
+ * scalar coercion through the target field's canonical CMeta data descriptor:
+ * BOOL/SINT/UINT/FLOAT text becomes the corresponding CSerde scalar token
+ * before native decode. String/bytes/enum and other domains retain their
+ * existing token semantics.
+ *
+ * No runtime heap allocation is introduced; XML float text temporarily borrows
+ * the caller-supplied native workspace before it is converted to a numeric
+ * token.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_decode_object_format(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindFormat format,
+    cserde_reader *reader,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
  * Encode one provider-backed object as a canonical CSerde MAP. Field VALUE
  * borrows come only from cmeta_object_field_read(); optional/null state comes
  * only from state_provider.
