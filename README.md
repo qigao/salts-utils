@@ -140,7 +140,7 @@ The SaltsUtils DataBind component provides schema definition and validation, com
 
 Detailed documentation:
 
-- [DataBind compiler CLI options](databind/compiler/CLI_OPTIONS.md)
+- [DataBind compiler CLI options](databind/idl/compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
 - [DataBind ownership and adapter design](databind/runtime/README.md)
 
