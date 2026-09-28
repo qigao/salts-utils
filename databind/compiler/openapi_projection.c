@@ -1522,4 +1522,69 @@ static int openapi_emit_components(
   return fputs("}}", file) == EOF ? -1 : 0;
 }
 
-;
+
+static int openapi_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    void *context) {
+  const IdlContract *contract =
+      input != NULL ? input->contract : NULL;
+  const databind_compiler_openapi_projection_config *config =
+      request != NULL
+          ? (const databind_compiler_openapi_projection_config *)request->config
+          : NULL;
+  const databind_compiler_http_projection_config *http =
+      config != NULL ? config->http : NULL;
+  const char *schema_name =
+      contract != NULL ? contract->name : NULL;
+  const char *schema_version =
+      contract != NULL ? contract->version : NULL;
+  openapi_operation *operations = NULL;
+  size_t operation_count = 0u;
+  char *temp = NULL;
+  FILE *file = NULL;
+  int ok = 0;
+  (void)context;
+
+  if (contract == NULL || request == NULL || request->output == NULL ||
+      request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT ||
+      request->id.kind != DATABIND_COMPILER_ARTIFACT_OPENAPI ||
+      schema_name == NULL || schema_name[0] == '\0')
+    return -1;
+
+  if (openapi_operations_build(
+          contract, http, &operations, &operation_count) != 0)
+    return -1;
+
+  if (openapi_open_atomic(request->output, &temp, &file) != 0)
+    goto cleanup;
+
+  if (fputs("{\"openapi\":\"3.1.0\",\"info\":{\"title\":", file) == EOF ||
+      openapi_json_string(file, schema_name) != 0 ||
+      fputs(",\"version\":", file) == EOF ||
+      openapi_json_string(
+          file, schema_version != NULL && schema_version[0] != '\0'
+                    ? schema_version
+                    : "1") != 0 ||
+      fputs("},", file) == EOF ||
+      openapi_emit_paths(
+          file, contract, http, operations, operation_count) != 0 ||
+      fputc(',', file) == EOF ||
+      openapi_emit_components(file, contract) != 0 ||
+      fputs("}\n", file) == EOF)
+    goto cleanup;
+
+  ok = 1;
+
+cleanup:
+  openapi_operations_free(operations, operation_count);
+  return openapi_commit_atomic(request->output, temp, file, ok);
+}
+
+const databind_compiler_projection_backend
+    DATABIND_COMPILER_OPENAPI_BACKEND = {
+        {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+         DATABIND_COMPILER_ARTIFACT_OPENAPI},
+        "openapi",
+        openapi_generate,
+        NULL};
