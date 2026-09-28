@@ -2,7 +2,7 @@
 #define DATABIND_COMPILER_FLOWMQ_PLAN_PROJECTION_H
 
 #include "projection.h"
-#include "../runtime/data_bind_flowmq_plan.h"
+#include "../../runtime/data_bind_flowmq_plan.h"
 
 #include <stddef.h>
 
