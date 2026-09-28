@@ -31,7 +31,7 @@ cmake_add_executable(salts_idlc
   LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(salts_idlc
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 set_target_properties(salts_idlc PROPERTIES
   OUTPUT_NAME "salts-idlc")
 set_property(TARGET salts_idlc APPEND PROPERTY LINK_DEPENDS
@@ -140,7 +140,7 @@ cmake_add_test(test_databind_openapi_projection
     OPENAPI_OPTIONAL_PATH_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_optional_path.schema"
     OPENAPI_BYTES_SIZE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_openapi_bytes_size.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_openapi_projection PROPERTIES
@@ -170,7 +170,7 @@ target_link_libraries(databind_method_plan_projection_fixture_gen
     Salts::Core)
 target_include_directories(databind_method_plan_projection_fixture_gen
   PRIVATE
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(databind_method_plan_projection_fixture_gen
   PROPERTIES FOLDER "databind/compiler/tests")
@@ -235,7 +235,7 @@ cmake_add_test(test_databind_projection_registry
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_projection_registry PROPERTIES
@@ -269,7 +269,7 @@ cmake_add_test(test_databind_projection_frontend
     DATABIND_SOCKET_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection_config.json"
     DATABIND_FLOWMQ_PROJECTION_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection_config.json"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_projection_frontend PROPERTIES
@@ -296,7 +296,7 @@ cmake_add_test(test_databind_socket_plan_projection
   DEFS
     SOCKET_PLAN_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_socket_plan_projection.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_socket_plan_projection PROPERTIES
@@ -323,7 +323,7 @@ cmake_add_test(test_databind_message_native
     MESSAGE_NATIVE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_message_native PROPERTIES
@@ -352,7 +352,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
   DEFS
     FLOWMQ_PLAN_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_projection.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_flowmq_plan_projection PROPERTIES
@@ -389,7 +389,7 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
     ${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Core
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 
@@ -862,7 +862,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     PLUGIN_COMPONENT_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_plugin_projection.schema"
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 
@@ -889,7 +889,7 @@ cmake_add_test(test_tbe_compiler
     TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
 target_include_directories(test_tbe_compiler
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 
 cmake_add_test(test_tbe_compiler_schema_boundary
   SOURCES test_schema_boundary.c compiler_core.c projection.c database_schema.c mustache_helpers.c
@@ -897,13 +897,13 @@ cmake_add_test(test_tbe_compiler_schema_boundary
   DEFS TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   FOLDER "databind/compiler")
 target_include_directories(test_tbe_compiler_schema_boundary
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_tbe_compiler_cmeta_fields
   SOURCES test_cmeta_field_projection.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/compiler")
 target_include_directories(test_tbe_compiler_cmeta_fields
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 cmake_add_test(test_databind_method_plan_binary_admission
   SOURCES
     test_method_plan_binary_admission.c
@@ -921,7 +921,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
   DEFS
     BINARY_ADMISSION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_binary_admission.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_method_plan_binary_admission PROPERTIES
@@ -949,7 +949,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_binary_reader_codegen PROPERTIES
@@ -976,7 +976,7 @@ cmake_add_test(test_databind_binary_layout_ir
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
   INCLUDES
-    ${DATABIND_SOURCE_ROOT}/schema/src
+    ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 set_target_properties(test_databind_binary_layout_ir PROPERTIES
@@ -986,9 +986,9 @@ set_target_properties(test_databind_binary_layout_ir PROPERTIES
 set_tests_properties(test_databind_binary_layout_ir PROPERTIES
   LABELS "databind;compiler;binary-layout")
 target_include_directories(test_tbe_compiler_cmeta_fields
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 target_include_directories(test_tbe_compiler_schema_boundary
-  PRIVATE ${DATABIND_SOURCE_ROOT}/schema/src)
+  PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
 if(TARGET test_tbe_compiler_schema_boundary)
   target_sources(test_tbe_compiler_schema_boundary PRIVATE test_scalar_projection.c)
   set_source_files_properties(test_scalar_projection.c
