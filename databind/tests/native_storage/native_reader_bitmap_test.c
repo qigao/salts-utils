@@ -164,6 +164,7 @@ static void require_bitmap_boundary(size_t field_count, size_t branches,
 }
 
 spec("DataBind field bitmap byte boundaries and nested lifetimes") {
+  (void)ttest_config__;
   it("fits exactly eight scalar fields in one bitmap byte") {
     require_bitmap_boundary(8u, 0u, BITMAP_VALID);
   }
