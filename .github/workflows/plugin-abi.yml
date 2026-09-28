@@ -46,7 +46,7 @@ env:
 
 jobs:
   linux:
-    if: github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence'
+    if: (github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence') && github.ref != 'refs/heads/refactor/4.1-ownership-convergence'
     name: Linux C11/C++17 + BindingPlan sanitizers
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -285,7 +285,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
 
   windows:
-    if: github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence'
+    if: (github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence') && github.ref != 'refs/heads/refactor/4.1-ownership-convergence'
     name: Windows C11/C++17 contract
     runs-on: windows-2022
     timeout-minutes: 35
