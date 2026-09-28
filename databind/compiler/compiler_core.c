@@ -2195,7 +2195,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
                                          ? TBE_DATABASE_DIALECT_SQLITE
                                          : TBE_DATABASE_DIALECT_POSTGRESQL;
     tbe_database_schema_status_t database_status =
-        tbe_database_schema_build(root, dialect, &database_ir, &diagnostic);
+        tbe_database_schema_build_contract(
+            contract, dialect, &database_ir, &diagnostic);
     if (database_status != TBE_DATABASE_SCHEMA_STATUS_OK) {
       fprintf(stderr,
               "Database schema validation failed for --lang %s: message=%s field=%s %s\n",
