@@ -1841,6 +1841,260 @@ static tbe_database_schema_status_t database_build_initializers(
   return TBE_DATABASE_SCHEMA_STATUS_OK;
 }
 
+
+static Node *database_contract_annotation_view(const IdlAnnotation *annotation) {
+  Node *node = NULL;
+  Node *values = NULL;
+  size_t i;
+
+  if (annotation == NULL || annotation->name == NULL) return NULL;
+  node = create_node_map(annotation->name);
+  values = create_node_list("values");
+  if (node == NULL || values == NULL) goto failed;
+
+  if (database_add_string(node, "name", annotation->name) != 0 ||
+      database_add_string(node, "value",
+                          annotation->value != NULL ? annotation->value : "") != 0)
+    goto failed;
+
+  if (annotation->bare &&
+      database_add_string(node, "bare", "1") != 0)
+    goto failed;
+
+  for (i = 0u; i < annotation->argument_count; ++i) {
+    const char *argument = idl_annotation_argument(annotation, i);
+    Node *value;
+    if (argument == NULL) goto failed;
+    value = create_node_string(NULL, argument);
+    if (value == NULL || list_add(values, value) != 0) {
+      node_free(value);
+      goto failed;
+    }
+  }
+
+  if (map_add(node, values) != 0) goto failed;
+  return node;
+
+failed:
+  node_free(values);
+  node_free(node);
+  return NULL;
+}
+
+static int database_contract_annotations_view(
+    Node *owner, const IdlAnnotation *annotations, size_t annotation_count) {
+  Node *list;
+  size_t i;
+
+  if (owner == NULL) return 0;
+  if (annotation_count == 0u) return 1;
+
+  list = create_node_list("attributes");
+  if (list == NULL) return 0;
+  for (i = 0u; i < annotation_count; ++i) {
+    Node *annotation = database_contract_annotation_view(&annotations[i]);
+    if (annotation == NULL || list_add(list, annotation) != 0) {
+      node_free(annotation);
+      node_free(list);
+      return 0;
+    }
+  }
+  if (map_add(owner, list) != 0) {
+    node_free(list);
+    return 0;
+  }
+  return 1;
+}
+
+static int database_contract_record_kind(const IdlDataDecl *type) {
+  return type != NULL &&
+         (type->kind == IDL_DATA_MESSAGE ||
+          type->kind == IDL_DATA_COMPOSITE ||
+          type->kind == IDL_DATA_GROUP);
+}
+
+static Node *database_contract_field_view(
+    const IdlContract *contract, const IdlField *field) {
+  Node *node;
+  const IdlDataDecl *referenced;
+
+  if (contract == NULL || field == NULL ||
+      field->name == NULL || field->type_name == NULL)
+    return NULL;
+
+  node = create_node_map(NULL);
+  if (node == NULL) return NULL;
+  if (database_add_string(node, "name", field->name) != 0 ||
+      database_add_string(node, "type", field->type_name) != 0)
+    goto failed;
+
+  if (field->optional && database_add_string(node, "is_optional", "1") != 0)
+    goto failed;
+  if (field->nullable && database_add_string(node, "is_nullable", "1") != 0)
+    goto failed;
+  if (field->default_value != NULL &&
+      (database_add_string(node, "default_value", field->default_value) != 0 ||
+       database_add_string(node, "has_default", "1") != 0))
+    goto failed;
+
+  if (field->collection_kind != IDL_COLLECTION_NONE &&
+      database_add_string(node, "is_collection", "1") != 0)
+    goto failed;
+  if (field->collection_kind == IDL_COLLECTION_GROUP &&
+      database_add_string(node, "is_group_field", "1") != 0)
+    goto failed;
+
+  referenced = idl_contract_find_data(contract, field->type_name);
+  if (database_contract_record_kind(referenced) &&
+      database_add_string(node, "is_composite_ref", "1") != 0)
+    goto failed;
+
+  if (!database_contract_annotations_view(
+          node, field->annotations, field->annotation_count))
+    goto failed;
+  return node;
+
+failed:
+  node_free(node);
+  return NULL;
+}
+
+static Node *database_contract_message_view(
+    const IdlContract *contract, const IdlDataDecl *message) {
+  Node *node = NULL;
+  Node *fields = NULL;
+  size_t i;
+
+  if (contract == NULL || message == NULL ||
+      message->kind != IDL_DATA_MESSAGE || message->name == NULL)
+    return NULL;
+
+  node = create_node_map(NULL);
+  fields = create_node_list("fields");
+  if (node == NULL || fields == NULL) goto failed;
+  if (database_add_string(node, "name", message->name) != 0 ||
+      database_add_string(node, "message_name", message->name) != 0 ||
+      !database_contract_annotations_view(
+          node, message->annotations, message->annotation_count))
+    goto failed;
+
+  for (i = 0u; i < message->field_count; ++i) {
+    Node *field = database_contract_field_view(contract, &message->fields[i]);
+    if (field == NULL || list_add(fields, field) != 0) {
+      node_free(field);
+      goto failed;
+    }
+  }
+  if (map_add(node, fields) != 0) goto failed;
+  return node;
+
+failed:
+  node_free(fields);
+  node_free(node);
+  return NULL;
+}
+
+static Node *database_contract_enum_view(const IdlDataDecl *type) {
+  Node *node = NULL;
+  Node *items = NULL;
+  size_t i;
+
+  if (type == NULL || type->kind != IDL_DATA_ENUM || type->name == NULL)
+    return NULL;
+
+  node = create_node_map(NULL);
+  items = create_node_list("items");
+  if (node == NULL || items == NULL) goto failed;
+  if (database_add_string(node, "name", type->name) != 0 ||
+      database_add_string(node, "enum_name", type->name) != 0 ||
+      database_add_string(
+          node, "underlying_type",
+          type->underlying_type != NULL ? type->underlying_type : "int32") != 0 ||
+      (type->flags && database_add_string(node, "is_flags", "1") != 0) ||
+      !database_contract_annotations_view(
+          node, type->annotations, type->annotation_count))
+    goto failed;
+
+  for (i = 0u; i < type->enum_item_count; ++i) {
+    Node *item = create_node_map(NULL);
+    if (item == NULL ||
+        database_add_string(
+            item, "name",
+            type->enum_items[i].name != NULL
+                ? type->enum_items[i].name : "") != 0 ||
+        database_add_string(
+            item, "value",
+            type->enum_items[i].value != NULL
+                ? type->enum_items[i].value : "") != 0 ||
+        list_add(items, item) != 0) {
+      node_free(item);
+      goto failed;
+    }
+  }
+  if (map_add(node, items) != 0) goto failed;
+  return node;
+
+failed:
+  node_free(items);
+  node_free(node);
+  return NULL;
+}
+
+static Node *database_contract_view(const IdlContract *contract) {
+  Node *root = NULL;
+  Node *schema = NULL;
+  Node *messages = NULL;
+  Node *enums = NULL;
+  size_t i;
+
+  if (contract == NULL) return NULL;
+  root = create_node_map(NULL);
+  schema = create_node_map("schema");
+  messages = create_node_list("messages");
+  enums = create_node_list("enums");
+  if (root == NULL || schema == NULL || messages == NULL || enums == NULL)
+    goto failed;
+
+  if (database_add_string(
+          schema, "schema_name",
+          contract->name != NULL ? contract->name : "") != 0 ||
+      !database_contract_annotations_view(
+          schema, contract->annotations, contract->annotation_count))
+    goto failed;
+
+  for (i = 0u; i < contract->data_count; ++i) {
+    const IdlDataDecl *type = &contract->data[i];
+    if (type->kind == IDL_DATA_MESSAGE) {
+      Node *message = database_contract_message_view(contract, type);
+      if (message == NULL || list_add(messages, message) != 0) {
+        node_free(message);
+        goto failed;
+      }
+    } else if (type->kind == IDL_DATA_ENUM) {
+      Node *enum_node = database_contract_enum_view(type);
+      if (enum_node == NULL || list_add(enums, enum_node) != 0) {
+        node_free(enum_node);
+        goto failed;
+      }
+    }
+  }
+
+  if (map_add(root, schema) != 0) goto failed;
+  schema = NULL;
+  if (map_add(root, messages) != 0) goto failed;
+  messages = NULL;
+  if (map_add(root, enums) != 0) goto failed;
+  enums = NULL;
+  return root;
+
+failed:
+  node_free(schema);
+  node_free(messages);
+  node_free(enums);
+  node_free(root);
+  return NULL;
+}
+
 tbe_database_schema_status_t tbe_database_schema_build(
     const Node *schema_root, tbe_database_dialect_t dialect, Node **out_database_ir,
     tbe_database_schema_diagnostic_t *out_diagnostic) {
@@ -2007,6 +2261,30 @@ cleanup:
   node_free(indexes);
   node_free(initializers);
   node_free(database_ir);
+  return status;
+}
+
+tbe_database_schema_status_t tbe_database_schema_build_contract(
+    const IdlContract *contract, tbe_database_dialect_t dialect,
+    Node **out_database_ir,
+    tbe_database_schema_diagnostic_t *out_diagnostic) {
+  Node *view;
+  tbe_database_schema_status_t status;
+
+  if (contract == NULL || out_database_ir == NULL) {
+    database_set_diagnostic(
+        out_diagnostic, dialect, "<schema>", "<schema>",
+        "invalid typed database schema build arguments");
+    return TBE_DATABASE_SCHEMA_STATUS_INVALID_ARGUMENT;
+  }
+
+  view = database_contract_view(contract);
+  if (view == NULL)
+    return TBE_DATABASE_SCHEMA_STATUS_OUT_OF_MEMORY;
+
+  status = tbe_database_schema_build(
+      view, dialect, out_database_ir, out_diagnostic);
+  node_free(view);
   return status;
 }
 
