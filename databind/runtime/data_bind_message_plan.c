@@ -462,6 +462,103 @@ static DataBindStatus message_compile_fields(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus message_compile_object_fields(
+    DataBind *codec,
+    const char *type_name,
+    const cmeta_data_desc *object_data,
+    DataBindMessagePlan *plan,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  const cmeta_data_struct_shape *shape = message_data_struct_shape(object_data);
+  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  size_t i;
+
+  if (shape == NULL ||
+      !data_bind_schema_find_type(codec, type_name, &schema_type) ||
+      schema_type.field_count != data_bind_schema_field_count(codec, type_name))
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+        "IDL type '%s' is not a reflected record", type_name);
+
+  if (shape->field_count != schema_type.field_count)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, type_name,
+        "CMeta object field count does not match DataBind IDL type '%s'",
+        type_name);
+
+  plan->field_count = schema_type.field_count;
+  if (plan->field_count != 0u) {
+    plan->fields = (DataBindMessageFieldPlan *)calloc(
+        plan->field_count, sizeof(*plan->fields));
+    if (plan->fields == NULL)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_OOM, type_name,
+          "Could not allocate MessagePlan fields");
+  }
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    const cmeta_data_field_desc *object_field;
+    const cmeta_data_desc *schema_data = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessageFieldPlan *field = &plan->fields[i];
+
+    if (!data_bind_schema_field_at(codec, type_name, i, &schema_field))
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+          "Could not reflect field %zu of '%s'", i, type_name);
+
+    object_field = message_data_field(object_data, schema_field.name);
+    if (object_field == NULL || object_field->value == NULL)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+          "CMeta object type '%s' is missing field '%s'", type_name,
+          schema_field.name != NULL ? schema_field.name : "");
+
+    schema_data = schema_field.cmeta_data;
+    if (schema_data == NULL)
+      (void)data_bind_schema_field_cmeta_data(
+          codec, type_name, i, &schema_data, &error);
+
+    if (schema_data != NULL) {
+      if (!message_data_semantically_equal(schema_data, object_field->value))
+        return message_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+            "CMeta object field '%s.%s' does not match DataBind IDL semantics",
+            type_name, schema_field.name != NULL ? schema_field.name : "");
+    } else if (!message_logical_buffer_matches_native(
+                   &schema_field, object_field->value)) {
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name,
+          "IDL field '%s.%s' has no admitted canonical object mapping",
+          type_name, schema_field.name != NULL ? schema_field.name : "");
+    }
+
+    field->name = message_strdup(schema_field.name);
+    field->data = object_field->value;
+    field->object_field = object_field;
+    field->native_offset = CMETA_FIELD_DYNAMIC_OFFSET;
+    field->optional = schema_field.is_optional != 0;
+    field->nullable = schema_field.is_nullable != 0;
+    field->has_default = schema_field.has_default != 0;
+    if (field->has_default && schema_field.default_value != NULL)
+      field->default_value = message_strdup(schema_field.default_value);
+    if (field->name == NULL ||
+        (field->has_default && schema_field.default_value != NULL &&
+         field->default_value == NULL))
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_OOM, schema_field.name,
+          "Could not copy MessagePlan field metadata");
+
+    {
+      DataBindStatus default_status =
+          message_compile_default_token(field, diagnostic);
+      if (default_status != DATA_BIND_OK) return default_status;
+    }
+  }
+
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus message_compile_default_token(
     DataBindMessageFieldPlan *field,
     DataBindMessagePlanDiagnostic *diagnostic) {
