@@ -27,6 +27,15 @@ static_assert(std::is_same<
                                      DataBindMessagePlanDiagnostic *)>::value,
               "object MessagePlan decode signature drift");
 static_assert(std::is_same<
+                  decltype(&data_bind_message_plan_decode_object_format),
+                  DataBindStatus (*)(const DataBindMessagePlan *,
+                                     const DataBindNativeOptions *,
+                                     DataBindFormat, cserde_reader *,
+                                     cmeta_object_ref *,
+                                     const DataBindMessageObjectStateProvider *,
+                                     DataBindMessagePlanDiagnostic *)>::value,
+              "format-aware object MessagePlan decode signature drift");
+static_assert(std::is_same<
                   decltype(&data_bind_message_plan_encode_object),
                   DataBindStatus (*)(const DataBindMessagePlan *,
                                      const DataBindNativeOptions *,
