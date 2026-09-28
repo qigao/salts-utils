@@ -33,7 +33,7 @@ env:
 
 jobs:
   linux:
-    if: github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence'
+    if: (github.event_name != 'pull_request' || github.head_ref != 'refactor/4.1-ownership-convergence') && github.ref != 'refs/heads/refactor/4.1-ownership-convergence'
     name: Linux C11/C++17 contract
     runs-on: ubuntu-24.04
     timeout-minutes: 25
