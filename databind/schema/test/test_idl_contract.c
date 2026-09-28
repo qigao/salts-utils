@@ -6,7 +6,7 @@
 spec("typed IDL contract snapshot") {
   it("owns Data Service Channel and Component semantics without Node exposure") {
     static const char source[] =
-        "schema Demo [version(4)];"
+        "schema Demo [version(4), db_init(sqlite, \"INSERT INTO demo VALUES (1)\")];"
         "message Request { optional uint32 id; }"
         "message Reply { string name; }"
         "message Event { uint64 seq; }"
@@ -28,6 +28,25 @@ spec("typed IDL contract snapshot") {
     check_equal(contract->abi_version, IDL_CONTRACT_ABI_VERSION);
     check_equal(strcmp(contract->name, "Demo"), 0);
     check_equal(strcmp(contract->version, "4"), 0);
+    check_equal(idl_annotation_count(
+                    contract->annotations, contract->annotation_count,
+                    "db_init"),
+                (size_t)1u);
+    {
+      const IdlAnnotation *annotation = idl_annotation_find(
+          contract->annotations, contract->annotation_count, "db_init", 0u);
+      check_not_null(annotation);
+      if (annotation != NULL) {
+        check_false(annotation->bare);
+        check_equal(annotation->argument_count, (size_t)2u);
+        check_equal(strcmp(idl_annotation_argument(annotation, 0u), "sqlite"), 0);
+        check_equal(
+            strcmp(idl_annotation_argument(annotation, 1u),
+                   "INSERT INTO demo VALUES (1)"),
+            0);
+        check_equal(strcmp(annotation->value, "sqlite"), 0);
+      }
+    }
 
     request = idl_contract_find_data(contract, "Request");
     check_not_null(request);
