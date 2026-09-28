@@ -25,7 +25,7 @@ concurrency:
 
 env:
   EXPECTED_UTILS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_CANDIDATE_SHA: "387c99698c046f1b3119dce1307b626e92e2e522"
+  SALTS_CANDIDATE_SHA: "805db421af61cd56e912d63b91f13e576ab8da00"
 
 jobs:
   linux:
