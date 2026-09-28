@@ -2110,6 +2110,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *projection_root = NULL;
   Node *database_ir = NULL;
   IdlContract *contract = NULL;
+  databind_tbe_format_plan tbe_format = {0};
   char *schema_data = NULL;
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
@@ -2136,9 +2137,18 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
    * introduced through this Node tree.
    */
   if (options->projection_count != 0u) {
+    tbe_error_t format_error;
     projection_root = tbe_compiler_clone_canonical_node(root);
     if (projection_root == NULL) {
       fprintf(stderr, "Failed to preserve legacy projection view\n");
+      status = 1;
+      goto cleanup;
+    }
+    tbe_error_init(&format_error);
+    if (!databind_tbe_format_plan_build(
+            contract, projection_root, &tbe_format, &format_error)) {
+      fprintf(stderr, "Failed to compile TBE format plan: %s\n",
+              format_error.message);
       status = 1;
       goto cleanup;
     }
@@ -2279,7 +2289,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
 
   if (status == 0 && options->projection_count != 0u) {
     databind_compiler_projection_input projection_input = {
-        contract, projection_root};
+        contract, &tbe_format, projection_root};
     if (databind_compiler_projection_run(
             &projection_input,
             options->projection_requests,
@@ -2290,6 +2300,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
 
 cleanup:
+  databind_tbe_format_plan_destroy(&tbe_format);
   idl_contract_destroy(contract);
   free(schema_data);
   tbe_database_schema_destroy(database_ir);
