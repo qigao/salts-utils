@@ -155,6 +155,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           prefix="$RUNNER_TEMP/salts-utils-4.1-pair"
           cmake --build build/pair-databind --parallel 2
           cmake --install build/pair-databind --prefix "$prefix"
@@ -357,6 +358,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
           set "prefix=%RUNNER_TEMP%\salts-utils-4.1-pair"
           cmake --build build\pair-databind --parallel 2
           if errorlevel 1 exit /b 1
