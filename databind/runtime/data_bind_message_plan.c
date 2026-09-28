@@ -1895,6 +1895,7 @@ static DataBindStatus message_xml_text_coerce(
     char *scratch;
     char *end = NULL;
     double value;
+    int valid;
     if (native_options->workspace == NULL ||
         workspace_prefix > native_options->workspace_bytes ||
         length == SIZE_MAX ||
@@ -1902,13 +1903,23 @@ static DataBindStatus message_xml_text_coerce(
       return message_fail(
           diagnostic, DATA_BIND_ERR_LIMIT, field->name,
           "Native workspace cannot hold XML floating-point text");
-    scratch = (char *)native_options->workspace + workspace_prefix;
+
+    /*
+     * Use the tail, not the field-staging prefix. The staging address is
+     * alignment-dependent and may otherwise overlap this text on MSVC/Win64.
+     * The text is dead after conversion and is restored to zero before native
+     * decode so later staging may safely reuse the same bytes.
+     */
+    scratch = (char *)native_options->workspace +
+              native_options->workspace_bytes - (length + 1u);
     if (length != 0u) memcpy(scratch, text, length);
     scratch[length] = '\0';
     errno = 0;
     value = strtod(scratch, &end);
-    if (errno == ERANGE || end == scratch || end != scratch + length ||
-        !isfinite(value))
+    valid = errno != ERANGE && end != scratch &&
+            end == scratch + length && isfinite(value);
+    memset(scratch, 0, length + 1u);
+    if (!valid)
       return message_fail(
           diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, field->name,
           "XML floating-point text does not match the canonical field type");
