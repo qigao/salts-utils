@@ -1,4 +1,4 @@
-name: Salts 1.8.2 / SaltsUtils 4.1.3 pair contract
+name: Salts 1.8.3 / SaltsUtils 4.1.3 pair contract
 
 on:
   pull_request:
@@ -75,11 +75,11 @@ jobs:
           test "$(git -C _pair/salts rev-parse HEAD)" = "$SALTS_CANDIDATE_SHA"
           grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.2([[:space:]]|$)' _pair/salts/CMakeLists.txt
 
-      - name: Build exact Salts 1.8.2 SDK
+      - name: Build exact Salts 1.8.3 SDK
         shell: bash
         run: |
           set -euxo pipefail
-          prefix="$RUNNER_TEMP/salts-1.8.2-pair"
+          prefix="$RUNNER_TEMP/salts-1.8.3-pair"
           cmake -S _pair/salts -B build/pair-salts -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
@@ -116,7 +116,7 @@ jobs:
             --triplet=x64-linux \
             --only-binarycaching
 
-      - name: Configure DataBind against exact Salts 1.8.2
+      - name: Configure DataBind against exact Salts 1.8.3
         shell: bash
         run: |
           set -euxo pipefail
@@ -320,13 +320,13 @@ jobs:
             throw "Salts candidate mismatch"
           }
 
-      - name: Build exact Salts 1.8.2 SDK
+      - name: Build exact Salts 1.8.3 SDK
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          set "prefix=%RUNNER_TEMP%\salts-1.8.2-pair"
+          set "prefix=%RUNNER_TEMP%\salts-1.8.3-pair"
           cmake -S _pair\salts -B build\pair-salts -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-salts" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%prefix%"
           if errorlevel 1 exit /b 1
           cmake --build build\pair-salts --parallel 2
