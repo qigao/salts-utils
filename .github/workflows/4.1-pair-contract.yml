@@ -143,12 +143,15 @@ jobs:
             test_data_bind_native_container \
             test_data_bind_native_variant \
             test_data_bind_binding_plan \
+            test_data_bind_owned_error_validation \
+            test_data_bind_cmeta_public_cpp \
+            test_databind_service_native_lowering \
             test_databind_plugin_generated_dso \
             test_databind_plugin_generated_client
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/pair-databind \
             --output-on-failure \
-            -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_databind_plugin_generated_(dso|client))$' \
+            -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_(binding_plan|owned_error_validation|cmeta_public_cpp)|test_databind_service_native_lowering|test_databind_plugin_generated_(dso|client))$' \
             --no-tests=error
 
       - name: Qualify installed DataBind native execution ABI and ownership
@@ -187,6 +190,45 @@ jobs:
             build/pair-native-execution-installed.c \
             -o build/pair-native-execution-installed
           ./build/pair-native-execution-installed
+          cat > build/pair-client-direction-installed.c <<'EOF'
+          #include <data_bind_binding_plan.h>
+          #include <data_bind_method_plan.h>
+          typedef DataBindStatus (*write_inputs_fn)(
+              const DataBindBindingPlan *, const DataBindBindingProvider *,
+              const DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+          typedef DataBindStatus (*bind_outputs_fn)(
+              const DataBindBindingPlan *, const DataBindBindingProvider *,
+              const DataBindNativeOptions *, DataBindBindingCallFrame *,
+              DataBindBindingPlanDiagnostic *);
+          typedef DataBindStatus (*bind_error_fn)(
+              const DataBindBindingPlan *, size_t,
+              const DataBindBindingProvider *, const DataBindNativeOptions *,
+              DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+          typedef DataBindStatus (*clear_error_fn)(
+              const DataBindBindingPlan *, const DataBindNativeOptions *,
+              DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+          static write_inputs_fn write_inputs = &data_bind_binding_plan_write_inputs;
+          static bind_outputs_fn bind_outputs = &data_bind_binding_plan_bind_outputs;
+          static bind_error_fn bind_error = &data_bind_binding_plan_bind_error;
+          static clear_error_fn clear_error = &data_bind_binding_plan_clear_error;
+          static int (*http_error_index)(
+              const DataBindHttpMethodPlan *, int, const char *, size_t *) =
+              &data_bind_http_method_plan_error_index_for_wire;
+          static int (*rpc_error_index)(
+              const DataBindRpcMethodPlan *, int, const char *, size_t *) =
+              &data_bind_rpc_method_plan_error_index_for_wire;
+          int main(void) {
+            return write_inputs != 0 && bind_outputs != 0 &&
+                           bind_error != 0 && clear_error != 0 &&
+                           http_error_index != 0 && rpc_error_index != 0
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cc -std=c11 -Wall -Wextra -Werror -c \
+            -I"$prefix/include" -I"$SALTS_ROOT/include" \
+            build/pair-client-direction-installed.c \
+            -o build/pair-client-direction-installed.o
 
       - name: Restore focused language-binding dependency closure
         shell: bash
@@ -346,9 +388,9 @@ jobs:
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
           cmake -S . -B build\pair-databind -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
           if errorlevel 1 exit /b 1
-          cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_databind_plugin_generated_dso test_databind_plugin_generated_client
+          cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_data_bind_owned_error_validation test_data_bind_cmeta_public_cpp test_databind_service_native_lowering test_databind_plugin_generated_dso test_databind_plugin_generated_client
           if errorlevel 1 exit /b 1
-          ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_databind_plugin_generated_(dso|client))$" --no-tests=error
+          ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_(binding_plan|owned_error_validation|cmeta_public_cpp)|test_databind_service_native_lowering|test_databind_plugin_generated_(dso|client))$" --no-tests=error
           if errorlevel 1 exit /b 1
 
       - name: Qualify installed DataBind native execution ABI and ownership
@@ -380,6 +422,15 @@ jobs:
           cl /nologo /std:c11 /W4 /WX /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-native-execution-installed.c /Fe:build\pair-native-execution-installed.exe
           if errorlevel 1 exit /b 1
           build\pair-native-execution-installed.exe
+          if errorlevel 1 exit /b 1
+          > build\pair-client-direction-installed.c echo #include ^<data_bind_binding_plan.h^>
+          >> build\pair-client-direction-installed.c echo #include ^<data_bind_method_plan.h^>
+          >> build\pair-client-direction-installed.c echo typedef DataBindStatus ^(*write_inputs_fn^)(const DataBindBindingPlan *, const DataBindBindingProvider *, const DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+          >> build\pair-client-direction-installed.c echo typedef DataBindStatus ^(*bind_outputs_fn^)(const DataBindBindingPlan *, const DataBindBindingProvider *, const DataBindNativeOptions *, DataBindBindingCallFrame *, DataBindBindingPlanDiagnostic *);
+          >> build\pair-client-direction-installed.c echo static write_inputs_fn p1 = ^&data_bind_binding_plan_write_inputs;
+          >> build\pair-client-direction-installed.c echo static bind_outputs_fn p2 = ^&data_bind_binding_plan_bind_outputs;
+          >> build\pair-client-direction-installed.c echo int main(void) { return p1 != 0 ^&^& p2 != 0 ? 0 : 1; }
+          cl /nologo /std:c11 /W4 /WX /c /I"%prefix%\include" /I"%SALTS_ROOT%\include" build\pair-client-direction-installed.c /Fo:build\pair-client-direction-installed.obj
           if errorlevel 1 exit /b 1
 
       - name: Restore focused language-binding dependency closure
