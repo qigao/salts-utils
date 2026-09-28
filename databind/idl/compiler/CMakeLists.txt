@@ -28,8 +28,8 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(salts_idlc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c message_native.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
-  LIBS Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
   PRIVATE ${DATABIND_SOURCE_ROOT}/idl/src)
@@ -250,7 +250,7 @@ cmake_add_test(test_databind_projection_frontend
     projection_frontend.c
     projection_config.c
     projection.c
-    message_native.c service_native.c
+    service_native.c
     plugin_projection.c
     openapi_projection.c
     method_plan_projection.c
@@ -282,7 +282,6 @@ cmake_add_test(test_databind_socket_plan_projection
   SOURCES
     test_socket_plan_projection.c
     projection.c
-    message_native.c
     socket_plan_projection.c
     binary_layout_ir.c
     binary_reader_codegen.c
@@ -310,7 +309,6 @@ set_tests_properties(test_databind_socket_plan_projection PROPERTIES
 cmake_add_test(test_databind_message_native
   SOURCES
     test_message_native.c
-    message_native.c
     compiler_core.c
     projection.c
     database_schema.c
@@ -338,7 +336,6 @@ cmake_add_test(test_databind_flowmq_plan_projection
   SOURCES
     test_flowmq_plan_projection.c
     projection.c
-    message_native.c
     flowmq_plan_projection.c
     binary_layout_ir.c
     binary_reader_codegen.c
@@ -382,7 +379,7 @@ cmake_add_executable(databind_service_native_codegen_fixture_tool
     test_service_native_codegen_tool.c
     compiler_core.c
     projection.c
-    message_native.c service_native.c
+    service_native.c
     database_schema.c
     mustache_helpers.c
   LIBS
@@ -847,7 +844,7 @@ cmake_add_test(test_databind_plugin_projection_rejection
     test_plugin_projection_rejection.c
     compiler_core.c
     projection.c
-    message_native.c service_native.c
+    service_native.c
     plugin_projection.c
     database_schema.c
     mustache_helpers.c
@@ -995,4 +992,19 @@ if(TARGET test_tbe_compiler_schema_boundary)
   set_source_files_properties(test_scalar_projection.c
     PROPERTIES COMPILE_DEFINITIONS TINYTEST_NO_MAIN)
 endif()
+endif()
+
+if(BUILD_TESTS)
+  foreach(binding_compiler_consumer IN ITEMS
+      test_databind_projection_frontend
+      test_databind_socket_plan_projection
+      test_databind_message_native
+      test_databind_flowmq_plan_projection
+      databind_service_native_codegen_fixture_tool
+      test_databind_plugin_projection_rejection)
+    if(TARGET ${binding_compiler_consumer})
+      target_link_libraries(${binding_compiler_consumer}
+        PRIVATE databind_binding_compiler)
+    endif()
+  endforeach()
 endif()
