@@ -929,11 +929,6 @@ static int openapi_emit_field_schema(
   return 0;
 }
 
-  if (!first_required && fputc(']', file) == EOF) return -1;
-
-  return fputc('}', file) == EOF ? -1 : 0;
-}
-
 
 static int openapi_emit_record_schema(
     FILE *file, const IdlContract *contract,
@@ -976,9 +971,6 @@ static int openapi_emit_record_schema(
   if (!first_required && fputc(']', file) == EOF) return -1;
 
   return fputc('}', file) == EOF ? -1 : 0;
-}
-
-  return fputs("}}", file) == EOF ? -1 : 0;
 }
 
 
