@@ -1,5 +1,6 @@
 #include "compiler_core.h"
 #include "method_plan_projection.h"
+#include "tbe_contract_overlay.h"
 
 #include <stdlib.h>
 
@@ -7,6 +8,8 @@ int main(int argc, char **argv) {
   Node *root = NULL;
   IdlContract *contract = NULL;
   databind_compiler_projection_input input = {0};
+  databind_tbe_format_plan format_plan = {0};
+  tbe_error_t format_error;
   char *schema_data = NULL;
   databind_compiler_http_operation_config http_operations[] = {
       {"Calc", "Add", "GET", "/add/{left}", 201,
@@ -60,7 +63,18 @@ int main(int argc, char **argv) {
   if (databind_compiler_parse_contract_file(
           argv[1], &root, &contract, &schema_data) != 0)
     return 3;
-  input = (databind_compiler_projection_input){contract, root};
+  tbe_error_init(&format_error);
+  if (!databind_tbe_format_plan_build(
+          contract, root, &format_plan, &format_error)) {
+    databind_tbe_format_plan_destroy(&format_plan);
+    idl_contract_destroy(contract);
+    node_free(root);
+    free(schema_data);
+    return 3;
+  }
+  input = (databind_compiler_projection_input){
+      .contract = contract,
+      .tbe_format = &format_plan};
 
   requests[0] = (databind_compiler_projection_request){
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
@@ -76,6 +90,7 @@ int main(int argc, char **argv) {
   result = databind_compiler_projection_run(
       &input, requests, 2u, backends, 2u);
 
+  databind_tbe_format_plan_destroy(&format_plan);
   idl_contract_destroy(contract);
   node_free(root);
   free(schema_data);

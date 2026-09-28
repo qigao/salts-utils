@@ -19,43 +19,6 @@
 #endif
 
 
-static Node *plugin_test_child(Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static int plugin_test_select_codec(
-    void *context, const char *service_name) {
-  (void)context;
-  return service_name != NULL &&
-         strcmp(service_name, "Codec") == 0;
-}
-
-static int plugin_test_set_schema_version(Node *root, const char *value) {
-  Node *schema = plugin_test_child(root, "schema");
-  Node *version = plugin_test_child(schema, "schema_version");
-  size_t length;
-  char *copy;
-
-  if (version == NULL || version->type != NODE_STRING || value == NULL)
-    return 0;
-  length = strlen(value);
-  if (length == SIZE_MAX) return 0;
-  copy = (char *)malloc(length + 1u);
-  if (copy == NULL) return 0;
-  memcpy(copy, value, length + 1u);
-  free(version->data.string_val);
-  version->data.string_val = copy;
-  return 1;
-}
-
 spec("DataBind Plugin projection semantic rejection") {
   it("rejects optional owned typed Service errors before creating outputs") {
     static const char source_output[] =
@@ -101,7 +64,8 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     check_equal(databind_compiler_projection_run(
                     &input, &request, 1u, &backend, 1u),
@@ -151,6 +115,7 @@ spec("DataBind Plugin projection semantic rejection") {
     };
     databind_compiler_projection_backend backend =
         DATABIND_COMPILER_PLUGIN_BACKEND;
+    IdlContract invalid_contract = {0};
     size_t i;
 
     check_equal(databind_compiler_parse_contract_file(
@@ -159,19 +124,21 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     for (i = 0u;
          i < sizeof(invalid_versions) / sizeof(invalid_versions[0]);
          ++i) {
+      invalid_contract = *contract;
+      invalid_contract.version = invalid_versions[i];
+      input.contract = &invalid_contract;
       (void)salts_fs_unlink(source_output);
       (void)salts_fs_unlink(header_output);
       (void)salts_fs_unlink(client_header_output);
       (void)salts_fs_unlink(client_source_output);
-      check_true(plugin_test_set_schema_version(
-          root, invalid_versions[i]));
       check_equal(databind_compiler_projection_run(
-                      root, &request, 1u, &backend, 1u),
+                      &input, &request, 1u, &backend, 1u),
                   -1);
       check(salts_fs_access(
                 source_output, SALTS_FS_ACCESS_EXISTS) != 0);
@@ -226,7 +193,8 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     (void)salts_fs_unlink(source_output);
     (void)salts_fs_unlink(header_output);
@@ -267,7 +235,7 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(contract);
     check_not_null(schema_data);
     check_equal(databind_compiler_service_native_build_selected(
-                    contract, root,
+                    contract,
                     plugin_test_select_codec, NULL, &native_ir),
                 0);
     check_equal(native_ir.operation_count, (size_t)2u);
@@ -326,7 +294,8 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     check_equal(databind_compiler_projection_run(
                     &input, &request, 1u, &backend, 1u),

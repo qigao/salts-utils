@@ -57,7 +57,8 @@ static int generate_openapi(
   if (databind_compiler_parse_contract_file(
           schema_path, &root, &contract, &schema_data) != 0)
     return -2;
-  input = (databind_compiler_projection_input){contract, root};
+  input = (databind_compiler_projection_input){
+      .contract = contract};
   result = databind_compiler_projection_run(
       &input, &request, 1u, &backend, 1u);
   idl_contract_destroy(contract);

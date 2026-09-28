@@ -2320,7 +2320,8 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
 
   if (status == 0 && options->projection_count != 0u) {
     databind_compiler_projection_input projection_input = {
-        contract, &tbe_format};
+        .contract = contract,
+        .tbe_format = &tbe_format};
     if (databind_compiler_projection_run(
             &projection_input,
             options->projection_requests,

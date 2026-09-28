@@ -41,11 +41,14 @@ spec("DataBind generated Binary MethodPlan admission") {
         0);
     check_not_null(root);
     check_not_null(schema_data);
-    if (root == NULL || schema_data == NULL) {
+    if (root == NULL || contract == NULL || schema_data == NULL) {
+      idl_contract_destroy(contract);
       node_free(root);
       free(schema_data);
       return;
     }
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     /* Non-Binary representation does not consult BinaryLayoutIR. */
     check_equal(

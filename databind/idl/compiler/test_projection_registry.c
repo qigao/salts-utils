@@ -95,7 +95,7 @@ describe("typed selection identity") {
 }
 
 describe("shared canonical IR") {
-  it("runs artifact and transport generators against one parsed root") {
+  it("runs artifact and transport generators against one parsed contract") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     databind_compiler_projection_input input = {0};
@@ -120,7 +120,8 @@ describe("shared canonical IR") {
     check_not_null(root);
     check_not_null(contract);
     check_not_null(schema_data);
-    input = (databind_compiler_projection_input){contract, root};
+    input = (databind_compiler_projection_input){
+        .contract = contract};
 
     check_equal(databind_compiler_projection_run(
                     &input,
@@ -133,9 +134,6 @@ describe("shared canonical IR") {
     check_true(plugin.seen_contract == contract);
     check_true(http.seen_contract == contract);
     check_true(plugin.seen_contract == http.seen_contract);
-    check_true(plugin.seen_root == root);
-    check_true(http.seen_root == root);
-    check_true(plugin.seen_root == http.seen_root);
     check_true(databind_compiler_projection_id_equal(
         plugin.seen_id,
         (databind_compiler_projection_id)
@@ -151,9 +149,9 @@ describe("shared canonical IR") {
   }
 
   it("admits every typed backend before the first callback") {
-    Node *root = create_node_map(NULL);
     IdlContract contract = {sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION};
-    databind_compiler_projection_input input = {&contract, root};
+    databind_compiler_projection_input input = {
+        .contract = &contract};
     projection_probe plugin = {0};
     const databind_compiler_projection_request requests[] = {
         {ARTIFACT_ID(DATABIND_COMPILER_ARTIFACT_PLUGIN), NULL, NULL},
@@ -164,20 +162,18 @@ describe("shared canonical IR") {
          probe_generate, &plugin},
     };
 
-    check_not_null(root);
     check_equal(databind_compiler_projection_run(
                     &input,
                     requests, sizeof(requests) / sizeof(requests[0]),
                     backends, sizeof(backends) / sizeof(backends[0])),
                 -1);
     check_equal(plugin.calls, (size_t)0u);
-    node_free(root);
   }
 
   it("stops after one typed generator fails") {
-    Node *root = create_node_map(NULL);
     IdlContract contract = {sizeof(IdlContract), IDL_CONTRACT_ABI_VERSION};
-    databind_compiler_projection_input input = {&contract, root};
+    databind_compiler_projection_input input = {
+        .contract = &contract};
     projection_probe plugin = {0};
     projection_probe http = {0};
     const databind_compiler_projection_request requests[] = {
@@ -191,7 +187,6 @@ describe("shared canonical IR") {
          probe_generate, &http},
     };
 
-    check_not_null(root);
     plugin.fail = 1;
     check_equal(databind_compiler_projection_run(
                     &input,
@@ -200,7 +195,6 @@ describe("shared canonical IR") {
                 -1);
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)0u);
-    node_free(root);
   }
 }
 
@@ -236,7 +230,8 @@ describe("compiler integration") {
     check_equal(tbe_compiler_run(&options), 0);
     check_equal(plugin.calls, (size_t)1u);
     check_equal(http.calls, (size_t)1u);
-    check_true(plugin.seen_root == http.seen_root);
+    check_not_null(plugin.seen_contract);
+    check_true(plugin.seen_contract == http.seen_contract);
     check_true(file_exists(output));
     (void)remove(output);
   }

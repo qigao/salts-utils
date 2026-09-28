@@ -1,5 +1,6 @@
 #include "compiler_core.h"
 #include "flowmq_plan_projection.h"
+#include "tbe_contract_overlay.h"
 
 #include "salts_fs.h"
 #include "tinytest.h"
@@ -26,6 +27,8 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     databind_compiler_projection_input input = {0};
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
     char *schema_data = NULL;
     databind_compiler_flowmq_projection_config config = {
         "databind_device",
@@ -55,7 +58,19 @@ spec("DataBind generated FlowMQ ChannelPlan") {
       free(schema_data);
       return;
     }
-    input = (databind_compiler_projection_input){contract, root};
+    tbe_error_init(&format_error);
+    if (!databind_tbe_format_plan_build(
+            contract, root, &format_plan, &format_error)) {
+      check(false);
+      databind_tbe_format_plan_destroy(&format_plan);
+      idl_contract_destroy(contract);
+      node_free(root);
+      free(schema_data);
+      return;
+    }
+    input = (databind_compiler_projection_input){
+        .contract = contract,
+        .tbe_format = &format_plan};
 
     check_equal(
         databind_compiler_projection_run(
@@ -97,6 +112,7 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
