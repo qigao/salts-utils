@@ -63,7 +63,7 @@ the real compiler and runs the complete TBE tests with ASan and UBSan, then runs
 
 ```sh
 python3 databind/compiler/test/enum_conformance.py \
-  --compiler build/linux-gcc-debug/bin/databindc \
+  --compiler build/linux-gcc-debug/bin/salts-idlc \
   --source "$PWD" --salts-include /opt/salts/debug/include
 ```
 

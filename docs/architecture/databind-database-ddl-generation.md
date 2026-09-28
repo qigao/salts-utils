@@ -4,7 +4,7 @@
 
 TurboDB 当前允许调用方执行原始 DDL，但不会从模型生成 SQLite 或 PostgreSQL schema。TBE 已经是字段类型、可选性、默认值和绑定 annotation 的事实源，因此数据库初始化结构也应由同一份 DataBind IDL 在构建期生成。
 
-本设计在 `databindc` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 SaltsUtils 运行时依赖。
+本设计在 `salts-idlc` 中增加 SQLite 与 PostgreSQL 两种输出语言。编译器先把带数据库 annotation 的 message 校验并归一化为数据库 schema IR，再由内置 Mustache 模板输出确定性的 bootstrap DDL。TurboDB、ORM 与 CFlow 运行时不解析 TBE，也不新增 SaltsUtils 运行时依赖。
 
 当前版本生成全新数据库所需的 `CREATE TABLE`、外键、普通/唯一复合索引、自定义 `CHECK` 和种子 `INSERT`，并以标准 `BEGIN; ... COMMIT;` 包裹完整文件。它不比较线上结构，不规划已有数据库的 migration，不维护 migration history，也不执行数据库连接。
 
@@ -13,9 +13,9 @@ TurboDB 当前允许调用方执行原始 DDL，但不会从模型生成 SQLite 
 命令行新增两种语言及 PostgreSQL 短别名：
 
 ```text
-databindc model.schema --lang sqlite --output schema.sqlite.sql
-databindc model.schema --lang postgresql --output schema.postgresql.sql
-databindc model.schema --lang postgres --output schema.postgresql.sql
+salts-idlc model.schema --lang sqlite --output schema.sqlite.sql
+salts-idlc model.schema --lang postgresql --output schema.postgresql.sql
+salts-idlc model.schema --lang postgres --output schema.postgresql.sql
 ```
 
 数据库输出要求显式给出 `--output`。`--source-output`、`--guest-output` 与 `--dsl-output` 仅属于 C 代码生成；与数据库语言组合时编译器立即报错。
@@ -180,7 +180,7 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 
 ### 独立数据库 schema 编译器
 
-边界清晰，但会复制 TBE CLI、资源查找、AST 与安装逻辑。当前只有两个 dialect，不足以抵消维护成本，因此数据库 DDL 继续作为 `databindc` 的语言策略实现。
+边界清晰，但会复制 TBE CLI、资源查找、AST 与安装逻辑。当前只有两个 dialect，不足以抵消维护成本，因此数据库 DDL 继续作为 `salts-idlc` 的语言策略实现。
 
 ## 兼容性、迁移与回滚
 
@@ -193,5 +193,5 @@ TBE text -> parser/annotator -> database validation + normalized IR -> Mustache 
 - 编译器单元测试覆盖两种 dialect 的逐字节确定性输出、alias、标识符转义、默认值与所有非法组合。
 - SQLite 输出由编译器单元测试验证确定性文本、约束形状与 canonical `uint64` 边界；采用方负责按迁移流程在目标 SQLite 版本执行生成 DDL。
 - PostgreSQL 输出先做 golden contract；合入前按远程测试 runbook 在真实 PostgreSQL 16 容器、`standard_conforming_strings=off` 会话中执行生成 DDL，逐字节检查注入形状字符串默认值并检查约束。
-- 运行现有 `test_databindc` 与相关 CTest 回归，证明原语言输出不变。
-- 安装后从安装目录运行 `databindc`，证明两份内置模板随工具安装。
+- 运行现有 `test_salts-idlc` 与相关 CTest 回归，证明原语言输出不变。
+- 安装后从安装目录运行 `salts-idlc`，证明两份内置模板随工具安装。
