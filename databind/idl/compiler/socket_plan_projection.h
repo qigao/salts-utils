@@ -2,7 +2,7 @@
 #define DATABIND_COMPILER_SOCKET_PLAN_PROJECTION_H
 
 #include "projection.h"
-#include "../runtime/data_bind_socket_plan.h"
+#include "../../runtime/data_bind_socket_plan.h"
 
 #include <stddef.h>
 
