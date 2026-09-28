@@ -1,11 +1,11 @@
 # CFlowProcess
 
 `Salts::Process` combines the existing Core process owner with the
-CFlow native byte-pipe Actor. It is a separate target because Core already uses
+CFlow Actor over the canonical NativeIO pipe adapter. It is a separate target because Core already uses
 CFlow internally; placing this adapter in CFlow would create a dependency cycle.
 
 The adapter owns one `salts_process_t`, three parent-side asynchronous pipe
-endpoints, one fixed-capacity native backend, one manual Executor, one IO Actor,
+endpoints, one fixed-capacity NativeIO adapter, one manual Executor, one IO Actor,
 and exactly `request_capacity` operation slots. It never exposes raw endpoints,
 captures output into an unbounded buffer, or creates a second process state
 machine.
@@ -76,13 +76,22 @@ int main(void) {
         options.args = args;
         config.backend_kind = CFLOW_IO_NATIVE_IOCP;
     }
-#else
+#elif defined(__linux__)
     {
         static const char *args[] = {NULL};
         options.program = "/usr/bin/true";
         options.args = args;
-        config.backend_kind = CFLOW_IO_NATIVE_POLL;
+        config.backend_kind = CFLOW_IO_NATIVE_EPOLL;
     }
+#elif defined(__APPLE__)
+    {
+        static const char *args[] = {NULL};
+        options.program = "/usr/bin/true";
+        options.args = args;
+        config.backend_kind = CFLOW_IO_NATIVE_KQUEUE;
+    }
+#else
+    #error "CFlowProcess example requires a NativeIO pipe backend"
 #endif
     options.flags = 0u;
     config.request_capacity = 4u;
