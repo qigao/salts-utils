@@ -804,10 +804,14 @@ const IdlChannel *idl_contract_find_channel(
     const IdlContract *contract, const char *name) {
   size_t i;
   if (contract == NULL || name == NULL) return NULL;
-  for (i = 0u; i < contract->channel_count; ++i)
-    if (contract->channels[i].name != NULL &&
-        strcmp(contract->channels[i].name, name) == 0)
-      return &contract->channels[i];
+  for (i = 0u; i < contract->channel_count; ++i) {
+    const IdlChannel *channel = &contract->channels[i];
+    if ((channel->qualified_name != NULL &&
+         strcmp(channel->qualified_name, name) == 0) ||
+        (channel->name != NULL &&
+         strcmp(channel->name, name) == 0))
+      return channel;
+  }
   return NULL;
 }
 
@@ -815,9 +819,13 @@ const IdlComponent *idl_contract_find_component(
     const IdlContract *contract, const char *name) {
   size_t i;
   if (contract == NULL || name == NULL) return NULL;
-  for (i = 0u; i < contract->component_count; ++i)
-    if (contract->components[i].name != NULL &&
-        strcmp(contract->components[i].name, name) == 0)
-      return &contract->components[i];
+  for (i = 0u; i < contract->component_count; ++i) {
+    const IdlComponent *component = &contract->components[i];
+    if ((component->qualified_name != NULL &&
+         strcmp(component->qualified_name, name) == 0) ||
+        (component->name != NULL &&
+         strcmp(component->name, name) == 0))
+      return component;
+  }
   return NULL;
 }
