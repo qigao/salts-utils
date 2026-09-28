@@ -18,6 +18,12 @@
 #error "PLUGIN_COMPONENT_SCHEMA is required"
 #endif
 
+static int plugin_test_select_codec(
+    void *context, const char *service_name) {
+  (void)context;
+  return service_name != NULL &&
+         strcmp(service_name, "Codec") == 0;
+}
 
 spec("DataBind Plugin projection semantic rejection") {
   it("rejects optional owned typed Service errors before creating outputs") {

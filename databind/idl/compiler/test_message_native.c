@@ -39,16 +39,18 @@ static int emitted_contains(
 spec("DataBind reusable message-native lowering") {
   it("builds one Channel payload without a fake Service") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     databind_compiler_message_native_binding binding = {0};
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            MESSAGE_NATIVE_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            MESSAGE_NATIVE_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
     check_not_null(schema_data);
-    if (root == NULL || schema_data == NULL) {
+    if (root == NULL || contract == NULL || schema_data == NULL) {
+      idl_contract_destroy(contract);
       node_free(root);
       free(schema_data);
       return;
@@ -56,7 +58,7 @@ spec("DataBind reusable message-native lowering") {
 
     check_equal(
         databind_compiler_message_native_build(
-            root, "Event", &binding),
+            contract, "Event", &binding),
         0);
     check_equal(binding.schema_name, "NativeChannel");
     check_equal(binding.type_name, "Event");
@@ -93,32 +95,38 @@ spec("DataBind reusable message-native lowering") {
         "databind_native_channel_event__databind_message_native_binding"));
 
     databind_compiler_message_native_destroy(&binding);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
 
   it("fails closed for an unknown or non-message type") {
     Node *root = NULL;
+    IdlContract *contract = NULL;
     char *schema_data = NULL;
     databind_compiler_message_native_binding binding = {0};
 
     check_equal(
-        tbe_compiler_parse_schema_file(
-            MESSAGE_NATIVE_SCHEMA, &root, &schema_data),
+        databind_compiler_parse_contract_file(
+            MESSAGE_NATIVE_SCHEMA, &root, &contract, &schema_data),
         0);
     check_not_null(root);
-    if (root == NULL) {
+    check_not_null(contract);
+    if (root == NULL || contract == NULL) {
+      idl_contract_destroy(contract);
+      node_free(root);
       free(schema_data);
       return;
     }
 
     check_equal(
         databind_compiler_message_native_build(
-            root, "Missing", &binding),
+            contract, "Missing", &binding),
         -1);
     check_null(binding.type_name);
 
     databind_compiler_message_native_destroy(&binding);
+    idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
   }
