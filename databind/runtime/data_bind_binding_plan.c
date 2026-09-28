@@ -1765,6 +1765,102 @@ fail:
 }
 
 
+DataBindStatus data_bind_binding_plan_write_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  DataBindError error = DATA_BIND_ERROR_INIT;
+  DataBindStatus status;
+  size_t i;
+
+  if (!plan_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  plan_diag_clear(diagnostic);
+
+  if (plan == NULL || frame == NULL)
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid BindingPlan client request arguments");
+
+  if (plan->ingress_count != 0u &&
+      !plan_provider_valid_for_output(provider))
+    return plan_diag_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+        "Invalid BindingPlan client request output provider");
+
+  status = plan_frame_preflight_client_inputs(plan, frame, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+  if (plan->ingress_count == 0u) return DATA_BIND_OK;
+
+  /*
+   * Preflight the entire native request before beginning publication.
+   * Defaults are deliberately not materialized here: generated native
+   * presence/null state is the authoritative client request state.
+   */
+  for (i = 0u; i < plan->ingress_count; ++i) {
+    const DataBindBindingPlanEntryOwned *owned = &plan->ingress[i];
+    DataBindBindingValueState state = DATA_BIND_VALUE_STATE_VALUE;
+    const void *source = NULL;
+    size_t source_bytes = 0u;
+
+    status = plan_ingress_value(
+        plan, owned, frame, &state, &source, &source_bytes, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+    (void)source_bytes;
+
+    if (state == DATA_BIND_VALUE_STATE_VALUE) {
+      status = plan_validate_ingress_value(
+          plan, owned, source, diagnostic);
+      if (status != DATA_BIND_OK) return status;
+    }
+  }
+
+  status = provider->begin_output(provider->context, &error);
+  if (status != DATA_BIND_OK)
+    return plan_runtime_fail_error(
+        diagnostic, status, NULL, &error,
+        "Client request output transaction could not begin");
+
+  for (i = 0u; i < plan->ingress_count; ++i) {
+    const DataBindBindingPlanEntryOwned *owned = &plan->ingress[i];
+    const DataBindBindingPlanEntry *entry = &owned->view;
+    DataBindBindingValueState state = DATA_BIND_VALUE_STATE_VALUE;
+    const void *source = NULL;
+    size_t source_bytes = 0u;
+
+    status = plan_ingress_value(
+        plan, owned, frame, &state, &source, &source_bytes, diagnostic);
+    if (status != DATA_BIND_OK) {
+      provider->abort_output(provider->context);
+      return status;
+    }
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    status = provider->write_output(
+        provider->context, entry, state, source, source_bytes, &error);
+    if (status != DATA_BIND_OK) {
+      provider->abort_output(provider->context);
+      return plan_runtime_fail_error(
+          diagnostic, status, entry, &error,
+          "Client request output provider write failed");
+    }
+  }
+
+  error = (DataBindError)DATA_BIND_ERROR_INIT;
+  status = provider->commit_output(provider->context, &error);
+  if (status != DATA_BIND_OK) {
+    provider->abort_output(provider->context);
+    return plan_runtime_fail_error(
+        diagnostic, status, NULL, &error,
+        "Client request output transaction commit failed");
+  }
+
+  plan_diag_clear(diagnostic);
+  return DATA_BIND_OK;
+}
+
+
 static DataBindStatus plan_egress_value(
     const DataBindBindingPlan *plan,
     const DataBindBindingPlanEntryOwned *owned,
