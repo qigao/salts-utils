@@ -1,5 +1,6 @@
 #include "compiler_core.h"
 #include "method_plan_projection.h"
+#include "tbe_contract_overlay.h"
 
 #include "salts_fs.h"
 #include "tinytest.h"
@@ -17,6 +18,8 @@ spec("DataBind generated Binary MethodPlan admission") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     databind_compiler_projection_input input = {0};
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
     char *schema_data = NULL;
     databind_compiler_rpc_operation_config operation = {
         "BinaryGate", "Use", "binary.use",
@@ -47,8 +50,12 @@ spec("DataBind generated Binary MethodPlan admission") {
       free(schema_data);
       return;
     }
+    tbe_error_init(&format_error);
+    check(databind_tbe_format_plan_build(
+        contract, root, &format_plan, &format_error));
     input = (databind_compiler_projection_input){
-        .contract = contract};
+        .contract = contract,
+        .tbe_format = &format_plan};
 
     /* Non-Binary representation does not consult BinaryLayoutIR. */
     check_equal(
@@ -71,6 +78,7 @@ spec("DataBind generated Binary MethodPlan admission") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
