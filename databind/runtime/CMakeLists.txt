@@ -441,6 +441,22 @@ cmake_add_test(test_data_bind_binding_plan
 set_tests_properties(test_data_bind_binding_plan PROPERTIES
   LABELS "databind;cmeta;service-contract;binding-plan")
 
+cmake_add_test(test_data_bind_object_message_plan
+  SOURCES test_data_bind_object_message_plan.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_object_message_plan PROPERTIES
+  LABELS "databind;cmeta;message-plan;dynamic-object")
+
+cmake_add_test(test_data_bind_object_message_plan_public_cpp
+  SOURCES test_data_bind_object_message_plan_public_cpp.cpp
+  LIBS Salts::DataBind
+  FOLDER "databind/runtime/tests")
+set_target_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+set_tests_properties(test_data_bind_object_message_plan_public_cpp PROPERTIES
+  LABELS "databind;cmeta;message-plan;dynamic-object;public;cpp")
+
 cmake_add_test(test_data_bind_owned_error_validation
   SOURCES test_data_bind_owned_error_validation.c
   LIBS ${DATA_BIND_TEST_LIBS}

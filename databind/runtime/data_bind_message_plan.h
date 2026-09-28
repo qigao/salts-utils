@@ -6,6 +6,8 @@
 #include "data_bind_native.h"
 
 #include <cserde/reader.h>
+#include <cserde/writer.h>
+#include <cmeta/object.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -17,6 +19,38 @@ extern "C" {
 enum { DATA_BIND_MESSAGE_PLAN_ABI_VERSION = 1u };
 
 typedef struct DataBindMessagePlan DataBindMessagePlan;
+
+typedef enum DataBindMessageObjectFieldState {
+  DATA_BIND_MESSAGE_OBJECT_ABSENT = 0,
+  DATA_BIND_MESSAGE_OBJECT_VALUE = 1,
+  DATA_BIND_MESSAGE_OBJECT_NULL = 2
+} DataBindMessageObjectFieldState;
+
+typedef DataBindStatus (*DataBindMessageObjectGetStateFn)(
+    void *context, const cmeta_object_ref *object, const char *field_name,
+    DataBindMessageObjectFieldState *out_state, DataBindError *error);
+typedef DataBindStatus (*DataBindMessageObjectSetStateFn)(
+    void *context, cmeta_object_ref *object, const char *field_name,
+    DataBindMessageObjectFieldState state, DataBindError *error);
+
+/**
+ * Optional DataBind-owned state overlay for dynamic objects.
+ *
+ * CMeta owns VALUE access through cmeta_object_field_read/assign. This provider
+ * owns only DataBind ABSENT/NULL/VALUE state. Required non-nullable fields need
+ * no state provider.
+ */
+typedef struct DataBindMessageObjectStateProvider {
+  size_t size;
+  uint32_t abi_version;
+  void *context;
+  DataBindMessageObjectGetStateFn get_state;
+  DataBindMessageObjectSetStateFn set_state;
+} DataBindMessageObjectStateProvider;
+
+#define DATA_BIND_MESSAGE_OBJECT_STATE_PROVIDER_INIT \
+  { sizeof(DataBindMessageObjectStateProvider), DATA_BIND_MESSAGE_PLAN_ABI_VERSION, \
+    NULL, NULL, NULL }
 
 typedef struct DataBindMessagePlanDiagnostic {
   size_t size;
@@ -49,6 +83,21 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_compile(
     DataBindMessagePlan **out_plan,
     DataBindMessagePlanDiagnostic *diagnostic);
 
+/**
+ * Compile one canonical DataBind record against a provider-backed CMeta object
+ * surface. Field VALUE access is resolved through cmeta_object_field_read/assign;
+ * field offsets are descriptive only and may be CMETA_FIELD_DYNAMIC_OFFSET.
+ *
+ * The plan borrows object_data and copies logical DataBind/validation metadata.
+ * It performs no schema lookup after compilation.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_compile_object(
+    DataBind *codec,
+    const char *type_name,
+    const cmeta_data_desc *object_data,
+    DataBindMessagePlan **out_plan,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
 DATA_BIND_API void data_bind_message_plan_free(DataBindMessagePlan *plan);
 
 DATA_BIND_API const char *
@@ -56,6 +105,10 @@ data_bind_message_plan_type_name(const DataBindMessagePlan *plan);
 
 DATA_BIND_API const DataBindNativeTypeBinding *
 data_bind_message_plan_native_binding(const DataBindMessagePlan *plan);
+
+/** Return the provider-backed object data surface, or NULL for native plans. */
+DATA_BIND_API const cmeta_data_desc *
+data_bind_message_plan_object_data(const DataBindMessagePlan *plan);
 
 DATA_BIND_API size_t
 data_bind_message_plan_field_count(const DataBindMessagePlan *plan);
@@ -71,6 +124,17 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_validate_native(
     const DataBindMessagePlan *plan,
     const void *source,
     size_t source_bytes,
+    DataBindError *error);
+
+/**
+ * Validate one provider-backed object through compiled ValidationPlan rules.
+ * Optional/null state is read only from state_provider; required/non-nullable
+ * records may pass NULL.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_validate_object(
+    const DataBindMessagePlan *plan,
+    const cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
     DataBindError *error);
 
 /**
@@ -101,6 +165,35 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
     cserde_reader *reader,
     void *destination,
     size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
+ * Decode one canonical CSerde MAP into a fresh provider-backed object.
+ *
+ * The caller owns object lifetime and must discard/destroy the staging object
+ * on failure. This API never claims bytewise rollback for arbitrary dynamic
+ * runtimes. Each VALUE is decoded into bounded temporary native storage,
+ * validated, then published through cmeta_object_field_assign().
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_decode_object(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
+ * Encode one provider-backed object as a canonical CSerde MAP. Field VALUE
+ * borrows come only from cmeta_object_field_read(); optional/null state comes
+ * only from state_provider.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_encode_object(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    const cmeta_object_ref *object,
+    const DataBindMessageObjectStateProvider *state_provider,
+    cserde_writer *writer,
     DataBindMessagePlanDiagnostic *diagnostic);
 
 #ifdef __cplusplus

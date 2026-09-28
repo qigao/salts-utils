@@ -1,4 +1,4 @@
-name: Salts 1.8.1 / SaltsUtils 4.1.1 pair contract
+name: Salts 1.8.2 / SaltsUtils 4.1.2 pair contract
 
 on:
   pull_request:
@@ -20,12 +20,12 @@ permissions:
   packages: read
 
 concurrency:
-  group: salts-utils-4.1.1-pair-${{ github.event.pull_request.number || github.ref }}
+  group: salts-utils-4.1.2-pair-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
   EXPECTED_UTILS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SALTS_CANDIDATE_SHA: "4a674e55d396c78d1ab3f9438aa3d1067947d38e"
+  SALTS_CANDIDATE_SHA: "64f16348eba56ca0540734cbde6c1a054e8afd48"
 
 jobs:
   linux:
@@ -73,13 +73,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C _pair/salts rev-parse HEAD)" = "$SALTS_CANDIDATE_SHA"
-          grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.1([[:space:]]|$)' _pair/salts/CMakeLists.txt
+          grep -Eq '^[[:space:]]*VERSION[[:space:]]+1\.8\.2([[:space:]]|$)' _pair/salts/CMakeLists.txt
 
-      - name: Build exact Salts 1.8.1 SDK
+      - name: Build exact Salts 1.8.2 SDK
         shell: bash
         run: |
           set -euxo pipefail
-          prefix="$RUNNER_TEMP/salts-1.8.1-pair"
+          prefix="$RUNNER_TEMP/salts-1.8.2-pair"
           cmake -S _pair/salts -B build/pair-salts -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
@@ -116,7 +116,7 @@ jobs:
             --triplet=x64-linux \
             --only-binarycaching
 
-      - name: Configure DataBind against exact Salts 1.8.1
+      - name: Configure DataBind against exact Salts 1.8.2
         shell: bash
         run: |
           set -euxo pipefail
@@ -143,13 +143,15 @@ jobs:
             test_data_bind_native_container \
             test_data_bind_native_variant \
             test_data_bind_binding_plan \
+            test_data_bind_object_message_plan \
+            test_data_bind_object_message_plan_public_cpp \
             test_database_schema_contract \
             test_databind_plugin_generated_dso \
             test_databind_plugin_generated_client
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
           ctest --test-dir build/pair-databind \
             --output-on-failure \
-            -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$' \
+            -R '^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_data_bind_object_message_plan(_public_cpp)?|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$' \
             --no-tests=error
 
       - name: Qualify installed DataBind native execution ABI and ownership
@@ -157,7 +159,7 @@ jobs:
         run: |
           set -euxo pipefail
           export LD_LIBRARY_PATH="$SALTS_ROOT/lib:$GITHUB_WORKSPACE/vcpkg_installed-pair-utils/x64-linux/lib:${LD_LIBRARY_PATH:-}"
-          prefix="$RUNNER_TEMP/salts-utils-4.1.1-pair"
+          prefix="$RUNNER_TEMP/salts-utils-4.1.2-pair"
           cmake -S . -B build/pair-install -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
@@ -243,7 +245,7 @@ jobs:
             --output-on-failure \
             -R '^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$' \
             --no-tests=error
-          bind_prefix="$RUNNER_TEMP/salts-utils-4.1.1-bindings"
+          bind_prefix="$RUNNER_TEMP/salts-utils-4.1.2-bindings"
           cmake --install build/pair-bindings --prefix "$bind_prefix"
           targets="$bind_prefix/lib/cmake/SaltsUtils/SaltsUtilsTargets.cmake"
           test -f "$targets"
@@ -318,13 +320,13 @@ jobs:
             throw "Salts candidate mismatch"
           }
 
-      - name: Build exact Salts 1.8.1 SDK
+      - name: Build exact Salts 1.8.2 SDK
         shell: cmd
         run: |
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
-          set "prefix=%RUNNER_TEMP%\salts-1.8.1-pair"
+          set "prefix=%RUNNER_TEMP%\salts-1.8.2-pair"
           cmake -S _pair\salts -B build\pair-salts -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-salts" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DENABLE_TESTS=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%prefix%"
           if errorlevel 1 exit /b 1
           cmake --build build\pair-salts --parallel 2
@@ -360,9 +362,9 @@ jobs:
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
           cmake -S . -B build\pair-databind -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
           if errorlevel 1 exit /b 1
-          cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_database_schema_contract test_databind_plugin_generated_dso test_databind_plugin_generated_client
+          cmake --build build\pair-databind --parallel 2 --target test_data_bind_native_reader test_data_bind_native_writer test_data_bind_native_container test_data_bind_native_variant test_data_bind_binding_plan test_data_bind_object_message_plan test_data_bind_object_message_plan_public_cpp test_database_schema_contract test_databind_plugin_generated_dso test_databind_plugin_generated_client
           if errorlevel 1 exit /b 1
-          ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$" --no-tests=error
+          ctest --test-dir build\pair-databind --output-on-failure -R "^(test_data_bind_native_(reader|writer|container|variant)|test_data_bind_binding_plan|test_data_bind_object_message_plan(_public_cpp)?|test_database_schema_contract|test_databind_plugin_generated_(dso|client))$" --no-tests=error
           if errorlevel 1 exit /b 1
 
       - name: Qualify installed DataBind native execution ABI and ownership
@@ -372,7 +374,7 @@ jobs:
           if errorlevel 1 exit /b 1
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           set "PATH=%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils\x64-windows\bin;%PATH%"
-          set "prefix=%RUNNER_TEMP%\salts-utils-4.1.1-pair"
+          set "prefix=%RUNNER_TEMP%\salts-utils-4.1.2-pair"
           cmake -S . -B build\pair-install -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed-pair-utils" -DVCPKG_MANIFEST_INSTALL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DSALTS_UTILS_ENABLE_CAPTURE=OFF -DSALTS_UTILS_ENABLE_CFLOW_USB=OFF -DSALTS_UTILS_QUALIFY_DATABIND=ON
           if errorlevel 1 exit /b 1
           cmake --build build\pair-install --parallel 2
@@ -418,7 +420,7 @@ jobs:
           if errorlevel 1 exit /b 1
           ctest --test-dir build\pair-bindings --output-on-failure -R "^salts_(cpp_member_thunk|lua_(invokable|object|conversion)|quickjs_(cmeta|object)|object_cross_runtime|cpp_object_facade)_test$" --no-tests=error
           if errorlevel 1 exit /b 1
-          set "bind_prefix=%RUNNER_TEMP%\salts-utils-4.1.1-bindings"
+          set "bind_prefix=%RUNNER_TEMP%\salts-utils-4.1.2-bindings"
           cmake --install build\pair-bindings --prefix "%bind_prefix%"
           if errorlevel 1 exit /b 1
           set "targets=%bind_prefix%\lib\cmake\SaltsUtils\SaltsUtilsTargets.cmake"
