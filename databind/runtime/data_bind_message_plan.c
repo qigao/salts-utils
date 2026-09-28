@@ -36,9 +36,16 @@ typedef struct DataBindMessageFieldPlan {
   size_t validation_rule_count;
 } DataBindMessageFieldPlan;
 
+typedef enum DataBindMessagePlanMode {
+  DATA_BIND_MESSAGE_PLAN_NATIVE = 1,
+  DATA_BIND_MESSAGE_PLAN_OBJECT = 2
+} DataBindMessagePlanMode;
+
 struct DataBindMessagePlan {
   char *type_name;
+  DataBindMessagePlanMode mode;
   const DataBindNativeTypeBinding *native;
+  const cmeta_data_desc *object_data;
   DataBindMessageFieldPlan *fields;
   size_t field_count;
   DataBindValidationPlan *validation;
@@ -120,6 +127,37 @@ static const cmeta_data_struct_shape *message_struct_shape(
       binding->data->shape == NULL)
     return NULL;
   return (const cmeta_data_struct_shape *)binding->data->shape;
+}
+
+static const cmeta_data_struct_shape *message_object_struct_shape(
+    const cmeta_data_desc *data) {
+  if (!cmeta_data_desc_valid(data) || data->kind != CMETA_DATA_STRUCT ||
+      data->shape == NULL)
+    return NULL;
+  return (const cmeta_data_struct_shape *)data->shape;
+}
+
+static DataBindStatus message_cmeta_status(cmeta_status status) {
+  switch (status) {
+  case CMETA_OK: return DATA_BIND_OK;
+  case CMETA_INVALID_ARGUMENT: return DATA_BIND_ERR_INVALID_ARG;
+  case CMETA_TYPE_MISMATCH: return DATA_BIND_ERR_TYPE_MISMATCH;
+  case CMETA_OUT_OF_MEMORY: return DATA_BIND_ERR_OOM;
+  case CMETA_CAPACITY_EXCEEDED: return DATA_BIND_ERR_LIMIT;
+  case CMETA_TRAIT_MISSING:
+  case CMETA_CALLBACK_ERROR:
+  default:
+    return DATA_BIND_ERR_RUNTIME;
+  }
+}
+
+static int message_object_state_provider_valid(
+    const DataBindMessageObjectStateProvider *provider) {
+  return provider != NULL &&
+         provider->size >= sizeof(*provider) &&
+         provider->abi_version == DATA_BIND_MESSAGE_PLAN_ABI_VERSION &&
+         provider->get_state != NULL &&
+         provider->set_state != NULL;
 }
 
 static const cmeta_data_field_desc *message_native_field(
@@ -452,6 +490,112 @@ static DataBindStatus message_compile_fields(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus message_compile_object_fields(
+    DataBind *codec,
+    const char *type_name,
+    const cmeta_data_desc *object_data,
+    DataBindMessagePlan *plan,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  const cmeta_data_struct_shape *shape =
+      message_object_struct_shape(object_data);
+  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  size_t i;
+
+  if (shape == NULL ||
+      !data_bind_schema_find_type(codec, type_name, &schema_type) ||
+      schema_type.field_count != data_bind_schema_field_count(codec, type_name))
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+        "IDL type '%s' is not a reflected record", type_name);
+
+  if (shape->field_count != schema_type.field_count)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, type_name,
+        "Object field count does not match DataBind IDL type '%s'", type_name);
+
+  plan->field_count = schema_type.field_count;
+  if (plan->field_count != 0u) {
+    plan->fields = (DataBindMessageFieldPlan *)calloc(
+        plan->field_count, sizeof(*plan->fields));
+    if (plan->fields == NULL)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_OOM, type_name,
+          "Could not allocate provider-backed MessagePlan fields");
+  }
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    const cmeta_data_field_desc *object_field;
+    const cmeta_data_desc *schema_data = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessageFieldPlan *field = &plan->fields[i];
+
+    if (!data_bind_schema_field_at(codec, type_name, i, &schema_field))
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+          "Could not reflect field %zu of '%s'", i, type_name);
+
+    object_field = NULL;
+    {
+      size_t j;
+      for (j = 0u; j < shape->field_count; ++j) {
+        if (shape->fields[j].name != NULL && schema_field.name != NULL &&
+            strcmp(shape->fields[j].name, schema_field.name) == 0) {
+          object_field = &shape->fields[j];
+          break;
+        }
+      }
+    }
+    if (object_field == NULL || object_field->value == NULL)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+          "Object type '%s' is missing field '%s'", type_name,
+          schema_field.name != NULL ? schema_field.name : "");
+
+    schema_data = schema_field.cmeta_data;
+    if (schema_data == NULL)
+      (void)data_bind_schema_field_cmeta_data(
+          codec, type_name, i, &schema_data, &error);
+
+    if (schema_data != NULL) {
+      if (!message_data_semantically_equal(schema_data, object_field->value))
+        return message_fail(
+            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+            "Object CMeta field '%s.%s' does not match DataBind IDL semantics",
+            type_name, schema_field.name != NULL ? schema_field.name : "");
+    } else if (!message_logical_buffer_matches_native(
+                   &schema_field, object_field->value)) {
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name,
+          "IDL field '%s.%s' has no admitted canonical object mapping",
+          type_name, schema_field.name != NULL ? schema_field.name : "");
+    }
+
+    field->name = message_strdup(schema_field.name);
+    field->data = object_field->value;
+    field->native_offset = CMETA_FIELD_DYNAMIC_OFFSET;
+    field->optional = schema_field.is_optional != 0;
+    field->nullable = schema_field.is_nullable != 0;
+    field->has_default = schema_field.has_default != 0;
+    if (field->has_default && schema_field.default_value != NULL)
+      field->default_value = message_strdup(schema_field.default_value);
+    if (field->name == NULL ||
+        (field->has_default && schema_field.default_value != NULL &&
+         field->default_value == NULL))
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_OOM, schema_field.name,
+          "Could not copy provider-backed MessagePlan field metadata");
+
+    {
+      DataBindStatus default_status =
+          message_compile_default_token(field, diagnostic);
+      if (default_status != DATA_BIND_OK) return default_status;
+    }
+  }
+
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus message_compile_default_token(
     DataBindMessageFieldPlan *field,
     DataBindMessagePlanDiagnostic *diagnostic) {
@@ -684,7 +828,9 @@ DataBindStatus data_bind_message_plan_compile(
         "Could not allocate DataBind MessagePlan");
 
   plan->type_name = message_strdup(type_name);
+  plan->mode = DATA_BIND_MESSAGE_PLAN_NATIVE;
   plan->native = native;
+  plan->object_data = NULL;
   if (plan->type_name == NULL) {
     status = message_fail(
         diagnostic, DATA_BIND_ERR_OOM, type_name,
@@ -709,6 +855,62 @@ fail:
   return status;
 }
 
+DataBindStatus data_bind_message_plan_compile_object(
+    DataBind *codec,
+    const char *type_name,
+    const cmeta_data_desc *object_data,
+    DataBindMessagePlan **out_plan,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  DataBindMessagePlan *plan = NULL;
+  DataBindStatus status;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+  if (out_plan != NULL) *out_plan = NULL;
+
+  if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
+      out_plan == NULL || !cmeta_data_desc_valid(object_data) ||
+      object_data->kind != CMETA_DATA_STRUCT || object_data->shape == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
+        "Invalid provider-backed object surface for DataBind IDL type '%s'",
+        type_name != NULL ? type_name : "");
+
+  plan = (DataBindMessagePlan *)calloc(1u, sizeof(*plan));
+  if (plan == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_OOM, type_name,
+        "Could not allocate provider-backed DataBind MessagePlan");
+
+  plan->type_name = message_strdup(type_name);
+  plan->mode = DATA_BIND_MESSAGE_PLAN_OBJECT;
+  plan->native = NULL;
+  plan->object_data = object_data;
+  if (plan->type_name == NULL) {
+    status = message_fail(
+        diagnostic, DATA_BIND_ERR_OOM, type_name,
+        "Could not copy provider-backed MessagePlan identity");
+    goto object_fail;
+  }
+
+  status = message_compile_object_fields(
+      codec, type_name, object_data, plan, diagnostic);
+  if (status != DATA_BIND_OK) goto object_fail;
+
+  status = message_compile_validation(
+      codec, type_name, plan, diagnostic);
+  if (status != DATA_BIND_OK) goto object_fail;
+
+  message_diag_clear(diagnostic);
+  *out_plan = plan;
+  return DATA_BIND_OK;
+
+object_fail:
+  data_bind_message_plan_free(plan);
+  return status;
+}
+
 const char *data_bind_message_plan_type_name(
     const DataBindMessagePlan *plan) {
   return plan != NULL ? plan->type_name : NULL;
@@ -717,6 +919,13 @@ const char *data_bind_message_plan_type_name(
 const DataBindNativeTypeBinding *data_bind_message_plan_native_binding(
     const DataBindMessagePlan *plan) {
   return plan != NULL ? plan->native : NULL;
+}
+
+const cmeta_data_desc *data_bind_message_plan_object_data(
+    const DataBindMessagePlan *plan) {
+  return plan != NULL && plan->mode == DATA_BIND_MESSAGE_PLAN_OBJECT
+             ? plan->object_data
+             : NULL;
 }
 
 size_t data_bind_message_plan_field_count(
