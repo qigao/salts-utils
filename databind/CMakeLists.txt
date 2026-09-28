@@ -10,9 +10,10 @@ set(DATABIND_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 add_subdirectory(vendor/monocypher)
 add_subdirectory(formats/tbe)
 add_subdirectory(schema)
+add_subdirectory(idl)
 target_link_libraries(databind_tbe_contract
   PUBLIC Salts::IDL
-  PRIVATE Salts::Core)
+  PRIVATE Salts::Schema Salts::Core)
 add_subdirectory(runtime)
 add_subdirectory(compiler)
 

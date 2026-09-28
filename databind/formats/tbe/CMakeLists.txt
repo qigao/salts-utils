@@ -32,7 +32,7 @@ target_include_directories(databind_tbe_contract
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/internal>
   PRIVATE
     ${DATABIND_SOURCE_ROOT}/schema/include
-    ${DATABIND_SOURCE_ROOT}/schema/parser)
+    ${DATABIND_SOURCE_ROOT}/idl/parser)
 set_target_properties(databind_tbe_contract PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   FOLDER "databind/formats/tbe/compiler")

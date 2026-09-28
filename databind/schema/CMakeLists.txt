@@ -1,13 +1,7 @@
 set(SCHEMA_TARGET databind_schema)
-set(IDL_TARGET databind_idl)
 
-cmake_add_grammar(SCHEMA
-  LEXER_RE ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_lexer.re
-  GRAMMAR_Y ${CMAKE_CURRENT_SOURCE_DIR}/parser/schema_grammar.y
-  FOLDER "databind/idl/grammar")
-
-# Data-only Schema surface. This target owns logical data-shape -> CMeta
-# projection and must not carry the IDL parser or Service/Channel/Component.
+# Data-only Schema surface. Logical contracts are owned by Salts::IDL; this
+# target only projects Data declarations into canonical CMeta semantics.
 add_library(${SCHEMA_TARGET} STATIC
   src/schema_cmeta.c
   src/schema_cmeta_buffer.c)
@@ -17,6 +11,7 @@ target_include_directories(
   ${SCHEMA_TARGET}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/idl/include>
     $<INSTALL_INTERFACE:include>
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -28,57 +23,15 @@ cmake_config_target(
   FOLDER databind/schema
   EXPORT_NAME Schema)
 
-# Full IDL frontend. It owns syntax, logical contract parsing and semantic
-# validation for Data/Service/Channel/Component. TBE wire-format execution is
-# deliberately not linked into this target.
-add_library(${IDL_TARGET} STATIC
-  src/node_tree.c
-  src/idl_contract.c
-  src/idl_contract_internal.h
-  src/schema_enum.c
-  src/schema_type_ref.c
-  src/idl_frontend.c
-  src/schema_service.c
-  src/schema_channel.c
-  src/schema_component.c
-  src/tbe_error.c
-  ${SCHEMA_LEXER_GEN}
-  ${SCHEMA_GRAMMAR_GEN}
-  ${SCHEMA_GRAMMAR_Y}
-  ${SCHEMA_LEXER_RE})
-add_dependencies(${IDL_TARGET} ${SCHEMA_LEXER_TARGET} ${SCHEMA_GRAMMAR_TARGET})
-target_compile_features(${IDL_TARGET} PUBLIC c_std_11)
-target_include_directories(
-  ${IDL_TARGET}
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
-    $<INSTALL_INTERFACE:include>
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/parser
-    ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(${IDL_TARGET}
-  PUBLIC Salts::Schema
-  PRIVATE Salts::Core)
-
-cmake_config_target(
-  ${IDL_TARGET}
-  ALIAS Salts::IDL
-  FOLDER databind/idl
-  EXPORT_NAME IDL)
-
 install(
-  TARGETS ${SCHEMA_TARGET} ${IDL_TARGET}
+  TARGETS ${SCHEMA_TARGET}
   EXPORT SaltsUtilsTargets
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT DataBind)
 
 install(
-  FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/idl_contract.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/schema_cmeta.h
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/schema_cmeta.h
   DESTINATION include
   COMPONENT DataBind)
 
@@ -100,20 +53,13 @@ foreach(test_name
         test_tbe_robustness
         test_optional_and_defaults
         test_validation_constraints
-        test_enum_helpers
-        test_component_contract
-        test_channel_contract)
+        test_enum_helpers)
   cmake_add_test(${test_name}
     SOURCES test/${test_name}.c
     LIBS ${DATABIND_SCHEMA_TEST_LIBS}
     FOLDER "databind/schema/tests")
 endforeach()
 
-
-cmake_add_test(test_idl_contract
-  SOURCES test/test_idl_contract.c
-  LIBS Salts::IDL Salts::TinyTest
-  FOLDER "databind/idl/tests")
 
 if(TARGET test_tbe_robustness)
   target_sources(test_tbe_robustness PRIVATE
