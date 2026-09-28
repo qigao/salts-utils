@@ -866,6 +866,14 @@ cmake_add_test(test_databind_plugin_projection_rejection
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/compiler")
 
+cmake_add_test(test_database_schema_contract
+  SOURCES test_database_schema_contract.c database_schema.c
+  LIBS Salts::IDL Salts::TinyTest Salts::Core
+  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/compiler")
+set_tests_properties(test_database_schema_contract PROPERTIES
+  LABELS "databind;compiler;database;idl-contract")
+
 cmake_add_test(test_tbe_compiler
   SOURCES test_tbe_compiler.c compiler_core.c projection.c database_schema.c mustache_helpers.c
   LIBS Salts::IDL Salts::TinyTest ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
