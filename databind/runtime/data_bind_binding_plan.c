@@ -1240,6 +1240,87 @@ static DataBindStatus plan_frame_preflight(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus plan_frame_preflight_client_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  size_t i;
+  if (plan == NULL || frame == NULL || frame->size < sizeof(*frame))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid client input BindingPlan call frame");
+  if (frame->param_count < plan->param_count)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Client input call frame exposes too few parameters");
+  if (plan->has_request_root_param) {
+    const size_t required = plan->request->data->storage_type->size;
+    if (frame->request == NULL || frame->request_bytes < required)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[plan->request_root_param].name,
+          "Client request root storage is missing or too small");
+  }
+  for (i = 0u; i < plan->param_count; ++i) {
+    const cmeta_data_desc *data = plan->param_data[i];
+    if (!plan->param_ingress[i] || data == NULL ||
+        (plan->has_request_root_param && i == plan->request_root_param))
+      continue;
+    if (frame->params == NULL || frame->param_bytes == NULL ||
+        frame->params[i] == NULL || data->storage_type == NULL ||
+        frame->param_bytes[i] < data->storage_type->size)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[i].name,
+          "Client request parameter '%s' storage is missing or too small",
+          plan->function->params[i].name);
+  }
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus plan_frame_preflight_client_outputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic) {
+  size_t i;
+  if (plan == NULL || frame == NULL || frame->size < sizeof(*frame))
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Invalid client output BindingPlan call frame");
+  if (frame->param_count < plan->param_count)
+    return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                          "Client output call frame exposes too few parameters");
+  if (plan->response_uses_return) {
+    const size_t required = plan->response->data->storage_type->size;
+    if (frame->return_value == NULL || frame->return_bytes < required)
+      return plan_diag_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL, NULL,
+                            "Client response return storage is missing or too small");
+  }
+  if (plan->has_response_root_param) {
+    const size_t index = plan->response_root_param;
+    const size_t required = plan->response->data->storage_type->size;
+    if (frame->params == NULL || frame->param_bytes == NULL ||
+        index >= frame->param_count || frame->params[index] == NULL ||
+        frame->param_bytes[index] < required)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[index].name,
+          "Client response root storage is missing or too small");
+  }
+  for (i = 0u; i < plan->param_count; ++i) {
+    const cmeta_data_desc *data = plan->param_data[i];
+    if (!plan->param_egress[i] || data == NULL ||
+        (plan->has_response_root_param && i == plan->response_root_param))
+      continue;
+    if (frame->params == NULL || frame->param_bytes == NULL ||
+        frame->params[i] == NULL || data->storage_type == NULL ||
+        frame->param_bytes[i] < data->storage_type->size)
+      return plan_diag_fail(
+          diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+          plan->function->params[i].name,
+          "Client response parameter '%s' storage is missing or too small",
+          plan->function->params[i].name);
+  }
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_native_init(
     const DataBindNativeOptions *options, const cmeta_data_desc *data,
     void *storage, size_t storage_bytes,
