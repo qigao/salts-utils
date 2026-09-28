@@ -1,33 +1,10 @@
 #include "service_native.h"
+#include "schema_cmeta.h"
 
 #include <ctype.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-static const Node *native_child(const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    const Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const Node *native_list(const Node *parent, const char *name) {
-  const Node *child = native_child(parent, name);
-  return child != NULL && child->type == NODE_LIST ? child : NULL;
-}
-
-static const char *native_string(const Node *parent, const char *name) {
-  const Node *child = native_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
 
 static char *native_strdup(const char *text) {
   size_t length;
@@ -149,19 +126,6 @@ static char *native_symbol(
   return out;
 }
 
-static const Node *native_message(
-    const Node *root, const char *name) {
-  const Node *messages = native_list(root, "messages");
-  size_t i;
-  if (messages == NULL || name == NULL) return NULL;
-  for (i = 0u; i < messages->data.list.count; ++i) {
-    const Node *message = messages->data.list.items[i];
-    const char *candidate = native_string(message, "name");
-    if (candidate != NULL && strcmp(candidate, name) == 0) return message;
-  }
-  return NULL;
-}
-
 static void native_state_clear(
     databind_compiler_service_native_state *state,
     size_t count) {
@@ -217,43 +181,88 @@ static void native_errors_clear(
   free(errors);
 }
 
-static int native_error_owned_field_admitted(const Node *field) {
-  const char *requirement;
-  const char *data_symbol;
-  const char *type_symbol;
-  const char *c_type;
+static const char *native_field_annotation(
+    const IdlField *field, const char *name) {
+  size_t i;
+  if (field == NULL || name == NULL) return NULL;
+  for (i = 0u; i < field->annotation_count; ++i)
+    if (field->annotations[i].name != NULL &&
+        strcmp(field->annotations[i].name, name) == 0)
+      return field->annotations[i].value;
+  return NULL;
+}
 
-  if (field == NULL) return 0;
-  requirement = native_string(field, "cmeta_native_requirement");
-  if (requirement == NULL) return 0;
-  if (strcmp(requirement, "fixed_value") == 0 ||
-      strcmp(requirement, "enum_domain") == 0)
-    return 1;
-  if (strcmp(requirement, "owned_lifecycle") != 0)
+static int native_decimal_literal(const char *text) {
+  const char *p;
+  if (text == NULL || text[0] == '\0') return 0;
+  for (p = text; *p != '\0'; ++p)
+    if (*p < '0' || *p > '9') return 0;
+  return 1;
+}
+
+static const char *native_field_member_name(const IdlField *field) {
+  const char *override;
+  if (field == NULL || field->name == NULL || field->name[0] == '\0')
+    return NULL;
+  override = native_field_annotation(field, "c");
+  return override != NULL && override[0] != '\0' ? override : field->name;
+}
+
+static int native_error_field_admitted(
+    const IdlContract *contract,
+    const IdlField *field,
+    const char **out_owned_data_symbol) {
+  schema_cmeta_field_type semantic;
+  const IdlDataDecl *decl;
+
+  if (out_owned_data_symbol != NULL) *out_owned_data_symbol = NULL;
+  if (contract == NULL || field == NULL || field->type_name == NULL)
     return 0;
 
-  data_symbol = native_string(field, "native_data_symbol");
-  type_symbol = native_string(field, "native_type_symbol");
-  c_type = native_string(field, "native_c_type");
-  if (data_symbol == NULL || type_symbol == NULL || c_type == NULL)
+  /* Historical Service error ABI intentionally rejects overlay state. */
+  if (field->optional || field->nullable)
     return 0;
 
-  if (strcmp(data_symbol, "salts_tstr_cmeta_data") == 0 &&
-      strcmp(type_symbol, "salts_tstr_cmeta_type") == 0 &&
-      strcmp(c_type, "tstr") == 0)
+  /* Containers/nested aggregate storage was never admitted by this path. */
+  if (field->collection_kind != IDL_COLLECTION_NONE)
+    return 0;
+
+  if (strcmp(field->type_name, "string") == 0) {
+    if (out_owned_data_symbol != NULL)
+      *out_owned_data_symbol = "salts_tstr_cmeta_data";
+    return 1;
+  }
+
+  if (strcmp(field->type_name, "bytes") == 0) {
+    if (native_decimal_literal(field->length))
+      return 1;
+    if (out_owned_data_symbol != NULL)
+      *out_owned_data_symbol = "stl_byte_buffer_cmeta_data";
+    return 1;
+  }
+
+  if (strcmp(field->type_name, "uuid") == 0)
     return 1;
 
-  return strcmp(data_symbol, "stl_byte_buffer_cmeta_data") == 0 &&
-         strcmp(type_symbol, "stl_byte_buffer_cmeta_type") == 0 &&
-         strcmp(c_type, "stl_byte_buffer") == 0;
+  decl = idl_contract_find_data(contract, field->type_name);
+  if (decl != NULL && decl->kind == IDL_DATA_ENUM)
+    return 1;
+
+  if (!schema_cmeta_field_resolve(contract, field, &semantic))
+    return 0;
+
+  return semantic.kind == CMETA_DATA_BOOL ||
+         semantic.kind == CMETA_DATA_SINT ||
+         semantic.kind == CMETA_DATA_UINT ||
+         semantic.kind == CMETA_DATA_FLOAT;
 }
 
 static int native_error_fields_build(
-    const Node *root, const char *type_name,
+    const IdlContract *contract,
+    const char *type_name,
     databind_compiler_service_native_error_field **out_fields,
     size_t *out_count) {
-  const Node *message = native_message(root, type_name);
-  const Node *fields;
+  const IdlDataDecl *message;
   databind_compiler_service_native_error_field *result = NULL;
   size_t i;
 
@@ -261,59 +270,47 @@ static int native_error_fields_build(
   *out_fields = NULL;
   *out_count = 0u;
 
-  if (message == NULL ||
-      native_child(message, "cmeta_graph_supported") == NULL)
+  if (contract == NULL || type_name == NULL) return 0;
+  message = idl_contract_find_data(contract, type_name);
+  if (message == NULL || message->kind != IDL_DATA_MESSAGE)
     return 0;
-  fields = native_list(message, "fields");
-  if (fields == NULL) return 0;
-  if (fields->data.list.count == 0u) return 1;
+  if (message->field_count == 0u) return 1;
 
   result = (databind_compiler_service_native_error_field *)calloc(
-      fields->data.list.count, sizeof(*result));
+      message->field_count, sizeof(*result));
   if (result == NULL) return 0;
 
-  for (i = 0u; i < fields->data.list.count; ++i) {
-    const Node *field = fields->data.list.items[i];
-    const char *member = native_string(field, "c_name");
-    const char *requirement = native_string(field, "cmeta_native_requirement");
-    const char *data_symbol = native_string(field, "native_data_symbol");
+  for (i = 0u; i < message->field_count; ++i) {
+    const IdlField *field = &message->fields[i];
+    const char *member = native_field_member_name(field);
+    const char *owned_symbol = NULL;
 
-    if (!native_error_owned_field_admitted(field)) {
-      native_error_fields_clear(result, fields->data.list.count);
-      return 0;
-    }
-    if (member == NULL || member[0] == '\0')
-      member = native_string(field, "name");
-    if (member == NULL || member[0] == '\0' || requirement == NULL) {
-      native_error_fields_clear(result, fields->data.list.count);
+    if (member == NULL || !native_identifier_valid(member) ||
+        !native_error_field_admitted(contract, field, &owned_symbol)) {
+      native_error_fields_clear(result, message->field_count);
       return 0;
     }
 
     result[i].member_name = native_strdup(member);
-    result[i].owned_lifecycle =
-        strcmp(requirement, "owned_lifecycle") == 0;
-    if (result[i].owned_lifecycle) {
-      if (data_symbol == NULL) {
-        native_error_fields_clear(result, fields->data.list.count);
-        return 0;
-      }
-      result[i].native_data_symbol = native_strdup(data_symbol);
-    }
+    result[i].owned_lifecycle = owned_symbol != NULL;
+    if (owned_symbol != NULL)
+      result[i].native_data_symbol = native_strdup(owned_symbol);
+
     if (result[i].member_name == NULL ||
         (result[i].owned_lifecycle &&
          result[i].native_data_symbol == NULL)) {
-      native_error_fields_clear(result, fields->data.list.count);
+      native_error_fields_clear(result, message->field_count);
       return 0;
     }
   }
 
   *out_fields = result;
-  *out_count = fields->data.list.count;
+  *out_count = message->field_count;
   return 1;
 }
 
 static int native_errors_build(
-    const Node *legacy_tree,
+    const IdlContract *contract,
     const char *schema_name,
     const IdlOperation *operation,
     databind_compiler_service_native_error **out_errors,
@@ -322,7 +319,7 @@ static int native_errors_build(
   size_t i;
 
   if (out_errors == NULL || out_count == NULL ||
-      legacy_tree == NULL || schema_name == NULL || operation == NULL)
+      contract == NULL || schema_name == NULL || operation == NULL)
     return 0;
 
   *out_errors = NULL;
@@ -339,7 +336,7 @@ static int native_errors_build(
 
     if (type_name == NULL ||
         !native_error_fields_build(
-            legacy_tree, type_name,
+            contract, type_name,
             &result[i].fields, &result[i].field_count)) {
       native_errors_clear(result, operation->error_count);
       return 0;
@@ -361,7 +358,6 @@ static int native_errors_build(
   *out_count = operation->error_count;
   return 1;
 }
-
 
 
 static void native_operation_clear(
@@ -401,7 +397,6 @@ void databind_compiler_service_native_destroy(
 
 static int native_operation_fill(
     const IdlContract *contract,
-    const Node *legacy_tree,
     const char *schema_name,
     const char *service_name,
     const IdlOperation *operation,
@@ -413,8 +408,7 @@ static int native_operation_fill(
   const char *response_type;
   int ok = 0;
 
-  if (contract == NULL || legacy_tree == NULL || out == NULL ||
-      operation == NULL)
+  if (contract == NULL || out == NULL || operation == NULL)
     return 0;
 
   operation_name = operation->name;
@@ -469,7 +463,7 @@ static int native_operation_fill(
   response.null_count = 0u;
 
   if (!native_errors_build(
-          legacy_tree, schema_name, operation,
+          contract, schema_name, operation,
           &out->errors, &out->error_count))
     goto cleanup;
 
@@ -493,7 +487,6 @@ cleanup:
 
 int databind_compiler_service_native_build_selected(
     const IdlContract *contract,
-    const Node *legacy_tree,
     databind_compiler_service_native_select_fn select_service,
     void *select_context,
     databind_compiler_service_native_ir *out) {
@@ -503,7 +496,7 @@ int databind_compiler_service_native_build_selected(
 
   if (out == NULL) return -1;
   memset(out, 0, sizeof(*out));
-  if (contract == NULL || legacy_tree == NULL) return -1;
+  if (contract == NULL) return -1;
 
   schema_name =
       contract->name != NULL && contract->name[0] != '\0'
@@ -535,7 +528,7 @@ int databind_compiler_service_native_build_selected(
     for (j = 0u; j < service->operation_count; ++j, ++index) {
       size_t prior;
       if (!native_operation_fill(
-              contract, legacy_tree, schema_name, service->name,
+              contract, schema_name, service->name,
               &service->operations[j], &out->operations[index]))
         goto fail;
       for (prior = 0u; prior < index; ++prior)
@@ -556,10 +549,9 @@ fail:
 
 int databind_compiler_service_native_build(
     const IdlContract *contract,
-    const Node *legacy_tree,
     databind_compiler_service_native_ir *out) {
   return databind_compiler_service_native_build_selected(
-      contract, legacy_tree, NULL, NULL, out);
+      contract, NULL, NULL, out);
 }
 
 
