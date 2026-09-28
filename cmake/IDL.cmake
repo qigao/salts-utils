@@ -71,24 +71,24 @@ function(_saltsutils_idl_resolve_compiler
     return()
   endif()
 
-  set(_databind_hints)
-  if(DEFINED SaltsUtils_DATABINDC_HINT AND
-     NOT "${SaltsUtils_DATABINDC_HINT}" STREQUAL "")
-    list(APPEND _databind_hints "${SaltsUtils_DATABINDC_HINT}")
+  set(_idlc_hints)
+  if(DEFINED SaltsUtils_IDLC_HINT AND
+     NOT "${SaltsUtils_IDLC_HINT}" STREQUAL "")
+    list(APPEND _idlc_hints "${SaltsUtils_IDLC_HINT}")
   endif()
 
   unset(_idlc_program)
   unset(_idlc_program CACHE)
-  if(_databind_hints)
+  if(_idlc_hints)
     find_program(_idlc_program
       NAMES salts-idlc
-      HINTS ${_databind_hints}
+      HINTS ${_idlc_hints}
       NO_DEFAULT_PATH
       NO_CACHE)
     if(NOT _idlc_program)
       message(FATAL_ERROR
               "The installed SaltsUtils package is missing its matching host "
-              "salts-idlc under: ${SaltsUtils_DATABINDC_HINT}. "
+              "salts-idlc under: ${SaltsUtils_IDLC_HINT}. "
               "Set SaltsUtils_IDLC_EXECUTABLE explicitly only when a "
               "different qualified host tool is intentional.")
     endif()
