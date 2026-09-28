@@ -271,7 +271,7 @@ jobs:
           cmake --build build/plugin-cflow-installed --parallel 2
           ./build/plugin-cflow-installed/plugin_cflow_installed_consumer
 
-          cmake -S databind/compiler/package_config/databind_target \
+          cmake -S databind/idl/compiler/package_config/databind_target \
             -B build/databind-target-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
@@ -350,7 +350,7 @@ jobs:
           test -f "$prefix/include/data_bind_binding_plan.h"
           test -f "$prefix/include/data_bind_projection_plan.h"
 
-          cmake -S databind/compiler/package_config/databind_public \
+          cmake -S databind/idl/compiler/package_config/databind_public \
             -B build/databind-public-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
@@ -603,7 +603,7 @@ jobs:
           test -f "$prefix/include/data_bind_binding_plan.h"
           test -f "$prefix/include/data_bind_projection_plan.h"
 
-          cmake -S databind/compiler/package_config/databind_public \
+          cmake -S databind/idl/compiler/package_config/databind_public \
             -B build/databind-public-android -G Ninja \
             -DCMAKE_SYSTEM_NAME=Android \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
