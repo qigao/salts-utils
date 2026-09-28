@@ -5,7 +5,8 @@ set(DATABIND_BINDING_COMPILER_TARGET databind_binding_compiler)
 # Service/Channel/Component identity, transport projection, artifacts, or wire
 # format semantics.
 add_library(${DATABIND_BINDING_COMPILER_TARGET} STATIC
-  message_native.c)
+  message_native.c
+  service_binding.c)
 
 target_compile_features(${DATABIND_BINDING_COMPILER_TARGET} PUBLIC c_std_11)
 target_include_directories(${DATABIND_BINDING_COMPILER_TARGET}

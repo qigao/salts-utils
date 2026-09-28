@@ -1,4 +1,5 @@
 #include "service_native.h"
+#include "service_binding.h"
 #include "schema_cmeta.h"
 
 #include <ctype.h>
@@ -1175,48 +1176,13 @@ int databind_compiler_service_native_emit_execution(
              : 0;
 }
 
-static int native_emit_error_array(
-    FILE *file,
-    const databind_compiler_service_native_operation *operation) {
-  size_t i;
-  if (operation == NULL) return -1;
-  if (operation->error_count == 0u) return 0;
-  if (file == NULL || operation->symbol == NULL || operation->errors == NULL)
-    return -1;
-
-  if (fprintf(
-          file,
-          "static const DataBindNativeErrorBinding %s__error_bindings[] = {\n",
-          operation->symbol) < 0)
-    return -1;
-
-  for (i = 0u; i < operation->error_count; ++i) {
-    const databind_compiler_service_native_error *error =
-        &operation->errors[i];
-    if (error->type_name == NULL || error->kind_value != (unsigned)(i + 1u) ||
-        fprintf(
-            file,
-            "  {sizeof(DataBindNativeErrorBinding), \"%s\", %uu, "
-            "%s_cmeta_data, offsetof(%s__error, payload.error_%zu)},\n",
-            error->type_name, error->kind_value, error->type_name,
-            operation->symbol, i + 1u) < 0)
-      return -1;
-  }
-
-  return fputs("};\n", file) == EOF ? -1 : 0;
-}
-
 int databind_compiler_service_native_emit_binding(
     FILE *file,
     const databind_compiler_service_native_operation *operation) {
-  const char *error_bindings_expr;
-  char request_symbol[640];
-  char response_symbol[640];
-  char error_bindings[640];
-  char error_envelope_size[720];
-  char error_kind_offset[720];
-  databind_compiler_message_native_binding request = {0};
-  databind_compiler_message_native_binding response = {0};
+  databind_binding_compiler_service binding = {0};
+  databind_binding_compiler_error *errors = NULL;
+  size_t i;
+  int result;
 
   if (file == NULL || operation == NULL ||
       operation->symbol == NULL ||
@@ -1225,90 +1191,41 @@ int databind_compiler_service_native_emit_binding(
       operation->response_type == NULL)
     return -1;
 
-  request.schema_name = operation->schema_name;
-  request.type_name = operation->request_type;
-  request.type_identity = operation->request_type_identity;
-  request.presence =
+  binding.symbol = operation->symbol;
+  binding.request.schema_name = operation->schema_name;
+  binding.request.type_name = operation->request_type;
+  binding.request.type_identity = operation->request_type_identity;
+  binding.request.presence =
       (databind_compiler_message_native_state *)operation->request_presence;
-  request.presence_count = operation->request_presence_count;
-  request.nulls =
+  binding.request.presence_count = operation->request_presence_count;
+  binding.request.nulls =
       (databind_compiler_message_native_state *)operation->request_nulls;
-  request.null_count = operation->request_null_count;
+  binding.request.null_count = operation->request_null_count;
 
-  response.schema_name = operation->schema_name;
-  response.type_name = operation->response_type;
-  response.type_identity = operation->response_type_identity;
-  response.presence =
+  binding.response.schema_name = operation->schema_name;
+  binding.response.type_name = operation->response_type;
+  binding.response.type_identity = operation->response_type_identity;
+  binding.response.presence =
       (databind_compiler_message_native_state *)operation->response_presence;
-  response.presence_count = operation->response_presence_count;
-  response.nulls =
+  binding.response.presence_count = operation->response_presence_count;
+  binding.response.nulls =
       (databind_compiler_message_native_state *)operation->response_nulls;
-  response.null_count = operation->response_null_count;
-
-  if (snprintf(
-          request_symbol, sizeof(request_symbol),
-          "%s__request", operation->symbol) <= 0 ||
-      snprintf(
-          response_symbol, sizeof(response_symbol),
-          "%s__response", operation->symbol) <= 0)
-    return -1;
-
-  if (databind_compiler_message_native_emit_binding(
-          file, &request, request_symbol) != 0 ||
-      databind_compiler_message_native_emit_binding(
-          file, &response, response_symbol) != 0 ||
-      native_emit_error_array(file, operation) != 0)
-    return -1;
+  binding.response.null_count = operation->response_null_count;
 
   if (operation->error_count != 0u) {
-    if (snprintf(error_bindings, sizeof(error_bindings),
-                 "%s__error_bindings", operation->symbol) <= 0 ||
-        snprintf(error_envelope_size, sizeof(error_envelope_size),
-                 "sizeof(%s__error)", operation->symbol) <= 0 ||
-        snprintf(error_kind_offset, sizeof(error_kind_offset),
-                 "offsetof(%s__error, kind)", operation->symbol) <= 0)
-      return -1;
-    error_bindings_expr = error_bindings;
-  } else {
-    error_bindings_expr = "NULL";
-    snprintf(error_envelope_size, sizeof(error_envelope_size), "0u");
-    snprintf(error_kind_offset, sizeof(error_kind_offset), "0u");
+    errors = (databind_binding_compiler_error *)calloc(
+        operation->error_count, sizeof(*errors));
+    if (errors == NULL) return -1;
+    for (i = 0u; i < operation->error_count; ++i) {
+      errors[i].type_name = operation->errors[i].type_name;
+      errors[i].kind_value = operation->errors[i].kind_value;
+    }
   }
+  binding.errors = errors;
+  binding.error_count = operation->error_count;
 
-  return fprintf(
-             file,
-             "DataBindStatus %s__databind_native_binding(\n"
-             "    DataBindNativeTypeBinding *request_out,\n"
-             "    DataBindNativeTypeBinding *response_out,\n"
-             "    DataBindServiceNativeBinding *service_out,\n"
-             "    DataBindError *error) {\n"
-             "  DataBindStatus status;\n"
-             "  if (request_out == NULL || response_out == NULL || "
-             "service_out == NULL)\n"
-             "    return DATA_BIND_ERR_INVALID_ARG;\n"
-             "  status = %s__databind_message_native_binding("
-             "request_out, error);\n"
-             "  if (status != DATA_BIND_OK) return status;\n"
-             "  status = %s__databind_message_native_binding("
-             "response_out, error);\n"
-             "  if (status != DATA_BIND_OK) return status;\n"
-             "  *service_out = (DataBindServiceNativeBinding){\n"
-             "      sizeof(DataBindServiceNativeBinding),\n"
-             "      DATA_BIND_BINDING_PLAN_ABI_VERSION,\n"
-             "      &%s__function_meta, request_out, response_out,\n"
-             "      %s, %zuu, %s, %s, %s, %s};\n"
-             "  return DATA_BIND_OK;\n"
-             "}\n",
-             operation->symbol,
-             request_symbol,
-             response_symbol,
-             operation->symbol,
-             error_bindings_expr,
-             operation->error_count,
-             operation->error_count != 0u ? "2u" : "SIZE_MAX",
-             error_envelope_size,
-             error_kind_offset,
-             operation->error_count != 0u ? "sizeof(uint32_t)" : "0u") < 0
-             ? -1
-             : 0;
+  result = databind_binding_compiler_emit_service(file, &binding);
+  free(errors);
+  return result;
 }
+
