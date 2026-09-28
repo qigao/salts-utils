@@ -1,7 +1,6 @@
 #ifndef DATABIND_COMPILER_SERVICE_NATIVE_H
 #define DATABIND_COMPILER_SERVICE_NATIVE_H
 
-#include "node_tree.h"
 #include "idl_contract.h"
 #include "message_native.h"
 
@@ -69,7 +68,6 @@ typedef struct databind_compiler_service_native_ir {
 
 int databind_compiler_service_native_build(
     const IdlContract *contract,
-    const Node *legacy_tree,
     databind_compiler_service_native_ir *out);
 
 typedef int (*databind_compiler_service_native_select_fn)(
@@ -78,9 +76,8 @@ typedef int (*databind_compiler_service_native_select_fn)(
 /*
  * Build the same canonical native lowering for a selected Service subset.
  *
- * Service/operation/error semantic identity comes only from IdlContract.
- * legacy_tree is temporary native CMeta/codegen admission data and is not a
- * semantic authority.
+ * Service/operation/error semantic identity and native error admission come
+ * only from IdlContract plus canonical Schema/CMeta mapping.
  *
  * The selector is a control-plane filter over canonical Service identity.
  * Unselected Services are not lowered and therefore cannot make the selected
@@ -90,7 +87,6 @@ typedef int (*databind_compiler_service_native_select_fn)(
  */
 int databind_compiler_service_native_build_selected(
     const IdlContract *contract,
-    const Node *legacy_tree,
     databind_compiler_service_native_select_fn select_service,
     void *select_context,
     databind_compiler_service_native_ir *out);
