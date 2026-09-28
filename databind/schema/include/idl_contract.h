@@ -56,7 +56,11 @@ typedef enum IdlCapabilityKind {
 
 typedef struct IdlAnnotation {
   const char *name;
+  /* Canonical first argument; for a bare annotation this is "1". */
   const char *value;
+  size_t argument_count;
+  const char *const *arguments;
+  int bare;
 } IdlAnnotation;
 
 typedef struct IdlConstraint {
@@ -148,6 +152,8 @@ typedef struct IdlContract {
   uint32_t abi_version;
   const char *name;
   const char *version;
+  size_t annotation_count;
+  const IdlAnnotation *annotations;
   size_t data_count;
   const IdlDataDecl *data;
   size_t service_count;
@@ -172,6 +178,15 @@ const IdlChannel *idl_contract_find_channel(
     const IdlContract *contract, const char *name);
 const IdlComponent *idl_contract_find_component(
     const IdlContract *contract, const char *name);
+
+size_t idl_annotation_count(
+    const IdlAnnotation *annotations, size_t annotation_count,
+    const char *name);
+const IdlAnnotation *idl_annotation_find(
+    const IdlAnnotation *annotations, size_t annotation_count,
+    const char *name, size_t occurrence);
+const char *idl_annotation_argument(
+    const IdlAnnotation *annotation, size_t index);
 
 #ifdef __cplusplus
 }
