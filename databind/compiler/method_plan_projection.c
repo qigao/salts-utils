@@ -696,7 +696,7 @@ static int http_generate(
     const databind_compiler_projection_request *request,
     void *context) {
   const Node *root = input != NULL ? input->legacy_tree : NULL;
-  const IdlContract *contract = input != NULL ? contract : NULL;
+  const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_http_projection_config *config =
       request != NULL
           ? (const databind_compiler_http_projection_config *)request->config
@@ -891,7 +891,7 @@ static int rpc_generate(
     const databind_compiler_projection_request *request,
     void *context) {
   const Node *root = input != NULL ? input->legacy_tree : NULL;
-  const IdlContract *contract = input != NULL ? contract : NULL;
+  const IdlContract *contract = input != NULL ? input->contract : NULL;
   const databind_compiler_rpc_projection_config *config =
       request != NULL
           ? (const databind_compiler_rpc_projection_config *)request->config
