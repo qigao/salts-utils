@@ -3,6 +3,7 @@
 
 #include <cmeta/object.h>
 #include <cmeta/struct.h>
+#include <salts_cmeta_data.h>
 
 #include <string.h>
 
@@ -137,6 +138,98 @@ static cmeta_status dynamic_assign(
     return CMETA_OK;
   }
   return CMETA_TRAIT_MISSING;
+}
+
+typedef struct TextDynamicRecord {
+  int marker;
+  tstr name_slot;
+} TextDynamicRecord;
+
+typedef struct TextDynamicProvider {
+  size_t reads;
+  size_t assigns;
+} TextDynamicProvider;
+
+static const cmeta_type_identity TEXT_DYNAMIC_IDENTITY =
+    CMETA_TYPE_ID_ATOM_INIT("test.databind.text-dynamic-record");
+static const cmeta_type_desc TEXT_DYNAMIC_TYPE = {
+    .name = "TextDynamicRecord",
+    .size = sizeof(TextDynamicRecord),
+    .align = _Alignof(TextDynamicRecord),
+    .kind = CMETA_T_OBJECT,
+    .pointee = NULL,
+    .traits = NULL,
+    .identity = &TEXT_DYNAMIC_IDENTITY
+};
+static const cmeta_field_desc TEXT_DYNAMIC_LAYOUT_FIELDS[] = {{
+    .name = "name",
+    .type_name = "string",
+    .offset = CMETA_FIELD_DYNAMIC_OFFSET,
+    .size = sizeof(tstr),
+    .align = _Alignof(tstr),
+    .type = &salts_tstr_cmeta_type,
+    .declared_type = NULL
+}};
+static const cmeta_struct_desc TEXT_DYNAMIC_LAYOUT = {
+    .name = "TextDynamicRecord",
+    .size = sizeof(TextDynamicRecord),
+    .align = _Alignof(TextDynamicRecord),
+    .fields = TEXT_DYNAMIC_LAYOUT_FIELDS,
+    .field_count = 1u
+};
+static const cmeta_data_field_desc TEXT_DYNAMIC_FIELDS[] = {{
+    .stable_id = "test.databind.text-dynamic-record.name",
+    .name = "name",
+    .offset = CMETA_FIELD_DYNAMIC_OFFSET,
+    .value = &salts_tstr_cmeta_data
+}};
+static const cmeta_data_struct_shape TEXT_DYNAMIC_SHAPE = {
+    .layout = &TEXT_DYNAMIC_LAYOUT,
+    .fields = TEXT_DYNAMIC_FIELDS,
+    .field_count = 1u
+};
+static const cmeta_data_desc TEXT_DYNAMIC_DATA = {
+    .struct_size = sizeof(cmeta_data_desc),
+    .abi_version = CMETA_DATA_DESC_ABI_VERSION,
+    .stable_id = "test.databind.text-dynamic-record.data",
+    .display_name = "TextDynamicRecord",
+    .kind = CMETA_DATA_STRUCT,
+    .storage_type = &TEXT_DYNAMIC_TYPE,
+    .shape = &TEXT_DYNAMIC_SHAPE,
+    .buffer_ops = NULL,
+    .enum_ops = NULL,
+    .variant_ops = NULL,
+    .fixed_ops = NULL,
+    .enum_bits_ops = NULL,
+    .collection_ops = NULL,
+    .map_ops = NULL,
+    .construct_ops = NULL
+};
+
+static cmeta_status text_dynamic_read(
+    void *context, const void *object,
+    const cmeta_data_field_desc *field, const void **out_value) {
+  TextDynamicProvider *provider = (TextDynamicProvider *)context;
+  const TextDynamicRecord *record = (const TextDynamicRecord *)object;
+  if (!provider || !record || !field || !out_value)
+    return CMETA_INVALID_ARGUMENT;
+  if (strcmp(field->name, "name") != 0) return CMETA_TRAIT_MISSING;
+  ++provider->reads;
+  *out_value = &record->name_slot;
+  return CMETA_OK;
+}
+
+static cmeta_status text_dynamic_assign(
+    void *context, void *object,
+    const cmeta_data_field_desc *field, const void *value) {
+  TextDynamicProvider *provider = (TextDynamicProvider *)context;
+  TextDynamicRecord *record = (TextDynamicRecord *)object;
+  if (!provider || !record || !field || !value)
+    return CMETA_INVALID_ARGUMENT;
+  if (strcmp(field->name, "name") != 0) return CMETA_TRAIT_MISSING;
+  ++provider->assigns;
+  return cmeta_data_value_copy(
+      &salts_tstr_cmeta_data, &record->name_slot, value);
 }
 
 typedef struct TokenReader {
@@ -319,6 +412,81 @@ spec("DataBind provider-backed object MessagePlan") {
     check_contains(error.path, "id");
 
     cmeta_object_release(&object);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("initializes managed field staging before decode even with poisoned workspace") {
+    static const char schema[] =
+        "schema TextDynamicObject [version(1)];"
+        "message TextDynamic { string name; }";
+    DataBind *codec = NULL;
+    DataBindError codec_error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    TextDynamicRecord record = {.marker = 31, .name_slot = NULL};
+    TextDynamicProvider provider = {0};
+    cmeta_object_field_provider field_provider = {
+        .size = sizeof(cmeta_object_field_provider),
+        .data = &TEXT_DYNAMIC_DATA,
+        .context = &provider,
+        .assign = text_dynamic_assign,
+        .read = text_dynamic_read
+    };
+    cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+    unsigned char workspace[2048];
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    const cserde_token input[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        key_token("name"),
+        key_token("Ada"),
+        {.kind = CSERDE_MAP_END}
+    };
+    TokenReader source = {input, sizeof(input) / sizeof(input[0]), 0u};
+    cserde_reader reader = {0};
+
+    memset(workspace, 0xA5, sizeof(workspace));
+    check_equal(
+        cmeta_data_value_init_zero(
+            &salts_tstr_cmeta_data, &record.name_slot),
+        CMETA_OK);
+    check_equal(
+        data_bind_create_from_text(
+            schema, sizeof(schema) - 1u, &codec, &codec_error),
+        DATA_BIND_OK);
+    check_equal(
+        data_bind_message_plan_compile_object(
+            codec, "TextDynamic", &TEXT_DYNAMIC_DATA, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(
+        cmeta_object_borrow_with_providers(
+            &object, &record, &TEXT_DYNAMIC_DATA, &field_provider, NULL),
+        CMETA_OK);
+
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = 8u;
+    options.max_items = 32u;
+    options.max_owned_bytes = 1024u;
+
+    check_equal(
+        cserde_reader_init(&reader, &TOKEN_READER_OPS, &source), CSERDE_OK);
+    check_equal(
+        data_bind_message_plan_decode_object(
+            plan, &options, &reader, &object, NULL, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(record.marker, 31);
+    check_not_null(record.name_slot);
+    check_equal(tstr_len(record.name_slot), 3u);
+    check_true(memcmp(record.name_slot, "Ada", 3u) == 0);
+    check_equal(provider.assigns, 1u);
+
+    cmeta_object_release(&object);
+    check_equal(
+        cmeta_data_value_restore_zero(
+            &salts_tstr_cmeta_data, &record.name_slot),
+        CMETA_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
   }
