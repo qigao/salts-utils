@@ -10,30 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const Node *plugin_child(const Node *parent, const char *name) {
-  size_t i;
-  if (parent == NULL || parent->type != NODE_MAP || name == NULL) return NULL;
-  for (i = 0u; i < parent->data.map.count; ++i) {
-    const Node *child = parent->data.map.items[i];
-    if (child != NULL && child->name != NULL &&
-        strcmp(child->name, name) == 0)
-      return child;
-  }
-  return NULL;
-}
-
-static const Node *plugin_list(const Node *parent, const char *name) {
-  const Node *child = plugin_child(parent, name);
-  return child != NULL && child->type == NODE_LIST ? child : NULL;
-}
-
-static const char *plugin_string(const Node *parent, const char *name) {
-  const Node *child = plugin_child(parent, name);
-  return child != NULL && child->type == NODE_STRING
-             ? child->data.string_val
-             : NULL;
-}
-
 static const char *plugin_schema_name(const IdlContract *contract) {
   return contract != NULL ? contract->name : NULL;
 }
