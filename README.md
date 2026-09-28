@@ -2,9 +2,9 @@
 
 **Higher-level utilities for the Salts C11 ecosystem.**
 
-SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared type, ownership, execution, and error semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, and DataBind schema/compiler/native-dynamic binding.
+SaltsUtils builds on the installed [Salts](https://github.com/qigao/salts) SDK and extends its shared semantics with parsers, QueryVM, crypto, filesystem/process adapters, templates, Unicode support, media helpers, IDL/Schema tooling, language bindings, and DataBind.
 
-**DataBind is part of SaltsUtils. Its source, build, installation, release, and public target export are owned by this repository.** It is not a separate project or package.
+**IDL, Schema and DataBind are distinct SaltsUtils capabilities.** IDL defines contracts, Schema defines Data shape, and DataBind owns logical/native binding. They are not separate packages.
 
 SaltsUtils does not create a second runtime. CMeta remains the semantic type foundation, CFlow remains the execution/dataflow foundation, CSTL remains the concrete container layer, and Platform/Core remain owned by Salts.
 
@@ -29,18 +29,20 @@ Salts
   ├── salts-utils
   │     ├── parsers / QueryVM / crypto / filesystem / process
   │     ├── templates / Unicode / media / helpers
-  │     └── DataBind: schema / compiler / native-dynamic binding
+  │     ├── IDL / Schema / salts-idlc
+  │     ├── DataBind binding / plans / native kernel
+  │     └── C++ / Lua / QuickJS bindings
   └── salts-net: protocol and network tooling
 ```
 
-SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). DataBind is SaltsUtils' canonical transport-neutral IDL and binding compiler. Its implementation lives under `databind/`; TBE is a DataBind format/backend rather than the owner of the schema/compiler tree.
+SaltsUtils is the general-purpose extension layer. Protocol networking belongs in [salts-net](https://github.com/qigao/salts-net). `Salts::IDL` owns transport-neutral contracts, `Salts::Schema` owns the Data subset, and `Salts::DataBind` owns binding. TBE is a format/backend, not the owner of IDL or Schema.
 
 ## Main capabilities
 
 | Area | Public capability |
 | --- | --- |
 | Crypto | `Salts::Crypto` |
-| Plugin ABI | `Salts::Plugin`; CMeta Interface/Callable manifests and semantic admission |
+| Plugin | `Salts::PluginABI` / `Salts::Plugin` are consumed from Salts 1.8 |
 | Filesystem | `Salts::FS` |
 | Process adapters | `Salts::Process` |
 | Query | `Salts::QueryVM` |
@@ -48,31 +50,30 @@ SaltsUtils is the general-purpose extension layer. Protocol networking belongs i
 | Templates | Mustache and Jinja CMeta |
 | Unicode | generated Unicode property/scalar support |
 | Media/helpers | Playback, Capture, Serial, Cron, and related utilities |
-| DataBind | `Salts::DataBind`; schema, native/dynamic binding, rollback, and compiler/code generation |
+| IDL / Schema | `Salts::IDL`, `Salts::Schema`, `salts-idlc` |
+| DataBind | `Salts::DataBind`; native/dynamic binding, immutable plans, rollback |
+| Language bindings | `Salts::BindingsCpp`; optional `Salts::Lua`, `Salts::QuickJS` |
 
 Parser capabilities remain independent component targets rather than a single aggregate parser facade.
 
 ## Ownership boundaries
 
 ```text
-CMeta
-  native structure, semantic type identity, traits, ranges        (Salts)
+CMeta    native type/function/interface truth                 (Salts)
+CSerde   canonical token truth                               (Salts)
+CFlow    execution truth                                     (Salts)
+Plugin   module/loading/lease/lifecycle truth                 (Salts)
 
-CSTL
-  concrete container storage                                     (Salts)
-
-CSerde
-  canonical format-neutral token contract                        (Salts)
-
-QueryVM / parsers / utility adapters
-  high-level format, query, template, and utility work            (SaltsUtils)
-
-DataBind
-  schema overlay, compiler, native/dynamic conversion,
-  rollback, format orchestration                                 (SaltsUtils)
+IDL      Data + Service + Channel + Component contract truth (SaltsUtils)
+Schema   Data-only logical shape -> CMeta projection          (SaltsUtils)
+DataBind logical/native binding + BindingPlan runtime         (SaltsUtils)
 ```
 
-External names, presence/defaults, wire layout, validation, and schema fingerprints belong to the schema/binding component; they are not a second CMeta type system.
+Compiler projections consume one typed `IdlContract`. TBE-specific wire facts
+live in `TbeFormatPlan`; transport state remains in transport runtimes.
+DataBind does not own parser syntax, network sessions, Plugin loading or CFlow
+execution.
+
 
 ## CMake
 
@@ -114,7 +115,9 @@ SaltsUtils exports the actual runtime and owns its internal dependency closure. 
 
 ### Plugin
 
-`Salts::Plugin` defines a finite CMeta-based plugin manifest/export ABI. Stable `contract_id`/version values carry semantic identity across translation units and DSOs; descriptor, vtable, callable and load addresses remain representation facts. Dynamic loading/registry and optional CFlow execution adapters are layered above this contract rather than added to CMeta/CFlow core.
+Plugin runtime ownership moved to Salts 1.8. SaltsUtils consumes
+`Salts::PluginABI` / `Salts::Plugin` for generated Plugin artifacts. Plugin
+and CFlow remain independent; there is no public PluginCFlow subsystem.
 
 ### Filesystem
 
@@ -132,15 +135,16 @@ Mustache and Jinja CMeta have independent source, tests, documentation, and inst
 
 The Unicode component uses generated data with a fixed Unicode version and exposes UTF-8 scalar and identifier/whitespace property APIs without embedding template-engine semantics.
 
-### DataBind and the TBE compiler
+### IDL, Schema, DataBind and the TBE format compiler
 
-The SaltsUtils DataBind component provides schema definition and validation, compiler/code generation, native and dynamic value binding, rollback/failure-atomic conversion, and format orchestration over parser/token contracts. It reuses CMeta, CSTL, CSerde, and CFlow without duplicating their semantic foundations.
+`Salts::IDL` defines contracts and feeds the `salts-idlc` compiler. `Salts::Schema` owns Data-only shape/CMeta projection. `Salts::DataBind` owns native/dynamic binding, immutable BindingPlan execution and rollback. TBE is a format compiler that produces typed wire facts rather than changing IDL semantics.
 
-**CMeta owns native type identity; DataBind owns schema/binding concerns within SaltsUtils.**
+**CMeta owns native type identity; IDL owns logical contracts; Schema owns data shape; DataBind owns binding.**
 
 Detailed documentation:
 
-- [DataBind compiler CLI options](databind/idl/compiler/CLI_OPTIONS.md)
+- [IDL architecture](docs/IDL.md)
+- [IDL compiler CLI options](databind/idl/compiler/CLI_OPTIONS.md)
 - [Database DDL generation design](docs/architecture/databind-database-ddl-generation.md)
 - [DataBind ownership and adapter design](databind/runtime/README.md)
 
