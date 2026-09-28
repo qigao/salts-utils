@@ -108,6 +108,7 @@ static void require_diagnostic_alias_rejection(bool aliases_workspace) {
 }
 
 spec("DataBind native preflight preserves canonical storage and control records") {
+  (void)ttest_config__;
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));
@@ -307,6 +308,7 @@ static void require_measure_size_overflow(bool alignment) {
 }
 
 spec("DataBind native workspace measurement before source dispatch") {
+  (void)ttest_config__;
   before_each() {
     memset(&workspace, 0, sizeof(workspace));
     memset(&probe, 0, sizeof(probe));
@@ -488,6 +490,7 @@ static void require_buffer_bounds(const char *left, const char *right,
 }
 
 spec("DataBind per-value payload bounds preserve aggregate accounting and rollback") {
+  (void)ttest_config__;
   it("allows two separately bounded values whose sum exceeds the per-value bound") {
     require_buffer_bounds("abc", "def", 6u, 3u, DATA_BIND_OK);
   }
