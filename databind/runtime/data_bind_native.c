@@ -1787,6 +1787,14 @@ static DataBindStatus native_plan_options_preflight(
   if (out_path != NULL) *out_path = NULL;
   if (!native_diagnostic_header_valid(diagnostic))
     return DATA_BIND_ERR_INVALID_ARG;
+  if (diagnostic != NULL && plan != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            plan, sizeof(*plan)))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (diagnostic != NULL && options != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            options, sizeof(*options)))
+    return DATA_BIND_ERR_INVALID_ARG;
   if (plan == NULL || plan->shape == NULL || plan->shape->storage_type == NULL)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
                        "Native plan is unavailable");
@@ -1801,6 +1809,12 @@ static DataBindStatus native_plan_options_preflight(
       options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
                        root_path, "Native options ABI is incompatible");
+  if (diagnostic != NULL &&
+      (native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             plan->shape, sizeof(*plan->shape)) ||
+       native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                             options->workspace, options->workspace_bytes)))
+    return DATA_BIND_ERR_INVALID_ARG;
   native_reset_diagnostic(diagnostic);
   if (options->max_depth < plan->requirements.descriptor_depth ||
       options->max_items < plan->requirements.descriptor_nodes)
@@ -1819,8 +1833,13 @@ static DataBindStatus native_plan_destination_preflight(
     const char **out_path) {
   const cmeta_type_desc *type;
   const char *root_path = NULL;
-  DataBindStatus status =
-      native_plan_options_preflight(plan, options, diagnostic, &root_path);
+  DataBindStatus status;
+  if (diagnostic != NULL && destination != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            destination, destination_bytes))
+    return DATA_BIND_ERR_INVALID_ARG;
+  status = native_plan_options_preflight(
+      plan, options, diagnostic, &root_path);
 
   if (status != DATA_BIND_OK) return status;
   type = plan->shape->storage_type;
@@ -1862,7 +1881,12 @@ static DataBindStatus native_plan_decode_preflight(
   size_t leading_padding;
   size_t required;
   const char *root_path = NULL;
-  DataBindStatus status = native_plan_destination_preflight(
+  DataBindStatus status;
+  if (diagnostic != NULL && reader != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            reader, sizeof(*reader)))
+    return DATA_BIND_ERR_INVALID_ARG;
+  status = native_plan_destination_preflight(
       plan, options, destination, destination_bytes, diagnostic, &root_path);
 
   if (status != DATA_BIND_OK) return status;
@@ -1937,8 +1961,11 @@ DataBindStatus data_bind_native_plan_compile(
                             shape, sizeof(*shape)))
     return DATA_BIND_ERR_INVALID_ARG;
   if (diagnostic != NULL &&
-      native_ranges_overlap(out_plan, sizeof(*out_plan),
-                            diagnostic, sizeof(*diagnostic)))
+      (native_ranges_overlap(out_plan, sizeof(*out_plan),
+                             diagnostic, sizeof(*diagnostic)) ||
+       (shape != NULL &&
+        native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                              shape, sizeof(*shape)))))
     return DATA_BIND_ERR_INVALID_ARG;
 
   status = data_bind_native_measure(
