@@ -70,6 +70,8 @@ chmod +x "$re2c_root/bin/re2c"
 printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"
 printf "RE2C_ROOT=%s\n" "$re2c_root" >> "$GITHUB_ENV"
 printf "QIGAO_NUGET_PACKAGES=%s\n" "$packages" >> "$GITHUB_ENV"
+printf "SALTS_PACKAGE_VERSION=%s\n" "$salts_version" >> "$GITHUB_ENV"
+printf "RE2C_PACKAGE_VERSION=%s\n" "$re2c_version" >> "$GITHUB_ENV"
 printf "%s\n" "$re2c_root/bin" >> "$GITHUB_PATH"
 
 printf 'Restored latest Salts.Native -> %s\n' "$salts_version"
