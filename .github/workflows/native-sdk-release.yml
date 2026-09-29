@@ -314,6 +314,9 @@ jobs:
           cmake -S databind/producer/package_config \
             -B build/databind-producer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
           cmake --build build/databind-producer-installed \
             --target databind_generated_plan_consumer --parallel 2
@@ -400,6 +403,9 @@ jobs:
           cmake -S databind/producer/package_config \
             -B build/databind-producer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
           cmake --build build/databind-producer-installed \
             --target databind_generated_plan_consumer --parallel 2
@@ -542,7 +548,7 @@ jobs:
           cmake --build build\databind-target-installed --target installed_image --parallel 2
           if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\stage\sdk\windows-x64\bin;%SALTS_ROOT%\bin;%PATH%"
-          cmake -S databind\producer\package_config -B build\databind-producer-installed -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
+          cmake -S databind\producer\package_config -B build\databind-producer-installed -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
           if errorlevel 1 exit /b 1
           cmake --build build\databind-producer-installed --target databind_generated_plan_consumer --parallel 2
           if errorlevel 1 exit /b 1
