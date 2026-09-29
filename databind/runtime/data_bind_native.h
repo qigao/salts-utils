@@ -13,6 +13,9 @@ extern "C" {
 #endif
 
 enum { DATA_BIND_NATIVE_ABI_VERSION = 1u };
+enum { DATA_BIND_NATIVE_PLAN_ABI_VERSION = 1u };
+
+typedef struct DataBindNativePlan DataBindNativePlan;
 
 typedef struct DataBindNativeOptions {
   size_t size;
@@ -109,6 +112,71 @@ DATA_BIND_API DataBindStatus data_bind_native_measure(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     DataBindNativeRequirements *requirements,
     DataBindNativeDiagnostic *diagnostic);
+
+/**
+ * Compile one immutable native admission plan from a canonical CMeta graph.
+ *
+ * Compilation performs the same graph admission and workspace measurement as
+ * data_bind_native_measure(). The plan borrows shape and every descriptor,
+ * type and provider reachable from it; those objects must remain immutable and
+ * live until data_bind_native_plan_free().
+ *
+ * options.workspace is compile-time scratch only and is not retained.
+ * max_depth/max_items are admission bounds. max_owned_bytes is not captured:
+ * execution keeps using the caller's DataBindNativeOptions payload budget.
+ *
+ * Runtime plan APIs compare max_depth/max_items against cached measured
+ * descriptor requirements and therefore fail before source I/O when a caller
+ * supplies a smaller budget. They do not rerun descriptor graph preflight.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_plan_compile(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    DataBindNativePlan **out_plan,
+    DataBindNativeDiagnostic *diagnostic);
+
+DATA_BIND_API void data_bind_native_plan_free(DataBindNativePlan *plan);
+
+/** Borrowed immutable root descriptor retained by the plan. */
+DATA_BIND_API const cmeta_data_desc *
+data_bind_native_plan_data(const DataBindNativePlan *plan);
+
+/** Borrowed immutable measured requirements retained by the plan. */
+DATA_BIND_API const DataBindNativeRequirements *
+data_bind_native_plan_requirements(const DataBindNativePlan *plan);
+
+/**
+ * Initialize storage through an already-admitted native plan.
+ *
+ * No descriptor admission or schema lookup occurs. Runtime max_depth/max_items
+ * are checked against cached plan requirements before mutation.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_plan_init(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic);
+
+/** Restore one live native value through an already-admitted plan. */
+DATA_BIND_API DataBindStatus data_bind_native_plan_clear(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic);
+
+/**
+ * Decode one value through an already-admitted plan.
+ *
+ * Runtime allocates nothing. options.workspace owns temporary root/container
+ * scratch and max_owned_bytes remains the aggregate payload bound. The plan
+ * avoids native descriptor preflight/measurement on this hot path.
+ */
+DATA_BIND_API DataBindStatus data_bind_native_plan_decode(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic);
+
+DATA_BIND_API DataBindStatus data_bind_native_plan_decode_bounded(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic);
 
 /**
  * Initialize raw native storage to the descriptor-defined semantic-zero state.

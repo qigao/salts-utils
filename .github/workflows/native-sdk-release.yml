@@ -108,6 +108,7 @@ jobs:
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/binding-plan \
             --target test_data_bind_binding_plan test_data_bind_projection_plan \
+                     test_data_bind_native_reader test_data_bind_native_reader_cpp \
                      test_data_bind_native_writer test_data_bind_native_container test_data_bind_cmeta_public_cpp \
             --parallel 2
 
@@ -116,7 +117,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -247,6 +248,8 @@ jobs:
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_native_binding.h"
           grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          test -f "$prefix/include/data_bind_native.h"
+          grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
           cat > build/native-execution-installed.c <<'EOF'
           #include <data_bind_native_binding.h>
           _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
@@ -264,6 +267,32 @@ jobs:
             build/native-execution-installed.c \
             -o build/native-execution-installed
           ./build/native-execution-installed
+
+          mkdir -p build/native-plan-installed
+          cat > build/native-plan-installed/main.c <<'EOF'
+          #include <data_bind_native.h>
+          _Static_assert(DATA_BIND_NATIVE_PLAN_ABI_VERSION == 1u,
+                         "unexpected DataBind native plan ABI");
+          int main(void) {
+            return data_bind_native_plan_data((DataBindNativePlan *)0) == 0
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cat > build/native-plan-installed/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(native_plan_installed C)
+          find_package(Salts CONFIG REQUIRED)
+          find_package(SaltsUtils CONFIG REQUIRED)
+          add_executable(native_plan_installed main.c)
+          target_link_libraries(native_plan_installed PRIVATE Salts::DataBindCore)
+          EOF
+          cmake -S build/native-plan-installed \
+            -B build/native-plan-installed-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/native-plan-installed-build --parallel 2
+          build/native-plan-installed-build/native_plan_installed
 
           cmake -S databind/idl/compiler/package_config/databind_target \
             -B build/databind-target-installed -G Ninja \
@@ -673,13 +702,16 @@ jobs:
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
