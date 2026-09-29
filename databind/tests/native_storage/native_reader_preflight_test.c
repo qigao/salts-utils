@@ -550,6 +550,19 @@ spec("DataBind immutable native admission plan") {
     check_equal(probe.calls, (size_t)0u);
   }
 
+  it("rejects a plan output inside compile workspace before scratch writes") {
+    DataBindNativePlan **aliased =
+        (DataBindNativePlan **)(void *)workspace.bytes;
+    unsigned char before[sizeof(workspace.bytes)];
+
+    memcpy(before, workspace.bytes, sizeof(before));
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, aliased, &diagnostic),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(before, workspace.bytes, sizeof(before)), 0);
+    check_equal(probe.calls, (size_t)0u);
+  }
+
   it("does not write through a diagnostic that aliases runtime workspace") {
     const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
     DataBindNativePlan *plan = NULL;
