@@ -93,6 +93,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/SaltsUtilsTargets.cmake")
 foreach(required_salts_utils_target IN ITEMS
         Salts::IDL
         Salts::Schema
+        Salts::DataBindProducer
         Salts::DataBindCore
         Salts::DataBind)
   if(NOT TARGET ${required_salts_utils_target})
