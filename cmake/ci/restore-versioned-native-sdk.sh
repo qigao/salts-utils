@@ -8,7 +8,6 @@ set -euo pipefail
 
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
-salts_version="${SALTS_SDK_VERSION:-1.8.4}"
 re2c_version="${RE2C_BINARY_VERSION:-4.6.3}"
 packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
 config="$RUNNER_TEMP/qigao-nuget.config"
@@ -29,7 +28,7 @@ cat > "$project" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="[$salts_version]" />
+    <PackageReference Include="Salts.Native" Version="*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="[$re2c_version]" />
   </ItemGroup>
 </Project>
@@ -37,7 +36,14 @@ EOF
 
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache
 
-salts_package="$packages/salts.native/$salts_version"
+mapfile -t salts_packages < <(
+  find "$packages/salts.native" -mindepth 1 -maxdepth 1 -type d -print
+)
+[ "${#salts_packages[@]}" -eq 1 ] || {
+  printf 'native SDK restore error: expected exactly one Salts.Native package, found %s\n' "${#salts_packages[@]}" >&2
+  exit 1
+}
+salts_package="${salts_packages[0]}"
 re2c_package="$packages/qigao.re2c.binary/$re2c_version"
 fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 [ -d "$salts_package" ] || fail "missing Salts.Native package root: $salts_package"
