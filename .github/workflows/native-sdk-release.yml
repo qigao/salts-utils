@@ -30,10 +30,6 @@ env:
 
 jobs:
   metadata:
-    if: >-
-      github.event_name == 'pull_request' ||
-      github.ref_type == 'tag' ||
-      (github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils '))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -58,7 +54,6 @@ jobs:
             :
           else
             test "${GITHUB_REF_NAME:-}" = "master"
-            test "${{ startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils ') }}" = "true"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -731,7 +726,10 @@ jobs:
 
   publish:
     name: Publish package and GitHub Release
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref_type == 'tag' ||
+       startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils '))
     needs: [metadata, pack]
     runs-on: ubuntu-latest
     permissions:
