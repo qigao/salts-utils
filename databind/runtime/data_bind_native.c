@@ -1932,6 +1932,10 @@ DataBindStatus data_bind_native_plan_compile(
       native_ranges_overlap(out_plan, sizeof(*out_plan),
                             options, sizeof(*options)))
     return DATA_BIND_ERR_INVALID_ARG;
+  if (shape != NULL &&
+      native_ranges_overlap(out_plan, sizeof(*out_plan),
+                            shape, sizeof(*shape)))
+    return DATA_BIND_ERR_INVALID_ARG;
   if (diagnostic != NULL &&
       native_ranges_overlap(out_plan, sizeof(*out_plan),
                             diagnostic, sizeof(*diagnostic)))
