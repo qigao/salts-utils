@@ -6815,12 +6815,18 @@ static Node *parse_schema_text_to_root(
     return NULL;
   }
 
-  if (databind_tbe_contract_apply(root, &err) != 0) {
+  /*
+   * Codec creation is the logical/text + legacy dynamic-wire boundary.
+   * Canonical TBE binary layout admission belongs to explicit format-plan
+   * compilation, not to schema ownership itself. Preserve declaration order
+   * here so already-published dynamic BIN contracts remain decodable.
+   */
+  if (databind_tbe_contract_apply_codegen(root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
-      snprintf(error_buf, error_size, "TBE format error: %s", err.message);
+      snprintf(error_buf, error_size, "TBE schema overlay error: %s", err.message);
     db_error_set(
         error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
-        "TBE format error: %s", err.message);
+        "TBE schema overlay error: %s", err.message);
     node_free(root);
     return NULL;
   }
