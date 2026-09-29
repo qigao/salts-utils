@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
     paths:
       - ".github/workflows/native-sdk-release.yml"
+      - "cmake/ci/restore-versioned-native-sdk.sh"
+      - "cmake/ci/restore-versioned-native-sdk.ps1"
+      - "packaging/nuget/**"
+      - "CMakeLists.txt"
 
 permissions:
   contents: read
