@@ -36,7 +36,10 @@ EOF
 
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache
 
-mapfile -t salts_packages < <(
+salts_packages=()
+while IFS= read -r salts_package_path; do
+  salts_packages+=("$salts_package_path")
+done < <(
   find "$packages/salts.native" -mindepth 1 -maxdepth 1 -type d -print
 )
 [ "${#salts_packages[@]}" -eq 1 ] || {
