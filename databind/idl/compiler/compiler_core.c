@@ -1923,7 +1923,7 @@ int databind_compiler_parse_contract_file(
     return 1;
   }
 
-  if (databind_tbe_contract_apply_codegen(root, &parse_err) != 0) {
+  if (databind_tbe_contract_apply_compat(root, &parse_err) != 0) {
     fprintf(stderr, "TBE codegen overlay error: %s\n", parse_err.message);
     idl_contract_destroy(contract);
     free(schema_data);
