@@ -48,9 +48,12 @@ typedef enum DataBindCMetaAdapterPlanStatus {
  * rules and fails closed for every other type. Generated output contains no
  * DataBind runtime object, ownership requirement, or SaltsUtils include.
  *
- * Function order is retained. Duplicate semantic names are rejected.
- * source_ordinal + function_name preserve source identity for consumer-side
- * regeneration/golden qualification.
+ * Function order is retained. Duplicate semantic names are rejected. The
+ * emitted rows retain function/parameter names, parameter flags, effects,
+ * properties and projected semantic carriers: for the admitted scalar set
+ * these are exactly the semantic fields observed by cmeta_function_desc_equal().
+ * This lets regeneration/golden qualification detect descriptor drift without
+ * retaining CMeta objects in the generated consumer artifact.
  *
  * out_error_index receives SIZE_MAX for non-function-specific failures.
  */
