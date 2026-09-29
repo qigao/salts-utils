@@ -77,6 +77,60 @@ static DataBindRecordAction collect_exact_record(void *user_data, const DataBind
 }
 
 spec("data_bind public API") {
+  it("should preserve legacy declaration-order dynamic codecs and BIN roundtrips") {
+    const char *schema =
+        "schema Legacy [byte_order(little)];\n"
+        "message LegacyMessage { string id; uint64 generation; }\n";
+    const char *json = "{\"id\":\"legacy\",\"generation\":7}";
+    DataBind *codec = NULL;
+    DataBindObject *source = NULL;
+    DataBindObject *decoded = NULL;
+    const DataBindValue *id;
+    const DataBindValue *generation;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    uint8_t *wire = NULL;
+    size_t wire_len = 0u;
+
+    check_equal(data_bind_create_from_text(schema, strlen(schema), &codec, &error),
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(data_bind_object_from_json(
+                      codec, "LegacyMessage", json, strlen(json), &source, &error),
+                  DATA_BIND_OK);
+      check_not_null(source);
+    }
+    if (source != NULL) {
+      check_equal(data_bind_object_serialize_bin(
+                      codec, source, &wire, &wire_len, &error),
+                  DATA_BIND_OK);
+      check_not_null(wire);
+      check_true(wire_len > 0u);
+    }
+    if (wire != NULL) {
+      check_equal(data_bind_object_from_bin(
+                      codec, "LegacyMessage", wire, wire_len, &decoded, &error),
+                  DATA_BIND_OK);
+      check_not_null(decoded);
+    }
+    if (decoded != NULL) {
+      id = data_bind_value_get(data_bind_object_value(decoded), "id");
+      generation =
+          data_bind_value_get(data_bind_object_value(decoded), "generation");
+      check_not_null(id);
+      check_not_null(generation);
+      if (id != NULL) check_equal(data_bind_value_as_string(id), "legacy");
+      if (generation != NULL)
+        check_equal((uint64_t)data_bind_value_as_uint64(generation),
+                    (uint64_t)7u);
+    }
+
+    data_bind_binary_free(wire);
+    data_bind_object_free(decoded);
+    data_bind_object_free(source);
+    data_bind_free(codec);
+  }
+
   it("should expose version and ABI metadata") {
     DataBindDateTime datetime = {0};
     datetime.year = 2026;
