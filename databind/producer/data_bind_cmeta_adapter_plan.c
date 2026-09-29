@@ -152,13 +152,6 @@ static DataBindCMetaAdapterPlanStatus producer_validate(
       return DATA_BIND_CMETA_ADAPTER_PLAN_INVALID_DESCRIPTOR;
     }
 
-    for (j = 0u; j < i; ++j) {
-      if (strcmp(functions[j]->name, function->name) == 0) {
-        if (out_error_index != NULL) *out_error_index = i;
-        return DATA_BIND_CMETA_ADAPTER_PLAN_DUPLICATE_FUNCTION;
-      }
-    }
-
     if (!producer_carrier(function->return_type, true, &carrier)) {
       if (out_error_index != NULL) *out_error_index = i;
       return DATA_BIND_CMETA_ADAPTER_PLAN_UNSUPPORTED_TYPE;
@@ -386,8 +379,6 @@ const char *data_bind_cmeta_adapter_plan_status_name(
     return "invalid_argument";
   case DATA_BIND_CMETA_ADAPTER_PLAN_INVALID_DESCRIPTOR:
     return "invalid_descriptor";
-  case DATA_BIND_CMETA_ADAPTER_PLAN_DUPLICATE_FUNCTION:
-    return "duplicate_function";
   case DATA_BIND_CMETA_ADAPTER_PLAN_UNSUPPORTED_TYPE:
     return "unsupported_type";
   case DATA_BIND_CMETA_ADAPTER_PLAN_WRITE_FAILED:
