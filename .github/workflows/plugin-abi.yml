@@ -203,19 +203,30 @@ jobs:
           grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
           test -f "$prefix/include/data_bind_native.h"
           grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
-          cat > build/installed-native-plan.c <<'EOF'
+          mkdir -p build/installed-native-plan
+          cat > build/installed-native-plan/main.c <<'EOF'
           #include <data_bind_native.h>
           _Static_assert(DATA_BIND_NATIVE_PLAN_ABI_VERSION == 1u,
                          "unexpected DataBind native plan ABI");
           int main(void) {
             DataBindNativePlan *plan = 0;
-            return plan == 0 ? 0 : 1;
+            return data_bind_native_plan_data(plan) == 0 ? 0 : 1;
           }
           EOF
-          cc -std=c11 -Wall -Wextra -Werror -c \
-            -I"$prefix/include" -I"$SALTS_ROOT/include" \
-            build/installed-native-plan.c \
-            -o build/installed-native-plan.o
+          cat > build/installed-native-plan/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(installed_native_plan C)
+          find_package(Salts CONFIG REQUIRED)
+          find_package(SaltsUtils CONFIG REQUIRED)
+          add_executable(installed_native_plan main.c)
+          target_link_libraries(installed_native_plan PRIVATE Salts::DataBindCore)
+          EOF
+          cmake -S build/installed-native-plan \
+            -B build/installed-native-plan-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/installed-native-plan-build --parallel 2
+          build/installed-native-plan-build/installed_native_plan
           cat > build/installed-native-execution.c <<'EOF'
           #include <data_bind_native_binding.h>
           _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
