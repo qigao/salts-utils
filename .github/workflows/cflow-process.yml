@@ -5,7 +5,7 @@ on:
     paths:
       - "cflow-process/**"
       - ".github/workflows/cflow-process.yml"
-      - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-native-sdk.*"
       - "CMakeLists.txt"
 
 permissions:
@@ -49,11 +49,11 @@ jobs:
           test -n "${VCPKG_BINARY_SOURCES:-}"
           test -f "$GITHUB_WORKSPACE/vcpkg.json"
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
 
       - name: Restore SaltsUtils third-party profile from repository manifest
         shell: bash
@@ -127,11 +127,11 @@ jobs:
           if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "repository SaltsUtils manifest is unavailable" }
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
       - name: Restore SaltsUtils third-party profile from repository manifest
         shell: pwsh
