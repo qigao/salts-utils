@@ -1506,7 +1506,7 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
   return databind_tbe_contract_apply_internal(root, error, 1);
 }
 
-int databind_tbe_contract_apply_codegen(Node *root, tbe_error_t *error) {
+int databind_tbe_contract_apply_compat(Node *root, tbe_error_t *error) {
   return databind_tbe_contract_apply_internal(root, error, 0);
 }
 
