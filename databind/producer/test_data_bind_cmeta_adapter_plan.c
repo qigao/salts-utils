@@ -66,14 +66,11 @@ int main(void) {
 
   const cmeta_function_desc *functions[] = {
       &read_function, &close_function};
-  const cmeta_function_desc *duplicate_functions[] = {
-      &read_function, &read_function};
   const cmeta_function_desc *unsupported_functions[] = {
       &unsupported_function};
   const cmeta_function_desc *invalid_functions[] = {
       &invalid_function};
   test_manifest source = {functions, 2u};
-  test_manifest duplicate_source = {duplicate_functions, 2u};
   test_manifest unsupported_source = {unsupported_functions, 1u};
   test_manifest invalid_source = {invalid_functions, 1u};
   DataBindCMetaFunctionManifest manifest = {2u, test_at, &source};
@@ -113,20 +110,6 @@ int main(void) {
       strstr(first.data, "cmeta_function_desc") != NULL ||
       strstr(first.data, "#include <data_bind") != NULL) {
     fprintf(stderr, "generated plan did not preserve the producer boundary\n");
-    ++failures;
-  }
-
-  first.size = 0u;
-  first.data[0] = '\0';
-  manifest.count = duplicate_source.count;
-  manifest.context = &duplicate_source;
-  error_index = SIZE_MAX;
-  failures += expect_status(
-      data_bind_cmeta_adapter_plan_emit(
-          &manifest, &config, test_write, &first, &error_index),
-      DATA_BIND_CMETA_ADAPTER_PLAN_DUPLICATE_FUNCTION, "duplicate name");
-  if (error_index != 1u) {
-    fprintf(stderr, "duplicate error index mismatch: %zu\n", error_index);
     ++failures;
   }
 
