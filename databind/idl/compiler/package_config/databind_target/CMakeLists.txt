@@ -11,46 +11,6 @@ if(TARGET Salts::DataBindGeneratedABI)
           "removed Salts::DataBindGeneratedABI must not be exported")
 endif()
 
-# Installed-package regression for published declaration-order schemas that are
-# valid IDL/native text contracts but intentionally not canonical TBE binary
-# format plans. Use the installed package's host-tool resolver so runtime
-# closure handling matches salts_idl_target().
-_saltsutils_idl_resolve_compiler(
-  _legacy_idlc
-  _legacy_idlc_dependency
-  _legacy_idlc_runtime_root
-  _legacy_idlc_salts_root)
-_saltsutils_idl_host_command(
-  _legacy_idlc_command
-  "${_legacy_idlc}"
-  "${_legacy_idlc_runtime_root}"
-  "${_legacy_idlc_salts_root}")
-
-set(_legacy_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/legacy_typed")
-set(_legacy_generated_header "${_legacy_generated_dir}/legacy_typed.h")
-set(_legacy_generated_source "${_legacy_generated_dir}/legacy_typed.c")
-add_custom_command(
-  OUTPUT "${_legacy_generated_header}" "${_legacy_generated_source}"
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${_legacy_generated_dir}"
-  COMMAND ${_legacy_idlc_command}
-          "${CMAKE_CURRENT_SOURCE_DIR}/legacy_typed.schema"
-          --lang c
-          --output "${_legacy_generated_header}"
-          --source-output "${_legacy_generated_source}"
-  DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/legacy_typed.schema"
-    ${_legacy_idlc_dependency}
-  VERBATIM
-  COMMENT "Generating legacy declaration-order typed C with installed salts-idlc")
-
-add_executable(installed_legacy_typed_consumer
-  legacy_typed_consumer.c
-  "${_legacy_generated_source}")
-target_compile_features(installed_legacy_typed_consumer PRIVATE c_std_11)
-target_include_directories(installed_legacy_typed_consumer PRIVATE
-  "${_legacy_generated_dir}")
-target_link_libraries(installed_legacy_typed_consumer PRIVATE Salts::DataBind)
-
 salts_idl_target(
   TARGET installed_image
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/image.schema"
@@ -185,5 +145,4 @@ add_dependencies(installed_flowmq_consumer
 add_dependencies(installed_flow
   installed_flowmq_consumer)
 add_dependencies(installed_image
-  installed_flow
-  installed_legacy_typed_consumer)
+  installed_flow)

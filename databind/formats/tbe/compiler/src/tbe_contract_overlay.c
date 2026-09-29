@@ -1482,8 +1482,7 @@ static int annotate_schema_tree(Node *root) {
 }
 
 
-static int databind_tbe_contract_apply_internal(
-    Node *root, tbe_error_t *error, int validate_layout_policy) {
+int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
   if (root == NULL || root->type != NODE_MAP) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
@@ -1491,8 +1490,7 @@ static int databind_tbe_contract_apply_internal(
     return -1;
   }
   if (!tbe_annotate_field_profiles(root, error)) return -1;
-  if (validate_layout_policy && !tbe_validate_layout_policy(root, error))
-    return -1;
+  if (!tbe_validate_layout_policy(root, error)) return -1;
   if (annotate_schema_tree(root) != 0) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
@@ -1500,14 +1498,6 @@ static int databind_tbe_contract_apply_internal(
     return -1;
   }
   return 0;
-}
-
-int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
-  return databind_tbe_contract_apply_internal(root, error, 1);
-}
-
-int databind_tbe_contract_apply_codegen(Node *root, tbe_error_t *error) {
-  return databind_tbe_contract_apply_internal(root, error, 0);
 }
 
 int databind_tbe_contract_parse(

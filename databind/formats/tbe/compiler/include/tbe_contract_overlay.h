@@ -12,13 +12,6 @@ extern "C" {
 
 int databind_tbe_contract_apply(Node *root, tbe_error_t *error);
 
-/*
- * Compiler-only compatibility overlay for source generation from legacy
- * declaration-order wire schemas. This annotates the rendering tree without
- * admitting the layout as a canonical TBE format plan.
- */
-int databind_tbe_contract_apply_codegen(Node *root, tbe_error_t *error);
-
 int databind_tbe_contract_parse(
     const char *text, size_t len, Node *root, tbe_error_t *error);
 
