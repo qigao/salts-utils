@@ -11,7 +11,7 @@ foreach ($name in @("GITHUB_TOKEN", "RUNNER_TEMP", "GITHUB_ENV", "GITHUB_PATH"))
 }
 
 $packages = if ($env:QIGAO_NUGET_PACKAGES) { $env:QIGAO_NUGET_PACKAGES } else { Join-Path $env:RUNNER_TEMP "qigao-nuget" }
-$config = Join-Path $env:RUNNER_TEMP "qigao-nuget.config"
+$config = Join-Path $env:RUNNER_TEMP "NuGet.Config"
 $project = Join-Path $env:RUNNER_TEMP "qigao-native-sdk-restore.csproj"
 
 @'
@@ -30,12 +30,19 @@ if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
     <TargetFramework>net8.0</TargetFramework>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
-    <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
-  </ItemGroup>
 </Project>
 '@ | Set-Content -LiteralPath $project -Encoding utf8NoBOM
+
+Push-Location $env:RUNNER_TEMP
+try {
+  dotnet add $project package Salts.Native
+  if ($LASTEXITCODE -ne 0) { throw "failed to resolve Salts.Native" }
+  dotnet add $project package Qigao.Re2c.Binary
+  if ($LASTEXITCODE -ne 0) { throw "failed to resolve Qigao.Re2c.Binary" }
+}
+finally {
+  Pop-Location
+}
 
 dotnet restore $project --packages $packages --configfile $config --no-cache --force-evaluate
 if ($LASTEXITCODE -ne 0) { throw "failed to restore latest native SDKs" }

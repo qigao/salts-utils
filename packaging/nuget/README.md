@@ -1,6 +1,6 @@
 # SaltsUtils.Native
 
-Versioned prebuilt Release SDKs for qigao/salts-utils.
+Prebuilt Release SDKs for qigao/salts-utils.
 
 The package contains the prebuilt SaltsUtils SDK only; dependency SDKs are restored explicitly by the consumer.
 The re2c host generator is a build-time tool and is not a runtime dependency of this package.
