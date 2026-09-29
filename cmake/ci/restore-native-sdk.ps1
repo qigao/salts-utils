@@ -70,6 +70,8 @@ foreach ($path in $required) {
 "SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
 "RE2C_ROOT=$re2cRoot" >> $env:GITHUB_ENV
 "QIGAO_NUGET_PACKAGES=$packages" >> $env:GITHUB_ENV
+"SALTS_PACKAGE_VERSION=$saltsVersion" >> $env:GITHUB_ENV
+"RE2C_PACKAGE_VERSION=$re2cVersion" >> $env:GITHUB_ENV
 (Join-Path $re2cRoot "bin") >> $env:GITHUB_PATH
 
 Write-Host "Restored latest Salts.Native -> $saltsVersion"
