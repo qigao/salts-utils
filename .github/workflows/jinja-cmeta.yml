@@ -7,7 +7,7 @@ on:
       - "jinja/**"
       - "docs/architecture/jinja-cmeta.md"
       - "CMakeLists.txt"
-      - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-native-sdk.*"
       - ".github/workflows/jinja-cmeta.yml"
   push:
     branches: [master]
@@ -15,7 +15,7 @@ on:
       - "jinja/**"
       - "docs/architecture/jinja-cmeta.md"
       - "CMakeLists.txt"
-      - "cmake/ci/restore-versioned-native-sdk.*"
+      - "cmake/ci/restore-native-sdk.*"
       - ".github/workflows/jinja-cmeta.yml"
 
 permissions:
@@ -78,11 +78,11 @@ jobs:
           test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
           test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
 
       - name: Configure focused Jinja CMeta build
         shell: bash
