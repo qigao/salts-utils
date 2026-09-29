@@ -7,6 +7,19 @@ if(NOT TARGET Salts::DataBindProducer)
   message(FATAL_ERROR "missing installed Salts::DataBindProducer")
 endif()
 
+get_target_property(_producer_links
+  Salts::DataBindProducer INTERFACE_LINK_LIBRARIES)
+if(NOT "Salts::CMeta" IN_LIST _producer_links)
+  message(FATAL_ERROR
+    "installed Salts::DataBindProducer must expose canonical Salts::CMeta")
+endif()
+foreach(forbidden IN ITEMS Salts::DataBind Salts::DataBindCore)
+  if("${forbidden}" IN_LIST _producer_links)
+    message(FATAL_ERROR
+      "installed Salts::DataBindProducer must not link ${forbidden}")
+  endif()
+endforeach()
+
 add_executable(databind_producer_generate generate.c)
 target_compile_features(databind_producer_generate PRIVATE c_std_11)
 target_link_libraries(databind_producer_generate
