@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config nasm
+          sudo apt-get install -y ninja-build pkg-config nasm libpipewire-0.3-dev libx11-dev libxext-dev
           test -n "${VCPKG_ROOT:-}"
           test -n "${VCPKG_BINARY_SOURCES:-}"
           case "$VCPKG_BINARY_SOURCES" in
@@ -226,6 +226,8 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DVCPKG_MANIFEST_FEATURES=capture \
+            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/native-sdk --parallel 2
@@ -562,7 +564,8 @@ jobs:
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_shared \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
-            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DVCPKG_MANIFEST_FEATURES=capture \
+            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build build/android-native-sdk --parallel 2
@@ -621,11 +624,17 @@ jobs:
           test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/linux-x64/include/data_bind_binding_plan.h
+          test -f package/sdk/linux-x64/include/salts_capture.h
+          test -f package/sdk/linux-x64/include/salts_playback.h
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/windows-x64/lib/cmake/SaltsUtils/IDL.cmake
           test -f package/sdk/windows-x64/include/data_bind_binding_plan.h
+          test -f package/sdk/windows-x64/include/salts_capture.h
+          test -f package/sdk/windows-x64/include/salts_playback.h
           test -f package/sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake
           test -f package/sdk/android-arm64-v8a/include/data_bind_binding_plan.h
+          test -f package/sdk/android-arm64-v8a/include/salts_capture.h
+          test -f package/sdk/android-arm64-v8a/include/salts_playback.h
           test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 4
       - uses: actions/setup-dotnet@v4
         with:
@@ -654,9 +663,15 @@ jobs:
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
             :
           else
