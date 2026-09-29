@@ -731,6 +731,7 @@ jobs:
 
   publish:
     name: Publish package and GitHub Release
+    if: github.event_name == 'push'
     needs: [metadata, pack]
     runs-on: ubuntu-latest
     permissions:
