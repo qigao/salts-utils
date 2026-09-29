@@ -10,8 +10,8 @@ on:
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "cmake/ci/vcpkg/plugin-databind/**"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
-      - "cmake/ci/restore-versioned-native-sdk.sh"
-      - "cmake/ci/restore-versioned-native-sdk.ps1"
+      - "cmake/ci/restore-native-sdk.sh"
+      - "cmake/ci/restore-native-sdk.ps1"
       - ".github/workflows/plugin-abi.yml"
   push:
     branches: [master]
@@ -22,8 +22,8 @@ on:
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "cmake/ci/vcpkg/plugin-databind/**"
       - "cmake/ci/verify-vcpkg-cache-only.ps1"
-      - "cmake/ci/restore-versioned-native-sdk.sh"
-      - "cmake/ci/restore-versioned-native-sdk.ps1"
+      - "cmake/ci/restore-native-sdk.sh"
+      - "cmake/ci/restore-native-sdk.ps1"
       - ".github/workflows/plugin-abi.yml"
   workflow_dispatch:
 
@@ -37,7 +37,6 @@ concurrency:
 
 env:
   EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
   linux:
@@ -86,11 +85,11 @@ jobs:
           test "${{ steps.vcpkg_cache.outputs.contract_version }}" = "$VCPKG_CACHE_CONTRACT_VERSION"
           test "${{ steps.vcpkg_cache.outputs.cache_revision }}" = "$VCPKG_CACHE_REVISION"
 
-      - name: Restore current Salts and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
 
       - name: Restore focused Plugin/DataBind vcpkg closure
         shell: bash
@@ -366,11 +365,11 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore current Salts and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
       - name: Configure, build and run focused contracts
         shell: cmd
