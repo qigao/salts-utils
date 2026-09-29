@@ -14,6 +14,7 @@ find_package(SaltsUtils CONFIG REQUIRED)
 foreach(required_target IN ITEMS
     Salts::IDL
     Salts::Schema
+    Salts::DataBindProducer
     Salts::DataBindCore
     Salts::DataBind
     Salts::DataBindCMeta
