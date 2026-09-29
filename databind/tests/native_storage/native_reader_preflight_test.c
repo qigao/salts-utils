@@ -549,6 +549,52 @@ spec("DataBind immutable native admission plan") {
     check_equal(memcmp(&shape, &before, sizeof(shape)), 0);
     check_equal(probe.calls, (size_t)0u);
   }
+
+  it("does not write through a diagnostic that aliases runtime workspace") {
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
+    DataBindNativePlan *plan = NULL;
+    DataBindNativeDiagnostic *aliased =
+        (DataBindNativeDiagnostic *)(void *)workspace.bytes;
+    unsigned char before[sizeof(DataBindNativeDiagnostic)];
+    int value = 0;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    *aliased = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    memcpy(before, aliased, sizeof(before));
+    open_preflight_source(steps, 1u);
+    check_equal(data_bind_native_plan_decode(
+                    plan, &options, &reader, &value, sizeof(value), aliased),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(before, aliased, sizeof(before)), 0);
+    check_equal(probe.calls, (size_t)0u);
+    check_equal(value, 0);
+    data_bind_native_plan_free(plan);
+  }
+
+  it("does not write through a diagnostic that aliases destination") {
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
+    DataBindNativePlan *plan = NULL;
+    DataBindNativeDiagnostic aliased =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    unsigned char before[sizeof(aliased)];
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    memcpy(before, &aliased, sizeof(before));
+    open_preflight_source(steps, 1u);
+    check_equal(data_bind_native_plan_decode(
+                    plan, &options, &reader,
+                    &aliased, sizeof(aliased), &aliased),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(before, &aliased, sizeof(before)), 0);
+    check_equal(probe.calls, (size_t)0u);
+    data_bind_native_plan_free(plan);
+  }
 }
 
 static void require_buffer_bounds(const char *left, const char *right,
