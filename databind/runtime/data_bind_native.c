@@ -1949,9 +1949,9 @@ DataBindStatus data_bind_native_plan_compile(
 
   if (!native_diagnostic_header_valid(diagnostic))
     return DATA_BIND_ERR_INVALID_ARG;
-  if (out_plan == NULL || *out_plan != NULL)
+  if (out_plan == NULL)
     return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
-                       NULL, "Native plan output must be an empty pointer");
+                       NULL, "Native plan output must be non-null");
   if (options != NULL &&
       native_ranges_overlap(out_plan, sizeof(*out_plan),
                             options, sizeof(*options)))
@@ -1967,16 +1967,18 @@ DataBindStatus data_bind_native_plan_compile(
         native_ranges_overlap(diagnostic, sizeof(*diagnostic),
                               shape, sizeof(*shape)))))
     return DATA_BIND_ERR_INVALID_ARG;
+  if (options != NULL && options->size >= sizeof(*options) &&
+      options->abi_version == DATA_BIND_NATIVE_ABI_VERSION &&
+      native_ranges_overlap(out_plan, sizeof(*out_plan),
+                            options->workspace, options->workspace_bytes))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (*out_plan != NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       NULL, "Native plan output must be an empty pointer");
 
   status = data_bind_native_measure(
       options, shape, &requirements, diagnostic);
   if (status != DATA_BIND_OK) return status;
-  if (native_ranges_overlap(out_plan, sizeof(*out_plan),
-                            options->workspace, options->workspace_bytes))
-    return native_fail(
-        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
-        shape != NULL ? shape->display_name : NULL,
-        "Native plan output aliases compile workspace");
 
   plan = (DataBindNativePlan *)malloc(sizeof(*plan));
   if (plan == NULL)
