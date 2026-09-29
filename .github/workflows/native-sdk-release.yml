@@ -2,7 +2,10 @@ name: SaltsUtils native SDK release
 
 on:
   push:
+    branches: [master]
     tags: ["v*"]
+    paths:
+      - ".github/workflows/native-sdk-release.yml"
 
 permissions:
   contents: read
@@ -18,10 +21,14 @@ env:
 
 jobs:
   metadata:
+    if: >-
+      github.ref_type == 'tag' ||
+      (github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils 4.1.4'))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      source_commit: ${{ steps.version.outputs.source_commit }}
     steps:
       - uses: actions/checkout@v4
       - id: version
@@ -31,16 +38,19 @@ jobs:
           version="$(awk '/^[[:space:]]*VERSION[[:space:]]+[0-9]/{print $2; exit}' CMakeLists.txt)"
           test -n "$version"
           tag="v$version"
-          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
-            echo "native SDK release must run from a tag push" >&2
-            exit 1
-          fi
-          if [ "${GITHUB_REF_NAME:-}" != "$tag" ]; then
-            echo "release tag ${GITHUB_REF_NAME:-<unset>} does not match project version $tag" >&2
-            exit 1
+          source_commit="$(git rev-parse HEAD)"
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            if [ "${GITHUB_REF_NAME:-}" != "$tag" ]; then
+              echo "release tag ${GITHUB_REF_NAME:-<unset>} does not match project version $tag" >&2
+              exit 1
+            fi
+          else
+            test "${GITHUB_REF_NAME:-}" = "master"
+            test "${{ startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils 4.1.4') }}" = "true"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$source_commit" >> "$GITHUB_OUTPUT"
 
   binding-plan:
     name: DataBind BindingPlan contract
@@ -698,6 +708,21 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Create bootstrap tag when needed
+        if: github.ref_type != 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)"
+            test "$existing" = "$SOURCE_COMMIT"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_COMMIT"
+          fi
       - name: Publish to GitHub Packages
         shell: bash
         env:
@@ -714,8 +739,6 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_TYPE" = "tag"
-          test "$GITHUB_REF_NAME" = "$TAG"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $TAG already exists"
             exit 0
