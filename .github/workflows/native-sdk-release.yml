@@ -693,6 +693,12 @@ jobs:
           dotnet pack packaging/nuget/SaltsUtils.Native.csproj --no-restore --configuration Release --output dist -p:PackageVersion=${{ needs.metadata.outputs.version }} -p:PackageRoot="$GITHUB_WORKSPACE/package" -p:RestorePackagesPath="$RUNNER_TEMP/pack-nuget"
           nupkg="dist/SaltsUtils.Native.${{ needs.metadata.outputs.version }}.nupkg"
           test -f "$nupkg"
+          unzip -p "$nupkg" '*.nuspec' > "$RUNNER_TEMP/salts-utils.nuspec"
+          if grep -q '<dependencies' "$RUNNER_TEMP/salts-utils.nuspec"; then
+            echo "SaltsUtils.Native must not publish dependency metadata" >&2
+            cat "$RUNNER_TEMP/salts-utils.nuspec" >&2
+            exit 1
+          fi
           unzip -Z1 "$nupkg" | sort | tee "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/bin/salts-idlc.exe" "$RUNNER_TEMP/salts-utils-nupkg.txt"
