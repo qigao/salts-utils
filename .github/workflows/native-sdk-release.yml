@@ -220,7 +220,7 @@ jobs:
           test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
           test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
 
-      - name: Restore versioned Salts and re2c SDKs
+      - name: Restore Salts and re2c SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -346,7 +346,7 @@ jobs:
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
           echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
 
-      - name: Restore versioned Salts and re2c SDKs
+      - name: Restore Salts and re2c SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -570,7 +570,7 @@ jobs:
           test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${ANDROID_NDK_HOME:-}"
 
-      - name: Restore versioned target Salts and host re2c SDKs
+      - name: Restore target Salts and host re2c SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
