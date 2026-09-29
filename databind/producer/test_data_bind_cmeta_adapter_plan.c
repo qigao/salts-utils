@@ -106,7 +106,10 @@ int main(void) {
   if (strstr(first.data, "preview1_adapter_carrier_u32") == NULL ||
       strstr(first.data, "preview1_adapter_carrier_u64") == NULL ||
       strstr(first.data, "\"wasi.fd_read\"") == NULL ||
+      strstr(first.data, "\"fd\"") == NULL ||
       strstr(first.data, "source_ordinal") == NULL ||
+      strstr(first.data, "effects") == NULL ||
+      strstr(first.data, "properties") == NULL ||
       strstr(first.data, "cmeta_function_desc") != NULL ||
       strstr(first.data, "#include <data_bind") != NULL) {
     fprintf(stderr, "generated plan did not preserve the producer boundary\n");
