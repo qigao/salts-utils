@@ -537,6 +537,18 @@ spec("DataBind immutable native admission plan") {
     check_null(plan);
     check_equal(probe.calls, (size_t)0u);
   }
+
+  it("rejects a plan output that aliases the borrowed root descriptor") {
+    cmeta_data_desc shape = cmeta_data_int32;
+    cmeta_data_desc before = shape;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &shape,
+                    (DataBindNativePlan **)(void *)&shape, &diagnostic),
+                DATA_BIND_ERR_INVALID_ARG);
+    check_equal(memcmp(&shape, &before, sizeof(shape)), 0);
+    check_equal(probe.calls, (size_t)0u);
+  }
 }
 
 static void require_buffer_bounds(const char *left, const char *right,
