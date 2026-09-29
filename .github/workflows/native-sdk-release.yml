@@ -305,8 +305,6 @@ jobs:
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
-          salts=$SALTS_SDK_VERSION
-          re2c=$RE2C_BINARY_VERSION
           os=linux
           arch=x64
           profile=release
@@ -384,8 +382,6 @@ jobs:
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
-          salts=$SALTS_SDK_VERSION
-          re2c=$RE2C_BINARY_VERSION
           os=macos
           arch=$RUNNER_ARCH
           profile=release
@@ -537,8 +533,6 @@ jobs:
           $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
-            "salts=$env:SALTS_SDK_VERSION"
-            "re2c=$env:RE2C_BINARY_VERSION"
             "os=windows"
             "arch=x64"
             "profile=release"
@@ -630,8 +624,6 @@ jobs:
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
-          salts=$SALTS_SDK_VERSION
-          re2c=$RE2C_BINARY_VERSION
           os=android
           abi=arm64-v8a
           api=android-26
