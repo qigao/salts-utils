@@ -1482,7 +1482,8 @@ static int annotate_schema_tree(Node *root) {
 }
 
 
-int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
+static int databind_tbe_contract_apply_internal(
+    Node *root, tbe_error_t *error, int validate_layout_policy) {
   if (root == NULL || root->type != NODE_MAP) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
@@ -1490,7 +1491,8 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
     return -1;
   }
   if (!tbe_annotate_field_profiles(root, error)) return -1;
-  if (!tbe_validate_layout_policy(root, error)) return -1;
+  if (validate_layout_policy && !tbe_validate_layout_policy(root, error))
+    return -1;
   if (annotate_schema_tree(root) != 0) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
@@ -1498,6 +1500,14 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
     return -1;
   }
   return 0;
+}
+
+int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
+  return databind_tbe_contract_apply_internal(root, error, 1);
+}
+
+int databind_tbe_contract_apply_codegen(Node *root, tbe_error_t *error) {
+  return databind_tbe_contract_apply_internal(root, error, 0);
 }
 
 int databind_tbe_contract_parse(
@@ -1698,6 +1708,8 @@ int databind_tbe_format_plan_build(
   if (out != NULL) memset(out, 0, sizeof(*out));
   if (contract == NULL || wire_ir == NULL || out == NULL)
     return tbe_plan_fail(error, "Invalid TBE format plan arguments");
+  if (!tbe_validate_layout_policy((Node *)wire_ir, error))
+    return 0;
 
   for (i = 0u; i < contract->data_count; ++i)
     if (tbe_plan_list_name(contract->data[i].kind) != NULL)

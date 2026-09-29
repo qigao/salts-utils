@@ -1,0 +1,6 @@
+schema LegacyTyped [byte_order(little)];
+
+message LegacyMessage {
+  string id;
+  uint64 generation;
+}

@@ -11,6 +11,9 @@ on:
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "databind/CMakeLists.txt"
       - "databind/producer/**"
+      - "databind/idl/**"
+      - "databind/formats/tbe/**"
+      - "databind/schema/**"
   push:
     branches: [master]
     tags: ["v*"]
@@ -23,6 +26,9 @@ on:
       - "cmake/SaltsUtilsConfig.cmake.in"
       - "databind/CMakeLists.txt"
       - "databind/producer/**"
+      - "databind/idl/**"
+      - "databind/formats/tbe/**"
+      - "databind/schema/**"
 
 permissions:
   contents: read
