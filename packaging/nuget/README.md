@@ -2,7 +2,7 @@
 
 Versioned prebuilt Release SDKs for qigao/salts-utils.
 
-The package is built against the currently restored `Salts.Native` SDK.
+The package contains the prebuilt SaltsUtils SDK only; dependency SDKs are restored explicitly by the consumer.
 The re2c host generator is a build-time tool and is not a runtime dependency of this package.
 
 ## Layout
@@ -15,7 +15,7 @@ The re2c host generator is a build-time tool and is not a runtime dependency of 
 Each directory is a normal CMake install prefix containing
 `lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake`.
 
-Consumers restore `SaltsUtils.Native` together with its declared `Salts.Native` dependency,
+Consumers restore `SaltsUtils.Native` and `Salts.Native` explicitly,
 then set `SALTS_ROOT` to the matching Salts SDK and point CMake at the matching
 SaltsUtils SDK:
 
