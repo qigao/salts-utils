@@ -29,6 +29,27 @@ using Measure = DataBindStatus (*)(const DataBindNativeOptions *, const cmeta_da
 static_assert(std::is_same<decltype(&data_bind_native_measure), Measure>::value,
               "native measurement signature drift");
 
+using PlanCompile = DataBindStatus (*)(const DataBindNativeOptions *,
+                                      const cmeta_data_desc *,
+                                      DataBindNativePlan **,
+                                      DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_plan_compile), PlanCompile>::value,
+              "native plan compile signature drift");
+using PlanLifecycle = DataBindStatus (*)(const DataBindNativePlan *,
+                                        const DataBindNativeOptions *,
+                                        void *, size_t,
+                                        DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_plan_init), PlanLifecycle>::value,
+              "native plan init signature drift");
+static_assert(std::is_same<decltype(&data_bind_native_plan_clear), PlanLifecycle>::value,
+              "native plan clear signature drift");
+using PlanDecode = DataBindStatus (*)(const DataBindNativePlan *,
+                                     const DataBindNativeOptions *,
+                                     cserde_reader *, void *, size_t,
+                                     DataBindNativeDiagnostic *);
+static_assert(std::is_same<decltype(&data_bind_native_plan_decode), PlanDecode>::value,
+              "native plan decode signature drift");
+
 int main() {
   enum { workspace_bytes = 4096, max_depth = 8, max_items = 64, max_owned_bytes = 32 };
   alignas(std::max_align_t) unsigned char workspace[workspace_bytes] = {};
