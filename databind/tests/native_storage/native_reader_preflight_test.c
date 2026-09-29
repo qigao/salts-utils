@@ -430,6 +430,115 @@ spec("DataBind native workspace measurement before source dispatch") {
   }
 }
 
+spec("DataBind immutable native admission plan") {
+  (void)ttest_config__;
+  before_each() {
+    memset(&workspace, 0, sizeof(workspace));
+    memset(&probe, 0, sizeof(probe));
+    memset(&reader, 0, sizeof(reader));
+    options = (DataBindNativeOptions)DATA_BIND_NATIVE_OPTIONS_INIT;
+    diagnostic = (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    options.workspace = workspace.bytes;
+    options.workspace_bytes = sizeof(workspace.bytes);
+    options.max_depth = PREFLIGHT_DEPTH;
+    options.max_items = PREFLIGHT_ITEMS;
+    options.max_owned_bytes = SIZE_MAX;
+  }
+
+  it("compiles once then initializes decodes and clears through the plan") {
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
+    DataBindNativePlan *plan = NULL;
+    const DataBindNativeRequirements *requirements;
+    int value = 91;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    check_true(data_bind_native_plan_data(plan) == &cmeta_data_int);
+    requirements = data_bind_native_plan_requirements(plan);
+    check_not_null(requirements);
+    check_equal(requirements->descriptor_depth, (size_t)1u);
+    check_equal(requirements->descriptor_nodes, (size_t)1u);
+
+    check_equal(data_bind_native_plan_init(
+                    plan, &options, &value, sizeof(value), &diagnostic),
+                DATA_BIND_OK);
+    check_equal(value, 0);
+
+    open_preflight_source(steps, 1u);
+    check_equal(data_bind_native_plan_decode(
+                    plan, &options, &reader, &value, sizeof(value),
+                    &diagnostic),
+                DATA_BIND_OK);
+    check_equal(value, 7);
+    check_equal(probe.calls, (size_t)1u);
+
+    check_equal(data_bind_native_plan_clear(
+                    plan, &options, &value, sizeof(value), &diagnostic),
+                DATA_BIND_OK);
+    check_equal(value, 0);
+    data_bind_native_plan_free(plan);
+  }
+
+  it("rejects a smaller runtime descriptor budget before source input") {
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
+    DataBindNativePlan *plan = NULL;
+    int value = 0;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    open_preflight_source(steps, 1u);
+    options.max_depth = 0u;
+    check_equal(data_bind_native_plan_decode(
+                    plan, &options, &reader, &value, sizeof(value),
+                    &diagnostic),
+                DATA_BIND_ERR_LIMIT);
+    check_equal(probe.calls, (size_t)0u);
+    check_equal(value, 0);
+    data_bind_native_plan_free(plan);
+  }
+
+  it("rejects insufficient runtime workspace before source input") {
+    const NativeReaderProbeStep steps[] = {native_reader_probe_sint(7)};
+    DataBindNativePlan *plan = NULL;
+    const DataBindNativeRequirements *requirements;
+    int value = 0;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &cmeta_data_int, &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    requirements = data_bind_native_plan_requirements(plan);
+    check_not_null(requirements);
+    check_true(requirements->decode_bytes > 0u);
+    open_preflight_source(steps, 1u);
+    options.workspace_bytes = requirements->decode_bytes - 1u;
+    check_equal(data_bind_native_plan_decode(
+                    plan, &options, &reader, &value, sizeof(value),
+                    &diagnostic),
+                DATA_BIND_ERR_LIMIT);
+    check_equal(probe.calls, (size_t)0u);
+    check_equal(value, 0);
+    data_bind_native_plan_free(plan);
+  }
+
+  it("rejects malformed descriptors during plan compilation") {
+    cmeta_data_desc shape = cmeta_data_int32;
+    const cmeta_data_integer_shape integer = {8u};
+    DataBindNativePlan *plan = NULL;
+    shape.shape = &integer;
+
+    check_equal(data_bind_native_plan_compile(
+                    &options, &shape, &plan, &diagnostic),
+                DATA_BIND_ERR_SCHEMA);
+    check_null(plan);
+    check_equal(probe.calls, (size_t)0u);
+  }
+}
+
 static void require_buffer_bounds(const char *left, const char *right,
                                    size_t aggregate, size_t per_value,
                                    DataBindStatus expected) {
