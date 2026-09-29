@@ -268,6 +268,32 @@ jobs:
             -o build/native-execution-installed
           ./build/native-execution-installed
 
+          mkdir -p build/native-plan-installed
+          cat > build/native-plan-installed/main.c <<'EOF'
+          #include <data_bind_native.h>
+          _Static_assert(DATA_BIND_NATIVE_PLAN_ABI_VERSION == 1u,
+                         "unexpected DataBind native plan ABI");
+          int main(void) {
+            return data_bind_native_plan_data((DataBindNativePlan *)0) == 0
+                       ? 0
+                       : 1;
+          }
+          EOF
+          cat > build/native-plan-installed/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(native_plan_installed C)
+          find_package(Salts CONFIG REQUIRED)
+          find_package(SaltsUtils CONFIG REQUIRED)
+          add_executable(native_plan_installed main.c)
+          target_link_libraries(native_plan_installed PRIVATE Salts::DataBindCore)
+          EOF
+          cmake -S build/native-plan-installed \
+            -B build/native-plan-installed-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/native-plan-installed-build --parallel 2
+          build/native-plan-installed-build/native_plan_installed
+
           cmake -S databind/idl/compiler/package_config/databind_target \
             -B build/databind-target-installed -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
@@ -676,13 +702,16 @@ jobs:
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
