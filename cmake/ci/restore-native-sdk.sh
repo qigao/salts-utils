@@ -9,7 +9,7 @@ set -euo pipefail
 salts_rid="${1:?Salts target RID is required}"
 re2c_rid="${2:?re2c host RID is required}"
 packages="${QIGAO_NUGET_PACKAGES:-$RUNNER_TEMP/qigao-nuget}"
-config="$RUNNER_TEMP/qigao-nuget.config"
+config="$RUNNER_TEMP/NuGet.Config"
 project="$RUNNER_TEMP/qigao-native-sdk-restore.csproj"
 
 cat > "$config" <<EOF
@@ -29,13 +29,14 @@ cat > "$project" <<'EOF'
     <TargetFramework>net8.0</TargetFramework>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Salts.Native" Version="*" />
-    <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
-  </ItemGroup>
 </Project>
 EOF
 
+(
+  cd "$RUNNER_TEMP"
+  dotnet add "$project" package Salts.Native
+  dotnet add "$project" package Qigao.Re2c.Binary
+)
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate
 
 single_package_dir() {
