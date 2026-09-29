@@ -1,6 +1,13 @@
 name: SaltsUtils native SDK release
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/native-sdk-release.yml"
+      - "cmake/ci/restore-native-sdk.sh"
+      - "cmake/ci/restore-native-sdk.ps1"
+      - "packaging/nuget/**"
+      - "CMakeLists.txt"
   push:
     branches: [master]
     tags: ["v*"]
@@ -24,6 +31,7 @@ env:
 jobs:
   metadata:
     if: >-
+      github.event_name == 'pull_request' ||
       github.ref_type == 'tag' ||
       (github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils '))
     runs-on: ubuntu-latest
@@ -46,6 +54,8 @@ jobs:
               echo "release tag ${GITHUB_REF_NAME:-<unset>} does not match project version $tag" >&2
               exit 1
             fi
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            :
           else
             test "${GITHUB_REF_NAME:-}" = "master"
             test "${{ startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils ') }}" = "true"
