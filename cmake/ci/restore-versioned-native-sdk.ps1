@@ -41,7 +41,6 @@ $saltsPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "salts.native
 if ($saltsPackages.Count -ne 1) {
   throw "expected exactly one restored Salts.Native package, found $($saltsPackages.Count)"
 }
-$saltsVersion = $saltsPackages[0].Name
 $saltsRoot = Join-Path $saltsPackages[0].FullName "sdk\$SaltsRid"
 $re2cRoot = Join-Path $packages "qigao.re2c.binary\$re2cVersion\tools\$Re2cRid"
 $saltsConfig = Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"
@@ -56,7 +55,6 @@ $version = (& $re2cExe --version).Trim()
 if ($version -ne "re2c 4.6") { throw "unexpected re2c version: $version" }
 
 "SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
-"SALTS_SDK_VERSION=$saltsVersion" >> $env:GITHUB_ENV
 "RE2C_ROOT=$re2cRoot" >> $env:GITHUB_ENV
 "QIGAO_NUGET_PACKAGES=$packages" >> $env:GITHUB_ENV
 (Join-Path $re2cRoot "bin") >> $env:GITHUB_PATH
