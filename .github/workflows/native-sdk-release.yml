@@ -535,8 +535,8 @@ jobs:
           $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
-            "salts=$env:SALTS_SDK_VERSION"
-            "re2c=$env:RE2C_BINARY_VERSION"
+            "salts=$env:SALTS_PACKAGE_VERSION"
+            "re2c=$env:RE2C_PACKAGE_VERSION"
             "os=windows"
             "arch=x64"
             "profile=release"
