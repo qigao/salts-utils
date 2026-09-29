@@ -6815,12 +6815,19 @@ static Node *parse_schema_text_to_root(
     return NULL;
   }
 
-  if (databind_tbe_contract_apply(root, &err) != 0) {
+  /*
+   * Dynamic DataBind preserves declaration-order wire compatibility for
+   * schemas that predate canonical TBE format-plan ordering. Do not admit
+   * this tree as a canonical format plan here; explicit plan construction
+   * performs the strict fixed -> group -> variable validation.
+   */
+  if (databind_tbe_contract_apply_compat(root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
-      snprintf(error_buf, error_size, "TBE format error: %s", err.message);
+      snprintf(error_buf, error_size, "TBE compatibility overlay error: %s",
+               err.message);
     db_error_set(
         error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
-        "TBE format error: %s", err.message);
+        "TBE compatibility overlay error: %s", err.message);
     node_free(root);
     return NULL;
   }
