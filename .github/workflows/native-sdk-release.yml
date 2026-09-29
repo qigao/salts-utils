@@ -6,8 +6,8 @@ on:
     tags: ["v*"]
     paths:
       - ".github/workflows/native-sdk-release.yml"
-      - "cmake/ci/restore-versioned-native-sdk.sh"
-      - "cmake/ci/restore-versioned-native-sdk.ps1"
+      - "cmake/ci/restore-native-sdk.sh"
+      - "cmake/ci/restore-native-sdk.ps1"
       - "packaging/nuget/**"
       - "CMakeLists.txt"
 
@@ -20,7 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
   metadata:
@@ -90,11 +89,11 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore current Salts and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
 
       - name: Configure focused BindingPlan test build
         shell: bash
@@ -160,11 +159,11 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore current Salts and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
 
       - name: Configure focused Jinja CMeta build
         shell: bash
@@ -224,11 +223,11 @@ jobs:
           test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
           test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
 
-      - name: Restore Salts and re2c SDKs
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
       - name: Configure and install SaltsUtils
         shell: bash
         run: |
@@ -350,11 +349,11 @@ jobs:
           echo "rid=$rid" >> "$GITHUB_OUTPUT"
           echo "triplet=$triplet" >> "$GITHUB_OUTPUT"
 
-      - name: Restore Salts and re2c SDKs
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh "${{ steps.env.outputs.rid }}" "${{ steps.env.outputs.rid }}"
+        run: bash cmake/ci/restore-native-sdk.sh "${{ steps.env.outputs.rid }}" "${{ steps.env.outputs.rid }}"
       - name: Configure and install SaltsUtils
         shell: bash
         run: |
@@ -478,11 +477,11 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore current Salts and re2c 4.6.3
+      - name: Restore latest published native SDKs
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./cmake/ci/restore-versioned-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
 
       - name: Configure, build and install SaltsUtils SDK
         shell: cmd
@@ -574,11 +573,11 @@ jobs:
           test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
           test -n "${ANDROID_NDK_HOME:-}"
 
-      - name: Restore target Salts and host re2c SDKs
+      - name: Restore latest published native SDKs
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-versioned-native-sdk.sh android-arm64-v8a linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh android-arm64-v8a linux-x64
       - name: Build host Lemon
         shell: bash
         run: |
