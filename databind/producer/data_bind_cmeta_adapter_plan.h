@@ -30,7 +30,6 @@ typedef enum DataBindCMetaAdapterPlanStatus {
   DATA_BIND_CMETA_ADAPTER_PLAN_OK = 0,
   DATA_BIND_CMETA_ADAPTER_PLAN_INVALID_ARGUMENT,
   DATA_BIND_CMETA_ADAPTER_PLAN_INVALID_DESCRIPTOR,
-  DATA_BIND_CMETA_ADAPTER_PLAN_DUPLICATE_FUNCTION,
   DATA_BIND_CMETA_ADAPTER_PLAN_UNSUPPORTED_TYPE,
   DATA_BIND_CMETA_ADAPTER_PLAN_WRITE_FAILED,
   DATA_BIND_CMETA_ADAPTER_PLAN_OUT_OF_MEMORY
@@ -48,8 +47,8 @@ typedef enum DataBindCMetaAdapterPlanStatus {
  * rules and fails closed for every other type. Generated output contains no
  * DataBind runtime object, ownership requirement, or SaltsUtils include.
  *
- * Function order is retained. Duplicate semantic names are rejected. The
- * emitted rows retain function/parameter names, parameter flags, effects,
+ * Function order is retained. The emitted rows retain function/parameter
+ * names, parameter flags, effects,
  * properties and projected semantic carriers: for the admitted scalar set
  * these are exactly the semantic fields observed by cmeta_function_desc_equal().
  * This lets regeneration/golden qualification detect descriptor drift without
