@@ -16,14 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SALTS_SDK_VERSION: "1.8.4"
   RE2C_BINARY_VERSION: "4.6.3"
 
 jobs:
   metadata:
     if: >-
       github.ref_type == 'tag' ||
-      (github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils 4.1.5'))
+      (github.ref_name == 'master' && startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils '))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -46,7 +45,7 @@ jobs:
             fi
           else
             test "${GITHUB_REF_NAME:-}" = "master"
-            test "${{ startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils 4.1.5') }}" = "true"
+            test "${{ startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils ') }}" = "true"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -87,7 +86,7 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore current Salts and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -157,7 +156,7 @@ jobs:
           esac
           test "${VCPKG_NUGET_REPOSITORY:-}" = "https://github.com/qigao/vcpkg-cache"
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore current Salts and re2c 4.6.3
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -479,7 +478,7 @@ jobs:
           "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
           "VSINSTALL=$vsInstall" >> $env:GITHUB_ENV
 
-      - name: Restore published Salts 1.8.4 and re2c 4.6.3
+      - name: Restore current Salts and re2c 4.6.3
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
