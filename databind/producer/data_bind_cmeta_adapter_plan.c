@@ -186,7 +186,7 @@ static bool producer_emit_header_begin(
       producer_literal(write, context, "\n#define ") &&
       producer_symbol(write, context, prefix, "_adapter_plan_generated_h") &&
       producer_literal(write, context,
-          "\n\n#include <stddef.h>\n\n"
+          "\n\n#include <stddef.h>\n#include <stdint.h>\n\n"
           "typedef enum ") &&
       producer_symbol(write, context, prefix, "_adapter_carrier") &&
       producer_literal(write, context, " {\n  ") &&
@@ -198,19 +198,33 @@ static bool producer_emit_header_begin(
       producer_literal(write, context, "\n} ") &&
       producer_symbol(write, context, prefix, "_adapter_carrier") &&
       producer_literal(write, context, ";\n\ntypedef struct ") &&
+      producer_symbol(write, context, prefix, "_adapter_param_plan") &&
+      producer_literal(write, context,
+          " {\n"
+          "  const char *name;\n"
+          "  uint32_t flags;\n"
+          "  ") &&
+      producer_symbol(write, context, prefix, "_adapter_carrier") &&
+      producer_literal(write, context, " carrier;\n} ") &&
+      producer_symbol(write, context, prefix, "_adapter_param_plan") &&
+      producer_literal(write, context, ";\n\ntypedef struct ") &&
       producer_symbol(write, context, prefix, "_adapter_function_plan") &&
       producer_literal(write, context,
           " {\n"
           "  size_t source_ordinal;\n"
           "  const char *function_name;\n"
           "  const ") &&
-      producer_symbol(write, context, prefix, "_adapter_carrier") &&
+      producer_symbol(write, context, prefix, "_adapter_param_plan") &&
       producer_literal(write, context,
-          " *param_carriers;\n"
+          " *params;\n"
           "  size_t param_count;\n"
           "  ") &&
       producer_symbol(write, context, prefix, "_adapter_carrier") &&
-      producer_literal(write, context, " return_carrier;\n} ") &&
+      producer_literal(write, context,
+          " return_carrier;\n"
+          "  uint32_t effects;\n"
+          "  uint32_t properties;\n"
+          "} ") &&
       producer_symbol(write, context, prefix, "_adapter_function_plan") &&
       producer_literal(write, context, ";\n\n");
 }
@@ -226,7 +240,7 @@ static bool producer_emit_param_array(
   if (function->param_count == 0u) return true;
 
   if (!producer_literal(write, context, "static const ") ||
-      !producer_symbol(write, context, prefix, "_adapter_carrier") ||
+      !producer_symbol(write, context, prefix, "_adapter_param_plan") ||
       !producer_literal(write, context, " ") ||
       !producer_symbol(write, context, prefix, "_adapter_params_") ||
       !producer_size(write, context, function_index) ||
@@ -240,9 +254,13 @@ static bool producer_emit_param_array(
       return false;
     suffix = producer_carrier_suffix(carrier);
     if (suffix == NULL ||
-        !producer_literal(write, context, "  ") ||
+        !producer_literal(write, context, "  {") ||
+        !producer_c_string(write, context, function->params[i].name) ||
+        !producer_literal(write, context, ", ") ||
+        !producer_size(write, context, (size_t)function->params[i].flags) ||
+        !producer_literal(write, context, "u, ") ||
         !producer_symbol(write, context, prefix, suffix) ||
-        !producer_literal(write, context, ",\n"))
+        !producer_literal(write, context, "},\n"))
       return false;
   }
   return producer_literal(write, context, "};\n\n");
@@ -291,7 +309,11 @@ static bool producer_emit_function_rows(
         !producer_size(write, context, function->param_count) ||
         !producer_literal(write, context, "u, ") ||
         !producer_symbol(write, context, prefix, suffix) ||
-        !producer_literal(write, context, "},\n"))
+        !producer_literal(write, context, ", ") ||
+        !producer_size(write, context, (size_t)function->effects) ||
+        !producer_literal(write, context, "u, ") ||
+        !producer_size(write, context, (size_t)function->properties) ||
+        !producer_literal(write, context, "u},\n"))
       return false;
   }
 
