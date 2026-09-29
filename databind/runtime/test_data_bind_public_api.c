@@ -1169,6 +1169,64 @@ spec("data_bind public API") {
     }
   }
 
+  it("preserves legacy declaration-order dynamic binary wire") {
+    const char *schema =
+        "schema Legacy [byte_order(little)]; "
+        "message LegacyMessage { string id; uint64 generation; }";
+    const char *json = "{\"id\":\"x\",\"generation\":7}";
+    const uint8_t expected[] = {
+        1, 0, 0, 0, 'x',
+        7, 0, 0, 0, 0, 0, 0, 0
+    };
+    DataBind *codec = NULL;
+    DataBindObject *object = NULL;
+    DataBindObject *roundtrip = NULL;
+    DataBindError err = DATA_BIND_ERROR_INIT;
+    uint8_t *wire = NULL;
+    size_t wire_len = 0;
+
+    check_equal(data_bind_create_from_text(
+                    schema, strlen(schema), &codec, &err),
+                DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec != NULL) {
+      check_equal(data_bind_object_from_json(
+                      codec, "LegacyMessage", json, strlen(json),
+                      &object, &err),
+                  DATA_BIND_OK);
+      check_not_null(object);
+      if (object != NULL) {
+        check_equal(data_bind_object_serialize_bin(
+                        codec, object, &wire, &wire_len, &err),
+                    DATA_BIND_OK);
+        check_equal(wire_len, sizeof(expected));
+        if (wire != NULL && wire_len == sizeof(expected))
+          check_equal(wire, expected, sizeof(expected));
+
+        check_equal(data_bind_object_from_bin(
+                        codec, "LegacyMessage", wire, wire_len,
+                        &roundtrip, &err),
+                    DATA_BIND_OK);
+        check_not_null(roundtrip);
+        if (roundtrip != NULL) {
+          const DataBindValue *value = data_bind_object_value(roundtrip);
+          check_equal(
+              data_bind_value_as_string(data_bind_value_get(value, "id")),
+              "x");
+          check_equal(
+              data_bind_value_as_int(
+                  data_bind_value_get(value, "generation")),
+              7);
+        }
+      }
+    }
+
+    data_bind_binary_free(wire);
+    data_bind_object_free(roundtrip);
+    data_bind_object_free(object);
+    data_bind_free(codec);
+  }
+
   it("preserves embedded NUL bytes in UTF-8 strings across JSON clone and binary") {
     const char *schema = "message Text { string value; }";
     const char *json = "{\"value\":\"A\\u0000B\"}";
