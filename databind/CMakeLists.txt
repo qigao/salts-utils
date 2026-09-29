@@ -12,6 +12,7 @@ add_subdirectory(formats/tbe)
 add_subdirectory(schema)
 add_subdirectory(idl)
 add_subdirectory(binding/compiler)
+add_subdirectory(producer)
 target_link_libraries(databind_tbe_contract
   PUBLIC Salts::IDL
   PRIVATE Salts::Schema Salts::Core)
