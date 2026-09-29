@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct NativeArena {
@@ -27,6 +28,11 @@ typedef struct NativePlan {
   size_t scratch_peak;
   size_t scratch_alignment;
 } NativePlan;
+
+struct DataBindNativePlan {
+  const cmeta_data_desc *shape;
+  DataBindNativeRequirements requirements;
+};
 
 typedef struct NativeDecode {
   const DataBindNativeOptions *options;
@@ -1769,6 +1775,315 @@ DataBindStatus data_bind_native_measure(
   *requirements = measured;
   native_reset_diagnostic(diagnostic);
   return DATA_BIND_OK;
+}
+
+static DataBindStatus native_plan_options_preflight(
+    const DataBindNativePlan *plan,
+    const DataBindNativeOptions *options,
+    DataBindNativeDiagnostic *diagnostic,
+    const char **out_path) {
+  const char *root_path = NULL;
+
+  if (out_path != NULL) *out_path = NULL;
+  if (!native_diagnostic_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (plan == NULL || plan->shape == NULL || plan->shape->storage_type == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+                       "Native plan is unavailable");
+  root_path = plan->shape->display_name;
+  if (options == NULL ||
+      options->size < offsetof(DataBindNativeOptions, abi_version) +
+                          sizeof(options->abi_version))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native options record is missing its ABI header");
+  if (options->size < sizeof(DataBindNativeOptions) ||
+      options->abi_version != DATA_BIND_NATIVE_ABI_VERSION)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path, "Native options ABI is incompatible");
+  native_reset_diagnostic(diagnostic);
+  if (options->max_depth < plan->requirements.descriptor_depth ||
+      options->max_items < plan->requirements.descriptor_nodes)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+        "Runtime native depth/item budget is smaller than admitted plan requirements");
+  if (out_path != NULL) *out_path = root_path;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus native_plan_destination_preflight(
+    const DataBindNativePlan *plan,
+    const DataBindNativeOptions *options,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic,
+    const char **out_path) {
+  const cmeta_type_desc *type;
+  const char *root_path = NULL;
+  DataBindStatus status =
+      native_plan_options_preflight(plan, options, diagnostic, &root_path);
+
+  if (status != DATA_BIND_OK) return status;
+  type = plan->shape->storage_type;
+  if (destination == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path, "Native plan destination must be non-null");
+  if (destination_bytes < type->size || type->align == 0u ||
+      (uintptr_t)destination % type->align != 0u)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native plan destination size or alignment is invalid");
+  if (!native_range_valid(destination, destination_bytes, NULL, NULL))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path, "Native plan destination range overflows address space");
+  if (native_ranges_overlap(plan, sizeof(*plan), destination, destination_bytes) ||
+      native_ranges_overlap(options, sizeof(*options), destination,
+                            destination_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native plan control records alias destination storage");
+  if (diagnostic != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            destination, destination_bytes))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (out_path != NULL) *out_path = root_path;
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus native_plan_decode_preflight(
+    const DataBindNativePlan *plan,
+    const DataBindNativeOptions *options,
+    cserde_reader *reader,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic,
+    NativeArena *out_arena,
+    const char **out_path) {
+  NativeArena arena;
+  uintptr_t workspace_address;
+  size_t leading_padding;
+  size_t required;
+  const char *root_path = NULL;
+  DataBindStatus status = native_plan_destination_preflight(
+      plan, options, destination, destination_bytes, diagnostic, &root_path);
+
+  if (status != DATA_BIND_OK) return status;
+  if (reader == NULL || out_arena == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path, "Native plan decode arguments must be non-null");
+  if (options->workspace == NULL || options->workspace_bytes == 0u ||
+      !native_range_valid(options->workspace, options->workspace_bytes,
+                          NULL, NULL))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native plan workspace is missing or invalid");
+  if (native_ranges_overlap(options->workspace, options->workspace_bytes,
+                            destination, destination_bytes) ||
+      native_ranges_overlap(reader, sizeof(*reader),
+                            options->workspace, options->workspace_bytes) ||
+      native_ranges_overlap(reader, sizeof(*reader),
+                            destination, destination_bytes) ||
+      native_ranges_overlap(plan, sizeof(*plan),
+                            options->workspace, options->workspace_bytes) ||
+      native_ranges_overlap(options, sizeof(*options),
+                            options->workspace, options->workspace_bytes))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Native plan control records alias mutable decode storage");
+  if (diagnostic != NULL &&
+      native_ranges_overlap(diagnostic, sizeof(*diagnostic),
+                            options->workspace, options->workspace_bytes))
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  workspace_address = (uintptr_t)options->workspace;
+  leading_padding =
+      (size_t)(workspace_address % plan->requirements.workspace_alignment);
+  if (leading_padding != 0u)
+    leading_padding =
+        plan->requirements.workspace_alignment - leading_padding;
+  if (!native_size_add(
+          leading_padding, plan->requirements.decode_bytes, &required) ||
+      required > options->workspace_bytes)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+        "Runtime workspace is smaller than admitted native plan requirements");
+
+  arena.base = (unsigned char *)options->workspace + leading_padding;
+  arena.size = options->workspace_bytes - leading_padding;
+  arena.offset = 0u;
+  *out_arena = arena;
+  if (out_path != NULL) *out_path = root_path;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_native_plan_compile(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    DataBindNativePlan **out_plan,
+    DataBindNativeDiagnostic *diagnostic) {
+  DataBindNativeRequirements requirements =
+      (DataBindNativeRequirements)DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+  DataBindNativePlan *plan;
+  DataBindStatus status;
+
+  if (!native_diagnostic_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (out_plan == NULL || *out_plan != NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       NULL, "Native plan output must be an empty pointer");
+  if (options != NULL &&
+      (native_ranges_overlap(out_plan, sizeof(*out_plan),
+                             options, sizeof(*options)) ||
+       native_ranges_overlap(out_plan, sizeof(*out_plan),
+                             options->workspace, options->workspace_bytes)))
+    return DATA_BIND_ERR_INVALID_ARG;
+  if (diagnostic != NULL &&
+      native_ranges_overlap(out_plan, sizeof(*out_plan),
+                            diagnostic, sizeof(*diagnostic)))
+    return DATA_BIND_ERR_INVALID_ARG;
+
+  status = data_bind_native_measure(
+      options, shape, &requirements, diagnostic);
+  if (status != DATA_BIND_OK) return status;
+
+  plan = (DataBindNativePlan *)malloc(sizeof(*plan));
+  if (plan == NULL)
+    return native_fail(diagnostic, DATA_BIND_ERR_OOM, CSERDE_OK,
+                       shape != NULL ? shape->display_name : NULL,
+                       "Native plan allocation failed");
+  plan->shape = shape;
+  plan->requirements = requirements;
+  *out_plan = plan;
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
+}
+
+void data_bind_native_plan_free(DataBindNativePlan *plan) {
+  free(plan);
+}
+
+const cmeta_data_desc *
+data_bind_native_plan_data(const DataBindNativePlan *plan) {
+  return plan != NULL ? plan->shape : NULL;
+}
+
+const DataBindNativeRequirements *
+data_bind_native_plan_requirements(const DataBindNativePlan *plan) {
+  return plan != NULL ? &plan->requirements : NULL;
+}
+
+DataBindStatus data_bind_native_plan_init(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  const char *root_path = NULL;
+  DataBindStatus status = native_plan_destination_preflight(
+      plan, options, destination, destination_bytes, diagnostic, &root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  status = native_init_value(diagnostic, plan->shape, destination, root_path);
+  if (status != DATA_BIND_OK) return status;
+  if (!native_value_is_zero(plan->shape, destination)) {
+    (void)native_restore_value(plan->shape, destination);
+    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK,
+                       root_path,
+                       "Native plan initialization did not establish semantic zero");
+  }
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_native_plan_clear(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  const char *root_path = NULL;
+  DataBindStatus status = native_plan_destination_preflight(
+      plan, options, destination, destination_bytes, diagnostic, &root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  status = native_restore_value(plan->shape, destination);
+  if (status != DATA_BIND_OK ||
+      !native_value_is_zero(plan->shape, destination))
+    return native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK,
+                       root_path,
+                       "Native plan clear did not restore semantic zero");
+  native_reset_diagnostic(diagnostic);
+  return DATA_BIND_OK;
+}
+
+static DataBindStatus native_plan_decode_bounded(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
+  NativeArena arena;
+  NativeArena scratch;
+  NativeDecode decode;
+  void *temporary;
+  const char *root_path = NULL;
+  DataBindStatus status = native_plan_decode_preflight(
+      plan, options, reader, destination, destination_bytes,
+      diagnostic, &arena, &root_path);
+
+  if (status != DATA_BIND_OK) return status;
+  if (!native_value_is_zero(plan->shape, destination))
+    return native_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK,
+                       root_path,
+                       "Destination is not in canonical semantic-zero state");
+
+  temporary = native_arena_alloc(
+      &arena, plan->shape->storage_type->size,
+      plan->shape->storage_type->align);
+  if (temporary == NULL ||
+      native_arena_alloc(
+          &arena, 0u, plan->requirements.workspace_alignment) == NULL)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, CSERDE_OK, root_path,
+        "Runtime workspace cannot realize admitted native plan layout");
+
+  status = native_init_value(diagnostic, plan->shape, temporary, root_path);
+  if (status != DATA_BIND_OK) return status;
+
+  scratch = arena;
+  memset(&decode, 0, sizeof(decode));
+  decode.options = options;
+  decode.diagnostic = diagnostic;
+  decode.reader = reader;
+  decode.max_buffer_bytes = max_buffer_bytes;
+  status = native_decode_value(
+      &decode, plan->shape, temporary, 1u, root_path, &scratch);
+  if (status == DATA_BIND_OK) {
+    status = native_publish_value(
+        diagnostic, plan->shape, destination, temporary, root_path);
+    if (status != DATA_BIND_OK &&
+        native_restore_value(plan->shape, destination) != DATA_BIND_OK)
+      status = native_fail(
+          diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
+          "Destination rollback did not restore semantic zero");
+  }
+
+  if (native_restore_value(plan->shape, temporary) != DATA_BIND_OK &&
+      status == DATA_BIND_OK)
+    status = native_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
+        "Temporary native storage did not restore semantic zero");
+  if (status == DATA_BIND_OK) native_reset_diagnostic(diagnostic);
+  return status;
+}
+
+DataBindStatus data_bind_native_plan_decode(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    DataBindNativeDiagnostic *diagnostic) {
+  return native_plan_decode_bounded(
+      plan, options, reader, destination, destination_bytes,
+      SIZE_MAX, diagnostic);
+}
+
+DataBindStatus data_bind_native_plan_decode_bounded(
+    const DataBindNativePlan *plan, const DataBindNativeOptions *options,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
+  return native_plan_decode_bounded(
+      plan, options, reader, destination, destination_bytes,
+      max_buffer_bytes, diagnostic);
 }
 
 static DataBindStatus native_lifecycle_preflight(
