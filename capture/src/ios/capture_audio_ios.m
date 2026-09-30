@@ -72,8 +72,6 @@ void ios_audio_destroy(salts_capture_t *capture) {
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                             const salts_audio_capture_config_t *config) {
-    (void)device_id;
-
     @autoreleasepool {
         ios_audio_capture_t *cap = calloc(1, sizeof(ios_audio_capture_t));
         if (!cap) return NULL;
@@ -95,12 +93,34 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
 
         AVAudioSession *session = [AVAudioSession sharedInstance];
         NSError *error = nil;
+        AVAudioSessionPortDescription *selected_input = nil;
+
+        if (device_id && device_id[0]) {
+            NSString *requested_uid =
+                [NSString stringWithUTF8String:device_id];
+            if (!requested_uid) {
+                ios_audio_destroy((salts_capture_t *)cap);
+                return NULL;
+            }
+            for (AVAudioSessionPortDescription *input in session.availableInputs) {
+                if ([input.UID isEqualToString:requested_uid]) {
+                    selected_input = input;
+                    break;
+                }
+            }
+            if (!selected_input) {
+                ios_audio_destroy((salts_capture_t *)cap);
+                return NULL;
+            }
+        }
 
         if (![session
                 setCategory:AVAudioSessionCategoryPlayAndRecord
                  withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker |
                              AVAudioSessionCategoryOptionAllowBluetooth
                        error:&error] ||
+            (selected_input &&
+             ![session setPreferredInput:selected_input error:&error]) ||
             ![session setPreferredSampleRate:cap->sample_rate error:&error] ||
             ![session setPreferredIOBufferDuration:0.005 error:&error] ||
             ![session setActive:YES error:&error]) {
