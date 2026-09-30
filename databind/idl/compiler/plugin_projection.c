@@ -105,7 +105,7 @@ static int plugin_native_ir_valid(
       return 0;
 
     ++selected_count;
-    if (selected_count > SALTS_PLUGIN_MAX_EXPORTS)
+    if (selected_count >= SALTS_PLUGIN_MAX_EXPORTS)
       return 0;
   }
 
@@ -810,6 +810,7 @@ static int plugin_write_source(
       fputs(
           "\n#include <salts/plugin.h>\n"
           "#include <data_bind_native_binding.h>\n"
+          "#include <data_bind_plugin_catalog.h>\n"
           "#include <cmeta/function.h>\n\n",
           file) == EOF)
     return 0;
@@ -819,11 +820,94 @@ static int plugin_write_source(
             file, &ir->operations[i], 0) != 0 ||
         fputc('\n', file) == EOF ||
         databind_compiler_service_native_emit_execution(
-            file, &ir->operations[i], 0) != 0)
+            file, &ir->operations[i], 0) != 0 ||
+        databind_compiler_service_native_emit_binding(
+            file, &ir->operations[i]) != 0 ||
+        fputc('\n', file) == EOF)
+      return 0;
+  }
+
+  if (ir->operation_count == 0u ||
+      ir->operations[0].schema_name == NULL)
+    return 0;
+
+  if (fprintf(
+          file,
+          "static DataBindStatus databind_plugin_catalog_create_codec(\n"
+          "    void *self, DataBind **out_codec, DataBindError *error) {\n"
+          "  (void)self;\n"
+          "  return %s_codec_create(out_codec, error);\n"
+          "}\n\n"
+          "static size_t databind_plugin_catalog_operation_count(void *self) {\n"
+          "  (void)self;\n"
+          "  return %zuu;\n"
+          "}\n\n"
+          "static DataBindStatus databind_plugin_catalog_operation_at(\n"
+          "    void *self, size_t index, DataBindPluginOperationBinding *out,\n"
+          "    DataBindError *error) {\n"
+          "  DataBindStatus status;\n"
+          "  DataBindServiceNativeBinding native =\n"
+          "      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);\n"
+          "  (void)self;\n"
+          "  if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  *out = (DataBindPluginOperationBinding)\n"
+          "      DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
+          "  switch (index) {\n",
+          ir->operations[0].schema_name,
+          ir->operation_count) < 0)
+    return 0;
+
+  for (i = 0u; i < ir->operation_count; ++i) {
+    const databind_compiler_service_native_operation *operation =
+        &ir->operations[i];
+    if (fprintf(file, "  case %zuu:\n", i) < 0 ||
+        fputs("    out->export_id = ", file) == EOF ||
+        !plugin_write_c_string(file, operation->qualified_operation) ||
+        fputs(";\n    out->service_name = ", file) == EOF ||
+        !plugin_write_c_string(file, operation->service_name) ||
+        fputs(";\n    out->operation_name = ", file) == EOF ||
+        !plugin_write_c_string(file, operation->operation_name) ||
+        fprintf(
+            file,
+            ";\n"
+            "    native = (DataBindServiceNativeBinding)\n"
+            "        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);\n"
+            "    status = %s__databind_native_binding(\n"
+            "        &out->request, &out->response, &native, error);\n"
+            "    if (status != DATA_BIND_OK) {\n"
+            "      *out = (DataBindPluginOperationBinding)\n"
+            "          DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
+            "      return status;\n"
+            "    }\n"
+            "    out->function = native.function;\n"
+            "    out->errors = native.errors;\n"
+            "    out->error_count = native.error_count;\n"
+            "    out->error_param_index = native.error_param_index;\n"
+            "    out->error_envelope_bytes = native.error_envelope_bytes;\n"
+            "    out->error_kind_offset = native.error_kind_offset;\n"
+            "    out->error_kind_bytes = native.error_kind_bytes;\n"
+            "    return data_bind_plugin_operation_binding_valid(out)\n"
+            "               ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;\n",
+            operation->symbol) < 0)
       return 0;
   }
 
   if (fputs(
+          "  default:\n"
+          "    return DATA_BIND_ERR_INVALID_ARG;\n"
+          "  }\n"
+          "}\n\n"
+          "CMETA_IMPLEMENTS(data_bind_plugin_catalog,\n"
+          "                 databind_generated_service_catalog, 0u,\n"
+          "    .create_codec = databind_plugin_catalog_create_codec,\n"
+          "    .operation_count = databind_plugin_catalog_operation_count,\n"
+          "    .operation_at = databind_plugin_catalog_operation_at\n"
+          ");\n"
+          "static char databind_plugin_catalog_token;\n"
+          "static data_bind_plugin_catalog databind_plugin_catalog_value = {\n"
+          "    &databind_plugin_catalog_token,\n"
+          "    &databind_generated_service_catalog_vtable\n"
+          "};\n\n"
           "static const salts_plugin_export databind_plugin_exports[] = {\n",
           file) == EOF)
     return 0;
@@ -863,6 +947,18 @@ static int plugin_write_source(
   }
 
   if (fputs(
+          "  {\n"
+          "    .struct_size = SALTS_PLUGIN_EXPORT_SIZE,\n"
+          "    .kind = SALTS_PLUGIN_EXPORT_INTERFACE,\n"
+          "    .contract_version = DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION,\n"
+          "    .capabilities = 0u,\n"
+          "    .export_id = DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,\n"
+          "    .contract_id = DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,\n"
+          "    .value.interface = {\n"
+          "      .desc = &data_bind_plugin_catalog_interface_meta,\n"
+          "      .value = &databind_plugin_catalog_value,\n"
+          "    },\n"
+          "  },\n"
           "};\n\n"
           "static const salts_plugin_manifest databind_plugin_manifest = {\n"
           "  .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,\n"
@@ -887,7 +983,7 @@ static int plugin_write_source(
           config->plugin_version_major,
           config->plugin_version_minor,
           config->plugin_version_patch,
-          ir->operation_count) < 0)
+          ir->operation_count + 1u) < 0)
     return 0;
 
   return 1;
