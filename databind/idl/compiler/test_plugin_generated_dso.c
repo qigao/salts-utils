@@ -2,6 +2,7 @@
 #include <tinytest.h>
 
 #include "data_bind_binding_plan.h"
+#include "data_bind_plugin_catalog.h"
 #include "image_binding_native.h"
 
 #include <stddef.h>
@@ -176,13 +177,12 @@ spec("generated DataBind Plugin Service") {
     salts_plugin_lease lease = {0};
     const salts_plugin_manifest *manifest = NULL;
     const salts_plugin_export *entry = NULL;
+    const salts_plugin_export *catalog_entry = NULL;
+    data_bind_plugin_catalog *catalog = NULL;
+    DataBindPluginOperationBinding operation =
+        DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
-    const cmeta_data_desc *request_data = NULL;
-    const cmeta_data_desc *response_data = NULL;
-    DataBindNativeTypeBinding request_native;
-    DataBindNativeTypeBinding response_native;
-    DataBindServiceNativeBinding native;
     DataBindBindingProjection projection = {
         sizeof(DataBindBindingProjection),
         DATA_BIND_BINDING_PLAN_ABI_VERSION,
@@ -231,7 +231,7 @@ spec("generated DataBind Plugin Service") {
 
     check_not_null(manifest);
     check_equal(manifest->plugin_id, "Image.ImageProcessor");
-    check_equal(manifest->export_count, (size_t)2u);
+    check_equal(manifest->export_count, (size_t)3u);
     check_equal(salts_plugin_manifest_find_export(
                     manifest, "Image.Codec.Decode", &entry),
                 SALTS_PLUGIN_OK);
@@ -260,41 +260,73 @@ spec("generated DataBind Plugin Service") {
                     entry->value.function.abi, 1u),
                 CMETA_ABI_OBJECT_POINTER);
 
-    /*
-     * The same canonical IDL generated independent host-side native CMeta
-     * descriptors. BindingPlan admits the Plugin FunctionDesc by semantic
-     * type identity rather than descriptor address.
-     */
-    check_equal(Image_codec_create(&codec, &error), DATA_BIND_OK);
-    check_not_null(codec);
-    check_equal(DecodeRequest_cmeta_data(&request_data, &error),
-                DATA_BIND_OK);
-    check_equal(DecodeResponse_cmeta_data(&response_data, &error),
-                DATA_BIND_OK);
-    check_not_null(request_data);
-    check_not_null(response_data);
+    check_equal(salts_plugin_manifest_find_export(
+                    manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,
+                    &catalog_entry),
+                SALTS_PLUGIN_OK);
+    check_not_null(catalog_entry);
+    check_equal(catalog_entry->kind, SALTS_PLUGIN_EXPORT_INTERFACE);
+    check_equal(salts_plugin_export_require_interface(
+                    catalog_entry,
+                    DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,
+                    DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION,
+                    0u,
+                    data_bind_plugin_catalog_interface()),
+                SALTS_PLUGIN_OK);
+    catalog =
+        (data_bind_plugin_catalog *)catalog_entry->value.interface.value;
+    check_true(data_bind_plugin_catalog_valid(catalog));
+    check_equal(data_bind_plugin_catalog_operation_count(catalog), (size_t)2u);
 
-    request_native =
-        (DataBindNativeTypeBinding)
-            DATA_BIND_NATIVE_TYPE_BINDING_INIT(
-                "DecodeRequest", request_data);
-    response_native =
-        (DataBindNativeTypeBinding)
-            DATA_BIND_NATIVE_TYPE_BINDING_INIT(
-                "DecodeResponse", response_data);
-    native =
-        (DataBindServiceNativeBinding)
-            DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
-                entry->value.function.desc,
-                &request_native,
-                &response_native);
+    {
+      size_t index;
+      int found = 0;
+      for (index = 0u;
+           index < data_bind_plugin_catalog_operation_count(catalog);
+           ++index) {
+        operation =
+            (DataBindPluginOperationBinding)
+                DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
+        error = (DataBindError)DATA_BIND_ERROR_INIT;
+        check_equal(
+            data_bind_plugin_catalog_operation_at(
+                catalog, index, &operation, &error),
+            DATA_BIND_OK);
+        check_true(data_bind_plugin_operation_binding_valid(&operation));
+        if (operation.export_id != NULL &&
+            strcmp(operation.export_id, "Image.Codec.Decode") == 0) {
+          found = 1;
+          break;
+        }
+      }
+      check_true(found);
+    }
+
+    check_equal(operation.service_name, "Codec");
+    check_equal(operation.operation_name, "Decode");
+    check_true(operation.native.function == entry->value.function.desc);
+    check_true(cmeta_function_desc_equal(
+        operation.native.function, entry->value.function.desc));
+    check_true(cmeta_data_desc_valid(operation.request.data));
+    check_true(cmeta_data_desc_valid(operation.response.data));
+
+    /*
+     * The generated catalog is the logical Service authority. It creates the
+     * exact schema codec and returns caller-owned request/response/native
+     * binding storage joined to the same FunctionDesc as the FUNCTION export.
+     */
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_plugin_catalog_create_codec(catalog, &codec, &error),
+        DATA_BIND_OK);
+    check_not_null(codec);
 
     check_equal(data_bind_binding_plan_compile_service(
                     codec,
                     "Codec",
                     "Decode",
                     &projection,
-                    &native,
+                    &operation.native,
                     &plan,
                     &diagnostic),
                 DATA_BIND_OK);
@@ -348,14 +380,14 @@ spec("generated DataBind Plugin Service") {
     data_bind_binding_plan_free(plan);
     plan = NULL;
     check_equal(data_bind_native_clear(
-                    &native_options, request_data,
+                    &native_options, operation.request.data,
                     &request, sizeof(request),
                     &native_diagnostic),
                 DATA_BIND_OK);
     native_diagnostic =
         (DataBindNativeDiagnostic)DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     check_equal(data_bind_native_clear(
-                    &native_options, response_data,
+                    &native_options, operation.response.data,
                     &response, sizeof(response),
                     &native_diagnostic),
                 DATA_BIND_OK);
