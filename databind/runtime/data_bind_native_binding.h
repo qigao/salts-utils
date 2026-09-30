@@ -21,6 +21,7 @@ extern "C" {
  */
 enum { DATA_BIND_NATIVE_BINDING_ABI_VERSION = 2u };
 enum { DATA_BIND_NATIVE_EXECUTION_ABI_VERSION = 1u };
+enum { DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION = 1u };
 
 #if defined(_WIN32)
   #define DATA_BIND_NATIVE_CALL __cdecl
@@ -102,6 +103,39 @@ typedef struct DataBindNativeTypeBinding {
 #define DATA_BIND_NATIVE_TYPE_BINDING_INIT(TYPE_NAME, DATA) \
   { sizeof(DataBindNativeTypeBinding), DATA_BIND_NATIVE_BINDING_ABI_VERSION, \
     (TYPE_NAME), (DATA), NULL, 0u, NULL, 0u }
+
+/** Resolve one exact generated Message native binding into caller-owned metadata. */
+typedef DataBindStatus (*DataBindNativeTypeBindingResolverFn)(
+    DataBindNativeTypeBinding *out,
+    DataBindError *error);
+
+/**
+ * Transport- and Service-neutral generated Message native-binding artifact.
+ *
+ * type_name and native_binding have generated/static lifetime. The resolver
+ * performs no allocation and returns the canonical CMeta graph plus DataBind
+ * presence/null overlays for the exact IDL Message.
+ */
+typedef struct DataBindMessageNativeArtifact {
+  size_t size;
+  uint32_t abi_version;
+  const char *type_name;
+  DataBindNativeTypeBindingResolverFn native_binding;
+} DataBindMessageNativeArtifact;
+
+#define DATA_BIND_MESSAGE_NATIVE_ARTIFACT_INIT \
+  { sizeof(DataBindMessageNativeArtifact), \
+    DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION, NULL, NULL }
+
+static inline int
+data_bind_message_native_artifact_valid(
+    const DataBindMessageNativeArtifact *artifact) {
+  return artifact != NULL &&
+         artifact->size >= sizeof(*artifact) &&
+         artifact->abi_version == DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION &&
+         artifact->type_name != NULL && artifact->type_name[0] != '\0' &&
+         artifact->native_binding != NULL;
+}
 
 #ifdef __cplusplus
 }

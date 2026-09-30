@@ -138,6 +138,60 @@ static TbeTypedType {{name}}_TYPED_TYPE = {
 };
 {{/messages}}
 
+{{#messages}}
+{{#has_optional_fields}}
+static const DataBindNativeStateBinding {{name}}_NATIVE_PRESENCE[] = {
+{{#fields}}{{#is_optional}}
+    { sizeof(DataBindNativeStateBinding), "{{name}}",
+      offsetof({{owner_name}}_t, _presence), {{optional_bit_index}}u },
+{{/is_optional}}{{/fields}}
+};
+{{/has_optional_fields}}
+{{#has_nullable_fields}}
+static const DataBindNativeStateBinding {{name}}_NATIVE_NULLS[] = {
+{{#fields}}{{#is_nullable}}
+    { sizeof(DataBindNativeStateBinding), "{{name}}",
+      offsetof({{owner_name}}_t, _nulls), {{nullable_bit_index}}u },
+{{/is_nullable}}{{/fields}}
+};
+{{/has_nullable_fields}}
+
+static DataBindStatus {{name}}__databind_message_native_binding(
+    DataBindNativeTypeBinding *out, DataBindError *error) {
+    const cmeta_data_desc *data = NULL;
+    DataBindStatus status;
+    DataBindNativeTypeBinding value;
+    if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;
+    status = {{name}}_cmeta_data(&data, error);
+    if (status != DATA_BIND_OK) return status;
+    value = (DataBindNativeTypeBinding)
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT("{{name}}", data);
+{{#has_optional_fields}}
+    value.presence = {{name}}_NATIVE_PRESENCE;
+    value.presence_count =
+        sizeof({{name}}_NATIVE_PRESENCE) / sizeof({{name}}_NATIVE_PRESENCE[0]);
+{{/has_optional_fields}}
+{{#has_nullable_fields}}
+    value.nulls = {{name}}_NATIVE_NULLS;
+    value.null_count =
+        sizeof({{name}}_NATIVE_NULLS) / sizeof({{name}}_NATIVE_NULLS[0]);
+{{/has_nullable_fields}}
+    *out = value;
+    return DATA_BIND_OK;
+}
+
+static const DataBindMessageNativeArtifact {{name}}_NATIVE_ARTIFACT = {
+    sizeof(DataBindMessageNativeArtifact),
+    DATA_BIND_MESSAGE_NATIVE_ARTIFACT_ABI_VERSION,
+    "{{name}}",
+    {{name}}__databind_message_native_binding
+};
+
+const DataBindMessageNativeArtifact *{{name}}_native_artifact(void) {
+    return &{{name}}_NATIVE_ARTIFACT;
+}
+{{/messages}}
+
 /* #45: native graph metadata is immutable and borrowed. ABI-v3 descriptors
  * join this structural graph to the separate generated schema overlay. */
 #include <salts_cmeta_fixed_width.h>
