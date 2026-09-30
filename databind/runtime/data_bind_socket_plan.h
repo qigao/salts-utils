@@ -29,9 +29,7 @@ typedef enum DataBindSocketFraming {
  * The resolver fills caller-owned metadata from immutable generated CMeta/state
  * tables. It performs no allocation and retains no codec or runtime value.
  */
-typedef DataBindStatus (*DataBindSocketNativeBindingResolverFn)(
-    DataBindNativeTypeBinding *out,
-    DataBindError *error);
+typedef DataBindNativeTypeBindingResolverFn DataBindSocketNativeBindingResolverFn;
 
 /*
  * Immutable generated Channel delivery plan consumed by CNet/application code.
