@@ -35,6 +35,14 @@ suite("capture Android MediaProjection surface") {
   }
 }
 
+suite("capture Android audio identity") {
+  it("rejects an unsupported explicit microphone instead of using default") {
+    salts_audio_capture_config_t config = {48000, 1, 16, 20};
+
+    check_null(salts_audio_capture_create("not-default", &config));
+  }
+}
+
 suite("capture Android lifecycle") {
   it("starts the native screen lifecycle before Java produces frames") {
     salts_screen_capture_config_t config = {0, 30, 1, 0};
