@@ -72,6 +72,15 @@ void ios_audio_destroy(salts_capture_t *capture) {
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                             const salts_audio_capture_config_t *config) {
+    if (config &&
+        ((config->sample_rate != 8000 && config->sample_rate != 16000 &&
+          config->sample_rate != 24000 && config->sample_rate != 48000) ||
+         (config->channels != 1 && config->channels != 2) ||
+         (config->bits_per_sample != 16 && config->bits_per_sample != 32) ||
+         config->frame_size_ms <= 0)) {
+        return NULL;
+    }
+
     @autoreleasepool {
         ios_audio_capture_t *cap = calloc(1, sizeof(ios_audio_capture_t));
         if (!cap) return NULL;
@@ -131,9 +140,19 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
         cap->engine = [[AVAudioEngine alloc] init];
         cap->input_node = cap->engine.inputNode;
         AVAudioFormat *input_format = [cap->input_node outputFormatForBus:0];
+        if (!input_format ||
+            (int)input_format.sampleRate != cap->sample_rate ||
+            (int)input_format.channelCount != cap->channels) {
+            ios_audio_destroy((salts_capture_t *)cap);
+            return NULL;
+        }
 
+        AVAudioCommonFormat common_format =
+            cap->bits_per_sample == 16
+                ? AVAudioPCMFormatInt16
+                : AVAudioPCMFormatInt32;
         cap->format = [[AVAudioFormat alloc]
-            initWithCommonFormat:AVAudioPCMFormatFloat32
+            initWithCommonFormat:common_format
                        sampleRate:cap->sample_rate
                          channels:(AVAudioChannelCount)cap->channels
                       interleaved:YES];
@@ -145,22 +164,36 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
         SaltsCaptureGuard *guard = cap->guard;
         [cap->input_node installTapOnBus:0
                               bufferSize:1024
-                                  format:input_format
+                                  format:cap->format
                                    block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
             (void)when;
             ios_audio_capture_t *strong_cap =
                 (ios_audio_capture_t *)[guard acquireCapture];
             if (!strong_cap) return;
 
-            if (!strong_cap->base.audio_cb || !buffer.floatChannelData) {
+            if (!strong_cap->base.audio_cb) {
                 [guard releaseCapture];
                 return;
             }
 
-            const uint8_t *samples = (const uint8_t *)buffer.floatChannelData[0];
+            const uint8_t *samples = NULL;
+            size_t bytes_per_sample =
+                strong_cap->bits_per_sample == 16 ? 2u : 4u;
+            if (strong_cap->bits_per_sample == 16 &&
+                buffer.int16ChannelData) {
+                samples = (const uint8_t *)buffer.int16ChannelData[0];
+            } else if (strong_cap->bits_per_sample == 32 &&
+                       buffer.int32ChannelData) {
+                samples = (const uint8_t *)buffer.int32ChannelData[0];
+            }
+            if (!samples) {
+                [guard releaseCapture];
+                return;
+            }
+
             size_t len = (size_t)buffer.frameLength *
                          (size_t)buffer.format.channelCount *
-                         sizeof(float);
+                         bytes_per_sample;
 
             strong_cap->base.audio_cb((salts_capture_t *)strong_cap, samples, len,
                                       now_us(), strong_cap->base.user_data);
