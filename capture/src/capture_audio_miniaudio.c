@@ -12,6 +12,7 @@
 #include "miniaudio.h"
 
 #include "salts_capture.h"
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -32,9 +33,6 @@ typedef struct {
     /* Monotonic sample counter for timestamp derivation, owned per device. */
     uint64_t sample_counter;
 
-    /* Device selection */
-    ma_device_id *device_id;
-    char device_id_str[128];
 } miniaudio_capture_ctx_t;
 
 /* =============================================================================
@@ -116,8 +114,40 @@ int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_co
  * Audio Capture Creation
  * ============================================================================= */
 
+static int parse_audio_device_index(const char *device_id,
+                                    ma_uint32 *out_index) {
+    const char *cursor;
+    char *end = NULL;
+    unsigned long value;
+
+    if (!device_id || !device_id[0] || !out_index) {
+        return -1;
+    }
+    for (cursor = device_id; *cursor; ++cursor) {
+        if (*cursor < '0' || *cursor > '9') {
+            return -1;
+        }
+    }
+    errno = 0;
+    value = strtoul(device_id, &end, 10);
+    if (errno != 0 || end == device_id || *end != '\0' ||
+        value > UINT32_MAX) {
+        return -1;
+    }
+    *out_index = (ma_uint32)value;
+    return 0;
+}
+
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                              const salts_audio_capture_config_t *config) {
+    ma_uint32 requested_device_index = 0;
+    int has_explicit_device = device_id && device_id[0];
+
+    if (has_explicit_device &&
+        parse_audio_device_index(device_id, &requested_device_index) != 0) {
+        return NULL;
+    }
+
     salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
@@ -142,11 +172,6 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
         ctx->config.frame_size_ms = 20;
     }
 
-    /* Store device ID if provided */
-    if (device_id && device_id[0]) {
-        strncpy(ctx->device_id_str, device_id, sizeof(ctx->device_id_str) - 1);
-    }
-
     /* Initialize context */
     if (ma_context_init(NULL, 0, NULL, &ctx->context) != MA_SUCCESS) {
         free(ctx);
@@ -169,20 +194,23 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
     ctx->device_config.periodSizeInFrames =
         (ctx->config.sample_rate * ctx->config.frame_size_ms) / 1000;
 
-    /* Select device by index if specified */
-    if (device_id && device_id[0]) {
+    /* An explicit enumerated identity must resolve exactly. */
+    if (has_explicit_device) {
         ma_device_info *capture_infos;
         ma_uint32 capture_count;
         ma_device_info *playback_infos;
         ma_uint32 playback_count;
 
         if (ma_context_get_devices(&ctx->context, &playback_infos, &playback_count,
-                                   &capture_infos, &capture_count) == MA_SUCCESS) {
-            int idx = atoi(device_id);
-            if (idx >= 0 && (ma_uint32)idx < capture_count) {
-                ctx->device_config.capture.pDeviceID = &capture_infos[idx].id;
-            }
+                                   &capture_infos, &capture_count) != MA_SUCCESS ||
+            requested_device_index >= capture_count) {
+            ma_context_uninit(&ctx->context);
+            free(ctx);
+            free(capture);
+            return NULL;
         }
+        ctx->device_config.capture.pDeviceID =
+            &capture_infos[requested_device_index].id;
     }
 
     /* Initialize device */
