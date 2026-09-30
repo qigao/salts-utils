@@ -14,6 +14,7 @@ on:
       - "databind/idl/**"
       - "databind/formats/tbe/**"
       - "databind/schema/**"
+      - "capture/**"
   push:
     branches: [master]
     tags: ["v*"]
@@ -29,6 +30,7 @@ on:
       - "databind/idl/**"
       - "databind/formats/tbe/**"
       - "databind/schema/**"
+      - "capture/**"
 
 permissions:
   contents: read
@@ -343,6 +345,25 @@ jobs:
           arch=x64
           profile=release
           EOF
+
+      - name: Run Linux capture contract tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/capture-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DVCPKG_MANIFEST_FEATURES=capture \
+            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/capture-tests \
+            --target capture_contract_test capture_posix_test --parallel 2
+          ctest --test-dir build/capture-tests --no-tests=error \
+            -R "capture_(contract|posix)_test" --output-on-failure
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-linux-x64
@@ -558,6 +579,19 @@ jobs:
           cmake --install build\native-sdk
           if errorlevel 1 exit /b 1
 
+      - name: Run Windows capture contract tests
+        shell: cmd
+        run: |
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
+          set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
+          set "PATH=%GITHUB_WORKSPACE%\build\capture-tests\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\%QIGAO_VCPKG_WINDOWS_TRIPLET%\bin;%PATH%"
+          cmake -S . -B build\capture-tests -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          if errorlevel 1 exit /b 1
+          cmake --build build\capture-tests --target capture_contract_test capture_windows_test --parallel 2
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build\capture-tests --no-tests=error -R "capture_(contract|windows)_test" --output-on-failure
+          if errorlevel 1 exit /b 1
+
       - name: Verify installed DataBind and salts_idl_target consumers
         shell: cmd
         run: |
@@ -716,6 +750,27 @@ jobs:
           api=android-26
           profile=release
           EOF
+
+      - name: Compile Android capture contract test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/android-capture-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=Android \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DANDROID_STL=c++_shared \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
+            -DVCPKG_MANIFEST_FEATURES=capture \
+            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
+            -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake --build build/android-capture-tests \
+            --target capture_android_test --parallel 2
+
       - uses: actions/upload-artifact@v4
         with:
           name: salts-utils-sdk-android-arm64-v8a
