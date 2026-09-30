@@ -358,6 +358,7 @@ jobs:
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DVCPKG_MANIFEST_FEATURES=capture \
             -DSALTS_UTILS_ENABLE_CAPTURE=ON \
+            -DSALTS_UTILS_QUALIFY_CAPTURE=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/capture-tests \
             --target capture_contract_test capture_posix_test --parallel 2
@@ -585,7 +586,7 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           set "PATH=%GITHUB_WORKSPACE%\build\capture-tests\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\%QIGAO_VCPKG_WINDOWS_TRIPLET%\bin;%PATH%"
-          cmake -S . -B build\capture-tests -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          cmake -S . -B build\capture-tests -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DSALTS_UTILS_QUALIFY_CAPTURE=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           if errorlevel 1 exit /b 1
           cmake --build build\capture-tests --target capture_contract_test capture_windows_test --parallel 2
           if errorlevel 1 exit /b 1
@@ -767,6 +768,7 @@ jobs:
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon/lemon" \
             -DVCPKG_MANIFEST_FEATURES=capture \
             -DSALTS_UTILS_ENABLE_CAPTURE=ON \
+            -DSALTS_UTILS_QUALIFY_CAPTURE=ON \
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           cmake --build build/android-capture-tests \
             --target capture_android_test --parallel 2
