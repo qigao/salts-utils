@@ -1,0 +1,14 @@
+schema MessageNativeArtifact [version(1)];
+
+message Event {
+  uint32 id;
+  optional uint32 sequence;
+  nullable uint32 result;
+  optional nullable uint32 tri;
+}
+
+/* Minimal Service only drives the public NATIVE projection frontend.
+ * Event_native_artifact() itself remains transport- and Service-neutral. */
+service ArtifactProbe {
+  Echo: Event -> Event;
+}
