@@ -468,26 +468,15 @@ jobs:
           restore-keys: |
             salts-utils-ccache-windows-msvc-v1-
 
-      - name: Install ccache 4.14
+      - name: Install ccache
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $zip = Join-Path $env:RUNNER_TEMP "ccache-4.14-windows-x86_64.zip"
-          $root = Join-Path $env:RUNNER_TEMP "ccache-4.14"
-          Invoke-WebRequest -Uri "https://github.com/ccache/ccache/releases/download/v4.14/ccache-4.14-windows-x86_64.zip" -OutFile $zip
-          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne "2568347a697e103ca1b073981c704ad76fb2507d066c38dba038dd73399d968f") {
-            throw "ccache archive digest mismatch: $hash"
-          }
-          if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
-          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
-          $exe = Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Recurse -Filter ccache.exe |
-            Where-Object { $_.FullName -like "*ccache-4.14-windows-x86_64*" } |
-            Select-Object -First 1
-          if ($null -eq $exe) { throw "ccache.exe not found after extraction" }
-          Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $env:RUNNER_TEMP "ccache.exe") -Force
-          $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & (Join-Path $env:RUNNER_TEMP "ccache.exe") --version
+          choco install ccache -y --no-progress
+          $ccache = Get-Command ccache.exe -ErrorAction SilentlyContinue
+          if ($null -eq $ccache) { throw "Chocolatey ccache executable is unavailable" }
+          & $ccache.Source --version
+          if ($LASTEXITCODE -ne 0) { throw "ccache executable probe failed" }
 
       - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
         with:
