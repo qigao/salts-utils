@@ -93,6 +93,35 @@ add_dependencies(installed_image
   installed_socket)
 
 salts_idl_target(
+  TARGET installed_message
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/message.schema"
+  ARTIFACT_NAME "installed_message"
+  ARTIFACTS MESSAGE)
+
+if(NOT TARGET installed_message_native)
+  message(FATAL_ERROR "missing installed MESSAGE native target")
+endif()
+get_target_property(
+  _installed_message_artifacts installed_message DATABIND_ARTIFACTS)
+if(NOT "MESSAGE" IN_LIST _installed_message_artifacts)
+  message(FATAL_ERROR "installed MESSAGE artifact metadata is missing")
+endif()
+
+add_executable(installed_message_consumer message_consumer.c)
+target_compile_features(installed_message_consumer PRIVATE c_std_11)
+target_link_libraries(installed_message_consumer PRIVATE
+  Salts::DataBind
+  ${installed_message_NATIVE_TARGET})
+target_include_directories(installed_message_consumer PRIVATE
+  "${installed_message_GENERATED_DIR}")
+add_dependencies(installed_message_consumer
+  installed_message_idl_codegen)
+add_dependencies(installed_message
+  installed_message_consumer)
+add_dependencies(installed_image
+  installed_message)
+
+salts_idl_target(
   TARGET installed_service
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
   ARTIFACT_NAME "installed_service"
