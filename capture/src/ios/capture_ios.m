@@ -211,6 +211,11 @@ int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_co
 
     @autoreleasepool {
         AVAudioSession *session = [AVAudioSession sharedInstance];
+        NSError *error = nil;
+        if (![session setCategory:AVAudioSessionCategoryPlayAndRecord
+                            error:&error]) {
+            return SALTS_CAPTURE_ERR_DEVICE;
+        }
         NSArray<AVAudioSessionPortDescription *> *audio_inputs =
             session.availableInputs;
         AVAudioSessionPortDescription *preferred = session.preferredInput;
