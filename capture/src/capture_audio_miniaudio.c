@@ -169,20 +169,33 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
     ctx->device_config.periodSizeInFrames =
         (ctx->config.sample_rate * ctx->config.frame_size_ms) / 1000;
 
-    /* Select device by index if specified */
+    /* Select exactly the enumerated device index when specified. */
     if (device_id && device_id[0]) {
         ma_device_info *capture_infos;
         ma_uint32 capture_count;
         ma_device_info *playback_infos;
         ma_uint32 playback_count;
+        const char *cursor;
+        unsigned long idx;
 
-        if (ma_context_get_devices(&ctx->context, &playback_infos, &playback_count,
-                                   &capture_infos, &capture_count) == MA_SUCCESS) {
-            int idx = atoi(device_id);
-            if (idx >= 0 && (ma_uint32)idx < capture_count) {
-                ctx->device_config.capture.pDeviceID = &capture_infos[idx].id;
+        for (cursor = device_id; *cursor; ++cursor) {
+            if (*cursor < '0' || *cursor > '9') {
+                ma_context_uninit(&ctx->context);
+                free(ctx);
+                free(capture);
+                return NULL;
             }
         }
+        idx = strtoul(device_id, NULL, 10);
+        if (ma_context_get_devices(&ctx->context, &playback_infos, &playback_count,
+                                   &capture_infos, &capture_count) != MA_SUCCESS ||
+            idx >= (unsigned long)capture_count) {
+            ma_context_uninit(&ctx->context);
+            free(ctx);
+            free(capture);
+            return NULL;
+        }
+        ctx->device_config.capture.pDeviceID = &capture_infos[idx].id;
     }
 
     /* Initialize device */
