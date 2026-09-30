@@ -20,3 +20,8 @@ extern "C" int databind_native_service_public_cpp_probe(void) {
          databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi() !=
              nullptr;
 }
+
+
+int main() {
+  return databind_native_service_public_cpp_probe() ? 0 : 1;
+}
