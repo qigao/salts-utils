@@ -135,13 +135,30 @@ target_include_directories(installed_service_consumer_cpp PRIVATE
 add_dependencies(installed_service_consumer_cpp
   installed_service_idl_codegen)
 
-add_custom_target(installed_service_verify
-  COMMAND $<TARGET_FILE:installed_service_consumer>
-  COMMAND $<TARGET_FILE:installed_service_consumer_cpp>
-  DEPENDS
-    installed_service_consumer
-    installed_service_consumer_cpp
-  VERBATIM)
+if(WIN32)
+  # Run installed consumers with the runtime DLL closure derived from their
+  # imported target graph. Do not rely on the invoking workflow to pre-seed
+  # PATH; this package-config project must be independently executable.
+  add_custom_target(installed_service_verify
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_service_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
+      $<TARGET_FILE:installed_service_consumer>
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_service_consumer_cpp>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
+      $<TARGET_FILE:installed_service_consumer_cpp>
+    DEPENDS
+      installed_service_consumer
+      installed_service_consumer_cpp
+    VERBATIM)
+else()
+  add_custom_target(installed_service_verify
+    COMMAND $<TARGET_FILE:installed_service_consumer>
+    COMMAND $<TARGET_FILE:installed_service_consumer_cpp>
+    DEPENDS
+      installed_service_consumer
+      installed_service_consumer_cpp
+    VERBATIM)
+endif()
 add_dependencies(installed_image
   installed_service
   installed_service_verify)
