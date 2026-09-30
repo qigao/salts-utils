@@ -18,6 +18,7 @@ typedef struct {
     int sample_rate;
     int channels;
     int bits_per_sample;
+    int frame_size_ms;
     SaltsCaptureGuard *guard;
 } ios_audio_capture_t;
 
@@ -99,6 +100,8 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
         cap->channels = (config && config->channels > 0) ? config->channels : 1;
         cap->bits_per_sample =
             (config && config->bits_per_sample > 0) ? config->bits_per_sample : 32;
+        cap->frame_size_ms =
+            (config && config->frame_size_ms > 0) ? config->frame_size_ms : 20;
 
         AVAudioSession *session = [AVAudioSession sharedInstance];
         NSError *error = nil;
@@ -131,7 +134,9 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
             (selected_input &&
              ![session setPreferredInput:selected_input error:&error]) ||
             ![session setPreferredSampleRate:cap->sample_rate error:&error] ||
-            ![session setPreferredIOBufferDuration:0.005 error:&error] ||
+            ![session setPreferredIOBufferDuration:
+                 (NSTimeInterval)cap->frame_size_ms / 1000.0
+                                               error:&error] ||
             ![session setActive:YES error:&error]) {
             ios_audio_destroy((salts_capture_t *)cap);
             return NULL;
@@ -161,9 +166,17 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
             return NULL;
         }
 
+        AVAudioFrameCount tap_frames = (AVAudioFrameCount)(
+            ((uint64_t)cap->sample_rate * (uint64_t)cap->frame_size_ms) /
+            1000u);
+        if (tap_frames == 0) {
+            ios_audio_destroy((salts_capture_t *)cap);
+            return NULL;
+        }
+
         SaltsCaptureGuard *guard = cap->guard;
         [cap->input_node installTapOnBus:0
-                              bufferSize:1024
+                              bufferSize:tap_frames
                                   format:cap->format
                                    block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
             (void)when;
