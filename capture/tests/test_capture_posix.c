@@ -32,6 +32,12 @@ suite("POSIX capture integration") {
     check_less_equal(screen_count, SALTS_CAPTURE_MAX_DEVICES);
   }
 
+  it("rejects malformed explicit audio device identity without fallback") {
+    salts_audio_capture_config_t config = {48000, 1, 16, 20};
+
+    check_null(salts_audio_capture_create("not-a-device", &config));
+  }
+
   it("makes null lifecycle operations safe and deterministic") {
     check_equal(salts_capture_start(NULL), -1);
     check_equal(salts_capture_get_state(NULL), SALTS_CAPTURE_STATE_STOPPED);
