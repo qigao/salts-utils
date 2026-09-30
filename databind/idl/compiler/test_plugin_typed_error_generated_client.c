@@ -1,4 +1,5 @@
 #include <salts/plugin.h>
+#include <data_bind_plugin_catalog.h>
 #include <tinytest.h>
 
 #include "error.plugin_client.h"
@@ -31,6 +32,55 @@ spec("generated typed-error DataBind Plugin client") {
                 SALTS_PLUGIN_OK);
     check_equal(salts_plugin_registry_start(&registry, ref),
                 SALTS_PLUGIN_OK);
+
+    {
+      salts_plugin_lease catalog_lease = {0};
+      const salts_plugin_manifest *manifest = NULL;
+      const salts_plugin_export *catalog_entry = NULL;
+      data_bind_plugin_catalog *catalog = NULL;
+      DataBindPluginOperationBinding operation =
+          DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
+      DataBindError catalog_error = DATA_BIND_ERROR_INIT;
+
+      check_equal(salts_plugin_registry_acquire(
+                      &registry, ref, &catalog_lease, &manifest),
+                  SALTS_PLUGIN_OK);
+      check_not_null(manifest);
+      check_equal(salts_plugin_manifest_find_export(
+                      manifest, DATA_BIND_PLUGIN_CATALOG_EXPORT_ID,
+                      &catalog_entry),
+                  SALTS_PLUGIN_OK);
+      check_not_null(catalog_entry);
+      check_equal(salts_plugin_export_require_interface(
+                      catalog_entry,
+                      DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID,
+                      DATA_BIND_PLUGIN_CATALOG_CONTRACT_VERSION,
+                      0u,
+                      data_bind_plugin_catalog_interface()),
+                  SALTS_PLUGIN_OK);
+      catalog =
+          (data_bind_plugin_catalog *)catalog_entry->value.interface.value;
+      check_true(data_bind_plugin_catalog_valid(catalog));
+      check_equal(data_bind_plugin_catalog_operation_count(catalog),
+                  (size_t)1u);
+      check_equal(data_bind_plugin_catalog_operation_at(
+                      catalog, 0u, &operation, &catalog_error),
+                  DATA_BIND_OK);
+      check_true(data_bind_plugin_operation_binding_valid(&operation));
+      check_equal(operation.export_id, "ErrorPlugin.Store.Read");
+      check_equal(operation.service_name, "Store");
+      check_equal(operation.operation_name, "Read");
+      check_equal(operation.native.error_count, (size_t)1u);
+      check_not_null(operation.native.errors);
+      if (operation.native.errors) {
+        check_equal(operation.native.errors[0].idl_type_name, "NotFound");
+        check_equal(operation.native.errors[0].kind_value, (uint32_t)1u);
+      }
+      check_equal(operation.native.error_param_index, (size_t)2u);
+      check_equal(salts_plugin_registry_release(
+                      &registry, &catalog_lease),
+                  SALTS_PLUGIN_OK);
+    }
 
     check_equal(
         databind_plugin_client_11_ErrorPlugin_11_StorePlugin_open(
