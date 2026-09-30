@@ -293,7 +293,8 @@ int databind_compiler_native_service_generate(
       strcmp(request->output, config->header_output) == 0)
     return -1;
 
-  if (databind_compiler_service_native_build(contract, &ir) != 0)
+  if (databind_compiler_service_native_build(contract, &ir) != 0 ||
+      ir.operations == NULL || ir.operation_count == 0u)
     goto cleanup;
 
   header_file = native_service_open_staging(
