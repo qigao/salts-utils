@@ -181,6 +181,8 @@ spec("generated DataBind Plugin Service") {
     data_bind_plugin_catalog *catalog = NULL;
     DataBindPluginOperationBinding operation =
         DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
+    DataBindServiceNativeBinding native =
+        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindBindingProjection projection = {
@@ -304,9 +306,11 @@ spec("generated DataBind Plugin Service") {
 
     check_equal(operation.service_name, "Codec");
     check_equal(operation.operation_name, "Decode");
-    check_true(operation.native.function == entry->value.function.desc);
+    check_true(operation.function == entry->value.function.desc);
     check_true(cmeta_function_desc_equal(
-        operation.native.function, entry->value.function.desc));
+        operation.function, entry->value.function.desc));
+    check_true(data_bind_plugin_operation_native_binding(
+        &operation, &native));
     check_true(cmeta_data_desc_valid(operation.request.data));
     check_true(cmeta_data_desc_valid(operation.response.data));
 
@@ -326,7 +330,7 @@ spec("generated DataBind Plugin Service") {
                     "Codec",
                     "Decode",
                     &projection,
-                    &operation.native,
+                    &native,
                     &plan,
                     &diagnostic),
                 DATA_BIND_OK);
