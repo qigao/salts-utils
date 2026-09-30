@@ -3442,6 +3442,219 @@ static Node *union_variant_binding(Node *union_node, const char *variant_name) {
 static DataBindValue *bind_json_typed_value(Node *schema_root, const char *type_name,
                                             json_value_t *value);
 
+
+#define DATA_BIND_JSON_MAX_DEPTH 64u
+#define DATA_BIND_JSON_KNOWN_FLAGS \
+  (DATA_BIND_JSON_BIND_EXACT_SCALAR_TOKENS | DATA_BIND_JSON_BIND_REJECT_UNKNOWN_FIELDS)
+
+static int db_json_options_valid(const DataBindJsonOptions *options) {
+  return options == NULL ||
+         (options->size >= sizeof(*options) &&
+          (options->flags & ~DATA_BIND_JSON_KNOWN_FLAGS) == 0u);
+}
+
+static int db_json_preflight_typed(Node *schema_root, const char *type_name,
+                                   const json_value_t *value, uint32_t flags,
+                                   size_t depth);
+
+static int db_json_exact_scalar_token(Node *schema_root, const char *type_name,
+                                      data_bind_text_kind_t kind,
+                                      const json_value_t *value, uint32_t flags,
+                                      size_t depth) {
+  size_t i;
+  if (value == NULL || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
+
+  if (is_flags_type(schema_root, type_name)) {
+    if (json_type(value) == JSON_NUMBER || json_type(value) == JSON_STRING) return 1;
+    if (json_type(value) != JSON_ARRAY) return 0;
+    for (i = 0; i < json_array_size(value); ++i) {
+      if (!db_json_exact_scalar_token(schema_root, type_name, DB_TEXT_INTEGER,
+                                      json_array_get(value, i), flags,
+                                      depth + 1u))
+        return 0;
+    }
+    return 1;
+  }
+
+  if (kind == DB_TEXT_INTEGER && find_enum_record(schema_root, type_name) != NULL)
+    return json_type(value) == JSON_NUMBER || json_type(value) == JSON_STRING;
+
+  switch (kind) {
+  case DB_TEXT_STRING:
+  case DB_TEXT_BYTES:
+  case DB_TEXT_UUID:
+  case DB_TEXT_DATETIME:
+  case DB_TEXT_DATE:
+  case DB_TEXT_TIME:
+  case DB_TEXT_DURATION:
+  case DB_TEXT_DECIMAL:
+  case DB_TEXT_BIGINT:
+    return json_type(value) == JSON_STRING;
+  case DB_TEXT_MONEY: {
+    const json_value_t *amount;
+    const json_value_t *currency;
+    if (json_type(value) != JSON_OBJECT) return 0;
+    amount = json_object_get(value, "amount");
+    currency = json_object_get(value, "currency");
+    if (amount == NULL || currency == NULL ||
+        json_type(amount) != JSON_STRING ||
+        json_type(currency) != JSON_STRING)
+      return 0;
+    if ((flags & DATA_BIND_JSON_BIND_REJECT_UNKNOWN_FIELDS) != 0u &&
+        json_object_size(value) != 2u)
+      return 0;
+    return 1;
+  }
+  case DB_TEXT_BOOL:
+    return json_type(value) == JSON_BOOL;
+  case DB_TEXT_INTEGER:
+  case DB_TEXT_NUMBER:
+    return json_type(value) == JSON_NUMBER;
+  default:
+    return 0;
+  }
+}
+
+static Node *db_json_record_field_for_key(Node *record, const char *key) {
+  Node *fields = fields_node_for_record(record);
+  size_t i;
+  if (fields == NULL || key == NULL) return NULL;
+  for (i = 0; i < fields->data.list.count; ++i) {
+    Node *field = fields->data.list.items[i];
+    if (field != NULL && field_accepts_name(field, key)) return field;
+  }
+  return NULL;
+}
+
+static int db_json_preflight_field(Node *schema_root, Node *field,
+                                   const json_value_t *value, uint32_t flags,
+                                   size_t depth) {
+  const char *field_type;
+  size_t i;
+  if (field == NULL || value == NULL || depth > DATA_BIND_JSON_MAX_DEPTH) return 0;
+  if (json_type(value) == JSON_NULL) return field_flag(field, "is_nullable") != 0;
+
+  field_type = get_string_val(find_child(field, "type"));
+  if (field_flag(field, "is_group_field")) {
+    const char *group_type = get_string_val(find_child(field, "group_type"));
+    if (group_type == NULL || json_type(value) != JSON_ARRAY) return 0;
+    for (i = 0; i < json_array_size(value); ++i) {
+      if (!db_json_preflight_typed(schema_root, group_type,
+                                   json_array_get(value, i), flags,
+                                   depth + 1u))
+        return 0;
+    }
+    return 1;
+  }
+
+  if (field_flag(field, "is_map")) {
+    const char *key_type = get_string_val(find_child(field, "key_type"));
+    const char *value_type = get_string_val(find_child(field, "value_type"));
+    if (key_type == NULL || strcmp(key_type, "string") != 0 ||
+        value_type == NULL || json_type(value) != JSON_OBJECT)
+      return 0;
+    for (i = 0; i < json_object_size(value); ++i) {
+      const json_value_t *item = json_object_value(value, i);
+      if (item == NULL ||
+          !db_json_preflight_typed(schema_root, value_type, item, flags,
+                                   depth + 1u))
+        return 0;
+    }
+    return 1;
+  }
+
+  if (field_flag(field, "is_collection")) {
+    const char *inner_type = get_string_val(find_child(field, "inner_type"));
+    if (inner_type == NULL || json_type(value) != JSON_ARRAY) return 0;
+    for (i = 0; i < json_array_size(value); ++i) {
+      if (!db_json_preflight_typed(schema_root, inner_type,
+                                   json_array_get(value, i), flags,
+                                   depth + 1u))
+        return 0;
+    }
+    return 1;
+  }
+
+  if (field_type == NULL) return 0;
+  return db_json_preflight_typed(schema_root, field_type, value, flags,
+                                 depth + 1u);
+}
+
+static int db_json_preflight_record(Node *schema_root, Node *record,
+                                    const json_value_t *object, uint32_t flags,
+                                    size_t depth) {
+  Node *fields;
+  size_t i;
+  if (record == NULL || object == NULL || json_type(object) != JSON_OBJECT ||
+      depth > DATA_BIND_JSON_MAX_DEPTH)
+    return 0;
+  fields = fields_node_for_record(record);
+  if (fields == NULL) return 0;
+
+  if ((flags & DATA_BIND_JSON_BIND_REJECT_UNKNOWN_FIELDS) != 0u) {
+    for (i = 0; i < json_object_size(object); ++i) {
+      const char *key = json_object_key(object, i);
+      if (key == NULL || db_json_record_field_for_key(record, key) == NULL)
+        return 0;
+    }
+  }
+
+  for (i = 0; i < fields->data.list.count; ++i) {
+    Node *field = fields->data.list.items[i];
+    const json_value_t *value;
+    if (field == NULL) return 0;
+    value = json_field_value(field, object);
+    if (value == NULL) continue;
+    if (!db_json_preflight_field(schema_root, field, value, flags,
+                                 depth + 1u))
+      return 0;
+  }
+  return 1;
+}
+
+static int db_json_preflight_union(Node *schema_root, Node *union_node,
+                                   const json_value_t *object, uint32_t flags,
+                                   size_t depth) {
+  const char *variant_name;
+  const char *variant_type;
+  const json_value_t *payload;
+  Node *variant;
+  if (union_node == NULL || object == NULL || json_type(object) != JSON_OBJECT ||
+      json_object_size(object) != 1u || depth > DATA_BIND_JSON_MAX_DEPTH)
+    return 0;
+  variant_name = json_object_key(object, 0);
+  payload = json_object_value(object, 0);
+  variant = union_variant_binding(union_node, variant_name);
+  if (variant == NULL || payload == NULL) return 0;
+  variant_type = get_string_val(find_child(variant, "type"));
+  return variant_type != NULL &&
+         db_json_preflight_typed(schema_root, variant_type, payload, flags,
+                                 depth + 1u);
+}
+
+static int db_json_preflight_typed(Node *schema_root, const char *type_name,
+                                   const json_value_t *value, uint32_t flags,
+                                   size_t depth) {
+  Node *record;
+  Node *union_node;
+  data_bind_text_kind_t kind;
+  if (schema_root == NULL || type_name == NULL || value == NULL ||
+      depth > DATA_BIND_JSON_MAX_DEPTH)
+    return 0;
+  record = find_data_record(schema_root, type_name);
+  if (record != NULL)
+    return db_json_preflight_record(schema_root, record, value, flags, depth);
+  union_node = find_union_record(schema_root, type_name);
+  if (union_node != NULL)
+    return db_json_preflight_union(schema_root, union_node, value, flags, depth);
+  kind = bind_type_kind(schema_root, type_name);
+  if ((flags & DATA_BIND_JSON_BIND_EXACT_SCALAR_TOKENS) == 0u)
+    return kind != DB_TEXT_UNSUPPORTED;
+  return db_json_exact_scalar_token(schema_root, type_name, kind, value, flags,
+                                    depth);
+}
+
+
 static DataBindValue *bind_json_array(Node *schema_root, Node *field, json_value_t *value,
                                       DataBindValueKind list_kind) {
   const char *inner_type = get_string_val(find_child(field, "inner_type"));
@@ -10490,8 +10703,6 @@ DataBindStatus data_bind_validate_xml_path(DataBind *codec, const char *type_nam
   return DATA_BIND_OK;
 }
 
-#define DATA_BIND_JSON_MAX_DEPTH 64u
-
 static DataBindStatus data_bind_object_take(
     const uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE], const char *type_name,
     DataBindValue *value, DataBindObject **out_object, DataBindError *error) {
@@ -10522,6 +10733,52 @@ static DataBindStatus data_bind_object_take(
   data_bind_value_free(value);
   return db_error_set(error, DATA_BIND_ERR_OOM, NULL, -1, -1,
                       "Out of memory creating DataBind object");
+}
+
+DataBindStatus data_bind_record_from_json_ex(
+    DataBind *codec, const char *type_name, const char *json, size_t len,
+    const DataBindJsonOptions *options, DataBindRecord **out_record,
+    DataBindError *error) {
+  json_value_t *root = NULL;
+  DataBindValue *value = NULL;
+  uint32_t flags = options != NULL ? options->flags : 0u;
+  DataBindStatus status;
+  char error_path[128];
+
+  if (out_record != NULL) *out_record = NULL;
+  if (codec == NULL || codec->schema_root == NULL || type_name == NULL ||
+      json == NULL || out_record == NULL || !db_json_options_valid(options))
+    return db_codec_error(codec, error, DATA_BIND_ERR_INVALID_ARG,
+                          "Invalid exact JSON record bind arguments");
+  if (!bind_type_supported(codec->schema_root, type_name)) {
+    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
+    return db_error_set(error, DATA_BIND_ERR_TYPE_NOT_FOUND, error_path, -1, -1,
+                        "Type not found: %s", type_name);
+  }
+  root = json_parse(json, len);
+  if (root == NULL) {
+    db_error_format_path(error_path, sizeof(error_path), "json", NULL);
+    return db_error_set(error, DATA_BIND_ERR_PARSE, error_path, -1, -1,
+                        "JSON parse failed");
+  }
+  if (flags != 0u &&
+      !db_json_preflight_typed(codec->schema_root, type_name, root, flags, 0u)) {
+    json_free(root);
+    db_error_format_path(error_path, sizeof(error_path), "json", "$");
+    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, error_path, -1, -1,
+                        "JSON record failed exact binding preflight for type: %s",
+                        type_name);
+  }
+  status = data_bind_json_root_to_value(codec, type_name, root, &value, error);
+  json_free(root);
+  if (status != DATA_BIND_OK) return status;
+  if (value == NULL || data_bind_value_kind(value) != DATA_BIND_VALUE_OBJECT) {
+    data_bind_value_free(value);
+    return db_error_set(error, DATA_BIND_ERR_TYPE_MISMATCH, type_name, -1, -1,
+                        "Record root must be an object value");
+  }
+  return data_bind_object_take(codec->schema_fingerprint, type_name, value,
+                               (DataBindObject **)out_record, error);
 }
 
 DataBindStatus data_bind_object_from_json(DataBind *codec, const char *type_name, const char *json,

@@ -214,6 +214,29 @@ typedef struct DataBindBytesView {
 #define DATA_BIND_STRING_VIEW_INIT {sizeof(DataBindStringView), NULL, 0}
 #define DATA_BIND_BYTES_VIEW_INIT {sizeof(DataBindBytesView), NULL, 0}
 
+
+/**
+ * Optional strictness for record-oriented JSON binding.
+ *
+ * Existing data_bind_record_from_json() keeps its historical conversion
+ * semantics. The _ex entry point applies only the explicitly requested
+ * checks before delegating to the same canonical DataBind binder.
+ */
+typedef enum DataBindJsonBindFlag {
+  DATA_BIND_JSON_BIND_NONE = 0u,
+  /** Require canonical JSON token kinds instead of scalar text/number/bool coercion. */
+  DATA_BIND_JSON_BIND_EXACT_SCALAR_TOKENS = 1u << 0,
+  /** Reject object keys that are not a declared field name or admitted alias. */
+  DATA_BIND_JSON_BIND_REJECT_UNKNOWN_FIELDS = 1u << 1
+} DataBindJsonBindFlag;
+
+typedef struct DataBindJsonOptions {
+  size_t size;
+  uint32_t flags;
+} DataBindJsonOptions;
+
+#define DATA_BIND_JSON_OPTIONS_INIT {sizeof(DataBindJsonOptions), DATA_BIND_JSON_BIND_NONE}
+
 typedef struct data_bind_stream_t data_bind_stream_t;
 
 typedef enum DataBindRecordAction {
@@ -1177,6 +1200,18 @@ DATA_BIND_API DataBindStatus data_bind_record_from_json(DataBind *codec, const c
                                                         const char *json, size_t len,
                                                         DataBindRecord **out_record,
                                                         DataBindError *error);
+/**
+ * Bind one JSON record with optional exact-token and unknown-field preflight.
+ *
+ * Passing NULL options is equivalent to data_bind_record_from_json(). Unknown
+ * option bits or an undersized options record fail with DATA_BIND_ERR_INVALID_ARG.
+ * Exact-token mode does not change defaults, nullable semantics, constraints,
+ * aliases, or native/dynamic ownership; those remain owned by the normal binder.
+ */
+DATA_BIND_API DataBindStatus data_bind_record_from_json_ex(
+    DataBind *codec, const char *type_name, const char *json, size_t len,
+    const DataBindJsonOptions *options, DataBindRecord **out_record,
+    DataBindError *error);
 DATA_BIND_API DataBindStatus data_bind_record_from_yaml(DataBind *codec, const char *type_name,
                                                         const char *yaml, size_t len,
                                                         DataBindRecord **out_record,
