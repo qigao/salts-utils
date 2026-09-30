@@ -129,6 +129,7 @@ jobs:
             -DENABLE_SANITIZER_ADDRESS=OFF -DENABLE_SANITIZER_UNDEFINED=OFF
           cmake --build build/binding-plan \
             --target test_data_bind_binding_plan test_data_bind_projection_plan \
+                     test_data_bind_record \
                      test_data_bind_native_reader test_data_bind_native_reader_cpp \
                      test_data_bind_native_writer test_data_bind_native_container test_data_bind_cmeta_public_cpp \
                      test_data_bind_cmeta_adapter_plan \
@@ -142,7 +143,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_record|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
