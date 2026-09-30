@@ -513,7 +513,7 @@ salts_idl_target(
 
 salts_idl_target(
   TARGET databind_message_native_artifact_fixture
-  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_message_native_artifact.schema"
   ARTIFACT_NAME "message_native_artifact"
   ARTIFACTS NATIVE)
 
