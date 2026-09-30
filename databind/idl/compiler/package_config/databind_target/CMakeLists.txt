@@ -92,6 +92,60 @@ add_dependencies(installed_socket
 add_dependencies(installed_image
   installed_socket)
 
+salts_idl_target(
+  TARGET installed_service
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
+  ARTIFACT_NAME "installed_service"
+  ARTIFACTS NATIVE
+  TRANSPORTS HTTP RPC)
+
+if(NOT TARGET installed_service_native)
+  message(FATAL_ERROR "missing installed_service native target")
+endif()
+get_target_property(
+  _installed_service_links installed_service_native LINK_LIBRARIES)
+if(NOT "Salts::DataBind" IN_LIST _installed_service_links)
+  message(FATAL_ERROR
+          "installed NATIVE Service target must link canonical Salts::DataBind")
+endif()
+foreach(frontend_target IN ITEMS Salts::IDL Salts::Schema)
+  if("${frontend_target}" IN_LIST _installed_service_links)
+    message(FATAL_ERROR
+            "installed NATIVE Service target must not link ${frontend_target}")
+  endif()
+endforeach()
+
+add_executable(installed_service_consumer service_consumer.c)
+target_compile_features(installed_service_consumer PRIVATE c_std_11)
+target_link_libraries(installed_service_consumer PRIVATE
+  Salts::DataBind
+  ${installed_service_NATIVE_TARGET})
+target_include_directories(installed_service_consumer PRIVATE
+  "${installed_service_GENERATED_DIR}")
+add_dependencies(installed_service_consumer
+  installed_service_idl_codegen)
+
+add_executable(installed_service_consumer_cpp service_consumer_cpp.cpp)
+target_compile_features(installed_service_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(installed_service_consumer_cpp PRIVATE
+  Salts::DataBind
+  ${installed_service_NATIVE_TARGET})
+target_include_directories(installed_service_consumer_cpp PRIVATE
+  "${installed_service_GENERATED_DIR}")
+add_dependencies(installed_service_consumer_cpp
+  installed_service_idl_codegen)
+
+add_custom_target(installed_service_verify
+  COMMAND $<TARGET_FILE:installed_service_consumer>
+  COMMAND $<TARGET_FILE:installed_service_consumer_cpp>
+  DEPENDS
+    installed_service_consumer
+    installed_service_consumer_cpp
+  VERBATIM)
+add_dependencies(installed_image
+  installed_service
+  installed_service_verify)
+
 
 salts_idl_target(
   TARGET installed_openapi
