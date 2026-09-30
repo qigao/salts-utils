@@ -175,6 +175,57 @@ static int method_plan_symbol_prefix(
   return 1;
 }
 
+static int add_native_service(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+
+  if (input->source_output_path == NULL ||
+      input->source_output_path[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "NATIVE artifact requires --source-output for codec/native metadata");
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".service_native.h", out->native_service_header,
+          sizeof(out->native_service_header)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".service_native.c", out->native_service_source,
+          sizeof(out->native_service_source)))
+    return frontend_error(
+        error, error_size,
+        "Derived native Service artifact output path is too long");
+
+  if (strcmp(out->native_service_header, out->native_service_source) == 0 ||
+      path_reserved(input, out->native_service_header) ||
+      path_reserved(input, out->native_service_source) ||
+      projection_output_in_use(out, out->native_service_header) ||
+      projection_output_in_use(out, out->native_service_source))
+    return frontend_error(
+        error, error_size,
+        "Derived native Service outputs collide with another compiler output");
+
+  out->native_service = (databind_compiler_native_service_config){
+      .native_header = out->native_header,
+      .header_output = out->native_service_header,
+  };
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+                 DATABIND_COMPILER_ARTIFACT_NATIVE},
+          .output = out->native_service_source,
+          .config = &out->native_service,
+      };
+  out->backends[out->backend_count++] =
+      DATABIND_COMPILER_NATIVE_SERVICE_BACKEND;
+  return 0;
+}
+
 static int add_method_plan(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
@@ -640,6 +691,10 @@ int databind_compiler_projection_frontend_build(
 
   for (i = 0u; i < artifact_count; ++i) {
     switch (artifacts[i]) {
+    case DATABIND_COMPILER_ARTIFACT_NATIVE:
+      if (add_native_service(input, out, error, error_size) != 0)
+        goto fail;
+      break;
     case DATABIND_COMPILER_ARTIFACT_PLUGIN:
       if (add_plugin(input, out, error, error_size) != 0)
         goto fail;

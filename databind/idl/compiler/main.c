@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
                                  "Generate DSL type declarations (.rfl file)"),
         cmd_arger_desc_string(
             &artifact_names, "artifacts",
-            "Comma-separated artifact selections (plugin,wasm,openapi,mock)"),
+            "Comma-separated artifact selections (native,plugin,wasm,openapi,mock)"),
         cmd_arger_desc_string(
             &transport_names, "transports",
             "Comma-separated transport selections (http,rpc,socket,flowmq,mqtt,websocket)"),

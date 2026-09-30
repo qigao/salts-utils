@@ -28,7 +28,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(salts_idlc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
@@ -251,6 +251,7 @@ cmake_add_test(test_databind_projection_frontend
     projection_config.c
     projection.c
     service_native.c
+    native_service_projection.c
     plugin_projection.c
     openapi_projection.c
     method_plan_projection.c
@@ -503,6 +504,13 @@ salts_idl_target(
   PROJECTION_CONFIG
     "${CMAKE_CURRENT_SOURCE_DIR}/test_method_plan_projection_config.json")
 
+salts_idl_target(
+  TARGET databind_native_service_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_service_native_lowering.schema"
+  ARTIFACT_NAME "service_native_public"
+  ARTIFACTS NATIVE
+  TRANSPORTS HTTP RPC)
+
 
 salts_idl_target(
   TARGET databind_socket_plan_public_fixture
@@ -638,6 +646,41 @@ cmake_add_test(test_databind_method_plan_public_frontend
 add_dependencies(test_databind_method_plan_public_frontend
   databind_method_plan_public_fixture_idl_codegen
   databind_method_plan_configured_fixture_idl_codegen)
+
+cmake_add_test(test_databind_native_service_public_artifact
+  SOURCES test_public_native_service_artifact.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_native_service_public_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_native_service_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_native_service_public_artifact
+  databind_native_service_public_fixture_idl_codegen)
+set_target_properties(test_databind_native_service_public_artifact PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_native_service_public_artifact PROPERTIES
+  LABELS "databind;compiler;native-service;method-plan;public")
+
+cmake_add_test(test_databind_native_service_public_artifact_cpp
+  SOURCES test_public_native_service_artifact_cpp.cpp
+  LIBS
+    Salts::DataBind
+    ${databind_native_service_public_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_native_service_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_native_service_public_artifact_cpp
+  databind_native_service_public_fixture_idl_codegen)
+set_target_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+set_tests_properties(test_databind_native_service_public_artifact_cpp PROPERTIES
+  LABELS "databind;compiler;native-service;public;cpp")
 
 get_target_property(
   _databind_plugin_generated_fixture_links

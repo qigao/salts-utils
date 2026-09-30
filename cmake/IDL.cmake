@@ -180,6 +180,7 @@ function(salts_idl_target)
 
   set(_normalized_artifacts)
   set(_normalized_transports)
+  set(_has_native FALSE)
   set(_has_plugin FALSE)
   set(_has_openapi FALSE)
   set(_has_http FALSE)
@@ -189,7 +190,9 @@ function(salts_idl_target)
 
   foreach(artifact IN LISTS DB_ARTIFACTS)
     string(TOUPPER "${artifact}" artifact_upper)
-    if(artifact_upper STREQUAL "PLUGIN")
+    if(artifact_upper STREQUAL "NATIVE")
+      set(_has_native TRUE)
+    elseif(artifact_upper STREQUAL "PLUGIN")
       set(_has_plugin TRUE)
     elseif(artifact_upper STREQUAL "OPENAPI")
       set(_has_openapi TRUE)
@@ -360,6 +363,10 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.h")
   set(_native_source
       "${_generated_dir}/${DB_ARTIFACT_NAME}_native.c")
+  set(_native_service_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.service_native.h")
+  set(_native_service_source
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.service_native.c")
   set(_plugin_header
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin.h")
   set(_plugin_source
@@ -380,8 +387,13 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_socket OR _has_flowmq)
+  if(_has_native OR _has_socket OR _has_flowmq)
     list(APPEND _generated_outputs "${_native_source}")
+  endif()
+  if(_has_native)
+    list(APPEND _generated_outputs
+      "${_native_service_header}"
+      "${_native_service_source}")
   endif()
   if(_has_plugin)
     list(APPEND _generated_outputs
@@ -419,7 +431,7 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_socket OR _has_flowmq)
+  if(_has_native OR _has_socket OR _has_flowmq)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -456,10 +468,17 @@ function(salts_idl_target)
   add_custom_target("${DB_TARGET}_idl_codegen"
     DEPENDS ${_generated_outputs})
 
-  if(_has_socket OR _has_flowmq)
-    add_library("${DB_TARGET}_native" STATIC
+  if(_has_native OR _has_socket OR _has_flowmq)
+    set(_native_target_sources
       "${_native_source}"
       "${_native_header}")
+    if(_has_native)
+      list(APPEND _native_target_sources
+        "${_native_service_source}"
+        "${_native_service_header}")
+    endif()
+    add_library("${DB_TARGET}_native" STATIC
+      ${_native_target_sources})
     add_dependencies("${DB_TARGET}_native"
       "${DB_TARGET}_idl_codegen")
     target_compile_features("${DB_TARGET}_native" PRIVATE c_std_11)
@@ -505,7 +524,7 @@ function(salts_idl_target)
 
   add_custom_target("${DB_TARGET}")
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_idl_codegen")
-  if(_has_socket OR _has_flowmq)
+  if(_has_native OR _has_socket OR _has_flowmq)
     add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
   endif()
   if(_has_plugin)
@@ -567,7 +586,17 @@ function(salts_idl_target)
     set(${DB_TARGET}_FLOWMQ_PROJECTION
         "${_flowmq_header}" PARENT_SCOPE)
   endif()
-  if(_has_socket OR _has_flowmq)
+  if(_has_native)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_SERVICE_HEADER "${_native_service_header}")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_NATIVE_SERVICE_SOURCE "${_native_service_source}")
+    set(${DB_TARGET}_NATIVE_SERVICE_HEADER
+        "${_native_service_header}" PARENT_SCOPE)
+    set(${DB_TARGET}_NATIVE_SERVICE_SOURCE
+        "${_native_service_source}" PARENT_SCOPE)
+  endif()
+  if(_has_native OR _has_socket OR _has_flowmq)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_NATIVE_TARGET "${DB_TARGET}_native")
     set(${DB_TARGET}_NATIVE_TARGET
