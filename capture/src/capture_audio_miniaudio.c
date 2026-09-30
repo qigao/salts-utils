@@ -118,6 +118,15 @@ int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_co
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                              const salts_audio_capture_config_t *config) {
+    if (config &&
+        ((config->sample_rate != 8000 && config->sample_rate != 16000 &&
+          config->sample_rate != 24000 && config->sample_rate != 48000) ||
+         (config->channels != 1 && config->channels != 2) ||
+         (config->bits_per_sample != 16 && config->bits_per_sample != 32) ||
+         config->frame_size_ms <= 0)) {
+        return NULL;
+    }
+
     salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
