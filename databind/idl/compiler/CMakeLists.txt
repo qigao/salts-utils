@@ -511,6 +511,35 @@ salts_idl_target(
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
 
+salts_idl_target(
+  TARGET databind_message_native_artifact_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_message_native.schema"
+  ARTIFACT_NAME "message_native_artifact"
+  ARTIFACTS NATIVE)
+
+cmake_add_test(test_databind_message_native_artifact
+  SOURCES
+    test_public_message_native_artifact.c
+    test_public_message_native_artifact_cpp.cpp
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_message_native_artifact_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_message_native_artifact_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_message_native_artifact
+  databind_message_native_artifact_fixture_idl_codegen)
+set_target_properties(test_databind_message_native_artifact PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED ON
+  CXX_EXTENSIONS OFF)
+set_tests_properties(test_databind_message_native_artifact PROPERTIES
+  LABELS "databind;compiler;native;message;artifact;public")
+
 
 salts_idl_target(
   TARGET databind_socket_plan_public_fixture
