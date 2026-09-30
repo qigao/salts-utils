@@ -852,7 +852,7 @@ static int plugin_write_source(
           "      DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
           "  switch (index) {\n",
           ir->operations[0].schema_name,
-          ir->operation_count + 1u) < 0)
+          ir->operation_count) < 0)
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
@@ -949,10 +949,7 @@ static int plugin_write_source(
           "    },\n"
           "  },\n"
           "};\n\n"
-          "static const salts_plugin_manifest databind_plugin_manifest = {\n",
-          file) == EOF)
-    return 0;
-
+          "static const salts_plugin_manifest databind_plugin_manifest = {\n"
           "  .struct_size = SALTS_PLUGIN_MANIFEST_SIZE,\n"
           "  .abi_version = SALTS_PLUGIN_ABI_VERSION,\n"
           "  .plugin_id = ",
@@ -975,7 +972,7 @@ static int plugin_write_source(
           config->plugin_version_major,
           config->plugin_version_minor,
           config->plugin_version_patch,
-          ir->operation_count) < 0)
+          ir->operation_count + 1u) < 0)
     return 0;
 
   return 1;
