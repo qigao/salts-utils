@@ -17,6 +17,12 @@ if ($env:VCPKG_BINARY_SOURCES -notmatch "nugetconfig") {
 if ($env:VCPKG_NUGET_REPOSITORY -ne "https://github.com/qigao/vcpkg-cache") {
   throw "unexpected vcpkg cache repository: $env:VCPKG_NUGET_REPOSITORY"
 }
+if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_WINDOWS_TRIPLET)) {
+  throw "QIGAO_VCPKG_WINDOWS_TRIPLET is unavailable"
+}
+if ([string]::IsNullOrWhiteSpace($env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET)) {
+  throw "QIGAO_VCPKG_WINDOWS_HOST_TRIPLET is unavailable"
+}
 
 $vcpkg = Join-Path $env:VCPKG_ROOT "vcpkg.exe"
 if (-not (Test-Path -LiteralPath $vcpkg -PathType Leaf)) {
@@ -38,7 +44,8 @@ $args = @(
   "install",
   "--x-manifest-root=$ManifestRoot",
   "--x-install-root=$installRoot",
-  "--triplet=x64-windows",
+  "--triplet=$env:QIGAO_VCPKG_WINDOWS_TRIPLET",
+    "--host-triplet=$env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET",
   "--only-binarycaching"
 )
 if ($Capture) {
@@ -47,6 +54,8 @@ if ($Capture) {
 
 Write-Host "Verifying Windows dependencies are fully restorable from qigao/vcpkg-cache"
 Write-Host "Manifest root: $ManifestRoot"
+Write-Host "Canonical target triplet: $env:QIGAO_VCPKG_WINDOWS_TRIPLET"
+Write-Host "Canonical host triplet: $env:QIGAO_VCPKG_WINDOWS_HOST_TRIPLET"
 Write-Host "Capture feature: $($Capture.IsPresent)"
 
 & $vcpkg @args
