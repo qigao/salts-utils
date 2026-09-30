@@ -18,9 +18,7 @@ typedef enum DataBindFlowMQChannelPattern {
   DATA_BIND_FLOWMQ_CHANNEL_PUSH_PULL = 2
 } DataBindFlowMQChannelPattern;
 
-typedef DataBindStatus (*DataBindFlowMQNativeBindingResolverFn)(
-    DataBindNativeTypeBinding *out,
-    DataBindError *error);
+typedef DataBindNativeTypeBindingResolverFn DataBindFlowMQNativeBindingResolverFn;
 
 /*
  * Immutable generated Channel delivery contract for FlowMQ.
