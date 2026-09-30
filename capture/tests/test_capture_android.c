@@ -39,6 +39,11 @@ suite("capture Android audio device identity") {
   it("rejects unsupported explicit audio identities") {
     check_null(salts_audio_capture_create("not-default", NULL));
   }
+
+  it("rejects unsupported 32-bit audio capture instead of changing format") {
+    salts_audio_capture_config_t config = {48000, 1, 32, 20};
+    check_null(salts_audio_capture_create(NULL, &config));
+  }
 }
 
 suite("capture Android lifecycle") {
