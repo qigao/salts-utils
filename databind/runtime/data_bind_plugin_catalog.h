@@ -36,7 +36,14 @@ typedef struct DataBindPluginOperationBinding {
 
   DataBindNativeTypeBinding request;
   DataBindNativeTypeBinding response;
-  DataBindServiceNativeBinding native;
+
+  const cmeta_function_desc *function;
+  const DataBindNativeErrorBinding *errors;
+  size_t error_count;
+  size_t error_param_index;
+  size_t error_envelope_bytes;
+  size_t error_kind_offset;
+  size_t error_kind_bytes;
 } DataBindPluginOperationBinding;
 
 #define DATA_BIND_PLUGIN_OPERATION_BINDING_INIT                               \
@@ -44,7 +51,7 @@ typedef struct DataBindPluginOperationBinding {
     DATA_BIND_PLUGIN_CATALOG_ABI_VERSION, NULL, NULL, NULL,                    \
     DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL),                            \
     DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL),                            \
-    DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL) }
+    NULL, NULL, 0u, SIZE_MAX, 0u, 0u, 0u }
 
 static inline int data_bind_plugin_operation_binding_valid(
     const DataBindPluginOperationBinding *binding) {
@@ -63,11 +70,40 @@ static inline int data_bind_plugin_operation_binding_valid(
          binding->response.abi_version == DATA_BIND_NATIVE_BINDING_ABI_VERSION &&
          binding->response.idl_type_name != NULL &&
          cmeta_data_desc_valid(binding->response.data) &&
-         binding->native.size >= sizeof(binding->native) &&
-         binding->native.abi_version == DATA_BIND_BINDING_PLAN_ABI_VERSION &&
-         cmeta_function_desc_valid(binding->native.function) &&
-         binding->native.request == &binding->request &&
-         binding->native.response == &binding->response;
+         cmeta_function_desc_valid(binding->function) &&
+         (binding->error_count == 0u || binding->errors != NULL) &&
+         (binding->error_count != 0u ||
+          (binding->error_param_index == SIZE_MAX &&
+           binding->error_envelope_bytes == 0u &&
+           binding->error_kind_offset == 0u &&
+           binding->error_kind_bytes == 0u));
+}
+
+/*
+ * Reconstruct the canonical Service native binding against this snapshot.
+ * The returned binding borrows request/response rows from 'binding' and
+ * therefore must not outlive it.
+ */
+static inline int data_bind_plugin_operation_native_binding(
+    const DataBindPluginOperationBinding *binding,
+    DataBindServiceNativeBinding *out) {
+  DataBindServiceNativeBinding value;
+  if (out == NULL) return 0;
+  *out = (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
+  if (!data_bind_plugin_operation_binding_valid(binding)) return 0;
+
+  value = (DataBindServiceNativeBinding)
+      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(
+          binding->function, &binding->request, &binding->response);
+  value.errors = binding->errors;
+  value.error_count = binding->error_count;
+  value.error_param_index = binding->error_param_index;
+  value.error_envelope_bytes = binding->error_envelope_bytes;
+  value.error_kind_offset = binding->error_kind_offset;
+  value.error_kind_bytes = binding->error_kind_bytes;
+  *out = value;
+  return 1;
 }
 
 /*
