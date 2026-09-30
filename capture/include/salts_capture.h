@@ -230,7 +230,9 @@ SALTS_CAPTURE_API int salts_capture_list_gpu_devices(salts_capture_device_t *dev
 /**
  * Create audio capture instance
  *
- * @param device_id     Device ID (NULL for default)
+ * @param device_id     Device ID returned by audio enumeration, or NULL/empty
+ *                      for the default device. A non-empty ID is exact: unknown
+ *                      or unsupported IDs fail instead of falling back.
  * @param config        Capture configuration
  * @return              Capture instance, or NULL on error
  */
