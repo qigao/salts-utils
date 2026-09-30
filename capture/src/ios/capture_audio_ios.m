@@ -72,7 +72,13 @@ void ios_audio_destroy(salts_capture_t *capture) {
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                             const salts_audio_capture_config_t *config) {
-    (void)device_id;
+    /*
+     * AVAudioEngine capture does not yet expose exact device routing. Reject an
+     * explicit identity rather than silently substituting the current default.
+     */
+    if (device_id && device_id[0]) {
+        return NULL;
+    }
 
     @autoreleasepool {
         ios_audio_capture_t *cap = calloc(1, sizeof(ios_audio_capture_t));
