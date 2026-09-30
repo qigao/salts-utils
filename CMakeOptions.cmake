@@ -35,6 +35,10 @@ option(SALTS_UTILS_QUALIFY_BINDINGS
        "Internal focused language-binding qualification profile" OFF)
 mark_as_advanced(SALTS_UTILS_QUALIFY_BINDINGS)
 
+option(SALTS_UTILS_QUALIFY_CAPTURE
+       "Internal focused native capture qualification profile" OFF)
+mark_as_advanced(SALTS_UTILS_QUALIFY_CAPTURE)
+
 if(SALTS_UTILS_QUALIFY_DATABIND AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
@@ -45,6 +49,20 @@ if(SALTS_UTILS_QUALIFY_BINDINGS AND
    (SALTS_UTILS_ENABLE_CAPTURE OR SALTS_UTILS_ENABLE_CFLOW_USB))
   message(FATAL_ERROR
     "The focused bindings qualification profile excludes capture and USB")
+endif()
+
+if(SALTS_UTILS_QUALIFY_CAPTURE AND NOT SALTS_UTILS_ENABLE_CAPTURE)
+  message(FATAL_ERROR
+    "The focused capture qualification profile requires capture")
+endif()
+if(SALTS_UTILS_QUALIFY_CAPTURE AND SALTS_UTILS_ENABLE_CFLOW_USB)
+  message(FATAL_ERROR
+    "The focused capture qualification profile excludes USB")
+endif()
+if((SALTS_UTILS_QUALIFY_DATABIND AND SALTS_UTILS_QUALIFY_CAPTURE) OR
+   (SALTS_UTILS_QUALIFY_BINDINGS AND SALTS_UTILS_QUALIFY_CAPTURE))
+  message(FATAL_ERROR
+    "Only one focused SaltsUtils qualification profile may be enabled")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
