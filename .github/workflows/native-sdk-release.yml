@@ -279,6 +279,7 @@ jobs:
           test -f "$prefix/include/data_bind_native.h"
           grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
+          test -f "$prefix/include/data_bind_plugin_catalog.h"
           cat > build/native-execution-installed.c <<'EOF'
           #include <data_bind_native_binding.h>
           _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
@@ -411,6 +412,7 @@ jobs:
           test -f "$prefix/include/data_bind_binding_plan.h"
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
+          test -f "$prefix/include/data_bind_plugin_catalog.h"
 
           cmake -S databind/producer/package_config \
             -B build/databind-producer-installed -G Ninja \
@@ -605,9 +607,11 @@ jobs:
           $config = Join-Path $prefix "lib\cmake\SaltsUtils\SaltsUtilsConfig.cmake"
           $bindingPlanHeader = Join-Path $prefix "include\data_bind_binding_plan.h"
           $producerHeader = Join-Path $prefix "include\data_bind_cmeta_adapter_plan.h"
+          $pluginCatalogHeader = Join-Path $prefix "include\data_bind_plugin_catalog.h"
           if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { throw "missing $config" }
           if (-not (Test-Path -LiteralPath $bindingPlanHeader -PathType Leaf)) { throw "missing $bindingPlanHeader" }
           if (-not (Test-Path -LiteralPath $producerHeader -PathType Leaf)) { throw "missing $producerHeader" }
+          if (-not (Test-Path -LiteralPath $pluginCatalogHeader -PathType Leaf)) { throw "missing $pluginCatalogHeader" }
           $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
@@ -684,6 +688,7 @@ jobs:
           test -f "$prefix/include/data_bind_binding_plan.h"
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
+          test -f "$prefix/include/data_bind_plugin_catalog.h"
 
           cmake -S databind/producer/package_config \
             -B build/databind-producer-android -G Ninja \
@@ -799,23 +804,27 @@ jobs:
           grep -Fx "sdk/linux-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/windows-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/windows-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
-            :
+            grep -Fx "sdk/macos-arm64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           else
             grep -Fx "sdk/macos-x64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/macos-x64/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           fi
       - uses: actions/upload-artifact@v4
         with:
