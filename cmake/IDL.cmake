@@ -181,6 +181,7 @@ function(salts_idl_target)
   set(_normalized_artifacts)
   set(_normalized_transports)
   set(_has_native FALSE)
+  set(_has_message FALSE)
   set(_has_plugin FALSE)
   set(_has_openapi FALSE)
   set(_has_http FALSE)
@@ -188,14 +189,21 @@ function(salts_idl_target)
   set(_has_socket FALSE)
   set(_has_flowmq FALSE)
 
+  set(_compiler_artifacts)
   foreach(artifact IN LISTS DB_ARTIFACTS)
     string(TOUPPER "${artifact}" artifact_upper)
     if(artifact_upper STREQUAL "NATIVE")
       set(_has_native TRUE)
+      list(APPEND _compiler_artifacts "${artifact_upper}")
+    elseif(artifact_upper STREQUAL "MESSAGE")
+      set(_has_message TRUE)
     elseif(artifact_upper STREQUAL "PLUGIN")
+      set(_has_plugin TRUE)
+      list(APPEND _compiler_artifacts "${artifact_upper}")
       set(_has_plugin TRUE)
     elseif(artifact_upper STREQUAL "OPENAPI")
       set(_has_openapi TRUE)
+      list(APPEND _compiler_artifacts "${artifact_upper}")
     else()
       message(FATAL_ERROR
               "salts_idl_target artifact is not publicly available yet: "
@@ -203,6 +211,12 @@ function(salts_idl_target)
     endif()
     list(APPEND _normalized_artifacts "${artifact_upper}")
   endforeach()
+
+  if(_has_message AND _has_native)
+    message(FATAL_ERROR
+            "salts_idl_target MESSAGE cannot be combined with NATIVE; "
+            "NATIVE already emits the typed Message source")
+  endif()
 
   foreach(transport IN LISTS DB_TRANSPORTS)
     string(TOUPPER "${transport}" transport_upper)
@@ -336,6 +350,8 @@ function(salts_idl_target)
 
   list(JOIN _normalized_artifacts "," _artifact_csv)
   string(TOLOWER "${_artifact_csv}" _artifact_csv)
+  list(JOIN _compiler_artifacts "," _compiler_artifact_csv)
+  string(TOLOWER "${_compiler_artifact_csv}" _compiler_artifact_csv)
   list(JOIN _normalized_transports "," _transport_csv)
   string(TOLOWER "${_transport_csv}" _transport_csv)
 
@@ -387,7 +403,7 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_native)
@@ -421,17 +437,20 @@ function(salts_idl_target)
   set(_compiler_args
       "${_idl}"
       --lang c
-      --output "${_native_header}"
-      --artifact-name "${DB_ARTIFACT_NAME}")
-  if(_normalized_artifacts)
+      --output "${_native_header}")
+  if(_compiler_artifacts OR _normalized_transports)
     list(APPEND _compiler_args
-      --artifacts "${_artifact_csv}")
+      --artifact-name "${DB_ARTIFACT_NAME}")
+  endif()
+  if(_compiler_artifacts)
+    list(APPEND _compiler_args
+      --artifacts "${_compiler_artifact_csv}")
   endif()
   if(_normalized_transports)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -468,7 +487,7 @@ function(salts_idl_target)
   add_custom_target("${DB_TARGET}_idl_codegen"
     DEPENDS ${_generated_outputs})
 
-  if(_has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     set(_native_target_sources
       "${_native_source}"
       "${_native_header}")
@@ -524,7 +543,7 @@ function(salts_idl_target)
 
   add_custom_target("${DB_TARGET}")
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_idl_codegen")
-  if(_has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     add_dependencies("${DB_TARGET}" "${DB_TARGET}_native")
   endif()
   if(_has_plugin)
@@ -596,7 +615,7 @@ function(salts_idl_target)
     set(${DB_TARGET}_NATIVE_SERVICE_SOURCE
         "${_native_service_source}" PARENT_SCOPE)
   endif()
-  if(_has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
     set_property(TARGET "${DB_TARGET}" PROPERTY
       DATABIND_NATIVE_TARGET "${DB_TARGET}_native")
     set(${DB_TARGET}_NATIVE_TARGET

@@ -136,6 +136,7 @@ jobs:
                      test_databind_projection_frontend \
                      test_databind_native_service_public_artifact \
                      test_databind_native_service_public_artifact_cpp \
+                     test_databind_message_native_artifact \
             --parallel 2
 
       - name: Run canonical BindingPlan runtime contract
@@ -143,7 +144,7 @@ jobs:
         run: |
           set -euxo pipefail
           ctest --test-dir build/binding-plan --no-tests=error \
-            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp)$' \
+            -R '^(test_data_bind_binding_plan|test_data_bind_projection_plan|test_data_bind_record_exact|test_data_bind_native_reader|test_data_bind_native_reader_cpp|test_data_bind_native_writer|test_data_bind_cmeta_public_cpp|test_data_bind_cmeta_adapter_plan|test_databind_projection_frontend|test_databind_native_service_public_artifact|test_databind_native_service_public_artifact_cpp|test_databind_message_native_artifact)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -z "$(git status --porcelain --untracked-files=no)"
@@ -274,6 +275,7 @@ jobs:
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_native_binding.h"
           grep -q "DataBindNativeExecution" "$prefix/include/data_bind_native_binding.h"
+          grep -q "DataBindMessageNativeArtifact" "$prefix/include/data_bind_native_binding.h"
           test -f "$prefix/include/data_bind_native.h"
           grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
@@ -795,6 +797,7 @@ jobs:
           grep -Fx "sdk/linux-x64/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          grep -Fx "sdk/linux-x64/include/data_bind_native_binding.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/linux-x64/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
