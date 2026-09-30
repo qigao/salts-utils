@@ -3,6 +3,7 @@
 
 #include "plugin_projection.h"
 #include "method_plan_projection.h"
+#include "native_service_projection.h"
 #include "openapi_projection.h"
 #include "projection_config.h"
 #include "projection.h"
@@ -44,6 +45,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   size_t backend_count;
 
   databind_compiler_plugin_config plugin;
+  databind_compiler_native_service_config native_service;
   databind_compiler_openapi_projection_config openapi;
   databind_compiler_projection_config external_config;
   databind_compiler_http_projection_config http;
@@ -54,6 +56,8 @@ typedef struct databind_compiler_projection_frontend_plan {
   char method_plan_symbol_prefix[256];
   char artifact_dir[SALTS_FS_MAX_PATH];
   char native_header[SALTS_FS_MAX_PATH];
+  char native_service_header[SALTS_FS_MAX_PATH];
+  char native_service_source[SALTS_FS_MAX_PATH];
   char plugin_source[SALTS_FS_MAX_PATH];
   char plugin_service_header[SALTS_FS_MAX_PATH];
   char plugin_client_header[SALTS_FS_MAX_PATH];
