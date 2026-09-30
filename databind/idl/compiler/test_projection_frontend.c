@@ -62,6 +62,45 @@ spec("DataBind public typed generation frontend") {
                plan.plugin_client_source);
   }
 
+  it("lowers one transport-neutral NATIVE Service artifact") {
+    databind_compiler_projection_frontend_input input = {
+        .artifacts = "native",
+        .artifact_name = "calc",
+        .output_path = "generated/calc_native.h",
+        .source_output_path = "generated/calc_native.c",
+    };
+    databind_compiler_projection_frontend_plan plan;
+    char error[256];
+    char base[SALTS_FS_MAX_PATH];
+
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)1u);
+    check_equal(plan.backend_count, (size_t)1u);
+    check_equal(plan.requests[0].id.axis,
+                DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT);
+    check_equal(plan.requests[0].id.kind,
+                (uint32_t)DATABIND_COMPILER_ARTIFACT_NATIVE);
+    check_true(plan.requests[0].config == &plan.native_service);
+    check_equal(plan.backends[0].name, "native");
+    check_equal(path_base(plan.requests[0].output, base),
+                "calc.service_native.c");
+    check_equal(path_base(plan.native_service_header, base),
+                "calc.service_native.h");
+    check_equal(plan.native_service.native_header, "calc_native.h");
+    check_true(plan.native_service.header_output ==
+               plan.native_service_header);
+
+    databind_compiler_projection_frontend_dispose(&plan);
+
+    input.source_output_path = NULL;
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                -1);
+    check_not_null(strstr(error, "source-output"));
+  }
+
   it("lowers OpenAPI as an artifact over the shared HTTP projection") {
     databind_compiler_projection_frontend_input input = {
         .artifacts = "openapi",
