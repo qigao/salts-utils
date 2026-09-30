@@ -62,10 +62,12 @@ find_package(Salts CONFIG REQUIRED PATHS "${SALTS_ROOT_PATH}"
  
 # Additional components
 #
-# The focused qualification profile is deliberately internal to CI. It proves
-# Plugin/DataBind contracts without configuring unrelated product components
-# whose third-party dependencies do not participate in those contracts.
-if(SALTS_UTILS_QUALIFY_DATABIND)
+# Focused qualification profiles are deliberately internal to CI. Each profile
+# configures only the owning component and its real tests so unrelated product
+# generators/toolchains cannot mask that component's contract.
+if(SALTS_UTILS_QUALIFY_CAPTURE)
+  add_subdirectory(capture)
+elseif(SALTS_UTILS_QUALIFY_DATABIND)
   add_subdirectory(tools/lemon)
   include(FindTools)
   add_subdirectory(parser)
