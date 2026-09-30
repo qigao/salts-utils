@@ -14,6 +14,7 @@ on:
       - "databind/idl/**"
       - "databind/formats/tbe/**"
       - "databind/schema/**"
+      - "databind/runtime/**"
       - "capture/**"
   push:
     branches: [master]
@@ -30,6 +31,7 @@ on:
       - "databind/idl/**"
       - "databind/formats/tbe/**"
       - "databind/schema/**"
+      - "databind/runtime/**"
       - "capture/**"
 
 permissions:
