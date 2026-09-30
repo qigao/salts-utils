@@ -70,13 +70,21 @@ spec("generated typed-error DataBind Plugin client") {
       check_equal(operation.export_id, "ErrorPlugin.Store.Read");
       check_equal(operation.service_name, "Store");
       check_equal(operation.operation_name, "Read");
-      check_equal(operation.native.error_count, (size_t)1u);
-      check_not_null(operation.native.errors);
-      if (operation.native.errors) {
-        check_equal(operation.native.errors[0].idl_type_name, "NotFound");
-        check_equal(operation.native.errors[0].kind_value, (uint32_t)1u);
+      check_equal(operation.error_count, (size_t)1u);
+      check_not_null(operation.errors);
+      if (operation.errors) {
+        check_equal(operation.errors[0].idl_type_name, "NotFound");
+        check_equal(operation.errors[0].kind_value, (uint32_t)1u);
       }
-      check_equal(operation.native.error_param_index, (size_t)2u);
+      check_equal(operation.error_param_index, (size_t)2u);
+      {
+        DataBindServiceNativeBinding native =
+            DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
+        check_true(data_bind_plugin_operation_native_binding(
+            &operation, &native));
+        check_equal(native.error_count, (size_t)1u);
+        check_equal(native.error_param_index, (size_t)2u);
+      }
       check_equal(salts_plugin_registry_release(
                       &registry, &catalog_lease),
                   SALTS_PLUGIN_OK);
