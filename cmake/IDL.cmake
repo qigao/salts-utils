@@ -437,8 +437,11 @@ function(salts_idl_target)
   set(_compiler_args
       "${_idl}"
       --lang c
-      --output "${_native_header}"
+      --output "${_native_header}")
+  if(_compiler_artifacts OR _normalized_transports)
+    list(APPEND _compiler_args
       --artifact-name "${DB_ARTIFACT_NAME}")
+  endif()
   if(_compiler_artifacts)
     list(APPEND _compiler_args
       --artifacts "${_compiler_artifact_csv}")
