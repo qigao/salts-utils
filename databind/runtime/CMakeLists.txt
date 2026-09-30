@@ -142,6 +142,7 @@ add_library(
   data_bind_binary_reader.h
   data_bind_binding_plan.c
   data_bind_binding_plan.h
+  data_bind_plugin_catalog.h
   data_bind_message_plan.c
   data_bind_message_plan.h
   data_bind_message_plan_internal.h
@@ -255,6 +256,7 @@ install(
     data_bind_native.h
     data_bind_binary_reader.h
     data_bind_binding_plan.h
+    data_bind_plugin_catalog.h
     data_bind_message_plan.h
     data_bind_native_binding.h
     data_bind_method_plan.h
