@@ -368,7 +368,9 @@ int salts_capture_list_gpu_devices(salts_capture_device_t *devices, int max_coun
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                             const salts_audio_capture_config_t *config) {
-    (void)device_id;
+    if (device_id && device_id[0] && strcmp(device_id, "default") != 0) {
+        return NULL;
+    }
 
     salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(*capture));
     android_audio_platform_t *platform =
