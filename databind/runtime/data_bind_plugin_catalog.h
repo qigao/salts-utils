@@ -84,8 +84,8 @@ static inline int data_bind_plugin_operation_binding_valid(
   X(I, R2, DataBindStatus, create_codec, DataBind **, out_codec,               \
     DataBindError *, error)                                                    \
   X(I, R0, size_t, operation_count, _)                                         \
-  X(I, R2, int, operation_at, size_t, index,                                   \
-    DataBindPluginOperationBinding *, out)
+  X(I, R3, DataBindStatus, operation_at, size_t, index,                         \
+    DataBindPluginOperationBinding *, out, DataBindError *, error)
 
 CMETA_INTERFACE(data_bind_plugin_catalog, DATA_BIND_PLUGIN_CATALOG_METHODS);
 
