@@ -846,6 +846,8 @@ static int plugin_write_source(
           "    void *self, size_t index, DataBindPluginOperationBinding *out,\n"
           "    DataBindError *error) {\n"
           "  DataBindStatus status;\n"
+          "  DataBindServiceNativeBinding native =\n"
+          "      DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);\n"
           "  (void)self;\n"
           "  if (out == NULL) return DATA_BIND_ERR_INVALID_ARG;\n"
           "  *out = (DataBindPluginOperationBinding)\n"
@@ -868,13 +870,22 @@ static int plugin_write_source(
         fprintf(
             file,
             ";\n"
+            "    native = (DataBindServiceNativeBinding)\n"
+            "        DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);\n"
             "    status = %s__databind_native_binding(\n"
-            "        &out->request, &out->response, &out->native, error);\n"
+            "        &out->request, &out->response, &native, error);\n"
             "    if (status != DATA_BIND_OK) {\n"
             "      *out = (DataBindPluginOperationBinding)\n"
             "          DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;\n"
             "      return status;\n"
             "    }\n"
+            "    out->function = native.function;\n"
+            "    out->errors = native.errors;\n"
+            "    out->error_count = native.error_count;\n"
+            "    out->error_param_index = native.error_param_index;\n"
+            "    out->error_envelope_bytes = native.error_envelope_bytes;\n"
+            "    out->error_kind_offset = native.error_kind_offset;\n"
+            "    out->error_kind_bytes = native.error_kind_bytes;\n"
             "    return data_bind_plugin_operation_binding_valid(out)\n"
             "               ? DATA_BIND_OK : DATA_BIND_ERR_RUNTIME;\n",
             operation->symbol) < 0)
