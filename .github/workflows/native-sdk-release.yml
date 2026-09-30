@@ -442,7 +442,7 @@ jobs:
   windows:
     name: Windows x64 SDK
     needs: metadata
-    runs-on: windows-2022
+    runs-on: windows-2025
     env:
       CCACHE_DIR: ${{ github.workspace }}\.ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
@@ -551,7 +551,7 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File "%GITHUB_WORKSPACE%\cmake\ci\verify-vcpkg-cache-only.ps1" -Capture
           if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\build\native-sdk\bin;%SALTS_ROOT%\bin;%GITHUB_WORKSPACE%\vcpkg_installed\x64-windows\bin;%PATH%"
-          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S . -B build\native-sdk -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DVCPKG_INSTALL_OPTIONS=--only-binarycaching -DVCPKG_MANIFEST_FEATURES=capture -DSALTS_UTILS_ENABLE_CAPTURE=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\native-sdk --parallel
           if errorlevel 1 exit /b 1
@@ -564,12 +564,12 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
           set "VCPKG_ROOT=%QIGAO_VCPKG_ROOT%"
           if errorlevel 1 exit /b 1
-          cmake -S databind\idl\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
+          cmake -S databind\idl\compiler\package_config\databind_target -B build\databind-target-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64"
           if errorlevel 1 exit /b 1
           cmake --build build\databind-target-installed --target installed_image --parallel 2
           if errorlevel 1 exit /b 1
           set "PATH=%GITHUB_WORKSPACE%\stage\sdk\windows-x64\bin;%SALTS_ROOT%\bin;%PATH%"
-          cmake -S databind\producer\package_config -B build\databind-producer-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
+          cmake -S databind\producer\package_config -B build\databind-producer-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
           if errorlevel 1 exit /b 1
           cmake --build build\databind-producer-installed --target databind_generated_plan_consumer --parallel 2
           if errorlevel 1 exit /b 1
