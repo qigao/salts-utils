@@ -210,19 +210,25 @@ int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_co
     if (!devices || max_count <= 0) return -1;
 
     @autoreleasepool {
-        NSArray<AVCaptureDevice *> *audio_devices =
-            [AVCaptureDevice devicesWithMediaType:AVMediaTypeAudio];
-
+        AVAudioSession *session = [AVAudioSession sharedInstance];
+        NSArray<AVAudioSessionPortDescription *> *audio_inputs =
+            session.availableInputs;
+        AVAudioSessionPortDescription *preferred = session.preferredInput;
         int count = 0;
-        for (AVCaptureDevice *device in audio_devices) {
+
+        for (AVAudioSessionPortDescription *input in audio_inputs) {
             if (count >= max_count) break;
             salts_capture_device_t *out = &devices[count];
             memset(out, 0, sizeof(*out));
             out->index = count;
             out->type = SALTS_CAPTURE_TYPE_AUDIO;
-            out->is_default = (count == 0) ? 1 : 0;
-            copy_nsstring(out->id, sizeof(out->id), device.uniqueID);
-            copy_nsstring(out->name, sizeof(out->name), device.localizedName);
+            out->is_default =
+                (preferred && [preferred.UID isEqualToString:input.UID]) ||
+                (!preferred && count == 0)
+                    ? 1
+                    : 0;
+            copy_nsstring(out->id, sizeof(out->id), input.UID);
+            copy_nsstring(out->name, sizeof(out->name), input.portName);
             count++;
         }
         return count;
