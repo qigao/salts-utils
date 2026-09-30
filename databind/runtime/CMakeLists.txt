@@ -507,6 +507,10 @@ cmake_add_test(test_data_bind_record
   SOURCES test_data_bind_record.c
   LIBS ${DATA_BIND_TEST_LIBS}
   FOLDER "databind/runtime/tests")
+cmake_add_test(test_data_bind_record_exact
+  SOURCES test_data_bind_record_exact.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
 cmake_add_test(test_data_bind_pool
   SOURCES test_data_bind_pool.c
   LIBS ${DATA_BIND_TEST_LIBS}
