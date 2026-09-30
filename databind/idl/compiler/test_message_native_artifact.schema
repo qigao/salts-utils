@@ -7,6 +7,3 @@ message Event {
   optional nullable uint32 tri;
 }
 
-service ArtifactProbe {
-  Echo: Event -> Event;
-}
