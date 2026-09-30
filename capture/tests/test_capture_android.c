@@ -35,6 +35,12 @@ suite("capture Android MediaProjection surface") {
   }
 }
 
+suite("capture Android audio device identity") {
+  it("rejects unsupported explicit audio identities") {
+    check_null(salts_audio_capture_create("not-default", NULL));
+  }
+}
+
 suite("capture Android lifecycle") {
   it("starts the native screen lifecycle before Java produces frames") {
     salts_screen_capture_config_t config = {0, 30, 1, 0};
