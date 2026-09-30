@@ -118,6 +118,18 @@ add_dependencies(installed_message_consumer
   installed_message_idl_codegen)
 add_dependencies(installed_message
   installed_message_consumer)
+
+add_executable(installed_message_consumer_cpp message_consumer_cpp.cpp)
+target_compile_features(installed_message_consumer_cpp PRIVATE cxx_std_17)
+target_link_libraries(installed_message_consumer_cpp PRIVATE
+  Salts::DataBind
+  ${installed_message_NATIVE_TARGET})
+target_include_directories(installed_message_consumer_cpp PRIVATE
+  "${installed_message_GENERATED_DIR}")
+add_dependencies(installed_message_consumer_cpp
+  installed_message_idl_codegen)
+add_dependencies(installed_message
+  installed_message_consumer_cpp)
 add_dependencies(installed_image
   installed_message)
 
