@@ -1,0 +1,6 @@
+schema InstalledMessage [version(1)];
+
+message Config {
+  @Min(1) @Max(65535) uint32 port;
+  optional string label default "default";
+}
