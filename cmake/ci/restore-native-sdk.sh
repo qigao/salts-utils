@@ -29,14 +29,13 @@ cat > "$project" <<'EOF'
     <TargetFramework>net8.0</TargetFramework>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Salts.Native" Version="*" />
+    <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
+  </ItemGroup>
 </Project>
 EOF
 
-(
-  cd "$RUNNER_TEMP"
-  dotnet add "$project" package Salts.Native
-  dotnet add "$project" package Qigao.Re2c.Binary
-)
 dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate
 
 single_package_dir() {
