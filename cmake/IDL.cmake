@@ -403,7 +403,7 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_plugin OR _has_socket OR _has_flowmq)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_native)
@@ -450,7 +450,7 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_plugin OR _has_socket OR _has_flowmq)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -512,6 +512,7 @@ function(salts_idl_target)
     add_library("${DB_TARGET}_plugin" SHARED
       "${_plugin_source}"
       "${_plugin_header}"
+      "${_native_source}"
       "${_native_header}"
       ${DB_SOURCES})
     add_dependencies("${DB_TARGET}_plugin"
@@ -530,6 +531,7 @@ function(salts_idl_target)
     add_library("${DB_TARGET}_plugin_client" STATIC
       "${_plugin_client_source}"
       "${_plugin_client_header}"
+      "${_native_source}"
       "${_native_header}")
     add_dependencies("${DB_TARGET}_plugin_client"
       "${DB_TARGET}_idl_codegen")
