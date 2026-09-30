@@ -50,6 +50,13 @@ Camera2、Media、OpenSL ES 和 NativeWindow。miniaudio 与 libyuv 是实现依
 设备不存在时，枚举返回零项。参数、权限、格式协商、原生资源或模式身份无效时接口会
 明确失败，不会静默切换为另一种设备语义。
 
+### 音频输入合同（4.1.12）
+
+- `salts_audio_capture_create(device_id, ...)` 的非空 `device_id` 必须来自当前音频设备枚举并精确匹配；未知、失效或后端不支持的显式 ID 直接失败，不会回退默认麦克风。NULL/空字符串才表示默认设备。
+- 音频格式不做隐式转换。Desktop 接受公开的 16/32-bit integer PCM；Android 当前明确支持 S16；iOS 按请求配置 Int16/Int32。
+- `frame_size_ms` 是 producer period 合同。iOS 的 preferred I/O buffer duration 与 AVAudioEngine tap frame count 均按 `sample_rate * frame_size_ms / 1000` 请求，不再使用固定 5 ms / 1024 frames。
+- callback payload 仍是 borrowed view。若底层平台实际回调长度与请求 period 不一致，消费端应显式失败或自行采用有界转换层，不得截断、拼接或静默改变帧语义。
+
 Android MediaProjection 使用 `<salts_capture_android.h>`。Salts 拥有
 `salts_capture_t`、`AImageReader` 与其 `ANativeWindow`；Java 拥有权限结果、
 `MediaProjection`、`VirtualDisplay` 和从 JNI 返回的 `Surface` 对象。控制顺序必须是：
