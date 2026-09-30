@@ -118,6 +118,15 @@ int salts_capture_list_audio_devices(salts_capture_device_t *devices, int max_co
 
 salts_capture_t *salts_audio_capture_create(const char *device_id,
                                              const salts_audio_capture_config_t *config) {
+    if (config &&
+        ((config->sample_rate != 8000 && config->sample_rate != 16000 &&
+          config->sample_rate != 24000 && config->sample_rate != 48000) ||
+         (config->channels != 1 && config->channels != 2) ||
+         (config->bits_per_sample != 16 && config->bits_per_sample != 32) ||
+         config->frame_size_ms <= 0)) {
+        return NULL;
+    }
+
     salts_capture_t *capture = (salts_capture_t *)calloc(1, sizeof(salts_capture_t));
     if (!capture) return NULL;
 
@@ -169,20 +178,33 @@ salts_capture_t *salts_audio_capture_create(const char *device_id,
     ctx->device_config.periodSizeInFrames =
         (ctx->config.sample_rate * ctx->config.frame_size_ms) / 1000;
 
-    /* Select device by index if specified */
+    /* Select exactly the enumerated device index when specified. */
     if (device_id && device_id[0]) {
         ma_device_info *capture_infos;
         ma_uint32 capture_count;
         ma_device_info *playback_infos;
         ma_uint32 playback_count;
+        const char *cursor;
+        unsigned long idx;
 
-        if (ma_context_get_devices(&ctx->context, &playback_infos, &playback_count,
-                                   &capture_infos, &capture_count) == MA_SUCCESS) {
-            int idx = atoi(device_id);
-            if (idx >= 0 && (ma_uint32)idx < capture_count) {
-                ctx->device_config.capture.pDeviceID = &capture_infos[idx].id;
+        for (cursor = device_id; *cursor; ++cursor) {
+            if (*cursor < '0' || *cursor > '9') {
+                ma_context_uninit(&ctx->context);
+                free(ctx);
+                free(capture);
+                return NULL;
             }
         }
+        idx = strtoul(device_id, NULL, 10);
+        if (ma_context_get_devices(&ctx->context, &playback_infos, &playback_count,
+                                   &capture_infos, &capture_count) != MA_SUCCESS ||
+            idx >= (unsigned long)capture_count) {
+            ma_context_uninit(&ctx->context);
+            free(ctx);
+            free(capture);
+            return NULL;
+        }
+        ctx->device_config.capture.pDeviceID = &capture_infos[idx].id;
     }
 
     /* Initialize device */
