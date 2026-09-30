@@ -320,7 +320,11 @@ spec("DataBind Plugin projection semantic rejection") {
     check_not_null(strstr(
         generated.base, ".plugin_id = \"MultiServicePlugin.Bundle\""));
     check_not_null(strstr(
-        generated.base, ".export_count = 2u"));
+        generated.base, "DATA_BIND_PLUGIN_CATALOG_EXPORT_ID"));
+    check_not_null(strstr(
+        generated.base, "DATA_BIND_PLUGIN_CATALOG_CONTRACT_ID"));
+    check_not_null(strstr(
+        generated.base, ".export_count = 3u"));
     salts_fs_buf_free(&generated);
 
     check_equal(salts_fs_access(
