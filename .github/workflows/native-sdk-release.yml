@@ -832,10 +832,7 @@ jobs:
 
   publish:
     name: Publish package and GitHub Release
-    if: >-
-      github.event_name == 'push' &&
-      (github.ref_type == 'tag' ||
-       startsWith(github.event.head_commit.message, 'release: bootstrap SaltsUtils '))
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: [metadata, pack]
     runs-on: ubuntu-latest
     permissions:
@@ -849,21 +846,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Create bootstrap tag when needed
-        if: github.ref_type != 'tag'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.metadata.outputs.tag }}
-          SOURCE_COMMIT: ${{ needs.metadata.outputs.source_commit }}
-        run: |
-          set -euo pipefail
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
-            existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)"
-            test "$existing" = "$SOURCE_COMMIT"
-          else
-            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_COMMIT"
-          fi
       - name: Publish to GitHub Packages
         shell: bash
         env:
