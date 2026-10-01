@@ -6,6 +6,7 @@ component ImageProcessor {
 
 message DecodeRequest {
     uint32 width;
+    optional uint32 scale default 4;
 }
 
 message DecodeResponse {
