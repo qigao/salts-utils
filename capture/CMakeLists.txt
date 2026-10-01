@@ -168,7 +168,6 @@ elseif(APPLE)
     PRIVATE src/capture_audio_miniaudio.c src/capture_macos.c
             src/capture_video_macos.m
             src/capture_screen_macos.m)
-  find_library(SALTS_CAPTURE_AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
   find_library(SALTS_CAPTURE_FOUNDATION_FRAMEWORK Foundation REQUIRED)
   find_library(SALTS_CAPTURE_AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
   find_library(SALTS_CAPTURE_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
