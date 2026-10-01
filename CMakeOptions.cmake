@@ -14,7 +14,7 @@ option(BUILD_TESTS "Build test suite" ON)
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
 
-if(WIN32 OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(WIN32 OR ANDROID OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(_SALTS_UTILS_CAPTURE_DEFAULT ON)
 else()
   set(_SALTS_UTILS_CAPTURE_DEFAULT OFF)
