@@ -47,7 +47,10 @@ spec("DataBind public Message native artifact") {
     DataBindError error = DATA_BIND_ERROR_INIT;
     tstr source = tstr_dup("owned");
 
+    memset(&event, 0xa5, sizeof(event));
     Event_init(&event);
+    check_equal(event._presence[0], (uint8_t)0u);
+    check_equal(event._nulls[0], (uint8_t)0u);
     check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
     check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
     check_equal(Event_values_vec_t_push(&event.values, UINT32_C(11)), STL_OK);
@@ -63,7 +66,11 @@ spec("DataBind public Message native artifact") {
     if (source != NULL)
       check_equal(Event_labels_vec_t_size(&event.labels), (size_t)1u);
 
+    event._presence[0] = UINT8_C(0xff);
+    event._nulls[0] = UINT8_C(0xff);
     Event_clear(&event);
+    check_equal(event._presence[0], (uint8_t)0u);
+    check_equal(event._nulls[0], (uint8_t)0u);
     check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
     check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
     check_not_null(source);
