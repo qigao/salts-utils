@@ -109,10 +109,11 @@ not define another Service model.
 
 ### NATIVE Service artifact
 
-`ARTIFACTS NATIVE` is an executable generated Service artifact, not a
-metadata-only bundle. The caller must provide business implementation through
-`SOURCES` and/or `LIBRARIES`; configuration fails immediately when an
-executable NATIVE Service has no implementation.
+`ARTIFACTS NATIVE` publishes the generated Service metadata and executable
+adapters on the generated native target. Business implementations remain normal
+native target inputs: a build may attach them to the generated NATIVE target
+with ordinary CMake target composition, while Plugin keeps its dedicated
+`SOURCES/LIBRARIES` convenience contract.
 
 One NATIVE Service artifact publishes the canonical operation identity and
 execution capability together:
