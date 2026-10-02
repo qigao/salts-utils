@@ -211,6 +211,9 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     check(file_contains(output, "DATA_BIND_FORMAT_JSON"));
     check(file_contains(output, "DATA_BIND_FORMAT_BINARY"));
     check(file_contains(output, "DATA_BIND_FLOWMQ_SERVICE_ROUTER_DEALER"));
+    check_false(file_contains(
+        output,
+        "databind_calc_binary_AddResponse_databind_binary_provider"));
     check(file_contains(
         output,
         "databind_calc_flowmq_service_request__databind_message_native_binding"));
@@ -235,6 +238,9 @@ spec("DataBind generated FlowMQ ChannelPlan") {
     check(file_contains(output, "DATA_BIND_FLOWMQ_SERVICE_REQ_REP"));
     check(file_contains(output, "DATA_BIND_FORMAT_BINARY"));
     check(file_contains(output, "DATA_BIND_FORMAT_JSON"));
+    check(file_contains(
+        output,
+        "databind_calc_binary_AddRequest_databind_binary_provider"));
     (void)salts_fs_unlink(output);
 
     config.egress_format = DATA_BIND_FORMAT_XML;
