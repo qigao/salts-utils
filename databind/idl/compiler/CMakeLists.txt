@@ -615,6 +615,32 @@ set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
 
 
 salts_idl_target(
+  TARGET databind_opaque_transport_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "opaque_bytes"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_transport_config.json")
+
+cmake_add_test(test_databind_opaque_transport
+  SOURCES test_public_opaque_transport.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${databind_opaque_transport_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_opaque_transport
+  databind_opaque_transport_fixture_idl_codegen)
+set_target_properties(test_databind_opaque_transport PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_opaque_transport PROPERTIES
+  LABELS "databind;compiler;opaque;bytes;transport;public")
+
+
+salts_idl_target(
   TARGET databind_binary_var_data_transport_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
   ARTIFACT_NAME "binary_var"
