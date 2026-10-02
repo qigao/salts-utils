@@ -938,6 +938,243 @@ static DataBindStatus validation_pattern_status_at(
       "Pattern evaluation failed");
 }
 
+static const cmeta_data_field_desc *validation_native_struct_field(
+    const cmeta_data_desc *data, const char *field_name) {
+  const cmeta_data_struct_shape *shape;
+  size_t i;
+  if (data == NULL || data->kind != CMETA_DATA_STRUCT ||
+      data->shape == NULL || field_name == NULL)
+    return NULL;
+  shape = (const cmeta_data_struct_shape *)data->shape;
+  for (i = 0u; i < shape->field_count; ++i)
+    if (shape->fields[i].name != NULL &&
+        strcmp(shape->fields[i].name, field_name) == 0)
+      return &shape->fields[i];
+  return NULL;
+}
+
+static DataBindStatus validation_plan_validate_native_at(
+    const DataBindValidationPlan *plan, const cmeta_data_desc *data,
+    const void *source, const char *prefix, unsigned depth,
+    DataBindError *error);
+
+static DataBindStatus validation_child_validate_native_at(
+    const DataBindValidationChild *child, const cmeta_data_desc *data,
+    const void *source, const char *field_path, unsigned depth,
+    DataBindError *error) {
+  if (child == NULL || child->plan == NULL || data == NULL ||
+      source == NULL || field_path == NULL)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, field_path,
+        "Invalid nested native ValidationPlan arguments");
+  if (depth > DATA_BIND_VALIDATION_MAX_DEPTH)
+    return validation_error(
+        error, DATA_BIND_ERR_LIMIT, field_path,
+        "Native ValidationPlan execution depth exceeds the bounded limit");
+
+  if (child->kind == DATA_BIND_VALIDATION_CHILD_OBJECT) {
+    if (data->kind != CMETA_DATA_STRUCT)
+      return validation_error(
+          error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+          "Nested native ValidationPlan expected an object value");
+    return validation_plan_validate_native_at(
+        child->plan, data, source, field_path, depth + 1u, error);
+  }
+
+  if (child->kind == DATA_BIND_VALIDATION_CHILD_SEQUENCE ||
+      child->kind == DATA_BIND_VALIDATION_CHILD_SET) {
+    cmeta_data_collection_borrow_cursor cursor = {0};
+    const cmeta_data_desc *element_data;
+    cmeta_status cmeta_status_value;
+    size_t item_index = 0u;
+
+    if (data->kind !=
+        (child->kind == DATA_BIND_VALIDATION_CHILD_SET
+             ? CMETA_DATA_SET
+             : CMETA_DATA_SEQUENCE))
+      return validation_error(
+          error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+          child->kind == DATA_BIND_VALIDATION_CHILD_SET
+              ? "Nested native ValidationPlan expected a set value"
+              : "Nested native ValidationPlan expected a list value");
+
+    element_data = cmeta_data_collection_element_data(data);
+    cmeta_status_value =
+        cmeta_data_collection_borrow_begin(data, source, &cursor);
+    if (element_data == NULL || cmeta_status_value != CMETA_OK)
+      return validation_error(
+          error, DATA_BIND_ERR_SCHEMA, field_path,
+          "Nested native collection lacks canonical element/borrow metadata");
+
+    for (;;) {
+      const void *element = NULL;
+      cmeta_gen_status generated =
+          cmeta_data_collection_borrow_next(&cursor, &element);
+      char item_path[260];
+      DataBindStatus status;
+
+      if (generated == CMETA_GEN_DONE) break;
+      if ((generated != CMETA_GEN_VALUE &&
+           generated != CMETA_GEN_VALUE_AND_DONE) ||
+          element == NULL)
+        return validation_error(
+            error, DATA_BIND_ERR_RUNTIME, field_path,
+            "Nested native collection traversal failed");
+      if (!validation_path_index(
+              item_path, field_path, item_index))
+        return validation_path_overflow(error, field_path);
+
+      status = validation_plan_validate_native_at(
+          child->plan, element_data, element, item_path,
+          depth + 1u, error);
+      if (status != DATA_BIND_OK) return status;
+      ++item_index;
+      if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+    }
+    return DATA_BIND_OK;
+  }
+
+  if (child->kind == DATA_BIND_VALIDATION_CHILD_MAP_VALUES) {
+    cmeta_data_map_borrow_cursor cursor = {0};
+    const cmeta_data_desc *value_data;
+    cmeta_status cmeta_status_value;
+    size_t item_index = 0u;
+
+    if (data->kind != CMETA_DATA_MAP)
+      return validation_error(
+          error, DATA_BIND_ERR_TYPE_MISMATCH, field_path,
+          "Nested native ValidationPlan expected a map value");
+    value_data = cmeta_data_map_value_data(data);
+    cmeta_status_value =
+        cmeta_data_map_borrow_begin(data, source, &cursor);
+    if (value_data == NULL || cmeta_status_value != CMETA_OK)
+      return validation_error(
+          error, DATA_BIND_ERR_SCHEMA, field_path,
+          "Nested native map lacks canonical value/borrow metadata");
+
+    for (;;) {
+      const void *key = NULL;
+      const void *value = NULL;
+      cmeta_gen_status generated =
+          cmeta_data_map_borrow_next(&cursor, &key, &value);
+      char item_path[260];
+      DataBindStatus status;
+      (void)key;
+
+      if (generated == CMETA_GEN_DONE) break;
+      if ((generated != CMETA_GEN_VALUE &&
+           generated != CMETA_GEN_VALUE_AND_DONE) ||
+          value == NULL)
+        return validation_error(
+            error, DATA_BIND_ERR_RUNTIME, field_path,
+            "Nested native map traversal failed");
+      if (!validation_path_index(
+              item_path, field_path, item_index))
+        return validation_path_overflow(error, field_path);
+
+      status = validation_plan_validate_native_at(
+          child->plan, value_data, value, item_path,
+          depth + 1u, error);
+      if (status != DATA_BIND_OK) return status;
+      ++item_index;
+      if (generated == CMETA_GEN_VALUE_AND_DONE) break;
+    }
+    return DATA_BIND_OK;
+  }
+
+  return validation_error(
+      error, DATA_BIND_ERR_RUNTIME, field_path,
+      "ValidationPlan contains an unknown nested native binding");
+}
+
+static DataBindStatus validation_plan_validate_native_at(
+    const DataBindValidationPlan *plan, const cmeta_data_desc *data,
+    const void *source, const char *prefix, unsigned depth,
+    DataBindError *error) {
+  size_t i;
+
+  if (plan == NULL || data == NULL || source == NULL || prefix == NULL)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, prefix,
+        "Invalid native ValidationPlan execution arguments");
+  if (depth > DATA_BIND_VALIDATION_MAX_DEPTH)
+    return validation_error(
+        error, DATA_BIND_ERR_LIMIT, prefix,
+        "Native ValidationPlan execution depth exceeds the bounded limit");
+  if (data->kind != CMETA_DATA_STRUCT || data->shape == NULL)
+    return validation_error(
+        error, DATA_BIND_ERR_TYPE_MISMATCH, prefix,
+        "Native ValidationPlan requires a Struct value");
+
+  for (i = 0u; i < plan->rule_count; ++i) {
+    const DataBindValidationRule *rule = &plan->rules[i];
+    const cmeta_data_field_desc *field =
+        validation_native_struct_field(data, rule->field_name);
+    DataBindStatus status;
+
+    if (field == NULL || field->value == NULL)
+      return validation_error(
+          error, DATA_BIND_ERR_SCHEMA, prefix,
+          "Native ValidationPlan field is missing from the CMeta Struct");
+    status = validation_validate_native_rule_at(
+        plan, rule, field->value,
+        (const unsigned char *)source + field->offset,
+        prefix, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+
+  for (i = 0u; i < plan->child_count; ++i) {
+    const DataBindValidationChild *child = &plan->children[i];
+    const cmeta_data_field_desc *field =
+        validation_native_struct_field(data, child->field_name);
+    char field_path[260];
+    DataBindStatus status;
+
+    if (field == NULL || field->value == NULL)
+      return validation_error(
+          error, DATA_BIND_ERR_SCHEMA, prefix,
+          "Nested native ValidationPlan field is missing from the CMeta Struct");
+    if (!validation_path_field(
+            field_path, prefix, child->field_name))
+      return validation_path_overflow(error, prefix);
+
+    status = validation_child_validate_native_at(
+        child, field->value,
+        (const unsigned char *)source + field->offset,
+        field_path, depth + 1u, error);
+    if (status != DATA_BIND_OK) return status;
+  }
+
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_validation_plan_internal_validate_native_child(
+    const DataBindValidationPlan *plan, const char *field_name,
+    const cmeta_data_desc *data, const void *source, DataBindError *error) {
+  size_t i;
+  char field_path[260];
+
+  if (plan == NULL || field_name == NULL || data == NULL || source == NULL)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, field_name,
+        "Invalid native child ValidationPlan arguments");
+
+  for (i = 0u; i < plan->child_count; ++i) {
+    const DataBindValidationChild *child = &plan->children[i];
+    if (child->field_name == NULL ||
+        strcmp(child->field_name, field_name) != 0)
+      continue;
+    if (!validation_path_field(
+            field_path, plan->type_name, field_name))
+      return validation_path_overflow(error, plan->type_name);
+    return validation_child_validate_native_at(
+        child, data, source, field_path, 0u, error);
+  }
+
+  validation_error_clear(error);
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus validation_plan_validate_at(
     const DataBindValidationPlan *plan, const DataBindValue *value,
     const char *prefix, unsigned depth, DataBindError *error) {
