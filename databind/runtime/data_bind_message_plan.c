@@ -1092,7 +1092,6 @@ DataBindStatus data_bind_message_plan_validate_native(
 
   for (i = 0u; i < plan->field_count; ++i) {
     const DataBindMessageFieldPlan *field = &plan->fields[i];
-    if (field->validation_rule_count == 0u) continue;
 
     if (field->has_presence) {
       const unsigned char *presence = base + field->presence_offset;
