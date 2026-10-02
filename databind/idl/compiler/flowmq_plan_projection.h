@@ -15,6 +15,8 @@ typedef struct databind_compiler_flowmq_projection_config {
   const char *native_header_include;
   const char *channel_name;
   DataBindFormat format;
+  DataBindPayloadKind payload_kind;
+  size_t opaque_max_bytes;
   DataBindFlowMQChannelPattern pattern;
   size_t max_payload_bytes;
 } databind_compiler_flowmq_projection_config;
