@@ -85,6 +85,7 @@ int main(int argc, char **argv) {
     char    *artifact_names = NULL;
     char    *transport_names = NULL;
     char    *projection_config_path = NULL;
+    char    *wasm_core_module_path = NULL;
     char    *component_id = NULL;
     char    *artifact_name = NULL;
     char    *artifact_version = NULL;
@@ -127,6 +128,9 @@ int main(int argc, char **argv) {
             &projection_config_path, "projection-config",
             "External JSON transport projection config"),
         cmd_arger_desc_string(
+            &wasm_core_module_path, "wasm-core-module",
+            "Prebuilt Core Wasm implementation module for WASM artifact"),
+        cmd_arger_desc_string(
             &component_id, "component",
             "Canonical qualified Component identity (Schema.Component)"),
         cmd_arger_desc_string(
@@ -152,10 +156,12 @@ int main(int argc, char **argv) {
 
     if (artifact_names == NULL && transport_names == NULL &&
         (component_id != NULL || artifact_name != NULL ||
-         artifact_version != NULL || projection_config_path != NULL)) {
+         artifact_version != NULL || projection_config_path != NULL ||
+         wasm_core_module_path != NULL)) {
         fprintf(stderr,
                 "--component/--artifact-name/--artifact-version/"
-                "--projection-config require --artifacts and/or --transports\n");
+                "--projection-config/--wasm-core-module require "
+                "--artifacts and/or --transports\n");
         return 1;
     }
 
@@ -167,6 +173,7 @@ int main(int argc, char **argv) {
             .artifact_name = artifact_name,
             .artifact_version = artifact_version,
             .projection_config_path = projection_config_path,
+            .wasm_core_module_path = wasm_core_module_path,
             .output_path = output_path,
             .source_output_path = source_output_path,
             .guest_output_path = guest_output_path,
