@@ -128,8 +128,32 @@ target_include_directories(installed_message_consumer_cpp PRIVATE
   "${installed_message_GENERATED_DIR}")
 add_dependencies(installed_message_consumer_cpp
   installed_message_idl_codegen)
+
+if(WIN32)
+  add_custom_target(installed_message_verify
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_message_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
+      $<TARGET_FILE:installed_message_consumer>
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_message_consumer_cpp>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
+      $<TARGET_FILE:installed_message_consumer_cpp>
+    DEPENDS
+      installed_message_consumer
+      installed_message_consumer_cpp
+    VERBATIM)
+else()
+  add_custom_target(installed_message_verify
+    COMMAND $<TARGET_FILE:installed_message_consumer>
+    COMMAND $<TARGET_FILE:installed_message_consumer_cpp>
+    DEPENDS
+      installed_message_consumer
+      installed_message_consumer_cpp
+    VERBATIM)
+endif()
 add_dependencies(installed_message
-  installed_message_consumer_cpp)
+  installed_message_consumer
+  installed_message_consumer_cpp
+  installed_message_verify)
 add_dependencies(installed_image
   installed_message)
 
