@@ -147,6 +147,8 @@ add_library(
   data_bind_message_plan.h
   data_bind_message_plan_internal.h
   data_bind_native_binding.h
+  data_bind_opaque_plan.c
+  data_bind_opaque_plan.h
   data_bind_method_plan.c
   data_bind_method_plan.h
   data_bind_projection_plan.c
@@ -259,6 +261,7 @@ install(
     data_bind_plugin_catalog.h
     data_bind_message_plan.h
     data_bind_native_binding.h
+    data_bind_opaque_plan.h
     data_bind_method_plan.h
     data_bind_projection_plan.h
     data_bind_flowmq_plan.h
@@ -277,6 +280,18 @@ install(
   COMPONENT DataBind)
 
 if(BUILD_TESTS)
+add_executable(test_data_bind_opaque_plan
+  test_data_bind_opaque_plan.c)
+target_compile_features(test_data_bind_opaque_plan PRIVATE c_std_11)
+target_link_libraries(test_data_bind_opaque_plan
+  PRIVATE Salts::DataBind Salts::TinyTest)
+set_target_properties(test_data_bind_opaque_plan
+  PROPERTIES FOLDER "databind/runtime/tests")
+add_test(NAME test_data_bind_opaque_plan
+  COMMAND test_data_bind_opaque_plan)
+set_tests_properties(test_data_bind_opaque_plan PROPERTIES
+  LABELS "databind;opaque;bytes")
+
 add_executable(test_data_bind_format_provider
   test_data_bind_format_provider.c)
 target_compile_features(test_data_bind_format_provider PRIVATE c_std_11)
