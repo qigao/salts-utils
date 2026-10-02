@@ -258,6 +258,24 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    config.operation_name = "Add";
+    config.service_pattern = (DataBindFlowMQServicePattern)99;
+    check_equal(
+        databind_compiler_projection_run(
+            &input, &request, 1u, &backend, 1u),
+        -1);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+
+    config.service_pattern = DATA_BIND_FLOWMQ_SERVICE_REQ_REP;
+    config.operation_name = "Choose";
+    config.ingress_format = DATA_BIND_FORMAT_JSON;
+    config.egress_format = DATA_BIND_FORMAT_BINARY;
+    check_equal(
+        databind_compiler_projection_run(
+            &input, &request, 1u, &backend, 1u),
+        -1);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+
     databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
