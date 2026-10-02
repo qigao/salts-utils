@@ -72,9 +72,9 @@ typedef struct DataBindMessagePlanDiagnostic {
  * ValidationPlan. It borrows only immutable generated CMeta/native binding
  * metadata. It owns no FunctionDesc, Service operation, format or transport.
  *
- * The current native-validation slice admits direct record constraints only;
- * nested ValidationPlan execution fails closed instead of falling back to
- * schema/reflection lookup at runtime.
+ * Native validation executes the compiled ValidationPlan directly. Admitted
+ * nested Struct/list/set/map bindings traverse canonical CMeta field and borrow
+ * providers; no runtime schema/reflection lookup or dynamic value tree is used.
  */
 DATA_BIND_API DataBindStatus data_bind_message_plan_compile(
     DataBind *codec,

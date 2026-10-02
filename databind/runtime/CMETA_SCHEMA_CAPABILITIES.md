@@ -137,14 +137,19 @@ do not by themselves enable `typed_cmeta_runtime_supported`.
 | `bytes` | `tbe_bytes_t` | `CMETA_DATA_BYTES` | `owned_lifecycle` | deferred | Requires provider-owned init, conversion, replacement and clear operations. |
 | optional `int32` | presence plus `int32_t` | `CMETA_DATA_SINT` | `overlay_presence` | deferred | Requires a validated composition of the CMeta value slot with overlay-owned presence/default policy. |
 | `list<int32>` | generated `vec_t` | `CMETA_DATA_SEQUENCE` | `deferred_container` | deferred | Requires a separate native-container/CSTL provider contract; #46's dynamic storage migration does not enable generated list, set or map descriptors. |
+| required `list<Record>` with admitted record lifecycle | generated `{ vec_t raw; }` wrapper | `CMETA_DATA_SEQUENCE` | `sequence_provider` | MessagePlan supported; legacy typed descriptor still deferred | Generated C publishes exact element type/data plus canonical collection borrow/collector/construct operations. Order and duplicates are preserved. |
 
 All non-owned `fixed_value` providers and the currently supported
 `enum_domain` subset are installed at this checkpoint. The executable
 characterization requires a record to be published only when every transitive
 field requirement has an installed canonical CMeta provider. In particular,
-all rows still marked deferred above lack `typed_cmeta_runtime_supported`,
-and sequence, set and map records remain on
-the raw/deferred route.
+all rows still marked deferred above lack `typed_cmeta_runtime_supported`.
+The required `list<Record>` sequence-provider slice is intentionally separate:
+it publishes canonical CMeta lifecycle and is executable through the generated
+Message native artifact plus `DataBindMessagePlan`, but it does **not** widen
+the legacy `TbeTypedDescriptor` support matrix. Scalar/string/enum lists,
+optional/nullable lists, sets, maps and unsupported nested container shapes
+remain fail-closed until their own provider slices are qualified.
 
 For supported rows, native size, alignment, semantic kind, field order, native
 name and native offset come only from CMeta. The overlay supplies external names,

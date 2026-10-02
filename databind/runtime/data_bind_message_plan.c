@@ -341,6 +341,12 @@ static DataBindStatus message_compile_default_token(
     DataBindMessageFieldPlan *field,
     DataBindMessagePlanDiagnostic *diagnostic);
 
+enum { DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH = 32u };
+
+static int message_schema_record_matches_native(
+    DataBind *codec, const char *type_name,
+    const cmeta_data_desc *native_data, unsigned depth);
+
 static int message_logical_buffer_matches_native(
     const DataBindSchemaField *schema_field,
     const cmeta_data_desc *native_data) {
@@ -364,6 +370,112 @@ static int message_logical_buffer_matches_native(
          ops->init_zero != NULL &&
          ops->restore_zero != NULL &&
          ops->move != NULL;
+}
+
+static int message_logical_sequence_matches_native(
+    DataBind *codec, const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  const cmeta_data_collection_ops *ops;
+  const cmeta_data_desc *element;
+
+  if (codec == NULL || schema_field == NULL || native_data == NULL ||
+      depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
+      !schema_field->is_collection ||
+      schema_field->collection_kind == NULL ||
+      strcmp(schema_field->collection_kind, "list") != 0 ||
+      schema_field->inner_type == NULL ||
+      schema_field->inner_type[0] == '\0' ||
+      !schema_field->has_cmeta_kind ||
+      schema_field->cmeta_kind != CMETA_DATA_SEQUENCE ||
+      native_data->kind != CMETA_DATA_SEQUENCE ||
+      native_data->storage_type == NULL ||
+      !cmeta_data_value_move_supported(native_data) ||
+      !cmeta_data_value_copy_supported(native_data))
+    return 0;
+
+  ops = cmeta_data_collection_ops_of(native_data);
+  element = cmeta_data_collection_element_data(native_data);
+  if (ops == NULL || element == NULL ||
+      cmeta_data_construct_ops_of(native_data) == NULL ||
+      ops->collector == NULL || ops->borrow == NULL ||
+      !cmeta_data_desc_valid(element) ||
+      element->kind != CMETA_DATA_STRUCT)
+    return 0;
+
+  return message_schema_record_matches_native(
+      codec, schema_field->inner_type, element, depth + 1u);
+}
+
+static int message_schema_field_matches_native(
+    DataBind *codec, const char *type_name, size_t field_index,
+    const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  const cmeta_data_desc *schema_data = NULL;
+  DataBindError error = DATA_BIND_ERROR_INIT;
+
+  if (codec == NULL || type_name == NULL || schema_field == NULL ||
+      native_data == NULL ||
+      depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH)
+    return 0;
+
+  if (schema_field->is_collection)
+    return message_logical_sequence_matches_native(
+        codec, schema_field, native_data, depth);
+
+  schema_data = schema_field->cmeta_data;
+  if (schema_data == NULL)
+    (void)data_bind_schema_field_cmeta_data(
+        codec, type_name, field_index, &schema_data, &error);
+
+  if (schema_data != NULL)
+    return message_data_semantically_equal(schema_data, native_data);
+
+  return message_logical_buffer_matches_native(schema_field, native_data);
+}
+
+static int message_schema_record_matches_native(
+    DataBind *codec, const char *type_name,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  const cmeta_data_struct_shape *shape =
+      message_object_struct_shape(native_data);
+  DataBindSchemaType schema_type = DATA_BIND_SCHEMA_TYPE_INIT;
+  size_t i;
+
+  if (codec == NULL || type_name == NULL || type_name[0] == '\0' ||
+      shape == NULL ||
+      depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
+      !data_bind_schema_find_type(codec, type_name, &schema_type) ||
+      schema_type.field_count !=
+          data_bind_schema_field_count(codec, type_name) ||
+      shape->field_count != schema_type.field_count)
+    return 0;
+
+  for (i = 0u; i < schema_type.field_count; ++i) {
+    DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
+    const cmeta_data_field_desc *native_field = NULL;
+    size_t j;
+
+    if (!data_bind_schema_field_at(codec, type_name, i, &schema_field))
+      return 0;
+    if (schema_field.is_optional || schema_field.is_nullable)
+      return 0;
+
+    for (j = 0u; j < shape->field_count; ++j) {
+      if (shape->fields[j].name != NULL &&
+          schema_field.name != NULL &&
+          strcmp(shape->fields[j].name, schema_field.name) == 0) {
+        native_field = &shape->fields[j];
+        break;
+      }
+    }
+    if (native_field == NULL || native_field->value == NULL ||
+        !message_schema_field_matches_native(
+            codec, type_name, i, &schema_field,
+            native_field->value, depth + 1u))
+      return 0;
+  }
+
+  return 1;
 }
 
 static DataBindStatus message_compile_fields(
@@ -405,10 +517,8 @@ static DataBindStatus message_compile_fields(
   for (i = 0u; i < plan->field_count; ++i) {
     DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
     const cmeta_data_field_desc *native_field;
-    const cmeta_data_desc *schema_data = NULL;
     const DataBindNativeStateBinding *presence;
     const DataBindNativeStateBinding *null_state;
-    DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindMessageFieldPlan *field = &plan->fields[i];
 
     if (!data_bind_schema_field_at(codec, type_name, i, &schema_field))
@@ -423,24 +533,13 @@ static DataBindStatus message_compile_fields(
           "Native type '%s' is missing field '%s'", type_name,
           schema_field.name != NULL ? schema_field.name : "");
 
-    schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL)
-      (void)data_bind_schema_field_cmeta_data(
-          codec, type_name, i, &schema_data, &error);
-
-    if (schema_data != NULL) {
-      if (!message_data_semantically_equal(schema_data, native_field->value))
-        return message_fail(
-            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
-            "Native CMeta field '%s.%s' does not match DataBind IDL semantics",
-            type_name, schema_field.name != NULL ? schema_field.name : "");
-    } else if (!message_logical_buffer_matches_native(
-                   &schema_field, native_field->value)) {
+    if (!message_schema_field_matches_native(
+            codec, type_name, i, &schema_field,
+            native_field->value, 0u))
       return message_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name,
-          "IDL field '%s.%s' has no admitted canonical native mapping",
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+          "Native CMeta field '%s.%s' does not match admitted DataBind IDL semantics",
           type_name, schema_field.name != NULL ? schema_field.name : "");
-    }
 
     field->name = message_strdup(schema_field.name);
     field->data = native_field->value;
@@ -529,8 +628,6 @@ static DataBindStatus message_compile_object_fields(
   for (i = 0u; i < plan->field_count; ++i) {
     DataBindSchemaField schema_field = DATA_BIND_SCHEMA_FIELD_INIT;
     const cmeta_data_field_desc *object_field;
-    const cmeta_data_desc *schema_data = NULL;
-    DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindMessageFieldPlan *field = &plan->fields[i];
 
     if (!data_bind_schema_field_at(codec, type_name, i, &schema_field))
@@ -555,24 +652,13 @@ static DataBindStatus message_compile_object_fields(
           "Object type '%s' is missing field '%s'", type_name,
           schema_field.name != NULL ? schema_field.name : "");
 
-    schema_data = schema_field.cmeta_data;
-    if (schema_data == NULL)
-      (void)data_bind_schema_field_cmeta_data(
-          codec, type_name, i, &schema_data, &error);
-
-    if (schema_data != NULL) {
-      if (!message_data_semantically_equal(schema_data, object_field->value))
-        return message_fail(
-            diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
-            "Object CMeta field '%s.%s' does not match DataBind IDL semantics",
-            type_name, schema_field.name != NULL ? schema_field.name : "");
-    } else if (!message_logical_buffer_matches_native(
-                   &schema_field, object_field->value)) {
+    if (!message_schema_field_matches_native(
+            codec, type_name, i, &schema_field,
+            object_field->value, 0u))
       return message_fail(
-          diagnostic, DATA_BIND_ERR_SCHEMA, schema_field.name,
-          "IDL field '%s.%s' has no admitted canonical object mapping",
+          diagnostic, DATA_BIND_ERR_TYPE_MISMATCH, schema_field.name,
+          "Object CMeta field '%s.%s' does not match admitted DataBind IDL semantics",
           type_name, schema_field.name != NULL ? schema_field.name : "");
-    }
 
     field->name = message_strdup(schema_field.name);
     field->data = object_field->value;
@@ -709,12 +795,6 @@ static DataBindStatus message_compile_validation(
             : "Could not compile MessagePlan ValidationPlan");
 
   rule_count = data_bind_validation_plan_rule_count(plan->validation);
-  if (data_bind_validation_plan_internal_child_count(plan->validation) != 0u)
-    return message_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
-        "Nested native ValidationPlan execution is not admitted by this "
-        "MessagePlan slice");
-
   for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
     DataBindValidationRuleInfo info = {0};
     DataBindMessageFieldPlan *field;
@@ -739,17 +819,35 @@ static DataBindStatus message_compile_validation(
           "ValidationPlan field kind does not match admitted native value");
 
     if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
-      if (info.field_kind != CMETA_DATA_STRING &&
-          info.field_kind != CMETA_DATA_BYTES)
+      if (info.field_kind == CMETA_DATA_STRING ||
+          info.field_kind == CMETA_DATA_BYTES) {
+        buffer_ops = cmeta_data_buffer_ops_of(field->data);
+        if (buffer_ops == NULL || buffer_ops->read == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native @Size requires a canonical readable buffer provider");
+      } else if (info.field_kind == CMETA_DATA_SEQUENCE ||
+                 info.field_kind == CMETA_DATA_SET) {
+        const cmeta_data_collection_ops *collection_ops =
+            cmeta_data_collection_ops_of(field->data);
+        if (collection_ops == NULL || collection_ops->borrow == NULL ||
+            collection_ops->borrow->size == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native collection @Size requires canonical borrow-size metadata");
+      } else if (info.field_kind == CMETA_DATA_MAP) {
+        const cmeta_data_map_ops *map_ops =
+            cmeta_data_map_ops_of(field->data);
+        if (map_ops == NULL || map_ops->borrow == NULL ||
+            map_ops->borrow->size == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native map @Size requires canonical borrow-size metadata");
+      } else {
         return message_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            "Native @Size currently requires canonical string/bytes storage; "
-            "container size validation awaits a canonical range provider");
-      buffer_ops = cmeta_data_buffer_ops_of(field->data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL)
-        return message_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            "Native @Size requires a canonical readable buffer provider");
+            "Native @Size requires canonical buffer or collection storage");
+      }
     } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
       if (info.field_kind != CMETA_DATA_STRING)
         return message_fail(
@@ -950,8 +1048,10 @@ DataBindStatus data_bind_message_plan_internal_validate_field(
 
   field = message_field_const(plan, field_name);
   if (field == NULL) return DATA_BIND_ERR_SCHEMA;
-  if (field->validation_rule_count == 0u) return DATA_BIND_OK;
-  if (plan->validation == NULL) return DATA_BIND_ERR_RUNTIME;
+  if (plan->validation == NULL)
+    return field->validation_rule_count == 0u
+               ? DATA_BIND_OK
+               : DATA_BIND_ERR_RUNTIME;
 
   for (i = 0u; i < field->validation_rule_count; ++i) {
     DataBindStatus status =
@@ -963,7 +1063,8 @@ DataBindStatus data_bind_message_plan_internal_validate_field(
             error);
     if (status != DATA_BIND_OK) return status;
   }
-  return DATA_BIND_OK;
+  return data_bind_validation_plan_internal_validate_native_child(
+      plan->validation, field_name, field->data, source, error);
 }
 
 const cserde_token *data_bind_message_plan_internal_default_token(
@@ -993,7 +1094,6 @@ DataBindStatus data_bind_message_plan_validate_native(
 
   for (i = 0u; i < plan->field_count; ++i) {
     const DataBindMessageFieldPlan *field = &plan->fields[i];
-    if (field->validation_rule_count == 0u) continue;
 
     if (field->has_presence) {
       const unsigned char *presence = base + field->presence_offset;
@@ -1195,6 +1295,28 @@ static void message_set_null(
     *state &= (unsigned char)~(1u << field->null_bit);
 }
 
+static const char *message_validation_diagnostic_field(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindError *validation) {
+  char direct_path[sizeof(((DataBindError *)0)->path)];
+  int written;
+
+  if (field == NULL) return validation != NULL ? validation->path : NULL;
+  if (validation == NULL || validation->path[0] == '\0')
+    return field->name;
+  if (plan == NULL || plan->type_name == NULL || field->name == NULL)
+    return validation->path;
+
+  written = snprintf(
+      direct_path, sizeof(direct_path), "%s.%s",
+      plan->type_name, field->name);
+  if (written >= 0 && (size_t)written < sizeof(direct_path) &&
+      strcmp(direct_path, validation->path) == 0)
+    return field->name;
+  return validation->path;
+}
+
 static DataBindStatus message_decode_value(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
@@ -1229,7 +1351,9 @@ static DataBindStatus message_decode_value(
       plan, field->name, field_destination, &validation);
   if (status != DATA_BIND_OK)
     return message_fail(
-        diagnostic, status, field->name, "%s",
+        diagnostic, status,
+        message_validation_diagnostic_field(plan, field, &validation),
+        "%s",
         validation.message[0] != '\0'
             ? validation.message
             : "Native field validation failed");
@@ -1788,7 +1912,6 @@ DataBindStatus data_bind_message_plan_validate_object(
       return status;
     }
     if (state != DATA_BIND_MESSAGE_OBJECT_VALUE) continue;
-    if (field->validation_rule_count == 0u) continue;
 
     cmeta_result = cmeta_object_field_read(
         object, field->name, &value_data, &value);

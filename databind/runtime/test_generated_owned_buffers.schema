@@ -6,3 +6,22 @@ message NativeOwnedBufferRecord {
     string text;
     bytes payload;
 }
+
+message NativeHeader {
+    @Size(min = 1, max = 32)
+    @Pattern("[a-z-]+")
+    string name;
+    @Size(min = 1, max = 64)
+    string value;
+}
+
+message NativeHeaderPolicy {
+    uint32 id;
+    @Size(max = 3)
+    list<NativeHeader> headers;
+}
+
+message NativeHeaderNestedOnly {
+    uint32 id;
+    list<NativeHeader> headers;
+}

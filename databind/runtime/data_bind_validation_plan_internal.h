@@ -30,6 +30,15 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
     const DataBindValidationPlan *plan, size_t rule_index,
     const cmeta_data_desc *data, const void *source, DataBindError *error);
 
+/*
+ * Execute the already-compiled nested child plan attached to one logical field.
+ * No-op success when the field has no non-empty child ValidationPlan.
+ * The caller has already applied optional/null/default state semantics.
+ */
+DataBindStatus data_bind_validation_plan_internal_validate_native_child(
+    const DataBindValidationPlan *plan, const char *field_name,
+    const cmeta_data_desc *data, const void *source, DataBindError *error);
+
 #ifdef __cplusplus
 }
 #endif

@@ -339,7 +339,13 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_sequence_name}}
+TBE_TYPED_MANAGED_VEC_DEFINE(
+    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
+{{/native_sequence_name}}
+{{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_sequence_name}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -694,7 +700,13 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_sequence_name}}
+TBE_TYPED_MANAGED_VEC_DEFINE(
+    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
+{{/native_sequence_name}}
+{{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_sequence_name}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -1281,7 +1293,13 @@ typedef struct {{typed_map_entry_type}} {
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
+{{#native_sequence_name}}
+TBE_TYPED_MANAGED_VEC_DEFINE(
+    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
+{{/native_sequence_name}}
+{{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
+{{/native_sequence_name}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
