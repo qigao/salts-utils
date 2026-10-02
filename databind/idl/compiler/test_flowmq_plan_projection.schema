@@ -30,3 +30,7 @@ service Calc {
   Add: AddRequest -> AddResponse throws CalcError;
   Choose: AddRequest -> Choice;
 }
+
+service Raw {
+  Echo: bytes -> bytes;
+}
