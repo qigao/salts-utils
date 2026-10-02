@@ -5,6 +5,11 @@
 
 static_assert(std::is_standard_layout<DataBindServiceNativeBinding>::value,
               "installed Service binding must be C-compatible");
+static_assert(std::is_standard_layout<DataBindNativeExecution>::value,
+              "installed Service execution must be C-compatible");
+static_assert(
+    std::is_standard_layout<cflow_function_typed_adapter_projection>::value,
+    "installed typed CFlow projection must be C-compatible");
 
 int main() {
   DataBindNativeTypeBinding request{};

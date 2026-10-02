@@ -4,6 +4,8 @@
 #include "tinytest.h"
 
 #include <cmeta/function.h>
+#include <cflow/function_projection.h>
+#include <cflow/plan.h>
 #include <string.h>
 
 const cmeta_function_desc *
@@ -12,12 +14,18 @@ const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi(void);
 const DataBindNativeExecution *
 databind_13_ServiceNative_4_Calc_3_Add__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
 const cmeta_function_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function(void);
 const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function_abi(void);
 const DataBindNativeExecution *
 databind_13_ServiceNative_4_Calc_4_Find__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
 DataBindStatus databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
     DataBindNativeTypeBinding *request_out,
     DataBindNativeTypeBinding *response_out,
@@ -144,6 +152,71 @@ static DataBindBindingProvider outcome_provider(OutcomeProviderState *state) {
 }
 
 spec("DataBind canonical Service native lowering") {
+  it("projects generated no-error Service execution through CFlow Graph and Plan") {
+    cflow_function_typed_adapter_projection projection = {0};
+    cflow_function_typed_adapter_projection rejected = {0};
+    cflow_graph graph = {0};
+    cflow_plan plan = {0};
+    cflow_result interpreted = {0};
+    cflow_result compiled = {0};
+    const AddRequest_t input[] = {
+        {.left = 7u, .scale = 3u},
+        {.left = 2u, .scale = 5u}};
+    const AddResponse_t expected[] = {
+        {.sum = 21u},
+        {.sum = 10u}};
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+            &projection),
+        CFLOW_FUNCTION_PROJECTION_OK);
+    check_true(cflow_function_typed_adapter_projection_valid(&projection));
+    check_true(
+        projection.function ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function());
+    check_true(
+        projection.abi ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi());
+    check_equal(
+        projection.callable.meta.effects, projection.function->effects);
+    check_equal(
+        projection.callable.meta.properties, projection.function->properties);
+    check_equal(projection.callable.meta.sig, CMETA_SIG_INVALID);
+    check_equal(
+        projection.callable.dispatch, CMETA_CALLABLE_DISPATCH_ADAPTER);
+    check_null(projection.callable.resolve);
+    check_not_null(projection.callable.invoke);
+    check_equal(projection.callable.capture_size,
+                sizeof(const cmeta_data_desc *));
+    check_not_null(projection.input_type);
+    check_not_null(projection.output_type);
+
+    cflow_graph_init(&graph, projection.input_type);
+    check_true(cflow_graph_add_function_typed_adapter_projection(
+        &graph, &projection));
+    check_true(cflow_eval_array(&graph, input, 2u, &interpreted));
+    check_equal(interpreted.count, (size_t)2u);
+    check_true(cmeta_type_equal(interpreted.type, projection.output_type));
+    check_equal(interpreted.data, expected, sizeof(expected));
+
+    check_true(cflow_plan_compile_surface(&plan, &graph, NULL));
+    check_true(cflow_plan_eval_array(&plan, input, 2u, &compiled));
+    check_equal(compiled.count, (size_t)2u);
+    check_true(cmeta_type_equal(compiled.type, projection.output_type));
+    check_equal(compiled.data, expected, sizeof(expected));
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+            &rejected),
+        CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE);
+    check_equal(rejected.size, (size_t)0u);
+
+    cflow_result_destroy(&compiled);
+    cflow_result_destroy(&interpreted);
+    cflow_plan_destroy(&plan);
+    cflow_graph_destroy(&graph);
+  }
+
   it("emits complete FunctionAbi and compiles the shared BindingPlan tuple") {
     const cmeta_function_desc *function =
         databind_13_ServiceNative_4_Calc_3_Add__databind_function();

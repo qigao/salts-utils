@@ -135,6 +135,21 @@ int databind_compiler_service_native_emit_execution(
     int emit_descriptor);
 
 /*
+ * Emit the producer-owned logical Request -> Response adapter and admission
+ * helper for Salts' explicit typed CFlow Service projection.
+ *
+ * The generated helper preserves the canonical Service FunctionDesc/FunctionAbi
+ * and reuses DataBindNativeExecution. It does not synthesize a second unary
+ * FunctionDesc, reconstruct a dynamic ABI, or introduce Plugin/CFlow ownership.
+ *
+ * Typed-error Service operations emit an accessor that fails closed with
+ * CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE in this first slice.
+ */
+int databind_compiler_service_native_emit_cflow_projection(
+    FILE *file,
+    const databind_compiler_service_native_operation *operation);
+
+/*
  * Emit the generated host-side DataBind native-binding initializer. The caller
  * owns request/response/service structs for at least as long as any compiled
  * BindingPlan retains them.

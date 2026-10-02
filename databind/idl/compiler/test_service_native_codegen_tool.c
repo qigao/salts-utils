@@ -47,7 +47,9 @@ static int write_source(
           "#include \"%s\"\n"
           "#include \"data_bind_binding_plan.h\"\n"
           "#include <cmeta/function.h>\n"
-          "#include <stddef.h>\n\n",
+          "#include <cflow/function_projection.h>\n"
+          "#include <stddef.h>\n"
+          "#include <string.h>\n\n",
           header_name) < 0)
     goto fail;
   for (i = 0u; i < ir->operation_count; ++i) {
@@ -58,6 +60,9 @@ static int write_source(
             file, &ir->operations[i], 1) != 0)
       goto fail;
     if (databind_compiler_service_native_emit_binding(
+            file, &ir->operations[i]) != 0)
+      goto fail;
+    if (databind_compiler_service_native_emit_cflow_projection(
             file, &ir->operations[i]) != 0)
       goto fail;
     if (fputc('\n', file) == EOF) goto fail;

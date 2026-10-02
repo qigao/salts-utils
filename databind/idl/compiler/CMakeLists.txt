@@ -105,6 +105,7 @@ cmake_add_test(test_databind_nullable_codegen
     "${DATABIND_NULLABLE_GENERATED_C}"
   LIBS
     Salts::DataBind
+    Salts::CFlow
     Salts::TinyTest
   INCLUDES
     "${DATABIND_NULLABLE_GENERATED_DIR}"
@@ -513,6 +514,10 @@ salts_idl_target(
   ARTIFACT_NAME "service_native_public"
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
+
+target_sources(
+  ${databind_native_service_public_fixture_NATIVE_TARGET}
+  PRIVATE test_public_native_service_business.c)
 
 salts_idl_target(
   TARGET databind_message_native_artifact_fixture

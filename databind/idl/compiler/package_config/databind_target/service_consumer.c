@@ -11,6 +11,8 @@ int main(void) {
   DataBindNativeTypeBinding request = {0};
   DataBindNativeTypeBinding response = {0};
   DataBindServiceNativeBinding native = {0};
+  const DataBindNativeExecution *execution = NULL;
+  cflow_function_typed_adapter_projection cflow_projection = {0};
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBindBindingPlanDiagnostic diagnostic =
       DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
@@ -44,6 +46,15 @@ int main(void) {
           &request, &response, &native, &error) != DATA_BIND_OK ||
       native.function == NULL)
     return 1;
+  execution =
+      databind_10_ServiceSdk_4_Calc_3_Add__databind_execution();
+  if (execution == NULL || !data_bind_native_execution_valid(execution))
+    return 11;
+  if (databind_10_ServiceSdk_4_Calc_3_Add__databind_cflow_projection(
+          &cflow_projection) != CFLOW_FUNCTION_PROJECTION_OK ||
+      !cflow_function_typed_adapter_projection_valid(&cflow_projection) ||
+      cflow_projection.function != native.function)
+    return 12;
 
   http_config = data_bind_http_projection_artifact_find(
       &databind_installed_service_http_projection, "Calc", "Add");

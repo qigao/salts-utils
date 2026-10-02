@@ -506,6 +506,10 @@ function(salts_idl_target)
     target_link_libraries("${DB_TARGET}_native" PUBLIC
       Salts::DataBind
       ${DB_LIBRARIES})
+    if(_has_native)
+      target_link_libraries("${DB_TARGET}_native" PUBLIC
+        Salts::CFlow)
+    endif()
   endif()
 
   if(_has_plugin)

@@ -206,7 +206,8 @@ static int native_service_write_header(
       !native_service_write_include(file, config->native_header) ||
       fputs(
           "\n#include <data_bind_binding_plan.h>\n"
-          "#include <cmeta/function.h>\n\n"
+          "#include <cmeta/function.h>\n"
+          "#include <cflow/function_projection.h>\n\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
           file) == EOF)
     return 0;
@@ -220,11 +221,16 @@ static int native_service_write_header(
             file,
             "const cmeta_function_desc *%s__databind_function(void);\n"
             "const cmeta_function_abi_desc *%s__databind_function_abi(void);\n"
+            "const DataBindNativeExecution *%s__databind_execution(void);\n"
+            "cflow_function_projection_status %s__databind_cflow_projection(\n"
+            "    cflow_function_typed_adapter_projection *out);\n"
             "DataBindStatus %s__databind_native_binding(\n"
             "    DataBindNativeTypeBinding *request_out,\n"
             "    DataBindNativeTypeBinding *response_out,\n"
             "    DataBindServiceNativeBinding *service_out,\n"
             "    DataBindError *error);\n\n",
+            operation->symbol,
+            operation->symbol,
             operation->symbol,
             operation->symbol,
             operation->symbol) < 0)
@@ -250,14 +256,18 @@ static int native_service_write_source(
   if (!native_service_text_valid(header) ||
       fputs("#include ", file) == EOF ||
       !native_service_write_include(file, header) ||
-      fputs("\n\n", file) == EOF)
+      fputs("\n#include <string.h>\n\n", file) == EOF)
     return 0;
 
   for (i = 0u; i < ir->operation_count; ++i) {
     if (databind_compiler_service_native_emit_reflection(
             file, &ir->operations[i], 1) != 0 ||
         fputc('\n', file) == EOF ||
+        databind_compiler_service_native_emit_execution(
+            file, &ir->operations[i], 1) != 0 ||
         databind_compiler_service_native_emit_binding(
+            file, &ir->operations[i]) != 0 ||
+        databind_compiler_service_native_emit_cflow_projection(
             file, &ir->operations[i]) != 0 ||
         fputc('\n', file) == EOF)
       return 0;
