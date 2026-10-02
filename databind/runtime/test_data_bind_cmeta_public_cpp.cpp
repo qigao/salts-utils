@@ -25,6 +25,25 @@ static_assert(std::is_standard_layout_v<DataBindNativeStateBinding>);
 static_assert(std::is_standard_layout_v<DataBindBindingCallFrame>);
 static_assert(std::is_standard_layout_v<DataBindBindingProvider>);
 
+using ClientWriteInputs = DataBindStatus (*)(
+    const DataBindBindingPlan *,
+    const DataBindBindingProvider *,
+    const DataBindBindingCallFrame *,
+    DataBindBindingPlanDiagnostic *);
+using ClientBindOutcome = DataBindStatus (*)(
+    const DataBindBindingPlan *,
+    const DataBindBindingProvider *,
+    const DataBindNativeOptions *,
+    DataBindBindingCallFrame *,
+    const DataBindBindingOutcome *,
+    DataBindBindingPlanDiagnostic *);
+static_assert(std::is_same_v<
+              decltype(&data_bind_binding_plan_write_inputs),
+              ClientWriteInputs>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_binding_plan_bind_outcome),
+              ClientBindOutcome>);
+
 static_assert(std::is_standard_layout_v<DataBindHttpFieldProjection>);
 static_assert(std::is_standard_layout_v<DataBindHttpErrorMapping>);
 static_assert(std::is_standard_layout_v<DataBindHttpProjectionConfig>);

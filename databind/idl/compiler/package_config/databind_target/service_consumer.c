@@ -21,7 +21,24 @@ int main(void) {
   DataBindTransportPlanInfo transport =
       DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
   DataBind *codec = NULL;
+  DataBindStatus (*write_inputs_fn)(
+      const DataBindBindingPlan *,
+      const DataBindBindingProvider *,
+      const DataBindBindingCallFrame *,
+      DataBindBindingPlanDiagnostic *) =
+      data_bind_binding_plan_write_inputs;
+  DataBindStatus (*bind_outcome_fn)(
+      const DataBindBindingPlan *,
+      const DataBindBindingProvider *,
+      const DataBindNativeOptions *,
+      DataBindBindingCallFrame *,
+      const DataBindBindingOutcome *,
+      DataBindBindingPlanDiagnostic *) =
+      data_bind_binding_plan_bind_outcome;
   int failed = 0;
+
+  if (write_inputs_fn == NULL || bind_outcome_fn == NULL)
+    return 10;
 
   if (databind_10_ServiceSdk_4_Calc_3_Add__databind_native_binding(
           &request, &response, &native, &error) != DATA_BIND_OK ||

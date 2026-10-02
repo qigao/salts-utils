@@ -205,6 +205,82 @@ static DataBindStatus project_field(
   return DATA_BIND_OK;
 }
 
+typedef struct ErrorTokenSource {
+  const cserde_token *tokens;
+  size_t count;
+  size_t index;
+} ErrorTokenSource;
+
+typedef struct ErrorInputProbe {
+  ErrorTokenSource source;
+  cserde_reader reader;
+  int mode;
+} ErrorInputProbe;
+
+static cserde_status error_token_next(void *opaque, cserde_token *out) {
+  ErrorTokenSource *source = (ErrorTokenSource *)opaque;
+  if (source == NULL || out == NULL) return CSERDE_INVALID_ARGUMENT;
+  if (source->index >= source->count) return CSERDE_DONE;
+  *out = source->tokens[source->index++];
+  return CSERDE_OK;
+}
+
+static const cserde_reader_ops ERROR_TOKEN_READER_OPS = {
+    sizeof(cserde_reader_ops), CSERDE_READER_OPS_ABI_VERSION,
+    error_token_next};
+
+static DataBindStatus error_input_open(
+    void *opaque, const DataBindBindingPlanEntry *entry,
+    cserde_reader *reader, DataBindBindingValueState *state,
+    DataBindError *error) {
+  static const unsigned char bytes_value[] = {1u, 2u, 3u};
+  static const cserde_token text_tokens[] = {
+      {.kind = CSERDE_MAP_BEGIN},
+      {.kind = CSERDE_STRING,
+       .value.slice = {(const unsigned char *)"detail", 6u, CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_STRING,
+       .value.slice = {(const unsigned char *)"oops", 4u, CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_MAP_END}};
+  static const cserde_token invalid_text_tokens[] = {
+      {.kind = CSERDE_MAP_BEGIN},
+      {.kind = CSERDE_STRING,
+       .value.slice = {(const unsigned char *)"detail", 6u, CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_STRING,
+       .value.slice = {(const unsigned char *)"too-long", 8u, CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_MAP_END}};
+  static const cserde_token bytes_tokens[] = {
+      {.kind = CSERDE_MAP_BEGIN},
+      {.kind = CSERDE_STRING,
+       .value.slice = {(const unsigned char *)"payload", 7u, CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_BYTES,
+       .value.slice = {bytes_value, sizeof(bytes_value), CSERDE_VIEW_STABLE}},
+      {.kind = CSERDE_MAP_END}};
+  ErrorInputProbe *probe = (ErrorInputProbe *)opaque;
+  (void)error;
+
+  if (probe == NULL || entry == NULL || reader == NULL || state == NULL)
+    return DATA_BIND_ERR_INVALID_ARG;
+  *state = DATA_BIND_VALUE_STATE_VALUE;
+
+  if (strcmp(entry->schema_field, "TextError") == 0) {
+    probe->source.tokens = probe->mode == 3 ? invalid_text_tokens : text_tokens;
+    probe->source.count = 4u;
+  } else if (strcmp(entry->schema_field, "BytesError") == 0) {
+    probe->source.tokens = bytes_tokens;
+    probe->source.count = 4u;
+  } else {
+    return DATA_BIND_ERR_TYPE_NOT_FOUND;
+  }
+
+  probe->source.index = 0u;
+  probe->reader = (cserde_reader){0};
+  if (cserde_reader_init(
+          &probe->reader, &ERROR_TOKEN_READER_OPS, &probe->source) != CSERDE_OK)
+    return DATA_BIND_ERR_RUNTIME;
+  *reader = probe->reader;
+  return DATA_BIND_OK;
+}
+
 typedef struct OutputProbe {
   size_t begin_calls;
   size_t write_calls;
@@ -332,6 +408,100 @@ static void expect_pretransaction_validation(
 }
 
 spec("BindingPlan validates owned typed errors before publication") {
+  it("binds owned typed Service errors for generated clients and rolls invalid payloads back") {
+    static const unsigned char expected_bytes[] = {1u, 2u, 3u};
+    DataBind *codec = create_codec();
+    DataBindBindingPlan *plan = NULL;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingOutcome outcome = DATA_BIND_BINDING_OUTCOME_INIT;
+    ErrorInputProbe probe = {0};
+    DataBindBindingProvider provider = DATA_BIND_BINDING_PROVIDER_INIT;
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    OwnedErrorEnvelope native_error = {0};
+    void *params[] = {NULL, NULL, &native_error};
+    const size_t param_bytes[] = {0u, 0u, sizeof(native_error)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    init_owned_error_cmeta();
+    plan = compile_plan(codec);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    provider.context = &probe;
+    provider.open_input = error_input_open;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 1024u;
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 3u;
+
+    outcome.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+    outcome.typed_error_index = 0u;
+    outcome.typed_error = "TextError";
+    probe.mode = 1;
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(native_error.kind, (uint32_t)1u);
+    check_not_null(native_error.payload.text.detail);
+    if (native_error.payload.text.detail != NULL) {
+      check_equal(tstr_len(native_error.payload.text.detail), (size_t)4u);
+      check(memcmp(native_error.payload.text.detail, "oops", 4u) == 0);
+    }
+    check_equal(cmeta_data_value_restore_zero(
+                    &TEXT_ERROR_DATA, &native_error.payload.text),
+                CMETA_OK);
+    memset(&native_error, 0, sizeof(native_error));
+
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    outcome.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+    outcome.typed_error_index = 1u;
+    outcome.typed_error = "BytesError";
+    probe.mode = 2;
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(native_error.kind, (uint32_t)2u);
+    check_equal(stl_byte_buffer_size(&native_error.payload.bytes.payload),
+                sizeof(expected_bytes));
+    if (stl_byte_buffer_data_const(&native_error.payload.bytes.payload) != NULL)
+      check(memcmp(
+                stl_byte_buffer_data_const(&native_error.payload.bytes.payload),
+                expected_bytes, sizeof(expected_bytes)) == 0);
+    check_equal(cmeta_data_value_restore_zero(
+                    &BYTES_ERROR_DATA, &native_error.payload.bytes),
+                CMETA_OK);
+    memset(&native_error, 0, sizeof(native_error));
+
+    outcome = (DataBindBindingOutcome)DATA_BIND_BINDING_OUTCOME_INIT;
+    outcome.kind = DATA_BIND_BINDING_OUTCOME_TYPED_ERROR;
+    outcome.typed_error_index = 0u;
+    outcome.typed_error = "TextError";
+    probe.mode = 3;
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "TextError");
+    check_equal(native_error.kind, (uint32_t)0u);
+    check_null(native_error.payload.text.detail);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("rejects oversized string and bytes payloads before provider side effects") {
     DataBind *codec = create_codec();
     DataBindBindingPlan *plan = NULL;

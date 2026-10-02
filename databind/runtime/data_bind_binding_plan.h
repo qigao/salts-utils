@@ -301,6 +301,22 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_inputs(
     DataBindBindingPlanDiagnostic *diagnostic);
 
 /**
+ * Transactionally project one caller-owned native request into the compiled
+ * ingress addresses for a typed client call.
+ *
+ * Native request state is authoritative: ABSENT remains absent and defaults are
+ * not synthesized during client encoding. Every VALUE is validated before the
+ * provider observes begin_output(). The provider receives the same immutable
+ * ingress entries used by server decoding, including precompiled name/ordinal
+ * transport addresses.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_write_inputs(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindBindingCallFrame *frame,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
  * Publish response values transactionally for a non-throws Service.
  * begin/write/commit failures do not report success and any write/commit
  * failure calls abort_output. Throws Services must use
@@ -330,6 +346,30 @@ DATA_BIND_API DataBindStatus data_bind_binding_plan_write_outcome(
     const DataBindBindingCallFrame *frame,
     int native_status,
     DataBindBindingOutcome *outcome,
+    DataBindBindingPlanDiagnostic *diagnostic);
+
+/**
+ * Bind one protocol-classified client outcome into caller-owned native result
+ * staging using the compiled response/error entries.
+ *
+ * outcome is transport-neutral semantic classification chosen from the
+ * MethodPlan's compiled result/error table:
+ * - SUCCESS decodes response entries;
+ * - TYPED_ERROR decodes exactly the selected Service error payload and writes
+ *   the generated error-envelope kind only after decode+validation succeeds;
+ * - NATIVE_STATUS carries no payload and performs no provider reads.
+ *
+ * Protocol failures are outside this API. On decode/validation failure every
+ * native location initialized by this call is cleared back to semantic zero.
+ * The caller owns successful native cleanup through the generated CMeta/DataBind
+ * lifecycle.
+ */
+DATA_BIND_API DataBindStatus data_bind_binding_plan_bind_outcome(
+    const DataBindBindingPlan *plan,
+    const DataBindBindingProvider *provider,
+    const DataBindNativeOptions *native_options,
+    DataBindBindingCallFrame *frame,
+    const DataBindBindingOutcome *outcome,
     DataBindBindingPlanDiagnostic *diagnostic);
 
 #ifdef __cplusplus
