@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "opaque": {
+    "max_bytes": 64
+  },
+  "http": {
+    "operations": [
+      {
+        "service": "Raw",
+        "operation": "Echo",
+        "method": "POST",
+        "route": "/raw",
+        "success_status": 200,
+        "ingress_format": "opaque",
+        "egress_format": "opaque"
+      }
+    ]
+  },
+  "flowmq": {
+    "service": "Raw",
+    "operation": "Echo",
+    "pattern": "reqrep",
+    "ingress_format": "opaque",
+    "egress_format": "opaque",
+    "max_payload_bytes": 96
+  }
+}
