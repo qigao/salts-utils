@@ -1888,7 +1888,6 @@ DataBindStatus data_bind_message_plan_validate_object(
       return status;
     }
     if (state != DATA_BIND_MESSAGE_OBJECT_VALUE) continue;
-    if (field->validation_rule_count == 0u) continue;
 
     cmeta_result = cmeta_object_field_read(
         object, field->name, &value_data, &value);
