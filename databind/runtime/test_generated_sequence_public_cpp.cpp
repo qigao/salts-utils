@@ -19,5 +19,12 @@ int main() {
     return 2;
   if (NativeHeaderPolicy_headers_vec_t_size(&value.headers) != 0u)
     return 3;
+  if (NativeHeaderPolicy_headers_vec_t_init(&value.headers, 4u) != STL_OK)
+    return 4;
+  if (value.headers.raw.element_type == nullptr)
+    return 5;
+  NativeHeaderPolicy_headers_vec_t_destroy(&value.headers);
+  if (NativeHeaderPolicy_headers_vec_t_size(&value.headers) != 0u)
+    return 6;
   return 0;
 }
