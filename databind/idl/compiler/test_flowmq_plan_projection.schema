@@ -31,6 +31,3 @@ service Calc {
   Choose: AddRequest -> Choice;
 }
 
-service Raw {
-  Echo: bytes -> bytes;
-}
