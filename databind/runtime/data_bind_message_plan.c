@@ -795,12 +795,6 @@ static DataBindStatus message_compile_validation(
             : "Could not compile MessagePlan ValidationPlan");
 
   rule_count = data_bind_validation_plan_rule_count(plan->validation);
-  if (data_bind_validation_plan_internal_child_count(plan->validation) != 0u)
-    return message_fail(
-        diagnostic, DATA_BIND_ERR_SCHEMA, type_name,
-        "Nested native ValidationPlan execution is not admitted by this "
-        "MessagePlan slice");
-
   for (rule_index = 0u; rule_index < rule_count; ++rule_index) {
     DataBindValidationRuleInfo info = {0};
     DataBindMessageFieldPlan *field;
@@ -1067,7 +1061,8 @@ DataBindStatus data_bind_message_plan_internal_validate_field(
             error);
     if (status != DATA_BIND_OK) return status;
   }
-  return DATA_BIND_OK;
+  return data_bind_validation_plan_internal_validate_native_child(
+      plan->validation, field_name, field->data, source, error);
 }
 
 const cserde_token *data_bind_message_plan_internal_default_token(
@@ -1333,7 +1328,9 @@ static DataBindStatus message_decode_value(
       plan, field->name, field_destination, &validation);
   if (status != DATA_BIND_OK)
     return message_fail(
-        diagnostic, status, field->name, "%s",
+        diagnostic, status,
+        validation.path[0] != '\0' ? validation.path : field->name,
+        "%s",
         validation.message[0] != '\0'
             ? validation.message
             : "Native field validation failed");
