@@ -798,6 +798,45 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
         plan->type_name, rule, error,
         "Native value kind does not match compiled validation semantics");
 
+  if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE &&
+      (data->kind == CMETA_DATA_SEQUENCE ||
+       data->kind == CMETA_DATA_SET ||
+       data->kind == CMETA_DATA_MAP)) {
+    size_t actual = 0u;
+    cmeta_status cmeta_status_value;
+    if (data->kind == CMETA_DATA_MAP) {
+      cmeta_data_map_borrow_cursor cursor = {0};
+      cmeta_status_value =
+          cmeta_data_map_borrow_begin(data, source, &cursor);
+      if (cmeta_status_value == CMETA_OK)
+        cmeta_status_value =
+            cmeta_data_map_borrow_size(&cursor, &actual);
+    } else {
+      cmeta_data_collection_borrow_cursor cursor = {0};
+      cmeta_status_value =
+          cmeta_data_collection_borrow_begin(data, source, &cursor);
+      if (cmeta_status_value == CMETA_OK)
+        cmeta_status_value =
+            cmeta_data_collection_borrow_size(&cursor, &actual);
+    }
+    if (cmeta_status_value != CMETA_OK)
+      return validation_native_leaf_failure(
+          plan, rule,
+          cmeta_status_value == CMETA_TRAIT_MISSING ||
+                  cmeta_status_value == CMETA_TYPE_MISMATCH ||
+                  cmeta_status_value == CMETA_INVALID_ARGUMENT
+              ? DATA_BIND_ERR_SCHEMA
+              : DATA_BIND_ERR_RUNTIME,
+          error);
+    if ((rule->has_min && actual < rule->min_size) ||
+        (rule->has_max && actual > rule->max_size))
+      return validation_rule_error_at(
+          plan->type_name, rule, error,
+          "Value size violates @Size");
+    validation_error_clear(error);
+    return DATA_BIND_OK;
+  }
+
   status = data_bind_native_leaf_token(data, source, &token);
   if (status != DATA_BIND_OK)
     return validation_native_leaf_failure(
