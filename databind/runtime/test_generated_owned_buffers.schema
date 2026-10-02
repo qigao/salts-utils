@@ -14,5 +14,6 @@ message NativeHeader {
 
 message NativeHeaderPolicy {
     uint32 id;
+    @Size(max = 3)
     list<NativeHeader> headers;
 }
