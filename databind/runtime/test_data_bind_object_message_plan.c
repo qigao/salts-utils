@@ -334,6 +334,7 @@ static cmeta_object_ref make_object(
 
 typedef struct XmlScalarRecord {
   int64_t age;
+  uint64_t count;
   double score;
   bool active;
 } XmlScalarRecord;
@@ -352,6 +353,8 @@ static const cmeta_type_desc XML_SCALAR_TYPE = {
 static const cmeta_field_desc XML_SCALAR_LAYOUT_FIELDS[] = {
     {"age", "int64_t", CMETA_FIELD_DYNAMIC_OFFSET, sizeof(int64_t),
      _Alignof(int64_t), &cmeta_type_int64, NULL},
+    {"count", "uint64_t", CMETA_FIELD_DYNAMIC_OFFSET, sizeof(uint64_t),
+     _Alignof(uint64_t), &cmeta_type_uint64, NULL},
     {"score", "double", CMETA_FIELD_DYNAMIC_OFFSET, sizeof(double),
      _Alignof(double), &cmeta_type_double, NULL},
     {"active", "bool", CMETA_FIELD_DYNAMIC_OFFSET, sizeof(bool),
@@ -359,18 +362,20 @@ static const cmeta_field_desc XML_SCALAR_LAYOUT_FIELDS[] = {
 };
 static const cmeta_struct_desc XML_SCALAR_LAYOUT = {
     "XmlScalarRecord", sizeof(XmlScalarRecord), _Alignof(XmlScalarRecord),
-    XML_SCALAR_LAYOUT_FIELDS, 3u
+    XML_SCALAR_LAYOUT_FIELDS, 4u
 };
 static const cmeta_data_field_desc XML_SCALAR_FIELDS[] = {
     {"test.databind.xml-scalars.age", "age", CMETA_FIELD_DYNAMIC_OFFSET,
      &cmeta_data_int64},
+    {"test.databind.xml-scalars.count", "count", CMETA_FIELD_DYNAMIC_OFFSET,
+     &cmeta_data_uint64},
     {"test.databind.xml-scalars.score", "score", CMETA_FIELD_DYNAMIC_OFFSET,
      &cmeta_data_double},
     {"test.databind.xml-scalars.active", "active", CMETA_FIELD_DYNAMIC_OFFSET,
      &cmeta_data_bool}
 };
 static const cmeta_data_struct_shape XML_SCALAR_SHAPE = {
-    &XML_SCALAR_LAYOUT, XML_SCALAR_FIELDS, 3u
+    &XML_SCALAR_LAYOUT, XML_SCALAR_FIELDS, 4u
 };
 static const cmeta_data_desc XML_SCALAR_DATA = {
     .struct_size = sizeof(cmeta_data_desc),
@@ -389,6 +394,7 @@ static cmeta_status xml_scalar_read(
   (void)context;
   if (!record || !field || !out_value) return CMETA_INVALID_ARGUMENT;
   if (strcmp(field->name, "age") == 0) *out_value = &record->age;
+  else if (strcmp(field->name, "count") == 0) *out_value = &record->count;
   else if (strcmp(field->name, "score") == 0) *out_value = &record->score;
   else if (strcmp(field->name, "active") == 0) *out_value = &record->active;
   else return CMETA_TRAIT_MISSING;
@@ -402,6 +408,7 @@ static cmeta_status xml_scalar_assign(
   (void)context;
   if (!record || !field || !value) return CMETA_INVALID_ARGUMENT;
   if (strcmp(field->name, "age") == 0) record->age = *(const int64_t *)value;
+  else if (strcmp(field->name, "count") == 0) record->count = *(const uint64_t *)value;
   else if (strcmp(field->name, "score") == 0) record->score = *(const double *)value;
   else if (strcmp(field->name, "active") == 0) record->active = *(const bool *)value;
   else return CMETA_TRAIT_MISSING;
@@ -411,7 +418,7 @@ static cmeta_status xml_scalar_assign(
 static DataBind *make_xml_scalar_codec(void) {
   static const char schema[] =
       "schema XmlScalars [version(1)];"
-      "message XmlScalar { int64 age; double score; bool active; }";
+      "message XmlScalar { int64 age; uint64 count; double score; bool active; }";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
   check_equal(
@@ -463,6 +470,7 @@ spec("DataBind provider-backed object MessagePlan") {
     const cserde_token input[] = {
         {.kind = CSERDE_MAP_BEGIN},
         key_token("age"), key_token("37"),
+        key_token("count"), key_token("18446744073709551615"),
         key_token("score"), key_token("3.5"),
         key_token("active"), key_token("true"),
         {.kind = CSERDE_MAP_END}
@@ -490,10 +498,87 @@ spec("DataBind provider-backed object MessagePlan") {
       check_equal(decode_status, DATA_BIND_OK);
     }
     check_equal(record.age, INT64_C(37));
+    check_equal(record.count, UINT64_MAX);
     check_true(record.score == 3.5);
     check_true(record.active);
 
     cmeta_object_release(&object);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("keeps numeric-looking XML text as string when the field is string") {
+    static const char schema[] =
+        "schema XmlTextString [version(1)];"
+        "message TextDynamic { string name; }";
+    DataBind *codec = NULL;
+    DataBindError codec_error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    TextDynamicRecord record = {.marker = 41, .name_slot = NULL};
+    TextDynamicProvider provider = {0};
+    cmeta_object_field_provider field_provider = {
+        .size = sizeof(cmeta_object_field_provider),
+        .data = &TEXT_DYNAMIC_DATA,
+        .context = &provider,
+        .assign = text_dynamic_assign,
+        .read = text_dynamic_read
+    };
+    cmeta_object_ref object = CMETA_OBJECT_REF_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    const cserde_token input[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        key_token("name"),
+        key_token("37"),
+        {.kind = CSERDE_MAP_END}
+    };
+    TokenReader source = {input, sizeof(input) / sizeof(input[0]), 0u};
+    cserde_reader reader = {0};
+
+    init_text_dynamic_cmeta();
+    check_equal(
+        cmeta_data_value_init_zero(
+            &salts_tstr_cmeta_data, &record.name_slot),
+        CMETA_OK);
+    check_equal(
+        data_bind_create_from_text(
+            schema, sizeof(schema) - 1u, &codec, &codec_error),
+        DATA_BIND_OK);
+    check_equal(
+        data_bind_message_plan_compile_object(
+            codec, "TextDynamic", &TEXT_DYNAMIC_DATA, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(
+        cmeta_object_borrow_with_providers(
+            &object, &record, &TEXT_DYNAMIC_DATA, &field_provider, NULL),
+        CMETA_OK);
+
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    options.max_depth = 8u;
+    options.max_items = 32u;
+    options.max_owned_bytes = 1024u;
+
+    check_equal(
+        cserde_reader_init(&reader, &TOKEN_READER_OPS, &source), CSERDE_OK);
+    check_equal(
+        data_bind_message_plan_decode_object_format(
+            plan, &options, DATA_BIND_FORMAT_XML, &reader, &object, NULL,
+            &diagnostic),
+        DATA_BIND_OK);
+    check_equal(record.marker, 41);
+    check_not_null(record.name_slot);
+    check_equal(tstr_len(record.name_slot), 2u);
+    check_true(memcmp(record.name_slot, "37", 2u) == 0);
+    check_equal(provider.assigns, 1u);
+
+    cmeta_object_release(&object);
+    check_equal(
+        cmeta_data_value_restore_zero(
+            &salts_tstr_cmeta_data, &record.name_slot),
+        CMETA_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
   }
