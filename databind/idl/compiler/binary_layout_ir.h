@@ -40,7 +40,9 @@ typedef enum databind_binary_scalar_kind {
   DATABIND_BINARY_SCALAR_UINT,
   DATABIND_BINARY_SCALAR_FLOAT,
   DATABIND_BINARY_SCALAR_ENUM_SINT,
-  DATABIND_BINARY_SCALAR_ENUM_UINT
+  DATABIND_BINARY_SCALAR_ENUM_UINT,
+  DATABIND_BINARY_SCALAR_STRING,
+  DATABIND_BINARY_SCALAR_BYTES
 } databind_binary_scalar_kind;
 
 enum {
@@ -57,9 +59,10 @@ typedef struct databind_binary_field_layout {
   size_t wire_extent;
 
   /*
-   * FIXED scalar semantic representation. bits comes from canonical CMeta
+   * Canonical semantic representation. FIXED scalar bits come from CMeta
    * integer/float metadata or enum underlying storage, never from wire_extent.
-   * BOOL is the Binary one-byte boolean representation and records 8 bits.
+   * BOOL records 8 bits. VAR_DATA STRING/BYTES record zero scalar bits and
+   * use tail_prefix_bytes for the Binary representation.
    */
   databind_binary_scalar_kind scalar_kind;
   unsigned scalar_bits;
