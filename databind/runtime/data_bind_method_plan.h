@@ -172,6 +172,13 @@ data_bind_rpc_projection_artifact_find(
 typedef struct DataBindHttpMethodPlan DataBindHttpMethodPlan;
 typedef struct DataBindRpcMethodPlan DataBindRpcMethodPlan;
 
+/*
+ * FORMAT HTTP projections require the exact generated native Service binding.
+ * A whole-operation OPAQUE bytes projection deliberately requires native ==
+ * NULL and publishes only the transport-level DataBindOpaquePlan; its
+ * BindingPlan accessor returns NULL. This keeps raw body bytes outside native
+ * record layout and requires an HTTP runtime to opt into the raw-body path.
+ */
 DATA_BIND_API DataBindStatus data_bind_http_method_plan_compile_service(
     DataBind *codec,
     const char *service_name,
