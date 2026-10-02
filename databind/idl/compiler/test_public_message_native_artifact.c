@@ -39,4 +39,33 @@ spec("DataBind public Message native artifact") {
     check_equal(binding.nulls[1].byte_offset, offsetof(Event_t, _nulls));
     check_equal(binding.nulls[1].bit, 1u);
   }
+
+  it("publishes typed CSTL sequence providers for required scalar/string lists") {
+    Event_values_vec_t values = {0};
+    Event_labels_vec_t labels = {0};
+    tstr source = tstr_dup("alpha");
+    const cmeta_data_desc *value_element =
+        cmeta_data_collection_element_data(&Event_values_vec_t_collection_data);
+    const cmeta_data_desc *label_element =
+        cmeta_data_collection_element_data(&Event_labels_vec_t_collection_data);
+
+    check_true(cmeta_data_desc_equal(value_element, &cmeta_data_uint32));
+    check_true(cmeta_data_desc_equal(label_element, SALTS_TSTR_CMETA_DATA_REF));
+    check_equal(Event_values_vec_t_init(&values, 4u), STL_OK);
+    check_equal(Event_values_vec_t_push(&values, UINT32_C(7)), STL_OK);
+    check_equal(Event_values_vec_t_size(&values), (size_t)1u);
+
+    check_not_null(source);
+    if (source != NULL) {
+      check_equal(Event_labels_vec_t_init(&labels, 4u), STL_OK);
+      check_equal(Event_labels_vec_t_push(&labels, source), STL_OK);
+      check_equal(Event_labels_vec_t_size(&labels), (size_t)1u);
+      check_not_null(*Event_labels_vec_t_at_const(&labels, 0u));
+      check_true(*Event_labels_vec_t_at_const(&labels, 0u) != source);
+    }
+
+    Event_values_vec_t_destroy(&values);
+    Event_labels_vec_t_destroy(&labels);
+    tstr_free(source);
+  }
 }
