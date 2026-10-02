@@ -700,23 +700,7 @@ static int wasm_write_host_source(
           "#include <turbowasm/component.h>\n"
           "#include <string.h>\n\n"
           "_Static_assert(sizeof(int) == 4u, "
-          "\"DataBind WASM status requires 32-bit int\");\n\n"
-          "static int databind_wasm_u8_list(\n"
-          "    const turbowasm_component_host_value *value,\n"
-          "    uint8_t *out, size_t expected) {\n"
-          "  size_t i;\n"
-          "  if (value == NULL || value->kind != TURBOWASM_COMPONENT_HOST_LIST ||\n"
-          "      value->as.list.count != expected ||\n"
-          "      (expected != 0u && value->as.list.items == NULL))\n"
-          "    return 0;\n"
-          "  for (i = 0u; i < expected; ++i) {\n"
-          "    if (value->as.list.items[i].kind != "
-          "TURBOWASM_COMPONENT_HOST_U8)\n"
-          "      return 0;\n"
-          "    if (out != NULL) out[i] = value->as.list.items[i].as.u8;\n"
-          "  }\n"
-          "  return 1;\n"
-          "}\n\n",
+          "\"DataBind WASM status requires 32-bit int\");\n\n",
           host_header, config->native_header) < 0)
     return 0;
 
