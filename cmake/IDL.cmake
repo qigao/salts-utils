@@ -146,7 +146,8 @@ function(salts_idl_target)
       COMPONENT
       VERSION
       ARTIFACT_NAME
-      PROJECTION_CONFIG)
+      PROJECTION_CONFIG
+      WASM_CORE_MODULE)
   set(multi_value_args
       ARTIFACTS
       TRANSPORTS
@@ -183,6 +184,7 @@ function(salts_idl_target)
   set(_has_native FALSE)
   set(_has_message FALSE)
   set(_has_plugin FALSE)
+  set(_has_wasm FALSE)
   set(_has_openapi FALSE)
   set(_has_http FALSE)
   set(_has_rpc FALSE)
@@ -200,7 +202,9 @@ function(salts_idl_target)
     elseif(artifact_upper STREQUAL "PLUGIN")
       set(_has_plugin TRUE)
       list(APPEND _compiler_artifacts "${artifact_upper}")
-      set(_has_plugin TRUE)
+    elseif(artifact_upper STREQUAL "WASM")
+      set(_has_wasm TRUE)
+      list(APPEND _compiler_artifacts "${artifact_upper}")
     elseif(artifact_upper STREQUAL "OPENAPI")
       set(_has_openapi TRUE)
       list(APPEND _compiler_artifacts "${artifact_upper}")
@@ -279,6 +283,11 @@ function(salts_idl_target)
       endif()
     endforeach()
   endif()
+  if(_has_wasm AND TARGET "${DB_TARGET}_wasm")
+    message(FATAL_ERROR
+            "salts_idl_target generated target already exists: "
+            "${DB_TARGET}_wasm")
+  endif()
 
   if(_has_plugin)
     foreach(plugin_arg IN ITEMS COMPONENT VERSION)
@@ -312,15 +321,40 @@ function(salts_idl_target)
       endif()
     endforeach()
   else()
-    if(DB_COMPONENT OR DB_VERSION)
+    if(DB_VERSION)
       message(FATAL_ERROR
-              "salts_idl_target COMPONENT/VERSION are only valid when PLUGIN "
-              "is selected")
+              "salts_idl_target VERSION is only valid when PLUGIN is selected")
+    endif()
+    if(DB_COMPONENT AND NOT _has_wasm)
+      message(FATAL_ERROR
+              "salts_idl_target COMPONENT requires PLUGIN or WASM")
     endif()
     if(DB_SOURCES OR DB_LIBRARIES)
       message(FATAL_ERROR
               "salts_idl_target SOURCES/LIBRARIES are only consumed by PLUGIN")
     endif()
+  endif()
+
+  if(_has_wasm)
+    if(NOT DB_COMPONENT)
+      message(FATAL_ERROR
+              "salts_idl_target WASM requires COMPONENT")
+    endif()
+    if(NOT DB_WASM_CORE_MODULE)
+      message(FATAL_ERROR
+              "salts_idl_target WASM requires WASM_CORE_MODULE")
+    endif()
+    get_filename_component(_wasm_core_module
+      "${DB_WASM_CORE_MODULE}" ABSOLUTE
+      BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(NOT EXISTS "${_wasm_core_module}")
+      message(FATAL_ERROR
+              "salts_idl_target WASM_CORE_MODULE does not exist: "
+              "${_wasm_core_module}")
+    endif()
+  elseif(DB_WASM_CORE_MODULE)
+    message(FATAL_ERROR
+            "salts_idl_target WASM_CORE_MODULE requires ARTIFACTS WASM")
   endif()
 
   set(_projection_config)
@@ -391,6 +425,14 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.h")
   set(_plugin_client_source
       "${_generated_dir}/${DB_ARTIFACT_NAME}.plugin_client.c")
+  set(_wasm_output
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.wasm")
+  set(_wasm_host_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.wasm.h")
+  set(_wasm_host_source
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.wasm.c")
+  set(_wasm_guest_header
+      "${_generated_dir}/${DB_ARTIFACT_NAME}.wasm_guest.h")
   set(_openapi_output
       "${_generated_dir}/${DB_ARTIFACT_NAME}.openapi.json")
   set(_http_header
@@ -403,7 +445,7 @@ function(salts_idl_target)
       "${_generated_dir}/${DB_ARTIFACT_NAME}.flowmq.h")
 
   set(_generated_outputs "${_native_header}")
-  if(_has_message OR _has_native OR _has_plugin OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
     list(APPEND _generated_outputs "${_native_source}")
   endif()
   if(_has_native)
@@ -417,6 +459,13 @@ function(salts_idl_target)
       "${_plugin_source}"
       "${_plugin_client_header}"
       "${_plugin_client_source}")
+  endif()
+  if(_has_wasm)
+    list(APPEND _generated_outputs
+      "${_wasm_output}"
+      "${_wasm_host_header}"
+      "${_wasm_host_source}"
+      "${_wasm_guest_header}")
   endif()
   if(_has_openapi)
     list(APPEND _generated_outputs "${_openapi_output}")
@@ -450,7 +499,7 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --transports "${_transport_csv}")
   endif()
-  if(_has_message OR _has_native OR _has_plugin OR _has_socket OR _has_flowmq)
+  if(_has_message OR _has_native OR _has_plugin OR _has_wasm OR _has_socket OR _has_flowmq)
     list(APPEND _compiler_args
       --source-output "${_native_source}")
   endif()
@@ -458,6 +507,11 @@ function(salts_idl_target)
     list(APPEND _compiler_args
       --component "${DB_COMPONENT}"
       --artifact-version "${DB_VERSION}")
+  endif()
+  if(_has_wasm)
+    list(APPEND _compiler_args
+      --component "${DB_COMPONENT}"
+      --wasm-core-module "${_wasm_core_module}")
   endif()
   if(_projection_config)
     list(APPEND _compiler_args
@@ -470,6 +524,9 @@ function(salts_idl_target)
   endif()
   if(_projection_config)
     list(APPEND _generate_dependencies "${_projection_config}")
+  endif()
+  if(_has_wasm)
+    list(APPEND _generate_dependencies "${_wasm_core_module}")
   endif()
 
   add_custom_command(
@@ -546,6 +603,29 @@ function(salts_idl_target)
       Salts::DataBind)
   endif()
 
+  if(_has_wasm)
+    if(NOT TARGET TurboWasm::Component)
+      find_package(TurboWasm CONFIG REQUIRED)
+    endif()
+    if(NOT TARGET TurboWasm::Component)
+      message(FATAL_ERROR
+              "WASM artifact requires released TurboWasm::Component")
+    endif()
+    add_library("${DB_TARGET}_wasm" STATIC
+      "${_wasm_host_source}"
+      "${_wasm_host_header}"
+      "${_native_source}"
+      "${_native_header}")
+    add_dependencies("${DB_TARGET}_wasm"
+      "${DB_TARGET}_idl_codegen")
+    target_compile_features("${DB_TARGET}_wasm" PRIVATE c_std_11)
+    target_include_directories("${DB_TARGET}_wasm" PUBLIC
+      "${_generated_dir}")
+    target_link_libraries("${DB_TARGET}_wasm" PUBLIC
+      Salts::DataBind
+      TurboWasm::Component)
+  endif()
+
   add_custom_target("${DB_TARGET}")
   add_dependencies("${DB_TARGET}" "${DB_TARGET}_idl_codegen")
   if(_has_message OR _has_native OR _has_socket OR _has_flowmq)
@@ -555,6 +635,9 @@ function(salts_idl_target)
     add_dependencies("${DB_TARGET}"
       "${DB_TARGET}_plugin"
       "${DB_TARGET}_plugin_client")
+  endif()
+  if(_has_wasm)
+    add_dependencies("${DB_TARGET}" "${DB_TARGET}_wasm")
   endif()
 
   set_property(TARGET "${DB_TARGET}" PROPERTY
@@ -579,6 +662,20 @@ function(salts_idl_target)
         "${DB_TARGET}_plugin" PARENT_SCOPE)
     set(${DB_TARGET}_PLUGIN_CLIENT_TARGET
         "${DB_TARGET}_plugin_client" PARENT_SCOPE)
+  endif()
+  if(_has_wasm)
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_WASM_ARTIFACT "${_wasm_output}")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_WASM_HOST_TARGET "${DB_TARGET}_wasm")
+    set_property(TARGET "${DB_TARGET}" PROPERTY
+      DATABIND_WASM_GUEST_HEADER "${_wasm_guest_header}")
+    set(${DB_TARGET}_WASM_ARTIFACT
+        "${_wasm_output}" PARENT_SCOPE)
+    set(${DB_TARGET}_WASM_HOST_TARGET
+        "${DB_TARGET}_wasm" PARENT_SCOPE)
+    set(${DB_TARGET}_WASM_GUEST_HEADER
+        "${_wasm_guest_header}" PARENT_SCOPE)
   endif()
   if(_has_openapi)
     set_property(TARGET "${DB_TARGET}" PROPERTY
