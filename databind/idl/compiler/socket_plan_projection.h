@@ -15,11 +15,11 @@ typedef struct databind_compiler_socket_projection_config {
   const char *native_header_include;
   const char *channel_name;
   DataBindFormat format;
-  DataBindPayloadKind payload_kind;
-  size_t opaque_max_bytes;
   DataBindSocketMode mode;
   DataBindSocketFraming framing;
   size_t max_frame_bytes;
+  DataBindPayloadKind payload_kind;
+  size_t opaque_max_bytes;
 } databind_compiler_socket_projection_config;
 
 databind_compiler_projection_backend
