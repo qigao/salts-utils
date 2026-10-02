@@ -610,6 +610,18 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     FOLDER "databind/runtime/tests")
   set_tests_properties(test_databind_generated_owned_buffers PROPERTIES
     FIXTURES_SETUP databind_generated_owned_buffers_contract)
+  cmake_add_test(test_databind_generated_sequence_public_cpp
+    SOURCES test_generated_sequence_public_cpp.cpp
+            "${DATABIND_OWNED_BUFFER_HEADER}"
+            "${DATABIND_OWNED_BUFFER_SOURCE}"
+    LIBS ${DATA_BIND_TEST_LIBS}
+    INCLUDES "${DATABIND_OWNED_BUFFER_DIR}"
+    FOLDER "databind/runtime/tests")
+  set_target_properties(test_databind_generated_sequence_public_cpp PROPERTIES
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+  set_tests_properties(test_databind_generated_sequence_public_cpp PROPERTIES
+    FIXTURES_REQUIRED databind_generated_owned_buffers_contract
+    LABELS "databind;cmeta;message-plan;sequence;public;cpp")
   set(TBE_CMETA_GRAPH_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmeta_graph_generated")
   add_custom_command(
     OUTPUT "${TBE_CMETA_GRAPH_DIR}/cmeta_graph_generated.h"
