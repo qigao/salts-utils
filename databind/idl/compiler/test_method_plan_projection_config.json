@@ -1,5 +1,8 @@
 {
   "version": 1,
+  "opaque": {
+    "max_bytes": 4096
+  },
   "http": {
     "operations": [
       {
@@ -8,7 +11,9 @@
         "method": "GET",
         "route": "/add/{left}",
         "success_status": 201,
-        "context": ["request_id"],
+        "context": [
+          "request_id"
+        ],
         "ingress_format": "yaml",
         "egress_format": "xml",
         "fields": [
@@ -37,6 +42,14 @@
             "status": 422
           }
         ]
+      },
+      {
+        "service": "RawStore",
+        "operation": "Echo",
+        "method": "POST",
+        "route": "/raw/echo",
+        "ingress_format": "opaque",
+        "egress_format": "opaque"
       }
     ]
   },
