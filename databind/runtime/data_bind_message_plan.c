@@ -1,6 +1,7 @@
 #include "data_bind_message_plan.h"
 #include "data_bind_internal.h"
 #include "data_bind_message_plan_internal.h"
+#include "data_bind_native_internal.h"
 #include "data_bind_validation_plan.h"
 #include "data_bind_validation_plan_internal.h"
 
@@ -1321,31 +1322,58 @@ static DataBindStatus message_decode_value(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
     const DataBindNativeOptions *native_options,
+    DataBindNativeDecodeUsage *usage,
     cserde_reader *reader,
     unsigned char *destination,
     DataBindMessagePlanDiagnostic *diagnostic) {
   DataBindNativeDiagnostic native =
       DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+  DataBindNativeOptions field_options;
+  DataBindNativeDecodeUsage field_usage = {0u, 0u};
   DataBindError validation = DATA_BIND_ERROR_INIT;
   void *field_destination;
   DataBindStatus status;
 
   if (plan == NULL || field == NULL || native_options == NULL ||
-      reader == NULL || destination == NULL ||
+      usage == NULL || reader == NULL || destination == NULL ||
       field->data == NULL || field->data->storage_type == NULL)
     return message_fail(
         diagnostic, DATA_BIND_ERR_INVALID_ARG,
         field != NULL ? field->name : NULL,
         "Invalid MessagePlan field decode arguments");
 
+  if (usage->items > native_options->max_items ||
+      usage->owned_bytes > native_options->max_owned_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, field->name,
+        "Whole-message native budget accounting is inconsistent");
+
+  field_options = *native_options;
+  field_options.max_items = native_options->max_items - usage->items;
+  field_options.max_owned_bytes =
+      native_options->max_owned_bytes - usage->owned_bytes;
+  if (field_options.max_items == 0u)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_LIMIT, field->name,
+        "Whole-message native item budget is exhausted");
+
   field_destination = destination + field->native_offset;
-  status = data_bind_native_decode(
-      native_options, field->data, reader,
-      field_destination, field->data->storage_type->size, &native);
+  status = data_bind_native_decode_usage(
+      &field_options, field->data, reader,
+      field_destination, field->data->storage_type->size,
+      &field_usage, &native);
   if (status != DATA_BIND_OK)
     return message_native_failure(
         diagnostic, status, field->name, &native,
         "Native field decode failed");
+
+  if (field_usage.items > field_options.max_items ||
+      field_usage.owned_bytes > field_options.max_owned_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_RUNTIME, field->name,
+        "Native field usage exceeded the admitted whole-message budget");
+  usage->items += field_usage.items;
+  usage->owned_bytes += field_usage.owned_bytes;
 
   status = data_bind_message_plan_internal_validate_field(
       plan, field->name, field_destination, &validation);
@@ -1367,6 +1395,7 @@ static DataBindStatus message_decode_prefixed_value(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
     const DataBindNativeOptions *native_options,
+    DataBindNativeDecodeUsage *usage,
     cserde_reader *source,
     const cserde_token *first,
     unsigned char *destination,
@@ -1391,7 +1420,7 @@ static DataBindStatus message_decode_prefixed_value(
         "Could not initialize prefixed MessagePlan reader");
 
   return message_decode_value(
-      plan, field, native_options, &reader,
+      plan, field, native_options, usage, &reader,
       destination, diagnostic);
 }
 
@@ -1399,6 +1428,7 @@ static DataBindStatus message_decode_default(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
     const DataBindNativeOptions *native_options,
+    DataBindNativeDecodeUsage *usage,
     unsigned char *destination,
     DataBindMessagePlanDiagnostic *diagnostic) {
   MessageSingleReaderContext context;
@@ -1416,7 +1446,7 @@ static DataBindStatus message_decode_default(
         "Could not initialize compiled MessagePlan default reader");
 
   return message_decode_value(
-      plan, field, native_options, &reader,
+      plan, field, native_options, usage, &reader,
       destination, diagnostic);
 }
 
@@ -1451,6 +1481,7 @@ DataBindStatus data_bind_message_plan_decode_native(
   DataBindNativeDiagnostic native =
       DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
   DataBindNativeOptions field_options;
+  DataBindNativeDecodeUsage usage = {1u, 0u};
   unsigned char *base = (unsigned char *)destination;
   unsigned char *bitmap;
   size_t bitmap_bytes;
@@ -1562,7 +1593,7 @@ DataBindStatus data_bind_message_plan_decode_native(
       message_set_null(base, field, 1);
     } else {
       status = message_decode_prefixed_value(
-          plan, field, &field_options, reader, &token,
+          plan, field, &field_options, &usage, reader, &token,
           base, diagnostic);
       if (status != DATA_BIND_OK) goto fail;
     }
@@ -1576,7 +1607,7 @@ DataBindStatus data_bind_message_plan_decode_native(
 
     if (field->has_default_token) {
       status = message_decode_default(
-          plan, field, &field_options, base, diagnostic);
+          plan, field, &field_options, &usage, base, diagnostic);
       if (status != DATA_BIND_OK) goto fail;
       continue;
     }
