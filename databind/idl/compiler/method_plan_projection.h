@@ -3,6 +3,7 @@
 
 #include "projection.h"
 #include "../../runtime/data_bind.h"
+#include "../../runtime/data_bind_opaque_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
