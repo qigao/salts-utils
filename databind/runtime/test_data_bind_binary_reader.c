@@ -112,6 +112,105 @@ static void expect_required_prefix(
   check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
 }
 
+static const DataBindBinaryReaderFieldPlan VAR_DATA_FIELDS[] = {
+    {sizeof(DataBindBinaryReaderFieldPlan), "sequence",
+     CSERDE_UINT, 32u, 2u, 4u, 0u, 0u, 0u,
+     DATA_BIND_BINARY_READER_REP_FIXED, 0u},
+    {sizeof(DataBindBinaryReaderFieldPlan), "source",
+     CSERDE_STRING, 0u, 0u, 0u, 0u, 0u, 0u,
+     DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u},
+    {sizeof(DataBindBinaryReaderFieldPlan), "payload",
+     CSERDE_BYTES, 0u, 0u, 0u, 0u, 0u,
+     DATA_BIND_BINARY_READER_FIELD_OPTIONAL |
+         DATA_BIND_BINARY_READER_FIELD_NULLABLE,
+     DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u},
+};
+
+static DataBindBinaryReaderPlan var_data_plan(int big_endian) {
+  DataBindBinaryReaderPlan plan = DATA_BIND_BINARY_READER_PLAN_INIT;
+  plan.type_name = "BinaryVarData";
+  plan.wire_big_endian = big_endian;
+  plan.fixed_block_size = 6u;
+  plan.presence_offset = 0u;
+  plan.presence_size = 1u;
+  plan.null_offset = 1u;
+  plan.null_size = 1u;
+  plan.fields = VAR_DATA_FIELDS;
+  plan.field_count =
+      sizeof(VAR_DATA_FIELDS) / sizeof(VAR_DATA_FIELDS[0]);
+  return plan;
+}
+
+static size_t write_var_data_payload(
+    unsigned char *wire, size_t capacity, int big_endian,
+    int payload_present, int payload_null,
+    const void *payload_data, size_t payload_size) {
+  static const char source[] = "cam";
+  size_t cursor = 6u;
+  if (wire == NULL || capacity < 14u) return 0u;
+  memset(wire, 0, capacity);
+  if (payload_present) wire[0] |= 1u;
+  if (payload_null) wire[1] |= 1u;
+  tbe_wire_write_u32(wire + 2u, big_endian, UINT32_C(7));
+
+  if (!tbe_wire_write_var_data(
+          wire + cursor, capacity - cursor, big_endian,
+          source, sizeof(source) - 1u))
+    return 0u;
+  cursor += sizeof(uint32_t) + sizeof(source) - 1u;
+
+  if (!tbe_wire_write_var_data(
+          wire + cursor, capacity - cursor, big_endian,
+          payload_present && !payload_null ? payload_data : NULL,
+          payload_present && !payload_null ? payload_size : 0u))
+    return 0u;
+  cursor += sizeof(uint32_t) +
+            (payload_present && !payload_null ? payload_size : 0u);
+  return cursor;
+}
+
+static void expect_var_data_message(
+    cserde_reader *reader, int expect_payload, int payload_null,
+    const unsigned char *payload_data, size_t payload_size) {
+  cserde_token token = {0};
+
+  check_true(next_token(reader, &token));
+  check_equal(token.kind, CSERDE_MAP_BEGIN);
+
+  check_true(next_token(reader, &token));
+  check_true(token_key_is(&token, "sequence"));
+  check_true(next_token(reader, &token));
+  check_equal(token.kind, CSERDE_UINT);
+  check_equal(token.value.uint, UINT64_C(7));
+
+  check_true(next_token(reader, &token));
+  check_true(token_key_is(&token, "source"));
+  check_true(next_token(reader, &token));
+  check_equal(token.kind, CSERDE_STRING);
+  check_equal(token.value.slice.size, (size_t)3u);
+  check(memcmp(token.value.slice.data, "cam", 3u) == 0);
+  check_equal(token.value.slice.lifetime, CSERDE_VIEW_STABLE);
+
+  if (expect_payload) {
+    check_true(next_token(reader, &token));
+    check_true(token_key_is(&token, "payload"));
+    check_true(next_token(reader, &token));
+    if (payload_null) {
+      check_equal(token.kind, CSERDE_NULL);
+    } else {
+      check_equal(token.kind, CSERDE_BYTES);
+      check_equal(token.value.slice.size, payload_size);
+      if (payload_size != 0u)
+        check(memcmp(token.value.slice.data, payload_data, payload_size) == 0);
+      check_equal(token.value.slice.lifetime, CSERDE_VIEW_STABLE);
+    }
+  }
+
+  check_true(next_token(reader, &token));
+  check_equal(token.kind, CSERDE_MAP_END);
+  check_equal(cserde_reader_next(reader, &token), CSERDE_DONE);
+}
+
 spec("DataBind flat Binary canonical reader") {
   it("emits canonical little-endian fixed scalar tokens") {
     DataBindBinaryReaderPlan plan = binary_plan(0);
@@ -215,6 +314,195 @@ spec("DataBind flat Binary canonical reader") {
         DATA_BIND_ERR_PARSE);
     check_null(reader);
     check_contains(error.message, "trailing");
+  }
+
+  it("emits canonical VAR_DATA string and bytes in both endian orders") {
+    static const unsigned char payload[] = {0x00u, 0x7fu, 0xffu};
+    int big_endian;
+
+    for (big_endian = 0; big_endian <= 1; ++big_endian) {
+      DataBindBinaryReaderPlan plan = var_data_plan(big_endian);
+      unsigned char wire[64];
+      size_t wire_size = write_var_data_payload(
+          wire, sizeof(wire), big_endian, 1, 0,
+          payload, sizeof(payload));
+      cserde_reader *reader = NULL;
+      void *owner = NULL;
+      DataBindError error = DATA_BIND_ERROR_INIT;
+
+      check_greater(wire_size, plan.fixed_block_size);
+      check_equal(
+          data_bind_binary_reader_plan_validate(&plan, &error),
+          DATA_BIND_OK);
+      check_equal(
+          data_bind_binary_reader_open(
+              &plan, wire, wire_size, 8u,
+              &reader, &owner, &error),
+          DATA_BIND_OK);
+      check_not_null(reader);
+      check_not_null(owner);
+      if (reader != NULL)
+        expect_var_data_message(
+            reader, 1, 0, payload, sizeof(payload));
+      data_bind_binary_reader_close(reader, owner);
+    }
+  }
+
+  it("preserves ABSENT NULL and empty VALUE as distinct VAR_DATA states") {
+    DataBindBinaryReaderPlan plan = var_data_plan(0);
+    unsigned char wire[64];
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t wire_size;
+
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 0, 0, NULL, 0u);
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, wire_size, 8u,
+            &reader, &owner, &error),
+        DATA_BIND_OK);
+    if (reader != NULL)
+      expect_var_data_message(reader, 0, 0, NULL, 0u);
+    data_bind_binary_reader_close(reader, owner);
+
+    reader = NULL;
+    owner = NULL;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 1, 1, NULL, 0u);
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, wire_size, 8u,
+            &reader, &owner, &error),
+        DATA_BIND_OK);
+    if (reader != NULL)
+      expect_var_data_message(reader, 1, 1, NULL, 0u);
+    data_bind_binary_reader_close(reader, owner);
+
+    reader = NULL;
+    owner = NULL;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 1, 0, NULL, 0u);
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, wire_size, 8u,
+            &reader, &owner, &error),
+        DATA_BIND_OK);
+    if (reader != NULL)
+      expect_var_data_message(reader, 1, 0, NULL, 0u);
+    data_bind_binary_reader_close(reader, owner);
+  }
+
+  it("rejects malformed VAR_DATA tails before publishing a reader") {
+    DataBindBinaryReaderPlan plan = var_data_plan(0);
+    unsigned char wire[64];
+    static const unsigned char payload[] = {1u, 2u};
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t wire_size;
+    size_t payload_prefix;
+
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 1, 0,
+        payload, sizeof(payload));
+    check_greater(wire_size, (size_t)0u);
+    payload_prefix = 6u + sizeof(uint32_t) + 3u;
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, payload_prefix + 2u, 8u,
+            &reader, &owner, &error),
+        DATA_BIND_ERR_PARSE);
+    check_null(reader);
+    check_null(owner);
+    check_equal(error.path, "payload");
+    check_contains(error.message, "prefix");
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    tbe_wire_write_u32(
+        wire + payload_prefix, 0, UINT32_C(8));
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, payload_prefix + sizeof(uint32_t) + 2u,
+            8u, &reader, &owner, &error),
+        DATA_BIND_ERR_PARSE);
+    check_null(reader);
+    check_equal(error.path, "payload");
+    check_contains(error.message, "payload");
+
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 0, 0, NULL, 0u);
+    tbe_wire_write_u32(
+        wire + payload_prefix, 0, UINT32_C(1));
+    wire[payload_prefix + sizeof(uint32_t)] = 0xa5u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire,
+            payload_prefix + sizeof(uint32_t) + 1u,
+            8u, &reader, &owner, &error),
+        DATA_BIND_ERR_PARSE);
+    check_equal(error.path, "payload");
+    check_contains(error.message, "ABSENT");
+
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 1, 1, NULL, 0u);
+    tbe_wire_write_u32(
+        wire + payload_prefix, 0, UINT32_C(1));
+    wire[payload_prefix + sizeof(uint32_t)] = 0xa5u;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire,
+            payload_prefix + sizeof(uint32_t) + 1u,
+            8u, &reader, &owner, &error),
+        DATA_BIND_ERR_PARSE);
+    check_equal(error.path, "payload");
+    check_contains(error.message, "NULL");
+
+    wire_size = write_var_data_payload(
+        wire, sizeof(wire), 0, 1, 0,
+        payload, sizeof(payload));
+    wire[wire_size] = 0x5au;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, wire_size + 1u, 8u,
+            &reader, &owner, &error),
+        DATA_BIND_ERR_PARSE);
+    check_contains(error.message, "trailing");
+  }
+
+  it("continues to admit released v1 fixed-scalar field records") {
+    DataBindBinaryReaderPlan plan = binary_plan(0);
+    DataBindBinaryReaderFieldPlan fields[5];
+    unsigned char wire[15];
+    cserde_reader *reader = NULL;
+    void *owner = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    size_t i;
+
+    memcpy(fields, BINARY_FIELDS, sizeof(fields));
+    for (i = 0u; i < sizeof(fields) / sizeof(fields[0]); ++i)
+      fields[i].size = DATA_BIND_BINARY_READER_FIELD_PLAN_V1_SIZE;
+    plan.fields = fields;
+
+    write_payload(wire, 0, 1, 0);
+    check_equal(
+        data_bind_binary_reader_plan_validate(&plan, &error),
+        DATA_BIND_OK);
+    check_equal(
+        data_bind_binary_reader_open(
+            &plan, wire, sizeof(wire), 8u,
+            &reader, &owner, &error),
+        DATA_BIND_OK);
+    if (reader != NULL) expect_required_prefix(reader, 1, 0);
+    data_bind_binary_reader_close(reader, owner);
   }
 
   it("fails closed on unsupported or overlapping runtime plans") {
