@@ -435,6 +435,11 @@ spec("DataBind flat Binary canonical reader") {
     check_equal(error.path, "payload");
     check_contains(error.message, "payload");
 
+    /*
+     * ABSENT is state, not tail omission. The existing Binary wire contract
+     * still consumes the positional VAR_DATA entry, even when hidden bytes are
+     * not published through CSerde.
+     */
     wire_size = write_var_data_payload(
         wire, sizeof(wire), 0, 0, 0, NULL, 0u);
     tbe_wire_write_u32(
@@ -446,9 +451,12 @@ spec("DataBind flat Binary canonical reader") {
             &plan, wire,
             payload_prefix + sizeof(uint32_t) + 1u,
             8u, &reader, &owner, &error),
-        DATA_BIND_ERR_PARSE);
-    check_equal(error.path, "payload");
-    check_contains(error.message, "ABSENT");
+        DATA_BIND_OK);
+    if (reader != NULL)
+      expect_var_data_message(reader, 0, 0, NULL, 0u);
+    data_bind_binary_reader_close(reader, owner);
+    reader = NULL;
+    owner = NULL;
 
     wire_size = write_var_data_payload(
         wire, sizeof(wire), 0, 1, 1, NULL, 0u);
