@@ -825,17 +825,35 @@ static DataBindStatus message_compile_validation(
           "ValidationPlan field kind does not match admitted native value");
 
     if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE) {
-      if (info.field_kind != CMETA_DATA_STRING &&
-          info.field_kind != CMETA_DATA_BYTES)
+      if (info.field_kind == CMETA_DATA_STRING ||
+          info.field_kind == CMETA_DATA_BYTES) {
+        buffer_ops = cmeta_data_buffer_ops_of(field->data);
+        if (buffer_ops == NULL || buffer_ops->read == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native @Size requires a canonical readable buffer provider");
+      } else if (info.field_kind == CMETA_DATA_SEQUENCE ||
+                 info.field_kind == CMETA_DATA_SET) {
+        const cmeta_data_collection_ops *collection_ops =
+            cmeta_data_collection_ops_of(field->data);
+        if (collection_ops == NULL || collection_ops->borrow == NULL ||
+            collection_ops->borrow->size == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native collection @Size requires canonical borrow-size metadata");
+      } else if (info.field_kind == CMETA_DATA_MAP) {
+        const cmeta_data_map_ops *map_ops =
+            cmeta_data_map_ops_of(field->data);
+        if (map_ops == NULL || map_ops->borrow == NULL ||
+            map_ops->borrow->size == NULL)
+          return message_fail(
+              diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
+              "Native map @Size requires canonical borrow-size metadata");
+      } else {
         return message_fail(
             diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            "Native @Size currently requires canonical string/bytes storage; "
-            "container size validation awaits a canonical range provider");
-      buffer_ops = cmeta_data_buffer_ops_of(field->data);
-      if (buffer_ops == NULL || buffer_ops->read == NULL)
-        return message_fail(
-            diagnostic, DATA_BIND_ERR_SCHEMA, info.field_name,
-            "Native @Size requires a canonical readable buffer provider");
+            "Native @Size requires canonical buffer or collection storage");
+      }
     } else if (info.kind == DATA_BIND_SCHEMA_CONSTRAINT_PATTERN) {
       if (info.field_kind != CMETA_DATA_STRING)
         return message_fail(
