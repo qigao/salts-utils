@@ -56,6 +56,15 @@ static int provider_has_selected_reader(
       provider->open_selected_reader != NULL;
 }
 
+static int provider_has_writer(
+    const DataBindFormatProvider *provider) {
+  return provider_valid(provider) &&
+      provider->size >= offsetof(DataBindFormatProvider, close_writer) +
+                            sizeof(provider->close_writer) &&
+      provider->open_writer != NULL &&
+      provider->close_writer != NULL;
+}
+
 static DataBindStatus provider_publish_reader(
     const DataBindFormatProvider *provider,
     cserde_reader *native_reader,
@@ -182,4 +191,67 @@ DataBindStatus data_bind_format_reader_close(DataBindFormatReader *reader) {
   memset(reader, 0, sizeof(*reader));
   reader->size = size;
   return DATA_BIND_OK;
+}
+
+
+DataBindStatus data_bind_format_writer_open(
+    const DataBindFormatProvider *provider,
+    DataBindWriteFn write,
+    void *write_user,
+    size_t max_depth,
+    DataBindFormatWriter *out_writer,
+    DataBindError *error) {
+  cserde_writer *native_writer = NULL;
+  void *owner = NULL;
+  DataBindStatus status;
+  size_t out_size;
+
+  if (out_writer == NULL || out_writer->size < sizeof(*out_writer))
+    return provider_error(error, DATA_BIND_ERR_INVALID_ARG,
+                          "Invalid format writer output");
+  out_size = out_writer->size;
+  memset(out_writer, 0, sizeof(*out_writer));
+  out_writer->size = out_size;
+
+  if (!provider_has_writer(provider))
+    return provider_error(error, DATA_BIND_ERR_INVALID_ARG,
+                          "Format provider does not support streaming egress");
+  if (write == NULL)
+    return provider_error(error, DATA_BIND_ERR_INVALID_ARG,
+                          "Format writer requires a byte sink");
+
+  status = provider->open_writer(
+      write, write_user, max_depth, &native_writer, &owner, error);
+  if (status != DATA_BIND_OK) return status;
+
+  if (native_writer == NULL || native_writer->ops == NULL ||
+      native_writer->state != CSERDE_WRITER_READY) {
+    (void)provider->close_writer(native_writer, owner, NULL);
+    return provider_error(error, DATA_BIND_ERR_RUNTIME,
+                          "Format provider returned an invalid CSerde writer");
+  }
+
+  out_writer->provider = provider;
+  out_writer->writer = native_writer;
+  out_writer->owner = owner;
+  provider_error_clear(error);
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_format_writer_close(
+    DataBindFormatWriter *writer,
+    DataBindError *error) {
+  size_t size;
+  DataBindStatus status = DATA_BIND_OK;
+  if (writer == NULL || writer->size < sizeof(*writer))
+    return provider_error(error, DATA_BIND_ERR_INVALID_ARG,
+                          "Invalid format writer lease");
+  size = writer->size;
+  if (writer->provider != NULL)
+    status = writer->provider->close_writer(
+        writer->writer, writer->owner, error);
+  memset(writer, 0, sizeof(*writer));
+  writer->size = size;
+  if (status == DATA_BIND_OK) provider_error_clear(error);
+  return status;
 }

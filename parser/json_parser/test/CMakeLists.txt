@@ -24,4 +24,10 @@ if(BUILD_TESTS)
       LIBS json_cserde_adapter Salts::TinyTest
       INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/../include
   )
+  cmake_add_test(test_json_cserde_writer
+      SOURCES test_json_cserde_writer.c
+      FOLDER "parser/${TARGET_NAME}/test"
+      LIBS json_cserde_adapter Salts::TinyTest
+      INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  )
 endif()

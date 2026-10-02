@@ -4,6 +4,7 @@
 #include "data_bind.h"
 
 #include <cserde/reader.h>
+#include <cserde/writer.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -62,6 +63,32 @@ enum { DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION = 1u };
 #define DATA_BIND_FORMAT_CANONICAL_READER_INIT \
   { sizeof(DataBindFormatCanonicalReader), \
     DATA_BIND_FORMAT_CANONICAL_READER_ABI_VERSION, \
+    NULL, NULL, {0}, 0u, 0, 0, 0 }
+
+/*
+ * Caller-owned root-record egress CSerde writer.
+ *
+ * The wrapper accepts canonical root MAP keys and rewrites them to the
+ * FormatPlan's compiled primary external names. Input aliases are never emitted.
+ * Nested value token streams are forwarded unchanged.
+ */
+typedef struct DataBindFormatCanonicalWriter {
+  size_t size;
+  uint32_t abi_version;
+  const DataBindFormatPlan *plan;
+  cserde_writer *target;
+  cserde_writer writer;
+  size_t value_depth;
+  int root_started;
+  int expect_root_key;
+  int complete;
+} DataBindFormatCanonicalWriter;
+
+enum { DATA_BIND_FORMAT_CANONICAL_WRITER_ABI_VERSION = 1u };
+
+#define DATA_BIND_FORMAT_CANONICAL_WRITER_INIT \
+  { sizeof(DataBindFormatCanonicalWriter), \
+    DATA_BIND_FORMAT_CANONICAL_WRITER_ABI_VERSION, \
     NULL, NULL, {0}, 0u, 0, 0, 0 }
 
 /** Size-prefixed immutable snapshot of one compiled FormatPlan. */
@@ -151,6 +178,22 @@ DATA_BIND_API DataBindStatus data_bind_format_canonical_reader_init(
 
 DATA_BIND_API cserde_reader *data_bind_format_canonical_reader_reader(
     DataBindFormatCanonicalReader *reader);
+
+/**
+ * Initialize the symmetric FormatPlan egress wrapper.
+ *
+ * target is borrowed and remains caller-owned. Finishing this wrapper validates
+ * one complete canonical root value but deliberately does not finish target;
+ * the format-provider lease owns concrete writer finalization.
+ */
+DATA_BIND_API DataBindStatus data_bind_format_canonical_writer_init(
+    const DataBindFormatPlan *plan,
+    cserde_writer *target,
+    DataBindFormatCanonicalWriter *out,
+    DataBindError *error);
+
+DATA_BIND_API cserde_writer *data_bind_format_canonical_writer_writer(
+    DataBindFormatCanonicalWriter *writer);
 
 /*
  * Compile the format-neutral transport shell for one Service operation.

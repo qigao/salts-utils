@@ -1,10 +1,12 @@
 #include "data_bind_json_provider.h"
 
 #include <json_cserde_reader.h>
+#include <json_cserde_writer.h>
 #include <json_parser.h>
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static DataBindStatus json_provider_error(
@@ -314,12 +316,102 @@ static void json_provider_close(cserde_reader *reader, void *owner) {
   json_free((json_value_t *)owner);
 }
 
+
+typedef struct DataBindJsonWriterOwner {
+  DataBindWriteFn write;
+  void *user;
+} DataBindJsonWriterOwner;
+
+static cserde_status json_provider_write_sink(
+    void *opaque,
+    const void *data,
+    size_t size) {
+  DataBindJsonWriterOwner *owner = (DataBindJsonWriterOwner *)opaque;
+  if (owner == NULL || owner->write == NULL) return CSERDE_SINK_ERROR;
+  return owner->write(data, size, owner->user) == 0
+      ? CSERDE_OK
+      : CSERDE_SINK_ERROR;
+}
+
+static DataBindStatus json_provider_writer_status(
+    cserde_status status,
+    DataBindError *error) {
+  switch (status) {
+  case CSERDE_OK:
+    return json_provider_error(error, DATA_BIND_OK, "");
+  case CSERDE_LIMIT_EXCEEDED:
+    return json_provider_error(
+        error, DATA_BIND_ERR_LIMIT, "JSON writer exceeded its configured limit");
+  case CSERDE_UNSUPPORTED:
+    return json_provider_error(
+        error, DATA_BIND_ERR_TYPE_MISMATCH,
+        "Canonical CSerde token stream is not representable as JSON");
+  case CSERDE_SINK_ERROR:
+    return json_provider_error(
+        error, DATA_BIND_ERR_IO, "JSON writer byte sink rejected output");
+  default:
+    return json_provider_error(
+        error, DATA_BIND_ERR_RUNTIME, "JSON CSerde writer failed");
+  }
+}
+
+static DataBindStatus json_provider_writer_open(
+    DataBindWriteFn write,
+    void *write_user,
+    size_t max_depth,
+    cserde_writer **out_writer,
+    void **out_owner,
+    DataBindError *error) {
+  DataBindJsonWriterOwner *owner;
+  cserde_writer *writer;
+
+  if (write == NULL || out_writer == NULL || out_owner == NULL)
+    return json_provider_error(
+        error, DATA_BIND_ERR_INVALID_ARG, "Invalid JSON writer request");
+  *out_writer = NULL;
+  *out_owner = NULL;
+
+  owner = (DataBindJsonWriterOwner *)calloc(1u, sizeof(*owner));
+  if (owner == NULL)
+    return json_provider_error(
+        error, DATA_BIND_ERR_OOM, "Unable to allocate JSON writer lease");
+  owner->write = write;
+  owner->user = write_user;
+
+  writer = json_cserde_writer_create(
+      json_provider_write_sink, owner, max_depth);
+  if (writer == NULL) {
+    free(owner);
+    return json_provider_error(
+        error, DATA_BIND_ERR_OOM, "Unable to create JSON CSerde writer");
+  }
+
+  *out_writer = writer;
+  *out_owner = owner;
+  return json_provider_error(error, DATA_BIND_OK, "");
+}
+
+static DataBindStatus json_provider_writer_close(
+    cserde_writer *writer,
+    void *opaque,
+    DataBindError *error) {
+  DataBindJsonWriterOwner *owner = (DataBindJsonWriterOwner *)opaque;
+  cserde_status status = writer != NULL
+      ? cserde_writer_finish(writer)
+      : CSERDE_INVALID_ARGUMENT;
+  json_cserde_writer_destroy(writer);
+  free(owner);
+  return json_provider_writer_status(status, error);
+}
+
 static const DataBindFormatProvider JSON_PROVIDER =
-    DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_INIT(
+    DATA_BIND_FORMAT_PROVIDER_WITH_SELECTION_AND_WRITER_INIT(
         DATA_BIND_FORMAT_JSON,
         json_provider_open,
         json_provider_close,
-        json_provider_open_selected);
+        json_provider_open_selected,
+        json_provider_writer_open,
+        json_provider_writer_close);
 
 const DataBindFormatProvider *data_bind_json_format_provider(void) {
   return &JSON_PROVIDER;

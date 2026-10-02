@@ -1,6 +1,7 @@
 #include <type_traits>
 
 #include "data_bind_binding_plan.h"
+#include "data_bind_format_provider.h"
 #include "data_bind_message_plan.h"
 #include "data_bind_native_binding.h"
 #include "data_bind_method_plan.h"
@@ -30,5 +31,8 @@ static_assert(std::is_standard_layout_v<DataBindHttpProjectionConfig>);
 static_assert(std::is_standard_layout_v<DataBindRpcFieldProjection>);
 static_assert(std::is_standard_layout_v<DataBindRpcErrorMapping>);
 static_assert(std::is_standard_layout_v<DataBindRpcProjectionConfig>);
+static_assert(std::is_standard_layout_v<DataBindFormatProvider>);
+static_assert(std::is_standard_layout_v<DataBindFormatWriter>);
 static_assert(std::is_standard_layout_v<DataBindFormatPlanInfo>);
+static_assert(std::is_standard_layout_v<DataBindFormatCanonicalWriter>);
 static_assert(std::is_standard_layout_v<DataBindTransportPlanInfo>);

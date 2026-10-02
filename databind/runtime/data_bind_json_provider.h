@@ -11,8 +11,10 @@ extern "C" {
  * Return the statically linked JSON provider.
  *
  * The returned descriptor is immutable and process-lifetime. Passing it to
- * data_bind_format_reader_open() performs explicit JSON selection; no registry
- * lookup or fallback is involved.
+ * data_bind_format_reader_open() performs explicit JSON selection and
+ * data_bind_format_writer_open() streams compact JSON to the caller-owned byte
+ * sink. No registry lookup, fallback, DOM egress materialization or transport
+ * dependency is involved.
  */
 const DataBindFormatProvider *data_bind_json_format_provider(void);
 

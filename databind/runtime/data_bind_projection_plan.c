@@ -21,6 +21,8 @@ struct DataBindFormatPlan {
   int has_nullable;
   DataBindFormatNameMap *names;
   size_t name_count;
+  DataBindFormatNameMap *outputs;
+  size_t output_count;
 };
 
 struct DataBindTransportPlan {
@@ -256,6 +258,58 @@ static DataBindStatus plan_add_name_map(
   return DATA_BIND_OK;
 }
 
+
+static DataBindStatus plan_add_output_name(
+    DataBindFormatPlan *plan,
+    const char *external_name,
+    const char *canonical_name,
+    DataBindError *error) {
+  DataBindFormatNameMap *grown;
+  size_t i;
+
+  if (plan == NULL || external_name == NULL || external_name[0] == '\0' ||
+      canonical_name == NULL || canonical_name[0] == '\0')
+    return plan_error(
+        error, DATA_BIND_ERR_SCHEMA,
+        "FormatPlan output field-name mapping is incomplete");
+
+  for (i = 0u; i < plan->output_count; ++i) {
+    if (strcmp(plan->outputs[i].canonical_name, canonical_name) != 0)
+      continue;
+    if (strcmp(plan->outputs[i].external_name, external_name) == 0)
+      return DATA_BIND_OK;
+    return plan_error(
+        error, DATA_BIND_ERR_SCHEMA,
+        "FormatPlan canonical field has multiple primary output names");
+  }
+
+  if (plan->output_count == SIZE_MAX / sizeof(*plan->outputs))
+    return plan_error(
+        error, DATA_BIND_ERR_LIMIT,
+        "FormatPlan output field-name mapping exceeds addressable capacity");
+  grown = (DataBindFormatNameMap *)realloc(
+      plan->outputs, (plan->output_count + 1u) * sizeof(*plan->outputs));
+  if (grown == NULL)
+    return plan_error(
+        error, DATA_BIND_ERR_OOM,
+        "Unable to allocate FormatPlan output field-name mapping");
+  plan->outputs = grown;
+  plan->outputs[plan->output_count] = (DataBindFormatNameMap){0};
+  plan->outputs[plan->output_count].external_name = plan_strdup(external_name);
+  plan->outputs[plan->output_count].canonical_name = plan_strdup(canonical_name);
+  if (plan->outputs[plan->output_count].external_name == NULL ||
+      plan->outputs[plan->output_count].canonical_name == NULL) {
+    free(plan->outputs[plan->output_count].external_name);
+    free(plan->outputs[plan->output_count].canonical_name);
+    plan->outputs[plan->output_count] = (DataBindFormatNameMap){0};
+    return plan_error(
+        error, DATA_BIND_ERR_OOM,
+        "Unable to copy FormatPlan output field-name mapping");
+  }
+  ++plan->output_count;
+  return DATA_BIND_OK;
+}
+
 static DataBindStatus plan_compile_root_name_map(
     DataBind *codec,
     const char *type_name,
@@ -278,6 +332,19 @@ static DataBindStatus plan_compile_root_name_map(
       return plan_error(
           error, DATA_BIND_ERR_SCHEMA,
           "FormatPlan could not reflect one root field name");
+
+    {
+      const char *output_name =
+          data_bind_internal_json_field_output_name(codec, type_name, i);
+      DataBindStatus output_status;
+      if (output_name == NULL || output_name[0] == '\0')
+        return plan_error(
+            error, DATA_BIND_ERR_SCHEMA,
+            "FormatPlan root field has no primary output name");
+      output_status = plan_add_output_name(
+          plan, output_name, field.name, error);
+      if (output_status != DATA_BIND_OK) return output_status;
+    }
 
     input_count =
         data_bind_internal_field_input_name_count(codec, type_name, i);
@@ -308,6 +375,18 @@ static const char *plan_canonical_name(
     if (plan_slice_equal_cstr(
             external_name, plan->names[i].external_name))
       return plan->names[i].canonical_name;
+  return NULL;
+}
+
+static const char *plan_external_name(
+    const DataBindFormatPlan *plan,
+    const cserde_slice *canonical_name) {
+  size_t i;
+  if (plan == NULL || canonical_name == NULL) return NULL;
+  for (i = 0u; i < plan->output_count; ++i)
+    if (plan_slice_equal_cstr(
+            canonical_name, plan->outputs[i].canonical_name))
+      return plan->outputs[i].external_name;
   return NULL;
 }
 
@@ -598,6 +677,7 @@ DataBindStatus data_bind_format_plan_compile(
 void data_bind_format_plan_free(DataBindFormatPlan *plan) {
   if (plan == NULL) return;
   plan_name_map_free(plan->names, plan->name_count);
+  plan_name_map_free(plan->outputs, plan->output_count);
   free(plan->type_name);
   free(plan);
 }
@@ -681,6 +761,149 @@ cserde_reader *data_bind_format_canonical_reader_reader(
       reader->reader.state == CSERDE_READER_ZERO)
     return NULL;
   return &reader->reader;
+}
+
+static cserde_status plan_canonical_writer_status(cserde_status status) {
+  switch (status) {
+  case CSERDE_OK:
+  case CSERDE_LIMIT_EXCEEDED:
+  case CSERDE_UNSUPPORTED:
+  case CSERDE_SINK_ERROR:
+    return status;
+  default:
+    return CSERDE_UNSUPPORTED;
+  }
+}
+
+static cserde_status plan_canonical_writer_write(
+    void *context, const cserde_token *input) {
+  DataBindFormatCanonicalWriter *state =
+      (DataBindFormatCanonicalWriter *)context;
+  cserde_token token;
+  cserde_status status;
+
+  if (state == NULL || input == NULL || state->target == NULL ||
+      state->plan == NULL || state->complete)
+    return CSERDE_UNSUPPORTED;
+  token = *input;
+
+  if (!state->root_started) {
+    if (token.kind != CSERDE_MAP_BEGIN) return CSERDE_UNSUPPORTED;
+    state->root_started = 1;
+    state->expect_root_key = 1;
+    return plan_canonical_writer_status(
+        cserde_writer_write(state->target, &token));
+  }
+
+  if (state->value_depth != 0u) {
+    if (plan_reader_container_begin(token.kind)) {
+      if (state->value_depth == SIZE_MAX) return CSERDE_LIMIT_EXCEEDED;
+      ++state->value_depth;
+    } else if (plan_reader_container_end(token.kind)) {
+      --state->value_depth;
+      if (state->value_depth == 0u) state->expect_root_key = 1;
+    }
+    return plan_canonical_writer_status(
+        cserde_writer_write(state->target, &token));
+  }
+
+  if (state->expect_root_key) {
+    const char *external;
+    if (token.kind == CSERDE_MAP_END) {
+      state->complete = 1;
+      return plan_canonical_writer_status(
+          cserde_writer_write(state->target, &token));
+    }
+    if (token.kind != CSERDE_STRING) return CSERDE_UNSUPPORTED;
+    external = plan_external_name(state->plan, &token.value.slice);
+    if (external == NULL) return CSERDE_UNSUPPORTED;
+    token.value.slice.data = (const unsigned char *)external;
+    token.value.slice.size = strlen(external);
+    token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+    state->expect_root_key = 0;
+    return plan_canonical_writer_status(
+        cserde_writer_write(state->target, &token));
+  }
+
+  if (plan_reader_container_end(token.kind)) return CSERDE_UNSUPPORTED;
+  if (plan_reader_container_begin(token.kind))
+    state->value_depth = 1u;
+  else
+    state->expect_root_key = 1;
+  status = cserde_writer_write(state->target, &token);
+  return plan_canonical_writer_status(status);
+}
+
+static cserde_status plan_canonical_writer_finish(void *context) {
+  const DataBindFormatCanonicalWriter *state =
+      (const DataBindFormatCanonicalWriter *)context;
+  if (state == NULL || !state->root_started || !state->complete ||
+      state->value_depth != 0u || !state->expect_root_key)
+    return CSERDE_UNSUPPORTED;
+  return CSERDE_OK;
+}
+
+static const cserde_writer_ops PLAN_CANONICAL_WRITER_OPS = {
+    sizeof(cserde_writer_ops),
+    CSERDE_WRITER_OPS_ABI_VERSION,
+    plan_canonical_writer_write,
+    plan_canonical_writer_finish};
+
+DataBindStatus data_bind_format_canonical_writer_init(
+    const DataBindFormatPlan *plan,
+    cserde_writer *target,
+    DataBindFormatCanonicalWriter *out,
+    DataBindError *error) {
+  DataBindFormatCanonicalWriter initial =
+      DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+  cserde_status writer_status;
+  size_t size;
+
+  if (plan == NULL || target == NULL || out == NULL ||
+      out->size < sizeof(*out) ||
+      target->state != CSERDE_WRITER_READY)
+    return plan_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "Invalid FormatPlan canonical writer arguments");
+  if (!plan_format_uses_field_names(plan->format))
+    return plan_error(
+        error, DATA_BIND_ERR_SCHEMA,
+        "Selected FormatPlan does not use parser field-name projection");
+  if (plan->root_kind != DATA_BIND_SCHEMA_MESSAGE &&
+      plan->root_kind != DATA_BIND_SCHEMA_COMPOSITE &&
+      plan->root_kind != DATA_BIND_SCHEMA_GROUP)
+    return plan_error(
+        error, DATA_BIND_ERR_SCHEMA,
+        "FormatPlan canonical writer requires a record root");
+
+  size = sizeof(*out);
+  memset(out, 0, size);
+  initial.size = size;
+  initial.plan = plan;
+  initial.target = target;
+  memcpy(out, &initial, size);
+
+  writer_status = cserde_writer_init(
+      &out->writer, &PLAN_CANONICAL_WRITER_OPS, out);
+  if (writer_status != CSERDE_OK) {
+    memset(out, 0, size);
+    out->size = size;
+    return plan_error(
+        error, DATA_BIND_ERR_RUNTIME,
+        "Could not initialize FormatPlan canonical CSerde writer");
+  }
+
+  if (error != NULL) (void)plan_error(error, DATA_BIND_OK, "");
+  return DATA_BIND_OK;
+}
+
+cserde_writer *data_bind_format_canonical_writer_writer(
+    DataBindFormatCanonicalWriter *writer) {
+  if (writer == NULL || writer->size < sizeof(*writer) ||
+      writer->abi_version != DATA_BIND_FORMAT_CANONICAL_WRITER_ABI_VERSION ||
+      writer->writer.state == CSERDE_WRITER_ZERO)
+    return NULL;
+  return &writer->writer;
 }
 
 static int plan_transport_kind_valid(DataBindTransportKind kind) {
