@@ -29,8 +29,14 @@ struct DataBindTransportPlan {
   DataBindTransportKind kind;
   char *service_name;
   char *operation_name;
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
   DataBindFormatPlan *ingress;
   DataBindFormatPlan *egress;
+  DataBindOpaquePlan ingress_opaque;
+  DataBindOpaquePlan egress_opaque;
+  int has_ingress_opaque;
+  int has_egress_opaque;
 };
 
 typedef struct DataBindPlanScan {
@@ -911,13 +917,70 @@ static int plan_transport_kind_valid(DataBindTransportKind kind) {
          kind == DATA_BIND_TRANSPORT_RPC;
 }
 
-DataBindStatus data_bind_transport_plan_compile_service(
+static int plan_transport_payload_config_valid(
+    const DataBindTransportPayloadConfig *config) {
+  if (config == NULL || config->size < sizeof(*config) ||
+      config->abi_version != DATA_BIND_PROJECTION_PLAN_ABI_VERSION)
+    return 0;
+  if (config->kind == DATA_BIND_PAYLOAD_FORMAT)
+    return plan_format_valid(config->format);
+  if (config->kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return config->format == DATA_BIND_FORMAT_NONE &&
+           config->opaque_max_bytes != 0u;
+  return 0;
+}
+
+static DataBindStatus plan_transport_payload_compile(
+    DataBind *codec,
+    const char *type_name,
+    const DataBindTransportPayloadConfig *config,
+    DataBindFormatPlan **out_format,
+    DataBindOpaquePlan *out_opaque,
+    int *out_has_opaque,
+    DataBindError *error) {
+  DataBindStatus status;
+
+  if (codec == NULL || type_name == NULL || config == NULL ||
+      out_format == NULL || out_opaque == NULL || out_has_opaque == NULL)
+    return plan_error(
+        error, DATA_BIND_ERR_INVALID_ARG,
+        "Invalid transport payload compile request");
+
+  *out_format = NULL;
+  *out_opaque = (DataBindOpaquePlan)DATA_BIND_OPAQUE_PLAN_INIT;
+  *out_has_opaque = 0;
+
+  if (strcmp(type_name, "void") == 0) {
+    if (config->kind == DATA_BIND_PAYLOAD_OPAQUE)
+      return plan_error(
+          error, DATA_BIND_ERR_SCHEMA,
+          "Opaque transport payload cannot target a void Service side");
+    return DATA_BIND_OK;
+  }
+
+  if (config->kind == DATA_BIND_PAYLOAD_FORMAT)
+    return data_bind_format_plan_compile(
+        codec, type_name, config->format, out_format, error);
+
+  if (strcmp(type_name, "bytes") != 0)
+    return plan_error(
+        error, DATA_BIND_ERR_SCHEMA,
+        "Opaque transport payload requires canonical builtin bytes");
+
+  out_opaque->max_bytes = config->opaque_max_bytes;
+  status = data_bind_opaque_plan_validate(out_opaque, error);
+  if (status != DATA_BIND_OK) return status;
+  *out_has_opaque = 1;
+  return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_transport_plan_compile_service_payloads(
     DataBind *codec,
     const char *service_name,
     const char *operation_name,
     DataBindTransportKind kind,
-    DataBindFormat ingress_format,
-    DataBindFormat egress_format,
+    const DataBindTransportPayloadConfig *ingress,
+    const DataBindTransportPayloadConfig *egress,
     DataBindTransportPlan **out_plan,
     DataBindError *error) {
   DataBindServiceOperation operation = DATA_BIND_SERVICE_OPERATION_INIT;
@@ -931,10 +994,10 @@ DataBindStatus data_bind_transport_plan_compile_service(
   if (codec == NULL || service_name == NULL || service_name[0] == '\0' ||
       operation_name == NULL || operation_name[0] == '\0' ||
       !plan_transport_kind_valid(kind) ||
-      !plan_format_valid(ingress_format) ||
-      !plan_format_valid(egress_format))
+      !plan_transport_payload_config_valid(ingress) ||
+      !plan_transport_payload_config_valid(egress))
     return plan_error(error, DATA_BIND_ERR_INVALID_ARG,
-                      "Invalid TransportPlan compile request");
+                      "Invalid TransportPlan payload compile request");
 
   if (!data_bind_service_operation_find(
           codec, service_name, operation_name, &operation))
@@ -948,36 +1011,56 @@ DataBindStatus data_bind_transport_plan_compile_service(
   plan->kind = kind;
   plan->service_name = plan_strdup(service_name);
   plan->operation_name = plan_strdup(operation_name);
+  plan->ingress_payload_kind = ingress->kind;
+  plan->egress_payload_kind = egress->kind;
   if (plan->service_name == NULL || plan->operation_name == NULL) {
     data_bind_transport_plan_free(plan);
     return plan_error(error, DATA_BIND_ERR_OOM,
                       "Unable to copy TransportPlan identity");
   }
 
-  if (operation.request_type != NULL &&
-      strcmp(operation.request_type, "void") != 0) {
-    status = data_bind_format_plan_compile(
-        codec, operation.request_type, ingress_format,
-        &plan->ingress, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_transport_plan_free(plan);
-      return status;
-    }
+  status = plan_transport_payload_compile(
+      codec,
+      operation.request_type != NULL ? operation.request_type : "void",
+      ingress, &plan->ingress, &plan->ingress_opaque,
+      &plan->has_ingress_opaque, error);
+  if (status != DATA_BIND_OK) {
+    data_bind_transport_plan_free(plan);
+    return status;
   }
 
-  if (operation.response_type != NULL &&
-      strcmp(operation.response_type, "void") != 0) {
-    status = data_bind_format_plan_compile(
-        codec, operation.response_type, egress_format,
-        &plan->egress, error);
-    if (status != DATA_BIND_OK) {
-      data_bind_transport_plan_free(plan);
-      return status;
-    }
+  status = plan_transport_payload_compile(
+      codec,
+      operation.response_type != NULL ? operation.response_type : "void",
+      egress, &plan->egress, &plan->egress_opaque,
+      &plan->has_egress_opaque, error);
+  if (status != DATA_BIND_OK) {
+    data_bind_transport_plan_free(plan);
+    return status;
   }
 
   *out_plan = plan;
   return DATA_BIND_OK;
+}
+
+DataBindStatus data_bind_transport_plan_compile_service(
+    DataBind *codec,
+    const char *service_name,
+    const char *operation_name,
+    DataBindTransportKind kind,
+    DataBindFormat ingress_format,
+    DataBindFormat egress_format,
+    DataBindTransportPlan **out_plan,
+    DataBindError *error) {
+  DataBindTransportPayloadConfig ingress =
+      (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+  DataBindTransportPayloadConfig egress =
+      (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+  ingress.format = ingress_format;
+  egress.format = egress_format;
+  return data_bind_transport_plan_compile_service_payloads(
+      codec, service_name, operation_name, kind,
+      &ingress, &egress, out_plan, error);
 }
 
 void data_bind_transport_plan_free(DataBindTransportPlan *plan) {
@@ -1004,7 +1087,11 @@ int data_bind_transport_plan_info(
       plan->service_name,
       plan->operation_name,
       plan->ingress,
-      plan->egress};
+      plan->egress,
+      plan->ingress_payload_kind,
+      plan->egress_payload_kind,
+      plan->has_ingress_opaque ? &plan->ingress_opaque : NULL,
+      plan->has_egress_opaque ? &plan->egress_opaque : NULL};
   memset(out, 0, size);
   memcpy(out, &full, size);
   out->size = size;
