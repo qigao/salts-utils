@@ -95,11 +95,30 @@ static int binary_token_width_valid(
   }
 }
 
+static size_t binary_field_representation(
+    const DataBindBinaryReaderFieldPlan *field) {
+  if (field == NULL ||
+      field->size <
+          offsetof(DataBindBinaryReaderFieldPlan, representation) +
+              sizeof(field->representation))
+    return DATA_BIND_BINARY_READER_REP_FIXED;
+  return field->representation;
+}
+
+static int binary_field_has_var_data_tail(
+    const DataBindBinaryReaderFieldPlan *field) {
+  return field != NULL &&
+         field->size >=
+             offsetof(DataBindBinaryReaderFieldPlan, tail_prefix_bytes) +
+                 sizeof(field->tail_prefix_bytes);
+}
+
 DataBindStatus data_bind_binary_reader_plan_validate(
     const DataBindBinaryReaderPlan *plan,
     DataBindError *error) {
   size_t state_end;
   size_t i;
+  int saw_var_data = 0;
 
   binary_error_clear(error);
   if (plan == NULL ||
@@ -126,18 +145,42 @@ DataBindStatus data_bind_binary_reader_plan_validate(
     size_t end;
     size_t j;
 
-    if (field->size < sizeof(*field) ||
-        field->field_name == NULL || field->field_name[0] == '\0' ||
-        !binary_token_width_valid(field->token_kind, field->scalar_bits) ||
-        field->wire_extent != (size_t)(field->scalar_bits / 8u) ||
-        !binary_size_add(field->wire_offset, field->wire_extent, &end) ||
-        end > plan->fixed_block_size ||
-        binary_ranges_overlap(
-            field->wire_offset, field->wire_extent, 0u, state_end))
+    const size_t representation = binary_field_representation(field);
+
+    if (field->size < DATA_BIND_BINARY_READER_FIELD_PLAN_V1_SIZE ||
+        field->field_name == NULL || field->field_name[0] == '\0')
       return binary_fail(
           error, DATA_BIND_ERR_SCHEMA,
           field->field_name != NULL ? field->field_name : plan->type_name,
-          "Binary scalar field layout is invalid");
+          "Binary reader field metadata is incomplete");
+
+    if (representation == DATA_BIND_BINARY_READER_REP_FIXED) {
+      if (saw_var_data ||
+          !binary_token_width_valid(field->token_kind, field->scalar_bits) ||
+          field->wire_extent != (size_t)(field->scalar_bits / 8u) ||
+          !binary_size_add(field->wire_offset, field->wire_extent, &end) ||
+          end > plan->fixed_block_size ||
+          binary_ranges_overlap(
+              field->wire_offset, field->wire_extent, 0u, state_end))
+        return binary_fail(
+            error, DATA_BIND_ERR_SCHEMA, field->field_name,
+            "Binary scalar field layout is invalid");
+    } else if (representation == DATA_BIND_BINARY_READER_REP_VAR_DATA) {
+      saw_var_data = 1;
+      if (!binary_field_has_var_data_tail(field) ||
+          (field->token_kind != CSERDE_STRING &&
+           field->token_kind != CSERDE_BYTES) ||
+          field->scalar_bits != 0u ||
+          field->wire_offset != 0u || field->wire_extent != 0u ||
+          field->tail_prefix_bytes != sizeof(uint32_t))
+        return binary_fail(
+            error, DATA_BIND_ERR_SCHEMA, field->field_name,
+            "Binary VAR_DATA field layout is invalid");
+    } else {
+      return binary_fail(
+          error, DATA_BIND_ERR_SCHEMA, field->field_name,
+          "Binary reader field representation is unsupported");
+    }
 
     if ((field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) != 0u) {
       if (plan->presence_size == 0u ||
@@ -163,9 +206,12 @@ DataBindStatus data_bind_binary_reader_plan_validate(
     for (j = 0u; j < i; ++j) {
       const DataBindBinaryReaderFieldPlan *prior = &plan->fields[j];
       if (strcmp(prior->field_name, field->field_name) == 0 ||
-          binary_ranges_overlap(
-              prior->wire_offset, prior->wire_extent,
-              field->wire_offset, field->wire_extent))
+          (representation == DATA_BIND_BINARY_READER_REP_FIXED &&
+           binary_field_representation(prior) ==
+               DATA_BIND_BINARY_READER_REP_FIXED &&
+           binary_ranges_overlap(
+               prior->wire_offset, prior->wire_extent,
+               field->wire_offset, field->wire_extent)))
         return binary_fail(
             error, DATA_BIND_ERR_SCHEMA, field->field_name,
             "Binary reader fields overlap or duplicate canonical identity");
