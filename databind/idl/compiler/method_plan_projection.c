@@ -169,12 +169,33 @@ static const char *runtime_format_name(DataBindFormat format) {
     return "DATA_BIND_FORMAT_CSV";
   case DATA_BIND_FORMAT_XML:
     return "DATA_BIND_FORMAT_XML";
+  case DATA_BIND_FORMAT_NONE:
+    return "DATA_BIND_FORMAT_NONE";
+  }
+  return NULL;
+}
+
+static const char *runtime_payload_kind_name(DataBindPayloadKind kind) {
+  switch (kind) {
+  case DATA_BIND_PAYLOAD_FORMAT:
+    return "DATA_BIND_PAYLOAD_FORMAT";
+  case DATA_BIND_PAYLOAD_OPAQUE:
+    return "DATA_BIND_PAYLOAD_OPAQUE";
   }
   return NULL;
 }
 
 static int compiler_format_valid(DataBindFormat format) {
-  return runtime_format_name(format) != NULL;
+  return format >= DATA_BIND_FORMAT_BINARY && format <= DATA_BIND_FORMAT_XML;
+}
+
+static int compiler_http_payload_valid(
+    DataBindPayloadKind kind, DataBindFormat format, size_t opaque_max_bytes) {
+  if (kind == DATA_BIND_PAYLOAD_FORMAT)
+    return compiler_format_valid(format);
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return format == DATA_BIND_FORMAT_NONE && opaque_max_bytes != 0u;
+  return 0;
 }
 
 static int projection_format_type_representable(
@@ -194,6 +215,23 @@ static int projection_format_type_representable(
       contract, format_plan, type_name, &layout, &diagnostic);
   databind_binary_layout_destroy(&layout);
   return status == DATABIND_BINARY_LAYOUT_OK;
+}
+
+static int projection_http_payload_type_representable(
+    const IdlContract *contract,
+    const databind_tbe_format_plan *format_plan,
+    const char *type_name,
+    DataBindPayloadKind kind,
+    DataBindFormat format,
+    size_t opaque_max_bytes) {
+  if (!compiler_http_payload_valid(kind, format, opaque_max_bytes))
+    return 0;
+  if (type_name == NULL || strcmp(type_name, "void") == 0)
+    return kind == DATA_BIND_PAYLOAD_FORMAT;
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return strcmp(type_name, "bytes") == 0;
+  return projection_format_type_representable(
+      contract, format_plan, type_name, format);
 }
 
 static int projection_operation_formats_representable(
@@ -307,8 +345,12 @@ static int http_config_shape_valid(
     const databind_compiler_http_operation_config *left = &config->operations[i];
     if (left->service_name == NULL || left->operation_name == NULL ||
         (left->method != NULL && !http_method_valid(left->method)) ||
-        !compiler_format_valid(left->ingress_format) ||
-        !compiler_format_valid(left->egress_format) ||
+        !compiler_http_payload_valid(
+            left->ingress_payload_kind, left->ingress_format,
+            left->ingress_opaque_max_bytes) ||
+        !compiler_http_payload_valid(
+            left->egress_payload_kind, left->egress_format,
+            left->egress_opaque_max_bytes) ||
         (left->route != NULL &&
          (left->route[0] != '/' || strchr(left->route, '?') != NULL ||
           strchr(left->route, '#') != NULL)) ||
@@ -428,10 +470,33 @@ static int http_operation_config_valid(
       op_config != NULL ? op_config->ingress_format : DATA_BIND_FORMAT_JSON;
   const DataBindFormat egress_format =
       op_config != NULL ? op_config->egress_format : DATA_BIND_FORMAT_JSON;
+  const DataBindPayloadKind ingress_kind =
+      op_config != NULL ? op_config->ingress_payload_kind
+                        : DATA_BIND_PAYLOAD_FORMAT;
+  const DataBindPayloadKind egress_kind =
+      op_config != NULL ? op_config->egress_payload_kind
+                        : DATA_BIND_PAYLOAD_FORMAT;
+  const size_t ingress_opaque_max_bytes =
+      op_config != NULL ? op_config->ingress_opaque_max_bytes : 0u;
+  const size_t egress_opaque_max_bytes =
+      op_config != NULL ? op_config->egress_opaque_max_bytes : 0u;
+  const int has_opaque =
+      ingress_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+      egress_kind == DATA_BIND_PAYLOAD_OPAQUE;
   size_t i;
 
-  if (!projection_operation_formats_representable(
-          contract, format_plan, operation, ingress_format, egress_format))
+  if (!projection_http_payload_type_representable(
+          contract, format_plan, request_type, ingress_kind,
+          ingress_format, ingress_opaque_max_bytes) ||
+      !projection_http_payload_type_representable(
+          contract, format_plan, response_type, egress_kind,
+          egress_format, egress_opaque_max_bytes))
+    return 0;
+  if (has_opaque &&
+      (ingress_kind != DATA_BIND_PAYLOAD_OPAQUE ||
+       (response_type != NULL && strcmp(response_type, "void") != 0 &&
+        egress_kind != DATA_BIND_PAYLOAD_OPAQUE) ||
+       operation == NULL || operation->error_count != 0u))
     return 0;
   for (i = 0u; config != NULL && i < config->field_count; ++i) {
     const databind_compiler_http_field_config *field = &config->fields[i];
@@ -443,7 +508,11 @@ static int http_operation_config_valid(
       continue;
     type_name = field->direction == DATABIND_COMPILER_PROJECTION_INGRESS
                     ? request_type : response_type;
-    if (type_name == NULL || strcmp(type_name, "void") == 0 ||
+    if ((field->direction == DATABIND_COMPILER_PROJECTION_INGRESS &&
+         ingress_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
+        (field->direction == DATABIND_COMPILER_PROJECTION_EGRESS &&
+         egress_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
+        type_name == NULL || strcmp(type_name, "void") == 0 ||
         !projection_type_has_field(contract, type_name, field->schema_field))
       return 0;
     if (field->location == DATABIND_COMPILER_HTTP_PATH) {
@@ -458,7 +527,8 @@ static int http_operation_config_valid(
     if (config_operation_matches(
             service_name, operation_name,
             error->service_name, error->operation_name) &&
-        !projection_operation_has_error(operation, error->error_type))
+        (has_opaque ||
+         !projection_operation_has_error(operation, error->error_type)))
       return 0;
   }
   if (op_config != NULL && op_config->route != NULL) {
@@ -847,13 +917,21 @@ static int http_generate(
           goto cleanup;
       } else if (fputs("NULL, 0u", file) == EOF) goto cleanup;
       if (fprintf(
-              file, ", %s, %s",
+              file, ", %s, %s, %s, %s, %zuu, %zuu",
               runtime_format_name(
                   op_config != NULL ? op_config->ingress_format
                                     : DATA_BIND_FORMAT_JSON),
               runtime_format_name(
                   op_config != NULL ? op_config->egress_format
-                                    : DATA_BIND_FORMAT_JSON)) < 0)
+                                    : DATA_BIND_FORMAT_JSON),
+              runtime_payload_kind_name(
+                  op_config != NULL ? op_config->ingress_payload_kind
+                                    : DATA_BIND_PAYLOAD_FORMAT),
+              runtime_payload_kind_name(
+                  op_config != NULL ? op_config->egress_payload_kind
+                                    : DATA_BIND_PAYLOAD_FORMAT),
+              op_config != NULL ? op_config->ingress_opaque_max_bytes : 0u,
+              op_config != NULL ? op_config->egress_opaque_max_bytes : 0u) < 0)
         goto cleanup;
       if (fputs(" } },\n", file) == EOF) goto cleanup;
     }
