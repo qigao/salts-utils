@@ -1431,7 +1431,7 @@ static int tbe_compiler_cmeta_classify_record(
       /* The generated map graph is a complete read provider. The mixed
        * typed-descriptor lifecycle stays unavailable until its transactional
        * collector/construct slice lands; do not advertise partial mutation. */
-      if (context->runtime) goto unsupported;
+      if (context->runtime || context->lifecycle) goto unsupported;
       scalar = tbe_compiler_scalar_projection(value_type);
       if ((scalar && scalar->native_data_symbol) ||
           strcmp(value_type, "string") == 0 ||
@@ -1509,7 +1509,7 @@ static int tbe_compiler_cmeta_classify_record(
       continue;
     }
 
-    if (!context->runtime &&
+    if (!context->runtime && !context->lifecycle &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL)
       continue;
