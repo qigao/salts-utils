@@ -16,6 +16,25 @@ extern "C" {
 DataBindStatus data_bind_native_leaf_token(
     const cmeta_data_desc *data, const void *source, cserde_token *out);
 
+
+/* Runtime usage reported by one successful native decode. */
+typedef struct DataBindNativeDecodeUsage {
+  size_t items;
+  size_t owned_bytes;
+} DataBindNativeDecodeUsage;
+
+/*
+ * Decode one canonical native value and publish exact runtime budget usage.
+ *
+ * This is an internal composition seam for MessagePlan. Public native decode
+ * ABI remains unchanged. usage is written only on success.
+ */
+DataBindStatus data_bind_native_decode_usage(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic);
+
 #ifdef __cplusplus
 }
 #endif
