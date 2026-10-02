@@ -9,7 +9,7 @@
 #include "mustache_helpers.h"
 #include "idl.h"
 #include "idl_contract_internal.h"
-#include "tbe_contract_overlay.h"
+#include "binary_contract_overlay.h"
 #include "schema_cmeta.h"
 #include <salts_cmeta_data.h>
 #include <salts_cmeta_fixed_width.h>
@@ -2074,7 +2074,7 @@ int databind_compiler_parse_contract_file(
     return 1;
   }
 
-  if (databind_tbe_contract_apply(root, &parse_err) != 0) {
+  if (databind_binary_contract_apply(root, &parse_err) != 0) {
     fprintf(stderr, "TBE format error: %s\n", parse_err.message);
     idl_contract_destroy(contract);
     free(schema_data);
@@ -2291,7 +2291,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *projection_root = NULL;
   Node *database_ir = NULL;
   IdlContract *contract = NULL;
-  databind_tbe_format_plan tbe_format = {0};
+  databind_binary_format_plan tbe_format = {0};
   char *schema_data = NULL;
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
@@ -2326,7 +2326,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
       goto cleanup;
     }
     tbe_error_init(&format_error);
-    if (!databind_tbe_format_plan_build(
+    if (!databind_binary_format_plan_build(
             contract, projection_root, &tbe_format, &format_error)) {
       fprintf(stderr, "Failed to compile TBE format plan: %s\n",
               format_error.message);
@@ -2483,7 +2483,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
 
 cleanup:
-  databind_tbe_format_plan_destroy(&tbe_format);
+  databind_binary_format_plan_destroy(&tbe_format);
   idl_contract_destroy(contract);
   free(schema_data);
   tbe_database_schema_destroy(database_ir);

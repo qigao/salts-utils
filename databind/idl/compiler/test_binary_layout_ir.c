@@ -1,6 +1,6 @@
 #include "binary_layout_ir.h"
 #include "compiler_core.h"
-#include "tbe_contract_overlay.h"
+#include "binary_contract_overlay.h"
 
 #include <tinytest.h>
 
@@ -14,7 +14,7 @@ spec("DataBind BinaryLayoutIR") {
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
 
     check_equal(
@@ -29,7 +29,7 @@ spec("DataBind BinaryLayoutIR") {
     }
 
     tbe_error_init(&format_error);
-    check(databind_tbe_format_plan_build(
+    check(databind_binary_format_plan_build(
         contract, root, &format_plan, &format_error));
     check_equal(
         databind_binary_layout_build(
@@ -72,7 +72,7 @@ spec("DataBind BinaryLayoutIR") {
     check((layout.fields[9].flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u);
 
     databind_binary_layout_destroy(&layout);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -85,7 +85,7 @@ spec("DataBind BinaryLayoutIR") {
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
 
     check_equal(
@@ -94,7 +94,7 @@ spec("DataBind BinaryLayoutIR") {
     check_not_null(root);
 
     tbe_error_init(&format_error);
-    check(databind_tbe_format_plan_build(
+    check(databind_binary_format_plan_build(
         contract, root, &format_plan, &format_error));
     check_equal(
         databind_binary_layout_build(
@@ -124,7 +124,7 @@ spec("DataBind BinaryLayoutIR") {
     check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
 
     databind_binary_layout_destroy(&layout);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -136,7 +136,7 @@ spec("DataBind BinaryLayoutIR") {
     char *schema_data = NULL;
     databind_binary_type_layout layout = {0};
     databind_binary_layout_diagnostic diagnostic = {0};
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
 
     check_equal(
@@ -152,7 +152,7 @@ spec("DataBind BinaryLayoutIR") {
     }
 
     tbe_error_init(&format_error);
-    check(databind_tbe_format_plan_build(
+    check(databind_binary_format_plan_build(
         contract, root, &format_plan, &format_error));
     check_equal(
         databind_binary_layout_build(
@@ -177,7 +177,7 @@ spec("DataBind BinaryLayoutIR") {
     check(layout.fields[2].flags & DATABIND_BINARY_FIELD_NULLABLE);
 
     databind_binary_layout_destroy(&layout);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);

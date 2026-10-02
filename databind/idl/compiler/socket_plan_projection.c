@@ -126,7 +126,7 @@ static int socket_config_valid(
 
 static int socket_payload_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *message_type,
     const databind_compiler_socket_projection_config *config) {
   databind_binary_type_layout layout = {0};

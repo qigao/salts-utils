@@ -1,4 +1,4 @@
-#include "tbe_contract_overlay.h"
+#include "binary_contract_overlay.h"
 #include "tbe_error.h"
 #include "tinytest.h"
 #include <stdio.h>
@@ -32,7 +32,7 @@ suite("enum_helpers") {
                                 "Admin = 3; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
+            int rc = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 
@@ -67,7 +67,7 @@ suite("enum_helpers") {
                                 "Error = 20; "
                                 "}";
             Node *root = create_node_map("root");
-            int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
+            int rc = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
 
             check_equal(rc, 0);
 

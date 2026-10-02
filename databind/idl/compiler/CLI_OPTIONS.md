@@ -375,12 +375,12 @@ CSV input accepts a zero-based logical record index. The runtime remains respons
 for applying its input, output, object, and execution quotas before invoking the
 trusted host codec.
 
-For a freestanding wasm32 build, define `TBE_WASM_GUEST=1`. This removes the generated
+For a freestanding wasm32 build, define `DATA_BIND_BINARY_WASM_GUEST=1`. This removes the generated
 wire header's dependency on host libc and the Salts UUID runtime while preserving
 the same fixed 16-byte `salts_uuid_t` value layout:
 
 ```bash
-clang --target=wasm32-unknown-unknown -DTBE_WASM_GUEST=1 -O2 -nostdlib \
+clang --target=wasm32-unknown-unknown -DDATA_BIND_BINARY_WASM_GUEST=1 -O2 -nostdlib \
   -Igenerated -Ipath/to/databind/schema/include -c order_guest.c
 ```
 

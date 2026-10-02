@@ -1,5 +1,5 @@
 #include "data_bind_binary_reader.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 #include "tinytest.h"
 
 #include <math.h>
@@ -43,11 +43,11 @@ static void write_payload(
   memset(wire, 0, 15u);
   if (present) wire[0] |= 1u;
   if (is_null) wire[1] |= 1u;
-  tbe_wire_write_u8(wire + 2u, big_endian, 2u);
-  tbe_wire_write_i16(wire + 3u, big_endian, (int16_t)-1234);
-  tbe_wire_write_u32(wire + 5u, big_endian, UINT32_C(0x11223344));
-  tbe_wire_write_f32(wire + 9u, big_endian, 1.5f);
-  tbe_wire_write_u16(wire + 13u, big_endian, UINT16_C(513));
+  data_bind_binary_wire_write_u8(wire + 2u, big_endian, 2u);
+  data_bind_binary_wire_write_i16(wire + 3u, big_endian, (int16_t)-1234);
+  data_bind_binary_wire_write_u32(wire + 5u, big_endian, UINT32_C(0x11223344));
+  data_bind_binary_wire_write_f32(wire + 9u, big_endian, 1.5f);
+  data_bind_binary_wire_write_u16(wire + 13u, big_endian, UINT16_C(513));
 }
 
 static int next_token(cserde_reader *reader, cserde_token *out) {
@@ -151,15 +151,15 @@ static size_t write_var_data_payload(
   memset(wire, 0, capacity);
   if (payload_present) wire[0] |= 1u;
   if (payload_null) wire[1] |= 1u;
-  tbe_wire_write_u32(wire + 2u, big_endian, UINT32_C(7));
+  data_bind_binary_wire_write_u32(wire + 2u, big_endian, UINT32_C(7));
 
-  if (!tbe_wire_write_var_data(
+  if (!data_bind_binary_wire_write_var_data(
           wire + cursor, capacity - cursor, big_endian,
           source, sizeof(source) - 1u))
     return 0u;
   cursor += sizeof(uint32_t) + sizeof(source) - 1u;
 
-  if (!tbe_wire_write_var_data(
+  if (!data_bind_binary_wire_write_var_data(
           wire + cursor, capacity - cursor, big_endian,
           payload_present && !payload_null ? payload_data : NULL,
           payload_present && !payload_null ? payload_size : 0u))
@@ -424,7 +424,7 @@ spec("DataBind flat Binary canonical reader") {
     check_contains(error.message, "prefix");
 
     error = (DataBindError)DATA_BIND_ERROR_INIT;
-    tbe_wire_write_u32(
+    data_bind_binary_wire_write_u32(
         wire + payload_prefix, 0, UINT32_C(8));
     check_equal(
         data_bind_binary_reader_open(
@@ -442,7 +442,7 @@ spec("DataBind flat Binary canonical reader") {
      */
     wire_size = write_var_data_payload(
         wire, sizeof(wire), 0, 0, 0, NULL, 0u);
-    tbe_wire_write_u32(
+    data_bind_binary_wire_write_u32(
         wire + payload_prefix, 0, UINT32_C(1));
     wire[payload_prefix + sizeof(uint32_t)] = 0xa5u;
     error = (DataBindError)DATA_BIND_ERROR_INIT;
@@ -460,7 +460,7 @@ spec("DataBind flat Binary canonical reader") {
 
     wire_size = write_var_data_payload(
         wire, sizeof(wire), 0, 1, 1, NULL, 0u);
-    tbe_wire_write_u32(
+    data_bind_binary_wire_write_u32(
         wire + payload_prefix, 0, UINT32_C(1));
     wire[payload_prefix + sizeof(uint32_t)] = 0xa5u;
     error = (DataBindError)DATA_BIND_ERROR_INIT;

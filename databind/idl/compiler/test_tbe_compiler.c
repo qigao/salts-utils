@@ -4,8 +4,8 @@
 #include "idl_contract_internal.h"
 #include "database_schema.h"
 #include "node_tree.h"
-#include "tbe_wire.h"
-#include "tbe_contract_overlay.h"
+#include "data_bind_binary_wire.h"
+#include "binary_contract_overlay.h"
 #include "tinytest.h"
 #ifdef _WIN32
 #include <io.h>
@@ -177,7 +177,7 @@ static char *render_c_template(const char *schema) {
   root = create_node_map(NULL);
   if (!root) goto cleanup;
 
-  if (databind_tbe_contract_parse(schema, strlen(schema), root, NULL) != 0) goto cleanup;
+  if (databind_binary_contract_parse(schema, strlen(schema), root, NULL) != 0) goto cleanup;
   annotate_language_types_from_tree(root);
 
   templ = mustache_compile(template_text, template_size, NULL, NULL, 0);
@@ -261,14 +261,14 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
   if (saved_stdout < 0 || saved_stderr < 0) {
     if (saved_stdout >= 0) tt_close(saved_stdout);
     if (saved_stderr >= 0) tt_close(saved_stderr);
-    return databind_tbe_contract_parse(schema, size, root, NULL);
+    return databind_binary_contract_parse(schema, size, root, NULL);
   }
 
   null_file = freopen(TT_NULL_DEVICE, "w", stdout);
   if (!null_file) {
     tt_close(saved_stdout);
     tt_close(saved_stderr);
-    return databind_tbe_contract_parse(schema, size, root, NULL);
+    return databind_binary_contract_parse(schema, size, root, NULL);
   }
 
   null_file = freopen(TT_NULL_DEVICE, "w", stderr);
@@ -276,10 +276,10 @@ static int parse_schema_quietly(const char *schema, size_t size, Node *root) {
     tt_dup2(saved_stdout, tt_fileno(stdout));
     tt_close(saved_stdout);
     tt_close(saved_stderr);
-    return databind_tbe_contract_parse(schema, size, root, NULL);
+    return databind_binary_contract_parse(schema, size, root, NULL);
   }
 
-  result = databind_tbe_contract_parse(schema, size, root, NULL);
+  result = databind_binary_contract_parse(schema, size, root, NULL);
   fflush(stdout);
   fflush(stderr);
   tt_dup2(saved_stdout, tt_fileno(stdout));
@@ -1576,20 +1576,20 @@ spec("tbe_compiler") {
     it("should round-trip fixed primitive writes and reads") {
       uint8_t buf[8] = {0};
 
-      tbe_wire_write_u32(buf, 0, 0x11223344u);
-      check_equal(tbe_wire_read_u32(buf, 0), 0x11223344u);
+      data_bind_binary_wire_write_u32(buf, 0, 0x11223344u);
+      check_equal(data_bind_binary_wire_read_u32(buf, 0), 0x11223344u);
 
-      tbe_wire_write_i16(buf, 1, -1234);
-      check_equal(tbe_wire_read_i16(buf, 1), -1234);
+      data_bind_binary_wire_write_i16(buf, 1, -1234);
+      check_equal(data_bind_binary_wire_read_i16(buf, 1), -1234);
     }
 
     it("should round-trip variable data writes and reads") {
       uint8_t buf[32] = {0};
-      tbe_var_data_t value;
+      DataBindBinaryVarData value;
       const char payload[] = "abc";
 
-      check(tbe_wire_write_var_data(buf, sizeof(buf), 0, payload, 3));
-      check(tbe_wire_read_var_data(buf, sizeof(buf), 0, &value));
+      check(data_bind_binary_wire_write_var_data(buf, sizeof(buf), 0, payload, 3));
+      check(data_bind_binary_wire_read_var_data(buf, sizeof(buf), 0, &value));
       check_equal(value.size, 3);
       check(memcmp(value.data, payload, 3) == 0);
     }
@@ -1599,7 +1599,7 @@ spec("tbe_compiler") {
     it("should parse empty schema") {
       Node *root = create_node_map(NULL);
       const char *empty = "";
-      int res = databind_tbe_contract_parse(empty, strlen(empty), root, NULL);
+      int res = databind_binary_contract_parse(empty, strlen(empty), root, NULL);
       check_equal(res, 0);
       node_free(root);
     }
@@ -1607,7 +1607,7 @@ spec("tbe_compiler") {
     it("should parse simple composite") {
       Node *root = create_node_map(NULL);
       const char *schema = "composite Point { uint32_t x; uint32_t y; }";
-      int res = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
+      int res = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
       check_equal(res, 0);
 
       Node *composites = find_child(root, "composites");
@@ -1635,7 +1635,7 @@ spec("tbe_compiler") {
                                    "TBE_TYPED_U16", "TBE_TYPED_I32", "TBE_TYPED_U32",
                                    "TBE_TYPED_I64", "TBE_TYPED_U64"};
       Node *root = create_node_map(NULL);
-      int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
+      int rc = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       if (rc == 0) {
@@ -1674,7 +1674,7 @@ spec("tbe_compiler") {
           "optional uint32 f6; optional uint32 f7; optional uint32 f8; "
           "}";
       Node *root = create_node_map(NULL);
-      int rc = databind_tbe_contract_parse(schema, strlen(schema), root, NULL);
+      int rc = databind_binary_contract_parse(schema, strlen(schema), root, NULL);
 
       check_equal(rc, 0);
       if (rc == 0) {
@@ -1733,7 +1733,7 @@ spec("tbe_compiler") {
         fclose(f);
 
         Node *root = create_node_map(NULL);
-        int res = databind_tbe_contract_parse(dat, size, root, NULL);
+        int res = databind_binary_contract_parse(dat, size, root, NULL);
         check_equal(res, 0);
 
         Node *schema = NULL;
@@ -2917,11 +2917,11 @@ spec("tbe_compiler") {
       check_contains(output, "typedef struct Blob_builder_s {");
       check_contains(output, "static inline bool Blob_builder_bind");
       check_contains(output, "static inline bool Blob_payload_set(");
-      check_contains(output, "return tbe_wire_write_var_data(view->data + payload_offset,");
+      check_contains(output, "return data_bind_binary_wire_write_var_data(view->data + payload_offset,");
       check_contains(output, "static inline bool Blob_payload(");
-      check_contains(output, "tbe_var_data_t *value");
-      check_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
-      check_contains(output, "return tbe_wire_read_var_data(view->data + payload_offset,");
+      check_contains(output, "DataBindBinaryVarData *value");
+      check_contains(output, "return data_bind_binary_wire_read_var_data(view->data + payload_offset,");
+      check_contains(output, "return data_bind_binary_wire_read_var_data(view->data + payload_offset,");
       check(strstr(output, "uint8_t payload[") == NULL);
 
       free(output);
@@ -3016,11 +3016,11 @@ spec("tbe_compiler") {
       check_contains(output, "static inline bool Quote_side_set");
       check_contains(
           output,
-          "tbe_wire_write_u8(view->data + 0, GeneratedSchema_WIRE_BIG_ENDIAN, (uint8_t)value);");
+          "data_bind_binary_wire_write_u8(view->data + 0, GeneratedSchema_WIRE_BIG_ENDIAN, (uint8_t)value);");
       check_contains(output, "static inline bool Quote_qty_set");
       check_contains(
-          output, "tbe_wire_write_u32(view->data + 1, GeneratedSchema_WIRE_BIG_ENDIAN, value);");
-      check_contains(output, "return (Side_t)tbe_wire_read_u8(view->data + 0,");
+          output, "data_bind_binary_wire_write_u32(view->data + 1, GeneratedSchema_WIRE_BIG_ENDIAN, value);");
+      check_contains(output, "return (Side_t)data_bind_binary_wire_read_u8(view->data + 0,");
       check_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN");
       check(strstr(output, "Side_view_t") == NULL);
 
@@ -3050,11 +3050,11 @@ spec("tbe_compiler") {
                                  "view->size - element_offset);");
       check_contains(output, "static inline bool Payloads_values_set_at(");
       check_contains(output, "index >= 4");
-      check_contains(output, "tbe_wire_write_u32(");
+      check_contains(output, "data_bind_binary_wire_write_u32(");
       check_contains(output, "view->data + 32 + ((size_t)index * 4),");
       check_contains(output, "GeneratedSchema_WIRE_BIG_ENDIAN, value);");
       check_contains(output, "static inline bool Payloads_sides_set_at(");
-      check_contains(output, "tbe_wire_write_u8(");
+      check_contains(output, "data_bind_binary_wire_write_u8(");
       check_contains(output, "view->data + 48 + ((size_t)index * 1),");
       check_contains(output, "(uint8_t)value);");
 
@@ -3076,7 +3076,7 @@ spec("tbe_compiler") {
       check_contains(output, "typedef struct Header_s {");
       check_contains(output, "typedef struct Level_s {");
       check_contains(output, "typedef struct BookSnapshot_s {");
-      check_contains(output, "#include \"tbe_wire.h\"");
+      check_contains(output, "#include \"data_bind_binary_wire.h\"");
       check_contains(output, "enum { Market_WIRE_BIG_ENDIAN = 0 };");
       check_contains(output, "Header_t header;");
       check_contains(output, "list<Level> bids;");
@@ -3087,7 +3087,7 @@ spec("tbe_compiler") {
       check_contains(output, "static inline bool Level_cursor_bind");
       check_contains(
           output,
-          "cursor->block_length = tbe_wire_read_u16(cursor->data, Market_WIRE_BIG_ENDIAN);");
+          "cursor->block_length = data_bind_binary_wire_read_u16(cursor->data, Market_WIRE_BIG_ENDIAN);");
       check_contains(output, "static inline bool Level_cursor_get");
       check_contains(output, "typedef struct BookSnapshot_view_s {");
       check_contains(output, "static inline bool BookSnapshot_view_bind");
@@ -3096,22 +3096,22 @@ spec("tbe_compiler") {
       check_contains(output, "static inline const uint8_t *BookSnapshot_header_ptr");
       check_contains(output, "static inline bool BookSnapshot_bids_cursor");
       check_contains(output, "static inline bool BookSnapshot_symbol(");
-      check_contains(output, "return tbe_wire_read_var_data(payload_data,");
+      check_contains(output, "return data_bind_binary_wire_read_var_data(payload_data,");
       check_contains(output, "static inline bool BookSnapshot_symbol_set(");
       check_contains(output, "BookSnapshot_view_t read_view;");
       check_contains(output, "if (!BookSnapshot_bids_cursor(&read_view, &previous)) {");
-      check_contains(output, "return tbe_wire_write_var_data(");
+      check_contains(output, "return data_bind_binary_wire_write_var_data(");
       check_contains(output, "static inline bool BookSnapshot_source(");
-      check_contains(output, "tbe_wire_var_data_end(&previous);");
+      check_contains(output, "data_bind_binary_wire_var_data_end(&previous);");
       check_contains(output, "static inline bool BookSnapshot_source_set(");
       check_contains(output, "if (!BookSnapshot_symbol(&read_view, &previous)) {");
       check_contains(output, "return Level_cursor_bind(cursor, view->data + group_offset, "
                                  "view->size - group_offset);");
       check_contains(output, "if (!BookSnapshot_symbol(view, &previous)) {");
-      check_contains(output, "payload_data = tbe_wire_var_data_end(&previous);");
+      check_contains(output, "payload_data = data_bind_binary_wire_var_data_end(&previous);");
       check_contains(output, "static inline uint32_t Header_seq_num_get");
       check_contains(output,
-                         "return tbe_wire_read_u32(view->data + 0, Market_WIRE_BIG_ENDIAN);");
+                         "return data_bind_binary_wire_read_u32(view->data + 0, Market_WIRE_BIG_ENDIAN);");
 
       free(output);
     }

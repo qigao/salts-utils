@@ -180,7 +180,7 @@ static int flowmq_config_valid(
 
 static int flowmq_payload_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *message_type,
     const databind_compiler_flowmq_projection_config *config) {
   databind_binary_type_layout layout = {0};
@@ -265,7 +265,7 @@ static const IdlOperation *flowmq_service_operation_find(
 
 static int flowmq_service_payload_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     DataBindPayloadKind kind,
     DataBindFormat format) {

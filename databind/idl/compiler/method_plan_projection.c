@@ -209,7 +209,7 @@ static int compiler_payload_profile_valid(
 
 static int projection_format_type_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     DataBindFormat format) {
   databind_binary_type_layout layout = {0};
@@ -228,7 +228,7 @@ static int projection_format_type_representable(
 
 static int projection_operation_formats_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const IdlOperation *operation,
     DataBindFormat ingress_format,
     DataBindFormat egress_format) {
@@ -241,7 +241,7 @@ static int projection_operation_formats_representable(
 
 static int projection_payload_type_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     DataBindPayloadKind kind,
     DataBindFormat format) {
@@ -254,7 +254,7 @@ static int projection_payload_type_representable(
 
 static int projection_operation_profiles_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const IdlOperation *operation,
     DataBindPayloadKind ingress_kind,
     DataBindFormat ingress_format,
@@ -500,7 +500,7 @@ static int rpc_config_shape_valid(
 
 static int http_operation_config_valid(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan, const IdlOperation *operation,
+    const databind_binary_format_plan *format_plan, const IdlOperation *operation,
     const databind_compiler_http_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_http_operation_config *op_config =
@@ -584,7 +584,7 @@ static int http_operation_config_valid(
 
 static int rpc_operation_config_valid(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan, const IdlOperation *operation,
+    const databind_binary_format_plan *format_plan, const IdlOperation *operation,
     const databind_compiler_rpc_projection_config *config,
     const char *service_name, const char *operation_name) {
   const databind_compiler_rpc_operation_config *op_config =

@@ -1,7 +1,7 @@
-#include "tbe_contract_overlay.h"
-#include "tbe_format_plan.h"
+#include "binary_contract_overlay.h"
+#include "binary_format_plan.h"
 
-#include "tbe_scalar_profile.h"
+#include "binary_scalar_profile.h"
 #include "schema_size.h"
 
 #include <limits.h>
@@ -164,7 +164,7 @@ static size_t count_records_in_list(const Node *list) {
 }
 
 static int primitive_type_size(const char *type_name, size_t *out) {
-    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    const databind_binary_scalar_profile_t *info = databind_binary_scalar_profile_find(type_name);
     if (type_name && strcmp(type_name, "uuid") == 0 && out) {
         *out = 16;
         return 1;
@@ -175,14 +175,14 @@ static int primitive_type_size(const char *type_name, size_t *out) {
 }
 
 static int primitive_type_wire_reader(const char *type_name, const char **out) {
-    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    const databind_binary_scalar_profile_t *info = databind_binary_scalar_profile_find(type_name);
     if (!info || !info->wire_reader || !out) return 0;
     *out = info->wire_reader;
     return 1;
 }
 
 static int primitive_type_host_type(const char *type_name, const char **out) {
-    const tbe_scalar_profile_t *info = tbe_scalar_profile_find(type_name);
+    const databind_binary_scalar_profile_t *info = databind_binary_scalar_profile_find(type_name);
     if (!info || !info->host_type || !out) return 0;
     *out = info->host_type;
     return 1;
@@ -879,8 +879,8 @@ static int annotate_field_states(Node *root) {
                         // 添加类型推断
                         const char *default_value = map_find_string_value(field, "default_value");
                         const char *field_type = map_find_string_value(field, "type");
-                        const tbe_scalar_profile_t *default_type =
-                            tbe_scalar_profile_find(field_type);
+                        const databind_binary_scalar_profile_t *default_type =
+                            databind_binary_scalar_profile_find(field_type);
                         
                         if (default_value && field_type) {
                             if (strcmp(field_type, "string") == 0) {
@@ -1267,7 +1267,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
   const char *field_type = map_find_string_value(field, "type");
   const char *length_field = map_find_string_value(field, "length_field");
   const char *collection_kind = map_find_string_value(field, "collection_kind");
-  const tbe_scalar_profile_t *builtin_type;
+  const databind_binary_scalar_profile_t *builtin_type;
   const cmeta_data_desc *builtin_data;
   int is_group = map_has_named_child(field, "is_group_field");
 
@@ -1280,7 +1280,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
     return 0;
   }
 
-  builtin_type = tbe_scalar_profile_find(field_type);
+  builtin_type = databind_binary_scalar_profile_find(field_type);
   builtin_data = builtin_type != NULL ? builtin_type->data : NULL;
 
   if (is_group) {
@@ -1482,7 +1482,7 @@ static int annotate_schema_tree(Node *root) {
 }
 
 
-int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
+int databind_binary_contract_apply(Node *root, tbe_error_t *error) {
   if (root == NULL || root->type != NODE_MAP) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
@@ -1500,10 +1500,10 @@ int databind_tbe_contract_apply(Node *root, tbe_error_t *error) {
   return 0;
 }
 
-int databind_tbe_contract_parse(
+int databind_binary_contract_parse(
     const char *text, size_t len, Node *root, tbe_error_t *error) {
   if (idl_parse(text, len, root, error) != 0) return -1;
-  return databind_tbe_contract_apply(root, error);
+  return databind_binary_contract_apply(root, error);
 }
 
 static char *tbe_plan_strdup(const char *text) {
@@ -1575,11 +1575,11 @@ static int tbe_plan_fail(tbe_error_t *error, const char *message) {
   return 0;
 }
 
-void databind_tbe_format_plan_destroy(databind_tbe_format_plan *plan) {
+void databind_binary_format_plan_destroy(databind_binary_format_plan *plan) {
   size_t i, j;
   if (plan == NULL) return;
   for (i = 0u; i < plan->type_count; ++i) {
-    databind_tbe_type_plan *type = &plan->types[i];
+    databind_binary_type_plan *type = &plan->types[i];
     for (j = 0u; j < type->field_count; ++j)
       free(type->fields[j].name);
     free(type->fields);
@@ -1589,8 +1589,8 @@ void databind_tbe_format_plan_destroy(databind_tbe_format_plan *plan) {
   memset(plan, 0, sizeof(*plan));
 }
 
-const databind_tbe_type_plan *databind_tbe_format_plan_find_type(
-    const databind_tbe_format_plan *plan,
+const databind_binary_type_plan *databind_binary_format_plan_find_type(
+    const databind_binary_format_plan *plan,
     const char *type_name) {
   size_t i;
   if (plan == NULL || type_name == NULL) return NULL;
@@ -1606,7 +1606,7 @@ static int tbe_plan_build_field(
     const Node *wire_ir,
     const IdlField *typed_field,
     const Node *field_node,
-    databind_tbe_field_plan *out,
+    databind_binary_field_plan *out,
     tbe_error_t *error) {
   const char *name;
   const char *group_type;
@@ -1630,14 +1630,14 @@ static int tbe_plan_build_field(
   }
 
   if (typed_field->optional) {
-    out->flags |= DATABIND_TBE_FIELD_OPTIONAL;
+    out->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
     if (!tbe_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
       return tbe_plan_fail(error, "TBE optional bit is invalid");
     out->optional_bit = (unsigned)bit;
   }
   if (typed_field->nullable) {
-    out->flags |= DATABIND_TBE_FIELD_NULLABLE;
+    out->flags |= DATABIND_BINARY_FIELD_NULLABLE;
     if (!tbe_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
       return tbe_plan_fail(error, "TBE nullable bit is invalid");
@@ -1645,7 +1645,7 @@ static int tbe_plan_build_field(
   }
 
   if (map_has_named_child(field_node, "is_group_field")) {
-    out->kind = DATABIND_TBE_FIELD_GROUP;
+    out->kind = DATABIND_BINARY_FIELD_GROUP;
     out->tail_prefix_bytes = 4u;
     group_type = typed_field->inner_type;
     if (group_type == NULL)
@@ -1665,12 +1665,12 @@ static int tbe_plan_build_field(
   }
 
   if (map_has_named_child(field_node, "is_var_data")) {
-    out->kind = DATABIND_TBE_FIELD_VAR_DATA;
+    out->kind = DATABIND_BINARY_FIELD_VAR_DATA;
     out->tail_prefix_bytes = 4u;
     return 1;
   }
 
-  out->kind = DATABIND_TBE_FIELD_FIXED;
+  out->kind = DATABIND_BINARY_FIELD_FIXED;
   if (!tbe_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
     return tbe_plan_fail(error, "TBE fixed field offset is unavailable");
   if (!tbe_plan_parse_size(
@@ -1684,12 +1684,12 @@ static int tbe_plan_build_field(
   return 1;
 }
 
-int databind_tbe_format_plan_build(
+int databind_binary_format_plan_build(
     const IdlContract *contract,
     const Node *wire_ir,
-    databind_tbe_format_plan *out,
+    databind_binary_format_plan *out,
     tbe_error_t *error) {
-  databind_tbe_format_plan candidate = {0};
+  databind_binary_format_plan candidate = {0};
   const Node *schema;
   const char *big_endian;
   size_t eligible = 0u;
@@ -1707,7 +1707,7 @@ int databind_tbe_format_plan_build(
 
   if (eligible != 0u) {
     candidate.types =
-        (databind_tbe_type_plan *)calloc(eligible, sizeof(*candidate.types));
+        (databind_binary_type_plan *)calloc(eligible, sizeof(*candidate.types));
     if (candidate.types == NULL) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
@@ -1725,7 +1725,7 @@ int databind_tbe_format_plan_build(
   for (i = 0u; i < contract->data_count; ++i) {
     const IdlDataDecl *decl = &contract->data[i];
     const Node *record;
-    databind_tbe_type_plan *type;
+    databind_binary_type_plan *type;
     if (tbe_plan_list_name(decl->kind) == NULL) continue;
 
     type = &candidate.types[out_index++];
@@ -1747,7 +1747,7 @@ int databind_tbe_format_plan_build(
 
     type->field_count = decl->field_count;
     if (type->field_count != 0u) {
-      type->fields = (databind_tbe_field_plan *)calloc(
+      type->fields = (databind_binary_field_plan *)calloc(
           type->field_count, sizeof(*type->fields));
       if (type->fields == NULL) goto oom;
     }
@@ -1774,6 +1774,6 @@ oom:
     tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
                   "Failed to allocate TBE format plan");
 fail:
-  databind_tbe_format_plan_destroy(&candidate);
+  databind_binary_format_plan_destroy(&candidate);
   return 0;
 }

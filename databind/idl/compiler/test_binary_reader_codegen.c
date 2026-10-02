@@ -1,6 +1,6 @@
 #include "binary_reader_codegen.h"
 #include "compiler_core.h"
-#include "tbe_contract_overlay.h"
+#include "binary_contract_overlay.h"
 #include "tinytest.h"
 
 #include <stdio.h>
@@ -21,7 +21,7 @@
 
 static char *emit_to_text(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     const char *prefix) {
   FILE *file = tmpfile();
@@ -64,7 +64,7 @@ spec("DataBind compiler Binary reader codegen") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
     char *text = NULL;
 
@@ -81,7 +81,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     tbe_error_init(&format_error);
-    check(databind_tbe_format_plan_build(
+    check(databind_binary_format_plan_build(
         contract, root, &format_plan, &format_error));
     check_equal(
         databind_compiler_binary_reader_admit(
@@ -119,7 +119,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     free(text);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -129,7 +129,7 @@ spec("DataBind compiler Binary reader codegen") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
     char *text = NULL;
 
@@ -147,7 +147,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     tbe_error_init(&format_error);
-    check(databind_tbe_format_plan_build(
+    check(databind_binary_format_plan_build(
         contract, root, &format_plan, &format_error));
     check_equal(
         databind_compiler_binary_reader_admit(
@@ -175,7 +175,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     free(text);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -185,7 +185,7 @@ spec("DataBind compiler Binary reader codegen") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
     FILE *file = tmpfile();
 
@@ -199,7 +199,7 @@ spec("DataBind compiler Binary reader codegen") {
 
     if (root != NULL && file != NULL) {
       tbe_error_init(&format_error);
-      check(databind_tbe_format_plan_build(
+      check(databind_binary_format_plan_build(
           contract, root, &format_plan, &format_error));
       check_equal(
           databind_compiler_binary_reader_admit(
@@ -212,7 +212,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     if (file != NULL) fclose(file);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);
@@ -222,7 +222,7 @@ spec("DataBind compiler Binary reader codegen") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;
-    databind_tbe_format_plan format_plan = {0};
+    databind_binary_format_plan format_plan = {0};
     tbe_error_t format_error;
     FILE *file = tmpfile();
 
@@ -235,7 +235,7 @@ spec("DataBind compiler Binary reader codegen") {
 
     if (root != NULL && file != NULL) {
       tbe_error_init(&format_error);
-      check(databind_tbe_format_plan_build(
+      check(databind_binary_format_plan_build(
           contract, root, &format_plan, &format_error));
       check_equal(
           databind_compiler_binary_reader_emit(
@@ -244,7 +244,7 @@ spec("DataBind compiler Binary reader codegen") {
     }
 
     if (file != NULL) fclose(file);
-    databind_tbe_format_plan_destroy(&format_plan);
+    databind_binary_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);
     free(schema_data);

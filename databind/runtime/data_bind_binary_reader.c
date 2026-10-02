@@ -1,6 +1,6 @@
 #include "data_bind_binary_reader.h"
 
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -301,7 +301,7 @@ static DataBindStatus binary_tail_preflight(
           "Binary VAR_DATA length prefix is truncated");
 
     remaining = payload_bytes - cursor;
-    length = tbe_wire_read_u32(
+    length = data_bind_binary_wire_read_u32(
         payload + cursor, plan->wire_big_endian);
     if ((size_t)length > remaining - sizeof(uint32_t))
       return binary_fail(
@@ -351,7 +351,7 @@ static int binary_field_null(
 static cserde_status binary_var_data_view_at(
     const DataBindBinaryReaderOwner *owner,
     size_t target_index,
-    tbe_var_data_t *out) {
+    DataBindBinaryVarData *out) {
   size_t cursor;
   size_t i;
 
@@ -374,7 +374,7 @@ static cserde_status binary_var_data_view_at(
         owner->payload_bytes - cursor < sizeof(uint32_t))
       return CSERDE_INVALID_STATE;
 
-    length = tbe_wire_read_u32(
+    length = data_bind_binary_wire_read_u32(
         owner->payload + cursor, owner->plan->wire_big_endian);
     if ((size_t)length >
         owner->payload_bytes - cursor - sizeof(uint32_t))
@@ -397,7 +397,7 @@ static cserde_status binary_var_data_token(
     size_t field_index,
     const DataBindBinaryReaderFieldPlan *field,
     cserde_token *out) {
-  tbe_var_data_t value = {0};
+  DataBindBinaryVarData value = {0};
 
   if (field == NULL || out == NULL ||
       (field->token_kind != CSERDE_STRING &&
@@ -437,7 +437,7 @@ static cserde_status binary_scalar_token(
   case CSERDE_BOOL:
     out->kind = CSERDE_BOOL;
     out->value.boolean =
-        tbe_wire_read_u8(source, owner->plan->wire_big_endian) != 0u;
+        data_bind_binary_wire_read_u8(source, owner->plan->wire_big_endian) != 0u;
     return CSERDE_OK;
 
   case CSERDE_SINT:
@@ -445,22 +445,22 @@ static cserde_status binary_scalar_token(
     switch (field->scalar_bits) {
     case 8u:
       out->value.sint =
-          (int64_t)tbe_wire_read_i8(
+          (int64_t)data_bind_binary_wire_read_i8(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 16u:
       out->value.sint =
-          (int64_t)tbe_wire_read_i16(
+          (int64_t)data_bind_binary_wire_read_i16(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 32u:
       out->value.sint =
-          (int64_t)tbe_wire_read_i32(
+          (int64_t)data_bind_binary_wire_read_i32(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 64u:
       out->value.sint =
-          tbe_wire_read_i64(
+          data_bind_binary_wire_read_i64(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     default:
@@ -472,22 +472,22 @@ static cserde_status binary_scalar_token(
     switch (field->scalar_bits) {
     case 8u:
       out->value.uint =
-          (uint64_t)tbe_wire_read_u8(
+          (uint64_t)data_bind_binary_wire_read_u8(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 16u:
       out->value.uint =
-          (uint64_t)tbe_wire_read_u16(
+          (uint64_t)data_bind_binary_wire_read_u16(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 32u:
       out->value.uint =
-          (uint64_t)tbe_wire_read_u32(
+          (uint64_t)data_bind_binary_wire_read_u32(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     case 64u:
       out->value.uint =
-          tbe_wire_read_u64(
+          data_bind_binary_wire_read_u64(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     default:
@@ -498,13 +498,13 @@ static cserde_status binary_scalar_token(
     out->kind = CSERDE_FLOAT;
     if (field->scalar_bits == 32u) {
       out->value.floating =
-          (double)tbe_wire_read_f32(
+          (double)data_bind_binary_wire_read_f32(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     }
     if (field->scalar_bits == 64u) {
       out->value.floating =
-          tbe_wire_read_f64(
+          data_bind_binary_wire_read_f64(
               source, owner->plan->wire_big_endian);
       return CSERDE_OK;
     }

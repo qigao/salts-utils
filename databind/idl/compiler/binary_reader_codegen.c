@@ -93,7 +93,7 @@ static int binary_codegen_layout_admitted(
 
 int databind_compiler_binary_reader_admit(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
@@ -147,7 +147,7 @@ static int binary_codegen_symbol(
 int databind_compiler_binary_reader_emit(
     FILE *file,
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     const char *symbol_prefix) {
   databind_binary_type_layout layout = {0};
