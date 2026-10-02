@@ -719,15 +719,13 @@ static DataBindStatus validation_pattern_status_at(
     re_status_t status, DataBindError *error,
     const char *prefix, const DataBindValidationRule *rule);
 
-static DataBindStatus validation_native_leaf_failure(
-    const DataBindValidationPlan *plan,
-    const DataBindValidationRule *rule,
+static DataBindStatus validation_native_leaf_failure_at(
+    const char *prefix, const DataBindValidationRule *rule,
     DataBindStatus status, DataBindError *error) {
   char path[260];
-  if (plan == NULL || rule == NULL ||
-      !validation_path_field(path, plan->type_name, rule->field_name))
-    return validation_path_overflow(
-        error, plan != NULL ? plan->type_name : NULL);
+  if (prefix == NULL || rule == NULL ||
+      !validation_path_field(path, prefix, rule->field_name))
+    return validation_path_overflow(error, prefix);
   return validation_error(
       error, status, path,
       status == DATA_BIND_ERR_SCHEMA
@@ -779,23 +777,23 @@ static DataBindStatus validation_native_numeric(
   return DATA_BIND_ERR_TYPE_MISMATCH;
 }
 
-DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
-    const DataBindValidationPlan *plan, size_t rule_index,
-    const cmeta_data_desc *data, const void *source, DataBindError *error) {
-  const DataBindValidationRule *rule;
+static DataBindStatus validation_validate_native_rule_at(
+    const DataBindValidationPlan *plan,
+    const DataBindValidationRule *rule,
+    const cmeta_data_desc *data, const void *source,
+    const char *prefix, DataBindError *error) {
   cserde_token token = {0};
   DataBindStatus status;
 
-  if (plan == NULL || data == NULL || source == NULL ||
-      rule_index >= plan->rule_count)
+  if (plan == NULL || rule == NULL || data == NULL || source == NULL ||
+      prefix == NULL)
     return validation_error(
-        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        error, DATA_BIND_ERR_INVALID_ARG, prefix,
         "Invalid native ValidationPlan arguments");
 
-  rule = &plan->rules[rule_index];
   if (data->kind != rule->field_kind)
     return validation_type_error_at(
-        plan->type_name, rule, error,
+        prefix, rule, error,
         "Native value kind does not match compiled validation semantics");
 
   if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_SIZE &&
@@ -820,8 +818,8 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
             cmeta_data_collection_borrow_size(&cursor, &actual);
     }
     if (cmeta_status_value != CMETA_OK)
-      return validation_native_leaf_failure(
-          plan, rule,
+      return validation_native_leaf_failure_at(
+          prefix, rule,
           cmeta_status_value == CMETA_TRAIT_MISSING ||
                   cmeta_status_value == CMETA_TYPE_MISMATCH ||
                   cmeta_status_value == CMETA_INVALID_ARGUMENT
@@ -831,7 +829,7 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
     if ((rule->has_min && actual < rule->min_size) ||
         (rule->has_max && actual > rule->max_size))
       return validation_rule_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "Value size violates @Size");
     validation_error_clear(error);
     return DATA_BIND_OK;
@@ -839,8 +837,8 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
 
   status = data_bind_native_leaf_token(data, source, &token);
   if (status != DATA_BIND_OK)
-    return validation_native_leaf_failure(
-        plan, rule, status, error);
+    return validation_native_leaf_failure_at(
+        prefix, rule, status, error);
 
   if (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN ||
       rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX) {
@@ -848,14 +846,14 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
     status = validation_native_numeric(rule, &token, &comparison);
     if (status != DATA_BIND_OK)
       return validation_type_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "Native numeric value has the wrong runtime type");
     if ((rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN &&
          comparison < 0) ||
         (rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MAX &&
          comparison > 0))
       return validation_rule_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           rule->kind == DATA_BIND_SCHEMA_CONSTRAINT_MIN
               ? "Value is below @Min"
               : "Value exceeds @Max");
@@ -867,13 +865,13 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
     size_t actual;
     if (token.kind != CSERDE_STRING && token.kind != CSERDE_BYTES)
       return validation_type_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "Native @Size requires a canonical string/bytes leaf");
     actual = token.value.slice.size;
     if ((rule->has_min && actual < rule->min_size) ||
         (rule->has_max && actual > rule->max_size))
       return validation_rule_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "Value size violates @Size");
     validation_error_clear(error);
     return DATA_BIND_OK;
@@ -884,25 +882,37 @@ DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
     re_status_t regex_status;
     if (token.kind != CSERDE_STRING)
       return validation_type_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "Native @Pattern requires a canonical string leaf");
     regex_status = re_matchn(
         rule->pattern, (const char *)token.value.slice.data,
         token.value.slice.size, NULL, &match);
     if (regex_status != RE_STATUS_OK)
       return validation_pattern_status_at(
-          regex_status, error, plan->type_name, rule);
+          regex_status, error, prefix, rule);
     if (match.index != 0u || match.length != token.value.slice.size)
       return validation_rule_error_at(
-          plan->type_name, rule, error,
+          prefix, rule, error,
           "String does not fully satisfy @Pattern");
     validation_error_clear(error);
     return DATA_BIND_OK;
   }
 
   return validation_error(
-      error, DATA_BIND_ERR_RUNTIME, plan->type_name,
+      error, DATA_BIND_ERR_RUNTIME, prefix,
       "ValidationPlan contains an unknown native rule");
+}
+
+DataBindStatus data_bind_validation_plan_internal_validate_native_rule(
+    const DataBindValidationPlan *plan, size_t rule_index,
+    const cmeta_data_desc *data, const void *source, DataBindError *error) {
+  if (plan == NULL || rule_index >= plan->rule_count)
+    return validation_error(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid native ValidationPlan rule index");
+  return validation_validate_native_rule_at(
+      plan, &plan->rules[rule_index], data, source,
+      plan->type_name, error);
 }
 
 static DataBindStatus validation_pattern_status_at(
