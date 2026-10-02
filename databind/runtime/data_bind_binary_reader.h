@@ -20,12 +20,18 @@ enum {
   DATA_BIND_BINARY_READER_FIELD_NULLABLE = 1u << 1
 };
 
+typedef enum DataBindBinaryReaderRepresentation {
+  DATA_BIND_BINARY_READER_REP_FIXED = 0,
+  DATA_BIND_BINARY_READER_REP_VAR_DATA = 1
+} DataBindBinaryReaderRepresentation;
+
 /*
- * One fixed scalar field in an immutable generated Binary reader plan.
+ * One field in an immutable generated Binary reader plan.
  *
  * token_kind is the canonical CSerde semantic token class, not a second
- * DataBind/Binary type enum. The first reader slice admits BOOL/SINT/UINT/FLOAT
- * only. Enum/flags fields use SINT/UINT according to their canonical underlying
+ * DataBind/Binary type enum. FIXED fields admit BOOL/SINT/UINT/FLOAT.
+ * VAR_DATA fields admit STRING/BYTES and use a uint32 tail length prefix.
+ * Enum/flags FIXED fields use SINT/UINT according to canonical underlying
  * CMeta storage semantics.
  */
 typedef struct DataBindBinaryReaderFieldPlan {
@@ -38,11 +44,25 @@ typedef struct DataBindBinaryReaderFieldPlan {
   unsigned optional_bit;
   unsigned nullable_bit;
   unsigned flags;
+
+  /*
+   * Append-only v2 representation tail. A record whose size ends before
+   * representation is a released v1 FIXED scalar record.
+   *
+   * representation is size_t so its offset equals the released v1 struct
+   * extent on supported ABIs; old trailing alignment bytes are never
+   * reinterpreted as live metadata.
+   */
+  size_t representation;
+  size_t tail_prefix_bytes;
 } DataBindBinaryReaderFieldPlan;
+
+#define DATA_BIND_BINARY_READER_FIELD_PLAN_V1_SIZE \
+  offsetof(DataBindBinaryReaderFieldPlan, representation)
 
 #define DATA_BIND_BINARY_READER_FIELD_PLAN_INIT \
   { sizeof(DataBindBinaryReaderFieldPlan), NULL, CSERDE_UINT, 0u, \
-    0u, 0u, 0u, 0u, 0u }
+    0u, 0u, 0u, 0u, 0u, DATA_BIND_BINARY_READER_REP_FIXED, 0u }
 
 /*
  * Runtime-safe immutable lowering of compiler BinaryLayoutIR.
@@ -70,10 +90,10 @@ typedef struct DataBindBinaryReaderPlan {
     NULL, 0, 0u, 0u, 0u, 0u, 0u, NULL, 0u }
 
 /*
- * Validate one generated flat fixed-scalar Binary reader plan.
+ * Validate one generated flat Binary reader plan.
  *
- * GROUP, VAR_DATA and compiler SCALAR_NONE facts cannot be represented by this
- * ABI and therefore must be rejected before a plan is generated.
+ * FIXED scalar plus VAR_DATA STRING/BYTES fields are admitted. GROUP and
+ * unsupported SCALAR_NONE facts remain fail-closed.
  */
 DATA_BIND_API DataBindStatus data_bind_binary_reader_plan_validate(
     const DataBindBinaryReaderPlan *plan,
@@ -82,9 +102,10 @@ DATA_BIND_API DataBindStatus data_bind_binary_reader_plan_validate(
 /*
  * Open one borrowed Binary payload as a canonical CSerde message reader.
  *
- * The first slice requires payload_bytes == fixed_block_size. The provider
- * borrows payload bytes and allocates only one fixed-size reader lease object;
- * it never copies the payload or performs schema/reflection lookup.
+ * The provider borrows payload bytes and allocates only one fixed-size reader
+ * lease object; it never copies payload data or performs schema/reflection
+ * lookup. Before publishing the reader, the complete VAR_DATA tail is checked
+ * for length-prefix/payload bounds, state consistency and trailing bytes.
  */
 DATA_BIND_API DataBindStatus data_bind_binary_reader_open(
     const DataBindBinaryReaderPlan *plan,
