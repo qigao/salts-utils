@@ -154,6 +154,9 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     const NativeHeader_t *first;
     const NativeHeader_t *second;
     const NativeHeader_t *third;
+    NativeHeaderPolicy_headers_vec_t manual_headers = {0};
+    NativeHeader_t manual_header = {0};
+    const NativeHeader_t *manual_copy = NULL;
 
     check_equal(NativeHeader_cmeta_data(&header_data, &error), DATA_BIND_OK);
     check_equal(NativeHeaderPolicy_cmeta_data(&policy_data, &error), DATA_BIND_OK);
@@ -180,6 +183,36 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(element_data);
     if (element_data != NULL)
       check_true(cmeta_data_desc_equal(element_data, header_data));
+
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_init(&manual_headers, 4u), STL_OK);
+    check_not_null(manual_headers.raw.element_type);
+    if (manual_headers.raw.element_type != NULL)
+      check_true(cmeta_type_equal(
+          manual_headers.raw.element_type, header_data->storage_type));
+    manual_header.name = tstr_dup("x-tag");
+    manual_header.value = tstr_dup("manual");
+    check_not_null(manual_header.name);
+    check_not_null(manual_header.value);
+    if (manual_header.name != NULL && manual_header.value != NULL)
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_push(
+              &manual_headers, manual_header),
+          STL_OK);
+    check_equal(
+        cmeta_data_value_restore_zero(header_data, &manual_header), CMETA_OK);
+    manual_copy =
+        NativeHeaderPolicy_headers_vec_t_at_const(&manual_headers, 0u);
+    check_not_null(manual_copy);
+    if (manual_copy != NULL) {
+      check_equal(tstr_len(manual_copy->name), strlen("x-tag"));
+      check_equal(tstr_len(manual_copy->value), strlen("manual"));
+      check(memcmp(manual_copy->name, "x-tag", strlen("x-tag")) == 0);
+      check(memcmp(manual_copy->value, "manual", strlen("manual")) == 0);
+    }
+    NativeHeaderPolicy_headers_vec_t_destroy(&manual_headers);
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_size(&manual_headers), (size_t)0u);
 
     check_true(data_bind_message_native_artifact_valid(artifact));
     check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
