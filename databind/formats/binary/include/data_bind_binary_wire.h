@@ -15,7 +15,7 @@
     memcpy((destination), (source), (size))
 #endif
 
-typedef struct tbe_var_data_s {
+typedef struct DataBindBinaryVarData {
     const uint8_t *data;
     size_t size;
 } DataBindBinaryVarData;
