@@ -107,6 +107,28 @@ Transport runtimes keep sessions, queues, reconnect, TLS, routing and
 backpressure. Plugin publication consumes the Salts-owned Plugin ABI; it does
 not define another Service model.
 
+### NATIVE Service artifact
+
+`ARTIFACTS NATIVE` publishes the generated Service metadata and executable
+adapters on the generated native target. Business implementations remain normal
+native target inputs: a build may attach them to the generated NATIVE target
+with ordinary CMake target composition, while Plugin keeps its dedicated
+`SOURCES/LIBRARIES` convenience contract.
+
+One NATIVE Service artifact publishes the canonical operation identity and
+execution capability together:
+
+```text
+FunctionDesc / FunctionAbi
+DataBindServiceNativeBinding
+DataBindNativeExecution
+generated Request -> Response CFlow typed projection
+```
+
+The CFlow projection reuses the same FunctionDesc/FunctionAbi and exact native
+execution descriptor. It does not generate a second unary reflected function,
+and typed-error/async shapes that are not admitted fail closed.
+
 ## Public targets
 
 ```text

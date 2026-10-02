@@ -164,6 +164,9 @@ salts_idl_target(
   ARTIFACTS NATIVE
   TRANSPORTS HTTP RPC)
 
+target_sources(${installed_service_NATIVE_TARGET}
+  PRIVATE service_business.c)
+
 if(NOT TARGET installed_service_native)
   message(FATAL_ERROR "missing installed_service native target")
 endif()
@@ -172,6 +175,10 @@ get_target_property(
 if(NOT "Salts::DataBind" IN_LIST _installed_service_links)
   message(FATAL_ERROR
           "installed NATIVE Service target must link canonical Salts::DataBind")
+endif()
+if(NOT "Salts::CFlow" IN_LIST _installed_service_links)
+  message(FATAL_ERROR
+          "installed NATIVE Service target must expose canonical Salts::CFlow")
 endif()
 foreach(frontend_target IN ITEMS Salts::IDL Salts::Schema)
   if("${frontend_target}" IN_LIST _installed_service_links)

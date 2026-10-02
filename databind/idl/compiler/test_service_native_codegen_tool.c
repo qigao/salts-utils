@@ -47,7 +47,9 @@ static int write_source(
           "#include \"%s\"\n"
           "#include \"data_bind_binding_plan.h\"\n"
           "#include <cmeta/function.h>\n"
-          "#include <stddef.h>\n\n",
+          "#include <cflow/function_projection.h>\n"
+          "#include <stddef.h>\n"
+          "#include <string.h>\n\n",
           header_name) < 0)
     goto fail;
   for (i = 0u; i < ir->operation_count; ++i) {
@@ -58,6 +60,9 @@ static int write_source(
             file, &ir->operations[i], 1) != 0)
       goto fail;
     if (databind_compiler_service_native_emit_binding(
+            file, &ir->operations[i]) != 0)
+      goto fail;
+    if (databind_compiler_service_native_emit_cflow_projection(
             file, &ir->operations[i]) != 0)
       goto fail;
     if (fputc('\n', file) == EOF) goto fail;
@@ -176,6 +181,39 @@ int main(int argc, char **argv) {
       node_free(overlay_root);
       free(overlay_schema_data);
       goto cleanup;
+    }
+
+    {
+      FILE *projection = tmpfile();
+      char buffer[4096];
+      size_t bytes;
+      if (projection == NULL ||
+          databind_compiler_service_native_emit_cflow_projection(
+              projection, operation) != 0 ||
+          fflush(projection) != 0 ||
+          fseek(projection, 0, SEEK_SET) != 0) {
+        if (projection != NULL) fclose(projection);
+        fprintf(stderr,
+                "service-native-codegen: overlay CFlow projection emit failed\n");
+        databind_compiler_service_native_destroy(&overlay_ir);
+        idl_contract_destroy(overlay_contract);
+        node_free(overlay_root);
+        free(overlay_schema_data);
+        goto cleanup;
+      }
+      bytes = fread(buffer, 1u, sizeof(buffer) - 1u, projection);
+      buffer[bytes] = '\0';
+      fclose(projection);
+      if (strstr(buffer, "CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE") == NULL ||
+          strstr(buffer, "__databind_cflow_invoke") != NULL) {
+        fprintf(stderr,
+                "service-native-codegen: overlay CFlow projection did not fail closed\n");
+        databind_compiler_service_native_destroy(&overlay_ir);
+        idl_contract_destroy(overlay_contract);
+        node_free(overlay_root);
+        free(overlay_schema_data);
+        goto cleanup;
+      }
     }
 
     databind_compiler_service_native_destroy(&overlay_ir);

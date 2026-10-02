@@ -4,6 +4,11 @@
 #include "tinytest.h"
 
 #include <cmeta/function.h>
+#include <cflow/function_projection.h>
+#include <cflow/plan.h>
+#include <cflow/publishers.h>
+#include <cflow/reactive.h>
+#include <cflow/scheduler.h>
 #include <string.h>
 
 const cmeta_function_desc *
@@ -12,12 +17,18 @@ const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi(void);
 const DataBindNativeExecution *
 databind_13_ServiceNative_4_Calc_3_Add__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
 const cmeta_function_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function(void);
 const cmeta_function_abi_desc *
 databind_13_ServiceNative_4_Calc_4_Find__databind_function_abi(void);
 const DataBindNativeExecution *
 databind_13_ServiceNative_4_Calc_4_Find__databind_execution(void);
+cflow_function_projection_status
+databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+    cflow_function_typed_adapter_projection *out);
 DataBindStatus databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
     DataBindNativeTypeBinding *request_out,
     DataBindNativeTypeBinding *response_out,
@@ -33,6 +44,37 @@ int databind_13_ServiceNative_4_Calc_4_Find(
     const AddRequest_t *request,
     AddResponse_t *response,
     databind_13_ServiceNative_4_Calc_4_Find__error *error);
+
+typedef struct ServiceCFlowProbe {
+  AddResponse_t values[2];
+  size_t count;
+  int failed;
+  int done;
+} ServiceCFlowProbe;
+
+static bool service_cflow_on_value(
+    void *user, const cmeta_type_desc *type, const void *value) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  if (probe == NULL || value == NULL || probe->count >= 2u ||
+      type == NULL || type->size != sizeof(AddResponse_t)) {
+    if (probe != NULL) probe->failed = 1;
+    return false;
+  }
+  probe->values[probe->count++].sum =
+      ((const AddResponse_t *)value)->sum;
+  return true;
+}
+
+static void service_cflow_on_error(void *user, const char *message) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  (void)message;
+  if (probe != NULL) probe->failed = 1;
+}
+
+static void service_cflow_on_done(void *user) {
+  ServiceCFlowProbe *probe = (ServiceCFlowProbe *)user;
+  if (probe != NULL) probe->done = 1;
+}
 
 static DataBindStatus project_field(
     void *context,
@@ -144,6 +186,96 @@ static DataBindBindingProvider outcome_provider(OutcomeProviderState *state) {
 }
 
 spec("DataBind canonical Service native lowering") {
+  it("projects generated no-error Service execution through CFlow Graph and Plan") {
+    cflow_function_typed_adapter_projection projection = {0};
+    cflow_function_typed_adapter_projection rejected = {0};
+    cflow_graph graph = {0};
+    cflow_plan plan = {0};
+    cflow_result compiled = {0};
+    cflow_publisher publisher = {0};
+    cflow_scheduler scheduler = {0};
+    cflow_subscription subscription = {0};
+    ServiceCFlowProbe probe = {0};
+    cflow_subscriber_callbacks callbacks = {
+        service_cflow_on_value,
+        service_cflow_on_error,
+        service_cflow_on_done,
+        &probe};
+    cflow_subscriber subscriber =
+        cflow_subscriber_from_callbacks(&callbacks);
+    const AddRequest_t input[] = {
+        {.left = 7u, .scale = 3u},
+        {.left = 2u, .scale = 5u}};
+    const AddResponse_t expected[] = {
+        {.sum = 21u},
+        {.sum = 10u}};
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+            &projection),
+        CFLOW_FUNCTION_PROJECTION_OK);
+    check_true(cflow_function_typed_adapter_projection_valid(&projection));
+    check_true(
+        projection.function ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function());
+    check_true(
+        projection.abi ==
+        databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi());
+    check_equal(
+        projection.callable.meta.effects, projection.function->effects);
+    check_equal(
+        projection.callable.meta.properties, projection.function->properties);
+    check_equal(projection.callable.meta.sig, CMETA_SIG_INVALID);
+    check_equal(
+        projection.callable.dispatch, CMETA_CALLABLE_DISPATCH_ADAPTER);
+    check_null(projection.callable.resolve);
+    check_not_null(projection.callable.invoke);
+    check_equal(projection.callable.capture_size,
+                sizeof(const cmeta_data_desc *));
+    check_not_null(projection.input_type);
+    check_not_null(projection.output_type);
+
+    cflow_graph_init(&graph, projection.input_type);
+    check_true(cflow_graph_add_function_typed_adapter_projection(
+        &graph, &projection));
+
+    /*
+     * DataBind messages carry managed COPY/MOVE/DESTROY lifecycle traits.
+     * cflow_eval_array() is intentionally the trivial-storage compatibility
+     * wrapper, so qualify the interpreted path through the lifecycle-capable
+     * Publisher/Subscription API instead.
+     */
+    check_true(cflow_scheduler_inline_init(&scheduler));
+    check_true(cflow_publisher_from_array(
+        &publisher, projection.input_type, input, 2u));
+    check_true(cflow_subscribe(
+        &subscription, &graph, &publisher, &scheduler, &subscriber));
+    check_true(cflow_subscription_request(&subscription, 2u));
+    check_false(probe.failed);
+    check_true(probe.done);
+    check_equal(probe.count, (size_t)2u);
+    check_equal(probe.values, expected, sizeof(expected));
+    check_true(cflow_subscription_is_done(&subscription));
+
+    check_true(cflow_plan_compile_surface(&plan, &graph, NULL));
+    check_true(cflow_plan_eval_array(&plan, input, 2u, &compiled));
+    check_equal(compiled.count, (size_t)2u);
+    check_true(cmeta_type_equal(compiled.type, projection.output_type));
+    check_equal(compiled.data, expected, sizeof(expected));
+
+    check_equal(
+        databind_13_ServiceNative_4_Calc_4_Find__databind_cflow_projection(
+            &rejected),
+        CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE);
+    check_equal(rejected.size, (size_t)0u);
+
+    cflow_result_destroy(&compiled);
+    cflow_subscription_close(&subscription);
+    cflow_scheduler_destroy(&scheduler);
+    cflow_plan_destroy(&plan);
+    cflow_graph_destroy(&graph);
+  }
+
   it("emits complete FunctionAbi and compiles the shared BindingPlan tuple") {
     const cmeta_function_desc *function =
         databind_13_ServiceNative_4_Calc_3_Add__databind_function();

@@ -14,6 +14,8 @@ spec("DataBind public NATIVE Service artifact") {
     DataBindNativeTypeBinding request = {0};
     DataBindNativeTypeBinding response = {0};
     DataBindServiceNativeBinding native = {0};
+    const DataBindNativeExecution *execution = NULL;
+    cflow_function_typed_adapter_projection cflow_projection = {0};
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindBindingPlanDiagnostic diagnostic =
         DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
@@ -41,6 +43,17 @@ spec("DataBind public NATIVE Service artifact") {
         native.function);
     check_not_null(
         databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi());
+    execution =
+        databind_13_ServiceNative_4_Calc_3_Add__databind_execution();
+    check_not_null(execution);
+    check_true(data_bind_native_execution_valid(execution));
+    check_equal(
+        databind_13_ServiceNative_4_Calc_3_Add__databind_cflow_projection(
+            &cflow_projection),
+        CFLOW_FUNCTION_PROJECTION_OK);
+    check_true(cflow_function_typed_adapter_projection_valid(
+        &cflow_projection));
+    check_true(cflow_projection.function == native.function);
 
     http_config = data_bind_http_projection_artifact_find(
         &databind_service_native_public_http_projection, "Calc", "Add");
