@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 #include "data_bind_native_binding.h"
+#include "data_bind_opaque_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +12,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_SOCKET_PLAN_ABI_VERSION = 2u };
+enum { DATA_BIND_SOCKET_PLAN_ABI_VERSION = 3u };
 
 typedef enum DataBindSocketMode {
   DATA_BIND_SOCKET_MODE_STREAM = 1,
@@ -48,12 +49,18 @@ typedef struct DataBindSocketPlan {
   DataBindSocketFraming framing;
   size_t max_frame_bytes;
   DataBindSocketNativeBindingResolverFn native_binding;
+  /** Append-only representation class. FORMAT uses format/native binding;
+   * OPAQUE requires format == DATA_BIND_FORMAT_NONE, native_binding == NULL
+   * and a valid opaque_plan. */
+  DataBindPayloadKind payload_kind;
+  const DataBindOpaquePlan *opaque_plan;
 } DataBindSocketPlan;
 
 #define DATA_BIND_SOCKET_PLAN_INIT \
   { sizeof(DataBindSocketPlan), DATA_BIND_SOCKET_PLAN_ABI_VERSION, \
     NULL, NULL, DATA_BIND_FORMAT_JSON, DATA_BIND_SOCKET_MODE_STREAM, \
-    DATA_BIND_SOCKET_FRAMING_LENGTH32_BE, 0u, NULL }
+    DATA_BIND_SOCKET_FRAMING_LENGTH32_BE, 0u, NULL, \
+    DATA_BIND_PAYLOAD_FORMAT, NULL }
 
 #ifdef __cplusplus
 } /* extern "C" */
