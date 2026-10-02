@@ -257,6 +257,75 @@ static DataBindStatus binary_wire_state_validate(
   return DATA_BIND_OK;
 }
 
+static DataBindStatus binary_tail_preflight(
+    const DataBindBinaryReaderPlan *plan,
+    const unsigned char *payload,
+    size_t payload_bytes,
+    DataBindError *error) {
+  size_t cursor;
+  size_t i;
+
+  if (plan == NULL || payload == NULL ||
+      payload_bytes < plan->fixed_block_size)
+    return binary_fail(
+        error, DATA_BIND_ERR_PARSE,
+        plan != NULL ? plan->type_name : NULL,
+        "Binary payload is shorter than the fixed block");
+
+  cursor = plan->fixed_block_size;
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindBinaryReaderFieldPlan *field = &plan->fields[i];
+    uint32_t length;
+    size_t remaining;
+    const int optional =
+        (field->flags & DATA_BIND_BINARY_READER_FIELD_OPTIONAL) != 0u;
+    const int nullable =
+        (field->flags & DATA_BIND_BINARY_READER_FIELD_NULLABLE) != 0u;
+    const int present =
+        !optional ||
+        binary_state_bit(
+            payload, plan->presence_offset, field->optional_bit);
+    const int is_null =
+        nullable &&
+        binary_state_bit(
+            payload, plan->null_offset, field->nullable_bit);
+
+    if (binary_field_representation(field) !=
+        DATA_BIND_BINARY_READER_REP_VAR_DATA)
+      continue;
+
+    if (cursor > payload_bytes ||
+        payload_bytes - cursor < sizeof(uint32_t))
+      return binary_fail(
+          error, DATA_BIND_ERR_PARSE, field->field_name,
+          "Binary VAR_DATA length prefix is truncated");
+
+    remaining = payload_bytes - cursor;
+    length = tbe_wire_read_u32(
+        payload + cursor, plan->wire_big_endian);
+    if ((size_t)length > remaining - sizeof(uint32_t))
+      return binary_fail(
+          error, DATA_BIND_ERR_PARSE, field->field_name,
+          "Binary VAR_DATA payload is truncated");
+
+    if ((!present || is_null) && length != 0u)
+      return binary_fail(
+          error, DATA_BIND_ERR_PARSE, field->field_name,
+          !present
+              ? "Binary ABSENT VAR_DATA field has a nonzero payload length"
+              : "Binary NULL VAR_DATA field has a nonzero payload length");
+
+    cursor += sizeof(uint32_t) + (size_t)length;
+  }
+
+  if (cursor != payload_bytes)
+    return binary_fail(
+        error, DATA_BIND_ERR_PARSE, plan->type_name,
+        "Binary payload has trailing bytes after the VAR_DATA tail");
+
+  return DATA_BIND_OK;
+}
+
 static int binary_field_present(
     const DataBindBinaryReaderOwner *owner,
     const DataBindBinaryReaderFieldPlan *field) {
@@ -273,6 +342,72 @@ static int binary_field_null(
     return 0;
   return binary_state_bit(
       owner->payload, owner->plan->null_offset, field->nullable_bit);
+}
+
+static cserde_status binary_var_data_view_at(
+    const DataBindBinaryReaderOwner *owner,
+    size_t target_index,
+    tbe_var_data_t *out) {
+  size_t cursor;
+  size_t i;
+
+  if (owner == NULL || owner->plan == NULL || out == NULL ||
+      target_index >= owner->plan->field_count)
+    return CSERDE_INVALID_ARGUMENT;
+
+  out->data = NULL;
+  out->size = 0u;
+  cursor = owner->plan->fixed_block_size;
+
+  for (i = 0u; i < owner->plan->field_count; ++i) {
+    const DataBindBinaryReaderFieldPlan *field = &owner->plan->fields[i];
+    uint32_t length;
+
+    if (binary_field_representation(field) !=
+        DATA_BIND_BINARY_READER_REP_VAR_DATA)
+      continue;
+    if (cursor > owner->payload_bytes ||
+        owner->payload_bytes - cursor < sizeof(uint32_t))
+      return CSERDE_INVALID_STATE;
+
+    length = tbe_wire_read_u32(
+        owner->payload + cursor, owner->plan->wire_big_endian);
+    if ((size_t)length >
+        owner->payload_bytes - cursor - sizeof(uint32_t))
+      return CSERDE_INVALID_STATE;
+
+    if (i == target_index) {
+      out->data = owner->payload + cursor + sizeof(uint32_t);
+      out->size = (size_t)length;
+      return CSERDE_OK;
+    }
+
+    cursor += sizeof(uint32_t) + (size_t)length;
+  }
+
+  return CSERDE_INVALID_STATE;
+}
+
+static cserde_status binary_var_data_token(
+    const DataBindBinaryReaderOwner *owner,
+    size_t field_index,
+    const DataBindBinaryReaderFieldPlan *field,
+    cserde_token *out) {
+  tbe_var_data_t value = {0};
+
+  if (field == NULL || out == NULL ||
+      (field->token_kind != CSERDE_STRING &&
+       field->token_kind != CSERDE_BYTES))
+    return CSERDE_INVALID_ARGUMENT;
+  if (binary_var_data_view_at(owner, field_index, &value) != CSERDE_OK)
+    return CSERDE_INVALID_STATE;
+
+  memset(out, 0, sizeof(*out));
+  out->kind = field->token_kind;
+  out->value.slice.data = value.data;
+  out->value.slice.size = value.size;
+  out->value.slice.lifetime = CSERDE_VIEW_STABLE;
+  return CSERDE_OK;
 }
 
 static cserde_token binary_field_key(
@@ -415,8 +550,13 @@ static cserde_status binary_reader_next(
         memset(out, 0, sizeof(*out));
         out->kind = CSERDE_NULL;
       } else {
-        cserde_status status =
-            binary_scalar_token(owner, owner->current, out);
+        cserde_status status;
+        if (binary_field_representation(owner->current) ==
+            DATA_BIND_BINARY_READER_REP_VAR_DATA)
+          status = binary_var_data_token(
+              owner, owner->field_index, owner->current, out);
+        else
+          status = binary_scalar_token(owner, owner->current, out);
         if (status != CSERDE_OK) return status;
       }
       ++owner->field_index;
@@ -469,15 +609,17 @@ DataBindStatus data_bind_binary_reader_open(
   status = data_bind_binary_reader_plan_validate(plan, error);
   if (status != DATA_BIND_OK) return status;
 
-  if (payload_bytes != plan->fixed_block_size)
+  if (payload_bytes < plan->fixed_block_size)
     return binary_fail(
         error, DATA_BIND_ERR_PARSE, plan->type_name,
-        payload_bytes < plan->fixed_block_size
-            ? "Binary payload is shorter than the fixed block"
-            : "Binary fixed-only reader rejects trailing payload bytes");
+        "Binary payload is shorter than the fixed block");
 
   status = binary_wire_state_validate(
       plan, (const unsigned char *)payload, error);
+  if (status != DATA_BIND_OK) return status;
+
+  status = binary_tail_preflight(
+      plan, (const unsigned char *)payload, payload_bytes, error);
   if (status != DATA_BIND_OK) return status;
 
   owner = (DataBindBinaryReaderOwner *)calloc(1u, sizeof(*owner));
