@@ -116,6 +116,10 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         "{\"id\":8,\"headers\":["
         "{\"name\":\"x-tag\",\"value\":\"a\"},"
         "{\"name\":\"x-tag\"}]}";
+    static const char invalid_nested_json[] =
+        "{\"id\":10,\"headers\":["
+        "{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "{\"name\":\"BAD!\",\"value\":\"b\"}]}";
     static const char oversized_json[] =
         "{\"id\":9,\"headers\":["
         "{\"name\":\"a\",\"value\":\"1\"},"
@@ -141,6 +145,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     DataBind *codec = NULL;
     NativeHeaderPolicy_t value = {0};
     NativeHeaderPolicy_t rejected = {0};
+    NativeHeaderPolicy_t invalid_nested = {0};
     NativeHeaderPolicy_t oversized = {0};
     unsigned char workspace[16384] = {0};
     json_value_t *root = NULL;
@@ -259,6 +264,37 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     json_free(root);
     reader = NULL;
     root = NULL;
+
+    plan_diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    root = json_parse(
+        invalid_nested_json, sizeof(invalid_nested_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &invalid_nested,
+              sizeof(invalid_nested), &plan_diagnostic),
+          DATA_BIND_ERR_VALIDATION);
+      check_contains(plan_diagnostic.schema_field, "headers[1].name");
+      check_contains(plan_diagnostic.message, "Pattern");
+      check_equal(invalid_nested.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&invalid_nested.headers),
+          (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &invalid_nested, sizeof(invalid_nested),
+            &native_diagnostic),
+        DATA_BIND_OK);
 
     plan_diagnostic =
         (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
