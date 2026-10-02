@@ -41,6 +41,9 @@ static DataBind *projection_plan_codec(void) {
       "service ShapeStore {"
       " Nested: CsvNested -> Response;"
       " List: CsvList -> Response;"
+      "}"
+      "service RawStore {"
+      " Echo: bytes -> bytes;"
       "}";
   DataBind *codec = NULL;
   DataBindError error = DATA_BIND_ERROR_INIT;
@@ -591,6 +594,72 @@ spec("DataBind FormatPlan and TransportPlan") {
     data_bind_free(codec);
   }
 
+  it("compiles canonical bytes as parser-free opaque transport payloads") {
+    static const unsigned char payload[] = {0x00u, 0x7fu, 0xffu};
+    DataBind *codec = projection_plan_codec();
+    DataBindTransportPlan *transport = NULL;
+    DataBindTransportPlanInfo info = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+    DataBindTransportPayloadConfig ingress =
+        (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+    DataBindTransportPayloadConfig egress =
+        (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+    DataBindOpaqueSpan span = DATA_BIND_OPAQUE_SPAN_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    ingress.kind = DATA_BIND_PAYLOAD_OPAQUE;
+    ingress.format = DATA_BIND_FORMAT_NONE;
+    ingress.opaque_max_bytes = 32u;
+    egress = ingress;
+
+    check_equal(
+        data_bind_transport_plan_compile_service_payloads(
+            codec, "RawStore", "Echo", DATA_BIND_TRANSPORT_HTTP,
+            &ingress, &egress, &transport, &error),
+        DATA_BIND_OK);
+    check_not_null(transport);
+    check(data_bind_transport_plan_info(transport, &info));
+    check_equal(info.ingress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(info.egress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_null(info.ingress);
+    check_null(info.egress);
+    check_not_null(info.ingress_opaque);
+    check_not_null(info.egress_opaque);
+    check_equal(info.ingress_opaque->max_bytes, (size_t)32u);
+    check_equal(info.egress_opaque->max_bytes, (size_t)32u);
+
+    /* The compiled opaque plan retains no schema/parser dependency. */
+    data_bind_free(codec);
+    codec = NULL;
+    check_equal(
+        data_bind_opaque_plan_borrow(
+            info.ingress_opaque, DATA_BIND_OPAQUE_VALUE,
+            payload, sizeof(payload), &span, &error),
+        DATA_BIND_OK);
+    check_equal(span.data, payload);
+    check_equal(span.bytes, sizeof(payload));
+
+    data_bind_transport_plan_free(transport);
+    transport = NULL;
+
+    codec = projection_plan_codec();
+    check_not_null(codec);
+    if (!codec) return;
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        data_bind_transport_plan_compile_service_payloads(
+            codec, "Store", "Read", DATA_BIND_TRANSPORT_HTTP,
+            &ingress, &egress, &transport, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(transport);
+    check_contains(error.message, "canonical builtin bytes");
+
+    data_bind_free(codec);
+  }
+
+
   it("composes independent ingress and egress FormatPlans into one transport") {
     DataBind *codec = projection_plan_codec();
     DataBindTransportPlan *transport = NULL;
@@ -615,6 +684,10 @@ spec("DataBind FormatPlan and TransportPlan") {
     check_equal(info.operation_name, "Read");
     check_not_null(info.ingress);
     check_not_null(info.egress);
+    check_equal(info.ingress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
+    check_equal(info.egress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
+    check_null(info.ingress_opaque);
+    check_null(info.egress_opaque);
     check(data_bind_format_plan_info(info.ingress, &ingress));
     check(data_bind_format_plan_info(info.egress, &egress));
     check_equal(ingress.type_name, "Request");
