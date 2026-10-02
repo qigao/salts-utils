@@ -108,6 +108,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     free(workspace);
   }
   it("decodes ordered duplicate-preserving header records through generated MessagePlan sequence metadata") {
+    static const char empty_json[] =
+        "{\"id\":6,\"headers\":[]}";
     static const char valid_json[] =
         "{\"id\":7,\"headers\":["
         "{\"name\":\"x-tag\",\"value\":\"a\"},"
@@ -144,6 +146,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBind *codec = NULL;
+    NativeHeaderPolicy_t empty = {0};
     NativeHeaderPolicy_t value = {0};
     NativeHeaderPolicy_t rejected = {0};
     NativeHeaderPolicy_t invalid_nested = {0};
@@ -236,6 +239,28 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     options.max_owned_bytes = 4096u;
     options.workspace = workspace;
     options.workspace_bytes = sizeof(workspace);
+
+    root = json_parse(empty_json, sizeof(empty_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &empty, sizeof(empty), &plan_diagnostic),
+          DATA_BIND_OK);
+      check_equal(empty.id, (uint32_t)6u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&empty.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &empty, sizeof(empty), &native_diagnostic),
+        DATA_BIND_OK);
 
     root = json_parse(valid_json, sizeof(valid_json) - 1u);
     check_not_null(root);
