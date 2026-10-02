@@ -207,6 +207,21 @@ cmake_config_target(
   FOLDER "databind/runtime"
   EXPORT_NAME DataBind)
 
+# Optional integration-only target. Keep Salts::DataBind itself independent of
+# the Plugin loader/lifecycle package.
+add_library(data_bind_plugin INTERFACE)
+target_include_directories(data_bind_plugin
+  INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(data_bind_plugin
+  INTERFACE Salts::DataBind Salts::Plugin)
+cmake_config_target(
+  data_bind_plugin
+  ALIAS Salts::DataBindPlugin
+  FOLDER "databind/runtime"
+  EXPORT_NAME DataBindPlugin)
+
 add_library(data_bind_cmeta SHARED data_bind_cmeta.c data_bind_cmeta.h)
 target_compile_definitions(data_bind_cmeta PRIVATE DATA_BIND_CMETA_BUILD_DLL)
 target_include_directories(data_bind_cmeta
@@ -242,6 +257,10 @@ install(
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT DataBind)
 
 install(
+  TARGETS data_bind_plugin
+  EXPORT SaltsUtilsTargets)
+
+install(
   TARGETS ${DATA_BIND_JSON_ADAPTER_TARGET}
           ${DATA_BIND_YAML_ADAPTER_TARGET}
           ${DATA_BIND_CSV_ADAPTER_TARGET}
@@ -259,6 +278,7 @@ install(
     data_bind_binary_reader.h
     data_bind_binding_plan.h
     data_bind_plugin_catalog.h
+    data_bind_plugin_execution.h
     data_bind_message_plan.h
     data_bind_native_binding.h
     data_bind_opaque_plan.h
@@ -450,6 +470,15 @@ cmake_add_test(test_data_bind_binary_reader
   FOLDER "databind/runtime/tests")
 set_tests_properties(test_data_bind_binary_reader PROPERTIES
   LABELS "databind;binary;reader")
+
+cmake_add_test(test_data_bind_plugin_execution_public_cpp
+  SOURCES test_data_bind_plugin_execution_public_cpp.cpp
+  LIBS Salts::DataBindPlugin
+  FOLDER "databind/runtime/tests")
+set_target_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
+  CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+set_tests_properties(test_data_bind_plugin_execution_public_cpp PROPERTIES
+  LABELS "databind;plugin;execution;public;cpp")
 
 cmake_add_test(test_data_bind_binding_plan
   SOURCES test_data_bind_binding_plan.c
