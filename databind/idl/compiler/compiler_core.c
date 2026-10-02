@@ -1046,18 +1046,38 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           tbe_compiler_has_child(field, "is_list") &&
           !tbe_compiler_has_child(field, "is_optional") &&
           !tbe_compiler_has_child(field, "is_nullable") &&
-          (tbe_compiler_find_record(root, "composites", storage_element) != NULL ||
-           tbe_compiler_find_record(root, "groups", storage_element) != NULL ||
-           tbe_compiler_find_record(root, "messages", storage_element) != NULL) &&
           tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
-          tbe_compiler_string_value(field, "native_element_data_ref") != NULL &&
-          databind_compiler_set_sequence_symbol(
-              field, "native_sequence_name", owner, c_name, "") == 0 &&
-          databind_compiler_set_sequence_symbol(
-              field, "native_data_symbol", owner, c_name, "Data") == 0 &&
-          databind_compiler_set_sequence_symbol(
-              field, "native_type_symbol", owner, c_name, "Type") == 0) {
-        tbe_compiler_set_string(field, "native_c_type", vector_type);
+          tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
+        const tbe_compiler_scalar_projection_t *element_scalar =
+            tbe_compiler_scalar_projection(storage_element);
+        if ((element_scalar != NULL && element_scalar->native_data_symbol != NULL) ||
+            (storage_element != NULL && strcmp(storage_element, "string") == 0)) {
+          char symbol[320];
+          tbe_compiler_set_string(field, "native_cstl_sequence", "1");
+          if (storage_element != NULL && strcmp(storage_element, "string") == 0)
+            tbe_compiler_set_string(
+                field, "native_cstl_sequence_explicit_refs", "1");
+          if (snprintf(symbol, sizeof(symbol), "%s_collection_data", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_collection_data") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_data_symbol", symbol);
+          if (snprintf(symbol, sizeof(symbol), "%s_cmeta_type", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_cmeta_type") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_type_symbol", symbol);
+          if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+              tbe_compiler_string_value(field, "native_type_symbol") != NULL)
+            tbe_compiler_set_string(field, "native_c_type", vector_type);
+        } else if (
+            (tbe_compiler_find_record(root, "composites", storage_element) != NULL ||
+             tbe_compiler_find_record(root, "groups", storage_element) != NULL ||
+             tbe_compiler_find_record(root, "messages", storage_element) != NULL) &&
+            databind_compiler_set_sequence_symbol(
+                field, "native_sequence_name", owner, c_name, "") == 0 &&
+            databind_compiler_set_sequence_symbol(
+                field, "native_data_symbol", owner, c_name, "Data") == 0 &&
+            databind_compiler_set_sequence_symbol(
+                field, "native_type_symbol", owner, c_name, "Type") == 0) {
+          tbe_compiler_set_string(field, "native_c_type", vector_type);
+        }
       }
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
@@ -1133,7 +1153,8 @@ static void tbe_compiler_annotate_native_requirement(
              tbe_compiler_has_child(field, "is_list") &&
              !tbe_compiler_has_child(field, "is_optional") &&
              !tbe_compiler_has_child(field, "is_nullable") &&
-             tbe_compiler_string_value(field, "native_sequence_name") != NULL &&
+             (tbe_compiler_string_value(field, "native_sequence_name") != NULL ||
+              tbe_compiler_string_value(field, "native_cstl_sequence") != NULL) &&
              tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
              tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER;
