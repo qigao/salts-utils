@@ -203,7 +203,9 @@ spec("DataBind public typed generation frontend") {
                 0);
     check_true(plan.external_config.has_http);
     check_true(plan.external_config.has_rpc);
-    check_equal(plan.http.operation_count, (size_t)1u);
+    check_true(plan.external_config.has_opaque);
+    check_equal(plan.external_config.opaque_max_bytes, (size_t)4096u);
+    check_equal(plan.http.operation_count, (size_t)2u);
     check_equal(plan.http.operations[0].service_name, "Calc");
     check_equal(plan.http.operations[0].operation_name, "Add");
     check_equal(plan.http.operations[0].method, "GET");
@@ -214,6 +216,26 @@ spec("DataBind public typed generation frontend") {
                 DATA_BIND_FORMAT_YAML);
     check_equal(plan.http.operations[0].egress_format,
                 DATA_BIND_FORMAT_XML);
+    check_equal(plan.http.operations[0].ingress_payload_kind,
+                DATA_BIND_PAYLOAD_FORMAT);
+    check_equal(plan.http.operations[0].egress_payload_kind,
+                DATA_BIND_PAYLOAD_FORMAT);
+    check_equal(plan.http.operations[1].service_name, "RawStore");
+    check_equal(plan.http.operations[1].operation_name, "Echo");
+    check_equal(plan.http.operations[1].method, "POST");
+    check_equal(plan.http.operations[1].route, "/raw/echo");
+    check_equal(plan.http.operations[1].ingress_format,
+                DATA_BIND_FORMAT_NONE);
+    check_equal(plan.http.operations[1].egress_format,
+                DATA_BIND_FORMAT_NONE);
+    check_equal(plan.http.operations[1].ingress_payload_kind,
+                DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(plan.http.operations[1].egress_payload_kind,
+                DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(plan.http.operations[1].ingress_opaque_max_bytes,
+                (size_t)4096u);
+    check_equal(plan.http.operations[1].egress_opaque_max_bytes,
+                (size_t)4096u);
     check_equal(plan.http.field_count, (size_t)3u);
     check_equal(plan.http.errors[0].error_type, "CalcError");
     check_equal(plan.http.errors[0].status, 422);
