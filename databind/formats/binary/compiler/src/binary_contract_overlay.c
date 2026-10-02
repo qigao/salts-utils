@@ -1255,7 +1255,7 @@ static int annotate_unions(Node *root) {
     return 0;
 }
 
-static int tbe_numeric_literal(const char *text) {
+static int binary_numeric_literal(const char *text) {
   const char *p;
   if (text == NULL || text[0] == '\0') return 0;
   for (p = text; *p != '\0'; ++p)
@@ -1263,7 +1263,7 @@ static int tbe_numeric_literal(const char *text) {
   return 1;
 }
 
-static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
+static int binary_annotate_field_profile(Node *field, tbe_error_t *error) {
   const char *field_type = map_find_string_value(field, "type");
   const char *length_field = map_find_string_value(field, "length_field");
   const char *collection_kind = map_find_string_value(field, "collection_kind");
@@ -1276,7 +1276,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
   if (strcmp(field_type, "varint") == 0) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
-                    "Unsupported type 'varint': TBE runtime/compiler support is not implemented");
+                    "Unsupported type 'varint': Binary runtime/compiler support is not implemented");
     return 0;
   }
 
@@ -1318,7 +1318,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
       return 0;
   } else if (strcmp(field_type, "bytes") == 0) {
     if (map_set_string(field, "ctype", "BYTES") < 0) return 0;
-    if (tbe_numeric_literal(length_field)) {
+    if (binary_numeric_literal(length_field)) {
       size_t bytes = 0u;
       if (!schema_parse_fixed_layout_size(length_field, &bytes) ||
           map_set_size(field, "size_bytes", bytes) < 0 ||
@@ -1335,7 +1335,7 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
     if (map_set_string(field, "ctype", "COLLECTION") < 0) return 0;
     if (collection_kind != NULL &&
         strcmp(collection_kind, "array") == 0 &&
-        tbe_numeric_literal(length_field)) {
+        binary_numeric_literal(length_field)) {
       if (map_set_true(field, "is_fixed_size") < 0) return 0;
     } else if (map_set_true(field, "is_variable_size") < 0) {
       return 0;
@@ -1347,22 +1347,22 @@ static int tbe_annotate_field_profile(Node *field, tbe_error_t *error) {
 
   if (!is_group &&
       (strcmp(field_type, "string") == 0 ||
-       (strcmp(field_type, "bytes") == 0 && !tbe_numeric_literal(length_field)))) {
+       (strcmp(field_type, "bytes") == 0 && !binary_numeric_literal(length_field)))) {
     if (map_set_true(field, "is_var_data") < 0) return 0;
   } else if (!is_group &&
              (!map_has_named_child(field, "is_collection") ||
               (collection_kind != NULL &&
                strcmp(collection_kind, "array") == 0 &&
-               tbe_numeric_literal(length_field)) ||
+               binary_numeric_literal(length_field)) ||
               (strcmp(field_type, "bytes") == 0 &&
-               tbe_numeric_literal(length_field)))) {
+               binary_numeric_literal(length_field)))) {
     if (map_set_true(field, "is_fixed_block") < 0) return 0;
   }
 
   return 1;
 }
 
-static int tbe_annotate_field_profiles(Node *root, tbe_error_t *error) {
+static int binary_annotate_field_profiles(Node *root, tbe_error_t *error) {
   static const char *lists[] = {
       "composites", "groups", "messages", "unions"
   };
@@ -1374,26 +1374,26 @@ static int tbe_annotate_field_profiles(Node *root, tbe_error_t *error) {
       Node *fields = map_find_named_child(records->data.list.items[j], "fields");
       if (fields == NULL || fields->type != NODE_LIST) continue;
       for (k = 0u; k < fields->data.list.count; ++k)
-        if (!tbe_annotate_field_profile(fields->data.list.items[k], error))
+        if (!binary_annotate_field_profile(fields->data.list.items[k], error))
           return 0;
     }
   }
   return 1;
 }
 
-typedef enum tbe_field_section {
-  TBE_FIELD_FIXED = 0,
-  TBE_FIELD_GROUP,
-  TBE_FIELD_VAR_DATA
-} tbe_field_section;
+typedef enum binary_field_section {
+  BINARY_FIELD_SECTION_FIXED = 0,
+  BINARY_FIELD_SECTION_GROUP,
+  BINARY_FIELD_SECTION_VAR_DATA
+} binary_field_section;
 
-static tbe_field_section tbe_field_section_of(const Node *field) {
-  if (map_has_named_child(field, "is_group_field")) return TBE_FIELD_GROUP;
-  if (map_has_named_child(field, "is_var_data")) return TBE_FIELD_VAR_DATA;
-  return TBE_FIELD_FIXED;
+static binary_field_section binary_field_section_of(const Node *field) {
+  if (map_has_named_child(field, "is_group_field")) return BINARY_FIELD_SECTION_GROUP;
+  if (map_has_named_child(field, "is_var_data")) return BINARY_FIELD_SECTION_VAR_DATA;
+  return BINARY_FIELD_SECTION_FIXED;
 }
 
-static int tbe_field_collection_supported(const Node *field) {
+static int binary_field_collection_supported(const Node *field) {
   const char *kind;
   if (!map_has_named_child(field, "is_collection")) return 1;
   kind = map_find_string_value(field, "collection_kind");
@@ -1405,10 +1405,10 @@ static int tbe_field_collection_supported(const Node *field) {
          strcmp(kind, "map") == 0;
 }
 
-static int tbe_validate_record_fields(
+static int binary_validate_record_fields(
     const Node *record, int composite, tbe_error_t *error) {
   const Node *fields = map_find_named_child(record, "fields");
-  tbe_field_section previous = TBE_FIELD_FIXED;
+  binary_field_section previous = BINARY_FIELD_SECTION_FIXED;
   size_t i;
   if (fields == NULL || fields->type != NODE_LIST) return 1;
 
@@ -1416,16 +1416,16 @@ static int tbe_validate_record_fields(
     const Node *field = fields->data.list.items[i];
     const char *name = map_find_string_value(field, "name");
     const char *type = map_find_string_value(field, "type");
-    tbe_field_section section = tbe_field_section_of(field);
+    binary_field_section section = binary_field_section_of(field);
 
-    if (!tbe_field_collection_supported(field)) {
+    if (!binary_field_collection_supported(field)) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
-                      "Unsupported dynamic collection in TBE declaration");
+                      "Unsupported dynamic collection in Binary declaration");
       return 0;
     }
 
-    if (composite && section != TBE_FIELD_FIXED) {
+    if (composite && section != BINARY_FIELD_SECTION_FIXED) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1,
                       "Composite fields must be fixed-size");
@@ -1435,7 +1435,7 @@ static int tbe_validate_record_fields(
     if (!composite && section < previous) {
       char message[256];
       snprintf(message, sizeof(message),
-               "Invalid TBE field order for field '%s' of type '%s': fixed, then group, then variable data",
+               "Invalid Binary field order for field '%s' of type '%s': fixed, then group, then variable data",
                name != NULL ? name : "<unnamed>",
                type != NULL ? type : "<unknown>");
       if (error != NULL)
@@ -1447,7 +1447,7 @@ static int tbe_validate_record_fields(
   return 1;
 }
 
-static int tbe_validate_layout_policy(Node *root, tbe_error_t *error) {
+static int binary_validate_layout_policy(Node *root, tbe_error_t *error) {
   static const struct {
     const char *list;
     int composite;
@@ -1461,7 +1461,7 @@ static int tbe_validate_layout_policy(Node *root, tbe_error_t *error) {
     Node *list = map_find_named_child(root, groups[i].list);
     if (list == NULL || list->type != NODE_LIST) continue;
     for (j = 0u; j < list->data.list.count; ++j)
-      if (!tbe_validate_record_fields(
+      if (!binary_validate_record_fields(
               list->data.list.items[j], groups[i].composite, error))
         return 0;
   }
@@ -1486,15 +1486,15 @@ int databind_binary_contract_apply(Node *root, tbe_error_t *error) {
   if (root == NULL || root->type != NODE_MAP) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_INVALID_ARGUMENT, -1, -1,
-                    "Invalid TBE contract overlay root");
+                    "Invalid Binary contract overlay root");
     return -1;
   }
-  if (!tbe_annotate_field_profiles(root, error)) return -1;
-  if (!tbe_validate_layout_policy(root, error)) return -1;
+  if (!binary_annotate_field_profiles(root, error)) return -1;
+  if (!binary_validate_layout_policy(root, error)) return -1;
   if (annotate_schema_tree(root) != 0) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
-                    "Failed to apply TBE contract overlay");
+                    "Failed to apply Binary contract overlay");
     return -1;
   }
   return 0;
@@ -1506,7 +1506,7 @@ int databind_binary_contract_parse(
   return databind_binary_contract_apply(root, error);
 }
 
-static char *tbe_plan_strdup(const char *text) {
+static char *binary_plan_strdup(const char *text) {
   size_t length;
   char *copy;
   if (text == NULL) return NULL;
@@ -1516,7 +1516,7 @@ static char *tbe_plan_strdup(const char *text) {
   return copy;
 }
 
-static const char *tbe_plan_list_name(IdlDataKind kind) {
+static const char *binary_plan_list_name(IdlDataKind kind) {
   switch (kind) {
   case IDL_DATA_MESSAGE: return "messages";
   case IDL_DATA_COMPOSITE: return "composites";
@@ -1525,9 +1525,9 @@ static const char *tbe_plan_list_name(IdlDataKind kind) {
   }
 }
 
-static const Node *tbe_plan_find_record(
+static const Node *binary_plan_find_record(
     const Node *root, IdlDataKind kind, const char *name) {
-  const char *list_name = tbe_plan_list_name(kind);
+  const char *list_name = binary_plan_list_name(kind);
   Node *list;
   size_t i;
   if (root == NULL || list_name == NULL || name == NULL) return NULL;
@@ -1541,7 +1541,7 @@ static const Node *tbe_plan_find_record(
   return NULL;
 }
 
-static const Node *tbe_plan_find_field(
+static const Node *binary_plan_find_field(
     const Node *record, const char *name) {
   Node *fields;
   size_t i;
@@ -1556,7 +1556,7 @@ static const Node *tbe_plan_find_field(
   return NULL;
 }
 
-static int tbe_plan_parse_size(
+static int binary_plan_parse_size(
     const Node *owner, const char *name, size_t *out, int required) {
   const char *text = map_find_string_value(owner, name);
   if (text == NULL) {
@@ -1569,7 +1569,7 @@ static int tbe_plan_parse_size(
   return schema_parse_fixed_layout_size(text, out);
 }
 
-static int tbe_plan_fail(tbe_error_t *error, const char *message) {
+static int binary_plan_fail(tbe_error_t *error, const char *message) {
   if (error != NULL)
     tbe_error_set(error, TBE_ERR_SEMANTIC_ERROR, -1, -1, message);
   return 0;
@@ -1601,7 +1601,7 @@ const databind_binary_type_plan *databind_binary_format_plan_find_type(
   return NULL;
 }
 
-static int tbe_plan_build_field(
+static int binary_plan_build_field(
     const IdlContract *contract,
     const Node *wire_ir,
     const IdlField *typed_field,
@@ -1616,31 +1616,31 @@ static int tbe_plan_build_field(
   (void)contract;
 
   if (typed_field == NULL || field_node == NULL || out == NULL)
-    return tbe_plan_fail(error, "Invalid TBE field plan input");
+    return binary_plan_fail(error, "Invalid Binary field plan input");
 
   name = typed_field->name;
   if (name == NULL || name[0] == '\0')
-    return tbe_plan_fail(error, "TBE field identity is missing");
-  out->name = tbe_plan_strdup(name);
+    return binary_plan_fail(error, "Binary field identity is missing");
+  out->name = binary_plan_strdup(name);
   if (out->name == NULL) {
     if (error != NULL)
       tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
-                    "Failed to allocate TBE field identity");
+                    "Failed to allocate Binary field identity");
     return 0;
   }
 
   if (typed_field->optional) {
     out->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
-    if (!tbe_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
+    if (!binary_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
-      return tbe_plan_fail(error, "TBE optional bit is invalid");
+      return binary_plan_fail(error, "Binary optional bit is invalid");
     out->optional_bit = (unsigned)bit;
   }
   if (typed_field->nullable) {
     out->flags |= DATABIND_BINARY_FIELD_NULLABLE;
-    if (!tbe_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
+    if (!binary_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
-      return tbe_plan_fail(error, "TBE nullable bit is invalid");
+      return binary_plan_fail(error, "Binary nullable bit is invalid");
     out->nullable_bit = (unsigned)bit;
   }
 
@@ -1654,13 +1654,13 @@ static int tbe_plan_build_field(
                      ? idl_contract_find_data(contract, group_type)
                      : NULL;
     group_record = group_decl != NULL
-                       ? tbe_plan_find_record(wire_ir, group_decl->kind, group_type)
+                       ? binary_plan_find_record(wire_ir, group_decl->kind, group_type)
                        : NULL;
     if (group_record == NULL ||
-        !tbe_plan_parse_size(
+        !binary_plan_parse_size(
             group_record, "fixed_block_size",
             &out->child_fixed_block_size, 1))
-      return tbe_plan_fail(error, "TBE group child layout is unavailable");
+      return binary_plan_fail(error, "Binary group child layout is unavailable");
     return 1;
   }
 
@@ -1671,15 +1671,15 @@ static int tbe_plan_build_field(
   }
 
   out->kind = DATABIND_BINARY_FIELD_FIXED;
-  if (!tbe_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
-    return tbe_plan_fail(error, "TBE fixed field offset is unavailable");
-  if (!tbe_plan_parse_size(
+  if (!binary_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
+    return binary_plan_fail(error, "Binary fixed field offset is unavailable");
+  if (!binary_plan_parse_size(
           field_node, "field_size_bytes", &out->wire_extent, 0) ||
       out->wire_extent == 0u) {
-    if (!tbe_plan_parse_size(
+    if (!binary_plan_parse_size(
             field_node, "size_bytes", &out->wire_extent, 1) ||
         out->wire_extent == 0u)
-      return tbe_plan_fail(error, "TBE fixed field extent is unavailable");
+      return binary_plan_fail(error, "Binary fixed field extent is unavailable");
   }
   return 1;
 }
@@ -1697,12 +1697,12 @@ int databind_binary_format_plan_build(
 
   if (out != NULL) memset(out, 0, sizeof(*out));
   if (contract == NULL || wire_ir == NULL || out == NULL)
-    return tbe_plan_fail(error, "Invalid TBE format plan arguments");
-  if (!tbe_validate_layout_policy((Node *)wire_ir, error))
+    return binary_plan_fail(error, "Invalid Binary format plan arguments");
+  if (!binary_validate_layout_policy((Node *)wire_ir, error))
     return 0;
 
   for (i = 0u; i < contract->data_count; ++i)
-    if (tbe_plan_list_name(contract->data[i].kind) != NULL)
+    if (binary_plan_list_name(contract->data[i].kind) != NULL)
       ++eligible;
 
   if (eligible != 0u) {
@@ -1711,7 +1711,7 @@ int databind_binary_format_plan_build(
     if (candidate.types == NULL) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
-                      "Failed to allocate TBE format plan");
+                      "Failed to allocate Binary format plan");
       return 0;
     }
   }
@@ -1726,22 +1726,22 @@ int databind_binary_format_plan_build(
     const IdlDataDecl *decl = &contract->data[i];
     const Node *record;
     databind_binary_type_plan *type;
-    if (tbe_plan_list_name(decl->kind) == NULL) continue;
+    if (binary_plan_list_name(decl->kind) == NULL) continue;
 
     type = &candidate.types[out_index++];
-    record = tbe_plan_find_record(wire_ir, decl->kind, decl->name);
+    record = binary_plan_find_record(wire_ir, decl->kind, decl->name);
     if (record == NULL)
       goto invalid;
 
-    type->name = tbe_plan_strdup(decl->name);
+    type->name = binary_plan_strdup(decl->name);
     if (type->name == NULL) goto oom;
     type->wire_big_endian =
         big_endian != NULL && strcmp(big_endian, "0") != 0;
-    if (!tbe_plan_parse_size(
+    if (!binary_plan_parse_size(
             record, "fixed_block_size", &type->fixed_block_size, 1) ||
-        !tbe_plan_parse_size(
+        !binary_plan_parse_size(
             record, "presence_bitmap_bytes", &type->presence_size, 0) ||
-        !tbe_plan_parse_size(
+        !binary_plan_parse_size(
             record, "null_bitmap_bytes", &type->null_size, 0))
       goto invalid;
 
@@ -1754,9 +1754,9 @@ int databind_binary_format_plan_build(
 
     for (j = 0u; j < decl->field_count; ++j) {
       const Node *field_node =
-          tbe_plan_find_field(record, decl->fields[j].name);
+          binary_plan_find_field(record, decl->fields[j].name);
       if (field_node == NULL ||
-          !tbe_plan_build_field(
+          !binary_plan_build_field(
               contract, wire_ir, &decl->fields[j], field_node,
               &type->fields[j], error))
         goto fail;
@@ -1767,12 +1767,12 @@ int databind_binary_format_plan_build(
   return 1;
 
 invalid:
-  tbe_plan_fail(error, "TBE wire overlay is incomplete");
+  binary_plan_fail(error, "Binary wire overlay is incomplete");
   goto fail;
 oom:
   if (error != NULL)
     tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
-                  "Failed to allocate TBE format plan");
+                  "Failed to allocate Binary format plan");
 fail:
   databind_binary_format_plan_destroy(&candidate);
   return 0;
