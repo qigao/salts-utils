@@ -1,5 +1,8 @@
 #include "generated_owned_buffers.h"
 #include "data_bind_native.h"
+#include "data_bind_message_plan.h"
+#include "json_cserde_reader.h"
+#include "json_parser.h"
 #include "tinytest.h"
 
 #include <cmeta/data.h>
@@ -103,4 +106,158 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
+  it("decodes ordered duplicate-preserving header records through generated MessagePlan sequence metadata") {
+    static const char valid_json[] =
+        "{\"id\":7,\"headers\":["
+        "{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "{\"name\":\"x-tag\",\"value\":\"b\"},"
+        "{\"name\":\"y-tag\",\"value\":\"c\"}]}";
+    static const char invalid_json[] =
+        "{\"id\":8,\"headers\":["
+        "{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "{\"name\":\"x-tag\"}]}";
+    const cmeta_data_desc *header_data = NULL;
+    const cmeta_data_desc *policy_data = NULL;
+    const cmeta_data_desc *sequence_data = NULL;
+    const cmeta_data_desc *element_data = NULL;
+    const cmeta_data_struct_shape *policy_shape = NULL;
+    const DataBindMessageNativeArtifact *artifact =
+        NativeHeaderPolicy_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic plan_diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    NativeHeaderPolicy_t value = {0};
+    NativeHeaderPolicy_t rejected = {0};
+    unsigned char workspace[16384] = {0};
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+    const NativeHeader_t *first;
+    const NativeHeader_t *second;
+    const NativeHeader_t *third;
+
+    check_equal(NativeHeader_cmeta_data(&header_data, &error), DATA_BIND_OK);
+    check_equal(NativeHeaderPolicy_cmeta_data(&policy_data, &error), DATA_BIND_OK);
+    check_not_null(header_data);
+    check_not_null(policy_data);
+    if (header_data == NULL || policy_data == NULL) return;
+
+    check_equal(
+        cmeta_type_require_traits(
+            header_data->storage_type,
+            CMETA_TRAIT_COPY | CMETA_TRAIT_MOVE | CMETA_TRAIT_DESTROY),
+        CMETA_OK);
+    policy_shape = (const cmeta_data_struct_shape *)policy_data->shape;
+    check_not_null(policy_shape);
+    if (policy_shape == NULL) return;
+    check_equal(policy_shape->field_count, (size_t)2u);
+    sequence_data = policy_shape->fields[1].value;
+    check_not_null(sequence_data);
+    if (sequence_data == NULL) return;
+    check_equal(sequence_data->kind, CMETA_DATA_SEQUENCE);
+    check_not_null(cmeta_data_construct_ops_of(sequence_data));
+    check_not_null(cmeta_data_collection_ops_of(sequence_data));
+    element_data = cmeta_data_collection_element_data(sequence_data);
+    check_not_null(element_data);
+    if (element_data != NULL)
+      check_true(cmeta_data_desc_equal(element_data, header_data));
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_true(binding.data == policy_data);
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeHeaderPolicy", &binding, &plan, &plan_diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 4096u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+
+    root = json_parse(valid_json, sizeof(valid_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &plan_diagnostic),
+          DATA_BIND_OK);
+      check_equal(value.id, (uint32_t)7u);
+      check_equal(NativeHeaderPolicy_headers_vec_t_size(&value.headers), (size_t)3u);
+      first = NativeHeaderPolicy_headers_vec_t_at_const(&value.headers, 0u);
+      second = NativeHeaderPolicy_headers_vec_t_at_const(&value.headers, 1u);
+      third = NativeHeaderPolicy_headers_vec_t_at_const(&value.headers, 2u);
+      check_not_null(first);
+      check_not_null(second);
+      check_not_null(third);
+      if (first != NULL && second != NULL && third != NULL) {
+        check_equal(tstr_len(first->name), strlen("x-tag"));
+        check_equal(tstr_len(second->name), strlen("x-tag"));
+        check_equal(tstr_len(third->name), strlen("y-tag"));
+        check(memcmp(first->name, "x-tag", strlen("x-tag")) == 0);
+        check(memcmp(second->name, "x-tag", strlen("x-tag")) == 0);
+        check(memcmp(third->name, "y-tag", strlen("y-tag")) == 0);
+        check(memcmp(first->value, "a", 1u) == 0);
+        check(memcmp(second->value, "b", 1u) == 0);
+        check(memcmp(third->value, "c", 1u) == 0);
+      }
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value), &native_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.id, (uint32_t)0u);
+    check_equal(NativeHeaderPolicy_headers_vec_t_size(&value.headers), (size_t)0u);
+
+    plan_diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    root = json_parse(invalid_json, sizeof(invalid_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_not_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &rejected, sizeof(rejected),
+              &plan_diagnostic),
+          DATA_BIND_OK);
+      check_equal(rejected.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&rejected.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &rejected, sizeof(rejected),
+            &native_diagnostic),
+        DATA_BIND_OK);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
 }
