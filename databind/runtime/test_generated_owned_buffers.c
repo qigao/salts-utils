@@ -628,4 +628,209 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
+
+  it("enforces max_owned_bytes across separate MessagePlan fields") {
+    static const char json[] =
+        "{\"first\":\"ab\",\"second\":\"cd\"}";
+    const DataBindMessageNativeArtifact *artifact =
+        NativeAggregateOwnedBudget_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    NativeAggregateOwnedBudget_t value = {0};
+    unsigned char workspace[8192] = {0};
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeAggregateOwnedBudget", &binding,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 3u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_LIMIT);
+      check_null(value.first);
+      check_null(value.second);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    options.max_owned_bytes = 4u;
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_OK);
+      check_not_null(value.first);
+      check_not_null(value.second);
+      if (value.first != NULL) {
+        check_equal(tstr_len(value.first), (size_t)2u);
+        check(memcmp(value.first, "ab", 2u) == 0);
+      }
+      if (value.second != NULL) {
+        check_equal(tstr_len(value.second), (size_t)2u);
+        check(memcmp(value.second, "cd", 2u) == 0);
+      }
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value),
+            &native_diagnostic),
+        DATA_BIND_OK);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("enforces max_items across separate MessagePlan sequence fields") {
+    static const char json[] =
+        "{\"left\":["
+        "{\"name\":\"a\",\"value\":\"x\"},"
+        "{\"name\":\"b\",\"value\":\"y\"}],"
+        "\"right\":["
+        "{\"name\":\"c\",\"value\":\"u\"},"
+        "{\"name\":\"d\",\"value\":\"v\"}]}";
+    const DataBindMessageNativeArtifact *artifact =
+        NativeAggregateItemBudget_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindNativeRequirements requirements =
+        DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    NativeAggregateItemBudget_t value = {0};
+    unsigned char workspace[16384] = {0};
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_not_null(binding.data);
+    if (binding.data == NULL) return;
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 4096u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    check_equal(
+        data_bind_native_measure(
+            &options, binding.data, &requirements, &native_diagnostic),
+        DATA_BIND_OK);
+    check_true(requirements.descriptor_nodes > 1u);
+    check_true(requirements.descriptor_nodes < 64u);
+    if (requirements.descriptor_nodes <= 1u ||
+        requirements.descriptor_nodes >= 64u)
+      return;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeAggregateItemBudget", &binding,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    options.max_items = requirements.descriptor_nodes;
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_LIMIT);
+      check_equal(
+          NativeAggregateItemBudget_left_vec_t_size(&value.left), (size_t)0u);
+      check_equal(
+          NativeAggregateItemBudget_right_vec_t_size(&value.right), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    options.max_items = 64u;
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_OK);
+      check_equal(
+          NativeAggregateItemBudget_left_vec_t_size(&value.left), (size_t)2u);
+      check_equal(
+          NativeAggregateItemBudget_right_vec_t_size(&value.right), (size_t)2u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value),
+            &native_diagnostic),
+        DATA_BIND_OK);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
 }
