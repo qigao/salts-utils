@@ -67,12 +67,17 @@ typedef struct DataBindHttpProjectionConfig {
   size_t error_count;
   DataBindFormat ingress_format;
   DataBindFormat egress_format;
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
+  size_t ingress_opaque_max_bytes;
+  size_t egress_opaque_max_bytes;
 } DataBindHttpProjectionConfig;
 
 #define DATA_BIND_HTTP_PROJECTION_CONFIG_INIT \
   { sizeof(DataBindHttpProjectionConfig), DATA_BIND_METHOD_PLAN_ABI_VERSION, \
     NULL, NULL, 200, DATA_BIND_HTTP_CONTEXT_NONE, NULL, 0u, NULL, 0u, \
-    DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON }
+    DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON, \
+    DATA_BIND_PAYLOAD_FORMAT, DATA_BIND_PAYLOAD_FORMAT, 0u, 0u }
 
 typedef struct DataBindRpcFieldProjection {
   size_t size;
