@@ -1,0 +1,7 @@
+schema BinaryVarData [byte_order(little)];
+
+message TelemetryEvent {
+  uint32 sequence;
+  string source;
+  optional nullable bytes payload;
+}
