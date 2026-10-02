@@ -28,4 +28,5 @@ message CalcError {
 
 service Calc {
   Add: AddRequest -> AddResponse throws CalcError;
+  Choose: AddRequest -> Choice;
 }
