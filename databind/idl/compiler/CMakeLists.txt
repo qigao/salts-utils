@@ -1017,6 +1017,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     Salts::Core
   DEFS
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
@@ -1045,6 +1046,7 @@ cmake_add_test(test_databind_binary_layout_ir
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
