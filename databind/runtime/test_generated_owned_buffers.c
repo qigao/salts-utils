@@ -331,4 +331,74 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
+  it("runs nested element validation even without a list-level rule") {
+    static const char invalid_json[] =
+        "{\"id\":11,\"headers\":[{\"name\":\"BAD!\",\"value\":\"x\"}]}";
+    const DataBindMessageNativeArtifact *artifact =
+        NativeHeaderNestedOnly_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBind *codec = NULL;
+    NativeHeaderNestedOnly_t value = {0};
+    unsigned char workspace[8192] = {0};
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeHeaderNestedOnly", &binding, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    options.max_depth = 16u;
+    options.max_items = 32u;
+    options.max_owned_bytes = 2048u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+
+    root = json_parse(invalid_json, sizeof(invalid_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_VALIDATION);
+      check_contains(diagnostic.schema_field, "headers[0].name");
+      check_contains(diagnostic.message, "Pattern");
+      check_equal(value.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderNestedOnly_headers_vec_t_size(&value.headers),
+          (size_t)0u);
+    }
+
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value),
+            &native_diagnostic),
+        DATA_BIND_OK);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
 }
