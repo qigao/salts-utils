@@ -19,6 +19,13 @@ typedef struct databind_compiler_flowmq_projection_config {
   size_t max_payload_bytes;
   DataBindPayloadKind payload_kind;
   size_t opaque_max_bytes;
+
+  /* Service mode is selected when service_name/operation_name are present. */
+  const char *service_name;
+  const char *operation_name;
+  DataBindFormat ingress_format;
+  DataBindFormat egress_format;
+  DataBindFlowMQServicePattern service_pattern;
 } databind_compiler_flowmq_projection_config;
 
 databind_compiler_projection_backend
