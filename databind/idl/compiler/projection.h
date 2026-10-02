@@ -63,8 +63,8 @@ typedef struct databind_compiler_projection_request {
 
 typedef struct databind_compiler_projection_input {
   const IdlContract *contract;
-  /* Typed compiler-side TBE wire facts. Never a semantic type authority. */
-  const databind_binary_format_plan *tbe_format;
+  /* Typed compiler-side Binary wire facts. Never a semantic type authority. */
+  const databind_binary_format_plan *binary_format;
 } databind_compiler_projection_input;
 
 typedef int (*databind_compiler_projection_generate_fn)(

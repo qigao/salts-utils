@@ -809,7 +809,7 @@ static int http_generate(
   int ok = 0;
   (void)context;
 
-  if (contract == NULL || input->tbe_format == NULL ||
+  if (contract == NULL || input->binary_format == NULL ||
       request == NULL || request->output == NULL ||
       !http_config_shape_valid(config))
     return -1;
@@ -864,7 +864,7 @@ static int http_generate(
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !http_operation_config_valid(
-              contract, input->tbe_format, operation, config,
+              contract, input->binary_format, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (http_emit_fields(
@@ -1057,7 +1057,7 @@ static int rpc_generate(
   int ok = 0;
   (void)context;
 
-  if (contract == NULL || input->tbe_format == NULL ||
+  if (contract == NULL || input->binary_format == NULL ||
       request == NULL || request->output == NULL ||
       !rpc_config_shape_valid(config))
     return -1;
@@ -1092,7 +1092,7 @@ static int rpc_generate(
       size_t fields_count = 0u, errors_count = 0u;
       if (operation_name == NULL ||
           !rpc_operation_config_valid(
-              contract, input->tbe_format, operation, config,
+              contract, input->binary_format, operation, config,
               service_name, operation_name))
         goto cleanup;
       if (rpc_emit_fields(

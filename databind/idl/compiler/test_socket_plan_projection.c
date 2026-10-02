@@ -71,7 +71,7 @@ spec("DataBind generated SocketPlan") {
     }
     input = (databind_compiler_projection_input){
         .contract = contract,
-        .tbe_format = &format_plan};
+        .binary_format = &format_plan};
 
     check_equal(
         databind_compiler_projection_run(

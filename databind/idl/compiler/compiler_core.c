@@ -2291,7 +2291,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   Node *projection_root = NULL;
   Node *database_ir = NULL;
   IdlContract *contract = NULL;
-  databind_binary_format_plan tbe_format = {0};
+  databind_binary_format_plan binary_format = {0};
   char *schema_data = NULL;
   char template_path[SALTS_FS_MAX_PATH];
   const char *resolved_template = NULL;
@@ -2327,7 +2327,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
     }
     tbe_error_init(&format_error);
     if (!databind_binary_format_plan_build(
-            contract, projection_root, &tbe_format, &format_error)) {
+            contract, projection_root, &binary_format, &format_error)) {
       fprintf(stderr, "Failed to compile TBE format plan: %s\n",
               format_error.message);
       status = 1;
@@ -2472,7 +2472,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   if (status == 0 && options->projection_count != 0u) {
     databind_compiler_projection_input projection_input = {
         .contract = contract,
-        .tbe_format = &tbe_format};
+        .binary_format = &binary_format};
     if (databind_compiler_projection_run(
             &projection_input,
             options->projection_requests,
@@ -2483,7 +2483,7 @@ int tbe_compiler_run(const tbe_compiler_options_t *options) {
   }
 
 cleanup:
-  databind_binary_format_plan_destroy(&tbe_format);
+  databind_binary_format_plan_destroy(&binary_format);
   idl_contract_destroy(contract);
   free(schema_data);
   tbe_database_schema_destroy(database_ir);

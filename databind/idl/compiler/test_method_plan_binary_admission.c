@@ -65,7 +65,7 @@ spec("DataBind generated Binary MethodPlan admission") {
         contract, root, &format_plan, &format_error));
     input = (databind_compiler_projection_input){
         .contract = contract,
-        .tbe_format = &format_plan};
+        .binary_format = &format_plan};
 
     /* Non-Binary representation does not consult BinaryLayoutIR. */
     check_equal(

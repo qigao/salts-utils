@@ -334,7 +334,7 @@ static int flowmq_service_generate(
   FILE *file = NULL;
   int ok = 0;
 
-  if (input == NULL || input->contract == NULL || input->tbe_format == NULL ||
+  if (input == NULL || input->contract == NULL || input->binary_format == NULL ||
       request == NULL || request->output == NULL || config == NULL)
     return -1;
 
@@ -350,12 +350,12 @@ static int flowmq_service_generate(
     return -1;
 
   if (!flowmq_service_payload_representable(
-          input->contract, input->tbe_format,
+          input->contract, input->binary_format,
           operation->request_type,
           config->ingress_payload_kind,
           config->ingress_format) ||
       !flowmq_service_payload_representable(
-          input->contract, input->tbe_format,
+          input->contract, input->binary_format,
           operation->response_type,
           config->egress_payload_kind,
           config->egress_format))
@@ -427,11 +427,11 @@ static int flowmq_service_generate(
   if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       config->ingress_format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
-          input->contract, input->tbe_format,
+          input->contract, input->binary_format,
           operation->request_type) == 0) {
     if (fputc('\n', file) == EOF ||
         databind_compiler_binary_reader_emit(
-            file, input->contract, input->tbe_format,
+            file, input->contract, input->binary_format,
             operation->request_type, config->symbol_prefix) != 0)
       goto cleanup;
   }
@@ -541,7 +541,7 @@ static int flowmq_generate(
   int ok = 0;
   (void)context;
 
-  if (input == NULL || input->contract == NULL || input->tbe_format == NULL ||
+  if (input == NULL || input->contract == NULL || input->binary_format == NULL ||
       request == NULL || request->output == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT ||
       request->id.kind != DATABIND_COMPILER_TRANSPORT_FLOWMQ ||
@@ -558,7 +558,7 @@ static int flowmq_generate(
     return -1;
   message_type = channel->message_type;
   if (!flowmq_payload_representable(
-          input->contract, input->tbe_format, message_type, config))
+          input->contract, input->binary_format, message_type, config))
     return -1;
   if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       databind_compiler_message_native_build(
@@ -602,10 +602,10 @@ static int flowmq_generate(
   if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       config->format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
-          input->contract, input->tbe_format, message_type) == 0) {
+          input->contract, input->binary_format, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
         databind_compiler_binary_reader_emit(
-            file, input->contract, input->tbe_format, message_type,
+            file, input->contract, input->binary_format, message_type,
             config->symbol_prefix) != 0)
       goto cleanup;
   }

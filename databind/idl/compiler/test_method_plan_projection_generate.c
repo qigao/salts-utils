@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
   }
   input = (databind_compiler_projection_input){
       .contract = contract,
-      .tbe_format = &format_plan};
+      .binary_format = &format_plan};
 
   requests[0] = (databind_compiler_projection_request){
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
