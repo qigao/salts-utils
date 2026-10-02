@@ -28,7 +28,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(salts_idlc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c wasm_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
@@ -255,6 +255,7 @@ cmake_add_test(test_databind_projection_frontend
     service_native.c
     native_service_projection.c
     plugin_projection.c
+    wasm_projection.c
     openapi_projection.c
     method_plan_projection.c
     socket_plan_projection.c
@@ -1053,6 +1054,37 @@ cmake_add_test(test_databind_plugin_projection_rejection
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/idl/compiler")
+
+cmake_add_test(test_databind_wasm_projection
+  SOURCES
+    test_wasm_projection.c
+    compiler_core.c
+    projection.c
+    service_native.c
+    wasm_projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    WASM_PROJECTION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection.schema"
+    WASM_OPTIONAL_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_optional.schema"
+    WASM_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_error.schema"
+    WASM_MULTI_RESPONSE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_multi_response.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_target_properties(test_databind_wasm_projection PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_wasm_projection PROPERTIES
+  LABELS "databind;compiler;wasm;component;service-contract")
 
 cmake_add_test(test_database_schema_contract
   SOURCES test_database_schema_contract.c database_schema.c
