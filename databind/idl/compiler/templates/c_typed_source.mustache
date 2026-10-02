@@ -674,15 +674,15 @@ DATABIND_GENERATED_MAP_PROVIDER(
 #undef DATABIND_GENERATED_MAP_METHOD_I
 
 {{#composites}}
-{{#typed_cmeta_runtime_supported}}
+{{#cmeta_lifecycle_supported}}
 CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
-{{/typed_cmeta_runtime_supported}}
+{{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
-    {{#typed_cmeta_runtime_supported}}&cmeta_traits_{{name}}{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}},
+    {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
@@ -752,15 +752,15 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
 {{/composites}}
 
 {{#groups}}
-{{#typed_cmeta_runtime_supported}}
+{{#cmeta_lifecycle_supported}}
 CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
-{{/typed_cmeta_runtime_supported}}
+{{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
-    {{#typed_cmeta_runtime_supported}}&cmeta_traits_{{name}}{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}},
+    {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
@@ -830,15 +830,15 @@ DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *e
 {{/groups}}
 
 {{#messages}}
-{{#typed_cmeta_runtime_supported}}
+{{#cmeta_lifecycle_supported}}
 CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
-{{/typed_cmeta_runtime_supported}}
+{{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
 static const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
-    {{#typed_cmeta_runtime_supported}}&cmeta_traits_{{name}}{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}NULL{{/typed_cmeta_runtime_supported}},
+    {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
     &{{name}}_CMETA_ID
 };
 static cmeta_field_desc {{name}}_CMETA_LAYOUT_FIELDS[] = {
