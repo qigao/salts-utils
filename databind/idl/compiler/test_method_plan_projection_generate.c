@@ -14,7 +14,12 @@ int main(int argc, char **argv) {
   databind_compiler_http_operation_config http_operations[] = {
       {"Calc", "Add", "GET", "/add/{left}", 201,
        UINT64_C(4), DATA_BIND_FORMAT_YAML,
-       DATA_BIND_FORMAT_XML}
+       DATA_BIND_FORMAT_XML},
+      {"RawStore", "Echo", "POST", "/raw/echo", 200,
+       UINT64_C(0), DATA_BIND_FORMAT_NONE,
+       DATA_BIND_FORMAT_NONE,
+       DATA_BIND_PAYLOAD_OPAQUE, DATA_BIND_PAYLOAD_OPAQUE,
+       4096u, 4096u}
   };
   databind_compiler_http_field_config http_fields[] = {
       {"Calc", "Add", DATABIND_COMPILER_PROJECTION_INGRESS,
