@@ -1185,7 +1185,11 @@ int databind_compiler_service_native_emit_cflow_projection(
       operation->response_type == NULL)
     return -1;
 
-  if (operation->error_count != 0u) {
+  if (operation->error_count != 0u ||
+      operation->request_presence_count != 0u ||
+      operation->request_null_count != 0u ||
+      operation->response_presence_count != 0u ||
+      operation->response_null_count != 0u) {
     return fprintf(
                file,
                "cflow_function_projection_status %s__databind_cflow_projection(\n"
