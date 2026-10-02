@@ -455,7 +455,9 @@ typedef struct TestProvider {
   int provide_scale;
   int fail_right_type;
   int fail_right_validation;
+  int fail_sum_type;
   int fail_write;
+  uint32_t result_sum;
   size_t begin_calls;
   size_t write_calls;
   size_t commit_calls;
@@ -480,6 +482,16 @@ typedef struct StateProvider {
   uint32_t optional_value;
   uint32_t nullable_value;
   uint32_t defaulted_value;
+  int fail_result_type;
+
+  DataBindBindingValueState written_required_state;
+  DataBindBindingValueState written_optional_state;
+  DataBindBindingValueState written_nullable_state;
+  DataBindBindingValueState written_defaulted_state;
+  uint32_t written_required_value;
+  uint32_t written_optional_value;
+  uint32_t written_nullable_value;
+  uint32_t written_defaulted_value;
 
   size_t begin_calls;
   size_t write_calls;
@@ -520,14 +532,29 @@ static DataBindStatus state_provider_open(
   } else if (strcmp(name, "defaulted_value") == 0) {
     *state = provider->defaulted_state;
     value = provider->defaulted_value;
+  } else if (strcmp(name, "nullable_result") == 0) {
+    *state = provider->nullable_result_state;
+    value = provider->nullable_result_value;
+  } else if (strcmp(name, "tri_result") == 0) {
+    *state = provider->tri_result_state;
+    value = provider->tri_result_value;
   } else {
     return DATA_BIND_ERR_TYPE_NOT_FOUND;
   }
 
   if (*state != DATA_BIND_VALUE_STATE_VALUE) return DATA_BIND_OK;
 
-  provider->reader.token =
-      (cserde_token){.kind = CSERDE_UINT, .value.uint = value};
+  if (provider->fail_result_type &&
+      (strcmp(name, "nullable_result") == 0 ||
+       strcmp(name, "tri_result") == 0)) {
+    static const unsigned char invalid[] = "bad";
+    provider->reader.token =
+        (cserde_token){.kind = CSERDE_STRING,
+                       .value.slice = {invalid, 3u, CSERDE_VIEW_STABLE}};
+  } else {
+    provider->reader.token =
+        (cserde_token){.kind = CSERDE_UINT, .value.uint = value};
+  }
   provider->reader.emitted = 0;
   return cserde_reader_init(reader, &ONE_TOKEN_OPS, &provider->reader) ==
                  CSERDE_OK
@@ -545,10 +572,14 @@ static DataBindStatus state_provider_begin(
   provider->value_calls = 0u;
   provider->null_calls = 0u;
   provider->absent_calls = 0u;
-  provider->nullable_result_state = DATA_BIND_VALUE_STATE_ABSENT;
-  provider->tri_result_state = DATA_BIND_VALUE_STATE_ABSENT;
-  provider->nullable_result_value = 0u;
-  provider->tri_result_value = 0u;
+  provider->written_required_state = DATA_BIND_VALUE_STATE_ABSENT;
+  provider->written_optional_state = DATA_BIND_VALUE_STATE_ABSENT;
+  provider->written_nullable_state = DATA_BIND_VALUE_STATE_ABSENT;
+  provider->written_defaulted_state = DATA_BIND_VALUE_STATE_ABSENT;
+  provider->written_required_value = 0u;
+  provider->written_optional_value = 0u;
+  provider->written_nullable_value = 0u;
+  provider->written_defaulted_value = 0u;
   return DATA_BIND_OK;
 }
 
@@ -583,6 +614,26 @@ static DataBindStatus state_provider_write(
 
   name = entry_logical_name(entry);
   ++provider->write_calls;
+  if (name != NULL && strcmp(name, "required_value") == 0) {
+    provider->written_required_state = state;
+    provider->written_required_value = scalar;
+    return DATA_BIND_OK;
+  }
+  if (name != NULL && strcmp(name, "optional_value") == 0) {
+    provider->written_optional_state = state;
+    provider->written_optional_value = scalar;
+    return DATA_BIND_OK;
+  }
+  if (name != NULL && strcmp(name, "nullable_value") == 0) {
+    provider->written_nullable_state = state;
+    provider->written_nullable_value = scalar;
+    return DATA_BIND_OK;
+  }
+  if (name != NULL && strcmp(name, "defaulted_value") == 0) {
+    provider->written_defaulted_state = state;
+    provider->written_defaulted_value = scalar;
+    return DATA_BIND_OK;
+  }
   if (name != NULL && strcmp(name, "nullable_result") == 0) {
     provider->nullable_result_state = state;
     provider->nullable_result_value = scalar;
@@ -635,7 +686,9 @@ static DataBindStatus provider_open(
     return DATA_BIND_ERR_INVALID_ARG;
   if (entry->address.binding_class != DATA_BIND_BINDING_VALUE &&
       entry->address.binding_class != DATA_BIND_BINDING_METADATA &&
-      entry->address.binding_class != DATA_BIND_BINDING_PAYLOAD)
+      entry->address.binding_class != DATA_BIND_BINDING_PAYLOAD &&
+      entry->address.binding_class != DATA_BIND_BINDING_RESULT &&
+      entry->address.binding_class != DATA_BIND_BINDING_ERROR)
     return DATA_BIND_ERR_SCHEMA;
 
   name = entry_logical_name(entry);
@@ -661,6 +714,19 @@ static DataBindStatus provider_open(
       return DATA_BIND_OK;
     }
     value = 2u;
+  } else if (strcmp(name, "sum") == 0) {
+    value = provider->result_sum;
+    if (provider->fail_sum_type) {
+      static const unsigned char invalid[] = "bad";
+      provider->reader.token =
+          (cserde_token){.kind = CSERDE_STRING,
+                         .value.slice = {invalid, 3u, CSERDE_VIEW_STABLE}};
+      provider->reader.emitted = 0;
+      return cserde_reader_init(reader, &ONE_TOKEN_OPS, &provider->reader) ==
+                     CSERDE_OK
+                 ? DATA_BIND_OK
+                 : DATA_BIND_ERR_RUNTIME;
+    }
   } else {
     return DATA_BIND_ERR_TYPE_NOT_FOUND;
   }
@@ -1880,6 +1946,235 @@ spec("DataBind canonical Service BindingPlan") {
       check_equal(state.commit_calls, commit_before);
       check_equal(state.abort_calls, abort_before);
     }
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("writes client requests without reapplying defaults and validates before begin") {
+    DataBind *codec = create_state_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-client-request", &scratch, rpc_project);
+    DataBindServiceNativeBinding native = state_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    StateProvider state = {0};
+    DataBindBindingProvider provider = state_provider_for(&state);
+    StateRequest request = {
+        .required_value = 11u,
+        .optional_value = 22u,
+        .nullable_value = 33u,
+        .defaulted_value = 44u,
+        .presence = 0u,
+        .nulls = (uint8_t)(1u << 0)};
+    void *params[] = {NULL, NULL};
+    const size_t param_bytes[] = {0u, 0u};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "State", "Run", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    check_equal(data_bind_binding_plan_write_inputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(state.begin_calls, (size_t)1u);
+    check_equal(state.write_calls, (size_t)4u);
+    check_equal(state.commit_calls, (size_t)1u);
+    check_equal(state.abort_calls, (size_t)0u);
+    check_equal(state.written_required_state, DATA_BIND_VALUE_STATE_VALUE);
+    check_equal(state.written_required_value, (uint32_t)11u);
+    check_equal(state.written_optional_state, DATA_BIND_VALUE_STATE_ABSENT);
+    check_equal(state.written_nullable_state, DATA_BIND_VALUE_STATE_NULL);
+    check_equal(state.written_defaulted_state, DATA_BIND_VALUE_STATE_ABSENT);
+    check_equal(request.defaulted_value, (uint32_t)44u);
+    check_equal(request.presence, (uint8_t)0u);
+    check_equal(request.nulls, (uint8_t)(1u << 0));
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("validates client requests before beginning provider output") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-client-request-validation", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_root));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    EncodeOutputProvider state = {
+        .options = &options,
+        .native_diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT};
+    DataBindBindingProvider provider = encode_provider_for(&state);
+    AddRequest request = {
+        .left = 0u,
+        .right = 4u,
+        .scale = 2u,
+        .presence = (uint8_t)(1u << 0)};
+    void *params[] = {NULL, NULL};
+    const size_t param_bytes[] = {0u, 0u};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    frame.request = &request;
+    frame.request_bytes = sizeof(request);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+
+    check_equal(data_bind_binding_plan_write_inputs(
+                    plan, &provider, &frame, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "left");
+    check_equal(state.begin_calls, (size_t)0u);
+    check_equal(state.write_calls, (size_t)0u);
+    check_equal(state.commit_calls, (size_t)0u);
+    check_equal(state.abort_calls, (size_t)0u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("binds client success results with native state and rolls malformed input back") {
+    DataBind *codec = create_state_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-client-result", &scratch, rpc_project);
+    DataBindServiceNativeBinding native = state_native_binding();
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    StateProvider state = {
+        .nullable_result_state = DATA_BIND_VALUE_STATE_VALUE,
+        .tri_result_state = DATA_BIND_VALUE_STATE_NULL,
+        .nullable_result_value = 13u};
+    DataBindBindingProvider provider = state_provider_for(&state);
+    StateResponse response = {0};
+    void *params[] = {NULL, &response};
+    const size_t param_bytes[] = {0u, sizeof(response)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingOutcome outcome = DATA_BIND_BINDING_OUTCOME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "State", "Run", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 2u;
+    outcome.kind = DATA_BIND_BINDING_OUTCOME_SUCCESS;
+
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(response.nullable_result, (uint32_t)13u);
+    check_equal(response.tri_result, (uint32_t)0u);
+    check_equal(response.presence, (uint8_t)(1u << 0));
+    check_equal(response.nulls, (uint8_t)(1u << 1));
+
+    {
+      DataBindNativeDiagnostic native_diagnostic =
+          DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+      check_equal(data_bind_native_clear(
+                      &options, &STATE_RESPONSE_DATA, &response,
+                      sizeof(response), &native_diagnostic),
+                  DATA_BIND_OK);
+      response.presence = 0u;
+      response.nulls = 0u;
+    }
+
+    state.fail_result_type = 1;
+    state.tri_result_state = DATA_BIND_VALUE_STATE_ABSENT;
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(response.nullable_result, (uint32_t)0u);
+    check_equal(response.tri_result, (uint32_t)0u);
+    check_equal(response.presence, (uint8_t)0u);
+    check_equal(response.nulls, (uint8_t)0u);
+
+    data_bind_binding_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("binds a direct scalar client result without request staging") {
+    DataBind *codec = create_codec();
+    ProjectionScratch scratch = {{0}, {0}};
+    DataBindBindingProjection rpc =
+        projection("rpc-client-scalar", &scratch, rpc_project);
+    DataBindServiceNativeBinding native =
+        native_binding(FunctionMeta(calc_add_fields));
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindBindingPlan *plan = NULL;
+    unsigned char workspace[4096] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    TestProvider state = {.result_sum = 17u};
+    DataBindBindingProvider provider = provider_for(&state);
+    uint32_t sum = 0u;
+    void *params[] = {NULL, NULL, NULL, &sum};
+    const size_t param_bytes[] = {0u, 0u, 0u, sizeof(sum)};
+    DataBindBindingCallFrame frame = DATA_BIND_BINDING_CALL_FRAME_INIT;
+    DataBindBindingOutcome outcome = DATA_BIND_BINDING_OUTCOME_INIT;
+
+    check_equal(data_bind_binding_plan_compile_service(
+                    codec, "Calc", "Add", &rpc, &native,
+                    &plan, &diagnostic),
+                DATA_BIND_OK);
+    frame.params = params;
+    frame.param_bytes = param_bytes;
+    frame.param_count = 4u;
+    outcome.kind = DATA_BIND_BINDING_OUTCOME_SUCCESS;
+
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_OK);
+    check_equal(sum, (uint32_t)17u);
+
+    sum = 0u;
+    state.result_sum = 101u;
+    check_equal(data_bind_binding_plan_bind_outcome(
+                    plan, &provider, &options, &frame,
+                    &outcome, &diagnostic),
+                DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "sum");
+    check_equal(sum, (uint32_t)0u);
 
     data_bind_binding_plan_free(plan);
     data_bind_free(codec);
