@@ -535,8 +535,32 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     }
     json_cserde_reader_destroy(reader);
     json_free(root);
+    reader = NULL;
+    root = NULL;
 
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
     options.max_depth = 16u;
+    options.max_owned_bytes = 1u;
+    root = json_parse(
+        "{\"id\":23,\"headers\":[{\"name\":\"x\",\"value\":\"y\"}]}",
+        sizeof("{\"id\":23,\"headers\":[{\"name\":\"x\",\"value\":\"y\"}]}") - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_LIMIT);
+      check_equal(value.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&value.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    options.max_owned_bytes = 4096u;
     check_equal(
         data_bind_native_clear(
             &options, binding.data, &value, sizeof(value),
