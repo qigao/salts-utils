@@ -112,6 +112,8 @@ static uint32_t plan_format_states(DataBindFormat format) {
   case DATA_BIND_FORMAT_XML:
     return DATA_BIND_FORMAT_STATE_VALUE |
            DATA_BIND_FORMAT_STATE_ABSENT;
+  case DATA_BIND_FORMAT_NONE:
+    return 0u;
   }
   return 0u;
 }
