@@ -15,6 +15,11 @@ enum {
   DATA_BIND_OPAQUE_SPAN_ABI_VERSION = 1u
 };
 
+typedef enum DataBindPayloadKind {
+  DATA_BIND_PAYLOAD_FORMAT = 0,
+  DATA_BIND_PAYLOAD_OPAQUE = 1
+} DataBindPayloadKind;
+
 enum DataBindOpaqueStateFlags {
   DATA_BIND_OPAQUE_STATE_VALUE = UINT32_C(1) << 0,
   DATA_BIND_OPAQUE_STATE_ABSENT = UINT32_C(1) << 1,
