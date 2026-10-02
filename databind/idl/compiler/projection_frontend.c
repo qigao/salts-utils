@@ -368,7 +368,7 @@ static int add_flowmq_plan(
           sizeof(out->method_plan_symbol_prefix)))
     return frontend_error(
         error, error_size,
-        "Artifact name cannot form a FlowMQ ChannelPlan C symbol prefix");
+        "Artifact name cannot form a FlowMQ plan C symbol prefix");
 
   if (!out->external_config.has_flowmq)
     return frontend_error(
@@ -387,7 +387,7 @@ static int add_flowmq_plan(
           sizeof(out->flowmq_projection_header)))
     return frontend_error(
         error, error_size,
-        "Derived FlowMQ ChannelPlan output path is too long");
+        "Derived FlowMQ plan output path is too long");
 
   if (path_reserved(input, out->flowmq_projection_header) ||
       projection_output_in_use(out, out->flowmq_projection_header))
@@ -410,7 +410,7 @@ static int add_flowmq_plan(
           .output = out->flowmq_projection_header,
           .config = &out->flowmq};
   out->backends[out->backend_count++] =
-      databind_compiler_flowmq_channel_plan_backend();
+      databind_compiler_flowmq_plan_backend();
   return 0;
 }
 
