@@ -2248,7 +2248,8 @@ DataBindStatus data_bind_native_clear(
 static DataBindStatus native_decode_bounded(
     const DataBindNativeOptions *options, const cmeta_data_desc *shape,
     cserde_reader *reader, void *destination, size_t destination_bytes,
-    size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
+    size_t max_buffer_bytes, DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic) {
   NativeArena arena;
   NativeArena scratch;
   NativePlan plan;
@@ -2372,7 +2373,13 @@ static DataBindStatus native_decode_bounded(
   if (native_restore_value(shape, temporary) != DATA_BIND_OK && status == DATA_BIND_OK)
     status = native_fail(diagnostic, DATA_BIND_ERR_RUNTIME, CSERDE_OK, root_path,
                          "Temporary native storage did not restore semantic zero");
-  if (status == DATA_BIND_OK) native_reset_diagnostic(diagnostic);
+  if (status == DATA_BIND_OK) {
+    if (usage != NULL) {
+      usage->items = decode.items;
+      usage->owned_bytes = decode.owned_bytes;
+    }
+    native_reset_diagnostic(diagnostic);
+  }
   return status;
 }
 
@@ -2383,7 +2390,7 @@ DataBindStatus data_bind_native_decode(
     cserde_reader *reader, void *destination, size_t destination_bytes,
     DataBindNativeDiagnostic *diagnostic) {
   return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, SIZE_MAX, diagnostic);
+                               destination_bytes, SIZE_MAX, NULL, diagnostic);
 }
 
 DataBindStatus data_bind_native_decode_bounded(
@@ -2391,7 +2398,22 @@ DataBindStatus data_bind_native_decode_bounded(
     cserde_reader *reader, void *destination, size_t destination_bytes,
     size_t max_buffer_bytes, DataBindNativeDiagnostic *diagnostic) {
   return native_decode_bounded(options, shape, reader, destination,
-                               destination_bytes, max_buffer_bytes, diagnostic);
+                               destination_bytes, max_buffer_bytes, NULL,
+                               diagnostic);
+}
+
+DataBindStatus data_bind_native_decode_usage(
+    const DataBindNativeOptions *options, const cmeta_data_desc *shape,
+    cserde_reader *reader, void *destination, size_t destination_bytes,
+    DataBindNativeDecodeUsage *usage,
+    DataBindNativeDiagnostic *diagnostic) {
+  if (usage == NULL)
+    return native_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, CSERDE_OK, NULL,
+        "Native decode usage output is required");
+  return native_decode_bounded(
+      options, shape, reader, destination, destination_bytes,
+      SIZE_MAX, usage, diagnostic);
 }
 
 
