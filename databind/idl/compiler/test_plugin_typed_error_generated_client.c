@@ -3,6 +3,7 @@
 #include <tinytest.h>
 
 #include "error.plugin_client.h"
+#include "data_bind_plugin_execution.h"
 
 #ifndef GENERATED_TYPED_ERROR_PLUGIN_PATH
 #error "GENERATED_TYPED_ERROR_PLUGIN_PATH is required"
@@ -37,6 +38,7 @@ spec("generated typed-error DataBind Plugin client") {
       salts_plugin_lease catalog_lease = {0};
       const salts_plugin_manifest *manifest = NULL;
       const salts_plugin_export *catalog_entry = NULL;
+      const salts_plugin_export *function_entry = NULL;
       data_bind_plugin_catalog *catalog = NULL;
       DataBindPluginOperationBinding operation =
           DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
@@ -80,10 +82,25 @@ spec("generated typed-error DataBind Plugin client") {
       {
         DataBindServiceNativeBinding native =
             DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
+        DataBindNativeExecution execution =
+            (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;
         check_true(data_bind_plugin_operation_native_binding(
             &operation, &native));
         check_equal(native.error_count, (size_t)1u);
         check_equal(native.error_param_index, (size_t)2u);
+
+        check_equal(salts_plugin_manifest_find_export(
+                        manifest, operation.export_id, &function_entry),
+                    SALTS_PLUGIN_OK);
+        check_not_null(function_entry);
+        check_true(data_bind_plugin_operation_execution_admit(
+            &operation, function_entry, &execution));
+        check_true(data_bind_native_execution_valid(&execution));
+        check_true(execution.function == operation.function);
+        check_equal(execution.abi->param_count, (size_t)3u);
+        check_equal(
+            cmeta_function_param_abi(execution.abi, 2u),
+            CMETA_ABI_OBJECT_POINTER);
       }
       check_equal(salts_plugin_registry_release(
                       &registry, &catalog_lease),
