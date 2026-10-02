@@ -12,3 +12,20 @@ union Choice {
 }
 
 channel ChoiceEvents: Choice;
+
+
+message AddRequest {
+  uint32 value;
+}
+
+message AddResponse {
+  uint32 value;
+}
+
+message CalcError {
+  uint32 code;
+}
+
+service Calc {
+  Add: AddRequest -> AddResponse throws CalcError;
+}
