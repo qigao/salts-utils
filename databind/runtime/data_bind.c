@@ -212,7 +212,7 @@ static int value_pool_put(DataBindValue *value) {
 
 struct DataBind {
   IdlContract *contract;
-  Node *schema_root; /* transitional TBE/render tree; not semantic authority */
+  Node *schema_root; /* transitional Binary/render tree; not semantic authority */
   uint8_t schema_fingerprint[DATA_BIND_CONTRACT_FINGERPRINT_SIZE];
 };
 
@@ -6991,7 +6991,7 @@ static DataBindStatus parse_idl_contract_text(
       "IDL contract error: %s", diagnostic.message);
 }
 
-/* Transitional representation for TBE-format/runtime paths. The typed
+/* Transitional representation for Binary-format/runtime paths. The typed
  * IdlContract is the semantic authority; this tree may carry format overlay
  * facts that are not part of the logical contract. */
 static Node *parse_schema_text_to_root(
@@ -7030,10 +7030,10 @@ static Node *parse_schema_text_to_root(
 
   if (databind_binary_contract_apply(root, &err) != 0) {
     if (error_buf != NULL && error_size > 0)
-      snprintf(error_buf, error_size, "TBE format error: %s", err.message);
+      snprintf(error_buf, error_size, "Binary format error: %s", err.message);
     db_error_set(
         error, DATA_BIND_ERR_SCHEMA, path, err.line, err.column,
-        "TBE format error: %s", err.message);
+        "Binary format error: %s", err.message);
     node_free(root);
     return NULL;
   }
