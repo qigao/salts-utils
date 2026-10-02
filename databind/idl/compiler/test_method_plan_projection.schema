@@ -12,3 +12,6 @@ message CalcError {
 service Calc {
   Add: AddRequest -> AddResponse throws CalcError;
 }
+service RawStore {
+  Echo: bytes -> bytes;
+}
