@@ -410,7 +410,7 @@ static int add_flowmq_plan(
           .output = out->flowmq_projection_header,
           .config = &out->flowmq};
   out->backends[out->backend_count++] =
-      databind_compiler_flowmq_channel_plan_backend();
+      databind_compiler_flowmq_plan_backend();
   return 0;
 }
 
