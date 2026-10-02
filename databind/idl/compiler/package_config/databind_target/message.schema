@@ -4,3 +4,13 @@ message Config {
   @Min(1) @Max(65535) uint32 port;
   optional string label default "default";
 }
+
+message Header {
+  string name;
+  string value;
+}
+
+message HeaderPolicy {
+  uint32 id;
+  list<Header> headers;
+}
