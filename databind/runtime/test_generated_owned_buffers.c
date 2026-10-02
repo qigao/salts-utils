@@ -10,6 +10,7 @@
 #include <salts_cmeta_data.h>
 #include <tstr.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -399,6 +400,151 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         DATA_BIND_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
+
+  it("rolls back generated sequences on item and depth quota failures") {
+    const DataBindMessageNativeArtifact *artifact =
+        NativeHeaderPolicy_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    const cmeta_data_struct_shape *shape;
+    const cmeta_data_desc *sequence_data;
+    DataBindNativeRequirements requirements =
+        DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindMessagePlan *plan = NULL;
+    DataBind *codec = NULL;
+    NativeHeaderPolicy_t value = {0};
+    unsigned char workspace[16384] = {0};
+    char json[4096];
+    size_t used = 0u;
+    size_t count;
+    size_t i;
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_not_null(binding.data);
+    if (binding.data == NULL || binding.data->shape == NULL) return;
+    shape = (const cmeta_data_struct_shape *)binding.data->shape;
+    check_equal(shape->field_count, (size_t)2u);
+    sequence_data = shape->fields[1].value;
+    check_not_null(sequence_data);
+    if (sequence_data == NULL) return;
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 4096u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+    check_equal(
+        data_bind_native_measure(
+            &options, sequence_data, &requirements, &native_diagnostic),
+        DATA_BIND_OK);
+    check_true(requirements.descriptor_nodes > 0u);
+    check_true(requirements.descriptor_nodes < 32u);
+    check_true(requirements.descriptor_depth > 1u);
+    if (requirements.descriptor_nodes == 0u ||
+        requirements.descriptor_nodes >= 32u ||
+        requirements.descriptor_depth <= 1u)
+      return;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeHeaderPolicy", &binding, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    count = requirements.descriptor_nodes + 1u;
+    used = (size_t)snprintf(json, sizeof(json), "{\"id\":21,\"headers\":[");
+    for (i = 0u; i < count && used < sizeof(json); ++i) {
+      int written = snprintf(
+          json + used, sizeof(json) - used,
+          "%s{\"name\":\"x\",\"value\":\"y\"}", i == 0u ? "" : ",");
+      check_true(written > 0);
+      if (written <= 0 || (size_t)written >= sizeof(json) - used) {
+        used = sizeof(json);
+        break;
+      }
+      used += (size_t)written;
+    }
+    if (used < sizeof(json)) {
+      int written = snprintf(json + used, sizeof(json) - used, "]}");
+      check_true(written > 0);
+      if (written > 0 && (size_t)written < sizeof(json) - used)
+        used += (size_t)written;
+      else
+        used = sizeof(json);
+    }
+    check_true(used < sizeof(json));
+    if (used >= sizeof(json)) {
+      data_bind_message_plan_free(plan);
+      data_bind_free(codec);
+      return;
+    }
+
+    options.max_items = requirements.descriptor_nodes;
+    root = json_parse(json, used);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_LIMIT);
+      check_equal(value.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&value.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    options.max_items = 64u;
+    options.max_depth = requirements.descriptor_depth - 1u;
+    root = json_parse(
+        "{\"id\":22,\"headers\":[{\"name\":\"x\",\"value\":\"y\"}]}",
+        sizeof("{\"id\":22,\"headers\":[{\"name\":\"x\",\"value\":\"y\"}]}") - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_ERR_LIMIT);
+      check_equal(value.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&value.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    options.max_depth = 16u;
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value),
+            &native_diagnostic),
+        DATA_BIND_OK);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   }
 
 }
