@@ -102,6 +102,37 @@ static int token_key_equal(const cserde_token *token, const char *text) {
           memcmp(token->value.slice.data, text, length) == 0);
 }
 
+
+typedef struct PlanTokenWriter {
+  cserde_token tokens[16];
+  size_t count;
+} PlanTokenWriter;
+
+static cserde_status plan_token_write(void *opaque, const cserde_token *token) {
+  PlanTokenWriter *sink = (PlanTokenWriter *)opaque;
+  if (sink == NULL || token == NULL || sink->count >= 16u)
+    return CSERDE_LIMIT_EXCEEDED;
+  sink->tokens[sink->count++] = *token;
+  return CSERDE_OK;
+}
+
+static cserde_status plan_token_finish(void *opaque) {
+  return opaque != NULL ? CSERDE_OK : CSERDE_SINK_ERROR;
+}
+
+static const cserde_writer_ops PLAN_TOKEN_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    plan_token_write, plan_token_finish};
+
+static int plan_writer_init(
+    cserde_writer *writer, PlanTokenWriter *sink) {
+  if (writer == NULL || sink == NULL) return 0;
+  *writer = (cserde_writer){0};
+  memset(sink, 0, sizeof(*sink));
+  return cserde_writer_init(
+             writer, &PLAN_TOKEN_WRITER_OPS, sink) == CSERDE_OK;
+}
+
 static DataBindStatus projection_collision_codec(
     DataBind **out_codec) {
   static const char schema[] =
@@ -229,6 +260,80 @@ spec("DataBind FormatPlan and TransportPlan") {
 
       data_bind_format_plan_free(plan);
     }
+  }
+
+
+  it("projects canonical egress names to primary external names only") {
+    DataBind *codec = projection_plan_codec();
+    DataBindFormatPlan *plan = NULL;
+    DataBindFormatCanonicalWriter canonical =
+        DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    PlanTokenWriter sink = {0};
+    cserde_writer target = {0};
+    cserde_writer *writer;
+    cserde_token token = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_format_plan_compile(
+            codec, "NamedRoot", DATA_BIND_FORMAT_JSON, &plan, &error),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    data_bind_free(codec);
+    codec = NULL;
+
+    check_true(plan_writer_init(&target, &sink));
+    check_equal(
+        data_bind_format_canonical_writer_init(
+            plan, &target, &canonical, &error),
+        DATA_BIND_OK);
+    writer = data_bind_format_canonical_writer_writer(&canonical);
+    check_not_null(writer);
+    if (writer == NULL) {
+      data_bind_format_plan_free(plan);
+      return;
+    }
+
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = plan_key("id");
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = (cserde_token){.kind = CSERDE_UINT, .value.uint = 7u};
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = plan_key("qty");
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = (cserde_token){.kind = CSERDE_UINT, .value.uint = 2u};
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = (cserde_token){.kind = CSERDE_MAP_END};
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    check_equal(cserde_writer_finish(writer), CSERDE_OK);
+    check_equal(target.state, CSERDE_WRITER_READY);
+    check_equal(cserde_writer_finish(&target), CSERDE_OK);
+
+    check_equal(sink.count, (size_t)6u);
+    check_equal(sink.tokens[0].kind, CSERDE_MAP_BEGIN);
+    check_true(token_key_equal(&sink.tokens[1], "orderId"));
+    check_equal(sink.tokens[2].kind, CSERDE_UINT);
+    check_true(token_key_equal(&sink.tokens[3], "qty"));
+    check_equal(sink.tokens[5].kind, CSERDE_MAP_END);
+
+    canonical = (DataBindFormatCanonicalWriter)
+        DATA_BIND_FORMAT_CANONICAL_WRITER_INIT;
+    target = (cserde_writer){0};
+    check_true(plan_writer_init(&target, &sink));
+    check_equal(
+        data_bind_format_canonical_writer_init(
+            plan, &target, &canonical, &error),
+        DATA_BIND_OK);
+    writer = data_bind_format_canonical_writer_writer(&canonical);
+    token = (cserde_token){.kind = CSERDE_MAP_BEGIN};
+    check_equal(cserde_writer_write(writer, &token), CSERDE_OK);
+    token = plan_key("legacyId");
+    check_equal(cserde_writer_write(writer, &token), CSERDE_UNSUPPORTED);
+
+    data_bind_format_plan_free(plan);
   }
 
   it("normalizes primary and alias spellings to one duplicate logical field") {

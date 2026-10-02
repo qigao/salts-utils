@@ -13,7 +13,8 @@ cmake_add_grammar(JSONPATH
 # Library
 cmake_add_source(SOURCE_FILES DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src)
 list(REMOVE_ITEM SOURCE_FILES
-     "${CMAKE_CURRENT_SOURCE_DIR}/src/json_cserde_reader.c")
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/json_cserde_reader.c"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/json_cserde_writer.c")
 
 add_library(${TARGET_NAME} STATIC ${SOURCE_FILES} ${JSON_LEXER_GEN}
                                   ${JSON_GRAMMAR_GEN} ${JSONPATH_GRAMMAR_GEN})
@@ -36,7 +37,9 @@ target_link_libraries(${TARGET_NAME}
   PRIVATE Salts::CSTL
   PUBLIC Salts::Core Salts::QueryVM)
 
-add_library(json_cserde_adapter STATIC src/json_cserde_reader.c)
+add_library(json_cserde_adapter STATIC
+  src/json_cserde_reader.c
+  src/json_cserde_writer.c)
 cmake_config_target(json_cserde_adapter
   ALIAS Salts::JsonCSerdeAdapter
   FOLDER "parser/${TARGET_NAME}"
