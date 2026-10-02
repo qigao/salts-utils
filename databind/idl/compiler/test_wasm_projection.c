@@ -97,7 +97,7 @@ static int write_core_add_module(
   if (!put_bytes(bytes, sizeof(bytes), &used, header, sizeof(header)))
     return 0;
 
-  /* type0 realloc(i32,i32,i32,i32)->i32; type1 op(i32,i32,i32)->() */
+  /* type0 realloc(i32,i32,i32,i32)->i32; type1 op(i32,i32)->i32 */
   if (!put_uleb(section, sizeof(section), &section_used, 2u) ||
       !put_u8(section, sizeof(section), &section_used, 0x60u) ||
       !put_uleb(section, sizeof(section), &section_used, 4u) ||
@@ -108,11 +108,11 @@ static int write_core_add_module(
       !put_uleb(section, sizeof(section), &section_used, 1u) ||
       !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
       !put_u8(section, sizeof(section), &section_used, 0x60u) ||
-      !put_uleb(section, sizeof(section), &section_used, 3u) ||
+      !put_uleb(section, sizeof(section), &section_used, 2u) ||
       !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
       !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
       !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
-      !put_uleb(section, sizeof(section), &section_used, 0u) ||
       !put_section(bytes, sizeof(bytes), &used, 1u,
                    section, section_used))
     return 0;
@@ -189,7 +189,7 @@ static int write_core_add_module(
    * Service operation:
    * request wire = two little-endian u32 values.
    * result envelope at 256 = status(0) + response wire(sum).
-   * result_pair = {256, 8}.
+   * result pair at 192 = {256, 8}; return 192.
    */
   body_used = 0u;
   if (!put_uleb(body, sizeof(body), &body_used, 0u) ||
@@ -216,20 +216,22 @@ static int write_core_add_module(
       !put_u8(body, sizeof(body), &body_used, 0x36u) ||
       !put_uleb(body, sizeof(body), &body_used, 2u) ||
       !put_uleb(body, sizeof(body), &body_used, 0u) ||
-      !put_u8(body, sizeof(body), &body_used, 0x20u) ||
-      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
       !put_u8(body, sizeof(body), &body_used, 0x41u) ||
       !put_sleb32(body, sizeof(body), &body_used, 256) ||
       !put_u8(body, sizeof(body), &body_used, 0x36u) ||
       !put_uleb(body, sizeof(body), &body_used, 2u) ||
       !put_uleb(body, sizeof(body), &body_used, 0u) ||
-      !put_u8(body, sizeof(body), &body_used, 0x20u) ||
-      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
       !put_u8(body, sizeof(body), &body_used, 0x41u) ||
       !put_sleb32(body, sizeof(body), &body_used, 8) ||
       !put_u8(body, sizeof(body), &body_used, 0x36u) ||
       !put_uleb(body, sizeof(body), &body_used, 2u) ||
       !put_uleb(body, sizeof(body), &body_used, 4u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
       !put_u8(body, sizeof(body), &body_used, 0x0bu) ||
       !put_uleb(section, sizeof(section), &section_used,
                 (uint32_t)body_used) ||
@@ -368,7 +370,7 @@ spec("DataBind WASM projection backend") {
     check_not_null(strstr(generated.base, "cabi_realloc"));
     check_not_null(strstr(generated.base, "request_offset"));
     check_not_null(strstr(generated.base, "request_length"));
-    check_not_null(strstr(generated.base, "result_pair_offset"));
+    check_null(strstr(generated.base, "result_pair_offset"));
     check_null(strstr(
         generated.base, "uint32_t left, uint32_t right"));
     salts_fs_buf_free(&generated);
