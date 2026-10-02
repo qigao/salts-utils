@@ -420,11 +420,24 @@ spec("DataBind public typed generation frontend") {
     check_not_null(strstr(error, "Unknown artifact"));
 
     input.artifacts = "wasm";
+    input.wasm_core_module_path = NULL;
     check_equal(databind_compiler_projection_frontend_build(
                     &input, &plan, error, sizeof(error)),
                 -1);
-    check_not_null(strstr(error, "not available"));
+    check_not_null(strstr(error, "--wasm-core-module"));
 
+    input.wasm_core_module_path = __FILE__;
+    check_equal(databind_compiler_projection_frontend_build(
+                    &input, &plan, error, sizeof(error)),
+                0);
+    check_equal(plan.request_count, (size_t)1u);
+    check_equal(plan.backend_count, (size_t)1u);
+    check_equal(
+        plan.requests[0].id.kind,
+        (uint32_t)DATABIND_COMPILER_ARTIFACT_WASM);
+    check_not_null(strstr(plan.requests[0].output, ".wasm"));
+
+    input.wasm_core_module_path = NULL;
     input.artifacts = NULL;
     input.transports = "socket";
     check_equal(databind_compiler_projection_frontend_build(
