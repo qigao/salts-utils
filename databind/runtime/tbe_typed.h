@@ -73,6 +73,78 @@
     return !vec || vec_empty(&vec->raw);                                                   \
   }
 
+/*
+ * Generated record-list storage uses the same public { vec_t raw; } layout,
+ * but resolves the element's canonical CMeta type before construction. This
+ * keeps public init/from/push/destroy semantics identical to the MessagePlan
+ * sequence collector for managed elements such as records containing tstr.
+ */
+#define TBE_TYPED_MANAGED_VEC_DEFINE(NAME, TYPE, DATA_RESOLVER)                           \
+  typedef struct NAME {                                                                   \
+    vec_t raw;                                                                            \
+  } NAME;                                                                                 \
+  static inline const cmeta_type_desc *NAME##_element_type(void) {                       \
+    const cmeta_data_desc *data = NULL;                                                   \
+    return (DATA_RESOLVER)(&data, NULL) == DATA_BIND_OK && data != NULL                  \
+               ? data->storage_type                                                       \
+               : NULL;                                                                    \
+  }                                                                                       \
+  static inline stl_status NAME##_init(NAME *vec, size_t limit) {                        \
+    const cmeta_type_desc *type = NAME##_element_type();                                 \
+    return vec == NULL                                                                    \
+               ? STL_INVALID_ARGUMENT                                                     \
+               : (type != NULL ? vec_raw_init(&vec->raw, type, limit)                    \
+                               : STL_TRAIT_MISSING);                                       \
+  }                                                                                       \
+  static inline stl_status NAME##_from(NAME *vec, const TYPE *elements,                  \
+                                       size_t count, size_t limit) {                      \
+    const cmeta_type_desc *type = NAME##_element_type();                                 \
+    return vec == NULL                                                                    \
+               ? STL_INVALID_ARGUMENT                                                     \
+               : (type != NULL                                                            \
+                      ? vec_raw_from_array(&vec->raw, elements, count, type, limit)       \
+                      : STL_TRAIT_MISSING);                                                \
+  }                                                                                       \
+  static inline void NAME##_destroy(NAME *vec) {                                         \
+    if (vec) vec_raw_destroy_storage(&vec->raw);                                          \
+  }                                                                                       \
+  static inline stl_status NAME##_clear(NAME *vec) {                                     \
+    return vec ? vec_clear(&vec->raw) : STL_INVALID_ARGUMENT;                            \
+  }                                                                                       \
+  static inline stl_status NAME##_reserve(NAME *vec, size_t capacity) {                  \
+    return vec ? vec_reserve(&vec->raw, capacity) : STL_INVALID_ARGUMENT;                \
+  }                                                                                       \
+  static inline stl_status NAME##_resize(NAME *vec, size_t size) {                       \
+    return vec ? vec_resize(&vec->raw, size) : STL_INVALID_ARGUMENT;                     \
+  }                                                                                       \
+  static inline stl_status NAME##_push(NAME *vec, TYPE value) {                          \
+    return vec ? vec_push(&vec->raw, &value) : STL_INVALID_ARGUMENT;                     \
+  }                                                                                       \
+  static inline stl_status NAME##_pop(NAME *vec, TYPE *out_value) {                      \
+    return vec ? vec_pop(&vec->raw, out_value) : STL_INVALID_ARGUMENT;                   \
+  }                                                                                       \
+  static inline TYPE *NAME##_at(NAME *vec, size_t index) {                               \
+    return vec ? (TYPE *)vec_at(&vec->raw, index) : NULL;                                \
+  }                                                                                       \
+  static inline const TYPE *NAME##_at_const(const NAME *vec, size_t index) {             \
+    return vec ? (const TYPE *)vec_at_const(&vec->raw, index) : NULL;                    \
+  }                                                                                       \
+  static inline TYPE *NAME##_data(NAME *vec) {                                           \
+    return vec ? (TYPE *)vec_data(&vec->raw) : NULL;                                     \
+  }                                                                                       \
+  static inline const TYPE *NAME##_data_const(const NAME *vec) {                         \
+    return vec ? (const TYPE *)vec_data_const(&vec->raw) : NULL;                         \
+  }                                                                                       \
+  static inline size_t NAME##_size(const NAME *vec) {                                    \
+    return vec ? vec_size(&vec->raw) : 0u;                                               \
+  }                                                                                       \
+  static inline size_t NAME##_capacity(const NAME *vec) {                                \
+    return vec ? vec_capacity(&vec->raw) : 0u;                                           \
+  }                                                                                       \
+  static inline bool NAME##_empty(const NAME *vec) {                                     \
+    return !vec || vec_empty(&vec->raw);                                                  \
+  }
+
 #ifdef __cplusplus
 extern "C" {
 #endif
