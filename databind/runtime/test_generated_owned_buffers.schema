@@ -25,3 +25,14 @@ message NativeHeaderNestedOnly {
     uint32 id;
     list<NativeHeader> headers;
 }
+
+
+message NativeAggregateOwnedBudget {
+    string first;
+    string second;
+}
+
+message NativeAggregateItemBudget {
+    list<NativeHeader> left;
+    list<NativeHeader> right;
+}
