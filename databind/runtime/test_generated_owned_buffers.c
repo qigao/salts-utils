@@ -116,6 +116,12 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         "{\"id\":8,\"headers\":["
         "{\"name\":\"x-tag\",\"value\":\"a\"},"
         "{\"name\":\"x-tag\"}]}";
+    static const char oversized_json[] =
+        "{\"id\":9,\"headers\":["
+        "{\"name\":\"a\",\"value\":\"1\"},"
+        "{\"name\":\"b\",\"value\":\"2\"},"
+        "{\"name\":\"c\",\"value\":\"3\"},"
+        "{\"name\":\"d\",\"value\":\"4\"}]}";
     const cmeta_data_desc *header_data = NULL;
     const cmeta_data_desc *policy_data = NULL;
     const cmeta_data_desc *sequence_data = NULL;
@@ -135,6 +141,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     DataBind *codec = NULL;
     NativeHeaderPolicy_t value = {0};
     NativeHeaderPolicy_t rejected = {0};
+    NativeHeaderPolicy_t oversized = {0};
     unsigned char workspace[16384] = {0};
     json_value_t *root = NULL;
     cserde_reader *reader = NULL;
@@ -250,6 +257,34 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     }
     json_cserde_reader_destroy(reader);
     json_free(root);
+    reader = NULL;
+    root = NULL;
+
+    plan_diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    root = json_parse(oversized_json, sizeof(oversized_json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &oversized, sizeof(oversized),
+              &plan_diagnostic),
+          DATA_BIND_ERR_VALIDATION);
+      check_contains(plan_diagnostic.message, "Size");
+      check_equal(oversized.id, (uint32_t)0u);
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&oversized.headers), (size_t)0u);
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &oversized, sizeof(oversized),
+            &native_diagnostic),
+        DATA_BIND_OK);
 
     check_equal(
         data_bind_native_clear(
