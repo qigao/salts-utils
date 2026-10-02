@@ -287,6 +287,11 @@ function(salts_idl_target)
                 "salts_idl_target PLUGIN requires ${plugin_arg}")
       endif()
     endforeach()
+    if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
+      message(FATAL_ERROR
+              "salts_idl_target PLUGIN requires business implementation through "
+              "SOURCES and/or LIBRARIES")
+    endif()
     if(NOT DB_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
       message(FATAL_ERROR
               "salts_idl_target VERSION must be MAJOR.MINOR.PATCH")
@@ -312,17 +317,10 @@ function(salts_idl_target)
               "salts_idl_target COMPONENT/VERSION are only valid when PLUGIN "
               "is selected")
     endif()
-  endif()
-
-  if(_has_plugin OR _has_native)
-    if(NOT DB_SOURCES AND NOT DB_LIBRARIES)
+    if(DB_SOURCES OR DB_LIBRARIES)
       message(FATAL_ERROR
-              "salts_idl_target executable PLUGIN/NATIVE artifacts require "
-              "business implementation through SOURCES and/or LIBRARIES")
+              "salts_idl_target SOURCES/LIBRARIES are only consumed by PLUGIN")
     endif()
-  elseif(DB_SOURCES OR DB_LIBRARIES)
-    message(FATAL_ERROR
-            "salts_idl_target SOURCES/LIBRARIES require PLUGIN or NATIVE")
   endif()
 
   set(_projection_config)
