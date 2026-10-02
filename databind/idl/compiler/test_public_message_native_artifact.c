@@ -40,6 +40,39 @@ spec("DataBind public Message native artifact") {
     check_equal(binding.nulls[1].bit, 1u);
   }
 
+  it("uses canonical CMeta lifecycle and fails legacy typed conversion closed") {
+    static const char json[] =
+        "{\"id\":1,\"values\":[7],\"labels\":[\"alpha\"]}";
+    Event_t event;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    tstr source = tstr_dup("owned");
+
+    Event_init(&event);
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
+    check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_equal(Event_values_vec_t_push(&event.values, UINT32_C(11)), STL_OK);
+    check_not_null(source);
+    if (source != NULL)
+      check_equal(Event_labels_vec_t_push(&event.labels, source), STL_OK);
+
+    check_equal(
+        Event_from_json(NULL, &event, json, sizeof(json) - 1u, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "Legacy typed conversion");
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)1u);
+    if (source != NULL)
+      check_equal(Event_labels_vec_t_size(&event.labels), (size_t)1u);
+
+    Event_clear(&event);
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
+    check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_not_null(source);
+    if (source != NULL) {
+      check_equal(tstr_len(source), (size_t)5u);
+      tstr_free(source);
+    }
+  }
+
   it("publishes typed CSTL sequence providers for required scalar/string lists") {
     Event_values_vec_t values = {0};
     Event_labels_vec_t labels = {0};
