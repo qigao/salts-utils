@@ -82,6 +82,15 @@ static int method_plan_format_valid(DataBindFormat format) {
   return format >= DATA_BIND_FORMAT_BINARY && format <= DATA_BIND_FORMAT_XML;
 }
 
+static int method_plan_payload_valid(
+    DataBindPayloadKind kind, DataBindFormat format, size_t opaque_max_bytes) {
+  if (kind == DATA_BIND_PAYLOAD_FORMAT)
+    return method_plan_format_valid(format);
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return format == DATA_BIND_FORMAT_NONE && opaque_max_bytes != 0u;
+  return 0;
+}
+
 static DataBindStatus method_plan_fail(
     DataBindBindingPlanDiagnostic *diagnostic,
     DataBindStatus status, const char *message) {
@@ -135,8 +144,15 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
       (config->error_count != 0u && config->errors == NULL) ||
       config->success_status < 100 || config->success_status > 599 ||
       (config->context_flags & ~DATA_BIND_HTTP_CONTEXT_MASK) != 0u ||
-      !method_plan_format_valid(config->ingress_format) ||
-      !method_plan_format_valid(config->egress_format))
+      !method_plan_payload_valid(
+          config->ingress_payload_kind, config->ingress_format,
+          config->ingress_opaque_max_bytes) ||
+      !method_plan_payload_valid(
+          config->egress_payload_kind, config->egress_format,
+          config->egress_opaque_max_bytes) ||
+      ((config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+        config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) &&
+       config->error_count != 0u))
     return 0;
   if (config->method != NULL && !http_method_valid(config->method))
     return 0;
@@ -145,7 +161,11 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
     if (left->size < sizeof(*left) || left->schema_field == NULL ||
         left->schema_field[0] == '\0' ||
         !http_location_valid(left->direction, left->location) ||
-        (left->wire_name != NULL && left->wire_name[0] == '\0'))
+        (left->wire_name != NULL && left->wire_name[0] == '\0') ||
+        (left->direction == DATA_BIND_BINDING_INGRESS &&
+         config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
+        (left->direction == DATA_BIND_BINDING_EGRESS &&
+         config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE))
       return 0;
     for (j = 0u; j < i; ++j) {
       const DataBindHttpFieldProjection *right = &config->fields[j];
@@ -567,18 +587,50 @@ DataBindStatus data_bind_http_method_plan_compile_service(
   const char *method = config != NULL && config->method != NULL
                            ? config->method : "POST";
   const char *route;
-  const DataBindFormat ingress_format =
-      config != NULL ? config->ingress_format : DATA_BIND_FORMAT_JSON;
-  const DataBindFormat egress_format =
-      config != NULL ? config->egress_format : DATA_BIND_FORMAT_JSON;
+  DataBindTransportPayloadConfig ingress_payload =
+      (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+  DataBindTransportPayloadConfig egress_payload =
+      (DataBindTransportPayloadConfig)DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT;
+  DataBindServiceOperation operation = DATA_BIND_SERVICE_OPERATION_INIT;
+  const int has_opaque =
+      config != NULL &&
+      (config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+       config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE);
   DataBindError projection_error = DATA_BIND_ERROR_INIT;
   DataBindStatus status;
 
   if (out_plan != NULL) *out_plan = NULL;
   if (codec == NULL || service_name == NULL || operation_name == NULL ||
-      native == NULL || out_plan == NULL || !http_config_valid(config))
+      out_plan == NULL || !http_config_valid(config) ||
+      (!has_opaque && native == NULL) ||
+      (has_opaque && native != NULL))
     return method_plan_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG,
                             "Invalid HTTP MethodPlan arguments");
+
+  if (!data_bind_service_operation_find(
+          codec, service_name, operation_name, &operation))
+    return method_plan_fail(diagnostic, DATA_BIND_ERR_SCHEMA,
+                            "HTTP MethodPlan Service operation was not found");
+
+  if (config != NULL) {
+    ingress_payload.kind = config->ingress_payload_kind;
+    ingress_payload.format = config->ingress_format;
+    ingress_payload.opaque_max_bytes = config->ingress_opaque_max_bytes;
+    egress_payload.kind = config->egress_payload_kind;
+    egress_payload.format = config->egress_format;
+    egress_payload.opaque_max_bytes = config->egress_opaque_max_bytes;
+  }
+
+  if (has_opaque) {
+    if (config->field_count != 0u || operation.error_count != 0u ||
+        config->ingress_payload_kind != DATA_BIND_PAYLOAD_OPAQUE ||
+        (operation.response_type != NULL &&
+         strcmp(operation.response_type, "void") != 0 &&
+         config->egress_payload_kind != DATA_BIND_PAYLOAD_OPAQUE))
+      return method_plan_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA,
+          "Opaque HTTP Service must use whole-payload bytes without fields or typed errors");
+  }
 
   default_route = method_plan_join("/", service_name, "/", operation_name);
   route = config != NULL && config->route != NULL ? config->route : default_route;
@@ -611,9 +663,9 @@ DataBindStatus data_bind_http_method_plan_compile_service(
                             "Could not allocate HTTP MethodPlan");
   }
 
-  status = data_bind_transport_plan_compile_service(
+  status = data_bind_transport_plan_compile_service_payloads(
       codec, service_name, operation_name, DATA_BIND_TRANSPORT_HTTP,
-      ingress_format, egress_format, &plan->transport, &projection_error);
+      &ingress_payload, &egress_payload, &plan->transport, &projection_error);
   if (status != DATA_BIND_OK) {
     status = method_plan_fail(
         diagnostic, status,
@@ -623,10 +675,12 @@ DataBindStatus data_bind_http_method_plan_compile_service(
     goto fail;
   }
 
-  status = data_bind_binding_plan_compile_service(
-      codec, service_name, operation_name, &projection, native,
-      &plan->binding, diagnostic);
-  if (status != DATA_BIND_OK) goto fail;
+  if (!has_opaque) {
+    status = data_bind_binding_plan_compile_service(
+        codec, service_name, operation_name, &projection, native,
+        &plan->binding, diagnostic);
+    if (status != DATA_BIND_OK) goto fail;
+  }
 
   if (!config_fields_consumed(
           used, config != NULL ? config->field_count : 0u)) {
@@ -642,7 +696,7 @@ DataBindStatus data_bind_http_method_plan_compile_service(
   plan->context_flags = config != NULL ? config->context_flags
                                        : DATA_BIND_HTTP_CONTEXT_NONE;
   if (plan->method == NULL || plan->route == NULL ||
-      !http_errors_build(plan, config)) {
+      (!has_opaque && !http_errors_build(plan, config))) {
     status = method_plan_fail(diagnostic, DATA_BIND_ERR_OOM,
                               "Could not materialize HTTP MethodPlan");
     goto fail;
