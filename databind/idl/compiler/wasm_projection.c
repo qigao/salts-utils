@@ -866,7 +866,10 @@ int databind_compiler_wasm_generate(
     const databind_compiler_projection_request *request,
     void *context) {
   const databind_compiler_wasm_config *config =
-      (const databind_compiler_wasm_config *)context;
+      request != NULL
+          ? (const databind_compiler_wasm_config *)request->config
+          : NULL;
+  (void)context;
   const IdlComponent *component;
   databind_compiler_service_native_ir ir = {0};
   wasm_operation_view *views = NULL;
