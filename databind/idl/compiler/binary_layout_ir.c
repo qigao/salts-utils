@@ -34,6 +34,8 @@ static int binary_scalar_bits_valid(
     databind_binary_scalar_kind kind, unsigned bits) {
   switch (kind) {
   case DATABIND_BINARY_SCALAR_NONE:
+  case DATABIND_BINARY_SCALAR_STRING:
+  case DATABIND_BINARY_SCALAR_BYTES:
     return bits == 0u;
   case DATABIND_BINARY_SCALAR_BOOL:
     return bits == 8u;
@@ -142,6 +144,36 @@ static databind_binary_layout_status binary_field_scalar_representation(
                 "Canonical Binary scalar width is unsupported");
     return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
   }
+  return DATABIND_BINARY_LAYOUT_OK;
+}
+
+static databind_binary_layout_status binary_field_var_data_representation(
+    const IdlContract *contract,
+    const IdlField *typed_field,
+    databind_binary_field_layout *field,
+    databind_binary_layout_diagnostic *diagnostic) {
+  schema_cmeta_field_type semantic;
+  const char *field_name;
+
+  if (contract == NULL || typed_field == NULL || field == NULL)
+    return DATABIND_BINARY_LAYOUT_INVALID_ARGUMENT;
+
+  field_name = typed_field->name;
+  field->scalar_kind = DATABIND_BINARY_SCALAR_NONE;
+  field->scalar_bits = 0u;
+
+  if (!schema_cmeta_field_resolve(contract, typed_field, &semantic)) {
+    binary_diag(
+        diagnostic, field_name,
+        "Binary VAR_DATA semantics cannot be resolved from canonical schema");
+    return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
+  }
+
+  if (semantic.kind == CMETA_DATA_STRING)
+    field->scalar_kind = DATABIND_BINARY_SCALAR_STRING;
+  else if (semantic.kind == CMETA_DATA_BYTES)
+    field->scalar_kind = DATABIND_BINARY_SCALAR_BYTES;
+
   return DATABIND_BINARY_LAYOUT_OK;
 }
 
@@ -267,7 +299,10 @@ databind_binary_layout_status databind_binary_layout_validate(
     } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
       if (field->tail_prefix_bytes != 4u ||
           field->child_fixed_block_size != 0u ||
-          field->wire_extent != 0u) {
+          field->wire_extent != 0u ||
+          field->scalar_bits != 0u ||
+          (field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
+           field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES)) {
         binary_diag(diagnostic, field->field_id,
                     "Binary variable-data layout is invalid");
         return DATABIND_BINARY_LAYOUT_INVALID_SCHEMA;
@@ -351,7 +386,8 @@ static databind_binary_layout_status binary_build_field(
   case DATABIND_TBE_FIELD_VAR_DATA:
     field->kind = DATABIND_BINARY_FIELD_VAR_DATA;
     field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
-    return DATABIND_BINARY_LAYOUT_OK;
+    return binary_field_var_data_representation(
+        contract, typed_field, field, diagnostic);
 
   case DATABIND_TBE_FIELD_FIXED:
     field->kind = DATABIND_BINARY_FIELD_FIXED;
