@@ -246,6 +246,7 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(field_projection_text(field, "native_c_type"),
                             "Shape_value_vec_t");
                 check_not_null(field_projection_child(field, "native_cstl_sequence"));
+                check_not_null(field_projection_child(record, "native_cstl_storage"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
