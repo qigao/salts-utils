@@ -29,7 +29,7 @@ typedef struct databind_compiler_flowmq_projection_config {
 } databind_compiler_flowmq_projection_config;
 
 databind_compiler_projection_backend
-databind_compiler_flowmq_channel_plan_backend(void);
+databind_compiler_flowmq_plan_backend(void);
 
 #ifdef __cplusplus
 }
