@@ -86,6 +86,7 @@ static int path_reserved(
       input->guest_output_path,
       input->dsl_output_path,
       input->projection_config_path,
+      input->wasm_core_module_path,
   };
   size_t i;
   for (i = 0u; i < sizeof(reserved) / sizeof(reserved[0]); ++i)
@@ -564,6 +565,90 @@ static int add_plugin(
   return 0;
 }
 
+static int add_wasm(
+    const databind_compiler_projection_frontend_input *input,
+    databind_compiler_projection_frontend_plan *out,
+    char *error,
+    size_t error_size) {
+  if (ensure_artifact_context(input, out, error, error_size) != 0)
+    return -1;
+  if (input->component_id == NULL || input->component_id[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "--artifacts wasm requires --component <Schema.Component>");
+  if (input->wasm_core_module_path == NULL ||
+      input->wasm_core_module_path[0] == '\0')
+    return frontend_error(
+        error, error_size,
+        "--artifacts wasm requires --wasm-core-module <core.wasm>");
+  if (salts_fs_access(
+          input->wasm_core_module_path,
+          SALTS_FS_ACCESS_EXISTS) != 0)
+    return frontend_error(
+        error, error_size,
+        "--wasm-core-module does not exist");
+  if (out->wasm_symbol_prefix[0] == '\0' &&
+      !method_plan_symbol_prefix(
+          input->artifact_name, out->wasm_symbol_prefix,
+          sizeof(out->wasm_symbol_prefix)))
+    return frontend_error(
+        error, error_size,
+        "Artifact name cannot form a WASM C symbol prefix");
+
+  if (!derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".wasm", out->wasm_component_output,
+          sizeof(out->wasm_component_output)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".wasm.h", out->wasm_host_header,
+          sizeof(out->wasm_host_header)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".wasm.c", out->wasm_host_source,
+          sizeof(out->wasm_host_source)) ||
+      !derive_artifact_path(
+          out->artifact_dir, input->artifact_name,
+          ".wasm_guest.h", out->wasm_guest_header,
+          sizeof(out->wasm_guest_header)))
+    return frontend_error(
+        error, error_size,
+        "Derived WASM projection output path is too long");
+
+  if (path_reserved(input, out->wasm_component_output) ||
+      path_reserved(input, out->wasm_host_header) ||
+      path_reserved(input, out->wasm_host_source) ||
+      path_reserved(input, out->wasm_guest_header) ||
+      projection_output_in_use(out, out->wasm_component_output) ||
+      projection_output_in_use(out, out->wasm_host_header) ||
+      projection_output_in_use(out, out->wasm_host_source) ||
+      projection_output_in_use(out, out->wasm_guest_header))
+    return frontend_error(
+        error, error_size,
+        "Derived WASM outputs collide with another compiler output");
+
+  out->wasm = (databind_compiler_wasm_config){
+      .component_id = input->component_id,
+      .native_header = out->native_header,
+      .core_module_path = input->wasm_core_module_path,
+      .host_header_output = out->wasm_host_header,
+      .host_source_output = out->wasm_host_source,
+      .guest_header_output = out->wasm_guest_header,
+      .symbol_prefix = out->wasm_symbol_prefix,
+  };
+  out->requests[out->request_count++] =
+      (databind_compiler_projection_request){
+          .id = {DATABIND_COMPILER_PROJECTION_AXIS_ARTIFACT,
+                 DATABIND_COMPILER_ARTIFACT_WASM},
+          .output = out->wasm_component_output,
+          .config = &out->wasm,
+      };
+  out->backends[out->backend_count++] =
+      DATABIND_COMPILER_WASM_BACKEND;
+  return 0;
+}
+
+
 int databind_compiler_projection_frontend_build(
     const databind_compiler_projection_frontend_input *input,
     databind_compiler_projection_frontend_plan *out,
@@ -722,6 +807,10 @@ int databind_compiler_projection_frontend_build(
       break;
     case DATABIND_COMPILER_ARTIFACT_PLUGIN:
       if (add_plugin(input, out, error, error_size) != 0)
+        goto fail;
+      break;
+    case DATABIND_COMPILER_ARTIFACT_WASM:
+      if (add_wasm(input, out, error, error_size) != 0)
         goto fail;
       break;
     case DATABIND_COMPILER_ARTIFACT_OPENAPI:
