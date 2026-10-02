@@ -308,12 +308,16 @@ static DataBindStatus binary_tail_preflight(
           error, DATA_BIND_ERR_PARSE, field->field_name,
           "Binary VAR_DATA payload is truncated");
 
-    if ((!present || is_null) && length != 0u)
+    /*
+     * Binary tail entries are positional. An optional ABSENT field still owns
+     * and consumes its encoded tail entry; its bytes are simply not published
+     * through CSerde. This preserves the existing Binary wire contract.
+     * Explicit NULL is different: its canonical tail payload must be empty.
+     */
+    if (is_null && length != 0u)
       return binary_fail(
           error, DATA_BIND_ERR_PARSE, field->field_name,
-          !present
-              ? "Binary ABSENT VAR_DATA field has a nonzero payload length"
-              : "Binary NULL VAR_DATA field has a nonzero payload length");
+          "Binary NULL VAR_DATA field has a nonzero payload length");
 
     cursor += sizeof(uint32_t) + (size_t)length;
   }
