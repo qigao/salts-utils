@@ -1,3 +1,5 @@
+#include <data_bind_binding_plan.h>
+
 #include "installed_service.service_native.h"
 #include "installed_service_native.h"
 
@@ -16,11 +18,15 @@ int main() {
   DataBindNativeTypeBinding response{};
   DataBindServiceNativeBinding service{};
   DataBindError error = DATA_BIND_ERROR_INIT;
-  return databind_10_ServiceSdk_4_Calc_3_Add__databind_native_binding(
-             &request, &response, &service, &error) == DATA_BIND_OK &&
-         service.function != nullptr &&
-         databind_10_ServiceSdk_4_Calc_3_Add__databind_function() ==
-             service.function
+  if (databind_10_ServiceSdk_4_Calc_3_Add__databind_native_binding(
+          &request, &response, &service, &error) != DATA_BIND_OK ||
+      service.function == nullptr ||
+      databind_10_ServiceSdk_4_Calc_3_Add__databind_function() !=
+          service.function)
+    return 1;
+
+  return data_bind_service_native_error_restore_zero(
+             &service, nullptr, 0u, &error) == DATA_BIND_OK
              ? 0
-             : 1;
+             : 2;
 }
