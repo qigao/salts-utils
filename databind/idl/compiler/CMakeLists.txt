@@ -569,6 +569,15 @@ salts_idl_target(
 
 
 salts_idl_target(
+  TARGET databind_flowmq_service_plan_public_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_service_plan.schema"
+  ARTIFACT_NAME "service"
+  TRANSPORTS FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_service_plan_config.json")
+
+
+salts_idl_target(
   TARGET databind_channel_multi_transport_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
   ARTIFACT_NAME "device_multi"
@@ -707,6 +716,25 @@ set_target_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
   C_EXTENSIONS OFF)
 set_tests_properties(test_databind_flowmq_plan_public_frontend PROPERTIES
   LABELS "databind;compiler;flowmq-plan;public")
+
+
+cmake_add_test(test_databind_flowmq_service_plan_public_frontend
+  SOURCES test_public_flowmq_service_plan.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_flowmq_service_plan_public_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_flowmq_service_plan_public_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_flowmq_service_plan_public_frontend
+  databind_flowmq_service_plan_public_fixture_idl_codegen)
+set_target_properties(test_databind_flowmq_service_plan_public_frontend PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_flowmq_service_plan_public_frontend PROPERTIES
+  LABELS "databind;compiler;flowmq-plan;service;binary;public")
 
 cmake_add_test(test_databind_socket_plan_public_frontend
   SOURCES test_public_socket_plan_frontend.c
