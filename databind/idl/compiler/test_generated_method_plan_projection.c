@@ -17,11 +17,62 @@ spec("DataBind generated MethodPlan projection artifacts") {
     check_equal(config->error_count, (size_t)1);
     check_equal(config->ingress_format, DATA_BIND_FORMAT_YAML);
     check_equal(config->egress_format, DATA_BIND_FORMAT_XML);
+    check_equal(config->ingress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
+    check_equal(config->egress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
     check_equal(config->fields[0].schema_field, "left");
     check_true(config->fields[0].location == DATA_BIND_HTTP_PATH);
     check_equal(config->fields[1].wire_name, "X-Right");
     check_equal(config->errors[0].error_type, "CalcError");
     check_equal(config->errors[0].status, 422);
+  }
+
+  it("publishes opaque HTTP bytes without a native BindingPlan") {
+    static const char schema[] =
+        "service RawStore { Echo: bytes -> bytes; }";
+    const DataBindHttpProjectionConfig *config =
+        data_bind_http_projection_artifact_find(
+            &projection_fixture_http_projection, "RawStore", "Echo");
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *plan = NULL;
+    DataBindTransportPlanInfo info = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+
+    check_not_null(config);
+    check_equal(config->method, "POST");
+    check_equal(config->route, "/raw/echo");
+    check_equal(config->field_count, (size_t)0u);
+    check_equal(config->error_count, (size_t)0u);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_NONE);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_NONE);
+    check_equal(config->ingress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(config->egress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(config->ingress_opaque_max_bytes, (size_t)4096u);
+    check_equal(config->egress_opaque_max_bytes, (size_t)4096u);
+
+    check_equal(
+        data_bind_create_from_text(
+            schema, sizeof(schema) - 1u, &codec, &error),
+        DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    check_equal(
+        data_bind_http_method_plan_compile_service(
+            codec, "RawStore", "Echo", config, NULL, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    check_null(data_bind_http_method_plan_binding(plan));
+    check(data_bind_transport_plan_info(
+        data_bind_http_method_plan_transport(plan), &info));
+    check_equal(info.ingress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(info.egress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_not_null(info.ingress_opaque);
+    check_not_null(info.egress_opaque);
+
+    data_bind_http_method_plan_free(plan);
+    data_bind_free(codec);
   }
 
   it("publishes compiled RPC projection config") {
