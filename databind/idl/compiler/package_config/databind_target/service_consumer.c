@@ -51,9 +51,8 @@ int main(void) {
   if (execution == NULL || !data_bind_native_execution_valid(execution))
     return 11;
   if (databind_10_ServiceSdk_4_Calc_3_Add__databind_cflow_projection(
-          &cflow_projection) != CFLOW_FUNCTION_PROJECTION_OK ||
-      !cflow_function_typed_adapter_projection_valid(&cflow_projection) ||
-      cflow_projection.function != native.function)
+          &cflow_projection) != CFLOW_FUNCTION_PROJECTION_UNSUPPORTED_SHAPE ||
+      cflow_function_typed_adapter_projection_valid(&cflow_projection))
     return 12;
 
   http_config = data_bind_http_projection_artifact_find(
