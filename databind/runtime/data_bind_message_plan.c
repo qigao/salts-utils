@@ -1048,8 +1048,10 @@ DataBindStatus data_bind_message_plan_internal_validate_field(
 
   field = message_field_const(plan, field_name);
   if (field == NULL) return DATA_BIND_ERR_SCHEMA;
-  if (field->validation_rule_count == 0u) return DATA_BIND_OK;
-  if (plan->validation == NULL) return DATA_BIND_ERR_RUNTIME;
+  if (plan->validation == NULL)
+    return field->validation_rule_count == 0u
+               ? DATA_BIND_OK
+               : DATA_BIND_ERR_RUNTIME;
 
   for (i = 0u; i < field->validation_rule_count; ++i) {
     DataBindStatus status =
