@@ -1,0 +1,18 @@
+schema WasmMulti [version(1)];
+
+component Calculator {
+  service Calc;
+}
+
+message AddRequest {
+  uint32 left;
+}
+
+message AddResponse {
+  uint32 value;
+  uint32 other;
+}
+
+service Calc {
+  Add: AddRequest -> AddResponse;
+}
