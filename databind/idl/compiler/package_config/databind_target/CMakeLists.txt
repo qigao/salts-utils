@@ -289,3 +289,27 @@ add_dependencies(installed_flow
   installed_flowmq_consumer)
 add_dependencies(installed_image
   installed_flow)
+
+
+salts_idl_target(
+  TARGET installed_flow_service
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/service.schema"
+  ARTIFACT_NAME "installed_service_flow"
+  TRANSPORTS FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/flowmq_service_config.json")
+
+add_executable(installed_flowmq_service_consumer
+  flowmq_service_consumer.c)
+target_compile_features(installed_flowmq_service_consumer PRIVATE c_std_11)
+target_link_libraries(installed_flowmq_service_consumer PRIVATE
+  Salts::DataBind
+  ${installed_flow_service_NATIVE_TARGET})
+target_include_directories(installed_flowmq_service_consumer PRIVATE
+  "${installed_flow_service_GENERATED_DIR}")
+add_dependencies(installed_flowmq_service_consumer
+  installed_flow_service_idl_codegen)
+add_dependencies(installed_flow_service
+  installed_flowmq_service_consumer)
+add_dependencies(installed_image
+  installed_flow_service)
