@@ -1,0 +1,18 @@
+schema WasmOptional [version(1)];
+
+component Calculator {
+  service Calc;
+}
+
+message AddRequest {
+  optional uint32 left;
+  uint32 right;
+}
+
+message AddResponse {
+  uint32 sum;
+}
+
+service Calc {
+  Add: AddRequest -> AddResponse;
+}
