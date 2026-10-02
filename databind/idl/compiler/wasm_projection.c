@@ -467,7 +467,7 @@ static int wasm_build_component(
    * Each canon lift targets one operation Core function and uses the same
    * Core memory0 + realloc func0. The Core operation signature is therefore
    * canonical lift(list<u8> -> list<u8>) for memory32:
-   *   (i32 request_ptr, i32 request_len, i32 result_pair_ptr) -> ()
+   *   (i32 request_ptr, i32 request_len) -> i32 result_pair_ptr
    */
   if (!wasm_buffer_uleb(&section, (uint32_t)view_count))
     goto fail;
@@ -630,7 +630,7 @@ static int wasm_write_guest_header(
           file,
           "#ifndef %s\n#define %s\n\n"
           "#include \"%s\"\n"
-          "#include <stdint.h>\n\n"
+          "#include <stddef.h>\n#include <stdint.h>\n\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n"
           "enum { DATABIND_WASM_EXECUTION_STATUS_BYTES = 4u };\n\n"
           "/*\n"
@@ -641,8 +641,8 @@ static int wasm_write_guest_header(
           " *\n"
           " * request_offset/request_length identify the canonical generated\n"
           " * DataBind binary request record in guest linear memory.\n"
-          " * result_pair_offset points at two little-endian u32 values where\n"
-          " * the operation writes {envelope_offset,envelope_length}.\n"
+          " * The operation returns a wasm32 pointer to two little-endian u32\n"
+          " * values {envelope_offset,envelope_length}.\n"
           " * The envelope is little-endian i32 native status followed, only\n"
           " * on status 0, by the canonical generated response binary record.\n"
           " */\n"
@@ -655,9 +655,8 @@ static int wasm_write_guest_header(
   for (i = 0u; i < view_count; ++i) {
     if (fprintf(
             file,
-            "void %s(\n"
-            "    uint32_t request_offset, uint32_t request_length,\n"
-            "    uint32_t result_pair_offset);\n"
+            "uint32_t %s(\n"
+            "    uint32_t request_offset, uint32_t request_length);\n"
             "static inline int %s__wasm_request_bind(\n"
             "    uint32_t request_offset, uint32_t request_length,\n"
             "    %s_view_t *out) {\n"
