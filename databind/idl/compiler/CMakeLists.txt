@@ -162,6 +162,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   projection.c
   method_plan_projection.c
   binary_layout_ir.c
+  opaque_plan_codegen.c
   compiler_core.c
   database_schema.c
   mustache_helpers.c)
@@ -1070,6 +1071,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
     projection.c
     method_plan_projection.c
     binary_layout_ir.c
+    opaque_plan_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c
