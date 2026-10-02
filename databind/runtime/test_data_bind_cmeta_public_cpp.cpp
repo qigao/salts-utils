@@ -37,12 +37,20 @@ using ClientBindOutcome = DataBindStatus (*)(
     DataBindBindingCallFrame *,
     const DataBindBindingOutcome *,
     DataBindBindingPlanDiagnostic *);
+using ServiceNativeErrorRestore = DataBindStatus (*)(
+    const DataBindServiceNativeBinding *,
+    void *,
+    size_t,
+    DataBindError *);
 static_assert(std::is_same_v<
               decltype(&data_bind_binding_plan_write_inputs),
               ClientWriteInputs>);
 static_assert(std::is_same_v<
               decltype(&data_bind_binding_plan_bind_outcome),
               ClientBindOutcome>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_service_native_error_restore_zero),
+              ServiceNativeErrorRestore>);
 
 static_assert(std::is_standard_layout_v<DataBindHttpFieldProjection>);
 static_assert(std::is_standard_layout_v<DataBindHttpErrorMapping>);

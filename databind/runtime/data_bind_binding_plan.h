@@ -112,6 +112,27 @@ typedef struct DataBindServiceNativeBinding {
   { sizeof(DataBindServiceNativeBinding), DATA_BIND_BINDING_PLAN_ABI_VERSION, \
     (FUNCTION), (REQUEST), (RESPONSE), NULL, 0u, SIZE_MAX, 0u, 0u, 0u }
 
+/**
+ * Restore one generated Service typed-error envelope to canonical zero.
+ *
+ * The helper is transport-neutral. It validates the generated binding and
+ * caller-provided envelope bounds before reading or mutating native storage.
+ *
+ * A Service without typed errors is a no-op success. For a throws Service,
+ * discriminator value 0 is also a no-op success. A nonzero discriminator must
+ * match exactly one generated DataBindNativeErrorBinding. The active payload is
+ * restored through its canonical CMeta descriptor exactly once, then the whole
+ * generated envelope is zeroed.
+ *
+ * Unknown discriminator values, malformed offsets/sizes and unavailable CMeta
+ * descriptors fail closed without guessing another payload type.
+ */
+DATA_BIND_API DataBindStatus data_bind_service_native_error_restore_zero(
+    const DataBindServiceNativeBinding *binding,
+    void *error_envelope,
+    size_t error_envelope_bytes,
+    DataBindError *error);
+
 typedef struct DataBindBindingPlanEntry {
   size_t size;
   DataBindBindingDirection direction;

@@ -1,4 +1,5 @@
 #include "data_bind_method_plan.h"
+#include "data_bind_binding_plan.h"
 
 #include "installed_service.http.h"
 #include "installed_service.rpc.h"
@@ -37,15 +38,22 @@ int main(void) {
       const DataBindBindingOutcome *,
       DataBindBindingPlanDiagnostic *) =
       data_bind_binding_plan_bind_outcome;
+  DataBindStatus (*restore_error_fn)(
+      const DataBindServiceNativeBinding *,
+      void *, size_t, DataBindError *) =
+      data_bind_service_native_error_restore_zero;
   int failed = 0;
 
-  if (write_inputs_fn == NULL || bind_outcome_fn == NULL)
+  if (write_inputs_fn == NULL || bind_outcome_fn == NULL ||
+      restore_error_fn == NULL)
     return 10;
 
   if (databind_10_ServiceSdk_4_Calc_3_Add__databind_native_binding(
           &request, &response, &native, &error) != DATA_BIND_OK ||
       native.function == NULL)
     return 1;
+  if (restore_error_fn(&native, NULL, 0u, &error) != DATA_BIND_OK)
+    return 13;
   execution =
       databind_10_ServiceSdk_4_Calc_3_Add__databind_execution();
   if (execution == NULL || !data_bind_native_execution_valid(execution))

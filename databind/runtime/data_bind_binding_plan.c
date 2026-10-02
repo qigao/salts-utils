@@ -60,6 +60,207 @@ static size_t plan_out_size(size_t requested, size_t full_size) {
   return requested != 0u && requested < full_size ? requested : full_size;
 }
 
+static void service_native_error_clear(DataBindError *error) {
+  size_t size;
+  if (error == NULL) return;
+  size = plan_out_size(error->size, sizeof(*error));
+  memset(error, 0, size);
+  if (size >= sizeof(size_t)) error->size = size;
+  if (size >= offsetof(DataBindError, code) + sizeof(error->code))
+    error->code = DATA_BIND_OK;
+  if (size >= offsetof(DataBindError, line) + sizeof(error->line))
+    error->line = -1;
+  if (size >= offsetof(DataBindError, column) + sizeof(error->column))
+    error->column = -1;
+}
+
+static DataBindStatus service_native_error_fail(
+    DataBindError *error, DataBindStatus status,
+    const char *path, const char *fmt, ...) {
+  va_list ap;
+  size_t size;
+
+  if (error == NULL) return status;
+  size = plan_out_size(error->size, sizeof(*error));
+  service_native_error_clear(error);
+  if (size >= offsetof(DataBindError, code) + sizeof(error->code))
+    error->code = status;
+  if (path != NULL &&
+      size >= offsetof(DataBindError, path) + sizeof(error->path))
+    snprintf(error->path, sizeof(error->path), "%s", path);
+  if (fmt != NULL &&
+      size >= offsetof(DataBindError, message) + sizeof(error->message)) {
+    va_start(ap, fmt);
+    vsnprintf(error->message, sizeof(error->message), fmt, ap);
+    va_end(ap);
+  }
+  return status;
+}
+
+DataBindStatus data_bind_service_native_error_restore_zero(
+    const DataBindServiceNativeBinding *binding,
+    void *error_envelope,
+    size_t error_envelope_bytes,
+    DataBindError *error) {
+  unsigned char *base = (unsigned char *)error_envelope;
+  const DataBindNativeErrorBinding *active = NULL;
+  const cmeta_data_desc *active_data = NULL;
+  uint32_t kind = 0u;
+  size_t i;
+
+  service_native_error_clear(error);
+  if (binding == NULL)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Service native binding is required");
+
+  if (binding->size < sizeof(*binding) ||
+      binding->abi_version != DATA_BIND_BINDING_PLAN_ABI_VERSION)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_SCHEMA, NULL,
+        "Service native binding ABI is invalid");
+
+  if (binding->error_count == 0u) {
+    if (binding->errors != NULL ||
+        binding->error_param_index != SIZE_MAX ||
+        binding->error_envelope_bytes != 0u ||
+        binding->error_kind_offset != 0u ||
+        binding->error_kind_bytes != 0u)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_SCHEMA, NULL,
+          "Non-throws Service published typed-error envelope metadata");
+    return DATA_BIND_OK;
+  }
+
+  if (binding->errors == NULL ||
+      binding->error_count > UINT32_MAX ||
+      binding->error_envelope_bytes == 0u ||
+      binding->error_kind_bytes != sizeof(uint32_t) ||
+      binding->error_kind_offset > binding->error_envelope_bytes ||
+      binding->error_envelope_bytes - binding->error_kind_offset <
+          binding->error_kind_bytes)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_SCHEMA, NULL,
+        "Typed-error Service native envelope metadata is incomplete");
+
+  if (base == NULL)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Typed-error envelope storage is required");
+  if (error_envelope_bytes < binding->error_envelope_bytes)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_BUFFER_TOO_SMALL, NULL,
+        "Typed-error envelope storage is smaller than the generated ABI");
+
+  /*
+   * Validate the generated kind table before inspecting caller storage.
+   * Canonical generated bindings use 1..N with 0 reserved for NONE.
+   */
+  for (i = 0u; i < binding->error_count; ++i) {
+    const DataBindNativeErrorBinding *variant = &binding->errors[i];
+    if (variant->size < sizeof(*variant) ||
+        variant->idl_type_name == NULL ||
+        variant->idl_type_name[0] == '\0' ||
+        variant->kind_value != (uint32_t)(i + 1u) ||
+        variant->data_resolver == NULL ||
+        variant->payload_offset > binding->error_envelope_bytes)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_SCHEMA,
+          variant->idl_type_name,
+          "Typed-error variant metadata is not canonical");
+  }
+
+  memcpy(&kind, base + binding->error_kind_offset, sizeof(kind));
+  if (kind == 0u) return DATA_BIND_OK;
+
+  for (i = 0u; i < binding->error_count; ++i) {
+    if (binding->errors[i].kind_value == kind) {
+      active = &binding->errors[i];
+      break;
+    }
+  }
+  if (active == NULL)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_TYPE_MISMATCH, NULL,
+        "Typed-error discriminator does not match a generated Service error");
+
+  /*
+   * Resolve and bounds-check every generated payload before mutating the
+   * active one. This makes malformed binding metadata fail closed regardless
+   * of which variant is active.
+   */
+  for (i = 0u; i < binding->error_count; ++i) {
+    const DataBindNativeErrorBinding *variant = &binding->errors[i];
+    const cmeta_data_desc *data = NULL;
+    DataBindError resolver_error = DATA_BIND_ERROR_INIT;
+    DataBindStatus status =
+        variant->data_resolver(&data, &resolver_error);
+    size_t payload_bytes;
+    size_t payload_end;
+    size_t kind_end;
+
+    if (status != DATA_BIND_OK)
+      return service_native_error_fail(
+          error, status, variant->idl_type_name, "%s",
+          resolver_error.message[0] != '\0'
+              ? resolver_error.message
+              : "Typed-error CMeta resolver failed");
+    if (!cmeta_data_desc_valid(data) ||
+        data->storage_type == NULL ||
+        data->storage_type->align == 0u)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_SCHEMA, variant->idl_type_name,
+          "Typed-error payload CMeta descriptor is invalid");
+
+    payload_bytes = data->storage_type->size;
+    if (variant->payload_offset > binding->error_envelope_bytes ||
+        payload_bytes >
+            binding->error_envelope_bytes - variant->payload_offset)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_SCHEMA, variant->idl_type_name,
+          "Typed-error payload lies outside the generated envelope");
+
+    payload_end = variant->payload_offset + payload_bytes;
+    kind_end = binding->error_kind_offset + binding->error_kind_bytes;
+    if (variant->payload_offset < kind_end &&
+        binding->error_kind_offset < payload_end)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_SCHEMA, variant->idl_type_name,
+          "Typed-error payload overlaps the envelope discriminator");
+
+    if (payload_bytes != 0u &&
+        ((uintptr_t)(base + variant->payload_offset) %
+         data->storage_type->align) != 0u)
+      return service_native_error_fail(
+          error, DATA_BIND_ERR_TYPE_MISMATCH, variant->idl_type_name,
+          "Typed-error payload storage is not correctly aligned");
+
+    if (variant == active) active_data = data;
+  }
+
+  if (active_data == NULL)
+    return service_native_error_fail(
+        error, DATA_BIND_ERR_SCHEMA, active->idl_type_name,
+        "Active typed-error payload descriptor is unavailable");
+
+  {
+    cmeta_status status = cmeta_data_value_restore_zero(
+        active_data, base + active->payload_offset);
+    if (status != CMETA_OK)
+      return service_native_error_fail(
+          error,
+          status == CMETA_OUT_OF_MEMORY
+              ? DATA_BIND_ERR_OOM
+              : DATA_BIND_ERR_RUNTIME,
+          active->idl_type_name,
+          "Canonical CMeta lifecycle could not restore typed-error payload");
+  }
+
+  memset(base, 0, binding->error_envelope_bytes);
+  service_native_error_clear(error);
+  return DATA_BIND_OK;
+}
+
 static int plan_diag_header_valid(
     const DataBindBindingPlanDiagnostic *diagnostic) {
   return diagnostic == NULL ||

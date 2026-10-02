@@ -510,6 +510,14 @@ cmake_add_test(test_data_bind_owned_error_validation
 set_tests_properties(test_data_bind_owned_error_validation PROPERTIES
   LABELS "databind;cmeta;service-contract;binding-plan;typed-error;validation")
 
+
+cmake_add_test(test_data_bind_service_native_error
+  SOURCES test_data_bind_service_native_error.c
+  LIBS ${DATA_BIND_TEST_LIBS}
+  FOLDER "databind/runtime/tests")
+set_tests_properties(test_data_bind_service_native_error PROPERTIES
+  LABELS "databind;cmeta;service-contract;typed-error;lifecycle")
+
 cmake_add_test(test_data_bind_projection_plan
   SOURCES test_data_bind_projection_plan.c
   LIBS ${DATA_BIND_TEST_LIBS}
