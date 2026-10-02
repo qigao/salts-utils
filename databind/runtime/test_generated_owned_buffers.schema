@@ -7,7 +7,7 @@ message NativeOwnedBufferRecord {
     bytes payload;
 }
 
-composite NativeHeader {
+message NativeHeader {
     string name;
     string value;
 }
