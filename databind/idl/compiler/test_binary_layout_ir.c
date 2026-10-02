@@ -119,7 +119,62 @@ spec("DataBind BinaryLayoutIR") {
 
     check_equal(strcmp(layout.fields[2].field_id, "username"), 0);
     check_equal(layout.fields[2].kind, DATABIND_BINARY_FIELD_VAR_DATA);
+    check_equal(layout.fields[2].scalar_kind, DATABIND_BINARY_SCALAR_STRING);
+    check_equal(layout.fields[2].scalar_bits, 0u);
     check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
+
+    databind_binary_layout_destroy(&layout);
+    databind_tbe_format_plan_destroy(&format_plan);
+    idl_contract_destroy(contract);
+    node_free(root);
+    free(schema_data);
+  }
+
+  it("derives VAR_DATA string and bytes semantics from canonical CMeta") {
+    Node *root = NULL;
+    IdlContract *contract = NULL;
+    char *schema_data = NULL;
+    databind_binary_type_layout layout = {0};
+    databind_binary_layout_diagnostic diagnostic = {0};
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
+
+    check_equal(
+        databind_compiler_parse_contract_file(
+            BINARY_VAR_DATA_SCHEMA, &root, &contract, &schema_data), 0);
+    check_not_null(root);
+    check_not_null(contract);
+    if (root == NULL || contract == NULL) {
+      node_free(root);
+      idl_contract_destroy(contract);
+      free(schema_data);
+      return;
+    }
+
+    tbe_error_init(&format_error);
+    check(databind_tbe_format_plan_build(
+        contract, root, &format_plan, &format_error));
+    check_equal(
+        databind_binary_layout_build(
+            contract, &format_plan, "TelemetryEvent", &layout, &diagnostic),
+        DATABIND_BINARY_LAYOUT_OK);
+    check_equal(layout.field_count, (size_t)3u);
+
+    check_equal(layout.fields[0].kind, DATABIND_BINARY_FIELD_FIXED);
+    check_equal(layout.fields[0].scalar_kind, DATABIND_BINARY_SCALAR_UINT);
+    check_equal(layout.fields[0].scalar_bits, 32u);
+
+    check_equal(layout.fields[1].kind, DATABIND_BINARY_FIELD_VAR_DATA);
+    check_equal(layout.fields[1].scalar_kind, DATABIND_BINARY_SCALAR_STRING);
+    check_equal(layout.fields[1].scalar_bits, 0u);
+    check_equal(layout.fields[1].tail_prefix_bytes, (size_t)4u);
+
+    check_equal(layout.fields[2].kind, DATABIND_BINARY_FIELD_VAR_DATA);
+    check_equal(layout.fields[2].scalar_kind, DATABIND_BINARY_SCALAR_BYTES);
+    check_equal(layout.fields[2].scalar_bits, 0u);
+    check_equal(layout.fields[2].tail_prefix_bytes, (size_t)4u);
+    check(layout.fields[2].flags & DATABIND_BINARY_FIELD_OPTIONAL);
+    check(layout.fields[2].flags & DATABIND_BINARY_FIELD_NULLABLE);
 
     databind_binary_layout_destroy(&layout);
     databind_tbe_format_plan_destroy(&format_plan);
@@ -210,6 +265,7 @@ spec("DataBind BinaryLayoutIR") {
     databind_binary_field_layout fields[2] = {
         {.field_id = "payload",
          .kind = DATABIND_BINARY_FIELD_VAR_DATA,
+         .scalar_kind = DATABIND_BINARY_SCALAR_BYTES,
          .tail_prefix_bytes = 4u},
         {.field_id = "code",
          .kind = DATABIND_BINARY_FIELD_FIXED,

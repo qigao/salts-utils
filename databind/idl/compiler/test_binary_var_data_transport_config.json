@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "socket": {
+    "channel": "BinaryVarData.Telemetry",
+    "mode": "datagram",
+    "framing": "none",
+    "format": "binary",
+    "max_frame_bytes": 256
+  },
+  "flowmq": {
+    "channel": "BinaryVarData.Telemetry",
+    "pattern": "pubsub",
+    "format": "binary",
+    "max_payload_bytes": 256
+  }
+}

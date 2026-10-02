@@ -11,6 +11,10 @@
 #error "BINARY_SCALAR_SCHEMA is required"
 #endif
 
+#ifndef BINARY_VAR_DATA_SCHEMA
+#error "BINARY_VAR_DATA_SCHEMA is required"
+#endif
+
 #ifndef SCHEMA_EXAMPLE_FILE
 #error "SCHEMA_EXAMPLE_FILE is required"
 #endif
@@ -121,7 +125,63 @@ spec("DataBind compiler Binary reader codegen") {
     free(schema_data);
   }
 
-  it("fails closed when BinaryLayoutIR contains unsupported tail semantics") {
+  it("lowers VAR_DATA string and bytes into the same generated provider") {
+    Node *root = NULL;
+    IdlContract *contract = NULL;
+    char *schema_data = NULL;
+    databind_tbe_format_plan format_plan = {0};
+    tbe_error_t format_error;
+    char *text = NULL;
+
+    check_equal(
+        databind_compiler_parse_contract_file(
+            BINARY_VAR_DATA_SCHEMA, &root, &contract, &schema_data),
+        0);
+    check_not_null(root);
+    check_not_null(contract);
+    if (root == NULL || contract == NULL) {
+      node_free(root);
+      idl_contract_destroy(contract);
+      free(schema_data);
+      return;
+    }
+
+    tbe_error_init(&format_error);
+    check(databind_tbe_format_plan_build(
+        contract, root, &format_plan, &format_error));
+    check_equal(
+        databind_compiler_binary_reader_admit(
+            contract, &format_plan, "TelemetryEvent"),
+        0);
+
+    text = emit_to_text(
+        contract, &format_plan, "TelemetryEvent",
+        "databind_binary_var");
+    check_not_null(text);
+    if (text != NULL) {
+      check_contains(text, "\"sequence\", CSERDE_UINT, 32u");
+      check_contains(text, "\"source\", CSERDE_STRING, 0u");
+      check_contains(text, "\"payload\", CSERDE_BYTES, 0u");
+      check_contains(
+          text, "DATA_BIND_BINARY_READER_REP_VAR_DATA, 4u");
+      check_contains(
+          text,
+          "DATA_BIND_BINARY_READER_FIELD_OPTIONAL | "
+          "DATA_BIND_BINARY_READER_FIELD_NULLABLE");
+      check_contains(
+          text,
+          "databind_binary_var_binary_TelemetryEvent_"
+          "databind_binary_provider");
+    }
+
+    free(text);
+    databind_tbe_format_plan_destroy(&format_plan);
+    idl_contract_destroy(contract);
+    node_free(root);
+    free(schema_data);
+  }
+
+  it("fails closed when BinaryLayoutIR still contains unsupported structural semantics") {
     Node *root = NULL;
     IdlContract *contract = NULL;
     char *schema_data = NULL;

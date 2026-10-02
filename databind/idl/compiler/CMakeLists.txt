@@ -610,6 +610,33 @@ set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
 set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
   LABELS "databind;compiler;binary-reader;transport;public;cpp")
 
+
+salts_idl_target(
+  TARGET databind_binary_var_data_transport_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
+  ARTIFACT_NAME "binary_var"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_var_data_transport_config.json")
+
+cmake_add_test(test_databind_binary_var_data_transport
+  SOURCES test_public_binary_var_data_transport.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+    ${databind_binary_var_data_transport_fixture_NATIVE_TARGET}
+  INCLUDES
+    "${databind_binary_var_data_transport_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_binary_var_data_transport
+  databind_binary_var_data_transport_fixture_idl_codegen)
+set_target_properties(test_databind_binary_var_data_transport PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_binary_var_data_transport PROPERTIES
+  LABELS "databind;compiler;binary-reader;var-data;transport;public")
+
 cmake_add_test(test_databind_channel_multi_transport
   SOURCES test_public_channel_multi_transport.c
   LIBS
@@ -1017,6 +1044,7 @@ cmake_add_test(test_databind_binary_reader_codegen
     Salts::Core
   DEFS
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
@@ -1045,6 +1073,7 @@ cmake_add_test(test_databind_binary_layout_ir
   DEFS
     SCHEMA_EXAMPLE_FILE="${CMAKE_CURRENT_SOURCE_DIR}/example.schema"
     BINARY_SCALAR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_layout_scalar.schema"
+    BINARY_VAR_DATA_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
   INCLUDES
     ${DATABIND_SOURCE_ROOT}/idl/src
     ${CMAKE_CURRENT_SOURCE_DIR}
