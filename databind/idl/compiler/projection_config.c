@@ -767,7 +767,7 @@ static int parse_socket(
   return 0;
 }
 
-static int parse_flowmq_pattern(
+static int parse_flowmq_channel_pattern(
     const char *text, DataBindFlowMQChannelPattern *out) {
   if (text == NULL || out == NULL) return 0;
   if (strcmp(text, "pubsub") == 0 || strcmp(text, "pub-sub") == 0) {
@@ -781,14 +781,35 @@ static int parse_flowmq_pattern(
   return 0;
 }
 
+static int parse_flowmq_service_pattern(
+    const char *text, DataBindFlowMQServicePattern *out) {
+  if (text == NULL || out == NULL) return 0;
+  if (strcmp(text, "reqrep") == 0 || strcmp(text, "req-rep") == 0) {
+    *out = DATA_BIND_FLOWMQ_SERVICE_REQ_REP;
+    return 1;
+  }
+  if (strcmp(text, "routerdealer") == 0 ||
+      strcmp(text, "router-dealer") == 0) {
+    *out = DATA_BIND_FLOWMQ_SERVICE_ROUTER_DEALER;
+    return 1;
+  }
+  return 0;
+}
+
 static int parse_flowmq(
     const json_value_t *section,
     databind_compiler_projection_config *out,
     char *error, size_t error_size) {
   static const char *const keys[] = {
-      "channel", "pattern", "format", "max_payload_bytes"};
+      "channel", "service", "operation", "pattern", "format",
+      "ingress_format", "egress_format", "max_payload_bytes"};
+  const char *channel = NULL;
+  const char *service = NULL;
+  const char *operation = NULL;
   const char *pattern;
-  const char *format;
+  const char *format = NULL;
+  const char *ingress_format = NULL;
+  const char *egress_format = NULL;
   json_value_t *max_payload;
   uint64_t max_payload_bytes;
 
@@ -800,21 +821,70 @@ static int parse_flowmq(
           error, error_size) != 0)
     return -1;
 
-  out->flowmq.channel_name =
-      required_string(section, "channel", error, error_size);
-  pattern = required_string(section, "pattern", error, error_size);
-  format = required_string(section, "format", error, error_size);
-  if (out->flowmq.channel_name == NULL ||
-      pattern == NULL || format == NULL)
+  if (optional_string(section, "channel", &channel, error, error_size) != 0 ||
+      optional_string(section, "service", &service, error, error_size) != 0 ||
+      optional_string(section, "operation", &operation, error, error_size) != 0 ||
+      optional_string(section, "format", &format, error, error_size) != 0 ||
+      optional_string(
+          section, "ingress_format", &ingress_format, error, error_size) != 0 ||
+      optional_string(
+          section, "egress_format", &egress_format, error, error_size) != 0)
     return -1;
 
-  if (!parse_flowmq_pattern(pattern, &out->flowmq.pattern))
-    return config_errorf(
-        error, error_size, "Unknown FlowMQ Channel pattern '%s'", pattern);
-  if (!parse_payload_profile(
-          format, &out->flowmq.payload_kind, &out->flowmq.format))
-    return config_errorf(
-        error, error_size, "Unknown FlowMQ format/profile '%s'", format);
+  pattern = required_string(section, "pattern", error, error_size);
+  if (pattern == NULL) return -1;
+
+  if ((channel != NULL) == (service != NULL))
+    return config_error(
+        error, error_size,
+        "FlowMQ projection requires exactly one of channel or service");
+
+  if (channel != NULL) {
+    if (operation != NULL || ingress_format != NULL || egress_format != NULL)
+      return config_error(
+          error, error_size,
+          "FlowMQ Channel projection cannot contain Service fields");
+    if (format == NULL)
+      return config_error(
+          error, error_size,
+          "FlowMQ Channel projection requires format");
+    if (!parse_flowmq_channel_pattern(pattern, &out->flowmq.pattern))
+      return config_errorf(
+          error, error_size, "Unknown FlowMQ Channel pattern '%s'", pattern);
+    if (!parse_payload_profile(
+            format, &out->flowmq.payload_kind, &out->flowmq.format))
+      return config_errorf(
+          error, error_size, "Unknown FlowMQ format/profile '%s'", format);
+    out->flowmq.channel_name = channel;
+  } else {
+    if (operation == NULL)
+      return config_error(
+          error, error_size,
+          "FlowMQ Service projection requires operation");
+    if (format != NULL)
+      return config_error(
+          error, error_size,
+          "FlowMQ Service projection uses ingress_format/egress_format, not format");
+    if (ingress_format == NULL || egress_format == NULL)
+      return config_error(
+          error, error_size,
+          "FlowMQ Service projection requires ingress_format and egress_format");
+    if (!parse_flowmq_service_pattern(
+            pattern, &out->flowmq.service_pattern))
+      return config_errorf(
+          error, error_size, "Unknown FlowMQ Service pattern '%s'", pattern);
+    if (!parse_format_name(ingress_format, &out->flowmq.ingress_format))
+      return config_errorf(
+          error, error_size, "Unknown FlowMQ ingress format '%s'",
+          ingress_format);
+    if (!parse_format_name(egress_format, &out->flowmq.egress_format))
+      return config_errorf(
+          error, error_size, "Unknown FlowMQ egress format '%s'",
+          egress_format);
+    out->flowmq.service_name = service;
+    out->flowmq.operation_name = operation;
+    out->flowmq.payload_kind = DATA_BIND_PAYLOAD_FORMAT;
+  }
 
   max_payload = json_object_get(section, "max_payload_bytes");
   if (!parse_u64_value(max_payload, &max_payload_bytes) ||
