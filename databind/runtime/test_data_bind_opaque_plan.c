@@ -57,7 +57,7 @@ spec("DataBind opaque bytes pass-through plan") {
             &plan, DATA_BIND_OPAQUE_VALUE,
             source, sizeof(source),
             destination, sizeof(destination) - 1u, &span, &error),
-        DATA_BIND_ERR_LIMIT);
+        DATA_BIND_ERR_BUFFER_TOO_SMALL);
     check_equal(destination[0], (unsigned char)0xa5u);
     check_equal(destination[1], (unsigned char)0xa5u);
     check_equal(destination[2], (unsigned char)0xa5u);
