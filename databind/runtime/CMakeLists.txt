@@ -169,12 +169,12 @@ target_include_directories(
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/include>
-    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/include>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/include>
     $<INSTALL_INTERFACE:include>
   PRIVATE
     $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/schema/parser>
-    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/internal>
-    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/tbe/compiler/include>)
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/internal>
+    $<BUILD_INTERFACE:${DATABIND_SOURCE_ROOT}/formats/binary/compiler/include>)
 target_link_libraries(
   ${DATA_BIND_TARGET}
   PRIVATE
@@ -186,7 +186,7 @@ target_link_libraries(
     Salts::DataBindTemporalAdapter
     Salts::Schema
     Salts::IDL
-    databind_tbe_contract
+    databind_binary_contract
   PUBLIC
     Salts::DataBindCore)
 

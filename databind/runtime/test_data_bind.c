@@ -4,7 +4,7 @@
  */
 
 #include "data_bind.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 #include "tinytest.h"
 #include <salts_uuid.h>
 #include <math.h>
@@ -33,27 +33,27 @@ static void write_schema(const char *path, const char *content) {
 }
 
 static void write_u16_le(uint8_t *buf, size_t offset, uint16_t value) {
-  tbe_wire_write_u16(buf + offset, 0, value);
+  data_bind_binary_wire_write_u16(buf + offset, 0, value);
 }
 
 static void write_u32_le(uint8_t *buf, size_t offset, uint32_t value) {
-  tbe_wire_write_u32(buf + offset, 0, value);
+  data_bind_binary_wire_write_u32(buf + offset, 0, value);
 }
 
 static void write_i32_le(uint8_t *buf, size_t offset, int32_t value) {
-  tbe_wire_write_i32(buf + offset, 0, value);
+  data_bind_binary_wire_write_i32(buf + offset, 0, value);
 }
 
 static void write_u64_le(uint8_t *buf, size_t offset, uint64_t value) {
-  tbe_wire_write_u64(buf + offset, 0, value);
+  data_bind_binary_wire_write_u64(buf + offset, 0, value);
 }
 
 static void write_f32_le(uint8_t *buf, size_t offset, float value) {
-  tbe_wire_write_f32(buf + offset, 0, value);
+  data_bind_binary_wire_write_f32(buf + offset, 0, value);
 }
 
 static void write_f64_le(uint8_t *buf, size_t offset, double value) {
-  tbe_wire_write_f64(buf + offset, 0, value);
+  data_bind_binary_wire_write_f64(buf + offset, 0, value);
 }
 
 static DataBind *test_data_bind_create(const char *schema_path) {

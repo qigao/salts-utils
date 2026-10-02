@@ -1,7 +1,7 @@
 #include "data_bind_socket_execution_plan.h"
 #include "data_bind_binary_reader.h"
 #include "data_bind_json_provider.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_wire.h"
 
 #include "tinytest.h"
 
@@ -177,7 +177,7 @@ static void socket_binary_payload(
     unsigned char wire[9], uint32_t sequence) {
   memset(wire, 0, 9u);
   /* sample is optional/ABSENT so MessagePlan applies default 7. */
-  tbe_wire_write_u32(wire + 1u, 0, sequence);
+  data_bind_binary_wire_write_u32(wire + 1u, 0, sequence);
 }
 
 static DataBind *socket_codec(void) {

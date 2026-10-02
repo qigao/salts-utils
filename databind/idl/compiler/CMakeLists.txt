@@ -10,7 +10,7 @@ target_link_libraries(${DATABIND_COMPILER_TOOLING_TARGET}
     Salts::Mustache
     Salts::JsonParser
     Salts::Schema
-    databind_tbe_contract)
+    databind_binary_contract)
 set_target_properties(${DATABIND_COMPILER_TOOLING_TARGET}
   PROPERTIES FOLDER "databind/idl/compiler")
 

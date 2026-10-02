@@ -126,7 +126,7 @@ static int socket_config_valid(
 
 static int socket_payload_representable(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *message_type,
     const databind_compiler_socket_projection_config *config) {
   databind_binary_type_layout layout = {0};
@@ -215,7 +215,7 @@ static int socket_generate(
   int ok = 0;
   (void)context;
 
-  if (input == NULL || input->contract == NULL || input->tbe_format == NULL ||
+  if (input == NULL || input->contract == NULL || input->binary_format == NULL ||
       request == NULL || request->output == NULL ||
       request->id.axis != DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT ||
       request->id.kind != DATABIND_COMPILER_TRANSPORT_SOCKET ||
@@ -229,7 +229,7 @@ static int socket_generate(
     return -1;
   message_type = channel->message_type;
   if (!socket_payload_representable(
-          input->contract, input->tbe_format, message_type, config))
+          input->contract, input->binary_format, message_type, config))
     return -1;
   if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       databind_compiler_message_native_build(
@@ -265,10 +265,10 @@ static int socket_generate(
   if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       config->format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
-          input->contract, input->tbe_format, message_type) == 0) {
+          input->contract, input->binary_format, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
         databind_compiler_binary_reader_emit(
-            file, input->contract, input->tbe_format, message_type,
+            file, input->contract, input->binary_format, message_type,
             config->symbol_prefix) != 0)
       goto cleanup;
   }

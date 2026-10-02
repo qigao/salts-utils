@@ -1,7 +1,7 @@
 #ifndef DATABIND_COMPILER_BINARY_LAYOUT_IR_H
 #define DATABIND_COMPILER_BINARY_LAYOUT_IR_H
 
-#include "tbe_format_plan.h"
+#include "binary_format_plan.h"
 #include "idl_contract.h"
 
 #include <stddef.h>
@@ -109,14 +109,14 @@ typedef struct databind_binary_layout_diagnostic {
 
 /*
  * Build one independently owned Binary layout from typed Contract IR plus a
- * typed TBE wire plan. Semantic kinds come only from Contract IR; offsets/state
- * come only from the TBE plan. The builder never consumes parser/frontend
+ * typed Binary format plan. Semantic kinds come only from Contract IR; offsets/state
+ * come only from the Binary format plan. The builder never consumes parser/frontend
  * Node trees, native C offsets, CMeta storage/lifecycle, or historical
  * TbeTyped descriptors.
  */
 databind_binary_layout_status databind_binary_layout_build(
     const IdlContract *contract,
-    const databind_tbe_format_plan *format_plan,
+    const databind_binary_format_plan *format_plan,
     const char *type_name,
     databind_binary_type_layout *out_layout,
     databind_binary_layout_diagnostic *diagnostic);

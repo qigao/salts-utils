@@ -1,7 +1,7 @@
-#include "tbe_contract_overlay.h"
+#include "binary_contract_overlay.h"
 #include "tbe_error.h"
-#include "tbe_version.h"
-#include "tbe_wire.h"
+#include "data_bind_binary_version.h"
+#include "data_bind_binary_wire.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,19 +11,19 @@ int main() {
     
     // Test 1: Version compatibility
     printf("1. Testing version compatibility...\n");
-    const char *version = tbe_version();
+    const char *version = data_bind_binary_version();
     printf("   Version: %s\n", version);
     
-    int compatible = tbe_version_compatible(1, 0, 0);
+    int compatible = data_bind_binary_version_compatible(1, 0, 0);
     printf("   Compatibility check (1.0.0): %s\n", compatible ? "PASS" : "FAIL");
     
     // Test 2: Null pointer safety in wire functions
     printf("2. Testing wire function null safety...\n");
-    uint8_t result = tbe_wire_read_u8(NULL, 0);
+    uint8_t result = data_bind_binary_wire_read_u8(NULL, 0);
     printf("   Null read returned: %u (expected 0)\n", result);
     
     // Write to null pointer should not crash
-    tbe_wire_write_u32(NULL, 0, 42);
+    data_bind_binary_wire_write_u32(NULL, 0, 42);
     printf("   Null write completed without crash: PASS\n");
     
     // Test 3: Error handling improvements
@@ -63,11 +63,11 @@ int main() {
     printf("5. Testing input validation...\n");
     Node *test_root = create_node_map("test");
     
-    int rc = databind_tbe_contract_parse(NULL, 0, test_root, &err);
+    int rc = databind_binary_contract_parse(NULL, 0, test_root, &err);
     printf("   NULL input rejection: %s\n", (rc == -1 && err.code == TBE_ERR_INVALID_ARGUMENT) ? "PASS" : "FAIL");
     
     const char *valid_schema = "composite Point { int32 x; int32 y; }";
-    rc = databind_tbe_contract_parse(valid_schema, strlen(valid_schema), test_root, &err);
+    rc = databind_binary_contract_parse(valid_schema, strlen(valid_schema), test_root, &err);
     printf("   Valid schema parsing: %s\n", rc == 0 ? "PASS" : "FAIL");
     
     node_free(test_root);
@@ -75,9 +75,9 @@ int main() {
     // Test 6: Variable data bounds checking
     printf("6. Testing variable data bounds...\n");
     uint8_t test_data[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x02, 0x03, 0x04}; // Very large length
-    tbe_var_data_t var_data;
+    DataBindBinaryVarData var_data;
     
-    bool var_result = tbe_wire_read_var_data(test_data, sizeof(test_data), 0, &var_data);
+    bool var_result = data_bind_binary_wire_read_var_data(test_data, sizeof(test_data), 0, &var_data);
     printf("   Large length rejection: %s\n", !var_result ? "PASS" : "FAIL");
     
     printf("\n=== All security fixes verified ===\n");
