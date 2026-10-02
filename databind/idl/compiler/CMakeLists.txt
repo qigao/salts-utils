@@ -1055,6 +1055,33 @@ cmake_add_test(test_databind_plugin_projection_rejection
     ${CMAKE_CURRENT_SOURCE_DIR}
   FOLDER "databind/idl/compiler")
 
+cmake_add_test(test_databind_wasm_projection
+  SOURCES
+    test_wasm_projection.c
+    compiler_core.c
+    projection.c
+    service_native.c
+    wasm_projection.c
+    database_schema.c
+    mustache_helpers.c
+  LIBS
+    Salts::IDL
+    Salts::TinyTest
+    ${DATABIND_COMPILER_TOOLING_TARGET}
+    Salts::Core
+  DEFS
+    WASM_PROJECTION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection.schema"
+    WASM_OPTIONAL_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_optional.schema"
+    WASM_ERROR_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_error.schema"
+    WASM_MULTI_RESPONSE_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/test_wasm_projection_multi_response.schema"
+    TBE_COMPILER_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  INCLUDES
+    ${DATABIND_SOURCE_ROOT}/idl/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+  FOLDER "databind/idl/compiler")
+set_tests_properties(test_databind_wasm_projection PROPERTIES
+  LABELS "databind;compiler;wasm;component;service-contract")
+
 cmake_add_test(test_database_schema_contract
   SOURCES test_database_schema_contract.c database_schema.c
   LIBS Salts::IDL Salts::TinyTest Salts::Core
