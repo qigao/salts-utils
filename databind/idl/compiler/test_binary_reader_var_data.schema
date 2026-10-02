@@ -5,3 +5,5 @@ message TelemetryEvent {
   string source;
   optional nullable bytes payload;
 }
+
+channel Telemetry: TelemetryEvent;
