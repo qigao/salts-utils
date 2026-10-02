@@ -1,4 +1,5 @@
 #include "data_bind_projection_plan.h"
+#include "data_bind_method_plan.h"
 #include "tinytest.h"
 
 #include <string.h>
@@ -659,6 +660,47 @@ spec("DataBind FormatPlan and TransportPlan") {
     data_bind_free(codec);
   }
 
+
+  it("builds an HTTP MethodPlan for whole-body opaque bytes without BindingPlan") {
+    DataBind *codec = projection_plan_codec();
+    DataBindHttpProjectionConfig config =
+        (DataBindHttpProjectionConfig)DATA_BIND_HTTP_PROJECTION_CONFIG_INIT;
+    DataBindHttpMethodPlan *method_plan = NULL;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindTransportPlanInfo info = DATA_BIND_TRANSPORT_PLAN_INFO_INIT;
+
+    check_not_null(codec);
+    if (!codec) return;
+
+    config.method = "POST";
+    config.route = "/raw/echo";
+    config.ingress_payload_kind = DATA_BIND_PAYLOAD_OPAQUE;
+    config.egress_payload_kind = DATA_BIND_PAYLOAD_OPAQUE;
+    config.ingress_format = DATA_BIND_FORMAT_NONE;
+    config.egress_format = DATA_BIND_FORMAT_NONE;
+    config.ingress_opaque_max_bytes = 64u;
+    config.egress_opaque_max_bytes = 64u;
+
+    check_equal(
+        data_bind_http_method_plan_compile_service(
+            codec, "RawStore", "Echo", &config, NULL,
+            &method_plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(method_plan);
+    check_null(data_bind_http_method_plan_binding(method_plan));
+    check(data_bind_transport_plan_info(
+        data_bind_http_method_plan_transport(method_plan), &info));
+    check_equal(info.ingress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(info.egress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_not_null(info.ingress_opaque);
+    check_not_null(info.egress_opaque);
+    check_equal(info.ingress_opaque->max_bytes, (size_t)64u);
+    check_equal(info.egress_opaque->max_bytes, (size_t)64u);
+
+    data_bind_http_method_plan_free(method_plan);
+    data_bind_free(codec);
+  }
 
   it("composes independent ingress and egress FormatPlans into one transport") {
     DataBind *codec = projection_plan_codec();
