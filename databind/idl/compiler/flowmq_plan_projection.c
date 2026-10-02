@@ -358,19 +358,11 @@ static int flowmq_service_generate(
       goto cleanup;
   }
 
-  if (config->egress_format == DATA_BIND_FORMAT_BINARY &&
-      databind_compiler_binary_reader_admit(
-          input->contract, input->tbe_format,
-          operation->response_type) == 0 &&
-      (config->ingress_format != DATA_BIND_FORMAT_BINARY ||
-       strcmp(operation->request_type, operation->response_type) != 0)) {
-    if (fputc('\n', file) == EOF ||
-        databind_compiler_binary_reader_emit(
-            file, input->contract, input->tbe_format,
-            operation->response_type, config->symbol_prefix) != 0)
-      goto cleanup;
-  }
-
+  /*
+   * Binary egress is admitted by BinaryLayoutIR above, but DataBind does not
+   * yet publish a canonical Binary streaming writer provider. Do not emit a
+   * response-side reader and accidentally advertise it as an egress adapter.
+   */
   if (fprintf(
           file,
           "\nstatic const DataBindFlowMQServicePlan "
