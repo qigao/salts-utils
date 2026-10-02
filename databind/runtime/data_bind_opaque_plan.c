@@ -165,10 +165,13 @@ DataBindStatus data_bind_opaque_plan_copy(
   if (status != DATA_BIND_OK) return status;
 
   if (state == DATA_BIND_OPAQUE_VALUE) {
-    if (bytes > destination_bytes ||
-        (bytes != 0u && destination == NULL))
+    if (bytes != 0u && destination == NULL)
       return opaque_fail(
-          error, DATA_BIND_ERR_LIMIT,
+          error, DATA_BIND_ERR_INVALID_ARG,
+          "Opaque copy destination is missing");
+    if (bytes > destination_bytes)
+      return opaque_fail(
+          error, DATA_BIND_ERR_BUFFER_TOO_SMALL,
           "Opaque destination cannot hold the bounded payload");
     if (bytes != 0u) memcpy(destination, data, bytes);
   }
