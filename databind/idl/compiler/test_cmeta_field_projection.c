@@ -439,6 +439,48 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("separates generated sequence lifecycle support from legacy typed descriptors") {
+        Node *root = create_node_map("root");
+        Node *header = field_projection_add_record(root, "composites", "NativeHeader");
+        Node *policy = field_projection_add_record(root, "messages", "NativeHeaderPolicy");
+        Node *name = field_projection_add_field(header, "NativeHeader", "name", "string");
+        Node *value = field_projection_add_field(header, "NativeHeader", "value", "string");
+        Node *headers = field_projection_add_field(policy, "NativeHeaderPolicy", "headers", "list");
+
+        check_not_null(name);
+        check_not_null(value);
+        check_not_null(headers);
+        if (!name || !value || !headers) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(map_add(headers, create_node_string("is_collection", "1")), 0);
+        check_equal(map_add(headers, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(headers, create_node_string("collection_kind", "list")), 0);
+        check_equal(map_add(headers, create_node_string("inner_type", "NativeHeader")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_equal(field_projection_text(headers, "cmeta_native_requirement"),
+                    "sequence_provider");
+        check_not_null(field_projection_text(headers, "native_sequence_name"));
+        check_equal(field_projection_text(headers, "native_element_type_ref"),
+                    "&NativeHeader_CMETA_TYPE");
+        check_equal(field_projection_text(headers, "native_element_data_ref"),
+                    "&NativeHeader_CMETA_DATA");
+
+        check_not_null(field_projection_child(header, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(policy, "cmeta_graph_supported"));
+        check_not_null(field_projection_child(header, "cmeta_lifecycle_supported"));
+        check_not_null(field_projection_child(policy, "cmeta_lifecycle_supported"));
+
+        check_null(field_projection_child(header, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_child(policy, "typed_cmeta_runtime_supported"));
+        check_null(field_projection_text(headers, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
     it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
         /* A real generated TU cannot isolate this namespace: the older public
          * wire API already maps both A_B.C and A.B_C to A_B_C_* before the
