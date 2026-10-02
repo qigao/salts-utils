@@ -400,6 +400,7 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         DATA_BIND_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
+  }
 
   it("rolls back generated sequences on item and depth quota failures") {
     const DataBindMessageNativeArtifact *artifact =
@@ -543,8 +544,6 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         DATA_BIND_OK);
     data_bind_message_plan_free(plan);
     data_bind_free(codec);
-  }
-
   }
 
 }
