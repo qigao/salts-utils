@@ -441,7 +441,7 @@ suite("compiler_cmeta_field_projection") {
 
     it("separates generated sequence lifecycle support from legacy typed descriptors") {
         Node *root = create_node_map("root");
-        Node *header = field_projection_add_record(root, "composites", "NativeHeader");
+        Node *header = field_projection_add_record(root, "messages", "NativeHeader");
         Node *policy = field_projection_add_record(root, "messages", "NativeHeaderPolicy");
         Node *name = field_projection_add_field(header, "NativeHeader", "name", "string");
         Node *value = field_projection_add_field(header, "NativeHeader", "value", "string");
