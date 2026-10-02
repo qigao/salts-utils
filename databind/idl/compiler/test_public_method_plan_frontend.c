@@ -20,6 +20,8 @@ spec("DataBind public MethodPlan projection frontend") {
     check_equal(config->error_count, (size_t)0);
     check_equal(config->ingress_format, DATA_BIND_FORMAT_JSON);
     check_equal(config->egress_format, DATA_BIND_FORMAT_JSON);
+    check_equal(config->ingress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
+    check_equal(config->egress_payload_kind, DATA_BIND_PAYLOAD_FORMAT);
   }
 
   it("publishes convention RPC projection through databind_target") {
@@ -56,6 +58,45 @@ spec("DataBind public MethodPlan projection frontend") {
     check_equal(config->egress_format, DATA_BIND_FORMAT_XML);
     check_equal(config->errors[0].error_type, "CalcError");
     check_equal(config->errors[0].status, 422);
+  }
+
+  it("publishes configured opaque HTTP bytes from databind_target") {
+    const DataBindHttpProjectionConfig *config =
+        data_bind_http_projection_artifact_find(
+            &databind_configured_calc_http_projection, "RawStore", "Echo");
+    static const char schema[] =
+        "service RawStore { Echo: bytes -> bytes; }";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    DataBindBindingPlanDiagnostic diagnostic =
+        DATA_BIND_BINDING_PLAN_DIAGNOSTIC_INIT;
+    DataBindHttpMethodPlan *plan = NULL;
+
+    check_not_null(config);
+    check_equal(config->method, "POST");
+    check_equal(config->route, "/raw/echo");
+    check_equal(config->ingress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(config->egress_payload_kind, DATA_BIND_PAYLOAD_OPAQUE);
+    check_equal(config->ingress_format, DATA_BIND_FORMAT_NONE);
+    check_equal(config->egress_format, DATA_BIND_FORMAT_NONE);
+    check_equal(config->ingress_opaque_max_bytes, (size_t)4096u);
+    check_equal(config->egress_opaque_max_bytes, (size_t)4096u);
+
+    check_equal(
+        data_bind_create_from_text(
+            schema, sizeof(schema) - 1u, &codec, &error),
+        DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_http_method_plan_compile_service(
+            codec, "RawStore", "Echo", config, NULL, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    check_null(data_bind_http_method_plan_binding(plan));
+
+    data_bind_http_method_plan_free(plan);
+    data_bind_free(codec);
   }
 
   it("applies external RPC projection config without changing IDL") {
