@@ -309,7 +309,23 @@ target_include_directories(installed_flowmq_service_consumer PRIVATE
   "${installed_flow_service_GENERATED_DIR}")
 add_dependencies(installed_flowmq_service_consumer
   installed_flow_service_idl_codegen)
+
+if(WIN32)
+  add_custom_target(installed_flow_service_verify
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "PATH=$<JOIN:$<TARGET_RUNTIME_DLL_DIRS:installed_flowmq_service_consumer>,$<SEMICOLON>>$<SEMICOLON>$ENV{PATH}"
+      $<TARGET_FILE:installed_flowmq_service_consumer>
+    DEPENDS installed_flowmq_service_consumer
+    VERBATIM)
+else()
+  add_custom_target(installed_flow_service_verify
+    COMMAND $<TARGET_FILE:installed_flowmq_service_consumer>
+    DEPENDS installed_flowmq_service_consumer
+    VERBATIM)
+endif()
+
 add_dependencies(installed_flow_service
-  installed_flowmq_service_consumer)
+  installed_flowmq_service_consumer
+  installed_flow_service_verify)
 add_dependencies(installed_image
   installed_flow_service)
