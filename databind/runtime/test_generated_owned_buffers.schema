@@ -6,3 +6,13 @@ message NativeOwnedBufferRecord {
     string text;
     bytes payload;
 }
+
+composite NativeHeader {
+    string name;
+    string value;
+}
+
+message NativeHeaderPolicy {
+    uint32 id;
+    list<NativeHeader> headers;
+}
