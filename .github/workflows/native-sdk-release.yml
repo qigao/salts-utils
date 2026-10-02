@@ -313,6 +313,7 @@ jobs:
           grep -q "DataBindNativePlan" "$prefix/include/data_bind_native.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
           test -f "$prefix/include/data_bind_plugin_catalog.h"
+          test -f "$prefix/include/data_bind_plugin_execution.h"
           cat > build/native-execution-installed.c <<'EOF'
           #include <data_bind_native_binding.h>
           _Static_assert(DATA_BIND_NATIVE_EXECUTION_ABI_VERSION == 1u,
@@ -356,6 +357,14 @@ jobs:
             -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
           cmake --build build/native-plan-installed-build --parallel 2
           build/native-plan-installed-build/native_plan_installed
+
+          cmake -S databind/runtime/package_config/plugin_execution \
+            -B build/databind-plugin-execution-installed -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/databind-plugin-execution-installed --parallel 2
+          build/databind-plugin-execution-installed/databind_plugin_execution_c
+          build/databind-plugin-execution-installed/databind_plugin_execution_cpp
 
           cmake -S databind/producer/package_config \
             -B build/databind-producer-installed -G Ninja \
@@ -447,6 +456,7 @@ jobs:
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
           test -f "$prefix/include/data_bind_plugin_catalog.h"
+          test -f "$prefix/include/data_bind_plugin_execution.h"
           test -f "$prefix/include/salts_capture.h"
           test -f "$prefix/include/salts_playback.h"
           test -f "$prefix/lib/libsalts_capture.dylib"
@@ -462,6 +472,14 @@ jobs:
           cmake --build build/databind-producer-installed \
             --target databind_generated_plan_consumer --parallel 2
           build/databind-producer-installed/databind_generated_plan_consumer
+
+          cmake -S databind/runtime/package_config/plugin_execution \
+            -B build/databind-plugin-execution-installed -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT"
+          cmake --build build/databind-plugin-execution-installed --parallel 2
+          build/databind-plugin-execution-installed/databind_plugin_execution_c
+          build/databind-plugin-execution-installed/databind_plugin_execution_cpp
 
           cmake -S databind/idl/compiler/package_config/databind_public \
             -B build/databind-public-installed -G Ninja \
@@ -611,6 +629,14 @@ jobs:
           if errorlevel 1 exit /b 1
           build\databind-producer-installed\databind_generated_plan_consumer.exe
           if errorlevel 1 exit /b 1
+          cmake -S databind\runtime\package_config\plugin_execution -B build\databind-plugin-execution-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%"
+          if errorlevel 1 exit /b 1
+          cmake --build build\databind-plugin-execution-installed --parallel 2
+          if errorlevel 1 exit /b 1
+          build\databind-plugin-execution-installed\databind_plugin_execution_c.exe
+          if errorlevel 1 exit /b 1
+          build\databind-plugin-execution-installed\databind_plugin_execution_cpp.exe
+          if errorlevel 1 exit /b 1
 
       - name: Report and verify compiler cache statistics
         shell: pwsh
@@ -635,10 +661,12 @@ jobs:
           $bindingPlanHeader = Join-Path $prefix "include\data_bind_binding_plan.h"
           $producerHeader = Join-Path $prefix "include\data_bind_cmeta_adapter_plan.h"
           $pluginCatalogHeader = Join-Path $prefix "include\data_bind_plugin_catalog.h"
+          $pluginExecutionHeader = Join-Path $prefix "include\data_bind_plugin_execution.h"
           if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { throw "missing $config" }
           if (-not (Test-Path -LiteralPath $bindingPlanHeader -PathType Leaf)) { throw "missing $bindingPlanHeader" }
           if (-not (Test-Path -LiteralPath $producerHeader -PathType Leaf)) { throw "missing $producerHeader" }
           if (-not (Test-Path -LiteralPath $pluginCatalogHeader -PathType Leaf)) { throw "missing $pluginCatalogHeader" }
+          if (-not (Test-Path -LiteralPath $pluginExecutionHeader -PathType Leaf)) { throw "missing $pluginExecutionHeader" }
           $manifest = @(
             "version=${{ needs.metadata.outputs.version }}"
             "commit=$env:GITHUB_SHA"
@@ -716,6 +744,21 @@ jobs:
           test -f "$prefix/include/data_bind_projection_plan.h"
           test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
           test -f "$prefix/include/data_bind_plugin_catalog.h"
+          test -f "$prefix/include/data_bind_plugin_execution.h"
+
+          cmake -S databind/runtime/package_config/plugin_execution \
+            -B build/databind-plugin-execution-android -G Ninja \
+            -DCMAKE_SYSTEM_NAME=Android \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          cmake --build build/databind-plugin-execution-android --parallel 2
 
           cmake -S databind/producer/package_config \
             -B build/databind-producer-android -G Ninja \
