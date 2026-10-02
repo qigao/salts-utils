@@ -82,14 +82,44 @@ static const char *flowmq_pattern_name(
   }
 }
 
+static const char *flowmq_service_pattern_name(
+    DataBindFlowMQServicePattern pattern) {
+  switch (pattern) {
+  case DATA_BIND_FLOWMQ_SERVICE_REQ_REP:
+    return "DATA_BIND_FLOWMQ_SERVICE_REQ_REP";
+  case DATA_BIND_FLOWMQ_SERVICE_ROUTER_DEALER:
+    return "DATA_BIND_FLOWMQ_SERVICE_ROUTER_DEALER";
+  default:
+    return NULL;
+  }
+}
+
 static int flowmq_config_valid(
     const databind_compiler_flowmq_projection_config *config) {
+  int service_mode;
   if (config == NULL ||
       !flowmq_identifier_valid(config->symbol_prefix) ||
-      config->channel_name == NULL || config->channel_name[0] == '\0' ||
-      flowmq_pattern_name(config->pattern) == NULL ||
       config->max_payload_bytes == 0u ||
       config->max_payload_bytes > UINT32_MAX)
+    return 0;
+
+  service_mode =
+      config->service_name != NULL || config->operation_name != NULL;
+  if (service_mode) {
+    return config->service_name != NULL &&
+           config->service_name[0] != '\0' &&
+           config->operation_name != NULL &&
+           config->operation_name[0] != '\0' &&
+           config->channel_name == NULL &&
+           flowmq_include_basename_valid(config->native_header_include) &&
+           flowmq_service_pattern_name(config->service_pattern) != NULL &&
+           flowmq_format_name(config->ingress_format) != NULL &&
+           flowmq_format_name(config->egress_format) != NULL &&
+           config->payload_kind == DATA_BIND_PAYLOAD_FORMAT;
+  }
+
+  if (config->channel_name == NULL || config->channel_name[0] == '\0' ||
+      flowmq_pattern_name(config->pattern) == NULL)
     return 0;
 
   if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
@@ -177,6 +207,213 @@ static int flowmq_commit_atomic(
   return result;
 }
 
+
+static const IdlOperation *flowmq_service_operation_find(
+    const IdlService *service, const char *operation_name) {
+  size_t i;
+  if (service == NULL || operation_name == NULL) return NULL;
+  for (i = 0u; i < service->operation_count; ++i) {
+    const IdlOperation *operation = &service->operations[i];
+    if (operation->name != NULL &&
+        strcmp(operation->name, operation_name) == 0)
+      return operation;
+  }
+  return NULL;
+}
+
+static int flowmq_service_format_representable(
+    const IdlContract *contract,
+    const databind_tbe_format_plan *format_plan,
+    const char *type_name,
+    DataBindFormat format) {
+  databind_binary_type_layout layout = {0};
+  databind_binary_layout_diagnostic diagnostic = {0};
+  databind_binary_layout_status status;
+
+  if (contract == NULL || format_plan == NULL ||
+      type_name == NULL || type_name[0] == '\0')
+    return 0;
+  if (format == DATA_BIND_FORMAT_JSON)
+    return 1;
+  if (format != DATA_BIND_FORMAT_BINARY)
+    return 0;
+
+  status = databind_binary_layout_build(
+      contract, format_plan, type_name, &layout, &diagnostic);
+  databind_binary_layout_destroy(&layout);
+  return status == DATABIND_BINARY_LAYOUT_OK;
+}
+
+static int flowmq_service_qualified_names(
+    const IdlContract *contract,
+    const IdlService *service,
+    const IdlOperation *operation,
+    char *service_out, size_t service_out_size,
+    char *operation_out, size_t operation_out_size) {
+  int service_written;
+  int operation_written;
+  if (contract == NULL || contract->name == NULL ||
+      service == NULL || service->name == NULL ||
+      operation == NULL || operation->name == NULL ||
+      service_out == NULL || operation_out == NULL)
+    return 0;
+  service_written = snprintf(
+      service_out, service_out_size, "%s.%s",
+      contract->name, service->name);
+  operation_written = snprintf(
+      operation_out, operation_out_size, "%s.%s.%s",
+      contract->name, service->name, operation->name);
+  return service_written > 0 &&
+         (size_t)service_written < service_out_size &&
+         operation_written > 0 &&
+         (size_t)operation_written < operation_out_size;
+}
+
+static int flowmq_service_generate(
+    const databind_compiler_projection_input *input,
+    const databind_compiler_projection_request *request,
+    const databind_compiler_flowmq_projection_config *config) {
+  const IdlService *service;
+  const IdlOperation *operation;
+  databind_compiler_message_native_binding request_binding = {0};
+  databind_compiler_message_native_binding response_binding = {0};
+  char request_symbol[384];
+  char response_symbol[384];
+  char qualified_service[512];
+  char qualified_operation[768];
+  char *temp = NULL;
+  FILE *file = NULL;
+  int ok = 0;
+
+  if (input == NULL || input->contract == NULL || input->tbe_format == NULL ||
+      request == NULL || request->output == NULL || config == NULL)
+    return -1;
+
+  service = idl_contract_find_service(input->contract, config->service_name);
+  if (service == NULL) return -1;
+  operation =
+      flowmq_service_operation_find(service, config->operation_name);
+  if (operation == NULL ||
+      operation->request_type == NULL ||
+      operation->response_type == NULL ||
+      strcmp(operation->request_type, "void") == 0 ||
+      strcmp(operation->response_type, "void") == 0)
+    return -1;
+
+  if (!flowmq_service_format_representable(
+          input->contract, input->tbe_format,
+          operation->request_type, config->ingress_format) ||
+      !flowmq_service_format_representable(
+          input->contract, input->tbe_format,
+          operation->response_type, config->egress_format))
+    return -1;
+
+  if (databind_compiler_message_native_build(
+          input->contract, operation->request_type, &request_binding) != 0 ||
+      databind_compiler_message_native_build(
+          input->contract, operation->response_type, &response_binding) != 0)
+    goto cleanup;
+
+  if (snprintf(
+          request_symbol, sizeof(request_symbol),
+          "%s_flowmq_service_request", config->symbol_prefix) <= 0 ||
+      strlen(request_symbol) >= sizeof(request_symbol) - 1u ||
+      snprintf(
+          response_symbol, sizeof(response_symbol),
+          "%s_flowmq_service_response", config->symbol_prefix) <= 0 ||
+      strlen(response_symbol) >= sizeof(response_symbol) - 1u ||
+      !flowmq_service_qualified_names(
+          input->contract, service, operation,
+          qualified_service, sizeof(qualified_service),
+          qualified_operation, sizeof(qualified_operation)))
+    goto cleanup;
+
+  if (flowmq_open_atomic(request->output, &temp, &file) != 0)
+    goto cleanup;
+
+  if (fprintf(
+          file,
+          "#ifndef DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n"
+          "#define DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n\n"
+          "#include <data_bind_flowmq_plan.h>\n"
+          "#include \"%s\"\n\n",
+          config->symbol_prefix,
+          config->symbol_prefix,
+          config->native_header_include) < 0 ||
+      databind_compiler_message_native_emit_binding(
+          file, &request_binding, request_symbol) != 0 ||
+      fputc('\n', file) == EOF ||
+      databind_compiler_message_native_emit_binding(
+          file, &response_binding, response_symbol) != 0)
+    goto cleanup;
+
+  if (config->ingress_format == DATA_BIND_FORMAT_BINARY &&
+      databind_compiler_binary_reader_admit(
+          input->contract, input->tbe_format,
+          operation->request_type) == 0) {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_binary_reader_emit(
+            file, input->contract, input->tbe_format,
+            operation->request_type, config->symbol_prefix) != 0)
+      goto cleanup;
+  }
+
+  if (config->egress_format == DATA_BIND_FORMAT_BINARY &&
+      databind_compiler_binary_reader_admit(
+          input->contract, input->tbe_format,
+          operation->response_type) == 0 &&
+      (config->ingress_format != DATA_BIND_FORMAT_BINARY ||
+       strcmp(operation->request_type, operation->response_type) != 0)) {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_binary_reader_emit(
+            file, input->contract, input->tbe_format,
+            operation->response_type, config->symbol_prefix) != 0)
+      goto cleanup;
+  }
+
+  if (fprintf(
+          file,
+          "\nstatic const DataBindFlowMQServicePlan "
+          "%s_flowmq_service_plan = {\n"
+          "  sizeof(DataBindFlowMQServicePlan), "
+          "DATA_BIND_FLOWMQ_SERVICE_PLAN_ABI_VERSION,\n"
+          "  ",
+          config->symbol_prefix) < 0 ||
+      flowmq_c_string(file, qualified_service) != 0 ||
+      fputs(",\n  ", file) == EOF ||
+      flowmq_c_string(file, qualified_operation) != 0 ||
+      fputs(",\n  ", file) == EOF ||
+      flowmq_c_string(file, operation->request_type) != 0 ||
+      fputs(",\n  ", file) == EOF ||
+      flowmq_c_string(file, operation->response_type) != 0 ||
+      fprintf(
+          file,
+          ",\n  %s, %s, %s, %zuu,\n"
+          "  %s__databind_message_native_binding,\n"
+          "  %s__databind_message_native_binding\n"
+          "};\n\n"
+          "#endif /* DATABIND_GENERATED_%s_FLOWMQ_PLAN_H */\n",
+          flowmq_format_name(config->ingress_format),
+          flowmq_format_name(config->egress_format),
+          flowmq_service_pattern_name(config->service_pattern),
+          config->max_payload_bytes,
+          request_symbol,
+          response_symbol,
+          config->symbol_prefix) < 0)
+    goto cleanup;
+
+  ok = 1;
+
+cleanup:
+  databind_compiler_message_native_destroy(&request_binding);
+  databind_compiler_message_native_destroy(&response_binding);
+  if (file == NULL) {
+    free(temp);
+    return -1;
+  }
+  return flowmq_commit_atomic(request->output, temp, file, ok);
+}
+
 static int flowmq_generate(
     const databind_compiler_projection_input *input,
     const databind_compiler_projection_request *request,
@@ -200,6 +437,9 @@ static int flowmq_generate(
       request->id.kind != DATABIND_COMPILER_TRANSPORT_FLOWMQ ||
       !flowmq_config_valid(config))
     return -1;
+
+  if (config->service_name != NULL)
+    return flowmq_service_generate(input, request, config);
 
   channel = idl_contract_find_channel(
       input->contract, config->channel_name);
