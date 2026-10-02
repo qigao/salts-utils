@@ -288,6 +288,7 @@ typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_FIXED_VALUE,
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
   DATABIND_COMPILER_NATIVE_MAP_PROVIDER,
+  DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
   TBE_COMPILER_NATIVE_OVERLAY_NULL,
@@ -304,6 +305,8 @@ static const char *tbe_compiler_native_requirement_name(
       return "enum_domain";
     case DATABIND_COMPILER_NATIVE_MAP_PROVIDER:
       return "map_provider";
+    case DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER:
+      return "sequence_provider";
     case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
@@ -636,6 +639,43 @@ static int databind_compiler_set_map_symbol(Node *target, const char *key,
   if (!symbol) return -1;
   written = snprintf(symbol, capacity, "%s%zux%s%zux%s%s", prefix,
                      owner_length, owner, field_length, field, role);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(symbol);
+    return -1;
+  }
+  status = tbe_compiler_set_string(target, key, symbol);
+  free(symbol);
+  return status;
+}
+
+static int databind_compiler_set_sequence_symbol(
+    Node *target, const char *key, const char *owner,
+    const char *field, const char *role) {
+  static const char prefix[] = "databindCmetaSequence";
+  size_t owner_length;
+  size_t field_length;
+  size_t role_length;
+  size_t capacity;
+  char *symbol;
+  int written;
+  int status;
+
+  if (!target || !key || !owner || !field || !role) return -1;
+  owner_length = strlen(owner);
+  field_length = strlen(field);
+  role_length = strlen(role);
+  if (owner_length > SIZE_MAX - field_length ||
+      owner_length + field_length > SIZE_MAX - role_length ||
+      owner_length + field_length + role_length >
+          SIZE_MAX - sizeof(prefix) - 48u)
+    return -1;
+  capacity =
+      owner_length + field_length + role_length + sizeof(prefix) + 48u;
+  symbol = (char *)malloc(capacity);
+  if (!symbol) return -1;
+  written = snprintf(
+      symbol, capacity, "%s%zux%s%zux%s%s", prefix,
+      owner_length, owner, field_length, field, role);
   if (written < 0 || (size_t)written >= capacity) {
     free(symbol);
     return -1;
@@ -1002,6 +1042,20 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
                                                               : "TBE_TYPED_LIST");
       tbe_compiler_set_string(field, "typed_vector_type", vector_type);
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
+      if (semantic->kind == CMETA_DATA_SEQUENCE &&
+          tbe_compiler_has_child(field, "is_list") &&
+          !tbe_compiler_has_child(field, "is_optional") &&
+          !tbe_compiler_has_child(field, "is_nullable") &&
+          tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
+          tbe_compiler_string_value(field, "native_element_data_ref") != NULL &&
+          databind_compiler_set_sequence_symbol(
+              field, "native_sequence_name", owner, c_name, "") == 0 &&
+          databind_compiler_set_sequence_symbol(
+              field, "native_data_symbol", owner, c_name, "Data") == 0 &&
+          databind_compiler_set_sequence_symbol(
+              field, "native_type_symbol", owner, c_name, "Type") == 0) {
+        tbe_compiler_set_string(field, "native_c_type", vector_type);
+      }
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -1072,6 +1126,14 @@ static void tbe_compiler_annotate_native_requirement(
       tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
       tbe_compiler_string_value(field, "native_map_value_data_symbol") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_MAP_PROVIDER;
+  } else if (semantic->kind == CMETA_DATA_SEQUENCE &&
+             tbe_compiler_has_child(field, "is_list") &&
+             !tbe_compiler_has_child(field, "is_optional") &&
+             !tbe_compiler_has_child(field, "is_nullable") &&
+             tbe_compiler_string_value(field, "native_sequence_name") != NULL &&
+             tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
+             tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
+    requirement = DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER;
   } else if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
   } else if (tbe_compiler_has_child(field, "is_optional") &&
@@ -1312,10 +1374,53 @@ static int tbe_compiler_cmeta_classify_record(
         (context->runtime &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
-        (tbe_compiler_has_child(field, "is_collection") && !is_map) ||
-        tbe_compiler_has_child(field, "is_list") ||
         tbe_compiler_has_child(field, "is_set") ||
         tbe_compiler_has_child(field, "is_group_field"))
+      goto unsupported;
+
+    if (tbe_compiler_has_child(field, "is_list")) {
+      const char *inner_type =
+          tbe_compiler_string_value(field, "inner_type");
+      const char *requirement =
+          tbe_compiler_string_value(field, "cmeta_native_requirement");
+      if (inner_type == NULL ||
+          requirement == NULL ||
+          strcmp(requirement, "sequence_provider") != 0 ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL)
+        goto unsupported;
+
+      scalar = tbe_compiler_scalar_projection(inner_type);
+      if ((scalar && scalar->native_data_symbol) ||
+          strcmp(inner_type, "string") == 0 ||
+          strcmp(inner_type, "uuid") == 0)
+        continue;
+
+      target =
+          tbe_compiler_find_record(context->root, "enums", inner_type);
+      if (target) {
+        const char *marker =
+            context->runtime ? "typed_cmeta_runtime_supported"
+                             : "native_enum_supported";
+        if (!tbe_compiler_has_child(target, marker)) goto unsupported;
+        continue;
+      }
+
+      target = tbe_compiler_find_any_record(context->root, inner_type);
+      if (!target) goto unsupported;
+      target_index = tbe_compiler_cmeta_record_index(context, target);
+      if (target_index == SIZE_MAX ||
+          !tbe_compiler_cmeta_classify_record(context, target_index) ||
+          context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+        goto unsupported;
+      if (context->depths[target_index] + 1u > max_depth)
+        max_depth = context->depths[target_index] + 1u;
+      continue;
+    }
+
+    if (tbe_compiler_has_child(field, "is_collection") && !is_map)
       goto unsupported;
 
     if (is_map) {
