@@ -1579,7 +1579,7 @@ void databind_binary_format_plan_destroy(databind_binary_format_plan *plan) {
   size_t i, j;
   if (plan == NULL) return;
   for (i = 0u; i < plan->type_count; ++i) {
-    databind_binary_type_plan *type = &plan->types[i];
+    databind_binary_format_type_plan *type = &plan->types[i];
     for (j = 0u; j < type->field_count; ++j)
       free(type->fields[j].name);
     free(type->fields);
@@ -1589,7 +1589,7 @@ void databind_binary_format_plan_destroy(databind_binary_format_plan *plan) {
   memset(plan, 0, sizeof(*plan));
 }
 
-const databind_binary_type_plan *databind_binary_format_plan_find_type(
+const databind_binary_format_type_plan *databind_binary_format_plan_find_type(
     const databind_binary_format_plan *plan,
     const char *type_name) {
   size_t i;
@@ -1606,7 +1606,7 @@ static int binary_plan_build_field(
     const Node *wire_ir,
     const IdlField *typed_field,
     const Node *field_node,
-    databind_binary_field_plan *out,
+    databind_binary_format_field_plan *out,
     tbe_error_t *error) {
   const char *name;
   const char *group_type;
@@ -1630,14 +1630,14 @@ static int binary_plan_build_field(
   }
 
   if (typed_field->optional) {
-    out->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
+    out->flags |= DATABIND_BINARY_FORMAT_FIELD_OPTIONAL;
     if (!binary_plan_parse_size(field_node, "optional_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
       return binary_plan_fail(error, "Binary optional bit is invalid");
     out->optional_bit = (unsigned)bit;
   }
   if (typed_field->nullable) {
-    out->flags |= DATABIND_BINARY_FIELD_NULLABLE;
+    out->flags |= DATABIND_BINARY_FORMAT_FIELD_NULLABLE;
     if (!binary_plan_parse_size(field_node, "nullable_bit_index", &bit, 1) ||
         bit > (size_t)UINT_MAX)
       return binary_plan_fail(error, "Binary nullable bit is invalid");
@@ -1645,7 +1645,7 @@ static int binary_plan_build_field(
   }
 
   if (map_has_named_child(field_node, "is_group_field")) {
-    out->kind = DATABIND_BINARY_FIELD_GROUP;
+    out->kind = DATABIND_BINARY_FORMAT_FIELD_GROUP;
     out->tail_prefix_bytes = 4u;
     group_type = typed_field->inner_type;
     if (group_type == NULL)
@@ -1665,12 +1665,12 @@ static int binary_plan_build_field(
   }
 
   if (map_has_named_child(field_node, "is_var_data")) {
-    out->kind = DATABIND_BINARY_FIELD_VAR_DATA;
+    out->kind = DATABIND_BINARY_FORMAT_FIELD_VAR_DATA;
     out->tail_prefix_bytes = 4u;
     return 1;
   }
 
-  out->kind = DATABIND_BINARY_FIELD_FIXED;
+  out->kind = DATABIND_BINARY_FORMAT_FIELD_FIXED;
   if (!binary_plan_parse_size(field_node, "offset", &out->wire_offset, 1))
     return binary_plan_fail(error, "Binary fixed field offset is unavailable");
   if (!binary_plan_parse_size(
@@ -1707,7 +1707,7 @@ int databind_binary_format_plan_build(
 
   if (eligible != 0u) {
     candidate.types =
-        (databind_binary_type_plan *)calloc(eligible, sizeof(*candidate.types));
+        (databind_binary_format_type_plan *)calloc(eligible, sizeof(*candidate.types));
     if (candidate.types == NULL) {
       if (error != NULL)
         tbe_error_set(error, TBE_ERR_OUT_OF_MEMORY, -1, -1,
@@ -1725,7 +1725,7 @@ int databind_binary_format_plan_build(
   for (i = 0u; i < contract->data_count; ++i) {
     const IdlDataDecl *decl = &contract->data[i];
     const Node *record;
-    databind_binary_type_plan *type;
+    databind_binary_format_type_plan *type;
     if (binary_plan_list_name(decl->kind) == NULL) continue;
 
     type = &candidate.types[out_index++];
@@ -1747,7 +1747,7 @@ int databind_binary_format_plan_build(
 
     type->field_count = decl->field_count;
     if (type->field_count != 0u) {
-      type->fields = (databind_binary_field_plan *)calloc(
+      type->fields = (databind_binary_format_field_plan *)calloc(
           type->field_count, sizeof(*type->fields));
       if (type->fields == NULL) goto oom;
     }

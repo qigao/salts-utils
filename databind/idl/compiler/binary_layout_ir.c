@@ -345,7 +345,7 @@ static const IdlField *binary_typed_field(
 static databind_binary_layout_status binary_build_field(
     const IdlContract *contract,
     const IdlDataDecl *typed_record,
-    const databind_binary_field_plan *wire_field,
+    const databind_binary_format_field_plan *wire_field,
     databind_binary_field_layout *field,
     databind_binary_layout_diagnostic *diagnostic) {
   const char *name;
@@ -367,29 +367,29 @@ static databind_binary_layout_status binary_build_field(
   if (field->field_id == NULL)
     return DATABIND_BINARY_LAYOUT_OUT_OF_MEMORY;
 
-  if ((wire_field->flags & DATABIND_BINARY_FIELD_OPTIONAL) != 0u) {
+  if ((wire_field->flags & DATABIND_BINARY_FORMAT_FIELD_OPTIONAL) != 0u) {
     field->flags |= DATABIND_BINARY_FIELD_OPTIONAL;
     field->optional_bit = wire_field->optional_bit;
   }
-  if ((wire_field->flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u) {
+  if ((wire_field->flags & DATABIND_BINARY_FORMAT_FIELD_NULLABLE) != 0u) {
     field->flags |= DATABIND_BINARY_FIELD_NULLABLE;
     field->nullable_bit = wire_field->nullable_bit;
   }
 
   switch (wire_field->kind) {
-  case DATABIND_BINARY_FIELD_GROUP:
+  case DATABIND_BINARY_FORMAT_FIELD_GROUP:
     field->kind = DATABIND_BINARY_FIELD_GROUP;
     field->child_fixed_block_size = wire_field->child_fixed_block_size;
     field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
     return DATABIND_BINARY_LAYOUT_OK;
 
-  case DATABIND_BINARY_FIELD_VAR_DATA:
+  case DATABIND_BINARY_FORMAT_FIELD_VAR_DATA:
     field->kind = DATABIND_BINARY_FIELD_VAR_DATA;
     field->tail_prefix_bytes = wire_field->tail_prefix_bytes;
     return binary_field_var_data_representation(
         contract, typed_field, field, diagnostic);
 
-  case DATABIND_BINARY_FIELD_FIXED:
+  case DATABIND_BINARY_FORMAT_FIELD_FIXED:
     field->kind = DATABIND_BINARY_FIELD_FIXED;
     field->wire_offset = wire_field->wire_offset;
     field->wire_extent = wire_field->wire_extent;
@@ -410,7 +410,7 @@ databind_binary_layout_status databind_binary_layout_build(
     databind_binary_layout_diagnostic *diagnostic) {
   databind_binary_type_layout candidate = {0};
   const IdlDataDecl *typed_record;
-  const databind_binary_type_plan *wire_type;
+  const databind_binary_format_type_plan *wire_type;
   size_t i;
   databind_binary_layout_status status;
 

@@ -109,8 +109,8 @@ typedef struct databind_binary_layout_diagnostic {
 
 /*
  * Build one independently owned Binary layout from typed Contract IR plus a
- * typed TBE wire plan. Semantic kinds come only from Contract IR; offsets/state
- * come only from the TBE plan. The builder never consumes parser/frontend
+ * typed Binary format plan. Semantic kinds come only from Contract IR; offsets/state
+ * come only from the Binary format plan. The builder never consumes parser/frontend
  * Node trees, native C offsets, CMeta storage/lifecycle, or historical
  * TbeTyped descriptors.
  */
