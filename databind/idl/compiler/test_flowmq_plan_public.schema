@@ -6,3 +6,5 @@ message TelemetryEvent {
 }
 
 channel Telemetry: TelemetryEvent;
+
+channel Raw: bytes;
