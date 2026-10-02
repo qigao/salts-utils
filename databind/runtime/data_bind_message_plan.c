@@ -1293,6 +1293,28 @@ static void message_set_null(
     *state &= (unsigned char)~(1u << field->null_bit);
 }
 
+static const char *message_validation_diagnostic_field(
+    const DataBindMessagePlan *plan,
+    const DataBindMessageFieldPlan *field,
+    const DataBindError *validation) {
+  char direct_path[sizeof(((DataBindError *)0)->path)];
+  int written;
+
+  if (field == NULL) return validation != NULL ? validation->path : NULL;
+  if (validation == NULL || validation->path[0] == '\0')
+    return field->name;
+  if (plan == NULL || plan->type_name == NULL || field->name == NULL)
+    return validation->path;
+
+  written = snprintf(
+      direct_path, sizeof(direct_path), "%s.%s",
+      plan->type_name, field->name);
+  if (written >= 0 && (size_t)written < sizeof(direct_path) &&
+      strcmp(direct_path, validation->path) == 0)
+    return field->name;
+  return validation->path;
+}
+
 static DataBindStatus message_decode_value(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
@@ -1328,7 +1350,7 @@ static DataBindStatus message_decode_value(
   if (status != DATA_BIND_OK)
     return message_fail(
         diagnostic, status,
-        validation.path[0] != '\0' ? validation.path : field->name,
+        message_validation_diagnostic_field(plan, field, &validation),
         "%s",
         validation.message[0] != '\0'
             ? validation.message
