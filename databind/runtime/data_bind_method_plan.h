@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 2u };
+enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 3u };
 
 typedef enum DataBindHttpFieldLocation {
   DATA_BIND_HTTP_PATH = 1,
