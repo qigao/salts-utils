@@ -255,6 +255,7 @@ cmake_add_test(test_databind_projection_frontend
     service_native.c
     native_service_projection.c
     plugin_projection.c
+    wasm_projection.c
     openapi_projection.c
     method_plan_projection.c
     socket_plan_projection.c
