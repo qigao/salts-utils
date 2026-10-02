@@ -2,6 +2,7 @@
 #define DATABIND_COMPILER_PROJECTION_FRONTEND_H
 
 #include "plugin_projection.h"
+#include "wasm_projection.h"
 #include "method_plan_projection.h"
 #include "native_service_projection.h"
 #include "openapi_projection.h"
@@ -26,6 +27,7 @@ typedef struct databind_compiler_projection_frontend_input {
   const char *artifact_name;
   const char *artifact_version;
   const char *projection_config_path;
+  const char *wasm_core_module_path;
 
   /* Native/source-language output selected by the ordinary --output option. */
   const char *output_path;
@@ -45,6 +47,7 @@ typedef struct databind_compiler_projection_frontend_plan {
   size_t backend_count;
 
   databind_compiler_plugin_config plugin;
+  databind_compiler_wasm_config wasm;
   databind_compiler_native_service_config native_service;
   databind_compiler_openapi_projection_config openapi;
   databind_compiler_projection_config external_config;
@@ -62,6 +65,11 @@ typedef struct databind_compiler_projection_frontend_plan {
   char plugin_service_header[SALTS_FS_MAX_PATH];
   char plugin_client_header[SALTS_FS_MAX_PATH];
   char plugin_client_source[SALTS_FS_MAX_PATH];
+  char wasm_component_output[SALTS_FS_MAX_PATH];
+  char wasm_host_header[SALTS_FS_MAX_PATH];
+  char wasm_host_source[SALTS_FS_MAX_PATH];
+  char wasm_guest_header[SALTS_FS_MAX_PATH];
+  char wasm_symbol_prefix[256];
   char openapi_output[SALTS_FS_MAX_PATH];
   char http_projection_header[SALTS_FS_MAX_PATH];
   char rpc_projection_header[SALTS_FS_MAX_PATH];
