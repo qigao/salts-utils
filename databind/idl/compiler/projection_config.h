@@ -26,6 +26,9 @@ typedef struct databind_compiler_projection_config {
   databind_compiler_rpc_projection_config rpc;
   int has_rpc;
 
+  size_t opaque_max_bytes;
+  int has_opaque;
+
   databind_compiler_socket_projection_config socket;
   int has_socket;
 
