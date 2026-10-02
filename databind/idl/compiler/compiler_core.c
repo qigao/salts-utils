@@ -1046,6 +1046,9 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           tbe_compiler_has_child(field, "is_list") &&
           !tbe_compiler_has_child(field, "is_optional") &&
           !tbe_compiler_has_child(field, "is_nullable") &&
+          (tbe_compiler_find_record(root, "composites", storage_element) != NULL ||
+           tbe_compiler_find_record(root, "groups", storage_element) != NULL ||
+           tbe_compiler_find_record(root, "messages", storage_element) != NULL) &&
           tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
           tbe_compiler_string_value(field, "native_element_data_ref") != NULL &&
           databind_compiler_set_sequence_symbol(
