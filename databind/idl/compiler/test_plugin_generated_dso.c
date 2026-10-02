@@ -3,6 +3,7 @@
 
 #include "data_bind_binding_plan.h"
 #include "data_bind_plugin_catalog.h"
+#include "data_bind_plugin_execution.h"
 #include "image_binding_native.h"
 
 #include <stddef.h>
@@ -183,6 +184,8 @@ spec("generated DataBind Plugin Service") {
         DATA_BIND_PLUGIN_OPERATION_BINDING_INIT;
     DataBindServiceNativeBinding native =
         DATA_BIND_SERVICE_NATIVE_BINDING_INIT(NULL, NULL, NULL);
+    DataBindNativeExecution execution =
+        (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;
     DataBind *codec = NULL;
     DataBindError error = DATA_BIND_ERROR_INIT;
     DataBindBindingProjection projection = {
@@ -311,6 +314,23 @@ spec("generated DataBind Plugin Service") {
         operation.function, entry->value.function.desc));
     check_true(data_bind_plugin_operation_native_binding(
         &operation, &native));
+    check_true(data_bind_plugin_operation_execution_admit(
+        &operation, entry, &execution));
+    check_true(data_bind_native_execution_valid(&execution));
+    check_true(execution.function == operation.function);
+    check_true(execution.function == entry->value.function.desc);
+    check_true(execution.abi == entry->value.function.abi);
+    check_true(execution.context == entry->value.function.context);
+    check_true(execution.invoke == entry->value.function.invoke);
+    {
+      DataBindPluginOperationBinding mismatched = operation;
+      DataBindNativeExecution rejected =
+          (DataBindNativeExecution)DATA_BIND_NATIVE_EXECUTION_INIT;
+      mismatched.export_id = "Image.Codec.NotDecode";
+      check_false(data_bind_plugin_operation_execution_admit(
+          &mismatched, entry, &rejected));
+      check_false(data_bind_native_execution_valid(&rejected));
+    }
     check_true(cmeta_data_desc_valid(operation.request.data));
     check_true(cmeta_data_desc_valid(operation.response.data));
 
@@ -362,8 +382,8 @@ spec("generated DataBind Plugin Service") {
      */
     invoke_params[0] = frame.request;
     invoke_params[1] = frame.params[1];
-    check_true(entry->value.function.invoke(
-        entry->value.function.context,
+    check_true(execution.invoke(
+        execution.context,
         frame.return_value, invoke_params, 2u));
     check_equal(native_status, 0);
     check_equal(response.pixels, 48u);
