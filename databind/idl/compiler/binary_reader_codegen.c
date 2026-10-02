@@ -52,6 +52,10 @@ static const char *binary_codegen_token_kind(
     return "CSERDE_UINT";
   case DATABIND_BINARY_SCALAR_FLOAT:
     return "CSERDE_FLOAT";
+  case DATABIND_BINARY_SCALAR_STRING:
+    return "CSERDE_STRING";
+  case DATABIND_BINARY_SCALAR_BYTES:
+    return "CSERDE_BYTES";
   case DATABIND_BINARY_SCALAR_NONE:
   default:
     return NULL;
@@ -68,11 +72,21 @@ static int binary_codegen_layout_admitted(
   for (i = 0u; i < layout->field_count; ++i) {
     const databind_binary_field_layout *field = &layout->fields[i];
     const char *token = binary_codegen_token_kind(field->scalar_kind);
-    if (field->field_id == NULL ||
-        field->kind != DATABIND_BINARY_FIELD_FIXED ||
-        token == NULL || field->scalar_bits == 0u ||
-        field->wire_extent != (size_t)(field->scalar_bits / 8u))
+    if (field->field_id == NULL || token == NULL)
       return 0;
+    if (field->kind == DATABIND_BINARY_FIELD_FIXED) {
+      if (field->scalar_bits == 0u ||
+          field->wire_extent != (size_t)(field->scalar_bits / 8u))
+        return 0;
+    } else if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA) {
+      if ((field->scalar_kind != DATABIND_BINARY_SCALAR_STRING &&
+           field->scalar_kind != DATABIND_BINARY_SCALAR_BYTES) ||
+          field->scalar_bits != 0u ||
+          field->tail_prefix_bytes != sizeof(uint32_t))
+        return 0;
+    } else {
+      return 0;
+    }
   }
   return 1;
 }
@@ -105,6 +119,16 @@ static unsigned binary_codegen_flags(
   if ((field->flags & DATABIND_BINARY_FIELD_NULLABLE) != 0u)
     result |= 2u;
   return result;
+}
+
+static const char *binary_codegen_representation(
+    const databind_binary_field_layout *field) {
+  if (field == NULL) return NULL;
+  if (field->kind == DATABIND_BINARY_FIELD_FIXED)
+    return "DATA_BIND_BINARY_READER_REP_FIXED";
+  if (field->kind == DATABIND_BINARY_FIELD_VAR_DATA)
+    return "DATA_BIND_BINARY_READER_REP_VAR_DATA";
+  return NULL;
 }
 
 static int binary_codegen_symbol(
@@ -165,9 +189,10 @@ int databind_compiler_binary_reader_emit(
     for (i = 0u; i < layout.field_count; ++i) {
       const databind_binary_field_layout *field = &layout.fields[i];
       const char *token = binary_codegen_token_kind(field->scalar_kind);
+      const char *representation = binary_codegen_representation(field);
       unsigned flags = binary_codegen_flags(field);
 
-      if (token == NULL ||
+      if (token == NULL || representation == NULL ||
           fputs("  {sizeof(DataBindBinaryReaderFieldPlan), ", file) == EOF ||
           binary_codegen_c_string(file, field->field_id) != 0 ||
           fprintf(
@@ -179,7 +204,7 @@ int databind_compiler_binary_reader_emit(
         goto cleanup;
 
       if (flags == 0u) {
-        if (fputs("0u},\n", file) == EOF) goto cleanup;
+        if (fputs("0u, ", file) == EOF) goto cleanup;
       } else {
         int wrote = 0;
         if ((flags & 1u) != 0u) {
@@ -196,8 +221,15 @@ int databind_compiler_binary_reader_emit(
                   file) == EOF)
             goto cleanup;
         }
-        if (fputs("},\n", file) == EOF) goto cleanup;
+        if (fputs(", ", file) == EOF) goto cleanup;
       }
+      if (fprintf(
+              file, "%s, %zuu},\n",
+              representation,
+              field->kind == DATABIND_BINARY_FIELD_VAR_DATA
+                  ? field->tail_prefix_bytes
+                  : 0u) < 0)
+        goto cleanup;
     }
     if (fputs("};\n\n", file) == EOF) goto cleanup;
   }
