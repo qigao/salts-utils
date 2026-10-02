@@ -869,7 +869,7 @@ cmake_add_test(test_databind_plugin_generated_dso
   SOURCES
     test_plugin_generated_dso.c
     "${DATABIND_PLUGIN_TEST_BINDING_C}"
-  LIBS Salts::Plugin Salts::DataBind Salts::TinyTest
+  LIBS Salts::DataBindPlugin Salts::TinyTest
   DEFS
     GENERATED_DATABIND_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_generated_fixture_plugin>"
   INCLUDES
@@ -891,6 +891,7 @@ cmake_add_test(test_databind_plugin_typed_error_client
   SOURCES test_plugin_typed_error_generated_client.c
   LIBS
     databind_plugin_typed_error_fixture_plugin_client
+    Salts::DataBindPlugin
     Salts::TinyTest
   DEFS
     GENERATED_TYPED_ERROR_PLUGIN_PATH="$<TARGET_FILE:databind_plugin_typed_error_fixture_plugin>"
