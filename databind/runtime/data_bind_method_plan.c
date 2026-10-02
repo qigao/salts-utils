@@ -126,6 +126,19 @@ static int http_location_valid(
   return 0;
 }
 
+static int http_payload_profile_valid(
+    DataBindPayloadKind kind,
+    DataBindFormat format,
+    const DataBindOpaquePlan *opaque_plan) {
+  if (kind == DATA_BIND_PAYLOAD_FORMAT)
+    return method_plan_format_valid(format) && opaque_plan == NULL;
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return format == DATA_BIND_FORMAT_NONE &&
+           opaque_plan != NULL &&
+           data_bind_opaque_plan_validate(opaque_plan, NULL) == DATA_BIND_OK;
+  return 0;
+}
+
 static int http_config_valid(const DataBindHttpProjectionConfig *config) {
   size_t i, j;
   if (config == NULL) return 1;
@@ -135,8 +148,14 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
       (config->error_count != 0u && config->errors == NULL) ||
       config->success_status < 100 || config->success_status > 599 ||
       (config->context_flags & ~DATA_BIND_HTTP_CONTEXT_MASK) != 0u ||
-      !method_plan_format_valid(config->ingress_format) ||
-      !method_plan_format_valid(config->egress_format))
+      !http_payload_profile_valid(
+          config->ingress_payload_kind,
+          config->ingress_format,
+          config->ingress_opaque_plan) ||
+      !http_payload_profile_valid(
+          config->egress_payload_kind,
+          config->egress_format,
+          config->egress_opaque_plan))
     return 0;
   if (config->method != NULL && !http_method_valid(config->method))
     return 0;
@@ -145,7 +164,11 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
     if (left->size < sizeof(*left) || left->schema_field == NULL ||
         left->schema_field[0] == '\0' ||
         !http_location_valid(left->direction, left->location) ||
-        (left->wire_name != NULL && left->wire_name[0] == '\0'))
+        (left->wire_name != NULL && left->wire_name[0] == '\0') ||
+        (left->direction == DATA_BIND_BINDING_INGRESS &&
+         config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
+        (left->direction == DATA_BIND_BINDING_EGRESS &&
+         config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE))
       return 0;
     for (j = 0u; j < i; ++j) {
       const DataBindHttpFieldProjection *right = &config->fields[j];
@@ -154,6 +177,11 @@ static int http_config_valid(const DataBindHttpProjectionConfig *config) {
         return 0;
     }
   }
+  if ((config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+       config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) &&
+      config->error_count != 0u)
+    return 0;
+
   for (i = 0u; i < config->error_count; ++i) {
     const DataBindHttpErrorMapping *left = &config->errors[i];
     if (left->size < sizeof(*left) || left->error_type == NULL ||
@@ -576,9 +604,20 @@ DataBindStatus data_bind_http_method_plan_compile_service(
 
   if (out_plan != NULL) *out_plan = NULL;
   if (codec == NULL || service_name == NULL || operation_name == NULL ||
-      native == NULL || out_plan == NULL || !http_config_valid(config))
+      out_plan == NULL || !http_config_valid(config))
     return method_plan_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG,
                             "Invalid HTTP MethodPlan arguments");
+
+  if (config != NULL &&
+      (config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+       config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE))
+    return method_plan_fail(
+        diagnostic, DATA_BIND_ERR_SCHEMA,
+        "Opaque HTTP payloads are pass-through transport plans and do not compile a BindingPlan");
+
+  if (native == NULL)
+    return method_plan_fail(diagnostic, DATA_BIND_ERR_INVALID_ARG,
+                            "HTTP formatted MethodPlan requires native binding");
 
   default_route = method_plan_join("/", service_name, "/", operation_name);
   route = config != NULL && config->route != NULL ? config->route : default_route;
