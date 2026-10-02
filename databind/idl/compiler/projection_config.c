@@ -234,6 +234,19 @@ static int parse_format_name(
   return 0;
 }
 
+static int parse_payload_profile(
+    const char *text, DataBindPayloadKind *kind, DataBindFormat *format) {
+  if (text == NULL || kind == NULL || format == NULL) return 0;
+  if (strcmp(text, "opaque") == 0) {
+    *kind = DATA_BIND_PAYLOAD_OPAQUE;
+    *format = DATA_BIND_FORMAT_NONE;
+    return 1;
+  }
+  if (!parse_format_name(text, format)) return 0;
+  *kind = DATA_BIND_PAYLOAD_FORMAT;
+  return 1;
+}
+
 static int optional_format(
     const json_value_t *object, const char *key,
     DataBindFormat *out,
@@ -642,6 +655,36 @@ static int parse_rpc(
   return 0;
 }
 
+static int parse_opaque(
+    const json_value_t *section,
+    databind_compiler_projection_config *out,
+    char *error, size_t error_size) {
+  static const char *const keys[] = {"max_bytes"};
+  json_value_t *max_value;
+  uint64_t max_bytes;
+
+  if (section == NULL || json_type(section) != JSON_OBJECT)
+    return config_error(error, error_size,
+                        "Opaque projection section must be an object");
+  if (object_keys_valid(
+          section, keys, sizeof(keys) / sizeof(keys[0]),
+          error, error_size) != 0)
+    return -1;
+
+  max_value = json_object_get(section, "max_bytes");
+  if (!parse_u64_value(max_value, &max_bytes) ||
+      max_bytes == 0u ||
+      max_bytes > UINT32_MAX ||
+      max_bytes > (uint64_t)SIZE_MAX)
+    return config_error(
+        error, error_size,
+        "Opaque max_bytes must be in range 1..UINT32_MAX");
+
+  out->opaque_max_bytes = (size_t)max_bytes;
+  out->has_opaque = 1;
+  return 0;
+}
+
 static int parse_socket_mode(
     const char *text, DataBindSocketMode *out) {
   if (text == NULL || out == NULL) return 0;
@@ -705,9 +748,10 @@ static int parse_socket(
   if (!parse_socket_framing(framing, &out->socket.framing))
     return config_errorf(
         error, error_size, "Unknown Socket framing '%s'", framing);
-  if (!parse_format_name(format, &out->socket.format))
+  if (!parse_payload_profile(
+          format, &out->socket.payload_kind, &out->socket.format))
     return config_errorf(
-        error, error_size, "Unknown Socket format '%s'", format);
+        error, error_size, "Unknown Socket format/profile '%s'", format);
 
   max_frame = json_object_get(section, "max_frame_bytes");
   if (!parse_u64_value(max_frame, &max_frame_bytes) ||
@@ -767,9 +811,10 @@ static int parse_flowmq(
   if (!parse_flowmq_pattern(pattern, &out->flowmq.pattern))
     return config_errorf(
         error, error_size, "Unknown FlowMQ Channel pattern '%s'", pattern);
-  if (!parse_format_name(format, &out->flowmq.format))
+  if (!parse_payload_profile(
+          format, &out->flowmq.payload_kind, &out->flowmq.format))
     return config_errorf(
-        error, error_size, "Unknown FlowMQ format '%s'", format);
+        error, error_size, "Unknown FlowMQ format/profile '%s'", format);
 
   max_payload = json_object_get(section, "max_payload_bytes");
   if (!parse_u64_value(max_payload, &max_payload_bytes) ||
@@ -804,10 +849,11 @@ int databind_compiler_projection_config_load(
     char *error,
     size_t error_size) {
   static const char *const root_keys[] = {
-      "version", "http", "rpc", "socket", "flowmq"};
+      "version", "opaque", "http", "rpc", "socket", "flowmq"};
   json_value_t *root;
   json_value_t *version;
   uint64_t version_number;
+  json_value_t *opaque;
   json_value_t *http;
   json_value_t *rpc;
   json_value_t *socket;
@@ -842,6 +888,7 @@ int databind_compiler_projection_config_load(
     goto fail;
   }
 
+  opaque = json_object_get(root, "opaque");
   http = json_object_get(root, "http");
   rpc = json_object_get(root, "rpc");
   socket = json_object_get(root, "socket");
@@ -851,6 +898,8 @@ int databind_compiler_projection_config_load(
                  "Projection config must contain http, rpc, socket and/or flowmq");
     goto fail;
   }
+  if (opaque != NULL && parse_opaque(opaque, out, error, error_size) != 0)
+    goto fail;
   if (http != NULL && parse_http(http, out, error, error_size) != 0)
     goto fail;
   if (rpc != NULL && parse_rpc(rpc, out, error, error_size) != 0)
@@ -859,6 +908,18 @@ int databind_compiler_projection_config_load(
     goto fail;
   if (flowmq != NULL && parse_flowmq(flowmq, out, error, error_size) != 0)
     goto fail;
+
+  if ((out->has_socket &&
+       out->socket.payload_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
+      (out->has_flowmq &&
+       out->flowmq.payload_kind == DATA_BIND_PAYLOAD_OPAQUE)) {
+    if (!out->has_opaque) {
+      config_error(
+          error, error_size,
+          "Opaque Socket/FlowMQ payload requires top-level opaque.max_bytes");
+      goto fail;
+    }
+  }
 
   return 0;
 
