@@ -10,3 +10,7 @@ message Result {
 service BinaryGate {
   Use: Choice -> Result;
 }
+
+service Raw {
+  Echo: bytes -> bytes;
+}
