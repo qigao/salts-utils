@@ -247,6 +247,27 @@ static int parse_payload_profile(
   return 1;
 }
 
+static int optional_payload_profile(
+    const json_value_t *object, const char *key,
+    DataBindPayloadKind *kind, DataBindFormat *format,
+    char *error, size_t error_size) {
+  const char *text = NULL;
+  if (kind == NULL || format == NULL)
+    return config_error(error, error_size,
+                        "Projection payload profile output is invalid");
+  *kind = DATA_BIND_PAYLOAD_FORMAT;
+  *format = DATA_BIND_FORMAT_JSON;
+  if (json_object_get(object, key) == NULL) return 0;
+  if (optional_string(object, key, &text, error, error_size) != 0)
+    return -1;
+  if (text == NULL || !parse_payload_profile(text, kind, format))
+    return config_errorf(
+        error, error_size,
+        "Unknown projection format/profile '%s'",
+        text != NULL ? text : "");
+  return 0;
+}
+
 static int optional_format(
     const json_value_t *object, const char *key,
     DataBindFormat *out,
@@ -452,11 +473,16 @@ static int parse_http(
                      &op->success_status, error, error_size) != 0 ||
         parse_http_context(operation, &op->context_flags,
                            error, error_size) != 0 ||
-        optional_format(operation, "ingress_format", &op->ingress_format,
-                        error, error_size) != 0 ||
-        optional_format(operation, "egress_format", &op->egress_format,
-                        error, error_size) != 0)
+        optional_payload_profile(
+            operation, "ingress_format",
+            &op->ingress_payload_kind, &op->ingress_format,
+            error, error_size) != 0 ||
+        optional_payload_profile(
+            operation, "egress_format",
+            &op->egress_payload_kind, &op->egress_format,
+            error, error_size) != 0)
       return -1;
+    op->opaque_max_bytes = out->opaque_max_bytes;
 
     fields = json_object_get(operation, "fields");
     for (i = 0u; fields != NULL && i < json_array_size(fields); ++i, ++fi) {
@@ -873,17 +899,24 @@ static int parse_flowmq(
             pattern, &out->flowmq.service_pattern))
       return config_errorf(
           error, error_size, "Unknown FlowMQ Service pattern '%s'", pattern);
-    if (!parse_format_name(ingress_format, &out->flowmq.ingress_format))
+    if (!parse_payload_profile(
+            ingress_format,
+            &out->flowmq.ingress_payload_kind,
+            &out->flowmq.ingress_format))
       return config_errorf(
-          error, error_size, "Unknown FlowMQ ingress format '%s'",
+          error, error_size, "Unknown FlowMQ ingress format/profile '%s'",
           ingress_format);
-    if (!parse_format_name(egress_format, &out->flowmq.egress_format))
+    if (!parse_payload_profile(
+            egress_format,
+            &out->flowmq.egress_payload_kind,
+            &out->flowmq.egress_format))
       return config_errorf(
-          error, error_size, "Unknown FlowMQ egress format '%s'",
+          error, error_size, "Unknown FlowMQ egress format/profile '%s'",
           egress_format);
     out->flowmq.service_name = service;
     out->flowmq.operation_name = operation;
     out->flowmq.payload_kind = DATA_BIND_PAYLOAD_FORMAT;
+    out->flowmq.opaque_max_bytes = out->opaque_max_bytes;
   }
 
   max_payload = json_object_get(section, "max_payload_bytes");
@@ -979,15 +1012,45 @@ int databind_compiler_projection_config_load(
   if (flowmq != NULL && parse_flowmq(flowmq, out, error, error_size) != 0)
     goto fail;
 
-  if ((out->has_socket &&
-       out->socket.payload_kind == DATA_BIND_PAYLOAD_OPAQUE) ||
-      (out->has_flowmq &&
-       out->flowmq.payload_kind == DATA_BIND_PAYLOAD_OPAQUE)) {
-    if (!out->has_opaque) {
+  {
+    int needs_opaque =
+        out->has_socket &&
+        out->socket.payload_kind == DATA_BIND_PAYLOAD_OPAQUE;
+    size_t i;
+
+    if (out->has_flowmq) {
+      if (out->flowmq.service_name != NULL) {
+        needs_opaque =
+            needs_opaque ||
+            out->flowmq.ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+            out->flowmq.egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE;
+      } else {
+        needs_opaque =
+            needs_opaque ||
+            out->flowmq.payload_kind == DATA_BIND_PAYLOAD_OPAQUE;
+      }
+    }
+
+    for (i = 0u; i < out->http.operation_count; ++i)
+      needs_opaque =
+          needs_opaque ||
+          out->http.operations[i].ingress_payload_kind ==
+              DATA_BIND_PAYLOAD_OPAQUE ||
+          out->http.operations[i].egress_payload_kind ==
+              DATA_BIND_PAYLOAD_OPAQUE;
+
+    if (needs_opaque && !out->has_opaque) {
       config_error(
           error, error_size,
-          "Opaque Socket/FlowMQ payload requires top-level opaque.max_bytes");
+          "Opaque transport payload requires top-level opaque.max_bytes");
       goto fail;
+    }
+
+    if (out->has_opaque) {
+      for (i = 0u; i < out->http.operation_count; ++i)
+        out->http_operations[i].opaque_max_bytes = out->opaque_max_bytes;
+      out->flowmq.opaque_max_bytes = out->opaque_max_bytes;
+      out->socket.opaque_max_bytes = out->opaque_max_bytes;
     }
   }
 
