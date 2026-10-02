@@ -605,7 +605,7 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     SOURCES test_generated_owned_buffers.c
             "${DATABIND_OWNED_BUFFER_HEADER}"
             "${DATABIND_OWNED_BUFFER_SOURCE}"
-    LIBS ${DATA_BIND_TEST_LIBS}
+    LIBS ${DATA_BIND_TEST_LIBS} Salts::JsonParser Salts::JsonCSerdeAdapter
     INCLUDES "${DATABIND_OWNED_BUFFER_DIR}"
     FOLDER "databind/runtime/tests")
   set_tests_properties(test_databind_generated_owned_buffers PROPERTIES
