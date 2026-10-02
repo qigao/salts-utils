@@ -2,6 +2,7 @@
 #define DATA_BIND_PROJECTION_PLAN_H
 
 #include "data_bind.h"
+#include "data_bind_opaque_plan.h"
 
 #include <cserde/reader.h>
 #include <cserde/writer.h>
@@ -33,6 +34,18 @@ typedef enum DataBindTransportKind {
 
 typedef struct DataBindFormatPlan DataBindFormatPlan;
 typedef struct DataBindTransportPlan DataBindTransportPlan;
+
+typedef struct DataBindTransportPayloadConfig {
+  size_t size;
+  uint32_t abi_version;
+  DataBindPayloadKind kind;
+  DataBindFormat format;
+  size_t opaque_max_bytes;
+} DataBindTransportPayloadConfig;
+
+#define DATA_BIND_TRANSPORT_PAYLOAD_CONFIG_INIT \
+  { sizeof(DataBindTransportPayloadConfig), DATA_BIND_PROJECTION_PLAN_ABI_VERSION, \
+    DATA_BIND_PAYLOAD_FORMAT, DATA_BIND_FORMAT_JSON, 0u }
 
 /*
  * Caller-owned root-record canonicalizing CSerde reader.
@@ -115,11 +128,16 @@ typedef struct DataBindTransportPlanInfo {
   const char *operation_name;
   const DataBindFormatPlan *ingress;
   const DataBindFormatPlan *egress;
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
+  const DataBindOpaquePlan *ingress_opaque;
+  const DataBindOpaquePlan *egress_opaque;
 } DataBindTransportPlanInfo;
 
 #define DATA_BIND_TRANSPORT_PLAN_INFO_INIT \
   { sizeof(DataBindTransportPlanInfo), DATA_BIND_PROJECTION_PLAN_ABI_VERSION, \
-    DATA_BIND_TRANSPORT_UNKNOWN, NULL, NULL, NULL, NULL }
+    DATA_BIND_TRANSPORT_UNKNOWN, NULL, NULL, NULL, NULL, \
+    DATA_BIND_PAYLOAD_FORMAT, DATA_BIND_PAYLOAD_FORMAT, NULL, NULL }
 
 /*
  * Compile one format representation against canonical DataBind schema
@@ -196,9 +214,25 @@ DATA_BIND_API cserde_writer *data_bind_format_canonical_writer_writer(
     DataBindFormatCanonicalWriter *writer);
 
 /*
- * Compile the format-neutral transport shell for one Service operation.
- * The transport owns independent ingress/egress FormatPlans for the canonical
- * request/response types. A void side has no FormatPlan.
+ * Compile one transport shell with explicit per-direction payload profiles.
+ *
+ * FORMAT owns an immutable FormatPlan. OPAQUE owns the same bounded
+ * DataBindOpaquePlan used by Socket/FlowMQ and is admitted only for canonical
+ * builtin bytes. OPAQUE never invokes a parser/provider or interprets native
+ * struct memory as wire bytes. A void side cannot select OPAQUE.
+ */
+DATA_BIND_API DataBindStatus data_bind_transport_plan_compile_service_payloads(
+    DataBind *codec,
+    const char *service_name,
+    const char *operation_name,
+    DataBindTransportKind kind,
+    const DataBindTransportPayloadConfig *ingress,
+    const DataBindTransportPayloadConfig *egress,
+    DataBindTransportPlan **out_plan,
+    DataBindError *error);
+
+/*
+ * Convenience wrapper for parser-backed FORMAT payloads on both directions.
  */
 DATA_BIND_API DataBindStatus data_bind_transport_plan_compile_service(
     DataBind *codec,
