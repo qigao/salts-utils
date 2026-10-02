@@ -378,6 +378,34 @@ spec("DataBind WASM projection backend") {
     cleanup_outputs(component, host_h, host_c, guest_h, core);
   }
 
+  it("carries multi-field fixed responses through one canonical wire result") {
+    static const char core[] = "databind_wasm_multi_core.wasm";
+    static const char component[] = "databind_wasm_multi.wasm";
+    static const char host_h[] = "databind_wasm_multi.wasm.h";
+    static const char host_c[] = "databind_wasm_multi.wasm.c";
+    static const char guest_h[] = "databind_wasm_multi.wasm_guest.h";
+    static const char export_symbol[] =
+        "databind_9_WasmMulti_4_Calc_3_Add";
+    salts_fs_buf_t generated = {0};
+
+    cleanup_outputs(component, host_h, host_c, guest_h, core);
+    check_true(write_core_add_module(core, export_symbol));
+    check_equal(run_projection(
+                    WASM_MULTI_RESPONSE_SCHEMA,
+                    "WasmMulti.Calculator",
+                    core, component, host_h, host_c, guest_h),
+                0);
+
+    check_equal(salts_fs_read_file(host_c, &generated), 0);
+    check_not_null(strstr(generated.base, "AddResponse_view_bind"));
+    check_not_null(strstr(generated.base, "response->value"));
+    check_not_null(strstr(generated.base, "response->other"));
+    check_null(strstr(generated.base, "TURBOWASM_COMPONENT_HOST_U32"));
+    salts_fs_buf_free(&generated);
+
+    cleanup_outputs(component, host_h, host_c, guest_h, core);
+  }
+
   it("rejects optional and typed-error shapes while preserving wire ABI") {
     static const char core[] = "databind_wasm_reject_core.wasm";
     static const char component[] = "databind_wasm_reject.wasm";
