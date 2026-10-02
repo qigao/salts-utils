@@ -549,7 +549,7 @@ cleanup:
 }
 
 databind_compiler_projection_backend
-databind_compiler_flowmq_channel_plan_backend(void) {
+databind_compiler_flowmq_plan_backend(void) {
   databind_compiler_projection_backend backend = {
       {DATABIND_COMPILER_PROJECTION_AXIS_TRANSPORT,
        DATABIND_COMPILER_TRANSPORT_FLOWMQ},
