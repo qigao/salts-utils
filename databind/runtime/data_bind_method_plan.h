@@ -3,6 +3,7 @@
 
 #include "data_bind_binding_plan.h"
 #include "data_bind_projection_plan.h"
+#include "data_bind_opaque_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +12,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 2u };
+enum { DATA_BIND_METHOD_PLAN_ABI_VERSION = 3u };
 
 typedef enum DataBindHttpFieldLocation {
   DATA_BIND_HTTP_PATH = 1,
@@ -67,12 +68,18 @@ typedef struct DataBindHttpProjectionConfig {
   size_t error_count;
   DataBindFormat ingress_format;
   DataBindFormat egress_format;
+  /** Append-only payload profile. FORMAT uses ingress/egress_format. */
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
+  const DataBindOpaquePlan *ingress_opaque_plan;
+  const DataBindOpaquePlan *egress_opaque_plan;
 } DataBindHttpProjectionConfig;
 
 #define DATA_BIND_HTTP_PROJECTION_CONFIG_INIT \
   { sizeof(DataBindHttpProjectionConfig), DATA_BIND_METHOD_PLAN_ABI_VERSION, \
     NULL, NULL, 200, DATA_BIND_HTTP_CONTEXT_NONE, NULL, 0u, NULL, 0u, \
-    DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON }
+    DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON, \
+    DATA_BIND_PAYLOAD_FORMAT, DATA_BIND_PAYLOAD_FORMAT, NULL, NULL }
 
 typedef struct DataBindRpcFieldProjection {
   size_t size;

@@ -276,6 +276,27 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    /*
+     * Opaque is admitted only for canonical builtin bytes. Reusing the same
+     * profile for an ordinary structured Service must fail before publication.
+     * Positive bytes->bytes Service generation is covered by the dedicated
+     * public opaque Service fixture.
+     */
+    config.native_header_include = NULL;
+    config.service_name = "Calc";
+    config.operation_name = "Add";
+    config.ingress_format = DATA_BIND_FORMAT_NONE;
+    config.egress_format = DATA_BIND_FORMAT_NONE;
+    config.ingress_payload_kind = DATA_BIND_PAYLOAD_OPAQUE;
+    config.egress_payload_kind = DATA_BIND_PAYLOAD_OPAQUE;
+    config.opaque_max_bytes = 64u;
+    config.service_pattern = DATA_BIND_FLOWMQ_SERVICE_REQ_REP;
+    check_equal(
+        databind_compiler_projection_run(
+            &input, &request, 1u, &backend, 1u),
+        -1);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+
     databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);

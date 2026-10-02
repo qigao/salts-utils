@@ -13,6 +13,8 @@ union Choice {
 
 channel ChoiceEvents: Choice;
 
+channel Raw: bytes;
+
 
 message AddRequest {
   uint32 value;
@@ -30,3 +32,4 @@ service Calc {
   Add: AddRequest -> AddResponse throws CalcError;
   Choose: AddRequest -> Choice;
 }
+

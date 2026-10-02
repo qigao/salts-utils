@@ -162,6 +162,7 @@ add_executable(databind_method_plan_projection_fixture_gen
   projection.c
   method_plan_projection.c
   binary_layout_ir.c
+  opaque_plan_codegen.c
   compiler_core.c
   database_schema.c
   mustache_helpers.c)
@@ -656,6 +657,32 @@ set_tests_properties(test_databind_opaque_transport PROPERTIES
 
 
 salts_idl_target(
+  TARGET databind_opaque_service_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_service.schema"
+  ARTIFACT_NAME "opaque_service"
+  TRANSPORTS HTTP FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_service_config.json")
+
+cmake_add_test(test_databind_opaque_service
+  SOURCES test_public_opaque_service.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${databind_opaque_service_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_opaque_service
+  databind_opaque_service_fixture_idl_codegen)
+set_target_properties(test_databind_opaque_service PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_opaque_service PROPERTIES
+  LABELS "databind;compiler;opaque;bytes;service;http;flowmq;public")
+
+
+salts_idl_target(
   TARGET databind_binary_var_data_transport_fixture
   IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_binary_reader_var_data.schema"
   ARTIFACT_NAME "binary_var"
@@ -1071,6 +1098,7 @@ cmake_add_test(test_databind_method_plan_binary_admission
     projection.c
     method_plan_projection.c
     binary_layout_ir.c
+    opaque_plan_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c

@@ -26,6 +26,8 @@ typedef struct databind_compiler_flowmq_projection_config {
   DataBindFormat ingress_format;
   DataBindFormat egress_format;
   DataBindFlowMQServicePattern service_pattern;
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
 } databind_compiler_flowmq_projection_config;
 
 databind_compiler_projection_backend

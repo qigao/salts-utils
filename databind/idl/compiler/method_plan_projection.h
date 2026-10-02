@@ -3,6 +3,7 @@
 
 #include "projection.h"
 #include "../../runtime/data_bind.h"
+#include "../../runtime/data_bind_opaque_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -35,6 +36,9 @@ typedef struct databind_compiler_http_operation_config {
   uint64_t context_flags;
   DataBindFormat ingress_format;
   DataBindFormat egress_format;
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
+  size_t opaque_max_bytes;
 } databind_compiler_http_operation_config;
 
 typedef struct databind_compiler_http_field_config {

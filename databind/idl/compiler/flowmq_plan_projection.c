@@ -94,6 +94,38 @@ static const char *flowmq_service_pattern_name(
   }
 }
 
+static int flowmq_service_profile_valid(
+    DataBindPayloadKind kind,
+    DataBindFormat format,
+    size_t opaque_max_bytes) {
+  if (kind == DATA_BIND_PAYLOAD_FORMAT)
+    return flowmq_format_name(format) != NULL;
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return format == DATA_BIND_FORMAT_NONE &&
+           opaque_max_bytes != 0u &&
+           opaque_max_bytes <= UINT32_MAX;
+  return 0;
+}
+
+static const char *flowmq_payload_kind_name(DataBindPayloadKind kind) {
+  switch (kind) {
+  case DATA_BIND_PAYLOAD_FORMAT:
+    return "DATA_BIND_PAYLOAD_FORMAT";
+  case DATA_BIND_PAYLOAD_OPAQUE:
+    return "DATA_BIND_PAYLOAD_OPAQUE";
+  default:
+    return NULL;
+  }
+}
+
+static const char *flowmq_service_format_name(
+    DataBindPayloadKind kind, DataBindFormat format) {
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return format == DATA_BIND_FORMAT_NONE ? "DATA_BIND_FORMAT_NONE" : NULL;
+  if (kind != DATA_BIND_PAYLOAD_FORMAT) return NULL;
+  return flowmq_format_name(format);
+}
+
 static int flowmq_config_valid(
     const databind_compiler_flowmq_projection_config *config) {
   int service_mode;
@@ -106,16 +138,26 @@ static int flowmq_config_valid(
   service_mode =
       config->service_name != NULL || config->operation_name != NULL;
   if (service_mode) {
+    const int has_formatted =
+        config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT ||
+        config->egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT;
     return config->service_name != NULL &&
            config->service_name[0] != '\0' &&
            config->operation_name != NULL &&
            config->operation_name[0] != '\0' &&
            config->channel_name == NULL &&
-           flowmq_include_basename_valid(config->native_header_include) &&
            flowmq_service_pattern_name(config->service_pattern) != NULL &&
-           flowmq_format_name(config->ingress_format) != NULL &&
-           flowmq_format_name(config->egress_format) != NULL &&
-           config->payload_kind == DATA_BIND_PAYLOAD_FORMAT;
+           flowmq_service_profile_valid(
+               config->ingress_payload_kind,
+               config->ingress_format,
+               config->opaque_max_bytes) &&
+           flowmq_service_profile_valid(
+               config->egress_payload_kind,
+               config->egress_format,
+               config->opaque_max_bytes) &&
+           (has_formatted
+                ? flowmq_include_basename_valid(config->native_header_include)
+                : config->native_header_include == NULL);
   }
 
   if (config->channel_name == NULL || config->channel_name[0] == '\0' ||
@@ -221,10 +263,11 @@ static const IdlOperation *flowmq_service_operation_find(
   return NULL;
 }
 
-static int flowmq_service_format_representable(
+static int flowmq_service_payload_representable(
     const IdlContract *contract,
     const databind_tbe_format_plan *format_plan,
     const char *type_name,
+    DataBindPayloadKind kind,
     DataBindFormat format) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
@@ -233,6 +276,12 @@ static int flowmq_service_format_representable(
   if (contract == NULL || format_plan == NULL ||
       type_name == NULL || type_name[0] == '\0')
     return 0;
+
+  if (kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return databind_compiler_opaque_plan_admit(type_name) == 0;
+  if (kind != DATA_BIND_PAYLOAD_FORMAT)
+    return 0;
+
   if (format == DATA_BIND_FORMAT_JSON)
     return 1;
   if (format != DATA_BIND_FORMAT_BINARY)
@@ -300,16 +349,23 @@ static int flowmq_service_generate(
       strcmp(operation->response_type, "void") == 0)
     return -1;
 
-  if (!flowmq_service_format_representable(
+  if (!flowmq_service_payload_representable(
           input->contract, input->tbe_format,
-          operation->request_type, config->ingress_format) ||
-      !flowmq_service_format_representable(
+          operation->request_type,
+          config->ingress_payload_kind,
+          config->ingress_format) ||
+      !flowmq_service_payload_representable(
           input->contract, input->tbe_format,
-          operation->response_type, config->egress_format))
+          operation->response_type,
+          config->egress_payload_kind,
+          config->egress_format))
     return -1;
 
-  if (databind_compiler_message_native_build(
-          input->contract, operation->request_type, &request_binding) != 0 ||
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      databind_compiler_message_native_build(
+          input->contract, operation->request_type, &request_binding) != 0)
+    goto cleanup;
+  if (config->egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
       databind_compiler_message_native_build(
           input->contract, operation->response_type, &response_binding) != 0)
     goto cleanup;
@@ -335,19 +391,41 @@ static int flowmq_service_generate(
           file,
           "#ifndef DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n"
           "#define DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n\n"
-          "#include <data_bind_flowmq_plan.h>\n"
-          "#include \"%s\"\n\n",
+          "#include <data_bind_flowmq_plan.h>\n",
           config->symbol_prefix,
-          config->symbol_prefix,
-          config->native_header_include) < 0 ||
-      databind_compiler_message_native_emit_binding(
-          file, &request_binding, request_symbol) != 0 ||
-      fputc('\n', file) == EOF ||
-      databind_compiler_message_native_emit_binding(
-          file, &response_binding, response_symbol) != 0)
+          config->symbol_prefix) < 0)
     goto cleanup;
 
-  if (config->ingress_format == DATA_BIND_FORMAT_BINARY &&
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT ||
+      config->egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(file, "#include \"%s\"\n\n",
+                config->native_header_include) < 0)
+      goto cleanup;
+  } else if (fputc('\n', file) == EOF) {
+    goto cleanup;
+  }
+
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      databind_compiler_message_native_emit_binding(
+          file, &request_binding, request_symbol) != 0)
+    goto cleanup;
+
+  if (config->egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_message_native_emit_binding(
+            file, &response_binding, response_symbol) != 0)
+      goto cleanup;
+  }
+
+  if ((config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE ||
+       config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) &&
+      (fputc('\n', file) == EOF ||
+       databind_compiler_opaque_plan_emit(
+           file, config->symbol_prefix, config->opaque_max_bytes) != 0))
+    goto cleanup;
+
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      config->ingress_format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
           input->contract, input->tbe_format,
           operation->request_type) == 0) {
@@ -380,17 +458,57 @@ static int flowmq_service_generate(
       flowmq_c_string(file, operation->response_type) != 0 ||
       fprintf(
           file,
-          ",\n  %s, %s, %s, %zuu,\n"
-          "  %s__databind_message_native_binding,\n"
-          "  %s__databind_message_native_binding\n"
+          ",\n  %s, %s, %s, %zuu,\n  ",
+          flowmq_service_format_name(
+              config->ingress_payload_kind, config->ingress_format),
+          flowmq_service_format_name(
+              config->egress_payload_kind, config->egress_format),
+          flowmq_service_pattern_name(config->service_pattern),
+          config->max_payload_bytes) < 0)
+    goto cleanup;
+
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(
+            file, "%s__databind_message_native_binding,\n  ",
+            request_symbol) < 0)
+      goto cleanup;
+  } else if (fputs("NULL,\n  ", file) == EOF) {
+    goto cleanup;
+  }
+
+  if (config->egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(
+            file, "%s__databind_message_native_binding,\n  ",
+            response_symbol) < 0)
+      goto cleanup;
+  } else if (fputs("NULL,\n  ", file) == EOF) {
+    goto cleanup;
+  }
+
+  if (fprintf(
+          file, "%s, %s, ",
+          flowmq_payload_kind_name(config->ingress_payload_kind),
+          flowmq_payload_kind_name(config->egress_payload_kind)) < 0)
+    goto cleanup;
+
+  if (config->ingress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) {
+    if (fprintf(file, "&%s_opaque_plan, ", config->symbol_prefix) < 0)
+      goto cleanup;
+  } else if (fputs("NULL, ", file) == EOF) {
+    goto cleanup;
+  }
+
+  if (config->egress_payload_kind == DATA_BIND_PAYLOAD_OPAQUE) {
+    if (fprintf(file, "&%s_opaque_plan\n", config->symbol_prefix) < 0)
+      goto cleanup;
+  } else if (fputs("NULL\n", file) == EOF) {
+    goto cleanup;
+  }
+
+  if (fprintf(
+          file,
           "};\n\n"
           "#endif /* DATABIND_GENERATED_%s_FLOWMQ_PLAN_H */\n",
-          flowmq_format_name(config->ingress_format),
-          flowmq_format_name(config->egress_format),
-          flowmq_service_pattern_name(config->service_pattern),
-          config->max_payload_bytes,
-          request_symbol,
-          response_symbol,
           config->symbol_prefix) < 0)
     goto cleanup;
 

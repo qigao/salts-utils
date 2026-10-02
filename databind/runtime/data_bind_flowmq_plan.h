@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 enum { DATA_BIND_FLOWMQ_CHANNEL_PLAN_ABI_VERSION = 2u };
-enum { DATA_BIND_FLOWMQ_SERVICE_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_FLOWMQ_SERVICE_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindFlowMQChannelPattern {
   DATA_BIND_FLOWMQ_CHANNEL_PUB_SUB = 1,
@@ -79,6 +79,11 @@ typedef struct DataBindFlowMQServicePlan {
   size_t max_payload_bytes;
   DataBindFlowMQNativeBindingResolverFn request_native_binding;
   DataBindFlowMQNativeBindingResolverFn response_native_binding;
+  /** Append-only request/reply payload profiles. */
+  DataBindPayloadKind ingress_payload_kind;
+  DataBindPayloadKind egress_payload_kind;
+  const DataBindOpaquePlan *ingress_opaque_plan;
+  const DataBindOpaquePlan *egress_opaque_plan;
 } DataBindFlowMQServicePlan;
 
 #define DATA_BIND_FLOWMQ_SERVICE_PLAN_INIT \
@@ -86,7 +91,8 @@ typedef struct DataBindFlowMQServicePlan {
     DATA_BIND_FLOWMQ_SERVICE_PLAN_ABI_VERSION, \
     NULL, NULL, NULL, NULL, \
     DATA_BIND_FORMAT_JSON, DATA_BIND_FORMAT_JSON, \
-    DATA_BIND_FLOWMQ_SERVICE_REQ_REP, 0u, NULL, NULL }
+    DATA_BIND_FLOWMQ_SERVICE_REQ_REP, 0u, NULL, NULL, \
+    DATA_BIND_PAYLOAD_FORMAT, DATA_BIND_PAYLOAD_FORMAT, NULL, NULL }
 
 #ifdef __cplusplus
 } /* extern "C" */

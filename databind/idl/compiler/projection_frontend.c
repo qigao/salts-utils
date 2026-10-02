@@ -374,12 +374,22 @@ static int add_flowmq_plan(
     return frontend_error(
         error, error_size,
         "FLOWMQ transport requires a flowmq section in --projection-config");
-  if (out->external_config.flowmq.payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
-      (input->source_output_path == NULL ||
-       input->source_output_path[0] == '\0'))
-    return frontend_error(
-        error, error_size,
-        "FLOWMQ formatted transport requires --source-output for native execution metadata");
+  {
+    const int needs_native =
+        out->external_config.flowmq.service_name != NULL
+            ? (out->external_config.flowmq.ingress_payload_kind ==
+                   DATA_BIND_PAYLOAD_FORMAT ||
+               out->external_config.flowmq.egress_payload_kind ==
+                   DATA_BIND_PAYLOAD_FORMAT)
+            : out->external_config.flowmq.payload_kind ==
+                  DATA_BIND_PAYLOAD_FORMAT;
+    if (needs_native &&
+        (input->source_output_path == NULL ||
+         input->source_output_path[0] == '\0'))
+      return frontend_error(
+          error, error_size,
+          "FLOWMQ formatted transport requires --source-output for native execution metadata");
+  }
 
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
@@ -398,10 +408,15 @@ static int add_flowmq_plan(
   out->flowmq = out->external_config.flowmq;
   out->flowmq.symbol_prefix = out->method_plan_symbol_prefix;
   out->flowmq.opaque_max_bytes = out->external_config.opaque_max_bytes;
-  out->flowmq.native_header_include =
-      out->flowmq.payload_kind == DATA_BIND_PAYLOAD_FORMAT
-          ? out->native_header
-          : NULL;
+  {
+    const int needs_native =
+        out->flowmq.service_name != NULL
+            ? (out->flowmq.ingress_payload_kind == DATA_BIND_PAYLOAD_FORMAT ||
+               out->flowmq.egress_payload_kind == DATA_BIND_PAYLOAD_FORMAT)
+            : out->flowmq.payload_kind == DATA_BIND_PAYLOAD_FORMAT;
+    out->flowmq.native_header_include =
+        needs_native ? out->native_header : NULL;
+  }
 
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){
