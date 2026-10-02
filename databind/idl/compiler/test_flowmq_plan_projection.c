@@ -43,7 +43,7 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         output,
         &config};
     databind_compiler_projection_backend backend =
-        databind_compiler_flowmq_channel_plan_backend();
+        databind_compiler_flowmq_plan_backend();
 
     (void)salts_fs_unlink(output);
     check_equal(
@@ -170,7 +170,7 @@ spec("DataBind generated FlowMQ ChannelPlan") {
         output,
         &config};
     databind_compiler_projection_backend backend =
-        databind_compiler_flowmq_channel_plan_backend();
+        databind_compiler_flowmq_plan_backend();
 
     (void)salts_fs_unlink(output);
     check_equal(
