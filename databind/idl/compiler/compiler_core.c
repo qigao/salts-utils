@@ -1395,18 +1395,9 @@ static int tbe_compiler_cmeta_classify_record(
       scalar = tbe_compiler_scalar_projection(inner_type);
       if ((scalar && scalar->native_data_symbol) ||
           strcmp(inner_type, "string") == 0 ||
-          strcmp(inner_type, "uuid") == 0)
-        continue;
-
-      target =
-          tbe_compiler_find_record(context->root, "enums", inner_type);
-      if (target) {
-        const char *marker =
-            context->runtime ? "typed_cmeta_runtime_supported"
-                             : "native_enum_supported";
-        if (!tbe_compiler_has_child(target, marker)) goto unsupported;
-        continue;
-      }
+          strcmp(inner_type, "uuid") == 0 ||
+          tbe_compiler_find_record(context->root, "enums", inner_type) != NULL)
+        goto unsupported;
 
       target = tbe_compiler_find_any_record(context->root, inner_type);
       if (!target) goto unsupported;
