@@ -1,0 +1,5 @@
+schema OpaqueService [version(1)];
+
+service Raw {
+  Echo: bytes -> bytes;
+}
