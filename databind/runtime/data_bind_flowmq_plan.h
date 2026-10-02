@@ -3,6 +3,7 @@
 
 #include "data_bind.h"
 #include "data_bind_native_binding.h"
+#include "data_bind_opaque_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +12,7 @@
 extern "C" {
 #endif
 
-enum { DATA_BIND_FLOWMQ_CHANNEL_PLAN_ABI_VERSION = 1u };
+enum { DATA_BIND_FLOWMQ_CHANNEL_PLAN_ABI_VERSION = 2u };
 
 typedef enum DataBindFlowMQChannelPattern {
   DATA_BIND_FLOWMQ_CHANNEL_PUB_SUB = 1,
@@ -36,13 +37,16 @@ typedef struct DataBindFlowMQChannelPlan {
   DataBindFlowMQChannelPattern pattern;
   size_t max_payload_bytes;
   DataBindFlowMQNativeBindingResolverFn native_binding;
+  /** Append-only representation class; see DataBindSocketPlan. */
+  DataBindPayloadKind payload_kind;
+  const DataBindOpaquePlan *opaque_plan;
 } DataBindFlowMQChannelPlan;
 
 #define DATA_BIND_FLOWMQ_CHANNEL_PLAN_INIT \
   { sizeof(DataBindFlowMQChannelPlan), \
     DATA_BIND_FLOWMQ_CHANNEL_PLAN_ABI_VERSION, \
     NULL, NULL, DATA_BIND_FORMAT_JSON, DATA_BIND_FLOWMQ_CHANNEL_PUB_SUB, \
-    0u, NULL }
+    0u, NULL, DATA_BIND_PAYLOAD_FORMAT, NULL }
 
 #ifdef __cplusplus
 } /* extern "C" */

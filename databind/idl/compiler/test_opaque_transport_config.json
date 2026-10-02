@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "opaque": {
+    "max_bytes": 64
+  },
+  "socket": {
+    "channel": "Device.Raw",
+    "mode": "datagram",
+    "framing": "none",
+    "format": "opaque",
+    "max_frame_bytes": 128
+  },
+  "flowmq": {
+    "channel": "Device.Raw",
+    "pattern": "pubsub",
+    "format": "opaque",
+    "max_payload_bytes": 96
+  }
+}

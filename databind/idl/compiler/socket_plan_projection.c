@@ -3,6 +3,7 @@
 #include "binary_layout_ir.h"
 #include "binary_reader_codegen.h"
 #include "message_native.h"
+#include "opaque_plan_codegen.h"
 
 #include "salts_fs.h"
 #include "salts_uuid.h"
@@ -95,14 +96,26 @@ static int socket_config_valid(
     const databind_compiler_socket_projection_config *config) {
   if (config == NULL ||
       !socket_identifier_valid(config->symbol_prefix) ||
-      !socket_include_basename_valid(config->native_header_include) ||
       config->channel_name == NULL || config->channel_name[0] == '\0' ||
-      socket_format_name(config->format) == NULL ||
       socket_mode_name(config->mode) == NULL ||
       socket_framing_name(config->framing) == NULL ||
       config->max_frame_bytes == 0u ||
       config->max_frame_bytes > UINT32_MAX)
     return 0;
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (!socket_include_basename_valid(config->native_header_include) ||
+        socket_format_name(config->format) == NULL)
+      return 0;
+  } else if (config->payload_kind == DATA_BIND_PAYLOAD_OPAQUE) {
+    if (config->format != DATA_BIND_FORMAT_NONE ||
+        config->native_header_include != NULL ||
+        config->opaque_max_bytes == 0u ||
+        config->opaque_max_bytes > UINT32_MAX)
+      return 0;
+  } else {
+    return 0;
+  }
 
   if (config->mode == DATA_BIND_SOCKET_MODE_STREAM)
     return config->framing == DATA_BIND_SOCKET_FRAMING_LENGTH32_BE;
@@ -111,18 +124,28 @@ static int socket_config_valid(
          config->framing == DATA_BIND_SOCKET_FRAMING_NONE;
 }
 
-static int socket_format_representable(
+static int socket_payload_representable(
     const IdlContract *contract,
     const databind_tbe_format_plan *format_plan,
-    const char *message_type, DataBindFormat format) {
+    const char *message_type,
+    const databind_compiler_socket_projection_config *config) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
   databind_binary_layout_status status;
 
-  if (format == DATA_BIND_FORMAT_JSON)
-    return message_type != NULL && message_type[0] != '\0';
+  if (config == NULL || message_type == NULL || message_type[0] == '\0')
+    return 0;
 
-  if (format != DATA_BIND_FORMAT_BINARY)
+  if (config->payload_kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return databind_compiler_opaque_plan_admit(message_type) == 0;
+
+  if (config->payload_kind != DATA_BIND_PAYLOAD_FORMAT)
+    return 0;
+
+  if (config->format == DATA_BIND_FORMAT_JSON)
+    return 1;
+
+  if (config->format != DATA_BIND_FORMAT_BINARY)
     return 0;
 
   status = databind_binary_layout_build(
@@ -205,10 +228,11 @@ static int socket_generate(
       channel->message_type[0] == '\0')
     return -1;
   message_type = channel->message_type;
-  if (!socket_format_representable(
-          input->contract, input->tbe_format, message_type, config->format))
+  if (!socket_payload_representable(
+          input->contract, input->tbe_format, message_type, config))
     return -1;
-  if (databind_compiler_message_native_build(
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      databind_compiler_message_native_build(
           input->contract, message_type, &native_binding) != 0)
     return -1;
 
@@ -220,18 +244,26 @@ static int socket_generate(
   if (fprintf(file,
               "#ifndef DATABIND_GENERATED_%s_SOCKET_PLAN_H\n"
               "#define DATABIND_GENERATED_%s_SOCKET_PLAN_H\n\n"
-              "#include <data_bind_socket_plan.h>\n"
-              "#include \"%s\"\n\n",
+              "#include <data_bind_socket_plan.h>\n",
               config->symbol_prefix,
-              config->symbol_prefix,
-              config->native_header_include) < 0)
+              config->symbol_prefix) < 0)
     goto cleanup;
 
-  if (databind_compiler_message_native_emit_binding(
-          file, &native_binding, config->symbol_prefix) != 0)
-    goto cleanup;
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(file, "#include \"%s\"\n\n",
+                config->native_header_include) < 0 ||
+        databind_compiler_message_native_emit_binding(
+            file, &native_binding, config->symbol_prefix) != 0)
+      goto cleanup;
+  } else {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_opaque_plan_emit(
+            file, config->symbol_prefix, config->opaque_max_bytes) != 0)
+      goto cleanup;
+  }
 
-  if (config->format == DATA_BIND_FORMAT_BINARY &&
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      config->format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
           input->contract, input->tbe_format, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
@@ -248,17 +280,34 @@ static int socket_generate(
               config->symbol_prefix) < 0 ||
       socket_c_string(file, config->channel_name) != 0 ||
       fputs(",\n  ", file) == EOF ||
-      socket_c_string(file, message_type) != 0 ||
-      fprintf(file,
-              ",\n  %s, %s, %s, %zuu,\n"
-              "  %s__databind_message_native_binding\n"
+      socket_c_string(file, message_type) != 0)
+    goto cleanup;
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(file,
+                ",\n  %s, %s, %s, %zuu,\n"
+                "  %s__databind_message_native_binding,\n"
+                "  DATA_BIND_PAYLOAD_FORMAT, NULL\n",
+                socket_format_name(config->format),
+                socket_mode_name(config->mode),
+                socket_framing_name(config->framing),
+                config->max_frame_bytes,
+                config->symbol_prefix) < 0)
+      goto cleanup;
+  } else {
+    if (fprintf(file,
+                ",\n  DATA_BIND_FORMAT_NONE, %s, %s, %zuu,\n"
+                "  NULL, DATA_BIND_PAYLOAD_OPAQUE, &%s_opaque_plan\n",
+                socket_mode_name(config->mode),
+                socket_framing_name(config->framing),
+                config->max_frame_bytes,
+                config->symbol_prefix) < 0)
+      goto cleanup;
+  }
+
+  if (fprintf(file,
               "};\n\n"
               "#endif /* DATABIND_GENERATED_%s_SOCKET_PLAN_H */\n",
-              socket_format_name(config->format),
-              socket_mode_name(config->mode),
-              socket_framing_name(config->framing),
-              config->max_frame_bytes,
-              config->symbol_prefix,
               config->symbol_prefix) < 0)
     goto cleanup;
 

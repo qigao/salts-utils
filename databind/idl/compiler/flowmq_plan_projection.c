@@ -3,6 +3,7 @@
 #include "binary_layout_ir.h"
 #include "binary_reader_codegen.h"
 #include "message_native.h"
+#include "opaque_plan_codegen.h"
 
 #include "salts_fs.h"
 #include "salts_uuid.h"
@@ -83,27 +84,50 @@ static const char *flowmq_pattern_name(
 
 static int flowmq_config_valid(
     const databind_compiler_flowmq_projection_config *config) {
-  return config != NULL &&
-      flowmq_identifier_valid(config->symbol_prefix) &&
-      flowmq_include_basename_valid(config->native_header_include) &&
-      config->channel_name != NULL && config->channel_name[0] != '\0' &&
-      flowmq_format_name(config->format) != NULL &&
-      flowmq_pattern_name(config->pattern) != NULL &&
-      config->max_payload_bytes != 0u &&
-      config->max_payload_bytes <= UINT32_MAX;
+  if (config == NULL ||
+      !flowmq_identifier_valid(config->symbol_prefix) ||
+      config->channel_name == NULL || config->channel_name[0] == '\0' ||
+      flowmq_pattern_name(config->pattern) == NULL ||
+      config->max_payload_bytes == 0u ||
+      config->max_payload_bytes > UINT32_MAX)
+    return 0;
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    return flowmq_include_basename_valid(config->native_header_include) &&
+           flowmq_format_name(config->format) != NULL;
+  }
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return config->format == DATA_BIND_FORMAT_NONE &&
+           config->native_header_include == NULL &&
+           config->opaque_max_bytes != 0u &&
+           config->opaque_max_bytes <= UINT32_MAX;
+
+  return 0;
 }
 
-static int flowmq_format_representable(
+static int flowmq_payload_representable(
     const IdlContract *contract,
     const databind_tbe_format_plan *format_plan,
-    const char *message_type, DataBindFormat format) {
+    const char *message_type,
+    const databind_compiler_flowmq_projection_config *config) {
   databind_binary_type_layout layout = {0};
   databind_binary_layout_diagnostic diagnostic = {0};
   databind_binary_layout_status status;
 
-  if (format == DATA_BIND_FORMAT_JSON)
-    return message_type != NULL && message_type[0] != '\0';
-  if (format != DATA_BIND_FORMAT_BINARY) return 0;
+  if (config == NULL || message_type == NULL || message_type[0] == '\0')
+    return 0;
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_OPAQUE)
+    return databind_compiler_opaque_plan_admit(message_type) == 0;
+
+  if (config->payload_kind != DATA_BIND_PAYLOAD_FORMAT)
+    return 0;
+
+  if (config->format == DATA_BIND_FORMAT_JSON)
+    return 1;
+  if (config->format != DATA_BIND_FORMAT_BINARY)
+    return 0;
 
   status = databind_binary_layout_build(
       contract, format_plan, message_type, &layout, &diagnostic);
@@ -183,16 +207,18 @@ static int flowmq_generate(
       channel->message_type[0] == '\0')
     return -1;
   message_type = channel->message_type;
-  if (!flowmq_format_representable(
-          input->contract, input->tbe_format, message_type, config->format))
+  if (!flowmq_payload_representable(
+          input->contract, input->tbe_format, message_type, config))
     return -1;
-  if (databind_compiler_message_native_build(
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      databind_compiler_message_native_build(
           input->contract, message_type, &native_binding) != 0)
     return -1;
-  if (snprintf(
-          native_symbol, sizeof(native_symbol), "%s_flowmq",
-          config->symbol_prefix) <= 0 ||
-      strlen(native_symbol) >= sizeof(native_symbol) - 1u) {
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      (snprintf(
+           native_symbol, sizeof(native_symbol), "%s_flowmq",
+           config->symbol_prefix) <= 0 ||
+       strlen(native_symbol) >= sizeof(native_symbol) - 1u)) {
     databind_compiler_message_native_destroy(&native_binding);
     return -1;
   }
@@ -205,18 +231,26 @@ static int flowmq_generate(
   if (fprintf(file,
               "#ifndef DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n"
               "#define DATABIND_GENERATED_%s_FLOWMQ_PLAN_H\n\n"
-              "#include <data_bind_flowmq_plan.h>\n"
-              "#include \"%s\"\n\n",
+              "#include <data_bind_flowmq_plan.h>\n",
               config->symbol_prefix,
-              config->symbol_prefix,
-              config->native_header_include) < 0)
+              config->symbol_prefix) < 0)
     goto cleanup;
 
-  if (databind_compiler_message_native_emit_binding(
-          file, &native_binding, native_symbol) != 0)
-    goto cleanup;
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(file, "#include \"%s\"\n\n",
+                config->native_header_include) < 0 ||
+        databind_compiler_message_native_emit_binding(
+            file, &native_binding, native_symbol) != 0)
+      goto cleanup;
+  } else {
+    if (fputc('\n', file) == EOF ||
+        databind_compiler_opaque_plan_emit(
+            file, config->symbol_prefix, config->opaque_max_bytes) != 0)
+      goto cleanup;
+  }
 
-  if (config->format == DATA_BIND_FORMAT_BINARY &&
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      config->format == DATA_BIND_FORMAT_BINARY &&
       databind_compiler_binary_reader_admit(
           input->contract, input->tbe_format, message_type) == 0) {
     if (fputc('\n', file) == EOF ||
@@ -235,17 +269,35 @@ static int flowmq_generate(
           config->symbol_prefix) < 0 ||
       flowmq_c_string(file, config->channel_name) != 0 ||
       fputs(",\n  ", file) == EOF ||
-      flowmq_c_string(file, message_type) != 0 ||
-      fprintf(
+      flowmq_c_string(file, message_type) != 0)
+    goto cleanup;
+
+  if (config->payload_kind == DATA_BIND_PAYLOAD_FORMAT) {
+    if (fprintf(
+            file,
+            ",\n  %s, %s, %zuu,\n"
+            "  %s__databind_message_native_binding,\n"
+            "  DATA_BIND_PAYLOAD_FORMAT, NULL\n",
+            flowmq_format_name(config->format),
+            flowmq_pattern_name(config->pattern),
+            config->max_payload_bytes,
+            native_symbol) < 0)
+      goto cleanup;
+  } else {
+    if (fprintf(
+            file,
+            ",\n  DATA_BIND_FORMAT_NONE, %s, %zuu,\n"
+            "  NULL, DATA_BIND_PAYLOAD_OPAQUE, &%s_opaque_plan\n",
+            flowmq_pattern_name(config->pattern),
+            config->max_payload_bytes,
+            config->symbol_prefix) < 0)
+      goto cleanup;
+  }
+
+  if (fprintf(
           file,
-          ",\n  %s, %s, %zuu,\n"
-          "  %s__databind_message_native_binding\n"
           "};\n\n"
           "#endif /* DATABIND_GENERATED_%s_FLOWMQ_PLAN_H */\n",
-          flowmq_format_name(config->format),
-          flowmq_pattern_name(config->pattern),
-          config->max_payload_bytes,
-          native_symbol,
           config->symbol_prefix) < 0)
     goto cleanup;
 

@@ -315,11 +315,12 @@ static int add_socket_plan(
     return frontend_error(
         error, error_size,
         "SOCKET transport requires a socket section in --projection-config");
-  if (input->source_output_path == NULL ||
-      input->source_output_path[0] == '\0')
+  if (out->external_config.socket.payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      (input->source_output_path == NULL ||
+       input->source_output_path[0] == '\0'))
     return frontend_error(
         error, error_size,
-        "SOCKET transport requires --source-output for native execution metadata");
+        "SOCKET formatted transport requires --source-output for native execution metadata");
 
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
@@ -337,7 +338,11 @@ static int add_socket_plan(
 
   out->socket = out->external_config.socket;
   out->socket.symbol_prefix = out->method_plan_symbol_prefix;
-  out->socket.native_header_include = out->native_header;
+  out->socket.opaque_max_bytes = out->external_config.opaque_max_bytes;
+  out->socket.native_header_include =
+      out->socket.payload_kind == DATA_BIND_PAYLOAD_FORMAT
+          ? out->native_header
+          : NULL;
 
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){
@@ -369,11 +374,12 @@ static int add_flowmq_plan(
     return frontend_error(
         error, error_size,
         "FLOWMQ transport requires a flowmq section in --projection-config");
-  if (input->source_output_path == NULL ||
-      input->source_output_path[0] == '\0')
+  if (out->external_config.flowmq.payload_kind == DATA_BIND_PAYLOAD_FORMAT &&
+      (input->source_output_path == NULL ||
+       input->source_output_path[0] == '\0'))
     return frontend_error(
         error, error_size,
-        "FLOWMQ transport requires --source-output for native execution metadata");
+        "FLOWMQ formatted transport requires --source-output for native execution metadata");
 
   if (!derive_artifact_path(
           out->artifact_dir, input->artifact_name,
@@ -391,7 +397,11 @@ static int add_flowmq_plan(
 
   out->flowmq = out->external_config.flowmq;
   out->flowmq.symbol_prefix = out->method_plan_symbol_prefix;
-  out->flowmq.native_header_include = out->native_header;
+  out->flowmq.opaque_max_bytes = out->external_config.opaque_max_bytes;
+  out->flowmq.native_header_include =
+      out->flowmq.payload_kind == DATA_BIND_PAYLOAD_FORMAT
+          ? out->native_header
+          : NULL;
 
   out->requests[out->request_count++] =
       (databind_compiler_projection_request){

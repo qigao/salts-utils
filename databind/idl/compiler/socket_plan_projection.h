@@ -18,6 +18,8 @@ typedef struct databind_compiler_socket_projection_config {
   DataBindSocketMode mode;
   DataBindSocketFraming framing;
   size_t max_frame_bytes;
+  DataBindPayloadKind payload_kind;
+  size_t opaque_max_bytes;
 } databind_compiler_socket_projection_config;
 
 databind_compiler_projection_backend

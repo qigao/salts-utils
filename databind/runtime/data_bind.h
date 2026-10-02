@@ -108,6 +108,7 @@ typedef int (*DataBindWriteFn)(const void *data, size_t len, void *user);
 
 /** Stable format identifier shared by dynamic, typed, generated, and stream APIs. */
 typedef enum DataBindFormat {
+  DATA_BIND_FORMAT_NONE = -1,
   DATA_BIND_FORMAT_BINARY = 0,
   DATA_BIND_FORMAT_JSON,
   DATA_BIND_FORMAT_YAML,

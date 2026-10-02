@@ -28,7 +28,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
 cmake_add_executable(salts_idlc
-  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
+  SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
   FOLDER "databind/idl/compiler")
 target_include_directories(salts_idlc
@@ -259,6 +259,7 @@ cmake_add_test(test_databind_projection_frontend
     flowmq_plan_projection.c
     binary_layout_ir.c
     binary_reader_codegen.c
+    opaque_plan_codegen.c
   LIBS
     Salts::IDL
     Salts::PluginABI
@@ -286,6 +287,7 @@ cmake_add_test(test_databind_socket_plan_projection
     socket_plan_projection.c
     binary_layout_ir.c
     binary_reader_codegen.c
+    opaque_plan_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c
@@ -340,6 +342,7 @@ cmake_add_test(test_databind_flowmq_plan_projection
     flowmq_plan_projection.c
     binary_layout_ir.c
     binary_reader_codegen.c
+    opaque_plan_codegen.c
     compiler_core.c
     database_schema.c
     mustache_helpers.c
@@ -609,6 +612,32 @@ set_target_properties(test_databind_binary_transport_provider_cpp PROPERTIES
   CXX_EXTENSIONS OFF)
 set_tests_properties(test_databind_binary_transport_provider_cpp PROPERTIES
   LABELS "databind;compiler;binary-reader;transport;public;cpp")
+
+
+salts_idl_target(
+  TARGET databind_opaque_transport_fixture
+  IDL "${CMAKE_CURRENT_SOURCE_DIR}/test_flowmq_plan_public.schema"
+  ARTIFACT_NAME "opaque_bytes"
+  TRANSPORTS SOCKET FLOWMQ
+  PROJECTION_CONFIG
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_opaque_transport_config.json")
+
+cmake_add_test(test_databind_opaque_transport
+  SOURCES test_public_opaque_transport.c
+  LIBS
+    Salts::DataBind
+    Salts::TinyTest
+  INCLUDES
+    "${databind_opaque_transport_fixture_GENERATED_DIR}"
+  FOLDER "databind/idl/compiler")
+add_dependencies(test_databind_opaque_transport
+  databind_opaque_transport_fixture_idl_codegen)
+set_target_properties(test_databind_opaque_transport PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF)
+set_tests_properties(test_databind_opaque_transport PROPERTIES
+  LABELS "databind;compiler;opaque;bytes;transport;public")
 
 
 salts_idl_target(

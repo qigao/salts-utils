@@ -15,3 +15,5 @@ union Choice {
 }
 
 channel ChoiceEvents: Choice;
+
+channel Raw: bytes;

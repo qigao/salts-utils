@@ -137,6 +137,35 @@ spec("DataBind generated SocketPlan") {
         -1);
     check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
 
+    config.native_header_include = NULL;
+    config.channel_name = "Device.Raw";
+    config.format = DATA_BIND_FORMAT_NONE;
+    config.payload_kind = DATA_BIND_PAYLOAD_OPAQUE;
+    config.opaque_max_bytes = 64u;
+    config.mode = DATA_BIND_SOCKET_MODE_DATAGRAM;
+    config.framing = DATA_BIND_SOCKET_FRAMING_NONE;
+    config.max_frame_bytes = 128u;
+    check_equal(
+        databind_compiler_projection_run(
+            &input, &request, 1u, &backend, 1u),
+        0);
+    check(file_contains(output, "Device.Raw"));
+    check(file_contains(output, "\"bytes\""));
+    check(file_contains(output, "DATA_BIND_FORMAT_NONE"));
+    check(file_contains(output, "DATA_BIND_PAYLOAD_OPAQUE"));
+    check(file_contains(output, "DATA_BIND_OPAQUE_STATE_VALUE, 64u"));
+    check(file_contains(output, "&databind_device_opaque_plan"));
+    check_false(file_contains(output, "__databind_message_native_binding"));
+    check_false(file_contains(output, "#include \"device.h\""));
+    (void)salts_fs_unlink(output);
+
+    config.channel_name = "Device.Telemetry";
+    check_equal(
+        databind_compiler_projection_run(
+            &input, &request, 1u, &backend, 1u),
+        -1);
+    check(salts_fs_access(output, SALTS_FS_ACCESS_EXISTS) != 0);
+
     databind_tbe_format_plan_destroy(&format_plan);
     idl_contract_destroy(contract);
     node_free(root);

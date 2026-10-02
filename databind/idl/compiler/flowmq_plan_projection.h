@@ -17,6 +17,8 @@ typedef struct databind_compiler_flowmq_projection_config {
   DataBindFormat format;
   DataBindFlowMQChannelPattern pattern;
   size_t max_payload_bytes;
+  DataBindPayloadKind payload_kind;
+  size_t opaque_max_bytes;
 } databind_compiler_flowmq_projection_config;
 
 databind_compiler_projection_backend
