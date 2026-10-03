@@ -1589,9 +1589,27 @@ static int tbe_compiler_cmeta_classify_record(
           tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
           tbe_compiler_string_value(field, "native_map_value_data_symbol") == NULL)
         goto unsupported;
-      /* The generated map graph is a complete read provider. The mixed
-       * typed-descriptor lifecycle stays unavailable until its transactional
-       * collector/construct slice lands; do not advertise partial mutation. */
+
+      if (tbe_compiler_has_child(field, "native_cstl_map")) {
+        if (tbe_compiler_string_value(field, "native_map_key_type_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_key_data_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_value_type_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_value_data_ref") == NULL)
+          goto unsupported;
+        /* Canonical CSTL Map owns key/value metadata and transactional
+         * lifecycle. Legacy TbeTypedDescriptor runtime remains closed over the
+         * historical vector-entry storage model. */
+        if (context->runtime) goto unsupported;
+        scalar = tbe_compiler_scalar_projection(value_type);
+        if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
+            strcmp(value_type, "string") == 0)
+          continue;
+        goto unsupported;
+      }
+
+      /* The historical vector-map graph remains read-only. Its mixed
+       * typed-descriptor lifecycle stays unavailable until that storage path
+       * is removed; do not advertise partial mutation. */
       if (context->runtime || context->lifecycle) goto unsupported;
       scalar = tbe_compiler_scalar_projection(value_type);
       if ((scalar && scalar->native_data_symbol) ||
