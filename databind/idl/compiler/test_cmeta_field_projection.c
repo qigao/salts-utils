@@ -335,6 +335,9 @@ suite("compiler_cmeta_field_projection") {
             check_not_null(field_projection_text(states, "native_element_data_symbol"));
             check_not_null(field_projection_text(states, "native_element_type_ref"));
             check_not_null(field_projection_text(states, "native_element_data_ref"));
+            check_equal(field_projection_text(states, "cmeta_native_requirement"),
+                        "deferred_container");
+            check_null(field_projection_text(states, "native_cstl_set"));
             check_equal(field_projection_text(map, "native_map_key_type_ref"),
                         "SALTS_TSTR_CMETA_TYPE_REF");
             check_equal(field_projection_text(map, "native_map_key_data_ref"),
