@@ -91,7 +91,10 @@ if [ "$with_turbowasm" = "1" ]; then
   [ -f "$turbowasm_root/include/turbowasm/component.h" ] || fail "missing released TurboWasm Component façade under $turbowasm_root"
   grep -q "TurboWasm::Component" "$turbowasm_root/lib/cmake/TurboWasm/TurboWasmTargets.cmake" ||
     fail "released TurboWasm package does not export TurboWasm::Component"
+  turbowasm_version="$(basename "$turbowasm_package")"
   printf "TURBOWASM_ROOT=%s\n" "$turbowasm_root" >> "$GITHUB_ENV"
+  printf "TURBOWASM_VERSION=%s\n" "$turbowasm_version" >> "$GITHUB_ENV"
+  printf 'restored TurboWasm.Native %s for %s\n' "$turbowasm_version" "$salts_rid"
 fi
 
 printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"
