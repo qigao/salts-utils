@@ -26,6 +26,11 @@ message NativeHeaderNestedOnly {
     list<NativeHeader> headers;
 }
 
+message NativeHeaderMap {
+    uint32 id;
+    map<string,NativeHeader> headers;
+}
+
 
 message NativeAggregateOwnedBudget {
     string first;
