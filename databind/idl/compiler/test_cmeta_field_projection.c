@@ -475,7 +475,7 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
-    it("keeps optional containers deferred to the container provider boundary") {
+    it("uses CSTL Vec storage while optional list admission stays deferred") {
         Node *root = create_node_map("root");
         Node *record;
         Node *field;
@@ -497,12 +497,21 @@ suite("compiler_cmeta_field_projection") {
 
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "deferred_container");
+        check_not_null(field_projection_child(field, "native_cstl_sequence"));
+        check_null(field_projection_text(field, "native_sequence_name"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalListStorage_value_vec_t_collection_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalListStorage_value_vec_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         check_null(field_projection_text(field, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
-    it("keeps optional maps on the historical read-only provider boundary") {
+    it("uses CSTL Map storage while optional map lifecycle stays deferred") {
         Node *root = create_node_map("root");
         Node *record;
         Node *field;
@@ -525,15 +534,20 @@ suite("compiler_cmeta_field_projection") {
 
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "map_provider");
-        check_null(field_projection_text(field, "native_cstl_map"));
-        check_not_null(field_projection_text(field, "native_map_name"));
+        check_not_null(field_projection_child(field, "native_cstl_map"));
+        check_null(field_projection_text(field, "native_map_name"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalMapStorage_value_map_t_map_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalMapStorage_value_map_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
         check_not_null(field_projection_child(record, "cmeta_graph_supported"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
-    it("keeps optional sets deferred to the container provider boundary") {
+    it("uses CSTL Set storage while optional set admission stays deferred") {
         Node *root = create_node_map("root");
         Node *record;
         Node *field;
@@ -555,9 +569,60 @@ suite("compiler_cmeta_field_projection") {
 
         check_equal(field_projection_text(field, "cmeta_native_requirement"),
                     "deferred_container");
-        check_null(field_projection_text(field, "native_cstl_set"));
+        check_not_null(field_projection_child(field, "native_cstl_set"));
+        check_equal(field_projection_text(field, "native_data_symbol"),
+                    "OptionalSetStorage_value_set_t_collection_data");
+        check_equal(field_projection_text(field, "native_type_symbol"),
+                    "OptionalSetStorage_value_set_t_cmeta_type");
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
         check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
+    it("uses CSTL storage for nullable containers without admitting overlay lifecycle") {
+        Node *root = create_node_map("root");
+        Node *record = field_projection_add_record(
+            root, "messages", "NullableContainers");
+        Node *list = field_projection_add_field(
+            record, "NullableContainers", "values", "list");
+        Node *set = field_projection_add_field(
+            record, "NullableContainers", "ids", "set");
+        Node *map = field_projection_add_field(
+            record, "NullableContainers", "attrs", "map");
+
+        check_not_null(list);
+        check_not_null(set);
+        check_not_null(map);
+        if (!list || !set || !map) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(map_add(list, create_node_string("is_list", "1")), 0);
+        check_equal(map_add(list, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(list, create_node_string("inner_type", "int32")), 0);
+        check_equal(map_add(set, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(set, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(set, create_node_string("inner_type", "int32")), 0);
+        check_equal(map_add(map, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(map, create_node_string("is_nullable", "1")), 0);
+        check_equal(map_add(map, create_node_string("key_type", "string")), 0);
+        check_equal(map_add(map, create_node_string("value_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_not_null(field_projection_child(list, "native_cstl_sequence"));
+        check_not_null(field_projection_child(set, "native_cstl_set"));
+        check_not_null(field_projection_child(map, "native_cstl_map"));
+        check_null(field_projection_text(list, "native_sequence_name"));
+        check_null(field_projection_text(map, "native_map_name"));
+        check_not_null(field_projection_child(record, "native_cstl_storage"));
+        check_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+
         node_free(root);
     }
 
