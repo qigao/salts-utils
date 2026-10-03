@@ -889,8 +889,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: device arm64, triplet: arm64-ios, rid: ios-arm64}
-          - {name: simulator arm64, triplet: arm64-ios-simulator, rid: ios-simulator-arm64}
+          - {name: device arm64, triplet: arm64-ios, rid: ios-arm64, sysroot: iphoneos}
+          - {name: simulator arm64, triplet: arm64-ios-simulator, rid: ios-simulator-arm64, sysroot: iphonesimulator}
     env:
       X_VCPKG_NUGET_ID_PREFIX: vcpkg-cache
     steps:
@@ -937,6 +937,7 @@ jobs:
           cmake -S . -B "$build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
@@ -964,6 +965,7 @@ jobs:
           cmake -S databind/runtime/package_config/plugin_execution \
             -B "build/databind-plugin-execution-${{ matrix.rid }}" -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
@@ -974,6 +976,7 @@ jobs:
           cmake -S databind/producer/package_config \
             -B "build/databind-producer-${{ matrix.rid }}" -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
@@ -985,6 +988,7 @@ jobs:
           cmake -S databind/idl/compiler/package_config/databind_public \
             -B "build/databind-public-${{ matrix.rid }}" -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
