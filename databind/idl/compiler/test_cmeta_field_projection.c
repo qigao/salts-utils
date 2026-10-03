@@ -367,8 +367,11 @@ suite("compiler_cmeta_field_projection") {
                         "Containers_by_name_map_t_cmeta_type");
             check_equal(field_projection_text(map, "native_c_type"),
                         "Containers_by_name_map_t");
-            check_not_null(field_projection_child(record, "cmeta_graph_supported"));
-            check_not_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+            /* This owner still contains set<State>, which remains outside the
+             * first canonical Set slice. Map promotion must not make an
+             * otherwise incomplete owner graph appear complete. */
+            check_null(field_projection_child(record, "cmeta_graph_supported"));
+            check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
             check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         }
 
