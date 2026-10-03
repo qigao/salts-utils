@@ -1815,6 +1815,83 @@ cleanup:
   free(context.records);
 }
 
+static void tbe_compiler_promote_record_cstl_sequences(Node *root) {
+  static const char *const lists[] = {"composites", "groups", "messages"};
+  size_t list_index;
+
+  if (root == NULL) return;
+
+  for (list_index = 0u;
+       list_index < sizeof(lists) / sizeof(lists[0]);
+       ++list_index) {
+    Node *owners = tbe_compiler_find_child(root, lists[list_index]);
+    size_t owner_index;
+    if (owners == NULL || owners->type != NODE_LIST) continue;
+
+    for (owner_index = 0u; owner_index < owners->data.list.count;
+         ++owner_index) {
+      Node *owner = owners->data.list.items[owner_index];
+      Node *fields = tbe_compiler_find_child(owner, "fields");
+      size_t field_index;
+      if (fields == NULL || fields->type != NODE_LIST) continue;
+
+      for (field_index = 0u; field_index < fields->data.list.count;
+           ++field_index) {
+        Node *field = fields->data.list.items[field_index];
+        const char *inner_type;
+        const char *vector_type;
+        Node *element_record;
+        char symbol[320];
+
+        if (!tbe_compiler_has_child(field, "is_list") ||
+            tbe_compiler_has_child(field, "is_optional") ||
+            tbe_compiler_has_child(field, "is_nullable") ||
+            tbe_compiler_string_value(field, "native_sequence_name") == NULL)
+          continue;
+
+        inner_type = tbe_compiler_string_value(field, "inner_type");
+        vector_type = tbe_compiler_string_value(field, "typed_vector_type");
+        if (inner_type == NULL || vector_type == NULL) continue;
+
+        element_record = tbe_compiler_find_any_record(root, inner_type);
+        if (element_record == NULL ||
+            !tbe_compiler_has_child(element_record, "cmeta_graph_supported") ||
+            !tbe_compiler_has_child(element_record,
+                                    "cmeta_lifecycle_supported"))
+          continue;
+
+        if (tbe_compiler_string_value(field, "native_element_type_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_element_data_ref") == NULL)
+          continue;
+
+        tbe_compiler_set_string(field, "native_cstl_sequence", "1");
+        tbe_compiler_set_string(
+            field, "native_cstl_sequence_explicit_refs", "1");
+        tbe_compiler_set_string(owner, "native_cstl_storage", "1");
+
+        tbe_compiler_remove_children(field, "native_sequence_name");
+        tbe_compiler_remove_children(field, "native_data_symbol");
+        tbe_compiler_remove_children(field, "native_type_symbol");
+
+        if (snprintf(symbol, sizeof(symbol), "%s_collection_data",
+                     vector_type) < 0 ||
+            strlen(vector_type) + strlen("_collection_data") >=
+                sizeof(symbol))
+          continue;
+        tbe_compiler_set_string(field, "native_data_symbol", symbol);
+
+        if (snprintf(symbol, sizeof(symbol), "%s_cmeta_type",
+                     vector_type) < 0 ||
+            strlen(vector_type) + strlen("_cmeta_type") >=
+                sizeof(symbol))
+          continue;
+        tbe_compiler_set_string(field, "native_type_symbol", symbol);
+        tbe_compiler_set_string(field, "native_c_type", vector_type);
+      }
+    }
+  }
+}
+
 static void tbe_compiler_annotate_schema_types(Node *root) {
   Node *schema = tbe_compiler_find_child(root, "schema");
   const char *schema_name;
@@ -1869,6 +1946,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_record_list_types(root, contract, "unions");
   tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
+  tbe_compiler_promote_record_cstl_sequences(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
 }
 
