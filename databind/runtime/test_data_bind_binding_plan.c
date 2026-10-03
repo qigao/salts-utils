@@ -923,6 +923,48 @@ static const cserde_reader_ops MESSAGE_TOKEN_READER_OPS = {
     CSERDE_READER_OPS_ABI_VERSION,
     message_token_next};
 
+typedef struct MessageTokenWriter {
+  cserde_token tokens[32];
+  size_t count;
+} MessageTokenWriter;
+
+static cserde_status message_token_write(
+    void *context, const cserde_token *token) {
+  MessageTokenWriter *state = (MessageTokenWriter *)context;
+  if (state == NULL || token == NULL) return CSERDE_INVALID_ARGUMENT;
+  if (state->count >= sizeof(state->tokens) / sizeof(state->tokens[0]))
+    return CSERDE_LIMIT_EXCEEDED;
+  state->tokens[state->count++] = *token;
+  return CSERDE_OK;
+}
+
+static cserde_status message_token_finish(void *context) {
+  return context != NULL ? CSERDE_OK : CSERDE_INVALID_ARGUMENT;
+}
+
+static const cserde_writer_ops MESSAGE_TOKEN_WRITER_OPS = {
+    sizeof(cserde_writer_ops), CSERDE_WRITER_OPS_ABI_VERSION,
+    message_token_write, message_token_finish};
+
+static int message_writer_init(
+    cserde_writer *writer, MessageTokenWriter *state) {
+  if (writer == NULL || state == NULL) return 0;
+  *writer = (cserde_writer){0};
+  *state = (MessageTokenWriter){0};
+  return cserde_writer_init(
+             writer, &MESSAGE_TOKEN_WRITER_OPS, state) == CSERDE_OK;
+}
+
+static int token_string_equal(
+    const cserde_token *token, const char *text) {
+  size_t length = text != NULL ? strlen(text) : 0u;
+  return token != NULL && token->kind == CSERDE_STRING &&
+         token->value.slice.size == length &&
+         (length == 0u ||
+          (token->value.slice.data != NULL &&
+           memcmp(token->value.slice.data, text, length) == 0));
+}
+
 static cserde_token message_key(const char *text) {
   cserde_token token = {0};
   token.kind = CSERDE_STRING;
@@ -952,6 +994,126 @@ static int message_reader_init(
 }
 
 spec("DataBind canonical Service BindingPlan") {
+  it("encodes native MessagePlan ABSENT NULL and VALUE state canonically") {
+    DataBind *codec = create_state_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    StateRequest value = {0};
+    MessageTokenWriter sink = {0};
+    cserde_writer writer = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "StateRequest", &STATE_REQUEST_NATIVE,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    value.required_value = 9u;
+    value.optional_value = 31u;
+    value.nullable_value = 41u;
+    value.defaulted_value = 7u;
+    value.presence = (uint8_t)(1u << 1);
+    value.nulls = (uint8_t)(1u << 0);
+
+    check_true(message_writer_init(&writer, &sink));
+    check_equal(
+        data_bind_message_plan_encode_native(
+            plan, &options, &value, sizeof(value), &writer, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(sink.count, (size_t)8u);
+    check_equal(sink.tokens[0].kind, CSERDE_MAP_BEGIN);
+    check_true(token_string_equal(&sink.tokens[1], "required_value"));
+    check_equal(sink.tokens[2].kind, CSERDE_UINT);
+    check_equal(sink.tokens[2].value.uint, UINT64_C(9));
+    check_true(token_string_equal(&sink.tokens[3], "nullable_value"));
+    check_equal(sink.tokens[4].kind, CSERDE_NULL);
+    check_true(token_string_equal(&sink.tokens[5], "defaulted_value"));
+    check_equal(sink.tokens[6].kind, CSERDE_UINT);
+    check_equal(sink.tokens[6].value.uint, UINT64_C(7));
+    check_equal(sink.tokens[7].kind, CSERDE_MAP_END);
+
+    value.optional_value = 3u;
+    value.nullable_value = 5u;
+    value.defaulted_value = 99u;
+    value.presence = (uint8_t)((1u << 0) | (1u << 1));
+    value.nulls = (uint8_t)(1u << 1);
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_writer_init(&writer, &sink));
+    check_equal(
+        data_bind_message_plan_encode_native(
+            plan, &options, &value, sizeof(value), &writer, &diagnostic),
+        DATA_BIND_OK);
+    check_equal(sink.count, (size_t)10u);
+    check_true(token_string_equal(&sink.tokens[1], "required_value"));
+    check_true(token_string_equal(&sink.tokens[3], "optional_value"));
+    check_equal(sink.tokens[4].kind, CSERDE_UINT);
+    check_equal(sink.tokens[4].value.uint, UINT64_C(3));
+    check_true(token_string_equal(&sink.tokens[5], "nullable_value"));
+    check_equal(sink.tokens[6].kind, CSERDE_UINT);
+    check_equal(sink.tokens[6].value.uint, UINT64_C(5));
+    check_true(token_string_equal(&sink.tokens[7], "defaulted_value"));
+    check_equal(sink.tokens[8].kind, CSERDE_NULL);
+    check_equal(sink.tokens[9].kind, CSERDE_MAP_END);
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
+  it("validates native MessagePlan fields before encoding their values") {
+    DataBind *codec = create_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    AddRequest invalid = {0};
+    MessageTokenWriter sink = {0};
+    cserde_writer writer = {0};
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "AddRequest", &ADD_REQUEST_NATIVE,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    invalid.left = 0u;
+    invalid.right = 4u;
+    invalid.scale = 0u;
+    invalid.presence = 0u;
+    check_true(message_writer_init(&writer, &sink));
+    check_equal(
+        data_bind_message_plan_encode_native(
+            plan, &options, &invalid, sizeof(invalid), &writer, &diagnostic),
+        DATA_BIND_ERR_VALIDATION);
+    check_equal(diagnostic.schema_field, "left");
+    check_equal(sink.count, (size_t)2u);
+    check_equal(sink.tokens[0].kind, CSERDE_MAP_BEGIN);
+    check_true(token_string_equal(&sink.tokens[1], "left"));
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("decodes one Channel message with optional nullable and default state") {
     DataBind *codec = create_state_codec();
     DataBindMessagePlan *plan = NULL;
