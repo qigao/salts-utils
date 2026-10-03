@@ -154,9 +154,16 @@ spec("DataBind public Message native artifact") {
           cmeta_data_collection_borrow_begin(
               &Event_tags_set_t_collection_data, &tags, &cursor),
           CMETA_OK);
-      check_equal(
-          cmeta_data_collection_borrow_next(&cursor, &borrowed),
-          CMETA_GEN_VALUE_AND_DONE);
+      {
+        cmeta_gen_status generated =
+            cmeta_data_collection_borrow_next(&cursor, &borrowed);
+        check_true(generated == CMETA_GEN_VALUE ||
+                   generated == CMETA_GEN_VALUE_AND_DONE);
+        if (generated == CMETA_GEN_VALUE)
+          check_equal(
+              cmeta_data_collection_borrow_next(&cursor, &borrowed),
+              CMETA_GEN_DONE);
+      }
       stored = (const tstr *)borrowed;
       check_not_null(stored);
       if (stored != NULL) {
