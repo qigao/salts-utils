@@ -21,6 +21,22 @@ size_t databind_message_native_artifact_c_labels_vec_raw_offset(void) {
   return offsetof(Event_labels_vec_t, raw);
 }
 
+size_t databind_message_native_artifact_c_ids_set_size(void) {
+  return sizeof(Event_ids_set_t);
+}
+
+size_t databind_message_native_artifact_c_ids_set_raw_offset(void) {
+  return offsetof(Event_ids_set_t, raw);
+}
+
+size_t databind_message_native_artifact_c_tags_set_size(void) {
+  return sizeof(Event_tags_set_t);
+}
+
+size_t databind_message_native_artifact_c_tags_set_raw_offset(void) {
+  return offsetof(Event_tags_set_t, raw);
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
@@ -69,18 +85,26 @@ spec("DataBind public Message native artifact") {
     check_equal(event._nulls[0], (uint8_t)0u);
     check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
     check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_equal(Event_ids_set_t_size(&event.ids), (size_t)0u);
+    check_equal(Event_tags_set_t_size(&event.tags), (size_t)0u);
     check_equal(Event_values_vec_t_push(&event.values, UINT32_C(11)), STL_OK);
+    check_equal(Event_ids_set_t_add(&event.ids, UINT32_C(11)), STL_OK);
     check_not_null(source);
-    if (source != NULL)
+    if (source != NULL) {
       check_equal(Event_labels_vec_t_push(&event.labels, source), STL_OK);
+      check_equal(Event_tags_set_t_add(&event.tags, source), STL_OK);
+    }
 
     check_equal(
         Event_from_json(NULL, &event, json, sizeof(json) - 1u, &error),
         DATA_BIND_ERR_SCHEMA);
     check_contains(error.message, "Legacy typed conversion");
     check_equal(Event_values_vec_t_size(&event.values), (size_t)1u);
-    if (source != NULL)
+    check_equal(Event_ids_set_t_size(&event.ids), (size_t)1u);
+    if (source != NULL) {
       check_equal(Event_labels_vec_t_size(&event.labels), (size_t)1u);
+      check_equal(Event_tags_set_t_size(&event.tags), (size_t)1u);
+    }
 
     event._presence[0] = UINT8_C(0xff);
     event._nulls[0] = UINT8_C(0xff);
@@ -89,11 +113,72 @@ spec("DataBind public Message native artifact") {
     check_equal(event._nulls[0], (uint8_t)0u);
     check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
     check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_equal(Event_ids_set_t_size(&event.ids), (size_t)0u);
+    check_equal(Event_tags_set_t_size(&event.tags), (size_t)0u);
     check_not_null(source);
     if (source != NULL) {
       check_equal(tstr_len(source), (size_t)5u);
       tstr_free(source);
     }
+  }
+
+  it("publishes typed CSTL set providers for required scalar/string sets") {
+    Event_ids_set_t ids = {0};
+    Event_tags_set_t tags = {0};
+    tstr source = tstr_dup("alpha");
+    cmeta_data_collection_borrow_cursor cursor = {0};
+    const void *borrowed = NULL;
+    const tstr *stored = NULL;
+    const cmeta_data_desc *id_element =
+        cmeta_data_collection_element_data(&Event_ids_set_t_collection_data);
+    const cmeta_data_desc *tag_element =
+        cmeta_data_collection_element_data(&Event_tags_set_t_collection_data);
+
+    check_equal(Event_ids_set_t_collection_data.kind, CMETA_DATA_SET);
+    check_equal(Event_tags_set_t_collection_data.kind, CMETA_DATA_SET);
+    check_true(cmeta_data_desc_equal(id_element, &cmeta_data_uint32));
+    check_true(cmeta_data_desc_equal(tag_element, SALTS_TSTR_CMETA_DATA_REF));
+
+    check_equal(Event_ids_set_t_init(&ids, 4u), STL_OK);
+    check_equal(Event_ids_set_t_add(&ids, UINT32_C(7)), STL_OK);
+    check_true(Event_ids_set_t_contains(&ids, UINT32_C(7)));
+    check_equal(Event_ids_set_t_size(&ids), (size_t)1u);
+
+    check_not_null(source);
+    if (source != NULL) {
+      check_equal(Event_tags_set_t_init(&tags, 4u), STL_OK);
+      check_equal(Event_tags_set_t_add(&tags, source), STL_OK);
+      check_true(Event_tags_set_t_contains(&tags, source));
+      check_equal(Event_tags_set_t_size(&tags), (size_t)1u);
+      check_equal(
+          cmeta_data_collection_borrow_begin(
+              &Event_tags_set_t_collection_data, &tags, &cursor),
+          CMETA_OK);
+      {
+        cmeta_gen_status generated =
+            cmeta_data_collection_borrow_next(&cursor, &borrowed);
+        const void *terminal = (const void *)(uintptr_t)1u;
+        check_true(generated == CMETA_GEN_VALUE ||
+                   generated == CMETA_GEN_VALUE_AND_DONE);
+        stored = (const tstr *)borrowed;
+        if (generated == CMETA_GEN_VALUE) {
+          check_equal(
+              cmeta_data_collection_borrow_next(&cursor, &terminal),
+              CMETA_GEN_DONE);
+          check_null(terminal);
+        }
+      }
+      check_not_null(stored);
+      if (stored != NULL) {
+        check_not_null(*stored);
+        check_true(*stored != source);
+        check_equal(tstr_len(*stored), tstr_len(source));
+      }
+    }
+
+    Event_ids_set_t_destroy(&ids);
+    Event_tags_set_t_destroy(&tags);
+    tstr_free(source);
   }
 
   it("publishes typed CSTL sequence providers for required scalar/string lists") {

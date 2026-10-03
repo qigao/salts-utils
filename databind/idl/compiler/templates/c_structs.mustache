@@ -357,7 +357,24 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
 #endif
 {{/native_cstl_sequence}}
+{{#native_cstl_set}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  set_t raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{native_element_type_ref}}, {{native_element_data_ref}});
+{{/native_cstl_set_explicit_refs}}
+{{^native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
+{{/native_cstl_set_explicit_refs}}
+#endif
+{{/native_cstl_set}}
 {{^native_cstl_sequence}}
+{{^native_cstl_set}}
 {{#native_sequence_name}}
 TBE_TYPED_MANAGED_VEC_DEFINE(
     {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
@@ -365,6 +382,7 @@ TBE_TYPED_MANAGED_VEC_DEFINE(
 {{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/native_sequence_name}}
+{{/native_cstl_set}}
 {{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}
@@ -736,7 +754,24 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
 #endif
 {{/native_cstl_sequence}}
+{{#native_cstl_set}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  set_t raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{native_element_type_ref}}, {{native_element_data_ref}});
+{{/native_cstl_set_explicit_refs}}
+{{^native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
+{{/native_cstl_set_explicit_refs}}
+#endif
+{{/native_cstl_set}}
 {{^native_cstl_sequence}}
+{{^native_cstl_set}}
 {{#native_sequence_name}}
 TBE_TYPED_MANAGED_VEC_DEFINE(
     {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
@@ -744,6 +779,7 @@ TBE_TYPED_MANAGED_VEC_DEFINE(
 {{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/native_sequence_name}}
+{{/native_cstl_set}}
 {{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}
@@ -1347,7 +1383,24 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
 #endif
 {{/native_cstl_sequence}}
+{{#native_cstl_set}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  set_t raw;
+} {{typed_vector_type}};
+#else
+{{#native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}},
+      {{native_element_type_ref}}, {{native_element_data_ref}});
+{{/native_cstl_set_explicit_refs}}
+{{^native_cstl_set_explicit_refs}}
+typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
+{{/native_cstl_set_explicit_refs}}
+#endif
+{{/native_cstl_set}}
 {{^native_cstl_sequence}}
+{{^native_cstl_set}}
 {{#native_sequence_name}}
 TBE_TYPED_MANAGED_VEC_DEFINE(
     {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
@@ -1355,6 +1408,7 @@ TBE_TYPED_MANAGED_VEC_DEFINE(
 {{^native_sequence_name}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
 {{/native_sequence_name}}
+{{/native_cstl_set}}
 {{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}

@@ -289,6 +289,7 @@ typedef enum tbe_compiler_native_requirement {
   TBE_COMPILER_NATIVE_ENUM_DOMAIN,
   DATABIND_COMPILER_NATIVE_MAP_PROVIDER,
   DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER,
+  DATABIND_COMPILER_NATIVE_SET_PROVIDER,
   TBE_COMPILER_NATIVE_OWNED_LIFECYCLE,
   TBE_COMPILER_NATIVE_OVERLAY_PRESENCE,
   TBE_COMPILER_NATIVE_OVERLAY_NULL,
@@ -307,6 +308,8 @@ static const char *tbe_compiler_native_requirement_name(
       return "map_provider";
     case DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER:
       return "sequence_provider";
+    case DATABIND_COMPILER_NATIVE_SET_PROVIDER:
+      return "set_provider";
     case TBE_COMPILER_NATIVE_OWNED_LIFECYCLE:
       return "owned_lifecycle";
     case TBE_COMPILER_NATIVE_OVERLAY_PRESENCE:
@@ -1086,6 +1089,43 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           tbe_compiler_set_string(field, "native_c_type", vector_type);
         }
       }
+
+      if (semantic->kind == CMETA_DATA_SET &&
+          tbe_compiler_has_child(field, "is_set") &&
+          !tbe_compiler_has_child(field, "is_optional") &&
+          !tbe_compiler_has_child(field, "is_nullable") &&
+          tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
+          tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
+        const tbe_compiler_scalar_projection_t *element_scalar =
+            tbe_compiler_scalar_projection(storage_element);
+        if ((element_scalar != NULL && element_scalar->native_data_symbol != NULL) ||
+            (storage_element != NULL && strcmp(storage_element, "string") == 0)) {
+          char symbol[320];
+          Node *owner_record;
+          snprintf(vector_type, sizeof(vector_type), "%s_%s_set_t", owner, name);
+          snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
+          tbe_compiler_set_string(field, "typed_vector_type", vector_type);
+          owner_record =
+              tbe_compiler_find_record(root, "composites", owner);
+          if (owner_record == NULL)
+            owner_record = tbe_compiler_find_record(root, "groups", owner);
+          if (owner_record == NULL)
+            owner_record = tbe_compiler_find_record(root, "messages", owner);
+          tbe_compiler_set_string(field, "native_cstl_set", "1");
+          if (owner_record != NULL)
+            tbe_compiler_set_string(owner_record, "native_cstl_storage", "1");
+          tbe_compiler_set_string(field, "native_cstl_set_explicit_refs", "1");
+          if (snprintf(symbol, sizeof(symbol), "%s_collection_data", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_collection_data") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_data_symbol", symbol);
+          if (snprintf(symbol, sizeof(symbol), "%s_cmeta_type", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_cmeta_type") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_type_symbol", symbol);
+          if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+              tbe_compiler_string_value(field, "native_type_symbol") != NULL)
+            tbe_compiler_set_string(field, "native_c_type", vector_type);
+        }
+      }
     }
     tbe_compiler_set_string(field, "typed_declaration", declaration);
     return;
@@ -1165,6 +1205,16 @@ static void tbe_compiler_annotate_native_requirement(
              tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
              tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER;
+  } else if (semantic->kind == CMETA_DATA_SET &&
+             tbe_compiler_has_child(field, "is_set") &&
+             !tbe_compiler_has_child(field, "is_optional") &&
+             !tbe_compiler_has_child(field, "is_nullable") &&
+             tbe_compiler_string_value(field, "native_cstl_set") != NULL &&
+             tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
+             tbe_compiler_string_value(field, "native_element_data_ref") != NULL &&
+             tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+             tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
+    requirement = DATABIND_COMPILER_NATIVE_SET_PROVIDER;
   } else if (cmeta_data_kind_is_container(semantic->kind)) {
     requirement = TBE_COMPILER_NATIVE_DEFERRED_CONTAINER;
   } else if (tbe_compiler_has_child(field, "is_optional") &&
@@ -1398,6 +1448,7 @@ static int tbe_compiler_cmeta_classify_record(
     const char *type = tbe_compiler_string_value(field, "type");
     const char *kind = tbe_compiler_string_value(field, "typed_kind");
     const int is_map = tbe_compiler_has_child(field, "is_map");
+    const int is_set = tbe_compiler_has_child(field, "is_set");
     const tbe_compiler_scalar_projection_t *scalar;
     Node *target;
     size_t target_index;
@@ -1406,7 +1457,7 @@ static int tbe_compiler_cmeta_classify_record(
         ((context->runtime || context->lifecycle) &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
-        tbe_compiler_has_child(field, "is_set") ||
+        (is_set && !tbe_compiler_has_child(field, "native_cstl_set")) ||
         tbe_compiler_has_child(field, "is_group_field"))
       goto unsupported;
 
@@ -1462,6 +1513,32 @@ static int tbe_compiler_cmeta_classify_record(
       if (context->depths[target_index] + 1u > max_depth)
         max_depth = context->depths[target_index] + 1u;
       continue;
+    }
+
+    if (is_set) {
+      const char *inner_type =
+          tbe_compiler_string_value(field, "inner_type");
+      const char *requirement =
+          tbe_compiler_string_value(field, "cmeta_native_requirement");
+      if (inner_type == NULL ||
+          requirement == NULL ||
+          strcmp(requirement, "set_provider") != 0 ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL ||
+          !tbe_compiler_has_child(field, "native_cstl_set"))
+        goto unsupported;
+
+      /* Canonical CSTL Set is a graph/lifecycle provider. Keep the historical
+       * TbeTypedDescriptor runtime matrix closed over the old storage model. */
+      if (context->runtime) goto unsupported;
+
+      scalar = tbe_compiler_scalar_projection(inner_type);
+      if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
+          strcmp(inner_type, "string") == 0)
+        continue;
+      goto unsupported;
     }
 
     if (tbe_compiler_has_child(field, "is_collection") && !is_map)

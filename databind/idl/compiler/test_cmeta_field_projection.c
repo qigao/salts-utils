@@ -15,6 +15,7 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_OVERLAY_PRESENCE_NULL,
     EXPECT_MAP_PROVIDER,
     EXPECT_SEQUENCE_PROVIDER,
+    EXPECT_SET_PROVIDER,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -48,6 +49,7 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
     { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
       EXPECT_MAP_PROVIDER },
     { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE, EXPECT_SEQUENCE_PROVIDER },
+    { "set<int32>", "typed CSTL Set", CMETA_DATA_SET, EXPECT_SET_PROVIDER },
 };
 
 static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
@@ -67,6 +69,8 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "map_provider";
         case EXPECT_SEQUENCE_PROVIDER:
             return "sequence_provider";
+        case EXPECT_SET_PROVIDER:
+            return "set_provider";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -252,7 +256,14 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
                             "cmeta_data_int32");
             } else if (cases[i].kind == CMETA_DATA_SET) {
-                check_null(field_projection_text(field, "native_data_symbol"));
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "Shape_value_set_t_collection_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "Shape_value_set_t_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"),
+                            "Shape_value_set_t");
+                check_not_null(field_projection_child(field, "native_cstl_set"));
+                check_not_null(field_projection_child(record, "native_cstl_storage"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
@@ -324,6 +335,9 @@ suite("compiler_cmeta_field_projection") {
             check_not_null(field_projection_text(states, "native_element_data_symbol"));
             check_not_null(field_projection_text(states, "native_element_type_ref"));
             check_not_null(field_projection_text(states, "native_element_data_ref"));
+            check_equal(field_projection_text(states, "cmeta_native_requirement"),
+                        "deferred_container");
+            check_null(field_projection_text(states, "native_cstl_set"));
             check_equal(field_projection_text(map, "native_map_key_type_ref"),
                         "SALTS_TSTR_CMETA_TYPE_REF");
             check_equal(field_projection_text(map, "native_map_key_data_ref"),
@@ -345,10 +359,10 @@ suite("compiler_cmeta_field_projection") {
         static const char *const names[] = {
             "BoolStorage", "UuidStorage", "FixedBytesStorage", "TextStorage",
             "BytesStorage", "OptionalStorage", "NullableStorage",
-            "TriStateStorage", "MapStorage", "ListStorage"};
+            "TriStateStorage", "MapStorage", "ListStorage", "SetStorage"};
         static const char *const types[] = {
             "bool", "uuid", "bytes", "string", "bytes", "int32", "int32",
-            "int32", "map", "list"};
+            "int32", "map", "list", "set"};
         Node *root = create_node_map("root");
         size_t i;
 
@@ -376,6 +390,9 @@ suite("compiler_cmeta_field_projection") {
             } else if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
                        EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
+                check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+            } else if (EXPECTED[i].requirement == EXPECT_SET_PROVIDER) {
+                check_equal(map_add(field, create_node_string("is_set", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
             }
         }
@@ -421,10 +438,12 @@ suite("compiler_cmeta_field_projection") {
                 }
             }
             if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER ||
-                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
+                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
-            if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
+            if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_lifecycle_supported"));
         }
@@ -456,6 +475,34 @@ suite("compiler_cmeta_field_projection") {
                     "deferred_container");
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         check_null(field_projection_text(field, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
+    it("keeps optional sets deferred to the container provider boundary") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalSetStorage");
+        field = field_projection_add_field(record, "OptionalSetStorage", "value", "set");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_null(field_projection_text(field, "native_cstl_set"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
