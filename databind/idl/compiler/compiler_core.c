@@ -1614,7 +1614,17 @@ static int tbe_compiler_cmeta_classify_record(
         if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
             strcmp(value_type, "string") == 0)
           continue;
-        goto unsupported;
+
+        target = tbe_compiler_find_any_record(context->root, value_type);
+        if (target == NULL) goto unsupported;
+        target_index = tbe_compiler_cmeta_record_index(context, target);
+        if (target_index == SIZE_MAX ||
+            !tbe_compiler_cmeta_classify_record(context, target_index) ||
+            context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+          goto unsupported;
+        if (context->depths[target_index] + 1u > max_depth)
+          max_depth = context->depths[target_index] + 1u;
+        continue;
       }
 
       /* The historical vector-map graph remains read-only. Its mixed
