@@ -1429,6 +1429,22 @@ static int tbe_compiler_cmeta_classify_record(
        * reason to widen the legacy TbeTypedDescriptor surface. */
       if (context->runtime) goto unsupported;
 
+      /*
+       * Canonical typed-CSTL sequence storage owns its element semantics
+       * directly through the generated *_collection_data descriptor. Graph
+       * and lifecycle qualification therefore stop at the container provider
+       * for the builtin scalar/string slice. Do not recurse into a synthetic
+       * element record and do not widen legacy TbeTypedDescriptor runtime
+       * admission.
+       */
+      if (tbe_compiler_has_child(field, "native_cstl_sequence")) {
+        scalar = tbe_compiler_scalar_projection(inner_type);
+        if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
+            strcmp(inner_type, "string") == 0)
+          continue;
+        goto unsupported;
+      }
+
       scalar = tbe_compiler_scalar_projection(inner_type);
       if ((scalar && scalar->native_data_symbol) ||
           strcmp(inner_type, "string") == 0 ||
