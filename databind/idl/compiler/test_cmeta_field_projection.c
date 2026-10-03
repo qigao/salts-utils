@@ -1039,6 +1039,86 @@ suite("compiler_cmeta_field_projection") {
             field_projection_record(root, "messages", "Depth33"),
             "cmeta_graph_supported"));
 
+        /* Native reader budgets count every descriptor node, not only nested
+         * records. These values mirror data_bind_native.c preflight exactly:
+         * Struct -> field descriptor, Vec/Set -> element, Map -> key+value. */
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Point"),
+                "cmeta_native_descriptor_depth"),
+            "2");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Point"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Header"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "composites", "Header"),
+                "cmeta_native_descriptor_nodes"),
+            "5");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Sample"),
+                "cmeta_native_descriptor_depth"),
+            "4");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Sample"),
+                "cmeta_native_descriptor_nodes"),
+            "7");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "ListStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "ListStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "SetStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "SetStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "MapStorage"),
+                "cmeta_native_descriptor_depth"),
+            "3");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "MapStorage"),
+                "cmeta_native_descriptor_nodes"),
+            "4");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Depth32"),
+                "cmeta_native_descriptor_depth"),
+            "34");
+        check_equal(
+            field_projection_text(
+                field_projection_record(root, "messages", "Depth32"),
+                "cmeta_native_descriptor_nodes"),
+            "34");
+        check_null(field_projection_text(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_native_descriptor_depth"));
+        check_null(field_projection_text(
+            field_projection_record(root, "messages", "Depth33"),
+            "cmeta_native_descriptor_nodes"));
+
         for (i = 0; i < sizeof(unsupported_records) / sizeof(unsupported_records[0]); ++i) {
             Node *record = field_projection_record(root, "messages", unsupported_records[i]);
             info("record=%s", unsupported_records[i]);
