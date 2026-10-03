@@ -854,8 +854,8 @@ suite("compiler_cmeta_field_projection") {
         check_equal(field_projection_text(right_field, "native_map_value_type_ref"),
                     "&PrivateItem_CMETA_TYPE");
         check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
-        check_not_null(field_projection_child(left, "cmeta_graph_supported"));
-        check_not_null(field_projection_child(right, "cmeta_graph_supported"));
+        check_null(field_projection_child(left, "cmeta_graph_supported"));
+        check_null(field_projection_child(right, "cmeta_graph_supported"));
         check_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
         check_null(field_projection_child(right, "typed_cmeta_runtime_supported"));
         node_free(root);
