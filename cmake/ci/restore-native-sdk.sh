@@ -69,6 +69,7 @@ if [ "$with_turbowasm" = "1" ]; then
   turbowasm_package="$(single_package_dir "$packages/turbowasm.native" TurboWasm.Native)"
 fi
 salts_root="$salts_package/sdk/$salts_rid"
+salts_host_root="$salts_package/sdk/$re2c_rid"
 re2c_root="$re2c_package/tools/$re2c_rid"
 turbowasm_root=""
 if [ "$with_turbowasm" = "1" ]; then
@@ -78,6 +79,7 @@ fail() { printf 'native SDK restore error: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$salts_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing SaltsConfig.cmake under $salts_root"
 [ -f "$salts_root/include/cmeta/function.h" ] || fail "missing CMeta function reflection under $salts_root"
+[ -f "$salts_host_root/lib/cmake/Salts/SaltsConfig.cmake" ] || fail "missing host SaltsConfig.cmake under $salts_host_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_categories.re" ] || fail "missing unicode_categories.re under $re2c_root"
 [ -f "$re2c_root/share/re2c/stdlib/unicode_properties.re" ] || fail "missing unicode_properties.re under $re2c_root"
 [ -f "$re2c_root/bin/re2c" ] || fail "missing re2c executable under $re2c_root"
@@ -93,6 +95,7 @@ if [ "$with_turbowasm" = "1" ]; then
 fi
 
 printf "SALTS_ROOT=%s\n" "$salts_root" >> "$GITHUB_ENV"
+printf "SALTS_HOST_ROOT=%s\n" "$salts_host_root" >> "$GITHUB_ENV"
 printf "RE2C_ROOT=%s\n" "$re2c_root" >> "$GITHUB_ENV"
 printf "QIGAO_NUGET_PACKAGES=%s\n" "$packages" >> "$GITHUB_ENV"
 printf "%s\n" "$re2c_root/bin" >> "$GITHUB_PATH"
