@@ -53,6 +53,30 @@ size_t databind_message_native_artifact_c_aliases_map_raw_offset(void) {
   return offsetof(Event_aliases_map_t, raw);
 }
 
+size_t databind_message_native_artifact_c_overlay_values_size(void) {
+  return sizeof(OverlayContainers_values_vec_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_values_raw_offset(void) {
+  return offsetof(OverlayContainers_values_vec_t, raw);
+}
+
+size_t databind_message_native_artifact_c_overlay_tags_size(void) {
+  return sizeof(OverlayContainers_tags_set_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_tags_raw_offset(void) {
+  return offsetof(OverlayContainers_tags_set_t, raw);
+}
+
+size_t databind_message_native_artifact_c_overlay_attrs_size(void) {
+  return sizeof(OverlayContainers_attrs_map_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_attrs_raw_offset(void) {
+  return offsetof(OverlayContainers_attrs_map_t, raw);
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
