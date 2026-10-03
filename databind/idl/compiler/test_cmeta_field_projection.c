@@ -475,6 +475,34 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("keeps optional sets deferred to the container provider boundary") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalSetStorage");
+        field = field_projection_add_field(record, "OptionalSetStorage", "value", "set");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_set", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_null(field_projection_text(field, "native_cstl_set"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
     it("separates generated sequence lifecycle support from legacy typed descriptors") {
         Node *root = create_node_map("root");
         Node *header = field_projection_add_record(root, "messages", "NativeHeader");
