@@ -726,6 +726,8 @@ suite("compiler_cmeta_field_projection") {
         Node *right = field_projection_add_record(root, "messages", "A");
         Node *left_field = field_projection_add_field(left, "A_B", "C", "bytes");
         Node *right_field = field_projection_add_field(right, "A", "B_C", "bytes");
+        const char *left_symbol;
+        const char *right_symbol;
         check_not_null(left_field);
         check_not_null(right_field);
         if (!left_field || !right_field) {
