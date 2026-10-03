@@ -49,6 +49,8 @@ using MessageNativeEncode = DataBindStatus (*)(
     size_t,
     cserde_writer *,
     DataBindMessagePlanDiagnostic *);
+using BuiltinFormatProvider =
+    const DataBindFormatProvider *(*)(DataBindFormat);
 static_assert(std::is_same_v<
               decltype(&data_bind_binding_plan_write_inputs),
               ClientWriteInputs>);
@@ -61,6 +63,9 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_encode_native),
               MessageNativeEncode>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_builtin_format_provider),
+              BuiltinFormatProvider>);
 
 static_assert(std::is_standard_layout_v<DataBindHttpFieldProjection>);
 static_assert(std::is_standard_layout_v<DataBindHttpErrorMapping>);
