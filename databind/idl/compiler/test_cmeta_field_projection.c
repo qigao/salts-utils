@@ -373,7 +373,8 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(map_add(field, create_node_string("is_map", "1")), 0);
                 check_equal(map_add(field, create_node_string("key_type", "string")), 0);
                 check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
-            } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
+            } else if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                       EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
             }
