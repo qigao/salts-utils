@@ -596,6 +596,44 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
+    it("keeps lifecycle-incomplete record lists off typed CSTL promotion") {
+        Node *root = create_node_map("root");
+        Node *item = field_projection_add_record(root, "messages", "DeferredItem");
+        Node *owner = field_projection_add_record(root, "messages", "DeferredOwner");
+        Node *item_value =
+            field_projection_add_field(item, "DeferredItem", "value", "int32");
+        Node *items =
+            field_projection_add_field(owner, "DeferredOwner", "items", "list");
+
+        check_not_null(item_value);
+        check_not_null(items);
+        if (!item_value || !items) {
+            node_free(root);
+            return;
+        }
+
+        check_equal(
+            map_add(item_value, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(items, create_node_string("is_collection", "1")), 0);
+        check_equal(map_add(items, create_node_string("is_list", "1")), 0);
+        check_equal(
+            map_add(items, create_node_string("collection_kind", "list")), 0);
+        check_equal(
+            map_add(items, create_node_string("inner_type", "DeferredItem")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(owner, "cmeta_lifecycle_supported"));
+        check_null(field_projection_text(items, "native_cstl_sequence"));
+        check_not_null(field_projection_text(items, "native_sequence_name"));
+        check_equal(field_projection_text(items, "native_element_type_ref"),
+                    "&DeferredItem_CMETA_TYPE");
+        check_equal(field_projection_text(items, "native_element_data_ref"),
+                    "&DeferredItem_CMETA_DATA");
+        node_free(root);
+    }
+
     it("length-encodes fixed-byte provider identifiers without owner-field collisions") {
         /* A real generated TU cannot isolate this namespace: the older public
          * wire API already maps both A_B.C and A.B_C to A_B_C_* before the
