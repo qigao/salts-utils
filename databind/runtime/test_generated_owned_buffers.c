@@ -107,6 +107,270 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
+  it("decodes owning record maps through canonical typed CSTL Map metadata") {
+    static const char json[] =
+        "{\"id\":7,\"headers\":{"
+        "\"alpha\":{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "\"beta\":{\"name\":\"y-tag\",\"value\":\"b\"}}}";
+    static const char map_json[] =
+        "{\"alpha\":{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "\"beta\":{\"name\":\"y-tag\",\"value\":\"b\"}}";
+    const DataBindMessageNativeArtifact *artifact =
+        NativeHeaderMap_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *map_owner_data = NULL;
+    const cmeta_data_struct_shape *shape = NULL;
+    const cmeta_data_desc *map_data = NULL;
+    const cmeta_data_desc *key_data = NULL;
+    const cmeta_data_desc *value_data = NULL;
+    DataBind *codec = NULL;
+    NativeHeaderMap_t value = {0};
+    NativeHeaderMap_t validation_owner = {0};
+    NativeHeaderMap_headers_map_t direct_map = {0};
+    DataBindNativeDiagnostic direct_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindError validation_error = DATA_BIND_ERROR_INIT;
+    unsigned char workspace[16384] = {0};
+    json_value_t *root = NULL;
+    json_value_t *map_root = NULL;
+    cserde_reader *reader = NULL;
+    cserde_reader *map_reader = NULL;
+    tstr lookup = tstr_dup("alpha");
+    const NativeHeader_t *stored = NULL;
+    NativeHeaderMap_headers_map_t provider_probe = {0};
+    NativeHeader_t provider_value = {0};
+    tstr provider_key = tstr_dup("probe");
+    cmeta_collector provider_collector = {0};
+    cmeta_status provider_status;
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_equal(NativeHeaderMap_cmeta_data(&map_owner_data, &error), DATA_BIND_OK);
+    check_not_null(binding.data);
+    check_not_null(map_owner_data);
+    if (binding.data == NULL || map_owner_data == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_true(binding.data == map_owner_data);
+
+    shape = (const cmeta_data_struct_shape *)map_owner_data->shape;
+    check_not_null(shape);
+    if (shape == NULL || shape->field_count != 2u) {
+      tstr_free(lookup);
+      return;
+    }
+    map_data = shape->fields[1].value;
+    check_not_null(map_data);
+    if (map_data == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_equal(map_data->kind, CMETA_DATA_MAP);
+    check_true(cmeta_data_desc_equal(
+        map_data, &NativeHeaderMap_headers_map_t_map_data));
+    key_data = cmeta_data_map_key_data(map_data);
+    value_data = cmeta_data_map_value_data(map_data);
+    check_true(cmeta_data_desc_equal(key_data, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(value_data == &NativeHeader_CMETA_DATA);
+    check_true(value_data->storage_type == &NativeHeader_CMETA_TYPE);
+    check_not_null(cmeta_data_construct_ops_of(map_data));
+
+    /* Isolate canonical typed Map provider admission from MessagePlan/CSerde. */
+    check_not_null(provider_key);
+    check_equal(
+        cmeta_data_value_init_zero(map_data, &provider_probe), CMETA_OK);
+    check_equal(
+        cmeta_data_value_init_zero(value_data, &provider_value), CMETA_OK);
+    provider_value.name = tstr_dup("x-tag");
+    provider_value.value = tstr_dup("probe-value");
+    check_not_null(provider_value.name);
+    check_not_null(provider_value.value);
+    check_true(cmeta_type_equal(
+        provider_probe.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        provider_probe.raw.value_type, &NativeHeader_CMETA_TYPE));
+    check_equal(
+        cmeta_data_map_collector(
+            map_data, &provider_probe, 4u, &provider_collector),
+        CMETA_OK);
+    check_equal(cmeta_collector_begin(&provider_collector), CMETA_OK);
+    provider_status = cmeta_data_map_accept(
+        map_data, &provider_collector,
+        key_data, &provider_key, value_data, &provider_value);
+    check_equal(provider_status, CMETA_OK);
+    if (provider_status == CMETA_OK)
+      check_equal(cmeta_collector_finish(&provider_collector), CMETA_OK);
+    else
+      cmeta_collector_abort(&provider_collector);
+    check_equal(
+        NativeHeaderMap_headers_map_t_size(&provider_probe), (size_t)1u);
+    check_equal(
+        cmeta_data_value_restore_zero(value_data, &provider_value), CMETA_OK);
+    check_equal(
+        cmeta_data_value_restore_zero(map_data, &provider_probe), CMETA_OK);
+    tstr_free(provider_key);
+    provider_key = NULL;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeHeaderMap", &binding, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      tstr_free(lookup);
+      return;
+    }
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 4096u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+
+    /* Isolate native Map decode from MessagePlan's prefixed field reader. */
+    map_root = json_parse(map_json, sizeof(map_json) - 1u);
+    check_not_null(map_root);
+    if (map_root != NULL)
+      map_reader = json_cserde_reader_create(map_root, 16u);
+    check_not_null(map_reader);
+    check_equal(
+        cmeta_data_value_init_zero(map_data, &direct_map), CMETA_OK);
+    if (map_reader != NULL) {
+      DataBindStatus direct_status =
+          data_bind_native_decode(
+              &options, map_data, map_reader,
+              &direct_map, sizeof(direct_map), &direct_diagnostic);
+      if (direct_status != DATA_BIND_OK)
+        fprintf(
+            stderr,
+            "record-map direct-native status=%d path=%s message=%s\n",
+            (int)direct_status,
+            direct_diagnostic.error.path[0] != '\0'
+                ? direct_diagnostic.error.path : "<root>",
+            direct_diagnostic.error.message[0] != '\0'
+                ? direct_diagnostic.error.message : "<none>");
+      check_equal(direct_status, DATA_BIND_OK);
+      if (direct_status == DATA_BIND_OK) {
+        DataBindStatus validation_status;
+        check_equal(
+            NativeHeaderMap_headers_map_t_size(&direct_map), (size_t)2u);
+
+        NativeHeaderMap_init(&validation_owner);
+        validation_owner.id = UINT32_C(7);
+        check_equal(
+            cmeta_data_value_move(
+                map_data, &validation_owner.headers, &direct_map),
+            CMETA_OK);
+        validation_status =
+            data_bind_message_plan_validate_native(
+                plan, &validation_owner, sizeof(validation_owner),
+                &validation_error);
+        if (validation_status != DATA_BIND_OK)
+          fprintf(
+              stderr,
+              "record-map validation status=%d path=%s message=%s\n",
+              (int)validation_status,
+              validation_error.path[0] != '\0'
+                  ? validation_error.path : "<root>",
+              validation_error.message[0] != '\0'
+                  ? validation_error.message : "<none>");
+        check_equal(validation_status, DATA_BIND_OK);
+        NativeHeaderMap_clear(&validation_owner);
+      } else {
+        check_equal(
+            data_bind_native_clear(
+                &options, map_data, &direct_map, sizeof(direct_map),
+                &direct_diagnostic),
+            DATA_BIND_OK);
+      }
+    }
+    json_cserde_reader_destroy(map_reader);
+    json_free(map_root);
+    map_reader = NULL;
+    map_root = NULL;
+
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      DataBindStatus decode_status =
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic);
+      if (decode_status != DATA_BIND_OK)
+        fprintf(
+            stderr,
+            "record-map decode status=%d field=%s message=%s\n",
+            (int)decode_status,
+            diagnostic.schema_field[0] != '\0'
+                ? diagnostic.schema_field : "<root>",
+            diagnostic.message[0] != '\0'
+                ? diagnostic.message : "<none>");
+      check_equal(decode_status, DATA_BIND_OK);
+      check_equal(value.id, (uint32_t)7u);
+      check_equal(
+          NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)2u);
+      check_not_null(lookup);
+      if (lookup != NULL) {
+        stored =
+            NativeHeaderMap_headers_map_t_get_const(&value.headers, lookup);
+        check_not_null(stored);
+        if (stored != NULL) {
+          check_not_null(stored->name);
+          check_not_null(stored->value);
+          if (stored->name != NULL) {
+            check_equal(tstr_len(stored->name), strlen("x-tag"));
+            check(memcmp(stored->name, "x-tag", strlen("x-tag")) == 0);
+          }
+          if (stored->value != NULL) {
+            check_equal(tstr_len(stored->value), (size_t)1u);
+            check(memcmp(stored->value, "a", 1u) == 0);
+          }
+        }
+      }
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value), &native_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.id, (uint32_t)0u);
+    check_equal(
+        NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)0u);
+    /*
+     * Canonical typed Map semantic zero retains its declared container and
+     * key/value type identity. Only dynamic storage is released.
+     */
+    check_not_null(value.headers.cmeta.descriptor);
+    check_true(cmeta_type_equal(
+        value.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        value.headers.raw.value_type, &NativeHeader_CMETA_TYPE));
+    check_null(value.headers.raw.impl);
+
+    tstr_free(lookup);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("decodes ordered duplicate-preserving header records through generated MessagePlan sequence metadata") {
     static const char empty_json[] =
         "{\"id\":6,\"headers\":[]}";

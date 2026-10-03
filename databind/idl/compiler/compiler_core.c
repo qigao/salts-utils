@@ -1614,7 +1614,17 @@ static int tbe_compiler_cmeta_classify_record(
         if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
             strcmp(value_type, "string") == 0)
           continue;
-        goto unsupported;
+
+        target = tbe_compiler_find_any_record(context->root, value_type);
+        if (target == NULL) goto unsupported;
+        target_index = tbe_compiler_cmeta_record_index(context, target);
+        if (target_index == SIZE_MAX ||
+            !tbe_compiler_cmeta_classify_record(context, target_index) ||
+            context->depths[target_index] >= TBE_COMPILER_CMETA_MAX_DEPTH)
+          goto unsupported;
+        if (context->depths[target_index] + 1u > max_depth)
+          max_depth = context->depths[target_index] + 1u;
+        continue;
       }
 
       /* The historical vector-map graph remains read-only. Its mixed
@@ -1825,7 +1835,7 @@ cleanup:
   free(context.records);
 }
 
-static void tbe_compiler_promote_record_cstl_sequences(Node *root) {
+static void tbe_compiler_promote_record_cstl_containers(Node *root) {
   static const char *const lists[] = {"composites", "groups", "messages"};
   size_t list_index;
 
@@ -1852,6 +1862,77 @@ static void tbe_compiler_promote_record_cstl_sequences(Node *root) {
         const char *vector_type;
         Node *element_record;
         char symbol[320];
+
+        if (tbe_compiler_has_child(field, "is_map") &&
+            !tbe_compiler_has_child(field, "is_optional") &&
+            !tbe_compiler_has_child(field, "is_nullable") &&
+            tbe_compiler_string_value(field, "native_map_name") != NULL) {
+          const char *value_type =
+              tbe_compiler_string_value(field, "value_type");
+          const char *owner_name =
+              tbe_compiler_string_value(field, "owner_name");
+          const char *field_name =
+              tbe_compiler_string_value(field, "c_name");
+          Node *value_record =
+              value_type != NULL
+                  ? tbe_compiler_find_any_record(root, value_type)
+                  : NULL;
+          char map_type[256];
+          char declaration[512];
+
+          if (value_record != NULL &&
+              tbe_compiler_has_child(value_record,
+                                      "cmeta_lifecycle_supported") &&
+              owner_name != NULL && field_name != NULL &&
+              tbe_compiler_string_value(
+                  field, "native_map_key_type_ref") != NULL &&
+              tbe_compiler_string_value(
+                  field, "native_map_key_data_ref") != NULL &&
+              tbe_compiler_string_value(
+                  field, "native_map_value_type_ref") != NULL &&
+              tbe_compiler_string_value(
+                  field, "native_map_value_data_ref") != NULL &&
+              snprintf(map_type, sizeof(map_type), "%s_%s_map_t",
+                       owner_name, field_name) >= 0 &&
+              strlen(owner_name) + strlen(field_name) +
+                      strlen("__map_t") <
+                  sizeof(map_type) &&
+              snprintf(declaration, sizeof(declaration), "%s %s;",
+                       map_type, field_name) >= 0) {
+            tbe_compiler_set_string(field, "native_cstl_map", "1");
+            tbe_compiler_set_string(
+                field, "native_cstl_map_explicit_refs", "1");
+            tbe_compiler_set_string(owner, "native_cstl_storage", "1");
+            tbe_compiler_set_string(field, "typed_vector_type", map_type);
+            tbe_compiler_set_string(field, "typed_declaration", declaration);
+
+            tbe_compiler_remove_children(field, "native_map_name");
+            tbe_compiler_remove_children(field, "native_data_symbol");
+            tbe_compiler_remove_children(field, "native_type_symbol");
+
+            if (snprintf(symbol, sizeof(symbol), "%s_map_data",
+                         map_type) >= 0 &&
+                strlen(map_type) + strlen("_map_data") <
+                    sizeof(symbol))
+              tbe_compiler_set_string(
+                  field, "native_data_symbol", symbol);
+
+            if (snprintf(symbol, sizeof(symbol), "%s_cmeta_type",
+                         map_type) >= 0 &&
+                strlen(map_type) + strlen("_cmeta_type") <
+                    sizeof(symbol))
+              tbe_compiler_set_string(
+                  field, "native_type_symbol", symbol);
+
+            if (tbe_compiler_string_value(
+                    field, "native_data_symbol") != NULL &&
+                tbe_compiler_string_value(
+                    field, "native_type_symbol") != NULL)
+              tbe_compiler_set_string(
+                  field, "native_c_type", map_type);
+            continue;
+          }
+        }
 
         if (!tbe_compiler_has_child(field, "is_list") ||
             tbe_compiler_has_child(field, "is_optional") ||
@@ -1955,7 +2036,8 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_record_list_types(root, contract, "unions");
   tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
-  tbe_compiler_promote_record_cstl_sequences(root);
+  tbe_compiler_promote_record_cstl_containers(root);
+  tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
 }
 

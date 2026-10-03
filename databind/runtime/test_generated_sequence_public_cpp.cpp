@@ -11,9 +11,16 @@ static_assert(std::is_standard_layout_v<NativeHeaderPolicy_headers_vec_t>,
               "generated record Vec declaration must remain C-compatible");
 static_assert(sizeof(NativeHeaderPolicy_headers_vec_t) > sizeof(vec_t),
               "record list storage must not preserve raw vec_t ABI");
+static_assert(std::is_standard_layout_v<NativeHeaderMap_t>,
+              "generated record Map owner must remain C-compatible");
+static_assert(std::is_standard_layout_v<NativeHeaderMap_headers_map_t>,
+              "generated record Map declaration must remain C-compatible");
+static_assert(sizeof(NativeHeaderMap_headers_map_t) > sizeof(map_t),
+              "record Map storage must not preserve raw map_t ABI");
 
 int main() {
   NativeHeaderPolicy_t value{};
+  NativeHeaderMap_t map_owner{};
   const DataBindMessageNativeArtifact *artifact =
       NativeHeaderPolicy_native_artifact();
   const cmeta_data_desc *header_data = nullptr;
@@ -40,5 +47,24 @@ int main() {
   }
 
   NativeHeaderPolicy_clear(&value);
-  return value.headers.cmeta.descriptor == nullptr ? 0 : 6;
+  if (value.headers.cmeta.descriptor != nullptr)
+    return 6;
+
+  NativeHeaderMap_init(&map_owner);
+  if (map_owner.headers.cmeta.descriptor == nullptr ||
+      map_owner.headers.raw.key_type == nullptr ||
+      map_owner.headers.raw.value_type == nullptr ||
+      !cmeta_type_equal(
+          map_owner.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF) ||
+      !cmeta_type_equal(
+          map_owner.headers.raw.value_type, &NativeHeader_CMETA_TYPE)) {
+    NativeHeaderMap_clear(&map_owner);
+    return 7;
+  }
+
+  NativeHeaderMap_clear(&map_owner);
+  return map_owner.headers.cmeta.descriptor == nullptr &&
+                 map_owner.headers.raw.impl == nullptr
+             ? 0
+             : 8;
 }
