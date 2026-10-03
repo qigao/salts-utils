@@ -107,6 +107,140 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
+  it("decodes owning record maps through canonical typed CSTL Map metadata") {
+    static const char json[] =
+        "{\"id\":7,\"headers\":{"
+        "\"alpha\":{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "\"beta\":{\"name\":\"y-tag\",\"value\":\"b\"}}}";
+    const DataBindMessageNativeArtifact *artifact =
+        NativeHeaderMap_native_artifact();
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindNativeDiagnostic native_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    const cmeta_data_desc *map_owner_data = NULL;
+    const cmeta_data_struct_shape *shape = NULL;
+    const cmeta_data_desc *map_data = NULL;
+    const cmeta_data_desc *key_data = NULL;
+    const cmeta_data_desc *value_data = NULL;
+    DataBind *codec = NULL;
+    NativeHeaderMap_t value = {0};
+    unsigned char workspace[16384] = {0};
+    json_value_t *root = NULL;
+    cserde_reader *reader = NULL;
+    tstr lookup = tstr_dup("alpha");
+    const NativeHeader_t *stored = NULL;
+
+    check_true(data_bind_message_native_artifact_valid(artifact));
+    check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
+    check_equal(NativeHeaderMap_cmeta_data(&map_owner_data, &error), DATA_BIND_OK);
+    check_not_null(binding.data);
+    check_not_null(map_owner_data);
+    if (binding.data == NULL || map_owner_data == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_true(binding.data == map_owner_data);
+
+    shape = (const cmeta_data_struct_shape *)map_owner_data->shape;
+    check_not_null(shape);
+    if (shape == NULL || shape->field_count != 2u) {
+      tstr_free(lookup);
+      return;
+    }
+    map_data = shape->fields[1].value;
+    check_not_null(map_data);
+    if (map_data == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_equal(map_data->kind, CMETA_DATA_MAP);
+    check_true(cmeta_data_desc_equal(
+        map_data, &NativeHeaderMap_headers_map_t_map_data));
+    key_data = cmeta_data_map_key_data(map_data);
+    value_data = cmeta_data_map_value_data(map_data);
+    check_true(cmeta_data_desc_equal(key_data, SALTS_TSTR_CMETA_DATA_REF));
+    check_true(value_data == &NativeHeader_CMETA_DATA);
+    check_true(value_data->storage_type == &NativeHeader_CMETA_TYPE);
+    check_not_null(cmeta_data_construct_ops_of(map_data));
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) {
+      tstr_free(lookup);
+      return;
+    }
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "NativeHeaderMap", &binding, &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      tstr_free(lookup);
+      return;
+    }
+
+    options.max_depth = 16u;
+    options.max_items = 64u;
+    options.max_owned_bytes = 4096u;
+    options.workspace = workspace;
+    options.workspace_bytes = sizeof(workspace);
+
+    root = json_parse(json, sizeof(json) - 1u);
+    check_not_null(root);
+    if (root != NULL) reader = json_cserde_reader_create(root, 16u);
+    check_not_null(reader);
+    if (reader != NULL) {
+      check_equal(
+          data_bind_message_plan_decode_native(
+              plan, &options, reader, &value, sizeof(value), &diagnostic),
+          DATA_BIND_OK);
+      check_equal(value.id, (uint32_t)7u);
+      check_equal(
+          NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)2u);
+      check_not_null(lookup);
+      if (lookup != NULL) {
+        stored =
+            NativeHeaderMap_headers_map_t_get_const(&value.headers, lookup);
+        check_not_null(stored);
+        if (stored != NULL) {
+          check_not_null(stored->name);
+          check_not_null(stored->value);
+          if (stored->name != NULL) {
+            check_equal(tstr_len(stored->name), strlen("x-tag"));
+            check(memcmp(stored->name, "x-tag", strlen("x-tag")) == 0);
+          }
+          if (stored->value != NULL) {
+            check_equal(tstr_len(stored->value), (size_t)1u);
+            check(memcmp(stored->value, "a", 1u) == 0);
+          }
+        }
+      }
+    }
+    json_cserde_reader_destroy(reader);
+    json_free(root);
+
+    check_equal(
+        data_bind_native_clear(
+            &options, binding.data, &value, sizeof(value), &native_diagnostic),
+        DATA_BIND_OK);
+    check_equal(value.id, (uint32_t)0u);
+    check_equal(
+        NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)0u);
+    check_null(value.headers.cmeta.descriptor);
+    check_null(value.headers.raw.impl);
+
+    tstr_free(lookup);
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("decodes ordered duplicate-preserving header records through generated MessagePlan sequence metadata") {
     static const char empty_json[] =
         "{\"id\":6,\"headers\":[]}";
