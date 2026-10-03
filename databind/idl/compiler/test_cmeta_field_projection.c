@@ -46,7 +46,7 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
     { "nullable int32", "null + int32_t", CMETA_DATA_SINT, EXPECT_OVERLAY_NULL },
     { "optional nullable int32", "presence + null + int32_t", CMETA_DATA_SINT,
       EXPECT_OVERLAY_PRESENCE_NULL },
-    { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
+    { "map<string,int32>", "typed CSTL Map", CMETA_DATA_MAP,
       EXPECT_MAP_PROVIDER },
     { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE, EXPECT_SEQUENCE_PROVIDER },
     { "set<int32>", "typed CSTL Set", CMETA_DATA_SET, EXPECT_SET_PROVIDER },
@@ -216,8 +216,14 @@ suite("compiler_cmeta_field_projection") {
                 check_not_null(field_projection_child(field, "native_external"));
             }
             if (cases[i].kind == CMETA_DATA_MAP) {
-                check_not_null(field_projection_text(field, "native_data_symbol"));
-                check_not_null(field_projection_text(field, "native_type_symbol"));
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "Shape_value_map_t_map_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "Shape_value_map_t_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"),
+                            "Shape_value_map_t");
+                check_not_null(field_projection_child(field, "native_cstl_map"));
+                check_not_null(field_projection_child(record, "native_cstl_storage"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_element_data_symbol"),
@@ -350,6 +356,8 @@ suite("compiler_cmeta_field_projection") {
                         "&Item_CMETA_TYPE");
             check_equal(field_projection_text(map, "native_map_value_data_ref"),
                         "&Item_CMETA_DATA");
+            check_null(field_projection_text(map, "native_cstl_map"));
+            check_not_null(field_projection_text(map, "native_map_name"));
         }
 
         node_free(root);
@@ -442,7 +450,8 @@ suite("compiler_cmeta_field_projection") {
                 EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
-            if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
                 EXPECTED[i].requirement == EXPECT_SET_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_lifecycle_supported"));
@@ -475,6 +484,37 @@ suite("compiler_cmeta_field_projection") {
                     "deferred_container");
         check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         check_null(field_projection_text(field, "typed_cmeta_runtime_supported"));
+        node_free(root);
+    }
+
+    it("keeps optional maps on the historical read-only provider boundary") {
+        Node *root = create_node_map("root");
+        Node *record;
+        Node *field;
+
+        check_not_null(root);
+        if (!root) return;
+        record = field_projection_add_record(root, "messages", "OptionalMapStorage");
+        field = field_projection_add_field(record, "OptionalMapStorage", "value", "map");
+        check_not_null(field);
+        if (!field) {
+            node_free(root);
+            return;
+        }
+        check_equal(map_add(field, create_node_string("is_map", "1")), 0);
+        check_equal(map_add(field, create_node_string("is_optional", "1")), 0);
+        check_equal(map_add(field, create_node_string("key_type", "string")), 0);
+        check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
+
+        annotate_language_types_from_tree(root);
+
+        check_equal(field_projection_text(field, "cmeta_native_requirement"),
+                    "map_provider");
+        check_null(field_projection_text(field, "native_cstl_map"));
+        check_not_null(field_projection_text(field, "native_map_name"));
+        check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+        check_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+        check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         node_free(root);
     }
 
