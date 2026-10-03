@@ -166,6 +166,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(header_data);
     check_not_null(policy_data);
     if (header_data == NULL || policy_data == NULL) return;
+    check_true(header_data == &NativeHeader_CMETA_DATA);
+    check_true(header_data->storage_type == &NativeHeader_CMETA_TYPE);
 
     check_equal(
         cmeta_type_require_traits(
@@ -180,15 +182,20 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(sequence_data);
     if (sequence_data == NULL) return;
     check_equal(sequence_data->kind, CMETA_DATA_SEQUENCE);
+    check_true(cmeta_data_desc_equal(
+        sequence_data, &NativeHeaderPolicy_headers_vec_t_collection_data));
     check_not_null(cmeta_data_construct_ops_of(sequence_data));
     check_not_null(cmeta_data_collection_ops_of(sequence_data));
     element_data = cmeta_data_collection_element_data(sequence_data);
     check_not_null(element_data);
-    if (element_data != NULL)
+    if (element_data != NULL) {
+      check_true(element_data == &NativeHeader_CMETA_DATA);
       check_true(cmeta_data_desc_equal(element_data, header_data));
+    }
 
     check_equal(
         NativeHeaderPolicy_headers_vec_t_init(&manual_headers, 4u), STL_OK);
+    check_not_null(manual_headers.cmeta.descriptor);
     check_not_null(manual_headers.raw.element_type);
     if (manual_headers.raw.element_type != NULL)
       check_true(cmeta_type_equal(
