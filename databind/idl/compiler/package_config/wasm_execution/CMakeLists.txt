@@ -11,12 +11,15 @@ if(NOT DEFINED ENV{TURBOWASM_ROOT} OR "$ENV{TURBOWASM_ROOT}" STREQUAL "")
   message(FATAL_ERROR "TURBOWASM_ROOT is required")
 endif()
 
+file(TO_CMAKE_PATH "${SALTS_UTILS_ROOT}" _salts_utils_root)
+file(TO_CMAKE_PATH "$ENV{TURBOWASM_ROOT}" _turbowasm_root)
+
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 find_package(SaltsUtils CONFIG REQUIRED
-  PATHS "${SALTS_UTILS_ROOT}"
+  PATHS "${_salts_utils_root}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 find_package(TurboWasm CONFIG REQUIRED
-  PATHS "$ENV{TURBOWASM_ROOT}"
+  PATHS "${_turbowasm_root}"
   NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 
 if(NOT TARGET TurboWasm::Component)
