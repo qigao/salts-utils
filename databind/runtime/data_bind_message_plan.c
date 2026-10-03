@@ -407,6 +407,58 @@ static int message_logical_sequence_matches_native(
       codec, schema_field->inner_type, element, depth + 1u);
 }
 
+static int message_logical_record_map_matches_native(
+    DataBind *codec, const DataBindSchemaField *schema_field,
+    const cmeta_data_desc *native_data, unsigned depth) {
+  DataBindSchemaField key_field = DATA_BIND_SCHEMA_FIELD_INIT;
+  const cmeta_data_map_ops *ops;
+  const cmeta_data_desc *key;
+  const cmeta_data_desc *value;
+
+  if (codec == NULL || schema_field == NULL || native_data == NULL ||
+      depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH ||
+      !schema_field->is_collection || !schema_field->is_map ||
+      schema_field->collection_kind == NULL ||
+      strcmp(schema_field->collection_kind, "map") != 0 ||
+      schema_field->key_type == NULL ||
+      strcmp(schema_field->key_type, "string") != 0 ||
+      schema_field->value_type == NULL ||
+      schema_field->value_type[0] == '\0' ||
+      !schema_field->has_cmeta_kind ||
+      schema_field->cmeta_kind != CMETA_DATA_MAP ||
+      native_data->kind != CMETA_DATA_MAP ||
+      native_data->storage_type == NULL ||
+      !cmeta_data_value_move_supported(native_data) ||
+      !cmeta_data_value_copy_supported(native_data))
+    return 0;
+
+  ops = cmeta_data_map_ops_of(native_data);
+  key = cmeta_data_map_key_data(native_data);
+  value = cmeta_data_map_value_data(native_data);
+  if (ops == NULL || key == NULL || value == NULL ||
+      cmeta_data_construct_ops_of(native_data) == NULL ||
+      ops->collector == NULL || ops->accept == NULL ||
+      ops->borrow == NULL || ops->borrow->size == NULL ||
+      ops->borrow->next == NULL ||
+      !cmeta_data_desc_valid(key) ||
+      !cmeta_data_desc_valid(value) ||
+      value->kind != CMETA_DATA_STRUCT)
+    return 0;
+
+  /*
+   * DataBind map keys are canonically string-valued. Reuse the same owned
+   * buffer admission as a normal string field instead of comparing a concrete
+   * tstr address or recovering erased native key storage.
+   */
+  key_field.has_cmeta_kind = 1;
+  key_field.cmeta_kind = CMETA_DATA_STRING;
+  if (!message_logical_buffer_matches_native(&key_field, key))
+    return 0;
+
+  return message_schema_record_matches_native(
+      codec, schema_field->value_type, value, depth + 1u);
+}
+
 static int message_schema_field_matches_native(
     DataBind *codec, const char *type_name, size_t field_index,
     const DataBindSchemaField *schema_field,
@@ -419,9 +471,17 @@ static int message_schema_field_matches_native(
       depth >= DATA_BIND_MESSAGE_PLAN_NATIVE_GRAPH_MAX_DEPTH)
     return 0;
 
-  if (schema_field->is_collection)
-    return message_logical_sequence_matches_native(
-        codec, schema_field, native_data, depth);
+  if (schema_field->is_collection) {
+    if (schema_field->collection_kind != NULL &&
+        strcmp(schema_field->collection_kind, "list") == 0)
+      return message_logical_sequence_matches_native(
+          codec, schema_field, native_data, depth);
+    if (schema_field->collection_kind != NULL &&
+        strcmp(schema_field->collection_kind, "map") == 0)
+      return message_logical_record_map_matches_native(
+          codec, schema_field, native_data, depth);
+    return 0;
+  }
 
   schema_data = schema_field->cmeta_data;
   if (schema_data == NULL)
