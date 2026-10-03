@@ -1855,7 +1855,6 @@ static void tbe_compiler_promote_record_cstl_sequences(Node *root) {
 
         element_record = tbe_compiler_find_any_record(root, inner_type);
         if (element_record == NULL ||
-            !tbe_compiler_has_child(element_record, "cmeta_graph_supported") ||
             !tbe_compiler_has_child(element_record,
                                     "cmeta_lifecycle_supported"))
           continue;
