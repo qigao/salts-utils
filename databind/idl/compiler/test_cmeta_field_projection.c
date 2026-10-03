@@ -357,8 +357,19 @@ suite("compiler_cmeta_field_projection") {
                         "&Item_CMETA_TYPE");
             check_equal(field_projection_text(map, "native_map_value_data_ref"),
                         "&Item_CMETA_DATA");
-            check_null(field_projection_text(map, "native_cstl_map"));
-            check_not_null(field_projection_text(map, "native_map_name"));
+            check_not_null(field_projection_child(map, "native_cstl_map"));
+            check_null(field_projection_text(map, "native_map_name"));
+            check_equal(field_projection_text(map, "typed_vector_type"),
+                        "Containers_by_name_map_t");
+            check_equal(field_projection_text(map, "native_data_symbol"),
+                        "Containers_by_name_map_t_map_data");
+            check_equal(field_projection_text(map, "native_type_symbol"),
+                        "Containers_by_name_map_t_cmeta_type");
+            check_equal(field_projection_text(map, "native_c_type"),
+                        "Containers_by_name_map_t");
+            check_not_null(field_projection_child(record, "cmeta_graph_supported"));
+            check_not_null(field_projection_child(record, "cmeta_lifecycle_supported"));
+            check_null(field_projection_child(record, "typed_cmeta_runtime_supported"));
         }
 
         node_free(root);
@@ -745,6 +756,8 @@ suite("compiler_cmeta_field_projection") {
             node_free(root);
             return;
         }
+        check_equal(
+            map_add(item_field, create_node_string("is_optional", "1")), 0);
 #define COMPLETE_MAP(FIELD) do {                                                    \
             check_equal(map_add((FIELD), create_node_string("is_map", "1")), 0);   \
             check_equal(map_add((FIELD), create_node_string("key_type",            \
@@ -766,6 +779,9 @@ suite("compiler_cmeta_field_projection") {
                     "databindCmetaMap3xA_B1xCData");
         check_equal(field_projection_text(right_field, "native_type_symbol"),
                     "databindCmetaMap1xA3xB_CType");
+        check_null(field_projection_text(left_field, "native_cstl_map"));
+        check_null(field_projection_text(right_field, "native_cstl_map"));
+        check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
         check_not_null(field_projection_child(left, "cmeta_graph_supported"));
         check_not_null(field_projection_child(right, "cmeta_graph_supported"));
         check_null(field_projection_child(left, "typed_cmeta_runtime_supported"));
