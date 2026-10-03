@@ -572,6 +572,408 @@ static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
 {{/groups}}{{#messages}}    {{name}}_CMETA_INIT_FIELDS();
 {{/messages}}}
 
+
+typedef struct {{schema.schema_name}}_message_workspace_s {
+    DataBindNativeOptions options;
+    void *allocation;
+} {{schema.schema_name}}_message_workspace_t;
+
+typedef struct {{schema.schema_name}}_json_output_s {
+    char *data;
+    size_t length;
+    size_t capacity;
+    DataBindStatus status;
+} {{schema.schema_name}}_json_output_t;
+
+static DataBindStatus {{schema.schema_name}}_message_diag_error(
+    DataBindError *error, DataBindStatus status, const char *type_name,
+    const DataBindMessagePlanDiagnostic *diagnostic) {
+    const char *path = type_name;
+    const char *message = "Generated MessagePlan conversion failed";
+    if (diagnostic != NULL) {
+        if (diagnostic->schema_field[0] != '\0')
+            path = diagnostic->schema_field;
+        if (diagnostic->message[0] != '\0')
+            message = diagnostic->message;
+    }
+    return {{schema.schema_name}}_schema_codec_error(
+        error, status, path, message);
+}
+
+static int {{schema.schema_name}}_message_state_copy(
+    const DataBindNativeStateBinding *bindings, size_t count,
+    unsigned char *destination, const unsigned char *source,
+    size_t object_size) {
+    size_t i;
+    if (count != 0u && (bindings == NULL || destination == NULL || source == NULL))
+        return 0;
+    for (i = 0u; i < count; ++i) {
+        const DataBindNativeStateBinding *binding = &bindings[i];
+        unsigned char mask;
+        if (binding->size < sizeof(*binding) || binding->bit >= 8u ||
+            binding->byte_offset >= object_size)
+            return 0;
+        mask = (unsigned char)(1u << binding->bit);
+        if ((source[binding->byte_offset] & mask) != 0u)
+            destination[binding->byte_offset] |= mask;
+    }
+    return 1;
+}
+
+static void {{schema.schema_name}}_message_workspace_close(
+    {{schema.schema_name}}_message_workspace_t *workspace) {
+    if (workspace == NULL) return;
+    free(workspace->allocation);
+    *workspace = ({{schema.schema_name}}_message_workspace_t){0};
+}
+
+static DataBindStatus {{schema.schema_name}}_message_workspace_open(
+    const DataBindNativeTypeBinding *binding,
+    const DataBindMessagePlan *plan,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    int include_message_bitmap,
+    {{schema.schema_name}}_message_workspace_t *out,
+    DataBindError *error) {
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindNativeRequirements requirements = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+    DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    size_t probe_bytes = 0u;
+    size_t bitmap_bytes = 0u;
+    size_t total_bytes;
+    size_t alignment_extra;
+    void *probe = NULL;
+    void *storage = NULL;
+    DataBindStatus status;
+
+    if (out == NULL || binding == NULL || binding->data == NULL ||
+        descriptor_depth == 0u || descriptor_nodes == 0u)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG,
+            binding != NULL ? binding->idl_type_name : NULL,
+            "Invalid generated native workspace request");
+    *out = ({{schema.schema_name}}_message_workspace_t){0};
+
+    options.max_depth = descriptor_depth;
+    options.max_items = descriptor_nodes;
+    options.max_owned_bytes = SIZE_MAX;
+
+    status = data_bind_native_probe_workspace_size(
+        descriptor_depth, &probe_bytes);
+    if (status != DATA_BIND_OK)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, status, binding->idl_type_name,
+            "Unable to size generated native probe workspace");
+
+    probe = malloc(probe_bytes != 0u ? probe_bytes : 1u);
+    if (probe == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, binding->idl_type_name,
+            "Unable to allocate generated native probe workspace");
+
+    options.workspace = probe;
+    options.workspace_bytes = probe_bytes;
+    status = data_bind_native_measure(
+        &options, binding->data, &requirements, &diagnostic);
+    free(probe);
+    probe = NULL;
+    if (status != DATA_BIND_OK) {
+        if (error != NULL) *error = diagnostic.error;
+        return status;
+    }
+
+    if (include_message_bitmap) {
+        size_t field_count =
+            data_bind_message_plan_field_count(plan);
+        if (field_count > SIZE_MAX - 7u)
+            return {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+                "Generated MessagePlan field bitmap size overflow");
+        bitmap_bytes = (field_count + 7u) / 8u;
+    }
+
+    if (requirements.workspace_alignment == 0u ||
+        requirements.decode_bytes > SIZE_MAX - bitmap_bytes)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+            "Generated native workspace size overflow");
+    total_bytes = bitmap_bytes + requirements.decode_bytes;
+    alignment_extra = requirements.workspace_alignment - 1u;
+    if (alignment_extra > SIZE_MAX - total_bytes)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+            "Generated native workspace alignment overflow");
+    total_bytes += alignment_extra;
+
+    storage = malloc(total_bytes != 0u ? total_bytes : 1u);
+    if (storage == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, binding->idl_type_name,
+            "Unable to allocate generated native conversion workspace");
+
+    options.workspace = storage;
+    options.workspace_bytes = total_bytes;
+    out->options = options;
+    out->allocation = storage;
+    return DATA_BIND_OK;
+}
+
+static DataBindStatus {{schema.schema_name}}_message_from_text(
+    DataBind *codec,
+    const char *type_name,
+    DataBindNativeTypeBindingResolverFn resolve,
+    const DataBindFormatProvider *provider,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    void *destination,
+    void *temporary,
+    size_t object_size,
+    const char *data,
+    size_t len,
+    DataBindError *error) {
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindFormatReader reader = DATA_BIND_FORMAT_READER_INIT;
+    {{schema.schema_name}}_message_workspace_t workspace = {0};
+    DataBindStatus status;
+    DataBindStatus close_status;
+    cmeta_status cmeta_result;
+
+    if (codec == NULL || type_name == NULL || resolve == NULL ||
+        provider == NULL || destination == NULL || temporary == NULL ||
+        data == NULL || object_size == 0u)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, type_name,
+            "Invalid generated text-to-native arguments");
+
+    status = resolve(&binding, error);
+    if (status != DATA_BIND_OK) return status;
+    if (binding.data == NULL || binding.data->storage_type == NULL ||
+        binding.data->storage_type->size != object_size ||
+        !cmeta_data_value_move_supported(binding.data))
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated Message native graph is not publishable");
+
+    status = data_bind_message_plan_compile(
+        codec, type_name, &binding, &plan, &diagnostic);
+    if (status != DATA_BIND_OK)
+        return {{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+
+    status = {{schema.schema_name}}_message_workspace_open(
+        &binding, plan, descriptor_depth, descriptor_nodes, 1,
+        &workspace, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_format_reader_open(
+        provider, data, len, descriptor_depth, &reader, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    memset(temporary, 0, object_size);
+    status = data_bind_message_plan_decode_native(
+        plan, &workspace.options, reader.reader,
+        temporary, object_size, &diagnostic);
+    close_status = data_bind_format_reader_close(&reader);
+    if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, close_status, type_name,
+            "Generated format reader close failed");
+    else if (status != DATA_BIND_OK)
+        (void){{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    cmeta_result = cmeta_data_value_restore_zero(binding.data, destination);
+    if (cmeta_result != CMETA_OK) {
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_RUNTIME, type_name,
+            "Generated destination could not restore semantic zero");
+        goto cleanup;
+    }
+    memset(destination, 0, object_size);
+
+    cmeta_result = cmeta_data_value_move(
+        binding.data, destination, temporary);
+    if (cmeta_result != CMETA_OK) {
+        (void)cmeta_data_value_restore_zero(binding.data, destination);
+        memset(destination, 0, object_size);
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_RUNTIME, type_name,
+            "Generated native value publication failed");
+        goto cleanup;
+    }
+
+    if (!{{schema.schema_name}}_message_state_copy(
+            binding.presence, binding.presence_count,
+            (unsigned char *)destination,
+            (const unsigned char *)temporary, object_size) ||
+        !{{schema.schema_name}}_message_state_copy(
+            binding.nulls, binding.null_count,
+            (unsigned char *)destination,
+            (const unsigned char *)temporary, object_size)) {
+        (void)cmeta_data_value_restore_zero(binding.data, destination);
+        memset(destination, 0, object_size);
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated native state overlay is invalid");
+        goto cleanup;
+    }
+
+    memset(temporary, 0, object_size);
+    status = {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_OK, NULL, NULL);
+
+cleanup:
+    if (reader.provider != NULL)
+        (void)data_bind_format_reader_close(&reader);
+    if (status != DATA_BIND_OK && temporary != NULL) {
+        (void)cmeta_data_value_restore_zero(binding.data, temporary);
+        memset(temporary, 0, object_size);
+    }
+    {{schema.schema_name}}_message_workspace_close(&workspace);
+    data_bind_message_plan_free(plan);
+    return status;
+}
+
+static int {{schema.schema_name}}_json_output_write(
+    const void *data, size_t len, void *user) {
+    {{schema.schema_name}}_json_output_t *output =
+        ({{schema.schema_name}}_json_output_t *)user;
+    size_t required;
+    size_t capacity;
+    char *resized;
+
+    if (output == NULL || (data == NULL && len != 0u)) return -1;
+    if (output->status != DATA_BIND_OK) return -1;
+    if (len > SIZE_MAX - output->length - 1u) {
+        output->status = DATA_BIND_ERR_LIMIT;
+        return -1;
+    }
+    required = output->length + len + 1u;
+    if (required > output->capacity) {
+        capacity = output->capacity != 0u ? output->capacity : 128u;
+        while (capacity < required) {
+            if (capacity > SIZE_MAX / 2u) {
+                capacity = required;
+                break;
+            }
+            capacity *= 2u;
+        }
+        resized = (char *)realloc(output->data, capacity);
+        if (resized == NULL) {
+            output->status = DATA_BIND_ERR_OOM;
+            return -1;
+        }
+        output->data = resized;
+        output->capacity = capacity;
+    }
+    if (len != 0u)
+        memcpy(output->data + output->length, data, len);
+    output->length += len;
+    output->data[output->length] = '\0';
+    return 0;
+}
+
+static DataBindStatus {{schema.schema_name}}_message_to_json(
+    DataBind *codec,
+    const char *type_name,
+    DataBindNativeTypeBindingResolverFn resolve,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    const void *object,
+    size_t object_size,
+    char **out,
+    size_t *out_len,
+    DataBindError *error) {
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    {{schema.schema_name}}_message_workspace_t workspace = {0};
+    {{schema.schema_name}}_json_output_t output = {0};
+    DataBindStatus status;
+    DataBindStatus close_status;
+
+    if (out != NULL) *out = NULL;
+    if (out_len != NULL) *out_len = 0u;
+    if (codec == NULL || type_name == NULL || resolve == NULL ||
+        object == NULL || object_size == 0u || out == NULL || out_len == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, type_name,
+            "Invalid generated native-to-JSON arguments");
+
+    status = resolve(&binding, error);
+    if (status != DATA_BIND_OK) return status;
+    if (binding.data == NULL || binding.data->storage_type == NULL ||
+        binding.data->storage_type->size != object_size)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated Message native graph is invalid");
+
+    status = data_bind_message_plan_compile(
+        codec, type_name, &binding, &plan, &diagnostic);
+    if (status != DATA_BIND_OK)
+        return {{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+
+    status = {{schema.schema_name}}_message_workspace_open(
+        &binding, plan, descriptor_depth, descriptor_nodes, 0,
+        &workspace, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_format_writer_open(
+        data_bind_json_format_provider(),
+        {{schema.schema_name}}_json_output_write, &output,
+        descriptor_depth, &writer, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_message_plan_encode_native(
+        plan, &workspace.options, object, object_size,
+        writer.writer, &diagnostic);
+    close_status = data_bind_format_writer_close(&writer, error);
+    if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+        status = close_status;
+    else if (status != DATA_BIND_OK)
+        (void){{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+
+    if (status == DATA_BIND_OK && output.status != DATA_BIND_OK)
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, output.status, type_name,
+            "Generated JSON output buffer failed");
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    if (output.data == NULL) {
+        output.data = (char *)malloc(1u);
+        if (output.data == NULL) {
+            status = {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_OOM, type_name,
+                "Unable to allocate generated JSON output");
+            goto cleanup;
+        }
+        output.data[0] = '\0';
+    }
+    *out = output.data;
+    *out_len = output.length;
+    output.data = NULL;
+    status = {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_OK, NULL, NULL);
+
+cleanup:
+    if (writer.provider != NULL)
+        (void)data_bind_format_writer_close(&writer, error);
+    free(output.data);
+    {{schema.schema_name}}_message_workspace_close(&workspace);
+    data_bind_message_plan_free(plan);
+    return status;
+}
+
 static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindError *error, const char *type_name) {
     if (error != NULL && error->size >= sizeof(error->size)) {
