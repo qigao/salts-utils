@@ -182,8 +182,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_not_null(sequence_data);
     if (sequence_data == NULL) return;
     check_equal(sequence_data->kind, CMETA_DATA_SEQUENCE);
-    check_true(sequence_data ==
-               &NativeHeaderPolicy_headers_vec_t_collection_data);
+    check_true(cmeta_data_desc_equal(
+        sequence_data, &NativeHeaderPolicy_headers_vec_t_collection_data));
     check_not_null(cmeta_data_construct_ops_of(sequence_data));
     check_not_null(cmeta_data_collection_ops_of(sequence_data));
     element_data = cmeta_data_collection_element_data(sequence_data);
