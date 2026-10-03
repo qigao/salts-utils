@@ -1,5 +1,6 @@
 #include "wasm_execution.wasm.h"
 #include "wasm_execution_native.h"
+#include "wasm_execution_component_path.h"
 
 #include <data_bind_native_binding.h>
 
@@ -7,9 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifndef WASM_EXECUTION_COMPONENT_PATH
-#error "WASM_EXECUTION_COMPONENT_PATH is required"
-#endif
 
 static int read_file(const char *path, uint8_t **out, size_t *out_size) {
   FILE *file;
