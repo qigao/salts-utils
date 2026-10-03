@@ -34,6 +34,21 @@ int main(void) {
       return 34;
   }
   {
+    LoginMessage_t lifecycle;
+    tstr owned;
+    memset(&lifecycle, 0xa5, sizeof(lifecycle));
+    LoginMessage_init(&lifecycle);
+    if (lifecycle.user != NULL)
+      return 35;
+    owned = tstr_dup("alice");
+    if (owned == NULL)
+      return 36;
+    lifecycle.user = owned;
+    LoginMessage_clear(&lifecycle);
+    if (lifecycle.user != NULL)
+      return 37;
+  }
+  {
     const TbeTypedDescriptor *descriptor = EnumSymbolStorage_typed_descriptor();
     const cmeta_data_struct_shape *shape;
     const cmeta_data_desc *value_data;
