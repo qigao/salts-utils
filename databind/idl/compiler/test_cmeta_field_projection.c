@@ -572,7 +572,14 @@ suite("compiler_cmeta_field_projection") {
 
         check_equal(field_projection_text(headers, "cmeta_native_requirement"),
                     "sequence_provider");
-        check_not_null(field_projection_text(headers, "native_sequence_name"));
+        check_null(field_projection_text(headers, "native_sequence_name"));
+        check_not_null(field_projection_child(headers, "native_cstl_sequence"));
+        check_equal(field_projection_text(headers, "native_data_symbol"),
+                    "NativeHeaderPolicy_headers_vec_t_collection_data");
+        check_equal(field_projection_text(headers, "native_type_symbol"),
+                    "NativeHeaderPolicy_headers_vec_t_cmeta_type");
+        check_equal(field_projection_text(headers, "native_c_type"),
+                    "NativeHeaderPolicy_headers_vec_t");
         check_equal(field_projection_text(headers, "native_element_type_ref"),
                     "&NativeHeader_CMETA_TYPE");
         check_equal(field_projection_text(headers, "native_element_data_ref"),
