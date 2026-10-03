@@ -342,6 +342,12 @@ TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  vec_t raw;
+} {{typed_vector_type}};
+#else
 {{#native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
@@ -349,6 +355,7 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
 {{^native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
+#endif
 {{/native_cstl_sequence}}
 {{^native_cstl_sequence}}
 {{#native_sequence_name}}
@@ -714,6 +721,12 @@ TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  vec_t raw;
+} {{typed_vector_type}};
+#else
 {{#native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
@@ -721,6 +734,7 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
 {{^native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
+#endif
 {{/native_cstl_sequence}}
 {{^native_cstl_sequence}}
 {{#native_sequence_name}}
@@ -1318,6 +1332,12 @@ TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  vec_t raw;
+} {{typed_vector_type}};
+#else
 {{#native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
       {{native_element_type_ref}}, {{native_element_data_ref}});
@@ -1325,6 +1345,7 @@ typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}},
 {{^native_cstl_sequence_explicit_refs}}
 typed(Vec, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_sequence_explicit_refs}}
+#endif
 {{/native_cstl_sequence}}
 {{^native_cstl_sequence}}
 {{#native_sequence_name}}
