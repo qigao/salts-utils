@@ -212,11 +212,11 @@ static const char *native_field_member_name(const IdlField *field) {
 static int native_error_field_admitted(
     const IdlContract *contract,
     const IdlField *field,
-    const char **out_owned_data_symbol) {
+    const char **out_lifecycle_data_symbol) {
   schema_cmeta_field_type semantic;
   const IdlDataDecl *decl;
 
-  if (out_owned_data_symbol != NULL) *out_owned_data_symbol = NULL;
+  if (out_lifecycle_data_symbol != NULL) *out_lifecycle_data_symbol = NULL;
   if (contract == NULL || field == NULL || field->type_name == NULL)
     return 0;
 
@@ -229,16 +229,16 @@ static int native_error_field_admitted(
     return 0;
 
   if (strcmp(field->type_name, "string") == 0) {
-    if (out_owned_data_symbol != NULL)
-      *out_owned_data_symbol = "salts_tstr_cmeta_data";
+    if (out_lifecycle_data_symbol != NULL)
+      *out_lifecycle_data_symbol = "salts_tstr_cmeta_data";
     return 1;
   }
 
   if (strcmp(field->type_name, "bytes") == 0) {
     if (native_decimal_literal(field->length))
       return 1;
-    if (out_owned_data_symbol != NULL)
-      *out_owned_data_symbol = "stl_byte_buffer_cmeta_data";
+    if (out_lifecycle_data_symbol != NULL)
+      *out_lifecycle_data_symbol = "stl_byte_buffer_cmeta_data";
     return 1;
   }
 
@@ -284,21 +284,20 @@ static int native_error_fields_build(
   for (i = 0u; i < message->field_count; ++i) {
     const IdlField *field = &message->fields[i];
     const char *member = native_field_member_name(field);
-    const char *owned_symbol = NULL;
+    const char *lifecycle_data_symbol = NULL;
 
     if (member == NULL || !native_identifier_valid(member) ||
-        !native_error_field_admitted(contract, field, &owned_symbol)) {
+        !native_error_field_admitted(contract, field, &lifecycle_data_symbol)) {
       native_error_fields_clear(result, message->field_count);
       return 0;
     }
 
     result[i].member_name = native_strdup(member);
-    result[i].owned_lifecycle = owned_symbol != NULL;
-    if (owned_symbol != NULL)
-      result[i].native_data_symbol = native_strdup(owned_symbol);
+    if (lifecycle_data_symbol != NULL)
+      result[i].native_data_symbol = native_strdup(lifecycle_data_symbol);
 
     if (result[i].member_name == NULL ||
-        (result[i].owned_lifecycle &&
+        (lifecycle_data_symbol != NULL &&
          result[i].native_data_symbol == NULL)) {
       native_error_fields_clear(result, message->field_count);
       return 0;
@@ -580,7 +579,7 @@ static int native_emit_error_variant_helpers(
   for (i = 0u; i < error->field_count; ++i) {
     const databind_compiler_service_native_error_field *field =
         &error->fields[i];
-    if (!field->owned_lifecycle) continue;
+    if (field->native_data_symbol == NULL) continue;
     if (field->member_name == NULL || field->native_data_symbol == NULL)
       return -1;
     if (fprintf(
@@ -591,7 +590,7 @@ static int native_emit_error_variant_helpers(
     for (j = i; j != 0u; --j) {
       const databind_compiler_service_native_error_field *prior =
           &error->fields[j - 1u];
-      if (prior->owned_lifecycle &&
+      if (prior->native_data_symbol != NULL &&
           fprintf(
               file,
               "    (void)cmeta_data_value_restore_zero(&%s, &payload->%s);\n",
@@ -619,7 +618,7 @@ static int native_emit_error_variant_helpers(
   for (i = error->field_count; i != 0u; --i) {
     const databind_compiler_service_native_error_field *field =
         &error->fields[i - 1u];
-    if (!field->owned_lifecycle) continue;
+    if (field->native_data_symbol == NULL) continue;
     if (field->member_name == NULL || field->native_data_symbol == NULL)
       return -1;
     if (fprintf(
@@ -656,7 +655,7 @@ static int native_emit_error_variant_helpers(
     const databind_compiler_service_native_error_field *field =
         &error->fields[i];
     if (field->member_name == NULL) return -1;
-    if (!field->owned_lifecycle) {
+    if (field->native_data_symbol == NULL) {
       if (fprintf(
               file,
               "  memcpy(&destination->%s, &source->%s, "
@@ -677,7 +676,7 @@ static int native_emit_error_variant_helpers(
     for (j = i; j != 0u; --j) {
       const databind_compiler_service_native_error_field *prior =
           &error->fields[j - 1u];
-      if (prior->owned_lifecycle &&
+      if (prior->native_data_symbol != NULL &&
           fprintf(
               file,
               "    (void)cmeta_data_value_move(&%s, &source->%s, "
