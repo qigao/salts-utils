@@ -193,18 +193,15 @@ static int wasm_operation_view_build(
   if (request == NULL || response == NULL ||
       request->kind != IDL_DATA_MESSAGE ||
       response->kind != IDL_DATA_MESSAGE ||
-      response->field_count != 1u)
+      response->field_count == 0u)
     return 0;
-
-  for (i = 0u; i < operation->error_count; ++i)
-    if (operation->errors == NULL)
-      return 0;
 
   for (i = 0u; i < request->field_count; ++i)
     if (!wasm_scalar_lower(contract, &request->fields[i], &scalar))
       return 0;
-  if (!wasm_scalar_lower(contract, &response->fields[0], &scalar))
-    return 0;
+  for (i = 0u; i < response->field_count; ++i)
+    if (!wasm_scalar_lower(contract, &response->fields[i], &scalar))
+      return 0;
 
   out->native = operation;
   out->request = request;
@@ -388,10 +385,10 @@ static int wasm_build_component(
       0x00u, 0x61u, 0x73u, 0x6du, 0x0du, 0x00u, 0x01u, 0x00u};
   wasm_buffer section = {0};
   size_t i;
-  size_t j;
+  (void)contract;
 
-  if (contract == NULL || views == NULL || view_count == 0u ||
-      view_count > UINT32_MAX ||
+  if (views == NULL || view_count == 0u ||
+      view_count > UINT32_MAX - 2u ||
       !wasm_core_header_valid(core_module, core_module_size) ||
       core_module_size > UINT32_MAX || out == NULL)
     return 0;
@@ -399,11 +396,13 @@ static int wasm_build_component(
   if (!wasm_buffer_bytes(out, preamble, sizeof(preamble)))
     return 0;
 
+  /* Embedded caller-supplied Core module. */
   if (!wasm_buffer_bytes(&section, core_module, core_module_size) ||
       !wasm_buffer_section(out, 0x01u, &section))
     goto fail;
   wasm_buffer_destroy(&section);
 
+  /* Core instance 0 = instantiate module 0 with no imports. */
   if (!wasm_buffer_uleb(&section, 1u) ||
       !wasm_buffer_u8(&section, 0x00u) ||
       !wasm_buffer_uleb(&section, 0u) ||
@@ -412,7 +411,23 @@ static int wasm_build_component(
     goto fail;
   wasm_buffer_destroy(&section);
 
-  if (!wasm_buffer_uleb(&section, (uint32_t)view_count))
+  /*
+   * Canonical aliases:
+   *   core memory0 = instance0.memory
+   *   core func0   = instance0.cabi_realloc
+   *   core func1+  = Service operation exports
+   */
+  if (!wasm_buffer_uleb(&section, (uint32_t)view_count + 2u) ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_u8(&section, 0x02u) ||
+      !wasm_buffer_u8(&section, 0x01u) ||
+      !wasm_buffer_uleb(&section, 0u) ||
+      !wasm_buffer_name(&section, "memory") ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_u8(&section, 0x01u) ||
+      !wasm_buffer_uleb(&section, 0u) ||
+      !wasm_buffer_name(&section, "cabi_realloc"))
     goto fail;
   for (i = 0u; i < view_count; ++i) {
     if (!wasm_buffer_u8(&section, 0x00u) ||
@@ -426,43 +441,46 @@ static int wasm_build_component(
     goto fail;
   wasm_buffer_destroy(&section);
 
-  if (!wasm_buffer_uleb(&section, (uint32_t)view_count))
-    goto fail;
-  for (i = 0u; i < view_count; ++i) {
-    wasm_scalar_lowering scalar;
-    if (!wasm_buffer_u8(&section, 0x40u) ||
-        views[i].request->field_count > UINT32_MAX ||
-        !wasm_buffer_uleb(
-            &section, (uint32_t)views[i].request->field_count))
-      goto fail;
-
-    for (j = 0u; j < views[i].request->field_count; ++j) {
-      if (!wasm_scalar_lower(
-              contract, &views[i].request->fields[j], &scalar) ||
-          !wasm_buffer_name(
-              &section, views[i].request->fields[j].name) ||
-          !wasm_buffer_u8(&section, scalar.component_code))
-        goto fail;
-    }
-
-    if (!wasm_scalar_lower(
-            contract, &views[i].response->fields[0], &scalar) ||
-        !wasm_buffer_u8(&section, 0x00u) ||
-        !wasm_buffer_u8(&section, scalar.component_code))
-      goto fail;
-  }
-  if (!wasm_buffer_section(out, 0x07u, &section))
+  /*
+   * type0 = list<u8>
+   * type1 = func(request: type0) -> type0
+   *
+   * Request list bytes are exactly the generated canonical DataBind binary
+   * wire record. Result list bytes are:
+   *   i32 native_status (little endian)
+   *   canonical DataBind response wire bytes when status == 0.
+   */
+  if (!wasm_buffer_uleb(&section, 2u) ||
+      !wasm_buffer_u8(&section, 0x70u) ||
+      !wasm_buffer_u8(&section, 0x7du) ||
+      !wasm_buffer_u8(&section, 0x40u) ||
+      !wasm_buffer_uleb(&section, 1u) ||
+      !wasm_buffer_name(&section, "request") ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_u8(&section, 0x00u) ||
+      !wasm_buffer_section(out, 0x07u, &section))
     goto fail;
   wasm_buffer_destroy(&section);
 
+  /*
+   * Each canon lift targets one operation Core function and uses the same
+   * Core memory0 + realloc func0. The Core operation signature is therefore
+   * canonical lift(list<u8> -> list<u8>) for memory32:
+   *   (i32 request_ptr, i32 request_len) -> i32 result_pair_ptr
+   */
   if (!wasm_buffer_uleb(&section, (uint32_t)view_count))
     goto fail;
   for (i = 0u; i < view_count; ++i) {
-    if (!wasm_buffer_u8(&section, 0x00u) ||
-        !wasm_buffer_u8(&section, 0x00u) ||
-        !wasm_buffer_uleb(&section, (uint32_t)i) ||
+    if (!wasm_buffer_u8(&section, 0x00u) || /* canon lift */
+        !wasm_buffer_u8(&section, 0x00u) || /* core func sort */
+        !wasm_buffer_uleb(&section, (uint32_t)i + 1u) ||
+        !wasm_buffer_uleb(&section, 2u) ||
+        !wasm_buffer_u8(&section, 0x03u) || /* memory */
         !wasm_buffer_uleb(&section, 0u) ||
-        !wasm_buffer_uleb(&section, (uint32_t)i))
+        !wasm_buffer_u8(&section, 0x04u) || /* realloc */
+        !wasm_buffer_uleb(&section, 0u) ||
+        !wasm_buffer_uleb(&section, 1u))    /* func type1 */
       goto fail;
   }
   if (!wasm_buffer_section(out, 0x08u, &section))
@@ -597,51 +615,66 @@ static int wasm_write_guest_header(
     const wasm_operation_view *views, size_t view_count) {
   char guard[256];
   size_t i;
-  size_t j;
+  const char *native_header;
+  (void)contract;
 
-  if (file == NULL || contract == NULL || config == NULL ||
-      views == NULL ||
+  if (file == NULL || config == NULL || views == NULL ||
       !wasm_header_guard(
           config->symbol_prefix, "_WASM_GUEST_H",
           guard, sizeof(guard)))
     return 0;
+  native_header = wasm_basename(config->native_header);
+  if (native_header == NULL) return 0;
 
   if (fprintf(
           file,
           "#ifndef %s\n#define %s\n\n"
-          "#include <stdbool.h>\n#include <stdint.h>\n\n"
-          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
-          guard, guard) < 0)
+          "#include \"%s\"\n"
+          "#include <stddef.h>\n#include <stdint.h>\n\n"
+          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n"
+          "enum { DATABIND_WASM_EXECUTION_STATUS_BYTES = 4u };\n\n"
+          "/*\n"
+          " * The Core module selected by the WASM projection must export:\n"
+          " *   memory\n"
+          " *   cabi_realloc(i32,i32,i32,i32)->i32\n"
+          " * and every operation below.\n"
+          " *\n"
+          " * request_offset/request_length identify the canonical generated\n"
+          " * DataBind binary request record in guest linear memory.\n"
+          " * The operation returns a wasm32 pointer to two little-endian u32\n"
+          " * values {envelope_offset,envelope_length}.\n"
+          " * The envelope is little-endian i32 native status followed, only\n"
+          " * on status 0, by the canonical generated response binary record.\n"
+          " */\n"
+          "uint32_t cabi_realloc(\n"
+          "    uint32_t old_ptr, uint32_t old_size,\n"
+          "    uint32_t align, uint32_t new_size);\n\n",
+          guard, guard, native_header) < 0)
     return 0;
 
   for (i = 0u; i < view_count; ++i) {
-    wasm_scalar_lowering result;
-    if (!wasm_scalar_lower(
-            contract, &views[i].response->fields[0], &result) ||
-        fprintf(file, "%s %s(",
-                result.c_type, views[i].native->symbol) < 0)
+    if (fprintf(
+            file,
+            "uint32_t %s(\n"
+            "    uint32_t request_offset, uint32_t request_length);\n"
+            "static inline int %s__wasm_request_bind(\n"
+            "    uint32_t request_offset, uint32_t request_length,\n"
+            "    %s_view_t *out) {\n"
+            "  return out != NULL &&\n"
+            "      %s_view_bind(\n"
+            "          out, (const void *)(uintptr_t)request_offset,\n"
+            "          (size_t)request_length);\n"
+            "}\n\n",
+            views[i].native->symbol,
+            views[i].native->symbol,
+            views[i].native->request_type,
+            views[i].native->request_type) < 0)
       return 0;
-    if (views[i].request->field_count == 0u) {
-      if (fputs("void", file) == EOF) return 0;
-    } else {
-      for (j = 0u; j < views[i].request->field_count; ++j) {
-        wasm_scalar_lowering scalar;
-        if (!wasm_scalar_lower(
-                contract, &views[i].request->fields[j], &scalar))
-          return 0;
-        if (j != 0u && fputs(", ", file) == EOF) return 0;
-        if (fprintf(
-                file, "%s %s", scalar.c_type,
-                views[i].request->fields[j].name) < 0)
-          return 0;
-      }
-    }
-    if (fputs(");\n", file) == EOF) return 0;
   }
 
   return fprintf(
              file,
-             "\n#ifdef __cplusplus\n}\n#endif\n\n"
+             "#ifdef __cplusplus\n}\n#endif\n\n"
              "#endif /* %s */\n",
              guard) >= 0;
 }
@@ -665,7 +698,9 @@ static int wasm_write_host_source(
           "#include \"%s\"\n"
           "#include \"%s\"\n"
           "#include <turbowasm/component.h>\n"
-          "#include <string.h>\n\n",
+          "#include <string.h>\n\n"
+          "_Static_assert(sizeof(int) == 4u, "
+          "\"DataBind WASM status requires 32-bit int\");\n\n",
           host_header, config->native_header) < 0)
     return 0;
 
@@ -708,11 +743,6 @@ static int wasm_write_host_source(
 
   for (i = 0u; i < view_count; ++i) {
     const wasm_operation_view *view = &views[i];
-    wasm_scalar_lowering response_scalar;
-    if (!wasm_scalar_lower(
-            contract, &view->response->fields[0],
-            &response_scalar))
-      return 0;
 
     if (fprintf(
             file,
@@ -722,11 +752,23 @@ static int wasm_write_host_source(
             "  %s_wasm_host *host = (%s_wasm_host *)context;\n"
             "  const %s_t *request;\n"
             "  %s_t *response;\n"
+            "  uint8_t request_wire[%s_BLOCK_LENGTH != 0u ? "
+            "%s_BLOCK_LENGTH : 1u] = {0};\n"
+            "  uint8_t response_wire[%s_BLOCK_LENGTH != 0u ? "
+            "%s_BLOCK_LENGTH : 1u] = {0};\n"
+            "  %s_builder_t request_builder;\n"
+            "  %s_view_t response_view;\n"
+            "  turbowasm_component_host_value "
+            "request_items[%s_BLOCK_LENGTH != 0u ? "
+            "%s_BLOCK_LENGTH : 1u] = {{0}};\n"
+            "  turbowasm_component_host_value argument = {0};\n"
+            "  turbowasm_component_host_value result = {0};\n"
             "  turbowasm_component component = {0};\n"
             "  turbowasm_component_instance instance = {0};\n"
-            "  turbowasm_component_host_value arguments[%zuu] = {{0}};\n"
-            "  turbowasm_component_host_value result = {0};\n"
             "  size_t result_count = 0u;\n"
+            "  size_t k;\n"
+            "  uint32_t status_bits;\n"
+            "  int native_status;\n"
             "  turbowasm_trap trap = TURBOWASM_TRAP_NONE;\n"
             "  int ok = 0;\n"
             "  if (host == NULL || host->component_bytes == NULL ||\n"
@@ -734,34 +776,49 @@ static int wasm_write_host_source(
             "      param_count != 2u || params[0] == NULL || params[1] == NULL)\n"
             "    return false;\n"
             "  request = (const %s_t *)params[0];\n"
-            "  response = (%s_t *)params[1];\n",
+            "  response = (%s_t *)params[1];\n"
+            "  if (!%s_builder_bind(\n"
+            "          &request_builder, request_wire, %s_BLOCK_LENGTH))\n"
+            "    return false;\n",
             view->native->symbol,
             config->symbol_prefix,
             config->symbol_prefix,
             view->native->request_type,
             view->native->response_type,
-            view->request->field_count != 0u
-                ? view->request->field_count
-                : 1u,
             view->native->request_type,
-            view->native->response_type) < 0)
+            view->native->request_type,
+            view->native->response_type,
+            view->native->response_type,
+            view->native->request_type,
+            view->native->response_type,
+            view->native->request_type,
+            view->native->request_type,
+            view->native->request_type,
+            view->native->response_type,
+            view->native->request_type,
+            view->native->request_type) < 0)
       return 0;
 
     for (j = 0u; j < view->request->field_count; ++j) {
-      wasm_scalar_lowering scalar;
-      if (!wasm_scalar_lower(
-              contract, &view->request->fields[j], &scalar) ||
-          fprintf(
+      if (fprintf(
               file,
-              "  arguments[%zuu].kind = %s;\n"
-              "  arguments[%zuu].as.%s = request->%s;\n",
-              j, scalar.host_kind, j, scalar.host_member,
+              "  if (!%s_%s_set(&request_builder, request->%s))\n"
+              "    return false;\n",
+              view->native->request_type,
+              view->request->fields[j].name,
               view->request->fields[j].name) < 0)
         return 0;
     }
 
     if (fprintf(
             file,
+            "  for (k = 0u; k < %s_BLOCK_LENGTH; ++k) {\n"
+            "    request_items[k].kind = TURBOWASM_COMPONENT_HOST_U8;\n"
+            "    request_items[k].as.u8 = request_wire[k];\n"
+            "  }\n"
+            "  argument.kind = TURBOWASM_COMPONENT_HOST_LIST;\n"
+            "  argument.as.list.items = request_items;\n"
+            "  argument.as.list.count = %s_BLOCK_LENGTH;\n"
             "  if (turbowasm_component_load_borrowed(\n"
             "          &component, host->component_bytes,\n"
             "          host->component_size) != TURBOWASM_OK)\n"
@@ -773,13 +830,58 @@ static int wasm_write_host_source(
             "          &instance,\n"
             "          (turbowasm_name){\n"
             "              (const uint8_t *)\"%s\", %zuu},\n"
-            "          %s, %zuu, &result, 1u,\n"
+            "          &argument, 1u, &result, 1u,\n"
             "          &result_count, &trap) != TURBOWASM_OK ||\n"
             "      trap != TURBOWASM_TRAP_NONE || result_count != 1u ||\n"
-            "      result.kind != %s)\n"
+            "      result.kind != TURBOWASM_COMPONENT_HOST_LIST ||\n"
+            "      result.as.list.count < 4u ||\n"
+            "      result.as.list.items == NULL)\n"
             "    goto done;\n"
-            "  response->%s = result.as.%s;\n"
-            "  *(int *)return_storage = 0;\n"
+            "  for (k = 0u; k < result.as.list.count; ++k)\n"
+            "    if (result.as.list.items[k].kind != "
+            "TURBOWASM_COMPONENT_HOST_U8)\n"
+            "      goto done;\n"
+            "  status_bits =\n"
+            "      (uint32_t)result.as.list.items[0].as.u8 |\n"
+            "      ((uint32_t)result.as.list.items[1].as.u8 << 8u) |\n"
+            "      ((uint32_t)result.as.list.items[2].as.u8 << 16u) |\n"
+            "      ((uint32_t)result.as.list.items[3].as.u8 << 24u);\n"
+            "  native_status = (int)(int32_t)status_bits;\n"
+            "  *(int *)return_storage = native_status;\n"
+            "  if (native_status != 0) {\n"
+            "    if (result.as.list.count != 4u) goto done;\n"
+            "    ok = 1;\n"
+            "    goto done;\n"
+            "  }\n"
+            "  if (result.as.list.count != 4u + %s_BLOCK_LENGTH)\n"
+            "    goto done;\n"
+            "  for (k = 0u; k < %s_BLOCK_LENGTH; ++k)\n"
+            "    response_wire[k] = result.as.list.items[4u + k].as.u8;\n"
+            "  if (!%s_view_bind(\n"
+            "          &response_view, response_wire, %s_BLOCK_LENGTH))\n"
+            "    goto done;\n",
+            view->native->request_type,
+            view->native->request_type,
+            view->native->qualified_operation,
+            strlen(view->native->qualified_operation),
+            view->native->response_type,
+            view->native->response_type,
+            view->native->response_type,
+            view->native->response_type) < 0)
+      return 0;
+
+    for (j = 0u; j < view->response->field_count; ++j) {
+      if (fprintf(
+              file,
+              "  response->%s = %s_%s_get(&response_view);\n",
+              view->response->fields[j].name,
+              view->native->response_type,
+              view->response->fields[j].name) < 0)
+        return 0;
+    }
+
+    if (fprintf(
+            file,
             "  ok = 1;\n"
             "done:\n"
             "  if (result_count != 0u)\n"
@@ -804,13 +906,6 @@ static int wasm_write_host_source(
             "  *out = execution;\n"
             "  return 1;\n"
             "}\n\n",
-            view->native->qualified_operation,
-            strlen(view->native->qualified_operation),
-            view->request->field_count != 0u ? "arguments" : "NULL",
-            view->request->field_count,
-            response_scalar.host_kind,
-            view->response->fields[0].name,
-            response_scalar.host_member,
             view->native->symbol,
             config->symbol_prefix,
             view->native->symbol,
