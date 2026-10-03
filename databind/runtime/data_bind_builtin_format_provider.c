@@ -5,7 +5,7 @@
 #include "data_bind_xml_provider.h"
 #include "data_bind_yaml_provider.h"
 
-const DataBindFormatProvider *
+DATA_BIND_API const DataBindFormatProvider *
 data_bind_builtin_format_provider(DataBindFormat format) {
   switch (format) {
   case DATA_BIND_FORMAT_JSON:
