@@ -993,9 +993,10 @@ int databind_compiler_service_native_emit_reflection(
 
     if (fprintf(
             file,
-            "CMETA_FUNCTION_METADATA_AS_ABI(\n"
+            "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(\n"
             "    %s, \"%s\", fallible, &cmeta_type_int, "
             "CMETA_ABI_SCALAR,\n"
+            "    CMETA_RESULT_VALUE,\n"
             "    (const %s_t *, request,\n"
             "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
             "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
@@ -1049,9 +1050,10 @@ int databind_compiler_service_native_emit_reflection(
           "static const cmeta_type_desc %s__response_ptr_type = {\n"
           "    \"%s_t *\", sizeof(%s_t *), _Alignof(%s_t *),\n"
           "    CMETA_T_POINTER, &%s__response_type, NULL, NULL};\n"
-          "CMETA_FUNCTION_METADATA_AS_ABI(\n"
+          "CMETA_FUNCTION_METADATA_AS_ABI_RESULT(\n"
           "    %s, \"%s\", unknown, &cmeta_type_int, "
           "CMETA_ABI_SCALAR,\n"
+          "    CMETA_RESULT_VALUE,\n"
           "    (const %s_t *, request,\n"
           "     CMETA_PARAM_IN | CMETA_PARAM_BORROWED,\n"
           "     &%s__request_ptr_type, CMETA_ABI_OBJECT_POINTER),\n"
