@@ -337,6 +337,8 @@ spec("DataBind canonical Service native lowering") {
     check_equal(function->param_count, (size_t)2u);
     check_equal(function->effects, (cmeta_effects)CMETA_EFFECT_UNKNOWN);
     check_equal(function->properties, (cmeta_properties)CMETA_PROP_NONE);
+    check_equal(function->result_flags,
+                (cmeta_result_flags)CMETA_RESULT_VALUE);
     check_equal(function->params[0].flags,
                 (cmeta_param_flags)(CMETA_PARAM_IN | CMETA_PARAM_BORROWED));
     check_equal(function->params[1].flags,
@@ -885,6 +887,8 @@ spec("DataBind canonical Service native lowering") {
     check_true(abi->function == function);
     check_equal(function->name, "ServiceNative.Calc.Find");
     check_equal(function->param_count, (size_t)3u);
+    check_equal(function->result_flags,
+                (cmeta_result_flags)CMETA_RESULT_VALUE);
 
     check_equal(function->params[0].flags,
                 (cmeta_param_flags)(CMETA_PARAM_IN | CMETA_PARAM_BORROWED));
