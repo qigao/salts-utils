@@ -1028,14 +1028,51 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "typed_element_c_type", entry_type);
       tbe_compiler_set_string(field, "typed_needs_map_vector", "1");
       if (databind_compiler_annotate_map_value_provider(
-              root, field, value_type ? value_type : inner) == 0 &&
-          databind_compiler_set_map_symbol(field, "native_map_name", owner,
-                                           c_name, "") == 0 &&
-          databind_compiler_set_map_symbol(field, "native_data_symbol", owner,
-                                           c_name, "Data") == 0 &&
-          databind_compiler_set_map_symbol(field, "native_type_symbol", owner,
-                                           c_name, "Type") == 0) {
-        tbe_compiler_set_string(field, "native_c_type", vector_type);
+              root, field, value_type ? value_type : inner) == 0) {
+        const tbe_compiler_scalar_projection_t *value_scalar =
+            tbe_compiler_scalar_projection(value_type ? value_type : inner);
+        const int canonical_cstl_value =
+            (value_scalar != NULL && value_scalar->native_data_symbol != NULL) ||
+            (value_type != NULL && strcmp(value_type, "string") == 0);
+        if (canonical_cstl_value &&
+            !tbe_compiler_has_child(field, "is_optional") &&
+            !tbe_compiler_has_child(field, "is_nullable") &&
+            tbe_compiler_string_value(field, "native_map_key_type_ref") != NULL &&
+            tbe_compiler_string_value(field, "native_map_key_data_ref") != NULL &&
+            tbe_compiler_string_value(field, "native_map_value_type_ref") != NULL &&
+            tbe_compiler_string_value(field, "native_map_value_data_ref") != NULL) {
+          char symbol[320];
+          Node *owner_record;
+          snprintf(vector_type, sizeof(vector_type), "%s_%s_map_t", owner, name);
+          snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
+          tbe_compiler_set_string(field, "typed_vector_type", vector_type);
+          owner_record = tbe_compiler_find_record(root, "composites", owner);
+          if (owner_record == NULL)
+            owner_record = tbe_compiler_find_record(root, "groups", owner);
+          if (owner_record == NULL)
+            owner_record = tbe_compiler_find_record(root, "messages", owner);
+          tbe_compiler_set_string(field, "native_cstl_map", "1");
+          tbe_compiler_set_string(field, "native_cstl_map_explicit_refs", "1");
+          if (owner_record != NULL)
+            tbe_compiler_set_string(owner_record, "native_cstl_storage", "1");
+          if (snprintf(symbol, sizeof(symbol), "%s_map_data", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_map_data") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_data_symbol", symbol);
+          if (snprintf(symbol, sizeof(symbol), "%s_cmeta_type", vector_type) >= 0 &&
+              strlen(vector_type) + strlen("_cmeta_type") < sizeof(symbol))
+            tbe_compiler_set_string(field, "native_type_symbol", symbol);
+          if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
+              tbe_compiler_string_value(field, "native_type_symbol") != NULL)
+            tbe_compiler_set_string(field, "native_c_type", vector_type);
+        } else if (
+            databind_compiler_set_map_symbol(field, "native_map_name", owner,
+                                             c_name, "") == 0 &&
+            databind_compiler_set_map_symbol(field, "native_data_symbol", owner,
+                                             c_name, "Data") == 0 &&
+            databind_compiler_set_map_symbol(field, "native_type_symbol", owner,
+                                             c_name, "Type") == 0) {
+          tbe_compiler_set_string(field, "native_c_type", vector_type);
+        }
       }
     } else {
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
@@ -1552,9 +1589,27 @@ static int tbe_compiler_cmeta_classify_record(
           tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
           tbe_compiler_string_value(field, "native_map_value_data_symbol") == NULL)
         goto unsupported;
-      /* The generated map graph is a complete read provider. The mixed
-       * typed-descriptor lifecycle stays unavailable until its transactional
-       * collector/construct slice lands; do not advertise partial mutation. */
+
+      if (tbe_compiler_has_child(field, "native_cstl_map")) {
+        if (tbe_compiler_string_value(field, "native_map_key_type_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_key_data_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_value_type_ref") == NULL ||
+            tbe_compiler_string_value(field, "native_map_value_data_ref") == NULL)
+          goto unsupported;
+        /* Canonical CSTL Map owns key/value metadata and transactional
+         * lifecycle. Legacy TbeTypedDescriptor runtime remains closed over the
+         * historical vector-entry storage model. */
+        if (context->runtime) goto unsupported;
+        scalar = tbe_compiler_scalar_projection(value_type);
+        if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
+            strcmp(value_type, "string") == 0)
+          continue;
+        goto unsupported;
+      }
+
+      /* The historical vector-map graph remains read-only. Its mixed
+       * typed-descriptor lifecycle stays unavailable until that storage path
+       * is removed; do not advertise partial mutation. */
       if (context->runtime || context->lifecycle) goto unsupported;
       scalar = tbe_compiler_scalar_projection(value_type);
       if ((scalar && scalar->native_data_symbol) ||

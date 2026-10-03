@@ -338,7 +338,21 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
+{{#native_cstl_map}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  map_t raw;
+} {{typed_vector_type}};
+#else
+typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
+      {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
+{{/native_cstl_map}}
+{{^native_cstl_map}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
@@ -735,7 +749,21 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
+{{#native_cstl_map}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  map_t raw;
+} {{typed_vector_type}};
+#else
+typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
+      {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
+{{/native_cstl_map}}
+{{^native_cstl_map}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
@@ -1364,7 +1392,21 @@ typedef struct {{typed_map_entry_type}} {
     tstr key;
     {{typed_map_value_c_type}} value;
 } {{typed_map_entry_type}};
+{{#native_cstl_map}}
+#ifdef __cplusplus
+typedef struct {{typed_vector_type}} {
+  cmeta_container_header cmeta;
+  map_t raw;
+} {{typed_vector_type}};
+#else
+typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
+      {{native_map_key_type_ref}}, {{native_map_key_data_ref}},
+      {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
+#endif
+{{/native_cstl_map}}
+{{^native_cstl_map}}
 TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
+{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
