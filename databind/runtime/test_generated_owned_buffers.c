@@ -355,7 +355,15 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_equal(value.id, (uint32_t)0u);
     check_equal(
         NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)0u);
-    check_null(value.headers.cmeta.descriptor);
+    /*
+     * Canonical typed Map semantic zero retains its declared container and
+     * key/value type identity. Only dynamic storage is released.
+     */
+    check_not_null(value.headers.cmeta.descriptor);
+    check_true(cmeta_type_equal(
+        value.headers.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        value.headers.raw.value_type, &NativeHeader_CMETA_TYPE));
     check_null(value.headers.raw.impl);
 
     tstr_free(lookup);
