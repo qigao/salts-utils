@@ -169,6 +169,7 @@ int ios_video_device_create_capture(
         AVCaptureDeviceFormat *selected_format = nil;
         CMTime duration = kCMTimeInvalid;
         NSError *error = nil;
+        SaltsCaptureGuard *guard = nil;
         ios_video_capture_t *cap;
 
         if (!device ||
@@ -225,7 +226,7 @@ int ios_video_device_create_capture(
         if (![cap->session canAddOutput:cap->output]) goto error;
         [cap->session addOutput:cap->output];
 
-        SaltsCaptureGuard *guard = cap->guard;
+        guard = cap->guard;
         cap->delegate.frameCallback = ^(CVPixelBufferRef pixel_buffer) {
             ios_video_capture_t *cap_ref =
                 (ios_video_capture_t *)[guard acquireCapture];
