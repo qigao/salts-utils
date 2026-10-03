@@ -988,6 +988,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
               tbe_compiler_string_value(field, "native_type_symbol") != NULL)
             tbe_compiler_set_string(field, "native_c_type", vector_type);
+        }
       }
     } else {
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
@@ -1026,6 +1027,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
               tbe_compiler_string_value(field, "native_type_symbol") != NULL)
             tbe_compiler_set_string(field, "native_c_type", vector_type);
+        }
       }
 
       if (semantic->kind == CMETA_DATA_SET &&
