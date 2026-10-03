@@ -7,5 +7,7 @@ message Event {
   optional nullable uint32 tri;
   list<uint32> values;
   list<string> labels;
+  set<uint32> ids;
+  set<string> tags;
 }
 
