@@ -180,6 +180,8 @@ spec("DataBind public Message native artifact") {
     check_not_null(alpha);
     check_not_null(beta);
     check_not_null(label);
+    check_equal(Event_counters_map_t_init(&counters, 4u), STL_OK);
+    check_equal(Event_aliases_map_t_init(&aliases, 4u), STL_OK);
     if (alpha != NULL && beta != NULL) {
       /* Insert reverse lexical order; canonical Map iteration is key-sorted. */
       check_equal(Event_counters_map_t_put(
