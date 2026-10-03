@@ -682,6 +682,9 @@ suite("compiler_cmeta_field_projection") {
 
     it("length-encodes private map provider identifiers") {
         Node *root = create_node_map("root");
+        Node *item = field_projection_add_record(root, "composites", "PrivateItem");
+        Node *item_field =
+            field_projection_add_field(item, "PrivateItem", "value", "int32");
         Node *left = field_projection_add_record(root, "messages", "A_B");
         Node *right = field_projection_add_record(root, "messages", "A");
         Node *left_field = field_projection_add_field(left, "A_B", "C", "map");
@@ -689,9 +692,11 @@ suite("compiler_cmeta_field_projection") {
         const char *left_symbol;
         const char *right_symbol;
 
+        check_not_null(item);
+        check_not_null(item_field);
         check_not_null(left_field);
         check_not_null(right_field);
-        if (!left_field || !right_field) {
+        if (!item || !item_field || !left_field || !right_field) {
             node_free(root);
             return;
         }
@@ -700,7 +705,7 @@ suite("compiler_cmeta_field_projection") {
             check_equal(map_add((FIELD), create_node_string("key_type",            \
                                                               "string")), 0);      \
             check_equal(map_add((FIELD), create_node_string("value_type",          \
-                                                              "int32")), 0);       \
+                                                              "PrivateItem")), 0); \
         } while (0)
         COMPLETE_MAP(left_field);
         COMPLETE_MAP(right_field);
