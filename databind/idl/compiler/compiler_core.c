@@ -1341,6 +1341,8 @@ typedef struct tbe_compiler_cmeta_classify_context_s {
   Node **records;
   unsigned char *states;
   size_t *depths;
+  size_t *native_depths;
+  size_t *native_nodes;
   size_t count;
   int runtime;
   int lifecycle;
@@ -1367,6 +1369,10 @@ static int tbe_compiler_cmeta_classify_record(
   Node *record;
   Node *fields;
   size_t max_depth = 0;
+  size_t native_depth = 1u;
+  size_t native_nodes = 1u;
+  const int native_budget =
+      context != NULL && !context->runtime && !context->lifecycle;
   size_t i;
 
   if (!context || index >= context->count) return 0;
@@ -1428,8 +1434,14 @@ static int tbe_compiler_cmeta_classify_record(
       if (tbe_compiler_has_child(field, "native_cstl_sequence")) {
         scalar = tbe_compiler_scalar_projection(inner_type);
         if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
-            strcmp(inner_type, "string") == 0)
+            strcmp(inner_type, "string") == 0) {
+          if (native_budget) {
+            if (native_nodes > SIZE_MAX - 2u) goto unsupported;
+            native_nodes += 2u;
+            if (native_depth < 3u) native_depth = 3u;
+          }
           continue;
+        }
 
         target = tbe_compiler_find_any_record(context->root, inner_type);
         if (target == NULL) goto unsupported;
@@ -1440,6 +1452,19 @@ static int tbe_compiler_cmeta_classify_record(
           goto unsupported;
         if (context->depths[target_index] + 1u > max_depth)
           max_depth = context->depths[target_index] + 1u;
+        if (native_budget) {
+          size_t candidate_depth;
+          if (context->native_depths == NULL || context->native_nodes == NULL ||
+              context->native_depths[target_index] == 0u ||
+              context->native_nodes[target_index] == 0u ||
+              context->native_depths[target_index] > SIZE_MAX - 2u ||
+              native_nodes > SIZE_MAX - 1u ||
+              native_nodes + 1u > SIZE_MAX - context->native_nodes[target_index])
+            goto unsupported;
+          candidate_depth = context->native_depths[target_index] + 2u;
+          native_nodes += 1u + context->native_nodes[target_index];
+          if (candidate_depth > native_depth) native_depth = candidate_depth;
+        }
         continue;
       }
 
@@ -1459,6 +1484,19 @@ static int tbe_compiler_cmeta_classify_record(
         goto unsupported;
       if (context->depths[target_index] + 1u > max_depth)
         max_depth = context->depths[target_index] + 1u;
+      if (native_budget) {
+        size_t candidate_depth;
+        if (context->native_depths == NULL || context->native_nodes == NULL ||
+            context->native_depths[target_index] == 0u ||
+            context->native_nodes[target_index] == 0u ||
+            context->native_depths[target_index] > SIZE_MAX - 2u ||
+            native_nodes > SIZE_MAX - 1u ||
+            native_nodes + 1u > SIZE_MAX - context->native_nodes[target_index])
+          goto unsupported;
+        candidate_depth = context->native_depths[target_index] + 2u;
+        native_nodes += 1u + context->native_nodes[target_index];
+        if (candidate_depth > native_depth) native_depth = candidate_depth;
+      }
       continue;
     }
 
@@ -1483,8 +1521,14 @@ static int tbe_compiler_cmeta_classify_record(
 
       scalar = tbe_compiler_scalar_projection(inner_type);
       if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
-          strcmp(inner_type, "string") == 0)
+          strcmp(inner_type, "string") == 0) {
+        if (native_budget) {
+          if (native_nodes > SIZE_MAX - 2u) goto unsupported;
+          native_nodes += 2u;
+          if (native_depth < 3u) native_depth = 3u;
+        }
         continue;
+      }
       goto unsupported;
     }
 
@@ -1512,8 +1556,14 @@ static int tbe_compiler_cmeta_classify_record(
         if (context->runtime) goto unsupported;
         scalar = tbe_compiler_scalar_projection(value_type);
         if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
-            strcmp(value_type, "string") == 0)
+            strcmp(value_type, "string") == 0) {
+          if (native_budget) {
+            if (native_nodes > SIZE_MAX - 3u) goto unsupported;
+            native_nodes += 3u;
+            if (native_depth < 3u) native_depth = 3u;
+          }
           continue;
+        }
 
         target = tbe_compiler_find_any_record(context->root, value_type);
         if (target == NULL) goto unsupported;
@@ -1524,6 +1574,19 @@ static int tbe_compiler_cmeta_classify_record(
           goto unsupported;
         if (context->depths[target_index] + 1u > max_depth)
           max_depth = context->depths[target_index] + 1u;
+        if (native_budget) {
+          size_t candidate_depth;
+          if (context->native_depths == NULL || context->native_nodes == NULL ||
+              context->native_depths[target_index] == 0u ||
+              context->native_nodes[target_index] == 0u ||
+              context->native_depths[target_index] > SIZE_MAX - 2u ||
+              native_nodes > SIZE_MAX - 2u ||
+              native_nodes + 2u > SIZE_MAX - context->native_nodes[target_index])
+            goto unsupported;
+          candidate_depth = context->native_depths[target_index] + 2u;
+          native_nodes += 2u + context->native_nodes[target_index];
+          if (candidate_depth > native_depth) native_depth = candidate_depth;
+        }
         continue;
       }
 
@@ -1534,13 +1597,24 @@ static int tbe_compiler_cmeta_classify_record(
       scalar = tbe_compiler_scalar_projection(value_type);
       if ((scalar && scalar->native_data_symbol) ||
           strcmp(value_type, "string") == 0 ||
-          strcmp(value_type, "uuid") == 0)
+          strcmp(value_type, "uuid") == 0) {
+        if (native_budget) {
+          if (native_nodes > SIZE_MAX - 3u) goto unsupported;
+          native_nodes += 3u;
+          if (native_depth < 3u) native_depth = 3u;
+        }
         continue;
+      }
       target = tbe_compiler_find_record(context->root, "enums", value_type);
       if (target) {
         const char *marker = context->runtime ? "typed_cmeta_runtime_supported"
                                               : "native_enum_supported";
         if (!tbe_compiler_has_child(target, marker)) goto unsupported;
+        if (native_budget) {
+          if (native_nodes > SIZE_MAX - 3u) goto unsupported;
+          native_nodes += 3u;
+          if (native_depth < 3u) native_depth = 3u;
+        }
         continue;
       }
       target = tbe_compiler_find_any_record(context->root, value_type);
@@ -1552,6 +1626,19 @@ static int tbe_compiler_cmeta_classify_record(
         goto unsupported;
       if (context->depths[target_index] + 1u > max_depth)
         max_depth = context->depths[target_index] + 1u;
+      if (native_budget) {
+        size_t candidate_depth;
+        if (context->native_depths == NULL || context->native_nodes == NULL ||
+            context->native_depths[target_index] == 0u ||
+            context->native_nodes[target_index] == 0u ||
+            context->native_depths[target_index] > SIZE_MAX - 2u ||
+            native_nodes > SIZE_MAX - 2u ||
+            native_nodes + 2u > SIZE_MAX - context->native_nodes[target_index])
+          goto unsupported;
+        candidate_depth = context->native_depths[target_index] + 2u;
+        native_nodes += 2u + context->native_nodes[target_index];
+        if (candidate_depth > native_depth) native_depth = candidate_depth;
+      }
       continue;
     }
 
@@ -1564,6 +1651,11 @@ static int tbe_compiler_cmeta_classify_record(
           scalar->data->kind != CMETA_DATA_UINT &&
           scalar->data->kind != CMETA_DATA_FLOAT)
         goto unsupported;
+      if (native_budget) {
+        if (native_nodes == SIZE_MAX) goto unsupported;
+        ++native_nodes;
+        if (native_depth < 2u) native_depth = 2u;
+      }
       continue;
     }
 
@@ -1574,8 +1666,14 @@ static int tbe_compiler_cmeta_classify_record(
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
         (strcmp(kind, "TBE_TYPED_UUID") == 0 ||
-         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0))
+         strcmp(kind, "TBE_TYPED_FIXED_BYTES") == 0)) {
+      if (native_budget) {
+        if (native_nodes == SIZE_MAX) goto unsupported;
+        ++native_nodes;
+        if (native_depth < 2u) native_depth = 2u;
+      }
       continue;
+    }
 
     if (context->lifecycle &&
         tbe_compiler_string_value(field, "cmeta_native_requirement") != NULL &&
@@ -1584,8 +1682,14 @@ static int tbe_compiler_cmeta_classify_record(
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
         tbe_compiler_string_value(field, "native_type_symbol") != NULL &&
         (strcmp(kind, "TBE_TYPED_STRING") == 0 ||
-         strcmp(kind, "TBE_TYPED_BYTES") == 0))
+         strcmp(kind, "TBE_TYPED_BYTES") == 0)) {
+      if (native_budget) {
+        if (native_nodes == SIZE_MAX) goto unsupported;
+        ++native_nodes;
+        if (native_depth < 2u) native_depth = 2u;
+      }
       continue;
+    }
 
     target = tbe_compiler_find_record(context->root, "enums", type);
     if (target) {
@@ -1593,6 +1697,11 @@ static int tbe_compiler_cmeta_classify_record(
                                             : "native_enum_supported";
       if (!tbe_compiler_has_child(target, marker))
         goto unsupported;
+      if (native_budget) {
+        if (native_nodes == SIZE_MAX) goto unsupported;
+        ++native_nodes;
+        if (native_depth < 2u) native_depth = 2u;
+      }
       continue;
     }
 
@@ -1605,13 +1714,31 @@ static int tbe_compiler_cmeta_classify_record(
         goto unsupported;
       if (context->depths[target_index] + 1u > max_depth)
         max_depth = context->depths[target_index] + 1u;
+      if (native_budget) {
+        size_t candidate_depth;
+        if (context->native_depths == NULL || context->native_nodes == NULL ||
+            context->native_depths[target_index] == 0u ||
+            context->native_nodes[target_index] == 0u ||
+            context->native_depths[target_index] == SIZE_MAX ||
+            native_nodes > SIZE_MAX - context->native_nodes[target_index])
+          goto unsupported;
+        candidate_depth = context->native_depths[target_index] + 1u;
+        native_nodes += context->native_nodes[target_index];
+        if (candidate_depth > native_depth) native_depth = candidate_depth;
+      }
       continue;
     }
 
     if (!context->runtime && !context->lifecycle &&
         tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
-        tbe_compiler_string_value(field, "native_type_symbol") != NULL)
+        tbe_compiler_string_value(field, "native_type_symbol") != NULL) {
+      if (native_budget) {
+        if (native_nodes == SIZE_MAX) goto unsupported;
+        ++native_nodes;
+        if (native_depth < 2u) native_depth = 2u;
+      }
       continue;
+    }
     goto unsupported;
   }
 
@@ -1638,6 +1765,21 @@ static int tbe_compiler_cmeta_classify_record(
     }
   }
   context->depths[index] = max_depth;
+  if (native_budget) {
+    char depth_text[32];
+    char nodes_text[32];
+    if (context->native_depths == NULL || context->native_nodes == NULL ||
+        snprintf(depth_text, sizeof(depth_text), "%zu", native_depth) < 0 ||
+        snprintf(nodes_text, sizeof(nodes_text), "%zu", native_nodes) < 0)
+      goto unsupported;
+    context->native_depths[index] = native_depth;
+    context->native_nodes[index] = native_nodes;
+    if (tbe_compiler_set_string(
+            record, "cmeta_native_descriptor_depth", depth_text) != 0 ||
+        tbe_compiler_set_string(
+            record, "cmeta_native_descriptor_nodes", nodes_text) != 0)
+      goto unsupported;
+  }
   context->states[index] = TBE_COMPILER_CMETA_SUPPORTED;
   return 1;
 
@@ -1647,6 +1789,12 @@ unsupported:
                   ? "cmeta_lifecycle_supported"
                   : (context->runtime ? "typed_cmeta_runtime_supported"
                                       : "cmeta_graph_supported"));
+  if (native_budget) {
+    tbe_compiler_remove_children(record, "cmeta_native_descriptor_depth");
+    tbe_compiler_remove_children(record, "cmeta_native_descriptor_nodes");
+    if (context->native_depths != NULL) context->native_depths[index] = 0u;
+    if (context->native_nodes != NULL) context->native_nodes[index] = 0u;
+  }
   context->states[index] = TBE_COMPILER_CMETA_UNSUPPORTED;
   return 0;
 }
@@ -1666,6 +1814,10 @@ static void tbe_compiler_collect_cmeta_records(
                     ? "cmeta_lifecycle_supported"
                     : (context->runtime ? "typed_cmeta_runtime_supported"
                                         : "cmeta_graph_supported"));
+    if (!context->runtime && !context->lifecycle) {
+      tbe_compiler_remove_children(record, "cmeta_native_descriptor_depth");
+      tbe_compiler_remove_children(record, "cmeta_native_descriptor_nodes");
+    }
     if (context->runtime && fields && fields->type == NODE_LIST)
       for (j = 0; j < fields->data.list.count; ++j) {
         tbe_compiler_remove_children(fields->data.list.items[j],
@@ -1693,7 +1845,13 @@ static void tbe_compiler_annotate_cmeta_support(Node *root, int runtime) {
   context.records = (Node **)calloc(context.count, sizeof(*context.records));
   context.states = (unsigned char *)calloc(context.count, sizeof(*context.states));
   context.depths = (size_t *)calloc(context.count, sizeof(*context.depths));
-  if (!context.records || !context.states || !context.depths) goto cleanup;
+  context.native_depths =
+      (size_t *)calloc(context.count, sizeof(*context.native_depths));
+  context.native_nodes =
+      (size_t *)calloc(context.count, sizeof(*context.native_nodes));
+  if (!context.records || !context.states || !context.depths ||
+      !context.native_depths || !context.native_nodes)
+    goto cleanup;
 
   for (i = 0; i < sizeof(lists) / sizeof(lists[0]); ++i)
     tbe_compiler_collect_cmeta_records(&context, lists[i], &offset);
@@ -1701,6 +1859,8 @@ static void tbe_compiler_annotate_cmeta_support(Node *root, int runtime) {
     (void)tbe_compiler_cmeta_classify_record(&context, i);
 
 cleanup:
+  free(context.native_nodes);
+  free(context.native_depths);
   free(context.depths);
   free(context.states);
   free(context.records);
@@ -1722,7 +1882,13 @@ static void tbe_compiler_annotate_cmeta_lifecycle_support(Node *root) {
   context.records = (Node **)calloc(context.count, sizeof(*context.records));
   context.states = (unsigned char *)calloc(context.count, sizeof(*context.states));
   context.depths = (size_t *)calloc(context.count, sizeof(*context.depths));
-  if (!context.records || !context.states || !context.depths) goto cleanup;
+  context.native_depths =
+      (size_t *)calloc(context.count, sizeof(*context.native_depths));
+  context.native_nodes =
+      (size_t *)calloc(context.count, sizeof(*context.native_nodes));
+  if (!context.records || !context.states || !context.depths ||
+      !context.native_depths || !context.native_nodes)
+    goto cleanup;
 
   for (i = 0; i < sizeof(lists) / sizeof(lists[0]); ++i)
     tbe_compiler_collect_cmeta_records(&context, lists[i], &offset);
@@ -1730,6 +1896,8 @@ static void tbe_compiler_annotate_cmeta_lifecycle_support(Node *root) {
     (void)tbe_compiler_cmeta_classify_record(&context, i);
 
 cleanup:
+  free(context.native_nodes);
+  free(context.native_depths);
   free(context.depths);
   free(context.states);
   free(context.records);
