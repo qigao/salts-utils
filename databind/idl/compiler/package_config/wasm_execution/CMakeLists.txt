@@ -47,11 +47,16 @@ salts_idl_target(
   SOURCES
     business.c)
 
+file(GENERATE
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/wasm_execution_component_path.h"
+  CONTENT
+    "#define WASM_EXECUTION_COMPONENT_PATH \"${wasm_execution_fixture_WASM_ARTIFACT}\"\n")
+
 add_executable(wasm_execution_consumer main.c)
 target_compile_features(wasm_execution_consumer PRIVATE c_std_11)
+target_include_directories(wasm_execution_consumer PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(wasm_execution_consumer PRIVATE
   wasm_execution_fixture_wasm)
 add_dependencies(wasm_execution_consumer
   wasm_execution_fixture_plugin)
-target_compile_definitions(wasm_execution_consumer PRIVATE
-  WASM_EXECUTION_COMPONENT_PATH="${wasm_execution_fixture_WASM_ARTIFACT}")
