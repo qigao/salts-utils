@@ -2760,6 +2760,14 @@ spec("tbe_compiler") {
         check(strstr(header,
                      "const TbeTypedDescriptor *LoginMessage_typed_descriptor(void)") == NULL);
       }
+      if (source != NULL) {
+        check(strstr(source, "tbe_typed_descriptor_init(") == NULL);
+        check(strstr(source, "tbe_typed_descriptor_clear(") == NULL);
+        check_contains(source, "cmeta_data_value_init_zero(&name##_CMETA_DATA");
+        check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
+        check_contains(source, "tbe_typed_descriptor_parse(codec");
+        check_contains(source, "tbe_typed_descriptor_serialize_binary");
+      }
 
       free(header);
       free(source);
