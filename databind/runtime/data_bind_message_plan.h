@@ -168,6 +168,27 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
     DataBindMessagePlanDiagnostic *diagnostic);
 
 /**
+ * Decode one native message using explicit text-format token semantics.
+ *
+ * JSON/YAML retain the strict canonical token rules of
+ * data_bind_message_plan_decode_native(). XML additionally admits textual leaf
+ * scalar coercion through each field's canonical CMeta descriptor:
+ * BOOL/SINT/UINT/FLOAT text becomes the corresponding CSerde scalar token
+ * before native decode. String/bytes/enum/container semantics are unchanged.
+ *
+ * No provider selection or parsing occurs here; the caller supplies the exact
+ * CSerde reader for the declared format.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native_format(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindFormat format,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
  * Encode one complete native message as a canonical CSerde MAP.
  *
  * DataBind optional/null state is read only from the exact generated native

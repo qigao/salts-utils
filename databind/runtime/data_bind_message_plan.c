@@ -1578,9 +1578,19 @@ static DataBindStatus message_rollback(
   return original_status;
 }
 
-DataBindStatus data_bind_message_plan_decode_native(
+static DataBindStatus message_xml_text_coerce(
+    const DataBindMessageFieldPlan *field,
+    const DataBindNativeOptions *native_options,
+    size_t workspace_prefix,
+    const cserde_token *input,
+    cserde_token *output,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+static DataBindStatus message_decode_native_impl(
     const DataBindMessagePlan *plan,
     const DataBindNativeOptions *native_options,
+    DataBindFormat format,
+    int format_aware,
     cserde_reader *reader,
     void *destination,
     size_t destination_bytes,
@@ -1600,6 +1610,14 @@ DataBindStatus data_bind_message_plan_decode_native(
   if (!message_diag_header_valid(diagnostic))
     return DATA_BIND_ERR_INVALID_ARG;
   message_diag_clear(diagnostic);
+
+  if (format_aware &&
+      format != DATA_BIND_FORMAT_JSON &&
+      format != DATA_BIND_FORMAT_YAML &&
+      format != DATA_BIND_FORMAT_XML)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Unsupported native MessagePlan input format");
 
   if (plan == NULL || plan->native == NULL ||
       plan->native->data == NULL ||
@@ -1699,8 +1717,15 @@ DataBindStatus data_bind_message_plan_decode_native(
       message_set_presence(base, field, 1);
       message_set_null(base, field, 1);
     } else {
+      cserde_token value_token = token;
+      if (format_aware && format == DATA_BIND_FORMAT_XML) {
+        status = message_xml_text_coerce(
+            field, native_options, bitmap_bytes,
+            &token, &value_token, diagnostic);
+        if (status != DATA_BIND_OK) goto fail;
+      }
       status = message_decode_prefixed_value(
-          plan, field, &field_options, &usage, reader, &token,
+          plan, field, &field_options, &usage, reader, &value_token,
           base, diagnostic);
       if (status != DATA_BIND_OK) goto fail;
     }
@@ -1738,6 +1763,31 @@ fail:
   return message_rollback(
       plan, native_options, destination, destination_bytes,
       diagnostic, status);
+}
+
+DataBindStatus data_bind_message_plan_decode_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  return message_decode_native_impl(
+      plan, native_options, DATA_BIND_FORMAT_JSON, 0,
+      reader, destination, destination_bytes, diagnostic);
+}
+
+DataBindStatus data_bind_message_plan_decode_native_format(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    DataBindFormat format,
+    cserde_reader *reader,
+    void *destination,
+    size_t destination_bytes,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  return message_decode_native_impl(
+      plan, native_options, format, 1,
+      reader, destination, destination_bytes, diagnostic);
 }
 
 
