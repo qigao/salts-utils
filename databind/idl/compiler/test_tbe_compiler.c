@@ -2819,6 +2819,111 @@ spec("tbe_compiler") {
       cleanup_test_file(source_path);
     }
 
+    it("should reject typed C source when native containers lack canonical CSTL providers") {
+      static const char *const schemas[] = {
+          "schema BadUuidList; message Bad { list<uuid> values; }",
+          "schema BadEnumSet; enum State <uint8> { Idle = 0; Ready = 1; } "
+          "message Bad { set<State> states; }",
+          "schema BadUuidMap; message Bad { map<string,uuid> values; }",
+          "schema BadRecordList; message Child { optional uint32 value; } "
+          "message Bad { list<Child> values; }"
+      };
+      size_t i;
+
+      for (i = 0u; i < sizeof(schemas) / sizeof(schemas[0]); ++i) {
+        char schema_path[96];
+        char header_path[96];
+        char source_path[96];
+        tbe_compiler_options_t options = {0};
+
+        snprintf(schema_path, sizeof(schema_path),
+                 "test_tbe_compiler_cstl_reject_%zu.schema", i);
+        snprintf(header_path, sizeof(header_path),
+                 "test_tbe_compiler_cstl_reject_%zu.h", i);
+        snprintf(source_path, sizeof(source_path),
+                 "test_tbe_compiler_cstl_reject_%zu.c", i);
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(source_path);
+        check_equal(write_test_file(schema_path, schemas[i]), 0);
+
+        options.schema_path = schema_path;
+        options.output_path = header_path;
+        options.source_output_path = source_path;
+        options.lang_enum = TBE_COMPILER_LANG_C;
+        check(tbe_compiler_run(&options) != 0);
+        check_null(tt_read_file(header_path, NULL));
+        check_null(tt_read_file(source_path, NULL));
+
+        cleanup_test_file(schema_path);
+        cleanup_test_file(header_path);
+        cleanup_test_file(source_path);
+      }
+    }
+
+    it("should generate only canonical CSTL container storage in typed C source") {
+      const char *schema_path = "test_tbe_compiler_cstl_only.schema";
+      const char *header_path = "test_tbe_compiler_cstl_only.h";
+      const char *source_path = "test_tbe_compiler_cstl_only.c";
+      const char *schema =
+          "schema CanonicalContainers;"
+          "message Header { string name; }"
+          "message Good {"
+          " list<uint32> values;"
+          " set<string> tags;"
+          " map<string,uint32> attrs;"
+          " list<Header> headers;"
+          " map<string,Header> by_name;"
+          " optional list<uint32> optional_values;"
+          " nullable set<string> nullable_tags;"
+          " optional nullable map<string,uint32> optional_attrs;"
+          "}";
+      size_t header_size = 0u;
+      size_t source_size = 0u;
+      char *header = NULL;
+      char *source = NULL;
+      tbe_compiler_options_t options = {
+          .schema_path = schema_path,
+          .output_path = header_path,
+          .source_output_path = source_path,
+          .lang_enum = TBE_COMPILER_LANG_C,
+      };
+
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+      check_equal(write_test_file(schema_path, schema), 0);
+      check_equal(tbe_compiler_run(&options), 0);
+
+      header = tt_read_file(header_path, &header_size);
+      source = tt_read_file(source_path, &source_size);
+      check_not_null(header);
+      check_not_null(source);
+      if (header != NULL) {
+        check(strstr(header, "TBE_TYPED_MANAGED_VEC_DEFINE") == NULL);
+        check(strstr(header, "TBE_TYPED_VEC_DEFINE") == NULL);
+        check_contains(header, "typed(Vec, Good_values_vec_t");
+        check_contains(header, "typed(Set, Good_tags_set_t");
+        check_contains(header, "typed(Map, Good_attrs_map_t");
+        check_contains(header, "typed(Vec, Good_headers_vec_t");
+        check_contains(header, "typed(Map, Good_by_name_map_t");
+        check_contains(header, "typed(Vec, Good_optional_values_vec_t");
+        check_contains(header, "typed(Set, Good_nullable_tags_set_t");
+        check_contains(header, "typed(Map, Good_optional_attrs_map_t");
+      }
+      if (source != NULL) {
+        check(strstr(source, "DATABIND_GENERATED_SEQUENCE_PROVIDER") == NULL);
+        check(strstr(source, "DATABIND_GENERATED_MAP_PROVIDER") == NULL);
+        check(strstr(source, "databindCmetaMap") == NULL);
+      }
+
+      free(header);
+      free(source);
+      cleanup_test_file(schema_path);
+      cleanup_test_file(header_path);
+      cleanup_test_file(source_path);
+    }
+
     it("should reject guest adapter output outside the built-in C generator") {
       const char *output_path = "test_tbe_compiler_guest_invalid.out";
       tbe_compiler_options_t options = {
