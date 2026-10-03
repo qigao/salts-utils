@@ -21,6 +21,12 @@ message NativeHeaderPolicy {
     list<NativeHeader> headers;
 }
 
+message NativeXmlFlat {
+    uint32 id;
+    nullable uint32 score;
+    string name;
+}
+
 message NativeHeaderNestedOnly {
     uint32 id;
     list<NativeHeader> headers;

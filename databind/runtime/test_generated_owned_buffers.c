@@ -237,6 +237,72 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     data_bind_free(codec);
   }
 
+  it("routes only flat generated Message XML through canonical provider") {
+    static const char xml[] =
+        "<NativeXmlFlat>"
+        "<id>9</id><name>alice</name><score>41</score>"
+        "</NativeXmlFlat>";
+    static const char invalid_xml[] =
+        "<NativeXmlFlat><id>bad</id><name>alice</name><score>41</score>"
+        "</NativeXmlFlat>";
+    static const char collection_xml[] =
+        "<NativeHeaderPolicy><id>7</id>"
+        "<headers><name>x-tag</name><value>a</value></headers>"
+        "</NativeHeaderPolicy>";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NativeXmlFlat_t flat = {0};
+    NativeXmlFlat_t unchanged = {0};
+    NativeHeaderPolicy_t collection = {0};
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    NativeXmlFlat_init(&flat);
+    NativeXmlFlat_init(&unchanged);
+    NativeHeaderPolicy_init(&collection);
+
+    check_equal(
+        NativeXmlFlat_from_xml(
+            codec, &flat, xml, sizeof(xml) - 1u, &error),
+        DATA_BIND_OK);
+    check_equal(flat.id, UINT32_C(9));
+    check_not_null(flat.name);
+    if (flat.name != NULL) {
+      check_equal(tstr_len(flat.name), (size_t)5u);
+      check(memcmp(flat.name, "alice", 5u) == 0);
+    }
+    check_equal(flat.score, UINT32_C(41));
+
+    unchanged.id = UINT32_C(77);
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeXmlFlat_from_xml(
+            codec, &unchanged, invalid_xml, sizeof(invalid_xml) - 1u,
+            &error),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(unchanged.id, UINT32_C(77));
+    check_null(unchanged.name);
+    check_equal(unchanged.score, UINT32_C(0));
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeHeaderPolicy_from_xml(
+            codec, &collection, collection_xml, sizeof(collection_xml) - 1u,
+            &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_equal(collection.id, UINT32_C(0));
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_size(&collection.headers),
+        (size_t)0u);
+
+    NativeHeaderPolicy_clear(&collection);
+    NativeXmlFlat_clear(&unchanged);
+    NativeXmlFlat_clear(&flat);
+    data_bind_free(codec);
+  }
+
   it("decodes owning record maps through canonical typed CSTL Map metadata") {
     static const char json[] =
         "{\"id\":7,\"headers\":{"
