@@ -561,6 +561,7 @@ static int wasm_write_host_header(
   if (fprintf(
           file,
           "#ifndef %s\n#define %s\n\n"
+          "#include <data_bind_binding_plan.h>\n"
           "#include <data_bind_native_binding.h>\n"
           "#include <stddef.h>\n#include <stdint.h>\n\n"
           "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n"
