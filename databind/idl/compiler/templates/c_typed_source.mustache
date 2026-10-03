@@ -694,6 +694,14 @@ static DataBindStatus {{schema.schema_name}}_message_workspace_open(
         return status;
     }
 
+    /*
+     * descriptor_nodes is a compile-time graph-admission bound, not a runtime
+     * payload cardinality limit. Reuse exact measured scratch while preserving
+     * the historical generated conversion contract: list/set/map element count
+     * is not implicitly capped by the number of descriptor nodes.
+     */
+    options.max_items = SIZE_MAX;
+
     if (include_message_bitmap) {
         size_t field_count =
             data_bind_message_plan_field_count(plan);
