@@ -223,6 +223,7 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(field_projection_text(field, "native_c_type"),
                             "Shape_value_map_t");
                 check_not_null(field_projection_child(field, "native_cstl_map"));
+                check_null(field_projection_text(field, "native_map_name"));
                 check_not_null(field_projection_child(record, "native_cstl_storage"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
