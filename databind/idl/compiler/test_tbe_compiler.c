@@ -2767,6 +2767,9 @@ spec("tbe_compiler") {
         check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
         check_contains(source, "tbe_typed_descriptor_parse(codec");
         check_contains(source, "tbe_typed_descriptor_serialize_binary");
+        check_contains(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)");
+        check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
+        check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
       }
 
       free(header);
