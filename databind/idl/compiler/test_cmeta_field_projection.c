@@ -705,7 +705,9 @@ suite("compiler_cmeta_field_projection") {
         check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
         check_null(field_projection_child(owner, "cmeta_lifecycle_supported"));
         check_null(field_projection_text(items, "native_cstl_sequence"));
-        check_not_null(field_projection_text(items, "native_sequence_name"));
+        check_null(field_projection_text(items, "native_sequence_name"));
+        check_equal(field_projection_text(items, "cmeta_native_requirement"),
+                    "deferred_container");
         check_equal(field_projection_text(items, "native_element_type_ref"),
                     "&DeferredItem_CMETA_TYPE");
         check_equal(field_projection_text(items, "native_element_data_ref"),
@@ -724,9 +726,6 @@ suite("compiler_cmeta_field_projection") {
         Node *right = field_projection_add_record(root, "messages", "A");
         Node *left_field = field_projection_add_field(left, "A_B", "C", "bytes");
         Node *right_field = field_projection_add_field(right, "A", "B_C", "bytes");
-        const char *left_symbol;
-        const char *right_symbol;
-
         check_not_null(left_field);
         check_not_null(right_field);
         if (!left_field || !right_field) {
@@ -804,7 +803,7 @@ suite("compiler_cmeta_field_projection") {
         node_free(root);
     }
 
-    it("length-encodes private map provider identifiers") {
+    it("keeps lifecycle-incomplete record maps off typed CSTL promotion") {
         Node *root = create_node_map("root");
         Node *item = field_projection_add_record(root, "composites", "PrivateItem");
         Node *item_field =
@@ -838,17 +837,20 @@ suite("compiler_cmeta_field_projection") {
 #undef COMPLETE_MAP
 
         annotate_language_types_from_tree(root);
-        left_symbol = field_projection_text(left_field, "native_map_name");
-        right_symbol = field_projection_text(right_field, "native_map_name");
-        check_equal(left_symbol, "databindCmetaMap3xA_B1xC");
-        check_equal(right_symbol, "databindCmetaMap1xA3xB_C");
-        check(strcmp(left_symbol, right_symbol) != 0);
-        check_equal(field_projection_text(left_field, "native_data_symbol"),
-                    "databindCmetaMap3xA_B1xCData");
-        check_equal(field_projection_text(right_field, "native_type_symbol"),
-                    "databindCmetaMap1xA3xB_CType");
+        check_null(field_projection_text(left_field, "native_map_name"));
+        check_null(field_projection_text(right_field, "native_map_name"));
+        check_null(field_projection_text(left_field, "native_data_symbol"));
+        check_null(field_projection_text(right_field, "native_type_symbol"));
         check_null(field_projection_text(left_field, "native_cstl_map"));
         check_null(field_projection_text(right_field, "native_cstl_map"));
+        check_equal(field_projection_text(left_field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_equal(field_projection_text(right_field, "cmeta_native_requirement"),
+                    "deferred_container");
+        check_equal(field_projection_text(left_field, "native_map_value_data_ref"),
+                    "&PrivateItem_CMETA_DATA");
+        check_equal(field_projection_text(right_field, "native_map_value_type_ref"),
+                    "&PrivateItem_CMETA_TYPE");
         check_null(field_projection_child(item, "cmeta_lifecycle_supported"));
         check_not_null(field_projection_child(left, "cmeta_graph_supported"));
         check_not_null(field_projection_child(right, "cmeta_graph_supported"));
