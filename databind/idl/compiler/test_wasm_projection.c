@@ -40,6 +40,20 @@ static int put_uleb(
   return 1;
 }
 
+static int put_sleb32(
+    unsigned char *out, size_t cap, size_t *used, int32_t value) {
+  int more = 1;
+  while (more) {
+    uint8_t byte = (uint8_t)(value & 0x7f);
+    int sign = (byte & 0x40u) != 0u;
+    value >>= 7;
+    more = !((value == 0 && !sign) || (value == -1 && sign));
+    if (more) byte |= 0x80u;
+    if (!put_u8(out, cap, used, byte)) return 0;
+  }
+  return 1;
+}
+
 static int put_bytes(
     unsigned char *out, size_t cap, size_t *used,
     const void *data, size_t size) {
@@ -59,40 +73,172 @@ static int put_name(
          put_bytes(out, cap, used, name, length);
 }
 
+static int put_section(
+    unsigned char *out, size_t cap, size_t *used, uint8_t id,
+    const unsigned char *payload, size_t payload_size) {
+  return payload_size <= UINT32_MAX &&
+         put_u8(out, cap, used, id) &&
+         put_uleb(out, cap, used, (uint32_t)payload_size) &&
+         put_bytes(out, cap, used, payload, payload_size);
+}
+
 static int write_core_add_module(
     const char *path, const char *export_name) {
   static const unsigned char header[] = {
       0x00u,0x61u,0x73u,0x6du,0x01u,0x00u,0x00u,0x00u};
-  static const unsigned char type_section[] = {
-      0x01u,0x07u,0x01u,0x60u,0x02u,0x7fu,0x7fu,0x01u,0x7fu};
-  static const unsigned char func_section[] = {
-      0x03u,0x02u,0x01u,0x00u};
-  static const unsigned char code_section[] = {
-      0x0au,0x09u,0x01u,0x07u,0x00u,
-      0x20u,0x00u,0x20u,0x01u,0x6au,0x0bu};
-  unsigned char bytes[512];
-  unsigned char export_payload[256];
+  unsigned char bytes[2048];
+  unsigned char section[1024];
+  unsigned char body[512];
   size_t used = 0u;
-  size_t export_used = 0u;
+  size_t section_used = 0u;
+  size_t body_used = 0u;
   FILE *file;
 
-  if (!put_bytes(bytes, sizeof(bytes), &used, header, sizeof(header)) ||
-      !put_bytes(bytes, sizeof(bytes), &used,
-                 type_section, sizeof(type_section)) ||
-      !put_bytes(bytes, sizeof(bytes), &used,
-                 func_section, sizeof(func_section)) ||
-      !put_uleb(export_payload, sizeof(export_payload), &export_used, 1u) ||
-      !put_name(export_payload, sizeof(export_payload), &export_used,
-                export_name) ||
-      !put_u8(export_payload, sizeof(export_payload), &export_used, 0x00u) ||
-      !put_uleb(export_payload, sizeof(export_payload), &export_used, 0u) ||
-      export_used > UINT32_MAX ||
-      !put_u8(bytes, sizeof(bytes), &used, 0x07u) ||
-      !put_uleb(bytes, sizeof(bytes), &used, (uint32_t)export_used) ||
-      !put_bytes(bytes, sizeof(bytes), &used,
-                 export_payload, export_used) ||
-      !put_bytes(bytes, sizeof(bytes), &used,
-                 code_section, sizeof(code_section)))
+  if (!put_bytes(bytes, sizeof(bytes), &used, header, sizeof(header)))
+    return 0;
+
+  /* type0 realloc(i32,i32,i32,i32)->i32; type1 op(i32,i32)->i32 */
+  if (!put_uleb(section, sizeof(section), &section_used, 2u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x60u) ||
+      !put_uleb(section, sizeof(section), &section_used, 4u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x60u) ||
+      !put_uleb(section, sizeof(section), &section_used, 2u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_section(bytes, sizeof(bytes), &used, 1u,
+                   section, section_used))
+    return 0;
+
+  section_used = 0u;
+  if (!put_uleb(section, sizeof(section), &section_used, 2u) ||
+      !put_uleb(section, sizeof(section), &section_used, 0u) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_section(bytes, sizeof(bytes), &used, 3u,
+                   section, section_used))
+    return 0;
+
+  /* one memory32 page */
+  section_used = 0u;
+  if (!put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x00u) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_section(bytes, sizeof(bytes), &used, 5u,
+                   section, section_used))
+    return 0;
+
+  /* mutable i32 bump pointer = 64 */
+  section_used = 0u;
+  if (!put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x7fu) ||
+      !put_u8(section, sizeof(section), &section_used, 0x01u) ||
+      !put_u8(section, sizeof(section), &section_used, 0x41u) ||
+      !put_sleb32(section, sizeof(section), &section_used, 64) ||
+      !put_u8(section, sizeof(section), &section_used, 0x0bu) ||
+      !put_section(bytes, sizeof(bytes), &used, 6u,
+                   section, section_used))
+    return 0;
+
+  /* memory, cabi_realloc, Service operation */
+  section_used = 0u;
+  if (!put_uleb(section, sizeof(section), &section_used, 3u) ||
+      !put_name(section, sizeof(section), &section_used, "memory") ||
+      !put_u8(section, sizeof(section), &section_used, 0x02u) ||
+      !put_uleb(section, sizeof(section), &section_used, 0u) ||
+      !put_name(section, sizeof(section), &section_used, "cabi_realloc") ||
+      !put_u8(section, sizeof(section), &section_used, 0x00u) ||
+      !put_uleb(section, sizeof(section), &section_used, 0u) ||
+      !put_name(section, sizeof(section), &section_used, export_name) ||
+      !put_u8(section, sizeof(section), &section_used, 0x00u) ||
+      !put_uleb(section, sizeof(section), &section_used, 1u) ||
+      !put_section(bytes, sizeof(bytes), &used, 7u,
+                   section, section_used))
+    return 0;
+
+  /* cabi_realloc: return old bump; bump += 64. */
+  body_used = 0u;
+  if (!put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x23u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x23u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 64) ||
+      !put_u8(body, sizeof(body), &body_used, 0x6au) ||
+      !put_u8(body, sizeof(body), &body_used, 0x24u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x0bu))
+    return 0;
+
+  section_used = 0u;
+  if (!put_uleb(section, sizeof(section), &section_used, 2u) ||
+      !put_uleb(section, sizeof(section), &section_used,
+                (uint32_t)body_used) ||
+      !put_bytes(section, sizeof(section), &section_used,
+                 body, body_used))
+    return 0;
+
+  /*
+   * Service operation:
+   * request wire = two little-endian u32 values.
+   * result envelope at 256 = status(0) + response wire(sum).
+   * result pair at 192 = {256, 8}; return 192.
+   */
+  body_used = 0u;
+  if (!put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 256) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 0) ||
+      !put_u8(body, sizeof(body), &body_used, 0x36u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 260) ||
+      !put_u8(body, sizeof(body), &body_used, 0x20u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x28u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x20u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x28u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 4u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x6au) ||
+      !put_u8(body, sizeof(body), &body_used, 0x36u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 256) ||
+      !put_u8(body, sizeof(body), &body_used, 0x36u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 0u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 8) ||
+      !put_u8(body, sizeof(body), &body_used, 0x36u) ||
+      !put_uleb(body, sizeof(body), &body_used, 2u) ||
+      !put_uleb(body, sizeof(body), &body_used, 4u) ||
+      !put_u8(body, sizeof(body), &body_used, 0x41u) ||
+      !put_sleb32(body, sizeof(body), &body_used, 192) ||
+      !put_u8(body, sizeof(body), &body_used, 0x0bu) ||
+      !put_uleb(section, sizeof(section), &section_used,
+                (uint32_t)body_used) ||
+      !put_bytes(section, sizeof(section), &section_used,
+                 body, body_used) ||
+      !put_section(bytes, sizeof(bytes), &used, 10u,
+                   section, section_used))
     return 0;
 
   file = fopen(path, "wb");
@@ -208,6 +354,12 @@ spec("DataBind WASM projection backend") {
     check_not_null(strstr(
         generated.base, "turbowasm_component_instance_invoke"));
     check_not_null(strstr(
+        generated.base, "TURBOWASM_COMPONENT_HOST_LIST"));
+    check_not_null(strstr(
+        generated.base, "AddRequest_builder_bind"));
+    check_not_null(strstr(
+        generated.base, "AddResponse_view_bind"));
+    check_not_null(strstr(
         generated.base, "DataBindNativeExecution"));
     check_not_null(strstr(
         generated.base, "WasmProjection.Calc.Add"));
@@ -215,14 +367,46 @@ spec("DataBind WASM projection backend") {
 
     check_equal(salts_fs_read_file(guest_h, &generated), 0);
     check_not_null(strstr(generated.base, export_symbol));
-    check_not_null(strstr(
+    check_not_null(strstr(generated.base, "cabi_realloc"));
+    check_not_null(strstr(generated.base, "request_offset"));
+    check_not_null(strstr(generated.base, "request_length"));
+    check_null(strstr(generated.base, "result_pair_offset"));
+    check_null(strstr(
         generated.base, "uint32_t left, uint32_t right"));
     salts_fs_buf_free(&generated);
 
     cleanup_outputs(component, host_h, host_c, guest_h, core);
   }
 
-  it("rejects optional, typed-error and multi-field response shapes") {
+  it("carries multi-field fixed responses through one canonical wire result") {
+    static const char core[] = "databind_wasm_multi_core.wasm";
+    static const char component[] = "databind_wasm_multi.wasm";
+    static const char host_h[] = "databind_wasm_multi.wasm.h";
+    static const char host_c[] = "databind_wasm_multi.wasm.c";
+    static const char guest_h[] = "databind_wasm_multi.wasm_guest.h";
+    static const char export_symbol[] =
+        "databind_9_WasmMulti_4_Calc_3_Add";
+    salts_fs_buf_t generated = {0};
+
+    cleanup_outputs(component, host_h, host_c, guest_h, core);
+    check_true(write_core_add_module(core, export_symbol));
+    check_equal(run_projection(
+                    WASM_MULTI_RESPONSE_SCHEMA,
+                    "WasmMulti.Calculator",
+                    core, component, host_h, host_c, guest_h),
+                0);
+
+    check_equal(salts_fs_read_file(host_c, &generated), 0);
+    check_not_null(strstr(generated.base, "AddResponse_view_bind"));
+    check_not_null(strstr(generated.base, "response->value"));
+    check_not_null(strstr(generated.base, "response->other"));
+    check_null(strstr(generated.base, "TURBOWASM_COMPONENT_HOST_U32"));
+    salts_fs_buf_free(&generated);
+
+    cleanup_outputs(component, host_h, host_c, guest_h, core);
+  }
+
+  it("rejects optional and typed-error shapes while preserving wire ABI") {
     static const char core[] = "databind_wasm_reject_core.wasm";
     static const char component[] = "databind_wasm_reject.wasm";
     static const char host_h[] = "databind_wasm_reject.wasm.h";
@@ -246,13 +430,6 @@ spec("DataBind WASM projection backend") {
     check_equal(run_projection(
                     WASM_ERROR_SCHEMA,
                     "WasmError.Calculator",
-                    core, component, host_h, host_c, guest_h),
-                -1);
-    check(salts_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
-
-    check_equal(run_projection(
-                    WASM_MULTI_RESPONSE_SCHEMA,
-                    "WasmMulti.Calculator",
                     core, component, host_h, host_c, guest_h),
                 -1);
     check(salts_fs_access(component, SALTS_FS_ACCESS_EXISTS) != 0);
