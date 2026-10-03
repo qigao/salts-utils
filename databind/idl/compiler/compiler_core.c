@@ -1035,8 +1035,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
             (value_scalar != NULL && value_scalar->native_data_symbol != NULL) ||
             (value_type != NULL && strcmp(value_type, "string") == 0);
         if (canonical_cstl_value &&
-            !tbe_compiler_has_child(field, "is_optional") &&
-            !tbe_compiler_has_child(field, "is_nullable") &&
             tbe_compiler_string_value(field, "native_map_key_type_ref") != NULL &&
             tbe_compiler_string_value(field, "native_map_key_data_ref") != NULL &&
             tbe_compiler_string_value(field, "native_map_value_type_ref") != NULL &&
@@ -1084,8 +1082,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
       tbe_compiler_set_string(field, "typed_needs_vector", "1");
       if (semantic->kind == CMETA_DATA_SEQUENCE &&
           tbe_compiler_has_child(field, "is_list") &&
-          !tbe_compiler_has_child(field, "is_optional") &&
-          !tbe_compiler_has_child(field, "is_nullable") &&
           tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
           tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
         const tbe_compiler_scalar_projection_t *element_scalar =
@@ -1129,8 +1125,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
 
       if (semantic->kind == CMETA_DATA_SET &&
           tbe_compiler_has_child(field, "is_set") &&
-          !tbe_compiler_has_child(field, "is_optional") &&
-          !tbe_compiler_has_child(field, "is_nullable") &&
           tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
           tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
         const tbe_compiler_scalar_projection_t *element_scalar =
@@ -1864,8 +1858,6 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         char symbol[320];
 
         if (tbe_compiler_has_child(field, "is_map") &&
-            !tbe_compiler_has_child(field, "is_optional") &&
-            !tbe_compiler_has_child(field, "is_nullable") &&
             tbe_compiler_string_value(field, "native_map_name") != NULL) {
           const char *value_type =
               tbe_compiler_string_value(field, "value_type");
@@ -1935,8 +1927,6 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         }
 
         if (!tbe_compiler_has_child(field, "is_list") ||
-            tbe_compiler_has_child(field, "is_optional") ||
-            tbe_compiler_has_child(field, "is_nullable") ||
             tbe_compiler_string_value(field, "native_sequence_name") == NULL)
           continue;
 
