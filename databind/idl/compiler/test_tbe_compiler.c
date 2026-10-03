@@ -2774,8 +2774,8 @@ spec("tbe_compiler") {
         check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
         check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)");
-        check_contains(source, "data_bind_json_format_provider()");
-        check_contains(source, "data_bind_yaml_format_provider()");
+        check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON)");
+        check_contains(source, "data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML)");
         check_contains(source, "data_bind_message_plan_decode_native(");
         check_contains(source, "data_bind_message_plan_encode_native(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
