@@ -3,7 +3,12 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "data_bind_format_provider.h"
+#include "data_bind_message_plan.h"
+#include "data_bind_native.h"
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
@@ -565,6 +570,501 @@ static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
 {{/groups}}{{#messages}}    {{name}}_CMETA_INIT_FIELDS();
 {{/messages}}}
 
+
+typedef struct {{schema.schema_name}}_message_workspace_s {
+    DataBindNativeOptions options;
+    void *allocation;
+} {{schema.schema_name}}_message_workspace_t;
+
+typedef struct {{schema.schema_name}}_json_output_s {
+    char *data;
+    size_t length;
+    size_t capacity;
+    DataBindStatus status;
+} {{schema.schema_name}}_json_output_t;
+
+static DataBindStatus {{schema.schema_name}}_message_diag_error(
+    DataBindError *error, DataBindStatus status, const char *type_name,
+    const DataBindMessagePlanDiagnostic *diagnostic) {
+    const char *path = type_name;
+    const char *message = "Generated MessagePlan conversion failed";
+    if (diagnostic != NULL) {
+        if (diagnostic->schema_field[0] != '\0')
+            path = diagnostic->schema_field;
+        if (diagnostic->message[0] != '\0')
+            message = diagnostic->message;
+    }
+    return {{schema.schema_name}}_schema_codec_error(
+        error, status, path, message);
+}
+
+static int {{schema.schema_name}}_message_state_bindings_valid(
+    const DataBindNativeStateBinding *bindings, size_t count,
+    size_t object_size) {
+    size_t i;
+    if (count != 0u && bindings == NULL) return 0;
+    for (i = 0u; i < count; ++i) {
+        if (bindings[i].size < sizeof(bindings[i]) ||
+            bindings[i].bit >= 8u ||
+            bindings[i].byte_offset >= object_size)
+            return 0;
+    }
+    return 1;
+}
+
+static int {{schema.schema_name}}_message_state_copy(
+    const DataBindNativeStateBinding *bindings, size_t count,
+    unsigned char *destination, const unsigned char *source,
+    size_t object_size) {
+    size_t i;
+    if (count != 0u && (bindings == NULL || destination == NULL || source == NULL))
+        return 0;
+    for (i = 0u; i < count; ++i) {
+        const DataBindNativeStateBinding *binding = &bindings[i];
+        unsigned char mask;
+        if (binding->size < sizeof(*binding) || binding->bit >= 8u ||
+            binding->byte_offset >= object_size)
+            return 0;
+        mask = (unsigned char)(1u << binding->bit);
+        if ((source[binding->byte_offset] & mask) != 0u)
+            destination[binding->byte_offset] |= mask;
+    }
+    return 1;
+}
+
+static int {{schema.schema_name}}_message_state_clear(
+    const DataBindNativeStateBinding *bindings, size_t count,
+    unsigned char *object, size_t object_size) {
+    size_t i;
+    if (count != 0u && (bindings == NULL || object == NULL))
+        return 0;
+    for (i = 0u; i < count; ++i) {
+        const DataBindNativeStateBinding *binding = &bindings[i];
+        unsigned char mask;
+        if (binding->size < sizeof(*binding) || binding->bit >= 8u ||
+            binding->byte_offset >= object_size)
+            return 0;
+        mask = (unsigned char)(1u << binding->bit);
+        object[binding->byte_offset] &= (unsigned char)~mask;
+    }
+    return 1;
+}
+
+static void {{schema.schema_name}}_message_workspace_close(
+    {{schema.schema_name}}_message_workspace_t *workspace) {
+    if (workspace == NULL) return;
+    free(workspace->allocation);
+    *workspace = ({{schema.schema_name}}_message_workspace_t){0};
+}
+
+static DataBindStatus {{schema.schema_name}}_message_workspace_open(
+    const DataBindNativeTypeBinding *binding,
+    const DataBindMessagePlan *plan,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    int include_message_bitmap,
+    {{schema.schema_name}}_message_workspace_t *out,
+    DataBindError *error) {
+    DataBindNativeOptions options = DATA_BIND_NATIVE_OPTIONS_INIT;
+    DataBindNativeRequirements requirements = DATA_BIND_NATIVE_REQUIREMENTS_INIT;
+    DataBindNativeDiagnostic diagnostic = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    size_t probe_bytes = 0u;
+    size_t bitmap_bytes = 0u;
+    size_t total_bytes;
+    size_t alignment_extra;
+    void *probe = NULL;
+    void *storage = NULL;
+    DataBindStatus status;
+
+    if (out == NULL || binding == NULL || binding->data == NULL ||
+        descriptor_depth == 0u || descriptor_nodes == 0u)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG,
+            binding != NULL ? binding->idl_type_name : NULL,
+            "Invalid generated native workspace request");
+    *out = ({{schema.schema_name}}_message_workspace_t){0};
+
+    options.max_depth = descriptor_depth;
+    options.max_items = descriptor_nodes;
+    options.max_owned_bytes = SIZE_MAX;
+
+    status = data_bind_native_probe_workspace_size(
+        descriptor_depth, &probe_bytes);
+    if (status != DATA_BIND_OK)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, status, binding->idl_type_name,
+            "Unable to size generated native probe workspace");
+
+    probe = malloc(probe_bytes != 0u ? probe_bytes : 1u);
+    if (probe == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, binding->idl_type_name,
+            "Unable to allocate generated native probe workspace");
+
+    options.workspace = probe;
+    options.workspace_bytes = probe_bytes;
+    status = data_bind_native_measure(
+        &options, binding->data, &requirements, &diagnostic);
+    free(probe);
+    probe = NULL;
+    if (status != DATA_BIND_OK) {
+        if (error != NULL) *error = diagnostic.error;
+        return status;
+    }
+
+    /*
+     * descriptor_nodes is a compile-time graph-admission bound, not a runtime
+     * payload cardinality limit. Reuse exact measured scratch while preserving
+     * the historical generated conversion contract: list/set/map element count
+     * is not implicitly capped by the number of descriptor nodes.
+     */
+    options.max_items = SIZE_MAX;
+
+    if (include_message_bitmap) {
+        size_t field_count =
+            data_bind_message_plan_field_count(plan);
+        if (field_count > SIZE_MAX - 7u)
+            return {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+                "Generated MessagePlan field bitmap size overflow");
+        bitmap_bytes = (field_count + 7u) / 8u;
+    }
+
+    if (requirements.workspace_alignment == 0u ||
+        requirements.decode_bytes > SIZE_MAX - bitmap_bytes)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+            "Generated native workspace size overflow");
+    total_bytes = bitmap_bytes + requirements.decode_bytes;
+    alignment_extra = requirements.workspace_alignment - 1u;
+    if (alignment_extra > SIZE_MAX - total_bytes)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, binding->idl_type_name,
+            "Generated native workspace alignment overflow");
+    total_bytes += alignment_extra;
+
+    storage = malloc(total_bytes != 0u ? total_bytes : 1u);
+    if (storage == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, binding->idl_type_name,
+            "Unable to allocate generated native conversion workspace");
+
+    options.workspace = storage;
+    options.workspace_bytes = total_bytes;
+    out->options = options;
+    out->allocation = storage;
+    return DATA_BIND_OK;
+}
+
+static DataBindStatus {{schema.schema_name}}_message_from_text(
+    DataBind *codec,
+    const char *type_name,
+    DataBindNativeTypeBindingResolverFn resolve,
+    const DataBindFormatProvider *provider,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    void *destination,
+    size_t object_size,
+    const char *data,
+    size_t len,
+    DataBindError *error) {
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindFormatReader reader = DATA_BIND_FORMAT_READER_INIT;
+    {{schema.schema_name}}_message_workspace_t workspace = {0};
+    DataBindStatus status;
+    DataBindStatus close_status;
+    cmeta_status cmeta_result;
+    void *temporary_allocation = NULL;
+    void *temporary = NULL;
+    size_t temporary_bytes;
+    size_t temporary_align;
+    uintptr_t temporary_base;
+    size_t temporary_padding;
+    int temporary_started = 0;
+
+    if (codec == NULL || type_name == NULL || resolve == NULL ||
+        provider == NULL || destination == NULL ||
+        data == NULL || object_size == 0u)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, type_name,
+            "Invalid generated text-to-native arguments");
+
+    status = resolve(&binding, error);
+    if (status != DATA_BIND_OK) return status;
+    if (binding.data == NULL || binding.data->storage_type == NULL ||
+        binding.data->storage_type->size != object_size ||
+        binding.data->storage_type->align == 0u ||
+        !cmeta_data_value_move_supported(binding.data) ||
+        !{{schema.schema_name}}_message_state_bindings_valid(
+            binding.presence, binding.presence_count, object_size) ||
+        !{{schema.schema_name}}_message_state_bindings_valid(
+            binding.nulls, binding.null_count, object_size))
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated Message native graph is not publishable");
+
+    temporary_align = binding.data->storage_type->align;
+    if (temporary_align - 1u > SIZE_MAX - object_size)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, type_name,
+            "Generated native staging size overflow");
+    temporary_bytes = object_size + temporary_align - 1u;
+    temporary_allocation = malloc(
+        temporary_bytes != 0u ? temporary_bytes : 1u);
+    if (temporary_allocation == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, type_name,
+            "Unable to allocate generated native staging");
+    temporary_base = (uintptr_t)temporary_allocation;
+    temporary_padding = (size_t)(temporary_base % temporary_align);
+    if (temporary_padding != 0u)
+        temporary_padding = temporary_align - temporary_padding;
+    temporary = (unsigned char *)temporary_allocation + temporary_padding;
+    memset(temporary, 0, object_size);
+
+    status = data_bind_message_plan_compile(
+        codec, type_name, &binding, &plan, &diagnostic);
+    if (status != DATA_BIND_OK) {
+        status = {{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+        goto cleanup;
+    }
+
+    status = {{schema.schema_name}}_message_workspace_open(
+        &binding, plan, descriptor_depth, descriptor_nodes, 1,
+        &workspace, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_format_reader_open(
+        provider, data, len, descriptor_depth, &reader, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    temporary_started = 1;
+    status = data_bind_message_plan_decode_native(
+        plan, &workspace.options, reader.reader,
+        temporary, object_size, &diagnostic);
+    close_status = data_bind_format_reader_close(&reader);
+    if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, close_status, type_name,
+            "Generated format reader close failed");
+    else if (status != DATA_BIND_OK)
+        (void){{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    cmeta_result = cmeta_data_value_restore_zero(binding.data, destination);
+    if (cmeta_result != CMETA_OK) {
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_RUNTIME, type_name,
+            "Generated destination could not restore semantic zero");
+        goto cleanup;
+    }
+    if (!{{schema.schema_name}}_message_state_clear(
+            binding.presence, binding.presence_count,
+            (unsigned char *)destination, object_size) ||
+        !{{schema.schema_name}}_message_state_clear(
+            binding.nulls, binding.null_count,
+            (unsigned char *)destination, object_size)) {
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated destination state overlay is invalid");
+        goto cleanup;
+    }
+
+    cmeta_result = cmeta_data_value_move(
+        binding.data, destination, temporary);
+    if (cmeta_result != CMETA_OK) {
+        (void)cmeta_data_value_restore_zero(binding.data, destination);
+        (void){{schema.schema_name}}_message_state_clear(
+            binding.presence, binding.presence_count,
+            (unsigned char *)destination, object_size);
+        (void){{schema.schema_name}}_message_state_clear(
+            binding.nulls, binding.null_count,
+            (unsigned char *)destination, object_size);
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_RUNTIME, type_name,
+            "Generated native value publication failed");
+        goto cleanup;
+    }
+
+    if (!{{schema.schema_name}}_message_state_copy(
+            binding.presence, binding.presence_count,
+            (unsigned char *)destination,
+            (const unsigned char *)temporary, object_size) ||
+        !{{schema.schema_name}}_message_state_copy(
+            binding.nulls, binding.null_count,
+            (unsigned char *)destination,
+            (const unsigned char *)temporary, object_size)) {
+        (void)cmeta_data_value_restore_zero(binding.data, destination);
+        (void){{schema.schema_name}}_message_state_clear(
+            binding.presence, binding.presence_count,
+            (unsigned char *)destination, object_size);
+        (void){{schema.schema_name}}_message_state_clear(
+            binding.nulls, binding.null_count,
+            (unsigned char *)destination, object_size);
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated native state overlay is invalid");
+        goto cleanup;
+    }
+
+    memset(temporary, 0, object_size);
+    status = {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_OK, NULL, NULL);
+
+cleanup:
+    if (reader.provider != NULL)
+        (void)data_bind_format_reader_close(&reader);
+    if (status != DATA_BIND_OK && temporary != NULL && temporary_started) {
+        (void)cmeta_data_value_restore_zero(binding.data, temporary);
+        memset(temporary, 0, object_size);
+    }
+    free(temporary_allocation);
+    {{schema.schema_name}}_message_workspace_close(&workspace);
+    data_bind_message_plan_free(plan);
+    return status;
+}
+
+static int {{schema.schema_name}}_json_output_write(
+    const void *data, size_t len, void *user) {
+    {{schema.schema_name}}_json_output_t *output =
+        ({{schema.schema_name}}_json_output_t *)user;
+    size_t required;
+    size_t capacity;
+    char *resized;
+
+    if (output == NULL || (data == NULL && len != 0u)) return -1;
+    if (output->status != DATA_BIND_OK) return -1;
+    if (len > SIZE_MAX - output->length - 1u) {
+        output->status = DATA_BIND_ERR_LIMIT;
+        return -1;
+    }
+    required = output->length + len + 1u;
+    if (required > output->capacity) {
+        capacity = output->capacity != 0u ? output->capacity : 128u;
+        while (capacity < required) {
+            if (capacity > SIZE_MAX / 2u) {
+                capacity = required;
+                break;
+            }
+            capacity *= 2u;
+        }
+        resized = (char *)realloc(output->data, capacity);
+        if (resized == NULL) {
+            output->status = DATA_BIND_ERR_OOM;
+            return -1;
+        }
+        output->data = resized;
+        output->capacity = capacity;
+    }
+    if (len != 0u)
+        memcpy(output->data + output->length, data, len);
+    output->length += len;
+    output->data[output->length] = '\0';
+    return 0;
+}
+
+static DataBindStatus {{schema.schema_name}}_message_to_json(
+    DataBind *codec,
+    const char *type_name,
+    DataBindNativeTypeBindingResolverFn resolve,
+    size_t descriptor_depth,
+    size_t descriptor_nodes,
+    const void *object,
+    size_t object_size,
+    char **out,
+    size_t *out_len,
+    DataBindError *error) {
+    DataBindNativeTypeBinding binding =
+        DATA_BIND_NATIVE_TYPE_BINDING_INIT(NULL, NULL);
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    DataBindFormatWriter writer = DATA_BIND_FORMAT_WRITER_INIT;
+    {{schema.schema_name}}_message_workspace_t workspace = {0};
+    {{schema.schema_name}}_json_output_t output = {0};
+    DataBindStatus status;
+    DataBindStatus close_status;
+
+    if (out != NULL) *out = NULL;
+    if (out_len != NULL) *out_len = 0u;
+    if (codec == NULL || type_name == NULL || resolve == NULL ||
+        object == NULL || object_size == 0u || out == NULL || out_len == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_INVALID_ARG, type_name,
+            "Invalid generated native-to-JSON arguments");
+
+    status = resolve(&binding, error);
+    if (status != DATA_BIND_OK) return status;
+    if (binding.data == NULL || binding.data->storage_type == NULL ||
+        binding.data->storage_type->size != object_size)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_SCHEMA, type_name,
+            "Generated Message native graph is invalid");
+
+    status = data_bind_message_plan_compile(
+        codec, type_name, &binding, &plan, &diagnostic);
+    if (status != DATA_BIND_OK)
+        return {{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+
+    status = {{schema.schema_name}}_message_workspace_open(
+        &binding, plan, descriptor_depth, descriptor_nodes, 0,
+        &workspace, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_format_writer_open(
+        data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON),
+        {{schema.schema_name}}_json_output_write, &output,
+        descriptor_depth, &writer, error);
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    status = data_bind_message_plan_encode_native(
+        plan, &workspace.options, object, object_size,
+        writer.writer, &diagnostic);
+    close_status = data_bind_format_writer_close(&writer, error);
+    if (status == DATA_BIND_OK && close_status != DATA_BIND_OK)
+        status = close_status;
+    else if (status != DATA_BIND_OK)
+        (void){{schema.schema_name}}_message_diag_error(
+            error, status, type_name, &diagnostic);
+
+    if (output.status != DATA_BIND_OK)
+        status = {{schema.schema_name}}_schema_codec_error(
+            error, output.status, type_name,
+            "Generated JSON output buffer failed");
+    if (status != DATA_BIND_OK) goto cleanup;
+
+    if (output.data == NULL) {
+        output.data = (char *)malloc(1u);
+        if (output.data == NULL) {
+            status = {{schema.schema_name}}_schema_codec_error(
+                error, DATA_BIND_ERR_OOM, type_name,
+                "Unable to allocate generated JSON output");
+            goto cleanup;
+        }
+        output.data[0] = '\0';
+    }
+    *out = output.data;
+    *out_len = output.length;
+    output.data = NULL;
+    status = {{schema.schema_name}}_schema_codec_error(
+        error, DATA_BIND_OK, NULL, NULL);
+
+cleanup:
+    if (writer.provider != NULL)
+        (void)data_bind_format_writer_close(&writer, error);
+    free(output.data);
+    {{schema.schema_name}}_message_workspace_close(&workspace);
+    data_bind_message_plan_free(plan);
+    return status;
+}
+
 static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     DataBindError *error, const char *type_name) {
     if (error != NULL && error->size >= sizeof(error->size)) {
@@ -766,6 +1266,140 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
     void name##_clear(name##_t *object) { tbe_typed_clear(&name##_TYPED_TYPE, object); } \
     TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)
 
+#define DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE(name) \
+    void name##_init(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        if (object != NULL) { \
+            memset(object, 0, sizeof(*object)); \
+            if (cmeta_data_value_init_zero(&name##_CMETA_DATA, object) != CMETA_OK) \
+                memset(object, 0, sizeof(*object)); \
+        } \
+    } \
+    void name##_clear(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        if (object != NULL) { \
+            (void)cmeta_data_value_restore_zero(&name##_CMETA_DATA, object); \
+            memset(object, 0, sizeof(*object)); \
+        } \
+    }
+
+#define DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(name, depth_, nodes_) \
+    DataBindStatus name##_from_json(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return {{schema.schema_name}}_message_from_text( \
+            codec, #name, name##__databind_message_native_binding, \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON), (size_t)(depth_), (size_t)(nodes_), \
+            object, sizeof(*object), data, len, error); \
+    } \
+    DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return {{schema.schema_name}}_message_from_text( \
+            codec, #name, name##__databind_message_native_binding, \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML), (size_t)(depth_), (size_t)(nodes_), \
+            object, sizeof(*object), data, len, error); \
+    } \
+    DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return {{schema.schema_name}}_message_to_json( \
+            codec, #name, name##__databind_message_native_binding, \
+            (size_t)(depth_), (size_t)(nodes_), object, sizeof(*object), \
+            out, out_len, error); \
+    }
+
+#define DATABIND_DEFINE_DESCRIPTOR_MESSAGE_REMAINDER(name) \
+    DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+    } \
+    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_parse(codec, #name, &name##_TYPED_DESCRIPTOR, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_serialize_binary(&name##_TYPED_DESCRIPTOR, object, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_serialize_binary_into(&name##_TYPED_DESCRIPTOR, object, output, output_capacity, out_len, error); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        return tbe_typed_descriptor_serialize(codec, #name, &name##_TYPED_DESCRIPTOR, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+    }
+
+#define DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(name) \
+    DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_BINARY, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_CSV, data, len, row, object, error); \
+    } \
+    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        return tbe_typed_parse_ex(codec, #name, &name##_TYPED_TYPE, DATA_BIND_FORMAT_XML, data, len, 0, object, error); \
+    } \
+    DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_binary(&name##_TYPED_TYPE, object, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_binary_into(&name##_TYPED_TYPE, object, output, output_capacity, out_len, error); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_YAML, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_CSV, out, out_len, error); \
+    } \
+    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
+    }
+
+#define DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER(name) \
+    DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; (void)row; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        (void)object; (void)output; (void)output_capacity; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    }
+
 {{#composites}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
@@ -774,11 +1408,19 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/groups}}{{#messages}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/groups}}{{#messages}}{{#cmeta_graph_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_MESSAGE_LIFECYCLE({{name}})
+DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT({{name}}, {{cmeta_native_descriptor_depth}}, {{cmeta_native_descriptor_nodes}})
+{{#native_cstl_storage}}DATABIND_DEFINE_CSTL_MESSAGE_REMAINDER({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}DATABIND_DEFINE_DESCRIPTOR_MESSAGE_REMAINDER({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}DATABIND_DEFINE_RAW_MESSAGE_REMAINDER({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_lifecycle_supported}}{{/cmeta_graph_supported}}{{^cmeta_graph_supported}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
 {{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}{{#cmeta_lifecycle_supported}}DATABIND_DEFINE_CMETA_RAW_RECORD({{name}})
 {{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}
+{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/cmeta_graph_supported}}
 {{/messages}}
 
 static DataBindStatus {{schema.schema_name}}_schema_codec_error(DataBindError *error,

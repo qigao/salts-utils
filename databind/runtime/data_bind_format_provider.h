@@ -67,6 +67,21 @@ struct DataBindFormatProvider {
   DataBindFormatWriterCloseFn close_writer;
 };
 
+/**
+ * Return one statically linked built-in text format provider.
+ *
+ * Selection is explicit and exact: JSON/YAML/CSV/XML return their immutable
+ * provider descriptors; BINARY/NONE/unknown return NULL. No registry lookup,
+ * plugin discovery or fallback is performed. Binary providers remain
+ * schema/generated-owned because their wire plan is contract-specific.
+ *
+ * Applications that consume the complete DataBind component only need the
+ * canonical Salts::DataBind link target; adapter implementation linkage remains
+ * encapsulated by that target.
+ */
+DATA_BIND_API const DataBindFormatProvider *
+data_bind_builtin_format_provider(DataBindFormat format);
+
 typedef struct DataBindFormatReader {
   size_t size;
   const DataBindFormatProvider *provider;

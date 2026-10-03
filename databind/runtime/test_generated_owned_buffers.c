@@ -107,6 +107,136 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
 
     free(workspace);
   }
+  it("routes generated Message JSON YAML and JSON output through canonical providers") {
+    static const char json[] =
+        "{\"id\":7,\"headers\":["
+        "{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "{\"name\":\"y-tag\",\"value\":\"b\"}]}";
+    static const char yaml[] =
+        "id: 8\n"
+        "headers:\n"
+        "  - name: x-tag\n"
+        "    value: alpha\n";
+    static const char invalid[] =
+        "{\"id\":9,\"headers\":[{\"name\":\"x-tag\"}]}";
+    DataBind *codec = NULL;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    NativeHeaderPolicy_t from_json = {0};
+    NativeHeaderPolicy_t from_yaml = {0};
+    NativeHeaderPolicy_t roundtrip = {0};
+    NativeHeaderPolicy_t unchanged = {0};
+    const NativeHeader_t *header = NULL;
+    char *encoded = NULL;
+    char *legacy_yaml = NULL;
+    uint8_t *legacy_binary = NULL;
+    size_t encoded_len = 0u;
+    size_t legacy_yaml_len = 0u;
+    size_t legacy_binary_len = 0u;
+
+    check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
+    check_not_null(codec);
+    if (codec == NULL) return;
+
+    NativeHeaderPolicy_init(&from_json);
+    NativeHeaderPolicy_init(&from_yaml);
+    NativeHeaderPolicy_init(&roundtrip);
+    NativeHeaderPolicy_init(&unchanged);
+
+    check_equal(
+        NativeHeaderPolicy_from_json(
+            codec, &from_json, json, sizeof(json) - 1u, &error),
+        DATA_BIND_OK);
+    check_equal(from_json.id, UINT32_C(7));
+    check_not_null(from_json.headers.cmeta.descriptor);
+    check_not_null(from_json.headers.raw.element_type);
+    check_true(cmeta_type_equal(
+        from_json.headers.raw.element_type, &NativeHeader_CMETA_TYPE));
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_size(&from_json.headers),
+        (size_t)2u);
+    header = NativeHeaderPolicy_headers_vec_t_at_const(
+        &from_json.headers, 0u);
+    check_not_null(header);
+    if (header != NULL) {
+      check_not_null(header->name);
+      check_not_null(header->value);
+      if (header->name != NULL) {
+        check_equal(tstr_len(header->name), strlen("x-tag"));
+        check(memcmp(header->name, "x-tag", strlen("x-tag")) == 0);
+      }
+      if (header->value != NULL) {
+        check_equal(tstr_len(header->value), (size_t)1u);
+        check(memcmp(header->value, "a", 1u) == 0);
+      }
+    }
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeHeaderPolicy_from_yaml(
+            codec, &from_yaml, yaml, sizeof(yaml) - 1u, &error),
+        DATA_BIND_OK);
+    check_equal(from_yaml.id, UINT32_C(8));
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_size(&from_yaml.headers),
+        (size_t)1u);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeHeaderPolicy_to_json(
+            codec, &from_json, &encoded, &encoded_len, &error),
+        DATA_BIND_OK);
+    check_not_null(encoded);
+    check_true(encoded_len != 0u);
+    if (encoded != NULL) {
+      check(encoded[encoded_len] == '\0');
+      check_not_null(strstr(encoded, "\"id\":7"));
+      check_not_null(strstr(encoded, "\"headers\":["));
+      check_equal(
+          NativeHeaderPolicy_from_json(
+              codec, &roundtrip, encoded, encoded_len, &error),
+          DATA_BIND_OK);
+      check_equal(roundtrip.id, UINT32_C(7));
+      check_equal(
+          NativeHeaderPolicy_headers_vec_t_size(&roundtrip.headers),
+          (size_t)2u);
+    }
+
+    unchanged.id = UINT32_C(77);
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check(
+        NativeHeaderPolicy_from_json(
+            codec, &unchanged, invalid, sizeof(invalid) - 1u, &error) !=
+        DATA_BIND_OK);
+    check_equal(unchanged.id, UINT32_C(77));
+    check_equal(
+        NativeHeaderPolicy_headers_vec_t_size(&unchanged.headers),
+        (size_t)0u);
+
+    /* This slice does not migrate Binary or non-JSON egress. */
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeHeaderPolicy_to_bin(
+            &from_json, &legacy_binary, &legacy_binary_len, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(legacy_binary);
+    check_equal(legacy_binary_len, (size_t)0u);
+
+    error = (DataBindError)DATA_BIND_ERROR_INIT;
+    check_equal(
+        NativeHeaderPolicy_to_yaml(
+            codec, &from_json, &legacy_yaml, &legacy_yaml_len, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_null(legacy_yaml);
+    check_equal(legacy_yaml_len, (size_t)0u);
+
+    tbe_typed_serialized_free(encoded);
+    NativeHeaderPolicy_clear(&unchanged);
+    NativeHeaderPolicy_clear(&roundtrip);
+    NativeHeaderPolicy_clear(&from_yaml);
+    NativeHeaderPolicy_clear(&from_json);
+    data_bind_free(codec);
+  }
+
   it("decodes owning record maps through canonical typed CSTL Map metadata") {
     static const char json[] =
         "{\"id\":7,\"headers\":{"

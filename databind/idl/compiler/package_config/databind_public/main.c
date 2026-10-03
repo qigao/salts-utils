@@ -1,5 +1,6 @@
 #include <cmeta/cmeta.h>
 #include <data_bind.h>
+#include <data_bind_format_provider.h>
 #include <data_bind_projection_plan.h>
 #include <salts_uuid.h>
 #include <data_bind_binary_wire.h>
@@ -22,6 +23,14 @@ int main(void) {
   DataBindFormatPlan *format = NULL;
   DataBindFormatPlanInfo info = DATA_BIND_FORMAT_PLAN_INFO_INIT;
   DataBindError error = DATA_BIND_ERROR_INIT;
+  const DataBindFormatProvider *json_provider =
+      data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON);
+  const DataBindFormatProvider *yaml_provider =
+      data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML);
+  const DataBindFormatProvider *csv_provider =
+      data_bind_builtin_format_provider(DATA_BIND_FORMAT_CSV);
+  const DataBindFormatProvider *xml_provider =
+      data_bind_builtin_format_provider(DATA_BIND_FORMAT_XML);
   int ok = 0;
 
   data_bind_binary_wire_write_u32(storage, 0, 42u);
@@ -41,7 +50,17 @@ int main(void) {
        cmeta_type_desc_valid(&cmeta_type_int) &&
        info.abi_version == DATA_BIND_PROJECTION_PLAN_ABI_VERSION &&
        info.format == DATA_BIND_FORMAT_JSON &&
-       info.has_nullable;
+       info.has_nullable &&
+       json_provider != NULL &&
+       json_provider->format == DATA_BIND_FORMAT_JSON &&
+       yaml_provider != NULL &&
+       yaml_provider->format == DATA_BIND_FORMAT_YAML &&
+       csv_provider != NULL &&
+       csv_provider->format == DATA_BIND_FORMAT_CSV &&
+       xml_provider != NULL &&
+       xml_provider->format == DATA_BIND_FORMAT_XML &&
+       data_bind_builtin_format_provider(DATA_BIND_FORMAT_BINARY) == NULL &&
+       data_bind_builtin_format_provider(DATA_BIND_FORMAT_NONE) == NULL;
 
 cleanup:
   data_bind_format_plan_free(format);
