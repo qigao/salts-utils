@@ -176,13 +176,14 @@ jobs:
           cmake --build build/binding-plan-sanitize \
             --target test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_data_bind_service_native_error \
+                     test_databind_message_native_artifact \
                      test_databind_generated_owned_buffers \
                      test_databind_generated_sequence_public_cpp \
             --parallel 2
           ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
           UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
           ctest --test-dir build/binding-plan-sanitize --no-tests=error \
-            -R '^(test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_service_native_error|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
+            -R '^(test_data_bind_binary_reader|test_data_bind_opaque_plan|test_data_bind_service_native_error|test_databind_message_native_artifact|test_databind_generated_owned_buffers|test_databind_generated_sequence_public_cpp)$' \
             --output-on-failure
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 

@@ -14,6 +14,7 @@ typedef enum ExpectedRuntimeRequirement {
     EXPECT_OVERLAY_NULL,
     EXPECT_OVERLAY_PRESENCE_NULL,
     EXPECT_MAP_PROVIDER,
+    EXPECT_SEQUENCE_PROVIDER,
     EXPECT_DEFERRED_CONTAINER
 } ExpectedRuntimeRequirement;
 
@@ -46,7 +47,7 @@ static const ExpectedRuntimeCapability EXPECTED[] = {
       EXPECT_OVERLAY_PRESENCE_NULL },
     { "map<string,int32>", "ordered entry vector", CMETA_DATA_MAP,
       EXPECT_MAP_PROVIDER },
-    { "list<int32>", "vec_t", CMETA_DATA_SEQUENCE, EXPECT_DEFERRED_CONTAINER },
+    { "list<int32>", "typed CSTL Vec", CMETA_DATA_SEQUENCE, EXPECT_SEQUENCE_PROVIDER },
 };
 
 static const char *expected_native_requirement(ExpectedRuntimeRequirement requirement) {
@@ -64,6 +65,8 @@ static const char *expected_native_requirement(ExpectedRuntimeRequirement requir
             return "overlay_presence_null";
         case EXPECT_MAP_PROVIDER:
             return "map_provider";
+        case EXPECT_SEQUENCE_PROVIDER:
+            return "sequence_provider";
         case EXPECT_DEFERRED_CONTAINER:
             return "deferred_container";
     }
@@ -235,8 +238,20 @@ suite("compiler_cmeta_field_projection") {
                             "&cmeta_type_int32");
                 check_equal(field_projection_text(field, "native_map_value_data_ref"),
                             "&cmeta_data_int32");
-            } else if (cases[i].kind == CMETA_DATA_SEQUENCE ||
-                       cases[i].kind == CMETA_DATA_SET) {
+            } else if (cases[i].kind == CMETA_DATA_SEQUENCE) {
+                check_equal(field_projection_text(field, "native_data_symbol"),
+                            "Shape_value_vec_t_collection_data");
+                check_equal(field_projection_text(field, "native_type_symbol"),
+                            "Shape_value_vec_t_cmeta_type");
+                check_equal(field_projection_text(field, "native_c_type"),
+                            "Shape_value_vec_t");
+                check_not_null(field_projection_child(field, "native_cstl_sequence"));
+                check_not_null(field_projection_child(record, "native_cstl_storage"));
+                check_equal(field_projection_text(field, "native_element_type_symbol"),
+                            "cmeta_type_int32");
+                check_equal(field_projection_text(field, "native_element_data_symbol"),
+                            "cmeta_data_int32");
+            } else if (cases[i].kind == CMETA_DATA_SET) {
                 check_null(field_projection_text(field, "native_data_symbol"));
                 check_equal(field_projection_text(field, "native_element_type_symbol"),
                             "cmeta_type_int32");
@@ -358,7 +373,8 @@ suite("compiler_cmeta_field_projection") {
                 check_equal(map_add(field, create_node_string("is_map", "1")), 0);
                 check_equal(map_add(field, create_node_string("key_type", "string")), 0);
                 check_equal(map_add(field, create_node_string("value_type", "int32")), 0);
-            } else if (EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
+            } else if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER ||
+                       EXPECTED[i].requirement == EXPECT_DEFERRED_CONTAINER) {
                 check_equal(map_add(field, create_node_string("is_list", "1")), 0);
                 check_equal(map_add(field, create_node_string("inner_type", "int32")), 0);
             }
@@ -404,9 +420,13 @@ suite("compiler_cmeta_field_projection") {
                                 "stl_byte_buffer");
                 }
             }
-            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER)
+            if (EXPECTED[i].requirement == EXPECT_MAP_PROVIDER ||
+                EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
+            if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_lifecycle_supported"));
         }
 
         node_free(root);

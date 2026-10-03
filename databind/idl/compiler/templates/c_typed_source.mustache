@@ -916,6 +916,86 @@ static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
 {{/groups}}{{#messages}}    {{name}}_CMETA_INIT_FIELDS();
 {{/messages}}}
 
+static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
+    DataBindError *error, const char *type_name) {
+    if (error != NULL && error->size >= sizeof(error->size)) {
+        if (error->size >= offsetof(DataBindError, code) + sizeof(error->code))
+            error->code = DATA_BIND_ERR_SCHEMA;
+        if (error->size >= offsetof(DataBindError, line) + sizeof(error->line))
+            error->line = -1;
+        if (error->size >= offsetof(DataBindError, column) + sizeof(error->column))
+            error->column = -1;
+        if (error->size >= offsetof(DataBindError, path) + sizeof(error->path))
+            snprintf(error->path, sizeof(error->path), "%s",
+                     type_name != NULL ? type_name : "");
+        if (error->size >= offsetof(DataBindError, message) + sizeof(error->message))
+            snprintf(error->message, sizeof(error->message), "%s",
+                     "Legacy typed conversion is unavailable for canonical CSTL storage");
+    }
+    return DATA_BIND_ERR_SCHEMA;
+}
+
+#define DATABIND_DEFINE_CANONICAL_CSTL_RECORD(name) \
+    void name##_init(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        if (object != NULL) { \
+            memset(object, 0, sizeof(*object)); \
+            if (cmeta_data_value_init_zero(&name##_CMETA_DATA, object) != CMETA_OK) \
+                memset(object, 0, sizeof(*object)); \
+        } \
+    } \
+    void name##_clear(name##_t *object) { \
+        {{schema.schema_name}}_CMETA_INIT_ALL(); \
+        if (object != NULL) { \
+            (void)cmeta_data_value_restore_zero(&name##_CMETA_DATA, object); \
+            memset(object, 0, sizeof(*object)); \
+        } \
+    } \
+    DataBindStatus name##_from_bin(DataBind *codec, name##_t *object, const void *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_json(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_csv(DataBind *codec, name##_t *object, const char *data, size_t len, size_t row, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; (void)row; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_from_xml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
+        (void)codec; (void)object; (void)data; (void)len; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_bin(const name##_t *object, uint8_t **out, size_t *out_len, DataBindError *error) { \
+        (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_bin_into(const name##_t *object, uint8_t *output, size_t output_capacity, size_t *out_len, DataBindError *error) { \
+        (void)object; (void)output; (void)output_capacity; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_yaml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_csv(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    } \
+    DataBindStatus name##_to_xml(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
+        (void)codec; (void)object; if (out != NULL) *out = NULL; if (out_len != NULL) *out_len = 0u; \
+        return {{schema.schema_name}}_native_cstl_legacy_unavailable(error, #name); \
+    }
+
 #define TBE_TYPED_DEFINE_DESCRIPTOR_RECORD(name) \
     void name##_init(name##_t *object) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
@@ -1009,13 +1089,16 @@ static void {{schema.schema_name}}_CMETA_INIT_ALL(void) {
         return tbe_typed_serialize_ex(codec, #name, &name##_TYPED_TYPE, object, DATA_BIND_FORMAT_XML, out, out_len, error); \
     }
 
-{{#composites}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{#composites}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/typed_cmeta_runtime_supported}}{{/composites}}{{#groups}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/composites}}{{#groups}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/typed_cmeta_runtime_supported}}{{/groups}}{{#messages}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}{{/groups}}{{#messages}}{{#native_cstl_storage}}DATABIND_DEFINE_CANONICAL_CSTL_RECORD({{name}})
+{{/native_cstl_storage}}{{^native_cstl_storage}}{{#typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_DESCRIPTOR_RECORD({{name}})
 {{/typed_cmeta_runtime_supported}}{{^typed_cmeta_runtime_supported}}TBE_TYPED_DEFINE_RAW_RECORD({{name}})
-{{/typed_cmeta_runtime_supported}}
+{{/typed_cmeta_runtime_supported}}{{/native_cstl_storage}}
 {{/messages}}
 
 static DataBindStatus {{schema.schema_name}}_schema_codec_error(DataBindError *error,

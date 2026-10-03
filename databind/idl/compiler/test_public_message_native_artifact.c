@@ -5,6 +5,22 @@
 #include <stddef.h>
 #include <string.h>
 
+size_t databind_message_native_artifact_c_values_vec_size(void) {
+  return sizeof(Event_values_vec_t);
+}
+
+size_t databind_message_native_artifact_c_values_vec_raw_offset(void) {
+  return offsetof(Event_values_vec_t, raw);
+}
+
+size_t databind_message_native_artifact_c_labels_vec_size(void) {
+  return sizeof(Event_labels_vec_t);
+}
+
+size_t databind_message_native_artifact_c_labels_vec_raw_offset(void) {
+  return offsetof(Event_labels_vec_t, raw);
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
@@ -38,5 +54,74 @@ spec("DataBind public Message native artifact") {
     check_equal(binding.nulls[1].field_name, "tri");
     check_equal(binding.nulls[1].byte_offset, offsetof(Event_t, _nulls));
     check_equal(binding.nulls[1].bit, 1u);
+  }
+
+  it("uses canonical CMeta lifecycle and fails legacy typed conversion closed") {
+    static const char json[] =
+        "{\"id\":1,\"values\":[7],\"labels\":[\"alpha\"]}";
+    Event_t event;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    tstr source = tstr_dup("owned");
+
+    memset(&event, 0xa5, sizeof(event));
+    Event_init(&event);
+    check_equal(event._presence[0], (uint8_t)0u);
+    check_equal(event._nulls[0], (uint8_t)0u);
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
+    check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_equal(Event_values_vec_t_push(&event.values, UINT32_C(11)), STL_OK);
+    check_not_null(source);
+    if (source != NULL)
+      check_equal(Event_labels_vec_t_push(&event.labels, source), STL_OK);
+
+    check_equal(
+        Event_from_json(NULL, &event, json, sizeof(json) - 1u, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "Legacy typed conversion");
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)1u);
+    if (source != NULL)
+      check_equal(Event_labels_vec_t_size(&event.labels), (size_t)1u);
+
+    event._presence[0] = UINT8_C(0xff);
+    event._nulls[0] = UINT8_C(0xff);
+    Event_clear(&event);
+    check_equal(event._presence[0], (uint8_t)0u);
+    check_equal(event._nulls[0], (uint8_t)0u);
+    check_equal(Event_values_vec_t_size(&event.values), (size_t)0u);
+    check_equal(Event_labels_vec_t_size(&event.labels), (size_t)0u);
+    check_not_null(source);
+    if (source != NULL) {
+      check_equal(tstr_len(source), (size_t)5u);
+      tstr_free(source);
+    }
+  }
+
+  it("publishes typed CSTL sequence providers for required scalar/string lists") {
+    Event_values_vec_t values = {0};
+    Event_labels_vec_t labels = {0};
+    tstr source = tstr_dup("alpha");
+    const cmeta_data_desc *value_element =
+        cmeta_data_collection_element_data(&Event_values_vec_t_collection_data);
+    const cmeta_data_desc *label_element =
+        cmeta_data_collection_element_data(&Event_labels_vec_t_collection_data);
+
+    check_true(cmeta_data_desc_equal(value_element, &cmeta_data_uint32));
+    check_true(cmeta_data_desc_equal(label_element, SALTS_TSTR_CMETA_DATA_REF));
+    check_equal(Event_values_vec_t_init(&values, 4u), STL_OK);
+    check_equal(Event_values_vec_t_push(&values, UINT32_C(7)), STL_OK);
+    check_equal(Event_values_vec_t_size(&values), (size_t)1u);
+
+    check_not_null(source);
+    if (source != NULL) {
+      check_equal(Event_labels_vec_t_init(&labels, 4u), STL_OK);
+      check_equal(Event_labels_vec_t_push(&labels, source), STL_OK);
+      check_equal(Event_labels_vec_t_size(&labels), (size_t)1u);
+      check_not_null(*Event_labels_vec_t_at_const(&labels, 0u));
+      check_true(*Event_labels_vec_t_at_const(&labels, 0u) != source);
+    }
+
+    Event_values_vec_t_destroy(&values);
+    Event_labels_vec_t_destroy(&labels);
+    tstr_free(source);
   }
 }
