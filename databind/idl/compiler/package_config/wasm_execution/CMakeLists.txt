@@ -54,4 +54,4 @@ target_link_libraries(wasm_execution_consumer PRIVATE
 add_dependencies(wasm_execution_consumer
   wasm_execution_fixture_plugin)
 target_compile_definitions(wasm_execution_consumer PRIVATE
-  WASM_EXECUTION_COMPONENT_PATH="\"${wasm_execution_fixture_WASM_ARTIFACT}\"")
+  WASM_EXECUTION_COMPONENT_PATH="${wasm_execution_fixture_WASM_ARTIFACT}")
