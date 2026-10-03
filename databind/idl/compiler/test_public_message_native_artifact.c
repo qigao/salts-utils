@@ -5,6 +5,22 @@
 #include <stddef.h>
 #include <string.h>
 
+size_t databind_message_native_artifact_c_values_vec_size(void) {
+  return sizeof(Event_values_vec_t);
+}
+
+size_t databind_message_native_artifact_c_values_vec_raw_offset(void) {
+  return offsetof(Event_values_vec_t, raw);
+}
+
+size_t databind_message_native_artifact_c_labels_vec_size(void) {
+  return sizeof(Event_labels_vec_t);
+}
+
+size_t databind_message_native_artifact_c_labels_vec_raw_offset(void) {
+  return offsetof(Event_labels_vec_t, raw);
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
