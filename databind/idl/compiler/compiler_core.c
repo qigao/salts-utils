@@ -1062,9 +1062,8 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           tbe_compiler_set_string(field, "native_cstl_sequence", "1");
           if (owner_record != NULL)
             tbe_compiler_set_string(owner_record, "native_cstl_storage", "1");
-          if (storage_element != NULL && strcmp(storage_element, "string") == 0)
-            tbe_compiler_set_string(
-                field, "native_cstl_sequence_explicit_refs", "1");
+          tbe_compiler_set_string(
+              field, "native_cstl_sequence_explicit_refs", "1");
           if (snprintf(symbol, sizeof(symbol), "%s_collection_data", vector_type) >= 0 &&
               strlen(vector_type) + strlen("_collection_data") < sizeof(symbol))
             tbe_compiler_set_string(field, "native_data_symbol", symbol);
