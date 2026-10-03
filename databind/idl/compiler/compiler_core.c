@@ -614,80 +614,6 @@ static int tbe_compiler_set_enum_symbol(Node *target, const char *key,
   return status;
 }
 
-/* Map provider identifiers are private to one generated translation unit.
- * Length prefixes keep legal owner/field pairs injective without relying on
- * the public generated API's historical underscore spelling. */
-static int databind_compiler_set_map_symbol(Node *target, const char *key,
-                                            const char *owner,
-                                            const char *field,
-                                            const char *role) {
-  static const char prefix[] = "databindCmetaMap";
-  size_t owner_length;
-  size_t field_length;
-  size_t role_length;
-  size_t capacity;
-  char *symbol;
-  int written;
-  int status;
-  if (!target || !key || !owner || !field || !role) return -1;
-  owner_length = strlen(owner);
-  field_length = strlen(field);
-  role_length = strlen(role);
-  if (owner_length > SIZE_MAX - field_length ||
-      owner_length + field_length > SIZE_MAX - role_length ||
-      owner_length + field_length + role_length > SIZE_MAX - sizeof(prefix) - 48u)
-    return -1;
-  capacity = owner_length + field_length + role_length + sizeof(prefix) + 48u;
-  symbol = (char *)malloc(capacity);
-  if (!symbol) return -1;
-  written = snprintf(symbol, capacity, "%s%zux%s%zux%s%s", prefix,
-                     owner_length, owner, field_length, field, role);
-  if (written < 0 || (size_t)written >= capacity) {
-    free(symbol);
-    return -1;
-  }
-  status = tbe_compiler_set_string(target, key, symbol);
-  free(symbol);
-  return status;
-}
-
-static int databind_compiler_set_sequence_symbol(
-    Node *target, const char *key, const char *owner,
-    const char *field, const char *role) {
-  static const char prefix[] = "databindCmetaSequence";
-  size_t owner_length;
-  size_t field_length;
-  size_t role_length;
-  size_t capacity;
-  char *symbol;
-  int written;
-  int status;
-
-  if (!target || !key || !owner || !field || !role) return -1;
-  owner_length = strlen(owner);
-  field_length = strlen(field);
-  role_length = strlen(role);
-  if (owner_length > SIZE_MAX - field_length ||
-      owner_length + field_length > SIZE_MAX - role_length ||
-      owner_length + field_length + role_length >
-          SIZE_MAX - sizeof(prefix) - 48u)
-    return -1;
-  capacity =
-      owner_length + field_length + role_length + sizeof(prefix) + 48u;
-  symbol = (char *)malloc(capacity);
-  if (!symbol) return -1;
-  written = snprintf(
-      symbol, capacity, "%s%zux%s%zux%s%s", prefix,
-      owner_length, owner, field_length, field, role);
-  if (written < 0 || (size_t)written >= capacity) {
-    free(symbol);
-    return -1;
-  }
-  status = tbe_compiler_set_string(target, key, symbol);
-  free(symbol);
-  return status;
-}
-
 static int databind_compiler_annotate_named_native_semantic(
     Node *root, Node *target_node, const char *type_name,
     const char *type_key, const char *data_key) {
@@ -1062,15 +988,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
               tbe_compiler_string_value(field, "native_type_symbol") != NULL)
             tbe_compiler_set_string(field, "native_c_type", vector_type);
-        } else if (
-            databind_compiler_set_map_symbol(field, "native_map_name", owner,
-                                             c_name, "") == 0 &&
-            databind_compiler_set_map_symbol(field, "native_data_symbol", owner,
-                                             c_name, "Data") == 0 &&
-            databind_compiler_set_map_symbol(field, "native_type_symbol", owner,
-                                             c_name, "Type") == 0) {
-          tbe_compiler_set_string(field, "native_c_type", vector_type);
-        }
       }
     } else {
       snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
@@ -1109,18 +1026,6 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
           if (tbe_compiler_string_value(field, "native_data_symbol") != NULL &&
               tbe_compiler_string_value(field, "native_type_symbol") != NULL)
             tbe_compiler_set_string(field, "native_c_type", vector_type);
-        } else if (
-            (tbe_compiler_find_record(root, "composites", storage_element) != NULL ||
-             tbe_compiler_find_record(root, "groups", storage_element) != NULL ||
-             tbe_compiler_find_record(root, "messages", storage_element) != NULL) &&
-            databind_compiler_set_sequence_symbol(
-                field, "native_sequence_name", owner, c_name, "") == 0 &&
-            databind_compiler_set_sequence_symbol(
-                field, "native_data_symbol", owner, c_name, "Data") == 0 &&
-            databind_compiler_set_sequence_symbol(
-                field, "native_type_symbol", owner, c_name, "Type") == 0) {
-          tbe_compiler_set_string(field, "native_c_type", vector_type);
-        }
       }
 
       if (semantic->kind == CMETA_DATA_SET &&
@@ -2113,6 +2018,29 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
                 tbe_compiler_string_value(field, "owner_name"),
                 tbe_compiler_string_value(field, "name"),
                 tbe_compiler_string_value(field, "type"));
+        return 0;
+      }
+      /*
+       * Native typed-source generation has one container storage authority:
+       * canonical Salts CSTL providers. Historical raw-vec/private providers
+       * are no longer a fallback. Any dynamic container/group shape that has
+       * not been admitted to a canonical CSTL profile fails before rendering.
+       */
+      if (tbe_compiler_has_child(field, "typed_needs_map_vector") &&
+          !tbe_compiler_has_child(field, "native_cstl_map")) {
+        fprintf(stderr,
+                "Typed C source field %s.%s lacks canonical CSTL Map storage\n",
+                tbe_compiler_string_value(field, "owner_name"),
+                tbe_compiler_string_value(field, "name"));
+        return 0;
+      }
+      if (tbe_compiler_has_child(field, "typed_needs_vector") &&
+          !tbe_compiler_has_child(field, "native_cstl_sequence") &&
+          !tbe_compiler_has_child(field, "native_cstl_set")) {
+        fprintf(stderr,
+                "Typed C source field %s.%s lacks canonical CSTL sequence/set storage\n",
+                tbe_compiler_string_value(field, "owner_name"),
+                tbe_compiler_string_value(field, "name"));
         return 0;
       }
       if (tbe_compiler_attribute_count(field, "c") > 1u) {
