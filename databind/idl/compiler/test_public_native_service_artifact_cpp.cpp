@@ -15,6 +15,7 @@ extern "C" int databind_native_service_public_cpp_probe(void) {
   return databind_13_ServiceNative_4_Calc_3_Add__databind_native_binding(
              &request, &response, &service, &error) == DATA_BIND_OK &&
          service.function != nullptr &&
+         service.function->result_flags == CMETA_RESULT_VALUE &&
          databind_13_ServiceNative_4_Calc_3_Add__databind_function() ==
              service.function &&
          databind_13_ServiceNative_4_Calc_3_Add__databind_function_abi() !=
