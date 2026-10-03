@@ -1114,6 +1114,89 @@ spec("DataBind canonical Service BindingPlan") {
     data_bind_free(codec);
   }
 
+  it("coerces XML text scalars only through format-aware native decode") {
+    DataBind *codec = create_state_codec();
+    DataBindMessagePlan *plan = NULL;
+    DataBindMessagePlanDiagnostic diagnostic =
+        DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    unsigned char workspace[1024] = {0};
+    DataBindNativeOptions options =
+        native_options(workspace, sizeof(workspace));
+    StateRequest xml_value = {0};
+    StateRequest strict_value = {0};
+    MessageTokenReader source = {0};
+    cserde_reader reader = {0};
+    const cserde_token xml_tokens[] = {
+        {.kind = CSERDE_MAP_BEGIN},
+        message_key("required_value"),
+        message_key("9"),
+        message_key("nullable_value"),
+        message_key("41"),
+        {.kind = CSERDE_MAP_END},
+    };
+
+    check_not_null(codec);
+    if (codec == NULL) return;
+    check_equal(
+        data_bind_message_plan_compile(
+            codec, "StateRequest", &STATE_REQUEST_NATIVE,
+            &plan, &diagnostic),
+        DATA_BIND_OK);
+    check_not_null(plan);
+    if (plan == NULL) {
+      data_bind_free(codec);
+      return;
+    }
+
+    check_true(message_reader_init(
+        &reader, &source, xml_tokens,
+        sizeof(xml_tokens) / sizeof(xml_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native_format(
+            plan, &options, DATA_BIND_FORMAT_XML, &reader,
+            &xml_value, sizeof(xml_value), &diagnostic),
+        DATA_BIND_OK);
+    check_equal(xml_value.required_value, UINT32_C(9));
+    check_equal(xml_value.optional_value, UINT32_C(0));
+    check_equal(xml_value.nullable_value, UINT32_C(41));
+    check_equal(xml_value.defaulted_value, UINT32_C(7));
+    check_equal(xml_value.presence, (uint8_t)(1u << 1));
+    check_equal(xml_value.nulls, (uint8_t)0u);
+
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, xml_tokens,
+        sizeof(xml_tokens) / sizeof(xml_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native(
+            plan, &options, &reader,
+            &strict_value, sizeof(strict_value), &diagnostic),
+        DATA_BIND_ERR_TYPE_MISMATCH);
+    check_equal(strict_value.required_value, UINT32_C(0));
+    check_equal(strict_value.optional_value, UINT32_C(0));
+    check_equal(strict_value.nullable_value, UINT32_C(0));
+    check_equal(strict_value.defaulted_value, UINT32_C(0));
+    check_equal(strict_value.presence, (uint8_t)0u);
+    check_equal(strict_value.nulls, (uint8_t)0u);
+
+    strict_value.required_value = UINT32_C(77);
+    diagnostic =
+        (DataBindMessagePlanDiagnostic)DATA_BIND_MESSAGE_PLAN_DIAGNOSTIC_INIT;
+    check_true(message_reader_init(
+        &reader, &source, xml_tokens,
+        sizeof(xml_tokens) / sizeof(xml_tokens[0])));
+    check_equal(
+        data_bind_message_plan_decode_native_format(
+            plan, &options, DATA_BIND_FORMAT_CSV, &reader,
+            &strict_value, sizeof(strict_value), &diagnostic),
+        DATA_BIND_ERR_INVALID_ARG);
+    check_equal(strict_value.required_value, UINT32_C(77));
+
+    data_bind_message_plan_free(plan);
+    data_bind_free(codec);
+  }
+
   it("decodes one Channel message with optional nullable and default state") {
     DataBind *codec = create_state_codec();
     DataBindMessagePlan *plan = NULL;
