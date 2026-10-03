@@ -726,7 +726,6 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     size_t descriptor_depth,
     size_t descriptor_nodes,
     void *destination,
-    void *temporary,
     size_t object_size,
     const char *data,
     size_t len,
@@ -741,9 +740,15 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     DataBindStatus status;
     DataBindStatus close_status;
     cmeta_status cmeta_result;
+    void *temporary_allocation = NULL;
+    void *temporary = NULL;
+    size_t temporary_bytes;
+    size_t temporary_align;
+    uintptr_t temporary_base;
+    size_t temporary_padding;
 
     if (codec == NULL || type_name == NULL || resolve == NULL ||
-        provider == NULL || destination == NULL || temporary == NULL ||
+        provider == NULL || destination == NULL ||
         data == NULL || object_size == 0u)
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_INVALID_ARG, type_name,
@@ -753,10 +758,30 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
     if (status != DATA_BIND_OK) return status;
     if (binding.data == NULL || binding.data->storage_type == NULL ||
         binding.data->storage_type->size != object_size ||
+        binding.data->storage_type->align == 0u ||
         !cmeta_data_value_move_supported(binding.data))
         return {{schema.schema_name}}_schema_codec_error(
             error, DATA_BIND_ERR_SCHEMA, type_name,
             "Generated Message native graph is not publishable");
+
+    temporary_align = binding.data->storage_type->align;
+    if (temporary_align - 1u > SIZE_MAX - object_size)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_LIMIT, type_name,
+            "Generated native staging size overflow");
+    temporary_bytes = object_size + temporary_align - 1u;
+    temporary_allocation = malloc(
+        temporary_bytes != 0u ? temporary_bytes : 1u);
+    if (temporary_allocation == NULL)
+        return {{schema.schema_name}}_schema_codec_error(
+            error, DATA_BIND_ERR_OOM, type_name,
+            "Unable to allocate generated native staging");
+    temporary_base = (uintptr_t)temporary_allocation;
+    temporary_padding = (size_t)(temporary_base % temporary_align);
+    if (temporary_padding != 0u)
+        temporary_padding = temporary_align - temporary_padding;
+    temporary = (unsigned char *)temporary_allocation + temporary_padding;
+    memset(temporary, 0, object_size);
 
     status = data_bind_message_plan_compile(
         codec, type_name, &binding, &plan, &diagnostic);
@@ -773,7 +798,6 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
         provider, data, len, descriptor_depth, &reader, error);
     if (status != DATA_BIND_OK) goto cleanup;
 
-    memset(temporary, 0, object_size);
     status = data_bind_message_plan_decode_native(
         plan, &workspace.options, reader.reader,
         temporary, object_size, &diagnostic);
@@ -834,6 +858,7 @@ cleanup:
         (void)cmeta_data_value_restore_zero(binding.data, temporary);
         memset(temporary, 0, object_size);
     }
+    free(temporary_allocation);
     {{schema.schema_name}}_message_workspace_close(&workspace);
     data_bind_message_plan_free(plan);
     return status;
