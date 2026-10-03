@@ -944,7 +944,9 @@ jobs:
             "builtin-baseline": "$baseline"
           }
           EOF
-          "$VCPKG_ROOT/vcpkg" install \
+          # Generic macOS host packages use the central host namespace;
+          # the vcpkg-cache_* prefix is reserved here for iOS target triplets.
+          X_VCPKG_NUGET_ID_PREFIX="" "$VCPKG_ROOT/vcpkg" install \
             --x-manifest-root="$manifest" \
             --x-install-root="$install_root" \
             --triplet arm64-osx \
