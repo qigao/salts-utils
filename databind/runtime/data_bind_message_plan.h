@@ -168,6 +168,26 @@ DATA_BIND_API DataBindStatus data_bind_message_plan_decode_native(
     DataBindMessagePlanDiagnostic *diagnostic);
 
 /**
+ * Encode one complete native message as a canonical CSerde MAP.
+ *
+ * DataBind optional/null state is read only from the exact generated native
+ * binding compiled into the plan. ABSENT optional fields are omitted, explicit
+ * NULL writes CSERDE_NULL, and VALUE fields are validated then encoded through
+ * their canonical CMeta descriptors.
+ *
+ * The source remains caller-owned and is never mutated. As with the underlying
+ * CSerde writer/native encoder, this API does not claim transport-level output
+ * rollback after a sink has accepted tokens.
+ */
+DATA_BIND_API DataBindStatus data_bind_message_plan_encode_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    const void *source,
+    size_t source_bytes,
+    cserde_writer *writer,
+    DataBindMessagePlanDiagnostic *diagnostic);
+
+/**
  * Decode one canonical CSerde MAP into a fresh provider-backed object.
  *
  * The caller owns object lifetime and must discard/destroy the staging object

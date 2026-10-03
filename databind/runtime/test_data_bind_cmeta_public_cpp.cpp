@@ -42,6 +42,13 @@ using ServiceNativeErrorRestore = DataBindStatus (*)(
     void *,
     size_t,
     DataBindError *);
+using MessageNativeEncode = DataBindStatus (*)(
+    const DataBindMessagePlan *,
+    const DataBindNativeOptions *,
+    const void *,
+    size_t,
+    cserde_writer *,
+    DataBindMessagePlanDiagnostic *);
 static_assert(std::is_same_v<
               decltype(&data_bind_binding_plan_write_inputs),
               ClientWriteInputs>);
@@ -51,6 +58,9 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(&data_bind_service_native_error_restore_zero),
               ServiceNativeErrorRestore>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_message_plan_encode_native),
+              MessageNativeEncode>);
 
 static_assert(std::is_standard_layout_v<DataBindHttpFieldProjection>);
 static_assert(std::is_standard_layout_v<DataBindHttpErrorMapping>);

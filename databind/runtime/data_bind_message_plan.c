@@ -1356,6 +1356,53 @@ static void message_set_null(
     *state &= (unsigned char)~(1u << field->null_bit);
 }
 
+static DataBindStatus message_native_field_state(
+    const DataBindMessageFieldPlan *field,
+    const unsigned char *base,
+    size_t source_bytes,
+    DataBindMessageObjectFieldState *out_state,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  int present = 1;
+  int is_null = 0;
+
+  if (field == NULL || base == NULL || out_state == NULL)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG,
+        field != NULL ? field->name : NULL,
+        "Invalid native MessagePlan state lookup");
+
+  if (field->optional) {
+    if (!field->has_presence || field->presence_bit >= 8u ||
+        field->presence_offset >= source_bytes)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+          "Optional native field has no valid presence binding");
+    present =
+        (base[field->presence_offset] &
+         (unsigned char)(1u << field->presence_bit)) != 0u;
+    if (!present) {
+      *out_state = DATA_BIND_MESSAGE_OBJECT_ABSENT;
+      return DATA_BIND_OK;
+    }
+  }
+
+  if (field->nullable) {
+    if (!field->has_null || field->null_bit >= 8u ||
+        field->null_offset >= source_bytes)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+          "Nullable native field has no valid null binding");
+    is_null =
+        (base[field->null_offset] &
+         (unsigned char)(1u << field->null_bit)) != 0u;
+  }
+
+  *out_state = is_null
+                   ? DATA_BIND_MESSAGE_OBJECT_NULL
+                   : DATA_BIND_MESSAGE_OBJECT_VALUE;
+  return DATA_BIND_OK;
+}
+
 static const char *message_validation_diagnostic_field(
     const DataBindMessagePlan *plan,
     const DataBindMessageFieldPlan *field,
@@ -2356,6 +2403,113 @@ static DataBindStatus message_write_token(
              ? DATA_BIND_OK
              : message_writer_failure(
                    diagnostic, status, field, context);
+}
+
+DataBindStatus data_bind_message_plan_encode_native(
+    const DataBindMessagePlan *plan,
+    const DataBindNativeOptions *native_options,
+    const void *source,
+    size_t source_bytes,
+    cserde_writer *writer,
+    DataBindMessagePlanDiagnostic *diagnostic) {
+  const unsigned char *base = (const unsigned char *)source;
+  cserde_token token = {0};
+  size_t i;
+  DataBindStatus status;
+  size_t required_bytes;
+
+  if (!message_diag_header_valid(diagnostic))
+    return DATA_BIND_ERR_INVALID_ARG;
+  message_diag_clear(diagnostic);
+
+  required_bytes =
+      plan != NULL && plan->native != NULL && plan->native->data != NULL &&
+              plan->native->data->storage_type != NULL
+          ? plan->native->data->storage_type->size
+          : 0u;
+  if (plan == NULL || plan->mode != DATA_BIND_MESSAGE_PLAN_NATIVE ||
+      plan->native == NULL || plan->native->data == NULL ||
+      plan->native->data->storage_type == NULL ||
+      native_options == NULL || source == NULL || writer == NULL ||
+      native_options->size < sizeof(*native_options) ||
+      native_options->abi_version != DATA_BIND_NATIVE_ABI_VERSION ||
+      required_bytes == 0u || source_bytes < required_bytes)
+    return message_fail(
+        diagnostic, DATA_BIND_ERR_INVALID_ARG, NULL,
+        "Invalid native MessagePlan encode arguments");
+
+  token.kind = CSERDE_MAP_BEGIN;
+  status = message_write_token(
+      writer, &token, diagnostic, NULL, "Message root begin");
+  if (status != DATA_BIND_OK) return status;
+
+  for (i = 0u; i < plan->field_count; ++i) {
+    const DataBindMessageFieldPlan *field = &plan->fields[i];
+    DataBindMessageObjectFieldState state;
+    const void *value;
+    DataBindNativeDiagnostic native = DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindError validation = DATA_BIND_ERROR_INIT;
+
+    status = message_native_field_state(
+        field, base, source_bytes, &state, diagnostic);
+    if (status != DATA_BIND_OK) return status;
+    if (state == DATA_BIND_MESSAGE_OBJECT_ABSENT) continue;
+
+    token = (cserde_token){0};
+    token.kind = CSERDE_STRING;
+    token.value.slice.data = (const unsigned char *)field->name;
+    token.value.slice.size = strlen(field->name);
+    token.value.slice.lifetime = CSERDE_VIEW_STABLE;
+    status = message_write_token(
+        writer, &token, diagnostic, field->name, "Message field name");
+    if (status != DATA_BIND_OK) return status;
+
+    if (state == DATA_BIND_MESSAGE_OBJECT_NULL) {
+      token = (cserde_token){0};
+      token.kind = CSERDE_NULL;
+      status = message_write_token(
+          writer, &token, diagnostic, field->name, "Message NULL value");
+      if (status != DATA_BIND_OK) return status;
+      continue;
+    }
+
+    if (field->data == NULL || field->data->storage_type == NULL ||
+        field->native_offset > source_bytes ||
+        field->data->storage_type->size >
+            source_bytes - field->native_offset)
+      return message_fail(
+          diagnostic, DATA_BIND_ERR_SCHEMA, field->name,
+          "Native MessagePlan field storage is outside the source object");
+
+    value = base + field->native_offset;
+    status = data_bind_message_plan_internal_validate_field(
+        plan, field->name, value, &validation);
+    if (status != DATA_BIND_OK)
+      return message_fail(
+          diagnostic, status,
+          message_validation_diagnostic_field(plan, field, &validation),
+          "%s",
+          validation.message[0] != '\0'
+              ? validation.message
+              : "Native field validation failed");
+
+    status = data_bind_native_encode(
+        native_options, field->data, value,
+        field->data->storage_type->size, writer, &native);
+    if (status != DATA_BIND_OK)
+      return message_native_failure(
+          diagnostic, status, field->name, &native,
+          "Native field encode failed");
+  }
+
+  token = (cserde_token){0};
+  token.kind = CSERDE_MAP_END;
+  status = message_write_token(
+      writer, &token, diagnostic, NULL, "Message root end");
+  if (status != DATA_BIND_OK) return status;
+
+  message_diag_clear(diagnostic);
+  return DATA_BIND_OK;
 }
 
 DataBindStatus data_bind_message_plan_encode_object(
