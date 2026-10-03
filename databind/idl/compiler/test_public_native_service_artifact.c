@@ -38,6 +38,8 @@ spec("DataBind public NATIVE Service artifact") {
             &request, &response, &native, &error),
         DATA_BIND_OK);
     check_not_null(native.function);
+    check_equal(native.function->result_flags,
+                (cmeta_result_flags)CMETA_RESULT_VALUE);
     check_true(
         databind_13_ServiceNative_4_Calc_3_Add__databind_function() ==
         native.function);
