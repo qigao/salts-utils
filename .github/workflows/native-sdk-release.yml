@@ -927,6 +927,27 @@ jobs:
           cmake -S tools/lemon -B "build/host-lemon-${{ matrix.rid }}" -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build "build/host-lemon-${{ matrix.rid }}" --target lemon --parallel 2
 
+      - name: Build current host salts-idlc
+        shell: bash
+        run: |
+          set -euxo pipefail
+          host_build="$GITHUB_WORKSPACE/build/host-idlc-${{ matrix.rid }}"
+          host_lemon="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon"
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B "$host_build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-host-${{ matrix.rid }}" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build "$host_build" \
+            --target salts_idlc --parallel 2
+          host_idlc="$(find "$host_build" -type f -name salts-idlc -perm -111 -print -quit)"
+          test -n "$host_idlc"
+          echo "SALTS_UTILS_HOST_IDLC=$host_idlc" >> "$GITHUB_ENV"
+
       - name: Configure and install iOS SaltsUtils
         shell: bash
         run: |
@@ -941,6 +962,7 @@ jobs:
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
             -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon" \
+            -DSALTS_UTILS_BUILD_IDLC=OFF \
             -DVCPKG_MANIFEST_FEATURES=capture \
             -DSALTS_UTILS_ENABLE_CAPTURE=ON \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
@@ -957,6 +979,7 @@ jobs:
           test -f "$prefix/include/data_bind_plugin_execution.h"
           test -f "$prefix/include/salts_capture.h"
           test -f "$prefix/include/salts_playback.h"
+          test ! -e "$prefix/bin/salts-idlc"
           test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
           test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
 
@@ -977,7 +1000,9 @@ jobs:
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
             -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
+            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
           cmake --build "build/databind-producer-${{ matrix.rid }}" \
             --target databind_producer_generate --parallel 2
 
@@ -988,7 +1013,9 @@ jobs:
             -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
             -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
             -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
-            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
+            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
           cmake --build "build/databind-public-${{ matrix.rid }}" \
             --target databind_public_consumer --parallel 2
 
@@ -1047,6 +1074,7 @@ jobs:
             test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
             test -f "package/sdk/$rid/include/salts_capture.h"
             test -f "package/sdk/$rid/include/salts_playback.h"
+            test ! -e "package/sdk/$rid/bin/salts-idlc"
             test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
             test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
           done
@@ -1112,6 +1140,10 @@ jobs:
             grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
             grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
             grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+              echo "target iOS RID must not package host salts-idlc: $rid" >&2
+              exit 1
+            fi
           done
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
             mac_rid=macos-arm64
