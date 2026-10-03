@@ -1835,7 +1835,7 @@ cleanup:
   free(context.records);
 }
 
-static void tbe_compiler_promote_record_cstl_sequences(Node *root) {
+static void tbe_compiler_promote_record_cstl_containers(Node *root) {
   static const char *const lists[] = {"composites", "groups", "messages"};
   size_t list_index;
 
@@ -2036,7 +2036,7 @@ void tbe_compiler_annotate_language_types(
   tbe_compiler_annotate_record_list_types(root, contract, "unions");
   tbe_compiler_annotate_cmeta_support(root, 1);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
-  tbe_compiler_promote_record_cstl_sequences(root);
+  tbe_compiler_promote_record_cstl_containers(root);
   tbe_compiler_annotate_cmeta_lifecycle_support(root);
   tbe_compiler_annotate_cmeta_support(root, 0);
 }
