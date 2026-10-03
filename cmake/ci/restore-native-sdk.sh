@@ -46,7 +46,15 @@ restore_args=()
 if [ "$with_turbowasm" = "1" ]; then
   restore_args+=("-p:WithTurboWasm=true")
 fi
-dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate "${restore_args[@]}"
+if [ "${#restore_args[@]}" -gt 0 ]; then
+  dotnet restore "$project" --packages "$packages" --configfile "$config" \
+    --no-cache --force-evaluate "${restore_args[@]}"
+else
+  # macOS still ships Bash 3.2. Under `set -u`, expanding an empty array
+  # raises "unbound variable", so keep the zero-extra-argument path explicit.
+  dotnet restore "$project" --packages "$packages" --configfile "$config" \
+    --no-cache --force-evaluate
+fi
 
 single_package_dir() {
   local package_root="$1"

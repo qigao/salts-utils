@@ -27,6 +27,7 @@ set(TBE_COMPILER_TEMPLATE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/postgresql_schema.mustache"
     "${CMAKE_CURRENT_SOURCE_DIR}/templates/ts_types.mustache")
 
+if(SALTS_UTILS_BUILD_IDLC)
 cmake_add_executable(salts_idlc
   SOURCES main.c compiler_core.c projection.c projection_frontend.c projection_config.c service_native.c native_service_projection.c plugin_projection.c wasm_projection.c openapi_projection.c method_plan_projection.c socket_plan_projection.c flowmq_plan_projection.c binary_layout_ir.c binary_reader_codegen.c opaque_plan_codegen.c database_schema.c mustache_helpers.c ${TBE_COMPILER_TEMPLATE_FILES}
   LIBS databind_binding_compiler Salts::IDL Salts::PluginABI ${DATABIND_COMPILER_TOOLING_TARGET} Salts::Core
@@ -58,6 +59,8 @@ install(
   DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates"
   DESTINATION ${CMAKE_INSTALL_BINDIR}
   COMPONENT DataBind)
+
+endif()
 
 # =============================================================================
 # Tests

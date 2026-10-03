@@ -8,7 +8,7 @@
     <PackageVersion Condition="'$(PackageVersion)' == ''">4.1.16</PackageVersion>
     <Authors>qigao</Authors>
     <Description>Prebuilt SaltsUtils C/C++ SDK install trees for native consumers.</Description>
-    <PackageTags>salts-utils;native;c;cpp;cmake;android</PackageTags>
+    <PackageTags>salts-utils;native;c;cpp;cmake;android;ios</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/qigao/salts-utils</RepositoryUrl>

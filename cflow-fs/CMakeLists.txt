@@ -6,7 +6,7 @@ if(WIN32)
   target_sources(salts_cflow_fs PRIVATE src/fs_watch_windows.c)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_sources(salts_cflow_fs PRIVATE src/fs_watch_linux.c)
-elseif(APPLE)
+elseif(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_sources(salts_cflow_fs PRIVATE src/fs_watch_macos.c)
   target_link_libraries(salts_cflow_fs PRIVATE
     "-framework CoreServices")

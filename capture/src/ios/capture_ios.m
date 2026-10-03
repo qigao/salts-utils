@@ -100,10 +100,16 @@ int salts_capture_list_video_devices(salts_capture_device_t *devices, int max_co
     if (!devices || max_count <= 0) return -1;
 
     @autoreleasepool {
+        NSMutableArray<AVCaptureDeviceType> *device_types =
+            [NSMutableArray arrayWithObject:AVCaptureDeviceTypeBuiltInWideAngleCamera];
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 170000
+        if (@available(iOS 17.0, *)) {
+            [device_types addObject:AVCaptureDeviceTypeExternal];
+        }
+#endif
         AVCaptureDeviceDiscoverySession *session =
             [AVCaptureDeviceDiscoverySession
-                discoverySessionWithDeviceTypes:@[ AVCaptureDeviceTypeBuiltInWideAngleCamera,
-                                                   AVCaptureDeviceTypeExternalUnknown ]
+                discoverySessionWithDeviceTypes:device_types
                                       mediaType:AVMediaTypeVideo
                                        position:AVCaptureDevicePositionUnspecified];
 

@@ -11,8 +11,15 @@ cmake_dependent_option(ENABLE_ASAN "Enable Address Sanitizer" ON
 
 option(BUILD_EXAMPLES "Build example programs" ON)
 option(BUILD_TESTS "Build test suite" ON)
+option(SALTS_UTILS_BUILD_IDLC
+       "Build and install the host salts-idlc compiler executable" ON)
 cmake_dependent_option(BUILD_BENCHMARKS "Build benchmark executables" ON
                        "BUILD_TESTS" OFF)
+
+if(BUILD_TESTS AND NOT SALTS_UTILS_BUILD_IDLC)
+  message(FATAL_ERROR
+    "BUILD_TESTS requires SALTS_UTILS_BUILD_IDLC because compiler tests execute salts-idlc")
+endif()
 
 if(WIN32 OR ANDROID OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(_SALTS_UTILS_CAPTURE_DEFAULT ON)
