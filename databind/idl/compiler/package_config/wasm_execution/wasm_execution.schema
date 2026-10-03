@@ -1,0 +1,19 @@
+schema WasmRuntime [version(1)];
+
+component Calculator {
+  service Calc;
+}
+
+message AddRequest {
+  uint32 left;
+  uint32 right;
+}
+
+message AddResponse {
+  uint32 sum;
+  uint32 product;
+}
+
+service Calc {
+  Add: AddRequest -> AddResponse;
+}
