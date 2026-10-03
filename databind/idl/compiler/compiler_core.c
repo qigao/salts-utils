@@ -2115,6 +2115,38 @@ static int tbe_compiler_typed_list_supported(Node *root, const char *list_name) 
                 tbe_compiler_string_value(field, "type"));
         return 0;
       }
+      /*
+       * Built-in typed C source generation has one native container authority:
+       * canonical typed CSTL. Historical raw-vector/private provider markers
+       * are not a fallback. Group fields remain on their Binary/group boundary
+       * and are split from native container ownership under #236.
+       */
+      if (tbe_compiler_has_child(field, "is_list") &&
+          !tbe_compiler_has_child(field, "is_fixed_size") &&
+          !tbe_compiler_has_child(field, "is_group_field") &&
+          !tbe_compiler_has_child(field, "native_cstl_sequence")) {
+        fprintf(stderr,
+                "Typed C native list %s.%s has no canonical CSTL provider\n",
+                tbe_compiler_string_value(field, "owner_name"),
+                tbe_compiler_string_value(field, "name"));
+        return 0;
+      }
+      if (tbe_compiler_has_child(field, "is_set") &&
+          !tbe_compiler_has_child(field, "native_cstl_set")) {
+        fprintf(stderr,
+                "Typed C native set %s.%s has no canonical CSTL provider\n",
+                tbe_compiler_string_value(field, "owner_name"),
+                tbe_compiler_string_value(field, "name"));
+        return 0;
+      }
+      if (tbe_compiler_has_child(field, "is_map") &&
+          !tbe_compiler_has_child(field, "native_cstl_map")) {
+        fprintf(stderr,
+                "Typed C native map %s.%s has no canonical CSTL provider\n",
+                tbe_compiler_string_value(field, "owner_name"),
+                tbe_compiler_string_value(field, "name"));
+        return 0;
+      }
       if (tbe_compiler_attribute_count(field, "c") > 1u) {
         fprintf(stderr, "Typed C field %s.%s has multiple c member mappings\n",
                 tbe_compiler_string_value(field, "owner_name"),
