@@ -157,14 +157,17 @@ spec("DataBind public Message native artifact") {
       {
         cmeta_gen_status generated =
             cmeta_data_collection_borrow_next(&cursor, &borrowed);
+        const void *terminal = (const void *)(uintptr_t)1u;
         check_true(generated == CMETA_GEN_VALUE ||
                    generated == CMETA_GEN_VALUE_AND_DONE);
-        if (generated == CMETA_GEN_VALUE)
+        stored = (const tstr *)borrowed;
+        if (generated == CMETA_GEN_VALUE) {
           check_equal(
-              cmeta_data_collection_borrow_next(&cursor, &borrowed),
+              cmeta_data_collection_borrow_next(&cursor, &terminal),
               CMETA_GEN_DONE);
+          check_null(terminal);
+        }
       }
-      stored = (const tstr *)borrowed;
       check_not_null(stored);
       if (stored != NULL) {
         check_not_null(*stored);
