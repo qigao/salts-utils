@@ -34,4 +34,91 @@ foreach(type IN LISTS types)
     set(first_diagnostic "${diagnostic}")
   endforeach()
 endforeach()
-message(STATUS "CMeta CLI gates: 9 schemas rejected twice with unchanged outputs")
+
+# Native typed C has one container storage authority: canonical Salts CSTL.
+# Shapes that still lack a canonical provider must fail before either caller
+# output is replaced; do not fall back to TBE raw-vector/private providers.
+set(container_gate_names uuid_list uuid_set uuid_map record_set)
+foreach(case IN LISTS container_gate_names)
+  if(case STREQUAL "uuid_list")
+    set(schema "message Gate { list<uuid> value; }")
+  elseif(case STREQUAL "uuid_set")
+    set(schema "message Gate { set<uuid> value; }")
+  elseif(case STREQUAL "uuid_map")
+    set(schema "message Gate { map<string,uuid> value; }")
+  elseif(case STREQUAL "record_set")
+    set(schema "message Item { string name; } message Gate { set<Item> value; }")
+  endif()
+
+  file(WRITE "${WORK_DIR}/${case}.schema" "${schema}")
+  file(WRITE "${WORK_DIR}/${case}.h" "existing header\n")
+  file(WRITE "${WORK_DIR}/${case}.c" "existing source\n")
+  foreach(attempt RANGE 1 2)
+    execute_process(COMMAND "${TBE_COMPILER}" "${WORK_DIR}/${case}.schema"
+      --lang c --output "${WORK_DIR}/${case}.h"
+      --source-output "${WORK_DIR}/${case}.c"
+      RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE diagnostic)
+    if(result EQUAL 0 OR
+       NOT diagnostic MATCHES "Gate[.]value" OR
+       NOT diagnostic MATCHES "canonical CSTL")
+      message(FATAL_ERROR
+        "${case}: wrong canonical-container rejection (${result}): ${diagnostic}")
+    endif()
+    file(READ "${WORK_DIR}/${case}.h" header)
+    file(READ "${WORK_DIR}/${case}.c" source)
+    if(NOT header STREQUAL "existing header\n" OR
+       NOT source STREQUAL "existing source\n")
+      message(FATAL_ERROR
+        "${case}: rejected container generation changed caller output")
+    endif()
+    if(attempt EQUAL 2 AND NOT diagnostic STREQUAL first_container_diagnostic)
+      message(FATAL_ERROR
+        "${case}: container rejection diagnostic changed between attempts")
+    endif()
+    set(first_container_diagnostic "${diagnostic}")
+  endforeach()
+endforeach()
+
+# Canonical profiles, including DataBind optional/nullable overlays, must still
+# generate successfully and must not carry any historical container-provider
+# implementation into the public header or generated source.
+set(canonical_schema
+  "message Canonical { list<uint32> values; set<string> tags; map<string,uint32> attrs; optional list<uint32> maybe_values; nullable set<string> maybe_tags; optional nullable map<string,uint32> maybe_attrs; }")
+file(WRITE "${WORK_DIR}/canonical_containers.schema" "${canonical_schema}")
+execute_process(COMMAND "${TBE_COMPILER}" "${WORK_DIR}/canonical_containers.schema"
+  --lang c
+  --output "${WORK_DIR}/canonical_containers.h"
+  --source-output "${WORK_DIR}/canonical_containers.c"
+  RESULT_VARIABLE canonical_result
+  OUTPUT_VARIABLE canonical_output
+  ERROR_VARIABLE canonical_diagnostic)
+if(NOT canonical_result EQUAL 0)
+  message(FATAL_ERROR
+    "canonical containers failed generation: ${canonical_diagnostic}")
+endif()
+file(READ "${WORK_DIR}/canonical_containers.h" canonical_header)
+file(READ "${WORK_DIR}/canonical_containers.c" canonical_source)
+foreach(required "typed(Vec" "typed(Set" "typed(Map")
+  string(FIND "${canonical_header}" "${required}" required_index)
+  if(required_index EQUAL -1)
+    message(FATAL_ERROR
+      "canonical generated header is missing ${required}")
+  endif()
+endforeach()
+foreach(forbidden
+    "TBE_TYPED_VEC_DEFINE"
+    "TBE_TYPED_MANAGED_VEC_DEFINE"
+    "DATABIND_GENERATED_SEQUENCE_PROVIDER"
+    "DATABIND_GENERATED_MAP_PROVIDER"
+    "databindCmetaSequence"
+    "databindCmetaMap")
+  string(FIND "${canonical_header}" "${forbidden}" header_index)
+  string(FIND "${canonical_source}" "${forbidden}" source_index)
+  if(NOT header_index EQUAL -1 OR NOT source_index EQUAL -1)
+    message(FATAL_ERROR
+      "canonical generated C still contains legacy provider marker ${forbidden}")
+  endif()
+endforeach()
+
+message(STATUS
+  "CMeta CLI gates: 9 semantic schemas + 4 legacy container profiles rejected; canonical CSTL container output clean")
