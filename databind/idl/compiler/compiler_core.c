@@ -1447,6 +1447,7 @@ static int tbe_compiler_cmeta_classify_record(
     const char *type = tbe_compiler_string_value(field, "type");
     const char *kind = tbe_compiler_string_value(field, "typed_kind");
     const int is_map = tbe_compiler_has_child(field, "is_map");
+    const int is_set = tbe_compiler_has_child(field, "is_set");
     const tbe_compiler_scalar_projection_t *scalar;
     Node *target;
     size_t target_index;
@@ -1455,7 +1456,7 @@ static int tbe_compiler_cmeta_classify_record(
         ((context->runtime || context->lifecycle) &&
          (tbe_compiler_has_child(field, "is_optional") ||
           tbe_compiler_has_child(field, "is_nullable"))) ||
-        tbe_compiler_has_child(field, "is_set") ||
+        (is_set && !tbe_compiler_has_child(field, "native_cstl_set")) ||
         tbe_compiler_has_child(field, "is_group_field"))
       goto unsupported;
 
@@ -1511,6 +1512,32 @@ static int tbe_compiler_cmeta_classify_record(
       if (context->depths[target_index] + 1u > max_depth)
         max_depth = context->depths[target_index] + 1u;
       continue;
+    }
+
+    if (is_set) {
+      const char *inner_type =
+          tbe_compiler_string_value(field, "inner_type");
+      const char *requirement =
+          tbe_compiler_string_value(field, "cmeta_native_requirement");
+      if (inner_type == NULL ||
+          requirement == NULL ||
+          strcmp(requirement, "set_provider") != 0 ||
+          tbe_compiler_string_value(field, "native_data_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_type_symbol") == NULL ||
+          tbe_compiler_string_value(field, "native_element_data_ref") == NULL ||
+          tbe_compiler_string_value(field, "native_element_type_ref") == NULL ||
+          !tbe_compiler_has_child(field, "native_cstl_set"))
+        goto unsupported;
+
+      /* Canonical CSTL Set is a graph/lifecycle provider. Keep the historical
+       * TbeTypedDescriptor runtime matrix closed over the old storage model. */
+      if (context->runtime) goto unsupported;
+
+      scalar = tbe_compiler_scalar_projection(inner_type);
+      if ((scalar != NULL && scalar->native_data_symbol != NULL) ||
+          strcmp(inner_type, "string") == 0)
+        continue;
+      goto unsupported;
     }
 
     if (tbe_compiler_has_child(field, "is_collection") && !is_map)
