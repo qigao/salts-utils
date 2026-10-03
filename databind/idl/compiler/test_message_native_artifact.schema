@@ -13,3 +13,9 @@ message Event {
   map<string,string> aliases;
 }
 
+
+message OverlayContainers {
+  optional list<uint32> values;
+  nullable set<string> tags;
+  optional nullable map<string,uint32> attrs;
+}

@@ -53,6 +53,30 @@ size_t databind_message_native_artifact_c_aliases_map_raw_offset(void) {
   return offsetof(Event_aliases_map_t, raw);
 }
 
+size_t databind_message_native_artifact_c_overlay_values_size(void) {
+  return sizeof(OverlayContainers_values_vec_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_values_raw_offset(void) {
+  return offsetof(OverlayContainers_values_vec_t, raw);
+}
+
+size_t databind_message_native_artifact_c_overlay_tags_size(void) {
+  return sizeof(OverlayContainers_tags_set_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_tags_raw_offset(void) {
+  return offsetof(OverlayContainers_tags_set_t, raw);
+}
+
+size_t databind_message_native_artifact_c_overlay_attrs_size(void) {
+  return sizeof(OverlayContainers_attrs_map_t);
+}
+
+size_t databind_message_native_artifact_c_overlay_attrs_raw_offset(void) {
+  return offsetof(OverlayContainers_attrs_map_t, raw);
+}
+
 spec("DataBind public Message native artifact") {
   it("publishes exact optional and nullable overlays") {
     const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
@@ -148,6 +172,85 @@ spec("DataBind public Message native artifact") {
       check_equal(tstr_len(source), (size_t)5u);
       tstr_free(source);
     }
+  }
+
+  it("keeps optional and nullable state outside canonical CSTL container storage") {
+    static const char json[] =
+        "{\"values\":[1],\"tags\":[\"tag\"],\"attrs\":{\"k\":7}}";
+    OverlayContainers_t value;
+    DataBindError error = DATA_BIND_ERROR_INIT;
+    tstr tag = tstr_dup("tag");
+    tstr key = tstr_dup("k");
+
+    memset(&value, 0xa5, sizeof(value));
+    OverlayContainers_init(&value);
+
+    check_equal(value._presence[0], (uint8_t)0u);
+    check_equal(value._nulls[0], (uint8_t)0u);
+    check_not_null(value.values.cmeta.descriptor);
+    check_not_null(value.tags.cmeta.descriptor);
+    check_not_null(value.attrs.cmeta.descriptor);
+    check_not_null(value.values.raw.element_type);
+    check_not_null(value.tags.raw.element_type);
+    check_not_null(value.attrs.raw.key_type);
+    check_not_null(value.attrs.raw.value_type);
+    check_true(cmeta_type_equal(
+        value.values.raw.element_type, &cmeta_type_uint32));
+    check_true(cmeta_type_equal(
+        value.tags.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        value.attrs.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        value.attrs.raw.value_type, &cmeta_type_uint32));
+
+    check_equal(
+        OverlayContainers_values_vec_t_push(&value.values, UINT32_C(11)),
+        STL_OK);
+    check_not_null(tag);
+    if (tag != NULL)
+      check_equal(
+          OverlayContainers_tags_set_t_add(&value.tags, tag), STL_OK);
+    check_not_null(key);
+    if (key != NULL)
+      check_equal(
+          OverlayContainers_attrs_map_t_put(
+              &value.attrs, key, UINT32_C(7)),
+          STL_OK);
+
+    check_equal(
+        OverlayContainers_from_json(
+            NULL, &value, json, sizeof(json) - 1u, &error),
+        DATA_BIND_ERR_SCHEMA);
+    check_contains(error.message, "Legacy typed conversion");
+
+    check_equal(
+        OverlayContainers_values_vec_t_size(&value.values), (size_t)1u);
+    if (tag != NULL)
+      check_equal(
+          OverlayContainers_tags_set_t_size(&value.tags), (size_t)1u);
+    if (key != NULL)
+      check_equal(
+          OverlayContainers_attrs_map_t_size(&value.attrs), (size_t)1u);
+
+    value._presence[0] = UINT8_C(0xff);
+    value._nulls[0] = UINT8_C(0xff);
+    OverlayContainers_clear(&value);
+
+    check_equal(value._presence[0], (uint8_t)0u);
+    check_equal(value._nulls[0], (uint8_t)0u);
+    check_equal(
+        OverlayContainers_values_vec_t_size(&value.values), (size_t)0u);
+    check_equal(
+        OverlayContainers_tags_set_t_size(&value.tags), (size_t)0u);
+    check_equal(
+        OverlayContainers_attrs_map_t_size(&value.attrs), (size_t)0u);
+    check_not_null(tag);
+    if (tag != NULL) check_equal(tstr_len(tag), (size_t)3u);
+    check_not_null(key);
+    if (key != NULL) check_equal(tstr_len(key), (size_t)1u);
+
+    tstr_free(tag);
+    tstr_free(key);
   }
 
   it("publishes typed CSTL map providers for required scalar/string maps") {
