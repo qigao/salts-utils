@@ -290,7 +290,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh linux-x64 linux-x64 1
       - name: Configure and install SaltsUtils
         shell: bash
         run: |
@@ -391,6 +391,19 @@ jobs:
           cmake --build build/databind-target-installed \
             --target installed_image --parallel 2
 
+          cmake -S databind/idl/compiler/package_config/wasm_execution \
+            -B build/databind-wasm-execution-installed -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSALTS_UTILS_ROOT="$prefix" \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
+          cmake --build build/databind-wasm-execution-installed \
+            --target wasm_execution_consumer --parallel 2
+          LD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$TURBOWASM_ROOT/lib:${LD_LIBRARY_PATH:-}" \
+            build/databind-wasm-execution-installed/wasm_execution_consumer
+
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
           commit=$GITHUB_SHA
@@ -439,7 +452,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh "${{ steps.env.outputs.rid }}" "${{ steps.env.outputs.rid }}"
+        run: bash cmake/ci/restore-native-sdk.sh "${{ steps.env.outputs.rid }}" "${{ steps.env.outputs.rid }}" 1
       - name: Configure and install SaltsUtils
         shell: bash
         run: |
@@ -494,6 +507,19 @@ jobs:
             -DCMAKE_PREFIX_PATH="$prefix"
           cmake --build build/databind-public-installed \
             --target databind_public_consumer --parallel 2
+
+          cmake -S databind/idl/compiler/package_config/wasm_execution \
+            -B build/databind-wasm-execution-installed -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ steps.env.outputs.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DSALTS_UTILS_ROOT="$prefix" \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
+          cmake --build build/databind-wasm-execution-installed \
+            --target wasm_execution_consumer --parallel 2
+          DYLD_LIBRARY_PATH="$prefix/lib:$SALTS_ROOT/lib:$TURBOWASM_ROOT/lib:${DYLD_LIBRARY_PATH:-}" \
+            build/databind-wasm-execution-installed/wasm_execution_consumer
 
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
@@ -599,7 +625,7 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64
+        run: ./cmake/ci/restore-native-sdk.ps1 -SaltsRid windows-x64 -Re2cRid windows-x64 -WithTurboWasm
 
       - name: Configure, build and install SaltsUtils SDK
         shell: cmd
@@ -641,6 +667,13 @@ jobs:
           build\databind-plugin-execution-installed\databind_plugin_execution_c.exe
           if errorlevel 1 exit /b 1
           build\databind-plugin-execution-installed\databind_plugin_execution_cpp.exe
+          if errorlevel 1 exit /b 1
+          cmake -S databind\idl\compiler\package_config\wasm_execution -B build\databind-wasm-execution-installed -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA_EXE%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%QIGAO_VCPKG_TOOLCHAIN_FILE%" -DVCPKG_TARGET_TRIPLET="%QIGAO_VCPKG_WINDOWS_TRIPLET%" -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%\vcpkg_installed" -DSALTS_UTILS_ROOT="%GITHUB_WORKSPACE%\stage\sdk\windows-x64" -DCMAKE_PREFIX_PATH="%GITHUB_WORKSPACE%\stage\sdk\windows-x64;%SALTS_ROOT%;%TURBOWASM_ROOT%"
+          if errorlevel 1 exit /b 1
+          cmake --build build\databind-wasm-execution-installed --target wasm_execution_consumer --parallel 2
+          if errorlevel 1 exit /b 1
+          set "PATH=%GITHUB_WORKSPACE%\stage\sdk\windows-x64\bin;%SALTS_ROOT%\bin;%TURBOWASM_ROOT%\bin;%TURBOWASM_ROOT%\lib;%PATH%"
+          build\databind-wasm-execution-installed\wasm_execution_consumer.exe
           if errorlevel 1 exit /b 1
 
       - name: Report and verify compiler cache statistics
@@ -716,13 +749,31 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash cmake/ci/restore-native-sdk.sh android-arm64-v8a linux-x64
+        run: bash cmake/ci/restore-native-sdk.sh android-arm64-v8a linux-x64 1
       - name: Build host Lemon
         shell: bash
         run: |
           set -euxo pipefail
           cmake -S tools/lemon -B build/host-lemon -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build/host-lemon --target lemon --parallel 2
+      - name: Build current host salts-idlc
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B build/host-idlc -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-host" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build build/host-idlc \
+            --target salts_idlc --parallel 2
+          host_idlc="$(find "$GITHUB_WORKSPACE/build/host-idlc" -type f -name salts-idlc -perm -111 -print -quit)"
+          test -n "$host_idlc"
+          echo "SALTS_UTILS_HOST_IDLC=$host_idlc" >> "$GITHUB_ENV"
+
       - name: Configure and install Android SaltsUtils
         shell: bash
         run: |
@@ -794,6 +845,24 @@ jobs:
             -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
           cmake --build build/databind-public-android \
             --target databind_public_consumer --parallel 2
+
+          cmake -S databind/idl/compiler/package_config/wasm_execution \
+            -B build/databind-wasm-execution-android -G Ninja \
+            -DCMAKE_SYSTEM_NAME=Android \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared \
+            -DPython3_EXECUTABLE="$(command -v python3)" \
+            -DSALTS_UTILS_ROOT="$prefix" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
+            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT" \
+            -DCMAKE_PREFIX_PATH="$prefix;$SALTS_ROOT;$TURBOWASM_ROOT"
+          cmake --build build/databind-wasm-execution-android \
+            --target wasm_execution_consumer --parallel 2
 
           cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
           version=${{ needs.metadata.outputs.version }}
