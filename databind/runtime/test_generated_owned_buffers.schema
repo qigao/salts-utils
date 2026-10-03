@@ -23,8 +23,8 @@ message NativeHeaderPolicy {
 
 message NativeXmlFlat {
     uint32 id;
-    string name;
     nullable uint32 score;
+    string name;
 }
 
 message NativeHeaderNestedOnly {
