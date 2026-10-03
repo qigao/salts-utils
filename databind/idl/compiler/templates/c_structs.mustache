@@ -169,6 +169,17 @@ extern "C" {
 enum { {{schema.schema_name}}_WIRE_BIG_ENDIAN = {{schema.schema_wire_big_endian_value}} };
 {{#typed_source_enabled}}
 struct cmeta_data_desc;
+/* Canonical generated record metadata. These are the same descriptors returned
+ * by *_cmeta_data(); typed CSTL record containers bind them directly. */
+{{#composites}}{{#cmeta_graph_supported}}TBE_GENERATED_API extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+TBE_GENERATED_API extern const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/cmeta_graph_supported}}{{/composites}}
+{{#groups}}{{#cmeta_graph_supported}}TBE_GENERATED_API extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+TBE_GENERATED_API extern const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/cmeta_graph_supported}}{{/groups}}
+{{#messages}}{{#cmeta_graph_supported}}TBE_GENERATED_API extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+TBE_GENERATED_API extern const cmeta_data_desc {{name}}_CMETA_DATA;
+{{/cmeta_graph_supported}}{{/messages}}
 /** Borrow immutable native scalar/struct/enum metadata with static lifetime.
  * Unsupported storage returns DATA_BIND_ERR_SCHEMA without changing *out.
  * Wire/default/presence/fingerprint metadata stays in the schema overlay.
