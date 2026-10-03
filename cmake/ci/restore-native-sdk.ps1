@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$SaltsRid,
-  [Parameter(Mandatory=$true)][string]$Re2cRid
+  [Parameter(Mandatory=$true)][string]$Re2cRid,
+  [switch]$WithTurboWasm
 )
 $ErrorActionPreference = "Stop"
 
@@ -33,20 +34,29 @@ if ($LASTEXITCODE -ne 0) { throw "failed to configure GitHub Packages source" }
   <ItemGroup>
     <PackageReference Include="Salts.Native" Version="*" />
     <PackageReference Include="Qigao.Re2c.Binary" Version="*" />
+    <PackageReference Include="TurboWasm.Native" Version="*" Condition="'$(WithTurboWasm)' == 'true'" />
   </ItemGroup>
 </Project>
 '@ | Set-Content -LiteralPath $project -Encoding utf8NoBOM
 
-dotnet restore $project --packages $packages --configfile $config --no-cache --force-evaluate
+$restoreArgs = @($project, "--packages", $packages, "--configfile", $config, "--no-cache", "--force-evaluate")
+if ($WithTurboWasm) { $restoreArgs += "-p:WithTurboWasm=true" }
+dotnet restore @restoreArgs
 if ($LASTEXITCODE -ne 0) { throw "failed to restore latest native SDKs" }
 
 $saltsPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "salts.native") -Directory)
 if ($saltsPackages.Count -ne 1) { throw "expected exactly one restored Salts.Native package, found $($saltsPackages.Count)" }
 $re2cPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "qigao.re2c.binary") -Directory)
 if ($re2cPackages.Count -ne 1) { throw "expected exactly one restored Qigao.Re2c.Binary package, found $($re2cPackages.Count)" }
+$turbowasmPackages = @()
+if ($WithTurboWasm) {
+  $turbowasmPackages = @(Get-ChildItem -LiteralPath (Join-Path $packages "turbowasm.native") -Directory)
+  if ($turbowasmPackages.Count -ne 1) { throw "expected exactly one restored TurboWasm.Native package, found $($turbowasmPackages.Count)" }
+}
 
 $saltsRoot = Join-Path $saltsPackages[0].FullName "sdk\$SaltsRid"
 $re2cRoot = Join-Path $re2cPackages[0].FullName "tools\$Re2cRid"
+$turbowasmRoot = if ($WithTurboWasm) { Join-Path $turbowasmPackages[0].FullName "sdk\$SaltsRid" } else { $null }
 $required = @(
   (Join-Path $saltsRoot "lib\cmake\Salts\SaltsConfig.cmake"),
   (Join-Path $saltsRoot "include\cmeta\function.h"),
@@ -59,6 +69,24 @@ foreach ($path in $required) {
 }
 & (Join-Path $re2cRoot "bin\re2c.exe") --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "restored re2c executable cannot run" }
+
+if ($WithTurboWasm) {
+  $twRequired = @(
+    (Join-Path $turbowasmRoot "lib\cmake\TurboWasm\TurboWasmConfig.cmake"),
+    (Join-Path $turbowasmRoot "include\turbowasm\component.h"),
+    (Join-Path $turbowasmRoot "lib\cmake\TurboWasm\TurboWasmTargets.cmake")
+  )
+  foreach ($path in $twRequired) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "missing restored TurboWasm SDK file: $path" }
+  }
+  if (-not (Select-String -LiteralPath (Join-Path $turbowasmRoot "lib\cmake\TurboWasm\TurboWasmTargets.cmake") -SimpleMatch "TurboWasm::Component" -Quiet)) {
+    throw "released TurboWasm package does not export TurboWasm::Component"
+  }
+  $turbowasmVersion = $turbowasmPackages[0].Name
+  "TURBOWASM_ROOT=$turbowasmRoot" >> $env:GITHUB_ENV
+  "TURBOWASM_VERSION=$turbowasmVersion" >> $env:GITHUB_ENV
+  Write-Host "restored TurboWasm.Native $turbowasmVersion for $SaltsRid"
+}
 
 "SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
 "RE2C_ROOT=$re2cRoot" >> $env:GITHUB_ENV
