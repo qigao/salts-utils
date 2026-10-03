@@ -18,6 +18,22 @@ int main(void) {
   }
   sentinel = data;
   {
+    Sample_t lifecycle;
+    memset(&lifecycle, 0xa5, sizeof(lifecycle));
+    Sample_init(&lifecycle);
+    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+        lifecycle.state != 0 || lifecycle.count != 0)
+      return 33;
+    lifecycle.point.x = 9;
+    lifecycle.point.y = 2.5;
+    lifecycle.state = State_Ready;
+    lifecycle.count = 17;
+    Sample_clear(&lifecycle);
+    if (lifecycle.point.x != 0 || lifecycle.point.y != 0.0 ||
+        lifecycle.state != 0 || lifecycle.count != 0)
+      return 34;
+  }
+  {
     const TbeTypedDescriptor *descriptor = EnumSymbolStorage_typed_descriptor();
     const cmeta_data_struct_shape *shape;
     const cmeta_data_desc *value_data;
