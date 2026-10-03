@@ -17,5 +17,25 @@ static_assert(sizeof(Event_labels_vec_t) > sizeof(vec_t),
 
 extern "C" int databind_message_native_artifact_cpp_probe(void) {
   const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
-  return data_bind_message_native_artifact_valid(artifact) ? 0 : 1;
+  Event_t event{};
+
+  if (!data_bind_message_native_artifact_valid(artifact)) return 1;
+
+  Event_init(&event);
+  if (event.values.cmeta.descriptor == nullptr ||
+      event.values.raw.element_type == nullptr ||
+      !cmeta_type_equal(event.values.raw.element_type, &cmeta_type_uint32) ||
+      event.labels.cmeta.descriptor == nullptr ||
+      event.labels.raw.element_type == nullptr ||
+      !cmeta_type_equal(
+          event.labels.raw.element_type, SALTS_TSTR_CMETA_TYPE_REF)) {
+    Event_clear(&event);
+    return 2;
+  }
+
+  Event_clear(&event);
+  return event.values.cmeta.descriptor == nullptr &&
+                 event.labels.cmeta.descriptor == nullptr
+             ? 0
+             : 3;
 }
