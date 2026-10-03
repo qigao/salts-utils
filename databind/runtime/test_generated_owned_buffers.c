@@ -112,6 +112,9 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
         "{\"id\":7,\"headers\":{"
         "\"alpha\":{\"name\":\"x-tag\",\"value\":\"a\"},"
         "\"beta\":{\"name\":\"y-tag\",\"value\":\"b\"}}}";
+    static const char map_json[] =
+        "{\"alpha\":{\"name\":\"x-tag\",\"value\":\"a\"},"
+        "\"beta\":{\"name\":\"y-tag\",\"value\":\"b\"}}";
     const DataBindMessageNativeArtifact *artifact =
         NativeHeaderMap_native_artifact();
     DataBindNativeTypeBinding binding =
@@ -130,9 +133,14 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     const cmeta_data_desc *value_data = NULL;
     DataBind *codec = NULL;
     NativeHeaderMap_t value = {0};
+    NativeHeaderMap_headers_map_t direct_map = {0};
+    DataBindNativeDiagnostic direct_diagnostic =
+        DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
     unsigned char workspace[16384] = {0};
     json_value_t *root = NULL;
+    json_value_t *map_root = NULL;
     cserde_reader *reader = NULL;
+    cserde_reader *map_reader = NULL;
     tstr lookup = tstr_dup("alpha");
     const NativeHeader_t *stored = NULL;
     NativeHeaderMap_headers_map_t provider_probe = {0};
@@ -232,6 +240,41 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     options.max_owned_bytes = 4096u;
     options.workspace = workspace;
     options.workspace_bytes = sizeof(workspace);
+
+    /* Isolate native Map decode from MessagePlan's prefixed field reader. */
+    map_root = json_parse(map_json, sizeof(map_json) - 1u);
+    check_not_null(map_root);
+    if (map_root != NULL)
+      map_reader = json_cserde_reader_create(map_root, 16u);
+    check_not_null(map_reader);
+    if (map_reader != NULL) {
+      DataBindStatus direct_status =
+          data_bind_native_decode(
+              &options, map_data, map_reader,
+              &direct_map, sizeof(direct_map), &direct_diagnostic);
+      if (direct_status != DATA_BIND_OK)
+        fprintf(
+            stderr,
+            "record-map direct-native status=%d path=%s message=%s\n",
+            (int)direct_status,
+            direct_diagnostic.error.path[0] != '\0'
+                ? direct_diagnostic.error.path : "<root>",
+            direct_diagnostic.error.message[0] != '\0'
+                ? direct_diagnostic.error.message : "<none>");
+      check_equal(direct_status, DATA_BIND_OK);
+      if (direct_status == DATA_BIND_OK)
+        check_equal(
+            NativeHeaderMap_headers_map_t_size(&direct_map), (size_t)2u);
+      check_equal(
+          data_bind_native_clear(
+              &options, map_data, &direct_map, sizeof(direct_map),
+              &direct_diagnostic),
+          DATA_BIND_OK);
+    }
+    json_cserde_reader_destroy(map_reader);
+    json_free(map_root);
+    map_reader = NULL;
+    map_root = NULL;
 
     root = json_parse(json, sizeof(json) - 1u);
     check_not_null(root);
