@@ -879,9 +879,201 @@ jobs:
           if-no-files-found: error
           compression-level: 9
 
+
+  ios:
+    name: iOS SDK / ${{ matrix.name }}
+    needs: metadata
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: device arm64, triplet: arm64-ios, rid: ios-arm64, sysroot: iphoneos}
+          - {name: simulator arm64, triplet: arm64-ios-simulator, rid: ios-simulator-arm64, sysroot: iphonesimulator}
+    env:
+      X_VCPKG_NUGET_ID_PREFIX: vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: qigao/vcpkg-cache/.github/actions/setup-vcpkg-cache@master
+        with:
+          mode: read
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare iOS toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          brew install ninja nasm
+          test -n "${VCPKG_ROOT:-}"
+          test -x "$VCPKG_ROOT/vcpkg"
+          test -n "${QIGAO_VCPKG_TOOLCHAIN_FILE:-}"
+          test -f "$QIGAO_VCPKG_TOOLCHAIN_FILE"
+
+      - name: Restore latest published Salts SDK and host re2c
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash cmake/ci/restore-native-sdk.sh "${{ matrix.rid }}" macos-arm64
+
+      - name: Build host Lemon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S tools/lemon -B "build/host-lemon-${{ matrix.rid }}" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "build/host-lemon-${{ matrix.rid }}" --target lemon --parallel 2
+
+      - name: Restore minimal host idlc dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          manifest="$RUNNER_TEMP/salts-utils-host-idlc-${{ matrix.rid }}"
+          install_root="$GITHUB_WORKSPACE/vcpkg_installed-host-${{ matrix.rid }}"
+          baseline="$(python3 -c 'import json; print(json.load(open("vcpkg.json", encoding="utf-8"))["builtin-baseline"])')"
+          rm -rf "$manifest" "$install_root"
+          mkdir -p "$manifest"
+          cat > "$manifest/vcpkg.json" <<EOF
+          {
+            "name": "salts-utils-host-idlc",
+            "version-string": "1",
+            "dependencies": ["simde"],
+            "builtin-baseline": "$baseline"
+          }
+          EOF
+          # Generic macOS host packages use the central host namespace;
+          # the vcpkg-cache_* prefix is reserved here for iOS target triplets.
+          X_VCPKG_NUGET_ID_PREFIX="" "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$manifest" \
+            --x-install-root="$install_root" \
+            --triplet arm64-osx \
+            --only-binarycaching
+          test -f "$install_root/arm64-osx/include/simde/x86/sse2.h"
+          echo "SALTS_UTILS_HOST_VCPKG_INSTALLED=$install_root" >> "$GITHUB_ENV"
+
+      - name: Build current host salts-idlc
+        shell: bash
+        run: |
+          set -euxo pipefail
+          host_build="$GITHUB_WORKSPACE/build/host-idlc-${{ matrix.rid }}"
+          host_lemon="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon"
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B "$host_build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DVCPKG_INSTALLED_DIR="$SALTS_UTILS_HOST_VCPKG_INSTALLED" \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
+            -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_QUALIFY_DATABIND=ON \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
+          SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build "$host_build" \
+            --target salts_idlc --parallel 2
+          host_idlc="$(find "$host_build" -type f -name salts-idlc -perm -111 -print -quit)"
+          test -n "$host_idlc"
+          echo "SALTS_UTILS_HOST_IDLC=$host_idlc" >> "$GITHUB_ENV"
+
+      - name: Configure and install iOS SaltsUtils
+        shell: bash
+        run: |
+          set -euxo pipefail
+          build="$GITHUB_WORKSPACE/build/${{ matrix.rid }}"
+          prefix="$GITHUB_WORKSPACE/stage/sdk/${{ matrix.rid }}"
+          cmake -S . -B "$build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
+            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$GITHUB_WORKSPACE/build/host-lemon-${{ matrix.rid }}/lemon" \
+            -DSALTS_UTILS_BUILD_IDLC=OFF \
+            -DVCPKG_MANIFEST_FEATURES=capture \
+            -DSALTS_UTILS_ENABLE_CAPTURE=ON \
+            -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build "$build" --parallel 2
+          cmake --install "$build"
+
+          test -f "$prefix/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+          test -f "$prefix/lib/cmake/SaltsUtils/IDL.cmake"
+          test -f "$prefix/include/data_bind_binding_plan.h"
+          test -f "$prefix/include/data_bind_projection_plan.h"
+          test -f "$prefix/include/data_bind_cmeta_adapter_plan.h"
+          test -f "$prefix/include/data_bind_plugin_catalog.h"
+          test -f "$prefix/include/data_bind_plugin_execution.h"
+          test -f "$prefix/include/salts_capture.h"
+          test -f "$prefix/include/salts_playback.h"
+          test ! -e "$prefix/bin/salts-idlc"
+          test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
+          test -n "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
+
+          cmake -S databind/runtime/package_config/plugin_execution \
+            -B "build/databind-plugin-execution-${{ matrix.rid }}" -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts"
+          cmake --build "build/databind-plugin-execution-${{ matrix.rid }}" --parallel 2
+
+          cmake -S databind/producer/package_config \
+            -B "build/databind-producer-${{ matrix.rid }}" -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
+            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
+          cmake --build "build/databind-producer-${{ matrix.rid }}" \
+            --target databind_producer_generate --parallel 2
+
+          cmake -S databind/idl/compiler/package_config/databind_public \
+            -B "build/databind-public-${{ matrix.rid }}" -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT="${{ matrix.sysroot }}" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-${{ matrix.triplet }}" \
+            -DSaltsUtils_DIR="$prefix/lib/cmake/SaltsUtils" \
+            -DSalts_DIR="$SALTS_ROOT/lib/cmake/Salts" \
+            -DSaltsUtils_IDLC_EXECUTABLE="$SALTS_UTILS_HOST_IDLC" \
+            -DSaltsUtils_IDLC_HOST_SALTS_ROOT="$SALTS_HOST_ROOT"
+          cmake --build "build/databind-public-${{ matrix.rid }}" \
+            --target databind_public_consumer --parallel 2
+
+          cat > "$prefix/salts-utils-sdk-manifest.txt" <<EOF
+          version=${{ needs.metadata.outputs.version }}
+          commit=$GITHUB_SHA
+          os=ios
+          rid=${{ matrix.rid }}
+          triplet=${{ matrix.triplet }}
+          profile=release
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: salts-utils-sdk-${{ matrix.rid }}
+          path: stage/sdk
+          if-no-files-found: error
+          compression-level: 9
+
   pack:
     name: Pack SaltsUtils.Native
-    needs: [metadata, linux, macos, windows, android]
+    needs: [metadata, linux, macos, windows, android, ios]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -911,7 +1103,18 @@ jobs:
           test -f package/sdk/android-arm64-v8a/include/data_bind_cmeta_adapter_plan.h
           test -f package/sdk/android-arm64-v8a/include/salts_capture.h
           test -f package/sdk/android-arm64-v8a/include/salts_playback.h
-          test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 4
+          for rid in ios-arm64 ios-simulator-arm64; do
+            test -f "package/sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake"
+            test -f "package/sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake"
+            test -f "package/sdk/$rid/include/data_bind_binding_plan.h"
+            test -f "package/sdk/$rid/include/data_bind_cmeta_adapter_plan.h"
+            test -f "package/sdk/$rid/include/salts_capture.h"
+            test -f "package/sdk/$rid/include/salts_playback.h"
+            test ! -e "package/sdk/$rid/bin/salts-idlc"
+            test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_capture.*' -print -quit)"
+            test -n "$(find "package/sdk/$rid/lib" -maxdepth 1 -type f -name 'libsalts_playback.*' -print -quit)"
+          done
+          test "$(find package/sdk -maxdepth 2 -name salts-utils-sdk-manifest.txt | wc -l)" -eq 6
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -964,6 +1167,20 @@ jobs:
           grep -Fx "sdk/android-arm64-v8a/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
           grep -Fx "sdk/android-arm64-v8a/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+          for rid in ios-arm64 ios-simulator-arm64; do
+            grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/SaltsUtilsConfig.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/lib/cmake/SaltsUtils/IDL.cmake" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/data_bind_binding_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/data_bind_native.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/data_bind_cmeta_adapter_plan.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/data_bind_plugin_catalog.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/salts_capture.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            grep -Fx "sdk/$rid/include/salts_playback.h" "$RUNNER_TEMP/salts-utils-nupkg.txt"
+            if grep -Fxq "sdk/$rid/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
+              echo "target iOS RID must not package host salts-idlc: $rid" >&2
+              exit 1
+            fi
+          done
           if grep -Fxq "sdk/macos-arm64/bin/salts-idlc" "$RUNNER_TEMP/salts-utils-nupkg.txt"; then
             mac_rid=macos-arm64
           else

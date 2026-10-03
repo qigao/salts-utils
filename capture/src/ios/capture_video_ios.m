@@ -149,6 +149,11 @@ void ios_video_destroy(salts_capture_t *capture) {
     }
 }
 
+static int ios_video_create_fail(ios_video_capture_t *cap) {
+    ios_video_destroy((salts_capture_t *)cap);
+    return SALTS_CAPTURE_ERR_DEVICE;
+}
+
 int ios_video_device_create_capture(
     void *backend_ctx,
     const salts_video_native_mode_t *mode,
@@ -169,6 +174,7 @@ int ios_video_device_create_capture(
         AVCaptureDeviceFormat *selected_format = nil;
         CMTime duration = kCMTimeInvalid;
         NSError *error = nil;
+        SaltsCaptureGuard *guard = nil;
         ios_video_capture_t *cap;
 
         if (!device ||
@@ -197,19 +203,20 @@ int ios_video_device_create_capture(
                           mode->framerate_denominator / 2u) /
                          mode->framerate_denominator);
 
-        if (![device lockForConfiguration:&error]) goto error;
+        if (![device lockForConfiguration:&error])
+            return ios_video_create_fail(cap);
         device.activeFormat = selected_format;
         device.activeVideoMinFrameDuration = duration;
         device.activeVideoMaxFrameDuration = duration;
         [device unlockForConfiguration];
 
         cap->session = [[AVCaptureSession alloc] init];
-        if (!cap->session) goto error;
+        if (!cap->session) return ios_video_create_fail(cap);
         cap->input = [AVCaptureDeviceInput deviceInputWithDevice:device
                                                            error:&error];
         if (error || !cap->input ||
             ![cap->session canAddInput:cap->input]) {
-            goto error;
+            return ios_video_create_fail(cap);
         }
         [cap->session addInput:cap->input];
 
@@ -222,10 +229,11 @@ int ios_video_device_create_capture(
         cap->queue = dispatch_queue_create(
             "com.turbomedia.video.capture", DISPATCH_QUEUE_SERIAL);
         [cap->output setSampleBufferDelegate:cap->delegate queue:cap->queue];
-        if (![cap->session canAddOutput:cap->output]) goto error;
+        if (![cap->session canAddOutput:cap->output])
+            return ios_video_create_fail(cap);
         [cap->session addOutput:cap->output];
 
-        SaltsCaptureGuard *guard = cap->guard;
+        guard = cap->guard;
         cap->delegate.frameCallback = ^(CVPixelBufferRef pixel_buffer) {
             ios_video_capture_t *cap_ref =
                 (ios_video_capture_t *)[guard acquireCapture];
@@ -255,8 +263,5 @@ int ios_video_device_create_capture(
         *out_capture = (salts_capture_t *)cap;
         return SALTS_CAPTURE_OK;
 
-error:
-        ios_video_destroy((salts_capture_t *)cap);
-        return SALTS_CAPTURE_ERR_DEVICE;
     }
 }
