@@ -9,5 +9,7 @@ message Event {
   list<string> labels;
   set<uint32> ids;
   set<string> tags;
+  map<string,uint32> counters;
+  map<string,string> aliases;
 }
 
