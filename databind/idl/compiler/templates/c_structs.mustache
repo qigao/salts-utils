@@ -361,9 +361,6 @@ typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
 #endif
 {{/native_cstl_map}}
-{{^native_cstl_map}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
-{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
@@ -398,17 +395,6 @@ typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_set_explicit_refs}}
 #endif
 {{/native_cstl_set}}
-{{^native_cstl_sequence}}
-{{^native_cstl_set}}
-{{#native_sequence_name}}
-TBE_TYPED_MANAGED_VEC_DEFINE(
-    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
-{{/native_sequence_name}}
-{{^native_sequence_name}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
-{{/native_sequence_name}}
-{{/native_cstl_set}}
-{{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -772,9 +758,6 @@ typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
 #endif
 {{/native_cstl_map}}
-{{^native_cstl_map}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
-{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
@@ -809,17 +792,6 @@ typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_set_explicit_refs}}
 #endif
 {{/native_cstl_set}}
-{{^native_cstl_sequence}}
-{{^native_cstl_set}}
-{{#native_sequence_name}}
-TBE_TYPED_MANAGED_VEC_DEFINE(
-    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
-{{/native_sequence_name}}
-{{^native_sequence_name}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
-{{/native_sequence_name}}
-{{/native_cstl_set}}
-{{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
@@ -1415,9 +1387,6 @@ typed(Map, {{typed_vector_type}}, tstr, {{typed_map_value_c_type}},
       {{native_map_value_type_ref}}, {{native_map_value_data_ref}});
 #endif
 {{/native_cstl_map}}
-{{^native_cstl_map}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_map_entry_type}})
-{{/native_cstl_map}}
 {{/typed_needs_map_vector}}
 {{#typed_needs_vector}}
 {{#native_cstl_sequence}}
@@ -1452,17 +1421,6 @@ typed(Set, {{typed_vector_type}}, {{typed_element_c_type}});
 {{/native_cstl_set_explicit_refs}}
 #endif
 {{/native_cstl_set}}
-{{^native_cstl_sequence}}
-{{^native_cstl_set}}
-{{#native_sequence_name}}
-TBE_TYPED_MANAGED_VEC_DEFINE(
-    {{typed_vector_type}}, {{typed_element_c_type}}, {{inner_type}}_cmeta_data)
-{{/native_sequence_name}}
-{{^native_sequence_name}}
-TBE_TYPED_VEC_DEFINE({{typed_vector_type}}, {{typed_element_c_type}})
-{{/native_sequence_name}}
-{{/native_cstl_set}}
-{{/native_cstl_sequence}}
 {{/typed_needs_vector}}
 {{/fields}}
 {{/typed_source_enabled}}
