@@ -135,6 +135,11 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     cserde_reader *reader = NULL;
     tstr lookup = tstr_dup("alpha");
     const NativeHeader_t *stored = NULL;
+    NativeHeaderMap_headers_map_t provider_probe = {0};
+    NativeHeader_t provider_value = {0};
+    tstr provider_key = tstr_dup("probe");
+    cmeta_collector provider_collector = {0};
+    cmeta_status provider_status;
 
     check_true(data_bind_message_native_artifact_valid(artifact));
     check_equal(artifact->native_binding(&binding, &error), DATA_BIND_OK);
@@ -169,6 +174,42 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     check_true(value_data->storage_type == &NativeHeader_CMETA_TYPE);
     check_not_null(cmeta_data_construct_ops_of(map_data));
 
+    /* Isolate canonical typed Map provider admission from MessagePlan/CSerde. */
+    check_not_null(provider_key);
+    check_equal(
+        cmeta_data_value_init_zero(map_data, &provider_probe), CMETA_OK);
+    check_equal(
+        cmeta_data_value_init_zero(value_data, &provider_value), CMETA_OK);
+    provider_value.name = tstr_dup("x-tag");
+    provider_value.value = tstr_dup("probe-value");
+    check_not_null(provider_value.name);
+    check_not_null(provider_value.value);
+    check_true(cmeta_type_equal(
+        provider_probe.raw.key_type, SALTS_TSTR_CMETA_TYPE_REF));
+    check_true(cmeta_type_equal(
+        provider_probe.raw.value_type, &NativeHeader_CMETA_TYPE));
+    check_equal(
+        cmeta_data_map_collector(
+            map_data, &provider_probe, 4u, &provider_collector),
+        CMETA_OK);
+    check_equal(cmeta_collector_begin(&provider_collector), CMETA_OK);
+    provider_status = cmeta_data_map_accept(
+        map_data, &provider_collector,
+        key_data, &provider_key, value_data, &provider_value);
+    check_equal(provider_status, CMETA_OK);
+    if (provider_status == CMETA_OK)
+      check_equal(cmeta_collector_finish(&provider_collector), CMETA_OK);
+    else
+      cmeta_collector_abort(&provider_collector);
+    check_equal(
+        NativeHeaderMap_headers_map_t_size(&provider_probe), (size_t)1u);
+    check_equal(
+        cmeta_data_value_restore_zero(value_data, &provider_value), CMETA_OK);
+    check_equal(
+        cmeta_data_value_restore_zero(map_data, &provider_probe), CMETA_OK);
+    tstr_free(provider_key);
+    provider_key = NULL;
+
     check_equal(NativeOwnedBuffers_codec_create(&codec, &error), DATA_BIND_OK);
     check_not_null(codec);
     if (codec == NULL) {
@@ -200,10 +241,15 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
       DataBindStatus decode_status =
           data_bind_message_plan_decode_native(
               plan, &options, reader, &value, sizeof(value), &diagnostic);
-      info("record-map decode status=%d field=%s message=%s",
-           (int)decode_status,
-           diagnostic.schema_field[0] != '\0' ? diagnostic.schema_field : "<root>",
-           diagnostic.message[0] != '\0' ? diagnostic.message : "<none>");
+      if (decode_status != DATA_BIND_OK)
+        fprintf(
+            stderr,
+            "record-map decode status=%d field=%s message=%s\n",
+            (int)decode_status,
+            diagnostic.schema_field[0] != '\0'
+                ? diagnostic.schema_field : "<root>",
+            diagnostic.message[0] != '\0'
+                ? diagnostic.message : "<none>");
       check_equal(decode_status, DATA_BIND_OK);
       check_equal(value.id, (uint32_t)7u);
       check_equal(
