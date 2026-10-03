@@ -15,11 +15,25 @@ static_assert(sizeof(Event_values_vec_t) > sizeof(vec_t),
 static_assert(sizeof(Event_labels_vec_t) > sizeof(vec_t),
               "typed CSTL string Vec must not preserve raw vec_t storage ABI");
 
+extern "C" size_t databind_message_native_artifact_c_values_vec_size(void);
+extern "C" size_t databind_message_native_artifact_c_values_vec_raw_offset(void);
+extern "C" size_t databind_message_native_artifact_c_labels_vec_size(void);
+extern "C" size_t databind_message_native_artifact_c_labels_vec_raw_offset(void);
+
 extern "C" int databind_message_native_artifact_cpp_probe(void) {
   const DataBindMessageNativeArtifact *artifact = Event_native_artifact();
   Event_t event{};
 
   if (!data_bind_message_native_artifact_valid(artifact)) return 1;
+  if (databind_message_native_artifact_c_values_vec_size() !=
+          sizeof(Event_values_vec_t) ||
+      databind_message_native_artifact_c_values_vec_raw_offset() !=
+          offsetof(Event_values_vec_t, raw) ||
+      databind_message_native_artifact_c_labels_vec_size() !=
+          sizeof(Event_labels_vec_t) ||
+      databind_message_native_artifact_c_labels_vec_raw_offset() !=
+          offsetof(Event_labels_vec_t, raw))
+    return 4;
 
   Event_init(&event);
   if (event.values.cmeta.descriptor == nullptr ||
