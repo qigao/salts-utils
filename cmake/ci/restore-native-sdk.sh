@@ -42,24 +42,28 @@ cat > "$project" <<'EOF'
 </Project>
 EOF
 
-restore_args=()
 if [ "$with_turbowasm" = "1" ]; then
-  restore_args+=("-p:WithTurboWasm=true")
+  dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate -p:WithTurboWasm=true
+else
+  dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate
 fi
-dotnet restore "$project" --packages "$packages" --configfile "$config" --no-cache --force-evaluate "${restore_args[@]}"
 
 single_package_dir() {
   local package_root="$1"
   local package_name="$2"
-  local found=()
-  while IFS= read -r path; do
-    found+=("$path")
-  done < <(find "$package_root" -mindepth 1 -maxdepth 1 -type d -print)
-  [ "${#found[@]}" -eq 1 ] || {
-    printf 'native SDK restore error: expected exactly one %s package, found %s\n' "$package_name" "${#found[@]}" >&2
+  local count
+  local found
+  count="$(find "$package_root" -mindepth 1 -maxdepth 1 -type d -print | wc -l | tr -d ' ')"
+  [ "$count" -eq 1 ] || {
+    printf 'native SDK restore error: expected exactly one %s package, found %s\n' "$package_name" "$count" >&2
     exit 1
   }
-  printf '%s\n' "${found[0]}"
+  found="$(find "$package_root" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+  [ -n "$found" ] || {
+    printf 'native SDK restore error: missing %s package directory\n' "$package_name" >&2
+    exit 1
+  }
+  printf '%s\n' "$found"
 }
 
 salts_package="$(single_package_dir "$packages/salts.native" Salts.Native)"
