@@ -49,6 +49,14 @@ using MessageNativeEncode = DataBindStatus (*)(
     size_t,
     cserde_writer *,
     DataBindMessagePlanDiagnostic *);
+using MessageNativeDecodeFormat = DataBindStatus (*)(
+    const DataBindMessagePlan *,
+    const DataBindNativeOptions *,
+    DataBindFormat,
+    cserde_reader *,
+    void *,
+    size_t,
+    DataBindMessagePlanDiagnostic *);
 using BuiltinFormatProvider =
     const DataBindFormatProvider *(*)(DataBindFormat);
 static_assert(std::is_same_v<
@@ -63,6 +71,9 @@ static_assert(std::is_same_v<
 static_assert(std::is_same_v<
               decltype(&data_bind_message_plan_encode_native),
               MessageNativeEncode>);
+static_assert(std::is_same_v<
+              decltype(&data_bind_message_plan_decode_native_format),
+              MessageNativeDecodeFormat>);
 static_assert(std::is_same_v<
               decltype(&data_bind_builtin_format_provider),
               BuiltinFormatProvider>);
