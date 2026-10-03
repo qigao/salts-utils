@@ -133,9 +133,11 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     const cmeta_data_desc *value_data = NULL;
     DataBind *codec = NULL;
     NativeHeaderMap_t value = {0};
+    NativeHeaderMap_t validation_owner = {0};
     NativeHeaderMap_headers_map_t direct_map = {0};
     DataBindNativeDiagnostic direct_diagnostic =
         DATA_BIND_NATIVE_DIAGNOSTIC_INIT;
+    DataBindError validation_error = DATA_BIND_ERROR_INIT;
     unsigned char workspace[16384] = {0};
     json_value_t *root = NULL;
     json_value_t *map_root = NULL;
@@ -264,14 +266,39 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
             direct_diagnostic.error.message[0] != '\0'
                 ? direct_diagnostic.error.message : "<none>");
       check_equal(direct_status, DATA_BIND_OK);
-      if (direct_status == DATA_BIND_OK)
+      if (direct_status == DATA_BIND_OK) {
+        DataBindStatus validation_status;
         check_equal(
             NativeHeaderMap_headers_map_t_size(&direct_map), (size_t)2u);
-      check_equal(
-          data_bind_native_clear(
-              &options, map_data, &direct_map, sizeof(direct_map),
-              &direct_diagnostic),
-          DATA_BIND_OK);
+
+        NativeHeaderMap_init(&validation_owner);
+        validation_owner.id = UINT32_C(7);
+        check_equal(
+            cmeta_data_value_move(
+                map_data, &validation_owner.headers, &direct_map),
+            CMETA_OK);
+        validation_status =
+            data_bind_message_plan_validate_native(
+                plan, &validation_owner, sizeof(validation_owner),
+                &validation_error);
+        if (validation_status != DATA_BIND_OK)
+          fprintf(
+              stderr,
+              "record-map validation status=%d path=%s message=%s\n",
+              (int)validation_status,
+              validation_error.path[0] != '\0'
+                  ? validation_error.path : "<root>",
+              validation_error.message[0] != '\0'
+                  ? validation_error.message : "<none>");
+        check_equal(validation_status, DATA_BIND_OK);
+        NativeHeaderMap_clear(&validation_owner);
+      } else {
+        check_equal(
+            data_bind_native_clear(
+                &options, map_data, &direct_map, sizeof(direct_map),
+                &direct_diagnostic),
+            DATA_BIND_OK);
+      }
     }
     json_cserde_reader_destroy(map_reader);
     json_free(map_root);
