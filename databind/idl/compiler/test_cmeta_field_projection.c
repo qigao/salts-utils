@@ -424,6 +424,9 @@ suite("compiler_cmeta_field_projection") {
                 EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
                 check_not_null(field_projection_child(record,
                                                        "cmeta_graph_supported"));
+            if (EXPECTED[i].requirement == EXPECT_SEQUENCE_PROVIDER)
+                check_not_null(field_projection_child(record,
+                                                       "cmeta_lifecycle_supported"));
         }
 
         node_free(root);
