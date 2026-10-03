@@ -197,10 +197,14 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     if (root != NULL) reader = json_cserde_reader_create(root, 16u);
     check_not_null(reader);
     if (reader != NULL) {
-      check_equal(
+      DataBindStatus decode_status =
           data_bind_message_plan_decode_native(
-              plan, &options, reader, &value, sizeof(value), &diagnostic),
-          DATA_BIND_OK);
+              plan, &options, reader, &value, sizeof(value), &diagnostic);
+      info("record-map decode status=%d field=%s message=%s",
+           (int)decode_status,
+           diagnostic.schema_field[0] != '\0' ? diagnostic.schema_field : "<root>",
+           diagnostic.message[0] != '\0' ? diagnostic.message : "<none>");
+      check_equal(decode_status, DATA_BIND_OK);
       check_equal(value.id, (uint32_t)7u);
       check_equal(
           NativeHeaderMap_headers_map_t_size(&value.headers), (size_t)2u);
