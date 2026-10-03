@@ -7,10 +7,8 @@
 #include <string.h>
 
 #include "data_bind_format_provider.h"
-#include "data_bind_json_provider.h"
 #include "data_bind_message_plan.h"
 #include "data_bind_native.h"
-#include "data_bind_yaml_provider.h"
 
 static const char {{schema.schema_name}}_SCHEMA_TEXT[] = "{{schema_c_literal}}";
 static void {{schema.schema_name}}_CMETA_INIT_ALL(void);
@@ -975,7 +973,7 @@ static DataBindStatus {{schema.schema_name}}_message_to_json(
     if (status != DATA_BIND_OK) goto cleanup;
 
     status = data_bind_format_writer_open(
-        data_bind_json_format_provider(),
+        data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON),
         {{schema.schema_name}}_json_output_write, &output,
         descriptor_depth, &writer, error);
     if (status != DATA_BIND_OK) goto cleanup;
@@ -1244,14 +1242,14 @@ static DataBindStatus {{schema.schema_name}}_native_cstl_legacy_unavailable(
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            data_bind_json_format_provider(), (size_t)(depth_), (size_t)(nodes_), \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_JSON), (size_t)(depth_), (size_t)(nodes_), \
             object, sizeof(*object), data, len, error); \
     } \
     DataBindStatus name##_from_yaml(DataBind *codec, name##_t *object, const char *data, size_t len, DataBindError *error) { \
         {{schema.schema_name}}_CMETA_INIT_ALL(); \
         return {{schema.schema_name}}_message_from_text( \
             codec, #name, name##__databind_message_native_binding, \
-            data_bind_yaml_format_provider(), (size_t)(depth_), (size_t)(nodes_), \
+            data_bind_builtin_format_provider(DATA_BIND_FORMAT_YAML), (size_t)(depth_), (size_t)(nodes_), \
             object, sizeof(*object), data, len, error); \
     } \
     DataBindStatus name##_to_json(DataBind *codec, const name##_t *object, char **out, size_t *out_len, DataBindError *error) { \
