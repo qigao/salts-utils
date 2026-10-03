@@ -1136,8 +1136,7 @@ static void tbe_compiler_annotate_native_requirement(
              tbe_compiler_has_child(field, "is_list") &&
              !tbe_compiler_has_child(field, "is_optional") &&
              !tbe_compiler_has_child(field, "is_nullable") &&
-             (tbe_compiler_string_value(field, "native_sequence_name") != NULL ||
-              tbe_compiler_string_value(field, "native_cstl_sequence") != NULL) &&
+             tbe_compiler_string_value(field, "native_cstl_sequence") != NULL &&
              tbe_compiler_string_value(field, "native_element_type_ref") != NULL &&
              tbe_compiler_string_value(field, "native_element_data_ref") != NULL) {
     requirement = DATABIND_COMPILER_NATIVE_SEQUENCE_PROVIDER;
@@ -1765,7 +1764,7 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         if (tbe_compiler_has_child(field, "is_map") &&
             !tbe_compiler_has_child(field, "is_optional") &&
             !tbe_compiler_has_child(field, "is_nullable") &&
-            tbe_compiler_string_value(field, "native_map_name") != NULL) {
+            !tbe_compiler_has_child(field, "native_cstl_map")) {
           const char *value_type =
               tbe_compiler_string_value(field, "value_type");
           const char *owner_name =
@@ -1805,9 +1804,10 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
             tbe_compiler_set_string(field, "typed_vector_type", map_type);
             tbe_compiler_set_string(field, "typed_declaration", declaration);
 
-            tbe_compiler_remove_children(field, "native_map_name");
             tbe_compiler_remove_children(field, "native_data_symbol");
             tbe_compiler_remove_children(field, "native_type_symbol");
+            tbe_compiler_set_string(
+                field, "cmeta_native_requirement", "map_provider");
 
             if (snprintf(symbol, sizeof(symbol), "%s_map_data",
                          map_type) >= 0 &&
@@ -1836,7 +1836,7 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         if (!tbe_compiler_has_child(field, "is_list") ||
             tbe_compiler_has_child(field, "is_optional") ||
             tbe_compiler_has_child(field, "is_nullable") ||
-            tbe_compiler_string_value(field, "native_sequence_name") == NULL)
+            tbe_compiler_has_child(field, "native_cstl_sequence"))
           continue;
 
         inner_type = tbe_compiler_string_value(field, "inner_type");
@@ -1858,9 +1858,10 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
             field, "native_cstl_sequence_explicit_refs", "1");
         tbe_compiler_set_string(owner, "native_cstl_storage", "1");
 
-        tbe_compiler_remove_children(field, "native_sequence_name");
         tbe_compiler_remove_children(field, "native_data_symbol");
         tbe_compiler_remove_children(field, "native_type_symbol");
+        tbe_compiler_set_string(
+            field, "cmeta_native_requirement", "sequence_provider");
 
         if (snprintf(symbol, sizeof(symbol), "%s_collection_data",
                      vector_type) < 0 ||
