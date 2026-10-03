@@ -936,11 +936,10 @@ jobs:
           SALTS_ROOT="$SALTS_HOST_ROOT" cmake -S . -B "$host_build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
-            -DVCPKG_TARGET_TRIPLET=arm64-osx \
-            -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed-host-${{ matrix.rid }}" \
-            -DVCPKG_INSTALL_OPTIONS=--only-binarycaching \
+            -DVCPKG_MANIFEST_MODE=OFF \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
+            -DSALTS_UTILS_QUALIFY_DATABIND=ON \
             -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF
           SALTS_ROOT="$SALTS_HOST_ROOT" cmake --build "$host_build" \
             --target salts_idlc --parallel 2
