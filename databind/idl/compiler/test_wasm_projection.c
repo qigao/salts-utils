@@ -365,6 +365,13 @@ spec("DataBind WASM projection backend") {
         generated.base, "WasmProjection.Calc.Add"));
     salts_fs_buf_free(&generated);
 
+    check_equal(salts_fs_read_file(host_h, &generated), 0);
+    check_not_null(strstr(
+        generated.base, "#include <data_bind_binding_plan.h>"));
+    check_not_null(strstr(
+        generated.base, "DataBindServiceNativeBinding"));
+    salts_fs_buf_free(&generated);
+
     check_equal(salts_fs_read_file(guest_h, &generated), 0);
     check_not_null(strstr(generated.base, export_symbol));
     check_not_null(strstr(generated.base, "cabi_realloc"));
