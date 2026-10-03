@@ -82,7 +82,10 @@ if ($WithTurboWasm) {
   if (-not (Select-String -LiteralPath (Join-Path $turbowasmRoot "lib\cmake\TurboWasm\TurboWasmTargets.cmake") -SimpleMatch "TurboWasm::Component" -Quiet)) {
     throw "released TurboWasm package does not export TurboWasm::Component"
   }
+  $turbowasmVersion = $turbowasmPackages[0].Name
   "TURBOWASM_ROOT=$turbowasmRoot" >> $env:GITHUB_ENV
+  "TURBOWASM_VERSION=$turbowasmVersion" >> $env:GITHUB_ENV
+  Write-Host "restored TurboWasm.Native $turbowasmVersion for $SaltsRid"
 }
 
 "SALTS_ROOT=$saltsRoot" >> $env:GITHUB_ENV
