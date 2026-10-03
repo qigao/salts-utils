@@ -58,7 +58,7 @@ static int invoke(
 int main(void) {
   uint8_t *component = NULL;
   size_t component_size = 0u;
-  wasm_execution_wasm_host host = {0};
+  databind_wasm_execution_wasm_host host = {0};
   DataBindNativeExecution execution =
       DATA_BIND_NATIVE_EXECUTION_INIT;
   AddRequest_t request = {0};
@@ -69,7 +69,7 @@ int main(void) {
           WASM_EXECUTION_COMPONENT_PATH,
           &component, &component_size))
     return 10;
-  if (!wasm_execution_wasm_host_init(
+  if (!databind_wasm_execution_wasm_host_init(
           &host, component, component_size)) {
     free(component);
     return 11;
@@ -77,7 +77,7 @@ int main(void) {
   if (!databind_11_WasmRuntime_4_Calc_3_Add__databind_wasm_execution(
           &host, &execution) ||
       !data_bind_native_execution_valid(&execution)) {
-    wasm_execution_wasm_host_destroy(&host);
+    databind_wasm_execution_wasm_host_destroy(&host);
     free(component);
     return 12;
   }
@@ -89,7 +89,7 @@ int main(void) {
       status != 0 ||
       response.sum != 7u ||
       response.product != 12u) {
-    wasm_execution_wasm_host_destroy(&host);
+    databind_wasm_execution_wasm_host_destroy(&host);
     free(component);
     return 20;
   }
@@ -102,7 +102,7 @@ int main(void) {
       status != -7 ||
       response.sum != 0u ||
       response.product != 0u) {
-    wasm_execution_wasm_host_destroy(&host);
+    databind_wasm_execution_wasm_host_destroy(&host);
     free(component);
     return 21;
   }
@@ -113,12 +113,12 @@ int main(void) {
   status = 12345;
   if (invoke(&execution, &request, &response, &status) ||
       status != 12345) {
-    wasm_execution_wasm_host_destroy(&host);
+    databind_wasm_execution_wasm_host_destroy(&host);
     free(component);
     return 22;
   }
 
-  wasm_execution_wasm_host_destroy(&host);
+  databind_wasm_execution_wasm_host_destroy(&host);
   free(component);
   return 0;
 }
