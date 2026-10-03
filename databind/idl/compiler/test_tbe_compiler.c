@@ -2767,8 +2767,17 @@ spec("tbe_compiler") {
         check_contains(source, "cmeta_data_value_restore_zero(&name##_CMETA_DATA");
         check_contains(source, "tbe_typed_descriptor_parse(codec");
         check_contains(source, "tbe_typed_descriptor_serialize_binary");
-        check_contains(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(Sample,");
+        check_contains(
+            source, "DATABIND_DEFINE_CANONICAL_MESSAGE_TEXT(LoginMessage,");
+        check(strstr(source, "DATABIND_DEFINE_CMETA_RAW_RECORD(LoginMessage)") == NULL);
         check(strstr(source, "TBE_TYPED_DEFINE_RAW_RECORD(LoginMessage)") == NULL);
+        check_contains(source, "DATABIND_DEFINE_RAW_MESSAGE_REMAINDER(LoginMessage)");
+        check_contains(source, "data_bind_json_format_provider()");
+        check_contains(source, "data_bind_yaml_format_provider()");
+        check_contains(source, "data_bind_message_plan_decode_native(");
+        check_contains(source, "data_bind_message_plan_encode_native(");
         check_contains(source, "TBE_TYPED_DEFINE_RAW_CONVERSIONS(name)");
       }
 
