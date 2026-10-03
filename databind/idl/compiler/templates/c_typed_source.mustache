@@ -785,9 +785,11 @@ static DataBindStatus {{schema.schema_name}}_message_from_text(
 
     status = data_bind_message_plan_compile(
         codec, type_name, &binding, &plan, &diagnostic);
-    if (status != DATA_BIND_OK)
-        return {{schema.schema_name}}_message_diag_error(
+    if (status != DATA_BIND_OK) {
+        status = {{schema.schema_name}}_message_diag_error(
             error, status, type_name, &diagnostic);
+        goto cleanup;
+    }
 
     status = {{schema.schema_name}}_message_workspace_open(
         &binding, plan, descriptor_depth, descriptor_nodes, 1,
