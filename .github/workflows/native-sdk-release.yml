@@ -927,6 +927,31 @@ jobs:
           cmake -S tools/lemon -B "build/host-lemon-${{ matrix.rid }}" -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build "build/host-lemon-${{ matrix.rid }}" --target lemon --parallel 2
 
+      - name: Restore minimal host idlc dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          manifest="$RUNNER_TEMP/salts-utils-host-idlc-${{ matrix.rid }}"
+          install_root="$GITHUB_WORKSPACE/vcpkg_installed-host-${{ matrix.rid }}"
+          baseline="$(python3 -c 'import json; print(json.load(open("vcpkg.json", encoding="utf-8"))["builtin-baseline"])')"
+          rm -rf "$manifest" "$install_root"
+          mkdir -p "$manifest"
+          cat > "$manifest/vcpkg.json" <<EOF
+          {
+            "name": "salts-utils-host-idlc",
+            "version-string": "1",
+            "dependencies": ["simde"],
+            "builtin-baseline": "$baseline"
+          }
+          EOF
+          "$VCPKG_ROOT/vcpkg" install \
+            --x-manifest-root="$manifest" \
+            --x-install-root="$install_root" \
+            --triplet arm64-osx \
+            --only-binarycaching
+          test -f "$install_root/arm64-osx/include/simde/x86/sse2.h"
+          echo "SALTS_UTILS_HOST_VCPKG_INSTALLED=$install_root" >> "$GITHUB_ENV"
+
       - name: Build current host salts-idlc
         shell: bash
         run: |
@@ -937,6 +962,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$QIGAO_VCPKG_TOOLCHAIN_FILE" \
             -DVCPKG_MANIFEST_MODE=OFF \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DVCPKG_INSTALLED_DIR="$SALTS_UTILS_HOST_VCPKG_INSTALLED" \
             -DSALTS_UTILS_HOST_LEMON_EXECUTABLE="$host_lemon" \
             -DSALTS_UTILS_ENABLE_CAPTURE=OFF \
             -DSALTS_UTILS_QUALIFY_DATABIND=ON \
