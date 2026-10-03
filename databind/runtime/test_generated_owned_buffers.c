@@ -247,6 +247,8 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
     if (map_root != NULL)
       map_reader = json_cserde_reader_create(map_root, 16u);
     check_not_null(map_reader);
+    check_equal(
+        cmeta_data_value_init_zero(map_data, &direct_map), CMETA_OK);
     if (map_reader != NULL) {
       DataBindStatus direct_status =
           data_bind_native_decode(
