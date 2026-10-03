@@ -1038,10 +1038,7 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
         tbe_compiler_set_string(field, "native_c_type", vector_type);
       }
     } else {
-      snprintf(vector_type, sizeof(vector_type),
-               semantic->kind == CMETA_DATA_SET ? "%s_%s_set_t"
-                                                : "%s_%s_vec_t",
-               owner, name);
+      snprintf(vector_type, sizeof(vector_type), "%s_%s_vec_t", owner, name);
       snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
       tbe_compiler_set_string(field, "typed_kind",
                               semantic->kind == CMETA_DATA_SET ? "TBE_TYPED_SET"
@@ -1059,7 +1056,11 @@ static void tbe_compiler_annotate_typed_field(Node *root, Node *field,
         if ((element_scalar != NULL && element_scalar->native_data_symbol != NULL) ||
             (storage_element != NULL && strcmp(storage_element, "string") == 0)) {
           char symbol[320];
-          Node *owner_record =
+          Node *owner_record;
+          snprintf(vector_type, sizeof(vector_type), "%s_%s_set_t", owner, name);
+          snprintf(declaration, sizeof(declaration), "%s %s;", vector_type, c_name);
+          tbe_compiler_set_string(field, "typed_vector_type", vector_type);
+          owner_record =
               tbe_compiler_find_record(root, "composites", owner);
           if (owner_record == NULL)
             owner_record = tbe_compiler_find_record(root, "groups", owner);
