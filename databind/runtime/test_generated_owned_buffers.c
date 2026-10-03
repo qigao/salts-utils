@@ -147,6 +147,10 @@ spec("generated owned buffers use canonical Salts CMeta lifecycle") {
             codec, &from_json, json, sizeof(json) - 1u, &error),
         DATA_BIND_OK);
     check_equal(from_json.id, UINT32_C(7));
+    check_not_null(from_json.headers.cmeta.descriptor);
+    check_not_null(from_json.headers.raw.element_type);
+    check_true(cmeta_type_equal(
+        from_json.headers.raw.element_type, &NativeHeader_CMETA_TYPE));
     check_equal(
         NativeHeaderPolicy_headers_vec_t_size(&from_json.headers),
         (size_t)2u);
