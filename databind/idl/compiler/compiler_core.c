@@ -1858,6 +1858,8 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         char symbol[320];
 
         if (tbe_compiler_has_child(field, "is_map") &&
+            !tbe_compiler_has_child(field, "is_optional") &&
+            !tbe_compiler_has_child(field, "is_nullable") &&
             tbe_compiler_string_value(field, "native_map_name") != NULL) {
           const char *value_type =
               tbe_compiler_string_value(field, "value_type");
@@ -1927,6 +1929,8 @@ static void tbe_compiler_promote_record_cstl_containers(Node *root) {
         }
 
         if (!tbe_compiler_has_child(field, "is_list") ||
+            tbe_compiler_has_child(field, "is_optional") ||
+            tbe_compiler_has_child(field, "is_nullable") ||
             tbe_compiler_string_value(field, "native_sequence_name") == NULL)
           continue;
 
