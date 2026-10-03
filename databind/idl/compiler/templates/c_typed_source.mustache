@@ -202,14 +202,14 @@ static DataBindStatus {{schema.schema_name}}_schema_codec_error(
     DataBindError *error, DataBindStatus status, const char *path,
     const char *message);
 
-{{#composites}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
-static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{#composites}}extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+extern const cmeta_data_desc {{name}}_CMETA_DATA;
 {{/composites}}
-{{#groups}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
-static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{#groups}}extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+extern const cmeta_data_desc {{name}}_CMETA_DATA;
 {{/groups}}
-{{#messages}}static const cmeta_type_desc {{name}}_CMETA_TYPE;
-static const cmeta_data_desc {{name}}_CMETA_DATA;
+{{#messages}}extern const cmeta_type_desc {{name}}_CMETA_TYPE;
+extern const cmeta_data_desc {{name}}_CMETA_DATA;
 {{/messages}}
 {{#composites}}{{#fields}}{{#native_fixed_bytes_name}}
 typedef uint8_t {{native_c_type}}[{{typed_fixed_count}}];
@@ -679,7 +679,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 {{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
-static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+TBE_GENERATED_API const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
@@ -719,7 +719,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
 };
-static const cmeta_data_desc {{name}}_CMETA_DATA = {
+TBE_GENERATED_API const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
@@ -757,7 +757,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 {{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
-static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+TBE_GENERATED_API const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
@@ -797,7 +797,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
 };
-static const cmeta_data_desc {{name}}_CMETA_DATA = {
+TBE_GENERATED_API const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
@@ -835,7 +835,7 @@ CMETA_DEFINE_DATA_TRAITS({{name}}, &{{name}}_CMETA_DATA);
 {{/cmeta_lifecycle_supported}}
 static const cmeta_type_identity {{name}}_CMETA_ID =
     CMETA_TYPE_ID_ATOM_INIT("tbe.native.{{schema.schema_name}}.{{name}}_t");
-static const cmeta_type_desc {{name}}_CMETA_TYPE = {
+TBE_GENERATED_API const cmeta_type_desc {{name}}_CMETA_TYPE = {
     "{{name}}_t", sizeof({{name}}_t), TBE_TYPED_ALIGNOF({{name}}_t),
     CMETA_T_OBJECT, NULL,
     {{#cmeta_lifecycle_supported}}&cmeta_traits_{{name}}{{/cmeta_lifecycle_supported}}{{^cmeta_lifecycle_supported}}NULL{{/cmeta_lifecycle_supported}},
@@ -875,7 +875,7 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     &{{name}}_CMETA_LAYOUT, {{name}}_CMETA_FIELDS,
     sizeof({{name}}_CMETA_FIELDS) / sizeof({{name}}_CMETA_FIELDS[0])
 };
-static const cmeta_data_desc {{name}}_CMETA_DATA = {
+TBE_GENERATED_API const cmeta_data_desc {{name}}_CMETA_DATA = {
     sizeof(cmeta_data_desc), CMETA_DATA_DESC_ABI_VERSION,
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
