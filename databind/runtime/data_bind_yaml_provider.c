@@ -352,6 +352,8 @@ static cserde_status yaml_writer_attach(
       frame->expect_key || owner->pending_key == NULL)
     return CSERDE_UNSUPPORTED;
 
+  if (cyaml_has(owner->document, frame->node, owner->pending_key))
+    return CSERDE_UNSUPPORTED;
   if (!cyaml_map_set(
           owner->document, frame->node, owner->pending_key, node))
     return CSERDE_CALLBACK_ERROR;
@@ -406,6 +408,10 @@ static cserde_status yaml_writer_map_key(
     return CSERDE_UNSUPPORTED;
   if (token->value.slice.size == SIZE_MAX)
     return CSERDE_LIMIT_EXCEEDED;
+  if (token->value.slice.size != 0u &&
+      memchr(token->value.slice.data, '\0',
+             token->value.slice.size) != NULL)
+    return CSERDE_UNSUPPORTED;
   key = (char *)malloc(token->value.slice.size + 1u);
   if (key == NULL) return CSERDE_CALLBACK_ERROR;
   if (token->value.slice.size != 0u)
