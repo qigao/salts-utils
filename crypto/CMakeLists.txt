@@ -40,7 +40,7 @@ target_include_directories(
 # Keep libecc private and compile only the RFC 8032 Ed448 feature set. The
 # explicit word size is required by MSVC and matches supported 64-bit targets.
 set_source_files_properties(
-  src/crypto_ed448.c ${LIBECC_ED448_SOURCES}
+  src/crypto_ed448.c src/crypto_sha256.c ${LIBECC_ED448_SOURCES}
   PROPERTIES
     COMPILE_DEFINITIONS
     "WITH_STDLIB;WITH_LIBECC_CONFIG_OVERRIDE;WITH_CURVE_WEI448;WITH_HASH_SHAKE256;WITH_HASH_SHA256;WITH_SIG_EDDSA448;WORDSIZE=64"
