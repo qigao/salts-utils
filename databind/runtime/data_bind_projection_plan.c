@@ -565,10 +565,11 @@ static DataBindStatus plan_scan_type(
   return DATA_BIND_OK;
 }
 
-DataBindStatus data_bind_format_plan_compile(
+static DataBindStatus plan_format_plan_compile(
     DataBind *codec,
     const char *type_name,
     DataBindFormat format,
+    int require_state_preservation,
     DataBindFormatPlan **out_plan,
     DataBindError *error) {
   DataBindPlanScan scan = {0};
@@ -627,7 +628,7 @@ DataBindStatus data_bind_format_plan_compile(
     }
   }
 
-  if (scan.has_nullable &&
+  if (require_state_preservation && scan.has_nullable &&
       (states & DATA_BIND_FORMAT_STATE_NULL) == 0u)
     return plan_error(
         error, DATA_BIND_ERR_SCHEMA,
@@ -672,6 +673,27 @@ DataBindStatus data_bind_format_plan_compile(
 
   *out_plan = plan;
   return DATA_BIND_OK;
+}
+
+
+DataBindStatus data_bind_format_plan_compile(
+    DataBind *codec,
+    const char *type_name,
+    DataBindFormat format,
+    DataBindFormatPlan **out_plan,
+    DataBindError *error) {
+  return plan_format_plan_compile(
+      codec, type_name, format, 1, out_plan, error);
+}
+
+DataBindStatus data_bind_format_plan_compile_reader(
+    DataBind *codec,
+    const char *type_name,
+    DataBindFormat format,
+    DataBindFormatPlan **out_plan,
+    DataBindError *error) {
+  return plan_format_plan_compile(
+      codec, type_name, format, 0, out_plan, error);
 }
 
 void data_bind_format_plan_free(DataBindFormatPlan *plan) {
