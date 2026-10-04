@@ -400,18 +400,6 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
-{{#typed_cmeta_runtime_supported}}
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
-
-/* Internal migration seam for historical runtime tests only.
- * Not declared by generated public headers; removed by #488/#489. */
-const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
-    return &{{name}}_TYPED_DESCRIPTOR;
-}
-
-{{/typed_cmeta_runtime_supported}}
-
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
     {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)
@@ -496,18 +484,6 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
-{{#typed_cmeta_runtime_supported}}
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
-
-/* Internal migration seam for historical runtime tests only.
- * Not declared by generated public headers; removed by #488/#489. */
-const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
-    return &{{name}}_TYPED_DESCRIPTOR;
-}
-
-{{/typed_cmeta_runtime_supported}}
-
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
     {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)
@@ -592,19 +568,6 @@ static const cmeta_data_struct_shape {{name}}_CMETA_SHAPE = {
     "tbe.native.{{schema.schema_name}}.{{name}}_t.data", "{{name}}_t",
     CMETA_DATA_STRUCT, &{{name}}_CMETA_TYPE, &{{name}}_CMETA_SHAPE, NULL, NULL, NULL, NULL, NULL
 };
-{{#typed_cmeta_runtime_supported}}{{^cmeta_lifecycle_supported}}
-static const TbeTypedDescriptor {{name}}_TYPED_DESCRIPTOR =
-    TBE_TYPED_DESCRIPTOR_INIT(&{{name}}_TYPED_TYPE, &{{name}}_CMETA_DATA);
-
-/* Residual seam only for generated records that still lack canonical
- * CMeta/native lifecycle. Canonical-lifecycle messages never publish this
- * historical descriptor and are migrated to CMeta/MessagePlan/BinaryLayoutIR. */
-const TbeTypedDescriptor *{{name}}_typed_descriptor(void) {
-    return &{{name}}_TYPED_DESCRIPTOR;
-}
-
-{{/cmeta_lifecycle_supported}}{{/typed_cmeta_runtime_supported}}
-
 DataBindStatus {{name}}_cmeta_data(const cmeta_data_desc **out, DataBindError *error) {
     {{schema.schema_name}}_CMETA_INIT_ALL();
     if (out == NULL)

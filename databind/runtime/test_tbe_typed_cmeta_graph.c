@@ -1,5 +1,4 @@
 #include "cmeta_graph_generated.h"
-#include "tbe_typed.h"
 #include "tinytest.h"
 
 #include <salts_cmeta_data.h>
@@ -7,9 +6,6 @@
 
 #include <stddef.h>
 #include <string.h>
-
-/* Residual composite-only migration seam; removed with non-flat provider work. */
-extern const TbeTypedDescriptor *Depth32_typed_descriptor(void);
 
 static DataBindStatus sample_parse_generated(
     DataBind *codec, DataBindFormat format,
@@ -152,48 +148,47 @@ static size_t make_depth32_xml(char *buffer, size_t capacity) {
 
 static DataBindStatus parse_depth32(DataBindFormat format, const char *input,
                                     size_t input_length) {
-  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBind *codec = NULL;
   Depth32_t value;
+  Depth32_t unchanged;
   DataBindStatus status = Graph_codec_create(&codec, &error);
-  if (status == DATA_BIND_OK && descriptor != NULL) {
-    memset(&value, 0xa5, sizeof(value));
-    status = tbe_typed_descriptor_parse(
-        codec, "Depth32", descriptor, format, input, input_length, 0u,
-        &value, &error);
-    if (status == DATA_BIND_OK) {
-      Depth32_t expected;
-      memset(&expected, 0, sizeof(expected));
-      if (memcmp(&value, &expected, sizeof(value)) != 0)
-        status = DATA_BIND_ERR_RUNTIME;
-    }
-    (void)tbe_typed_descriptor_clear(descriptor, &value, &error);
-  } else if (status == DATA_BIND_OK) {
-    status = DATA_BIND_ERR_RUNTIME;
+  memset(&value, 0, sizeof(value));
+  memset(&unchanged, 0, sizeof(unchanged));
+  if (status == DATA_BIND_OK) {
+    if (format == DATA_BIND_FORMAT_CSV)
+      status = Depth32_from_csv(codec, &value, input, input_length, 0u, &error);
+    else if (format == DATA_BIND_FORMAT_XML)
+      status = Depth32_from_xml(codec, &value, input, input_length, &error);
+    else
+      status = DATA_BIND_ERR_INVALID_ARG;
+    if (status == DATA_BIND_ERR_SCHEMA &&
+        memcmp(&value, &unchanged, sizeof(value)) != 0)
+      status = DATA_BIND_ERR_RUNTIME;
   }
+  Depth32_clear(&value);
   data_bind_free(codec);
   return status;
 }
 
 static DataBindStatus serialize_depth32(DataBindFormat format) {
-  const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
   DataBindError error = DATA_BIND_ERROR_INIT;
   DataBind *codec = NULL;
   Depth32_t value;
   char *serialized = NULL;
-  size_t serialized_length = 0u;
+  size_t serialized_length = sizeof(value);
   DataBindStatus status = Graph_codec_create(&codec, &error);
   memset(&value, 0, sizeof(value));
-  if (status == DATA_BIND_OK && descriptor != NULL) {
-    status = tbe_typed_descriptor_serialize(
-        codec, "Depth32", descriptor, &value, format, &serialized,
-        &serialized_length, &error);
-    if (status == DATA_BIND_OK &&
-        (serialized == NULL || serialized_length == 0u))
+  if (status == DATA_BIND_OK) {
+    if (format == DATA_BIND_FORMAT_CSV)
+      status = Depth32_to_csv(codec, &value, &serialized, &serialized_length, &error);
+    else if (format == DATA_BIND_FORMAT_XML)
+      status = Depth32_to_xml(codec, &value, &serialized, &serialized_length, &error);
+    else
+      status = DATA_BIND_ERR_INVALID_ARG;
+    if (status == DATA_BIND_ERR_SCHEMA &&
+        (serialized != NULL || serialized_length != 0u))
       status = DATA_BIND_ERR_RUNTIME;
-  } else if (status == DATA_BIND_OK) {
-    status = DATA_BIND_ERR_RUNTIME;
   }
   data_bind_serialized_free(serialized);
   data_bind_free(codec);
@@ -509,30 +504,30 @@ spec("generated native CMeta graph") {
                 DATA_BIND_ERR_TYPE_MISMATCH);
   }
 
-  it("preserves the accepted Depth32 parse boundary in CSV") {
+  it("rejects generated Depth32 CSV parsing without a canonical provider") {
     char csv[512];
     size_t length = make_depth32_csv(csv, sizeof(csv));
     check(length != SIZE_MAX);
     if (length != SIZE_MAX)
       check_equal(parse_depth32(DATA_BIND_FORMAT_CSV, csv, length),
-                  DATA_BIND_OK);
+                  DATA_BIND_ERR_SCHEMA);
   }
 
-  it("preserves the accepted Depth32 serialize boundary in CSV") {
-    check_equal(serialize_depth32(DATA_BIND_FORMAT_CSV), DATA_BIND_OK);
+  it("rejects generated Depth32 CSV output without a canonical provider") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_CSV), DATA_BIND_ERR_SCHEMA);
   }
 
-  it("preserves the accepted Depth32 parse boundary in XML") {
+  it("rejects generated Depth32 XML parsing without a canonical provider") {
     char xml[768];
     size_t length = make_depth32_xml(xml, sizeof(xml));
     check(length != SIZE_MAX);
     if (length != SIZE_MAX)
       check_equal(parse_depth32(DATA_BIND_FORMAT_XML, xml, length),
-                  DATA_BIND_OK);
+                  DATA_BIND_ERR_SCHEMA);
   }
 
-  it("preserves the accepted Depth32 serialize boundary in XML") {
-    check_equal(serialize_depth32(DATA_BIND_FORMAT_XML), DATA_BIND_OK);
+  it("rejects generated Depth32 XML output without a canonical provider") {
+    check_equal(serialize_depth32(DATA_BIND_FORMAT_XML), DATA_BIND_ERR_SCHEMA);
   }
 
   it("keeps structural publication independent from descriptor overlay support") {
@@ -587,14 +582,11 @@ spec("generated native CMeta graph") {
   }
 #endif
 
-  it("accepts depth 32 and rejects depth 33 without partial publication") {
+  it("publishes depth 32 and rejects depth 33 without partial publication") {
     const cmeta_data_desc *data = NULL;
     const cmeta_data_desc *published;
-    const TbeTypedDescriptor *descriptor = Depth32_typed_descriptor();
     DataBindError error = DATA_BIND_ERROR_INIT;
 
-    check_not_null(descriptor);
-    check_equal(tbe_typed_descriptor_validate(descriptor, &error), DATA_BIND_OK);
     check_equal(Depth32_cmeta_data(&data, &error), DATA_BIND_OK);
     check_not_null(data);
     published = data;
