@@ -252,6 +252,7 @@ jobs:
             -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF -DBUILD_EXAMPLES=OFF \
             -DENABLE_SANITIZER_ADDRESS=ON \
             -DENABLE_SANITIZER_UNDEFINED=ON
+          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
           cmake --build build/binding-plan-sanitize \
             --target test_data_bind_binary_reader test_data_bind_opaque_plan \
                      test_data_bind_yaml_provider test_data_bind_xml_provider \
