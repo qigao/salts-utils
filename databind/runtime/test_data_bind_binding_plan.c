@@ -392,8 +392,8 @@ static const DataBindNativeTypeBinding ROLLBACK_REQUEST_NATIVE = {
     NULL,
     0u};
 
-FunctionDeclAs(
-    value, int, &cmeta_type_int, rollback_bind_fields,
+FunctionDecl(
+    value, void, rollback_bind_fields,
     (RollbackProbeBuffer, first, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE),
     (RollbackProbeBuffer, second, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE),
     (RollbackProbeBuffer, third, CMETA_PARAM_IN, &ROLLBACK_BUFFER_TYPE));
